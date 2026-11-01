@@ -7,7 +7,7 @@ meta:
     - ../govee_segment_page
     - h66a0_video_command
 doc: |
-  SPECULATIVE H66A0 status reply for issues #272 and #390.  All four official-app
+  H66A0 status reply.  All four official-app
   segment pages of one read have been supplied with valid XOR checksums:
     aa a5 01 64e54444 64ffae54 64ffae54 64cf2e2e 24
     aa a5 02 64c72626 64c01f1f 64b91818 64b21111 01
@@ -19,7 +19,7 @@ doc: |
   picture_preset 0x08..0x0b, saturation, sound_effects, opaque, softness).
   AA 05 15 carries a sub byte followed by big-endian aggregate Kelvin,
   confirmed on hardware at 3000 K (15 00 0b b8) and RGB (15 00 00 00).
-  Issue #429 confirms zero after partial native-Kelvin writes as well;
+  confirms zero after partial native-Kelvin writes as well;
   whole-device and all-14 writes both echo the requested Kelvin.
   Segment RGB can temporarily be black before settling, without changing brightness.
   AA 06, AA 07, AA 20, AA 21, and AA 40 (90 ICs) are confirmed on hardware.

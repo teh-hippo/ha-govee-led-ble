@@ -5,7 +5,7 @@ meta:
   imports:
     - ../govee_shared
 doc: |
-  SPECULATIVE H7025, issue #148.
+  H7025.
   Android 7.6.01 H7025 music authoring selects the following exact-product IDs.
   Rhythm uses 33 05 13 03, sensitivity, calm flag, and a fixed-colour flag;
   a nonzero fixed-colour flag adds one RGB triple, not a palette.

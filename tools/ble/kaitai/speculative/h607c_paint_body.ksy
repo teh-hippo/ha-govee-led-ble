@@ -5,7 +5,7 @@ meta:
   imports:
     - ../govee_shared
 doc: |
-  SPECULATIVE H607C, support request #507, owner confirmations #511.
+  H607C.
   Compatibility hypothesis: native paint uses direction, rate, background
   brightness/RGB and count-prefixed colour/position groups.
   Static paint selects native direction 9 under A3 transport command 03,

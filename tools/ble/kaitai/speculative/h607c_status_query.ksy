@@ -5,7 +5,7 @@ meta:
   imports:
     - ../status_query
 doc: |
-  SPECULATIVE H607C, support request #507, owner confirmations #511.
+  H607C.
   Compatibility hypothesis: ordinary power, brightness, mode and identity
   requests share the common query bodies. Native settings have separate
   selector-zero and device-info queries in h607c_control.

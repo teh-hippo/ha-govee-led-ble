@@ -5,7 +5,7 @@ meta:
   imports:
     - h6076_music_body
 doc: |
-  SPECULATIVE H6072, owner confirmations #486.
+  H6072.
   Compatibility hypothesis: A3 subtype 41 has a mode and result, with zero
   indicating upload success. This is separate from active-selection readback.
   Exact-model mode echo, other result values and timing are unqualified.

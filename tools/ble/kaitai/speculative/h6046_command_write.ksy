@@ -5,7 +5,7 @@ meta:
   imports:
     - ../govee_shared
 doc: |
-  SPECULATIVE (audited prospective) H6046, support issue #479.
+  H6046.
   Evidence class: exact-model behavioural audit and source-reconstructed bytes,
   not official-app captures or owner qualification. Known Pact 1/1 and 2/1 use
   this modern layout; no H6053 legacy range or firmware gate is assumed.

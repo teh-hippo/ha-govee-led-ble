@@ -8,7 +8,7 @@ meta:
     - h6102_status_reply
     - govee_rgb_segment_page
 doc: |
-  SPECULATIVE H6125, issue #117.
+  H6125.
   Compatibility hypothesis: the intermediate DreamColor route keeps 0x0b
   RGB and A2 RGB-only pages, but uses 0x11 music and 16-bit scene/DIY selectors.
   Reachable application consumers establish the separate layouts. The app

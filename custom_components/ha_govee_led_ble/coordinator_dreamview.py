@@ -1,6 +1,6 @@
 """Service-only DreamView transactions and anonymous observations.
 
-Like issue #257 this is a coordinator mixin, but local authorship is not a slot
+Like the other coordinator mixins, but local authorship is not a slot
 identity map. It never probes members or claims membership was read back.
 
 Ownership rules:

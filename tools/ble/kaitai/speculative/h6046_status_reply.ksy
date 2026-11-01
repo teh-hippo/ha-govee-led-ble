@@ -7,7 +7,7 @@ meta:
     - ../govee_segment_page
     - h6046_command_write
 doc: |
-  SPECULATIVE (audited prospective) H6046, support issue #479.
+  H6046.
   Evidence class: exact-model behavioural audit, not attributable captures or
   owner qualification. Known Pact 1/1 and 2/1 share this modern layout.
   Frames contain 20 bytes; the transport checks XOR of bytes 0..18 at byte 19.

@@ -3,7 +3,7 @@ meta:
   title: Govee H6099 logical status query
   endian: le
 doc: |
-  SPECULATIVE H6099 query frame for issue #258.  In Android 7.6.01, H6099 mode
+  H6099 query.  In Android 7.6.01, H6099 mode
   queries use selector 01 and segment queries request four groups for fourteen
   logical zones.  Scalar white balance uses A9 06, black-border removal uses
   A9 0B, and relative brightness uses AE 01.  AA40 queries the signed
@@ -13,7 +13,7 @@ doc: |
   position (31) is separate and not queried here.  Encryption is outside this
   logical frame; owner acceptance, firmware differences, and unused bytes
   remain unresolved.
-  H6097 issue #431 independently shares these query selectors and fourteen-zone
+  H6097 independently shares these query selectors and fourteen-zone
   paging.  Its ordinary three-state power-on query has a separate exact root.
 seq:
   - id: header

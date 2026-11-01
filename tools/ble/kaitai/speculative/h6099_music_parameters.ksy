@@ -5,7 +5,7 @@ meta:
   imports:
     - ../govee_shared
 doc: |
-  SPECULATIVE H6099 issue #258.  Android 7.6.01 H6099 music control uploads A3
+  H6099.  Android 7.6.01 H6099 music control uploads A3
   command 41 (mode followed by this palette and tail) before sending the mode
   selector.  Default companions carry seven RGB colours, and the mode
   configuration admits 1-8 colours.  Shared music parameter builders define the

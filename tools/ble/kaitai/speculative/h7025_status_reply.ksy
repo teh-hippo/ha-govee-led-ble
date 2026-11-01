@@ -7,7 +7,7 @@ meta:
     - ../govee_shared
     - h6102_status_reply
 doc: |
-  SPECULATIVE H7025, issue #148.
+  H7025.
   In Android 7.6.01, H7025 uses the shared power, brightness, and identity
   status layouts, dispatches AA05 mode 15 to static colour, 04 to scenes, 0A to
   DIY, and 13 to music state, and reads A5 segment pages of four brightness/RGB

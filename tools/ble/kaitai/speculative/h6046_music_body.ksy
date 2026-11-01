@@ -6,7 +6,7 @@ meta:
     - ../govee_common
     - ../govee_shared
 doc: |
-  SPECULATIVE (audited prospective) H6046, support issue #479.
+  H6046.
   Evidence class: exact-model behavioural audit, not captures or hardware
   qualification. Known Pact 1/1 and 2/1 admit four companion-backed modes.
   This is reassembled A3 content, not a 20-byte physical packet: the shared

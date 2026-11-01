@@ -5,7 +5,7 @@ meta:
   imports:
     - ../govee_shared
 doc: |
-  SPECULATIVE H600A support request #492, owner confirmations #494.
+  H600A.
   Compatibility hypothesis: AA0501 queries return mode 0D direct RGB,
   big-endian Kelvin and companion RGB, or 16-bit little-endian scene/DIY
   selection. Shared power, percentage brightness and version domains

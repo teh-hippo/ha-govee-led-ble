@@ -5,7 +5,7 @@ meta:
   imports:
     - h607c_music_write
 doc: |
-  SPECULATIVE H607C, support request #507, owner confirmations #511.
+  H607C.
   Compatibility hypothesis: ordinary multipart results carry zero-success
   immediately after the command. Music 41 repeats its mode before the result.
   A result confirms acceptance only, not rendering or uploaded-content readback.

@@ -6,7 +6,7 @@ meta:
     - ../govee_segment_page
     - ../govee_shared
 doc: |
-  SPECULATIVE H1A42, issue #391.
+  H1A42.
   Compatibility hypothesis: the H1A42 LED Strip Light 2 (goodsType 400, Pact 1/2)
   replies with 20-byte XOR-checksummed AA frames carrying power, percentage
   brightness, active colour mode, firmware and hardware version strings,
@@ -16,7 +16,7 @@ doc: |
   flag and big-endian Kelvin; scene (0x04) and DIY (0x0a) replies carry
   little-endian selectors; music replies (0x13) carry the mode ID, sensitivity,
   and selector settings for legacy modes.
-  Issue #429 reports zero aggregate Kelvin after partial native-Kelvin writes.
+  Owners report zero aggregate Kelvin after partial native-Kelvin writes.
   Segment pages expose rendered RGB, not native per-zone Kelvin, and may be
   temporarily black before settling with unchanged brightness.
   Unresolved assumptions: exact firmware-specific reply presence and all trailing

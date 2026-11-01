@@ -6,7 +6,7 @@ meta:
     - ../command_write
     - h607c_music_write
 doc: |
-  SPECULATIVE H607C, support request #507, owner confirmations #511.
+  H607C.
   Compatibility hypothesis: common power, percentage brightness, scene and
   DIY selectors use the ordinary 33 envelope. Static selector 15 carries
   two-byte masks and thirteen brightness values. Independent native zone

@@ -4,7 +4,7 @@ meta:
   endian: le
 doc: |
   H6199 20-byte status query.  The final byte is the XOR of bytes 0 through 18.
-  Issue #294 direction30, position31, status32 and Gradient A3 queries are
+  direction30, position31, status32 and Gradient A3 queries are
   speculative app/direct-register evidence, not official-app BLE captures.
 seq:
   - id: header

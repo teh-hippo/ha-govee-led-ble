@@ -7,7 +7,7 @@ meta:
     - ../govee_shared
     - h607c_music_write
 doc: |
-  SPECULATIVE H607C, support request #507, owner confirmations #511.
+  H607C.
   Compatibility hypothesis: music uploads have the two-byte command header
   41/mode. Paired mode has separately bounded pole/base sections.
   Palette bodies retain mode-specific parameters; only independently

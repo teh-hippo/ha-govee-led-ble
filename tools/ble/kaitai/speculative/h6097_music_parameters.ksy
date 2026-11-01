@@ -7,7 +7,7 @@ meta:
     - h6097_music_write
     - h6099_music_parameters
 doc: |
-  SPECULATIVE H6097 support for issue #431.  A3/41 carries mode, palette and
+  H6097.  A3/41 carries mode, palette and
   these mode-specific tails before selector activation.  Shared tail structures
   are compatible with H6099, but Energetic independently carries two opaque
   parameter bytes (default 01 00).  Physical IC count is independent of the

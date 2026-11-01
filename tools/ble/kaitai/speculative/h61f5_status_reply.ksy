@@ -6,7 +6,7 @@ meta:
     - ../govee_segment_page
     - ../govee_shared
 doc: |
-  SPECULATIVE H61F5, issue #392.
+  H61F5.
   Compatibility hypothesis: the H61F5 Strip Light 2 Pro (goodsType 261, Pact 3/1)
   replies with 20-byte XOR-checksummed AA frames carrying power, percentage
   brightness, active colour mode, firmware and hardware version strings,
@@ -17,7 +17,7 @@ doc: |
   scene (0x04) and DIY (0x0a) replies carry little-endian selectors; music
   replies (0x13) carry the mode ID, sensitivity, and selector settings for
   legacy modes.
-  Issue #429 reports zero in the Kelvin field after both whole-device and partial
+  Owners report zero in the Kelvin field after both whole-device and partial
   native-Kelvin writes.  It is not a Kelvin measurement or proof of RGB intent.
   Segment pages may temporarily be black before settling with unchanged brightness.
   Unresolved assumptions: exact firmware-specific reply presence and all trailing

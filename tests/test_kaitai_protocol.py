@@ -110,7 +110,7 @@ def _generated(module: str, class_name: str) -> type[Any]:
 
 
 def test_h607c_endpoint_scene_keeps_named_v2_trailer_and_opaque_extensions():
-    """#507 exact-SKU catalogue selector 16183, not an official-app BLE capture."""
+    """Exact-SKU catalogue selector 16183, not an official-app BLE capture."""
     raw = bytes.fromhex("0a01220000000400019797000014140300140201fa01ff96371000fa0000800000020001ff")
     root = _generated("h607c_scene_body", "H607cSceneBody").from_bytes(raw)
     root._read()
@@ -146,7 +146,7 @@ def test_h607c_endpoint_scene_keeps_named_v2_trailer_and_opaque_extensions():
     ],
 )
 def test_h607c_reconstructed_fields_round_trip(module, name, raw):
-    """#507/#511 reconstructed vectors, not owner or official-app captures."""
+    """Reconstructed vectors, not owner or official-app captures."""
     data = bytes.fromhex(raw)
     parent, _, child = name.partition(".")
     root_type = _generated(module, parent)
@@ -157,7 +157,7 @@ def test_h607c_reconstructed_fields_round_trip(module, name, raw):
 
 
 def test_h607c_reconstructed_native_notification_uses_the_ee_envelope():
-    """#507/#511 reconstructed asynchronous native flags, not a captured AA reply."""
+    """Reconstructed asynchronous native flags, not a captured AA reply."""
     data = bytes.fromhex("ee3025850000000000000000000000000000007e")
     root = _generated("h607c_control", "H607cControl").ZoneNotification.from_bytes(data)
     root._read()
@@ -178,7 +178,7 @@ def test_h607c_reconstructed_native_notification_uses_the_ee_envelope():
     ],
 )
 def test_h600a_reconstructed_whole_bulb_commands(raw, operation):
-    """#492 source-derived logical vectors, not owner or official-app captures."""
+    """Source-derived logical vectors, not owner or official-app captures."""
     packet = bytes.fromhex(raw)
     root = _generated("h600a_command_write", "H600aCommandWrite").from_bytes(packet)
     root._read()
@@ -202,7 +202,7 @@ def test_h600a_reconstructed_whole_bulb_commands(raw, operation):
     ],
 )
 def test_h600a_reconstructed_upload_results(raw, subtype, success):
-    """#492 source-derived A3 results establish acceptance only, not rendering."""
+    """Source-derived A3 results establish acceptance only, not rendering."""
     packet = bytes.fromhex(raw)
     root = _generated("h600a_command_ack", "H600aCommandAck").from_bytes(packet)
     root._read()
@@ -256,7 +256,7 @@ def test_h6072_reconstructed_kelvin_commands(raw, legacy):
 
 
 def test_h6097_synthetic_frames_keep_unknown_music_and_ordinary_setting_fields():
-    # Structural hypotheses for issue #431, not hardware captures.
+    # Structural hypotheses, not hardware captures.
     status_root = _generated("h6097_status_reply", "H6097StatusReply")
     setting = status_root.from_bytes(bytes.fromhex("aa410201000000000000000000000000000000e8"))
     setting._read()
@@ -320,7 +320,7 @@ H6125_BRIGHTNESS_REPLY = bytes.fromhex("aa041400000000000000000000000000000000ba
 # Submode 0x11 layouts follow the app producer; no identified H6125 capture exists.
 H6125_MUSIC_WRITE = bytes.fromhex("33051111320101ff0000000000000000000000fb")
 H6125_MUSIC_STATUS = bytes.fromhex("aa051111320101ff000000000000000000000062")
-# Issue #343 reporter's decrypted HCI frames.  The selector fields were listed before padding and checksum.
+# Reporter's decrypted HCI frames.  The selector fields were listed before padding and checksum.
 H6076_ENERGETIC = bytes.fromhex("33050f006301ff000000000000000000000000a4")
 H6076_RHYTHM_AT_LEFT = bytes.fromhex("33050f040001000000000000000000000000003c")
 H6076_TORCH_SELECTOR = bytes.fromhex("33050f506300000000000000000000000000000a")
@@ -328,10 +328,10 @@ H6076_TORCH_BODY = (
     bytes.fromhex("a3000102415007ff0000ff7f00ffff0000ff0036"),
     bytes.fromhex("a3ff0000ff00ffff8b00ff0000000000000000d7"),
 )
-# Issue #247 owner-captured H6076 segment group 2 reply (3 rendered-white records + 4 zero bytes).
+# Owner-captured H6076 segment group 2 reply (3 rendered-white records + 4 zero bytes).
 H6076_SEGMENT_GROUP2_STATUS = bytes.fromhex("aaa50264ff922764ff922764ff92270000000037")
 H6076_STATIC_KELVIN_STATUS = bytes.fromhex("aa0515010a8c000000000000000000000000003d")
-# Issue #476 firmware 1.04.05: static status has a gradual bit but no Kelvin echo.
+# Firmware 1.04.05: static status has a gradual bit but no Kelvin echo.
 H6076_STATIC_NO_KELVIN_STATUS = bytes.fromhex("aa051501000000000000000000000000000000bb")
 STATUS_SEGMENTS = bytes.fromhex("aaa50164ff880d64ff880d64ff880d0000000010")
 H617A_SEGMENT_QUERY = bytes.fromhex("aaa505000000000000000000000000000000000a")
@@ -364,7 +364,7 @@ def test_h6179_automatic_music_consumes_inactive_stored_colour(frame):
     assert not any(detail.opaque)
 
 
-# Issue #115: identical H6199 notification observed three times on 2026-09-17.
+# Identical H6199 notification observed three times on 2026-09-17.
 H6199_DIY_UPLOAD_ACK = bytes.fromhex("a3040000000000000000000000000000000000a7")
 # H6199 Pact 1 producer fixtures, not physical-device captures.
 H6199_PACT1_BRIGHTNESS_WRITE = bytes.fromhex("33048800000000000000000000000000000000bf")
@@ -1926,7 +1926,7 @@ def test_critical_invalid_shapes_are_rejected(root_type: type[Any], raw_hex: str
         _parse(root_type, bytes.fromhex(raw_hex))
 
 
-# H6046 #479 examples below are source-reconstructed plaintext, not hardware captures.
+# H6046 examples below are source-reconstructed plaintext, not hardware captures.
 def test_h6046_direct_bytes_static_masks_and_selector_endianness() -> None:
     root = _generated("h6046_command_write", "H6046CommandWrite")
     all_red = _parse(root, bytes.fromhex("33051501ff00000000000000ff03000000000021")).body.detail

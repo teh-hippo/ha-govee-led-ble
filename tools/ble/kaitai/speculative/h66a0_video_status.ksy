@@ -4,7 +4,7 @@ meta:
   imports:
     - h66a0_video_command
 doc: |
-  SPECULATIVE H66A0 minimal status fixture for issues #257 and #297.
+  H66A0 minimal status.
   Contributor round2 reports aa 05 video replies share the command body.
   Only power, brightness and video read domains are represented. Independent
   captures and firmware coverage remain unresolved; no runtime model enabled.

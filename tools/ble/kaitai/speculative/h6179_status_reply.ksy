@@ -5,7 +5,7 @@ meta:
   imports:
     - ../govee_shared
 doc: |
-  SPECULATIVE H6179 compatibility hypothesis, owner confirmations #448:
+  H6179 compatibility hypothesis:
   exact-SKU status replies use a
   20-byte 0xaa envelope with the candidate domain, mode, timer, sleep, wake,
   limit, version, brightness, and colour layouts below.

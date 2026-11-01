@@ -5,7 +5,7 @@ meta:
   imports:
     - ../govee_shared
 doc: |
-  SPECULATIVE H6099 command frame for issue #258, checked against Android 7.6.01
+  H6099 command, checked against Android 7.6.01
   H6099 command behaviour.  Mode 0x15 supplies static colours and segment masks,
   mode 0x00 supplies the six-byte video body, mode 0x0a supplies the
   little-endian DIY selector, and mode 0x13 distinguishes legacy and
@@ -15,7 +15,7 @@ doc: |
   direction writes 33 30 value with candidate values 2, 3, 4, and 5; image
   orientations remain unqualified and no corner names or calibration-display
   commands are implied.
-  H6097 issue #431 independently shares these non-music command layouts,
+  H6097 independently shares these non-music command layouts,
   including fourteen-zone masks and six-byte video.  Its Kelvin producer uses
   direct white RGB and a device-table companion, and its distinct music root
   overrides this envelope's legacy Energetic selector.

@@ -3,7 +3,7 @@ meta:
   title: H6199 legacy DreamView group controls
   endian: be
 doc: |
-  SPECULATIVE H6199 issue #438.  Legacy group controls use independent
+  H6199.  Legacy group controls use independent
   command opcodes and seventeen-byte bodies, not the newer module-0x60
   group layout.  Same brightness alone uses module 0x60 command 0x04;
   its admission requires main hardware 3.02.01 and firmware 1.09.00.
@@ -12,7 +12,7 @@ doc: |
   Member records use the shared A3 type-0x50 layout.  Completion replies
   match protocol and command with a zero success byte; they establish
   acceptance, not membership, rendering or synchronisation.
-  Issue #294 reports an enable-query response, not group qualification.
+  Owners report an enable-query response, not group qualification.
   Official-app captures, revision differences, negative completion replies,
   reply tails, slot identity and maximum capacity remain unqualified.
 params:

@@ -448,7 +448,7 @@ def test_advertisement_and_omissions(hass):
 
 
 def test_h6097_owner_advertisement_requires_encrypted_negotiation(hass):
-    # Non-identifying manufacturer record supplied in issue #431.
+    # Non-identifying manufacturer record supplied by an owner.
     data = {0x8843: bytes.fromhex("ec00020100")}
     parsed = parse_govee_advertisement(data)
     assert parsed is not None and parsed.supports_encryption
@@ -952,7 +952,7 @@ async def test_encrypted_write_retries_reconnect_with_fresh_session(hass, versio
 
 
 async def test_h6076_identity_and_music_travel_over_v1_and_the_companion_is_acknowledged(hass):
-    # Issue #343: the reporter's lamp negotiated V1 and acknowledged each companion with an A3 reply.
+    # The reporter's lamp negotiated V1 and acknowledged each companion with an A3 reply.
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6076", configuration_url=None)
     coordinator.config_entry = MockConfigEntry(domain=DOMAIN, entry_id="test-entry")
     coordinator.config_entry.add_to_hass(hass)

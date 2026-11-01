@@ -5,7 +5,7 @@ meta:
   imports:
     - ../govee_shared
 doc: |
-  SPECULATIVE (audited prospective) H6046, support issue #479.
+  H6046.
   Evidence class: exact-model behavioural audit and exact-SKU catalogue
   structures, not captures or hardware qualification. Known Pact 1/1 and 2/1
   admit shared type-1 parameters, type-2 layers and H6046 type-4 flat/mixed DIY.

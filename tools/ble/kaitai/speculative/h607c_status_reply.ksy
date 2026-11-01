@@ -7,7 +7,7 @@ meta:
     - h607c_control
     - h607c_music_write
 doc: |
-  SPECULATIVE H607C, support request #507, owner confirmations #511.
+  H607C.
   Compatibility hypothesis: basic and identity fields share the common
   layouts. Device-info 07/08 carries brightness before native flags;
   asynchronous EE/30 uses the separate h607c_control notification root.

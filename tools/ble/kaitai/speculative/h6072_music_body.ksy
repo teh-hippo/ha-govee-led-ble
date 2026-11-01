@@ -8,7 +8,7 @@ meta:
     - h6076_music_body
     - h617a_control_payload
 doc: |
-  SPECULATIVE H6072, owner confirmations #486.
+  H6072.
   Compatibility hypothesis: A3 subtype 41 carries a mode and palette.
   Separation adds split point, gradient and a topology-dependent companion.
   The declared lamp geometry selects the long-strip companion, independently

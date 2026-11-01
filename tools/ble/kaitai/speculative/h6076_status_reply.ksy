@@ -7,14 +7,14 @@ meta:
     - h6076_music_write
     - h6102_status_reply
 doc: |
-  SPECULATIVE H6076, issue #401.
+  H6076.
   In Android 7.6.01, H6076 (goods type 69) uses the shared power, percentage
   brightness, firmware, hardware, and gradual (0xa3) status layouts, dispatches
   AA05 mode 15 to static colour/Kelvin, 04 to scenes, 0A to DIY, and 0F to
   music state, and reads A5 segment pages of four brightness/RGB records across
-  seven logical segments in two groups.  Owner logs in issues #112 and #247
+  seven logical segments in two groups.  Owner logs
   confirm AA01, AA04, AA05 15, AA06, AA07, and AAA5 group 2 on physical H6076
-  hardware; music replies follow the 0x0f selector layout from issue #343.
+  hardware; music replies follow the 0x0f selector layout .
   Common payload imports do not inherit H6102's product capabilities.
   Unknown modes, suffixes, and unused bytes remain opaque.
 seq:

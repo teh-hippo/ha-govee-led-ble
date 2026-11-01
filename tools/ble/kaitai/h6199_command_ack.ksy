@@ -8,10 +8,10 @@ doc: |
   H6199 display-setting and relative-brightness writes acknowledge with the command opcode,
   a zero success byte, and zero padding. The acknowledgement does not echo the setting or
   value, so callers verify changes with the corresponding status query.
-  Issue #294 direction30, position31 and Gradient A3 ACKs were observed in
+  direction30, position31 and Gradient A3 ACKs were observed in
   direct-register tests, not official-app BLE captures. Their use remains
   speculative; a zero ACK never establishes changed state.
-  A3/04 DIY upload responses observed during issue #115 live qualification use
+  A3/04 DIY upload responses observed during live qualification use
   the separate speculative payload; they are acknowledgements, not status.
 seq:
   - id: header

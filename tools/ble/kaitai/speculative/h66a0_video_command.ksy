@@ -2,7 +2,7 @@ meta:
   id: h66a0_video_command
   endian: le
 doc: |
-  SPECULATIVE H66A0 video-only fixture for issues #257 and #297.  Based on
+  H66A0 video-only.  Based on
   Fredde87/ha-govee-led-ble round2 command_write.ksy video_body_h66a0 and
   Android 7.6.01 TV-light video mode behaviour.  Contributor reports app preset reads
   08 Vivid, 09 Solid, 0a Smooth, 0b Delicate and a separate opaque byte.

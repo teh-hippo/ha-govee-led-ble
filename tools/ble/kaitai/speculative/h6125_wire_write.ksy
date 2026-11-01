@@ -5,7 +5,7 @@ meta:
   imports:
     - ../govee_shared
 doc: |
-  SPECULATIVE H6125, issue #117.
+  H6125.
   Evidence source class: application producers and public legacy observations.
   Compatibility hypothesis: pact 1 uses a scaled brightness register and the
   0x11 music selector. Older controllers use 0x0b RGB with a segment mask;

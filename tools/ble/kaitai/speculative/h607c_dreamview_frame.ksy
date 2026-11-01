@@ -3,7 +3,7 @@ meta:
   title: H607C candidate Music DreamView module controls
   endian: le
 doc: |
-  SPECULATIVE H607C, support request #507, owner confirmations #511.
+  H607C.
   Compatibility hypothesis: module 60 uses a single group-enable boolean
   without the camera discriminator. Delete is command 07 with ff.
   Native music activation has a type, two-byte selector, second parameter

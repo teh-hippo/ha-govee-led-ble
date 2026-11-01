@@ -3,7 +3,7 @@ meta:
   title: Govee H6072 low-blue-light setting
   endian: le
 doc: |
-  SPECULATIVE H6072 setting for owner confirmation #486.
+  H6072.
   Method 1 carries enable, two opaque sibling fields, and a level.
   Sibling fields have no independently established control semantics.
   Unknown methods and values remain uninterpreted.

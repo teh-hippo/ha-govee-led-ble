@@ -9,7 +9,7 @@ meta:
     - h6076_music_write
     - h6102_status_reply
 doc: |
-  SPECULATIVE H6072, owner confirmations #486.
+  H6072.
   Compatibility hypothesis: common basic and mode records, with eight logical
   zones in three-record pages. Legacy A2 pages contain RGB only; newer A5
   pages contain brightness and RGB. Static replies need not echo RGB or Kelvin.

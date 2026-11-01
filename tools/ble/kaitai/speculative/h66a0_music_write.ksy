@@ -5,7 +5,7 @@ meta:
   imports:
     - ../govee_shared
 doc: |
-  SPECULATIVE H66A0 issue #390.  Android 7.6.01 H66A0 music authoring selects
+  H66A0.  Android 7.6.01 H66A0 music authoring selects
   the sixteen mode IDs below over 33 05 13.  Classic modes (03..06) carry
   sensitivity, calm flag, fixed-colour flag, and optional RGB triple.  Newer
   modes (30..A9) carry only mode ID and sensitivity after an A3 41 companion

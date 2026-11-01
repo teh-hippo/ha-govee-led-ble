@@ -5,7 +5,7 @@ meta:
   imports:
     - ../govee_shared
 doc: |
-  SPECULATIVE H60A6 native paint body for #402.  Compatibility hypothesis:
+  H60A6 native paint.  Compatibility hypothesis:
   family 798 uses a complete 0x50 0x20-prefixed body with background RGB,
   background brightness, show type and length-delimited layers.  Kind 3
   contains length-delimited colour groups followed by action, speed,

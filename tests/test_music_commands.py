@@ -704,7 +704,7 @@ def _h6076_selector(fields: str) -> bytes:
 
 
 def test_h6076_torch_uploads_the_reporters_captured_frames_before_its_selector() -> None:
-    # Issue #343: the app's Torch effect at full sensitivity, as decrypted from an HCI snoop.
+    # The app's Torch effect at full sensitivity, as decrypted from an HCI snoop.
     captured = (
         H("a3000102415007ff0000ff7f00ffff0000ff0036"),
         H("a3ff0000ff00ffff8b00ff0000000000000000d7"),
@@ -860,7 +860,7 @@ def alternative(monkeypatch):
     # independent bounds/defaults and companion value; not device qualification.
     variant = MusicVariant(
         0x32,
-        "TEST ONLY issue #286; no hardware qualification",
+        "TEST ONLY; no hardware qualification",
         "music_body",
         bytes.fromhex("320201020304050608007a00000000000000000000000000000000000000"),
         (
@@ -1155,7 +1155,7 @@ async def test_new_fountain_parameter_survives_application_capture_and_recovery(
     assert fountain is not None
     variant = replace(
         fountain,
-        evidence="TEST ONLY issue #286 Fountain speed; no new hardware qualification",
+        evidence="TEST ONLY Fountain speed; no new hardware qualification",
         palette_bounds=None,
         parameters=(
             replace(fountain.parameters[0], requires_physical_ic_count=False),

@@ -8,7 +8,7 @@ meta:
     - ../govee_segment_page
     - ../status_reply
 doc: |
-  SPECULATIVE H7020, support PR #363. AA0F is configured string count, not
+  H7020. AA0F is configured string count, not
   detected attachment or IC count. A5 carries three brightness/RGB records per
   page. The coordinator additionally limits pages to the confirmed layout.
   AA05 reports mode and one Kelvin value, not per-bulb white intent, uploaded

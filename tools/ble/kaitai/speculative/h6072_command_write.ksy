@@ -7,7 +7,7 @@ meta:
     - ../govee_common
     - ../govee_shared
 doc: |
-  SPECULATIVE H6072, owner confirmations #486.
+  H6072.
   Compatibility hypothesis: basic controls, scenes, DIY selection and newer
   static bodies share the common envelope. Legacy static selector 14 places
   its eight-zone mask after an unknown byte; newer selector 15 uses the

@@ -3,7 +3,7 @@ meta:
   title: H607C candidate Music DreamView membership
   endian: le
 doc: |
-  SPECULATIVE H607C, support request #507, owner confirmations #511.
+  H607C.
   Compatibility hypothesis: Music DreamView V2 uploads a member count
   and explicit identity records under A3 command 60. Each record ends
   with a scalar area count, not the camera protocol's area-value vector.

@@ -5,7 +5,7 @@ meta:
   imports:
     - ../status_query
 doc: |
-  SPECULATIVE H6072, owner confirmations #486.
+  H6072.
   Compatibility hypothesis: common basic queries and three newer A5 segment
   groups. Exact-model captures and revision-specific response timing are unqualified.
 seq:

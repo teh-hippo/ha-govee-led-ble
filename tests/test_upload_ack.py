@@ -370,7 +370,7 @@ def test_generated_ack_offsets_and_subtype(prefix, subtype, expected):
     [("a3415000", True), ("a3415001", False), ("a3414d00", None), ("a3415100", None), ("a3425000", None)],
 )
 def test_h6076_ack_must_repeat_the_uploaded_mode(prefix, expected):
-    # Issue #343: the lamp answers a Torch (0x50) companion with `a3 41 50 00`.
+    # The lamp answers a Torch (0x50) companion with `a3 41 50 00`.
     profile = device_profile("H6076", 1, 1, firmware="1.04.05")
     *upload, selector = prepare_music_request("H6076", "torch", 99, None, False, {}, profile=profile)[1:]
     assert selector[:3] == b"\x33\x05\x0f"

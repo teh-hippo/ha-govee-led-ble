@@ -6,7 +6,7 @@ meta:
     - ../status_query
     - h6072_status_query
 doc: |
-  SPECULATIVE H6072, owner confirmations #486.
+  H6072.
   Compatibility hypothesis: legacy revisions query three RGB-only A2 groups
   and share basic query bodies. Exact-model captures and timing are unqualified.
 seq:

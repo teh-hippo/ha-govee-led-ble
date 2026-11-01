@@ -7,7 +7,7 @@ meta:
     - ../govee_common
     - ../govee_shared
 doc: |
-  SPECULATIVE H6102, issue #115.
+  H6102.
   Evidence source class: reachable Android 7.6.01 protocol behaviour.
   Compatibility hypothesis: the modern DreamColor route (goods type 18, Pact 10)
   uses the shared power, identity, and mode fields and fifteen logical segments
@@ -23,7 +23,7 @@ doc: |
   Unresolved assumptions: physical mapping/IC count, firmware-specific response presence,
   legacy mode/readback layouts, unknown mode selectors and all unused bytes.
   Preserve these bytes; this root does not enable legacy RGB or A1 DIY writes.
-  Issue #310 supplies AA04 register EB from a Pact 1 device.  Master brightness
+  supplies AA04 register EB from a Pact 1 device.  Master brightness
   is a raw 20..254 register for Pact 1 and a percentage for Pact 10; the
   effective profile selects the semantic conversion, not the reply value.
   The owner also reports register FF after another controller writes 255.
