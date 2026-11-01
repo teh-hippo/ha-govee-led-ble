@@ -1,4 +1,4 @@
-"""APK-derived software checks only; no hardware or membership qualification."""
+"""app-derived software checks only; no hardware or membership qualification."""
 
 import asyncio
 import io

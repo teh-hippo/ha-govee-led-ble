@@ -1,4 +1,4 @@
-"""Local APK/contract regressions; synthetic uploads do not qualify device playback."""
+"""Local app/contract regressions; synthetic uploads do not qualify device playback."""
 
 from dataclasses import replace
 

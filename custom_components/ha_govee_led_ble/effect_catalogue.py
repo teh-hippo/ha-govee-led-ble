@@ -249,7 +249,7 @@ class ModelEffectCatalogue:
     brightness_max: int = 100
     painted_addressing: str = "segments"
     painted_background: tuple[int, int, int] = (0, 0, 0)
-    # Exact-model APK authoring bounds; wire grammar alone does not qualify them.
+    # Exact-model app authoring bounds; wire grammar alone does not qualify them.
     native_diy_palette_groups: tuple[tuple[int, tuple[int, ...], int, int], ...] = ()
     native_diy_templates: tuple[NativeDiyTemplateContract, ...] = ()
     diy_slot_policy: str = "fixed"
@@ -509,7 +509,7 @@ H617A_PAINTED_EFFECTS: Final = tuple(
     for effect in DiyType03.Effect
 )
 
-# Exact H6102 goods-18 roster: Android 7.6.01 dreamcolorlightv1.adjust.Diy.e.
+# Exact H6102 goods-18 roster from the app.
 # The shared A3 grammar does not grant H617A native 501..507 presets.
 H6102_DIY_FAMILIES: Final = tuple(
     DiyEffectFamily(
@@ -525,7 +525,7 @@ H6102_DIY_FAMILIES: Final = tuple(
         rate_min=1,
         multi_rate_min=0,
         palette_max=3 if family == 10 else 8,
-        source_reference="Android 7.6.01 dreamcolorlightv1.adjust.Diy.e, H6102 goods 18",
+        source_reference="H6102 app DIY roster, goods 18",
     )
     for name, label, family, variants in (
         ("fade", "Fade", 0, (0, 1, 2)),
@@ -539,7 +539,7 @@ H6102_DIY_FAMILIES: Final = tuple(
     )
 )
 
-# Android 7.6.01 pact_h6099/detail/diy/H6099DiyConfig, goods 191.
+# H6099 app DIY lists, goods 191.
 H6046_DIY_FAMILIES: Final = tuple(
     DiyEffectFamily(
         name,
@@ -579,7 +579,7 @@ H6099_DIY_FAMILIES: Final = tuple(
         rate_min=50 if family == 4 else 1,
         rate_max=50 if family == 4 else 100,
         palette_max=3 if family == 10 else 8,
-        source_reference="Android 7.6.01 H6099DiyConfig.getBasicEffectList/getMixEffectList",
+        source_reference="H6099 app basic and mixed DIY lists",
     )
     for name, label, family, variants in (
         ("fade", "Fade", 0, (0, 1, 2)),
@@ -621,7 +621,7 @@ H6097_DIY_FAMILIES: Final = tuple(
     )
 )
 
-# Android 7.6.01 pact_h6099/detail/diy/H66A0DiyConfig, goods 327.
+# H66A0 app DIY lists, goods 327.
 H66A0_DIY_FAMILIES: Final = tuple(
     DiyEffectFamily(
         name,
@@ -636,7 +636,7 @@ H66A0_DIY_FAMILIES: Final = tuple(
         rate_min=1,
         rate_max=100,
         palette_max=3 if family == 10 else 8,
-        source_reference="Android 7.6.01 H66A0DiyConfig.getBasicEffectList/getMixEffectList",
+        source_reference="H66A0 app basic and mixed DIY lists",
     )
     for name, label, family, variants in (
         ("fade", "Fade", 0, (0, 1, 2)),
@@ -653,7 +653,7 @@ H66A0_DIY_FAMILIES: Final = tuple(
     )
 )
 
-# Android 7.6.01 h61d3/adjustNew/diy/H1A42DiyConfig, goods 400.
+# H1A42 app DIY lists, goods 400.
 H1A42_DIY_FAMILIES: Final = tuple(
     DiyEffectFamily(
         name,
@@ -669,7 +669,7 @@ H1A42_DIY_FAMILIES: Final = tuple(
         rate_max=100,
         multi_rate_min=0,
         palette_max=3 if family == 10 else 8,
-        source_reference="Android 7.6.01 H1A42DiyConfig.getBasicEffectList/getMixEffectList",
+        source_reference="H1A42 app basic and mixed DIY lists",
     )
     for name, label, family, variants in (
         ("fade", "Fade", 0, (0, 1, 2)),
@@ -683,11 +683,11 @@ H1A42_DIY_FAMILIES: Final = tuple(
     )
 )
 
-# Android 7.6.01 h61d3/adjustNew/diy/H61F6DiyConfig, goods 261.
+# H61F6 app DIY lists, goods 261.
 H61F5_DIY_FAMILIES: Final = tuple(
     replace(
         family,
-        source_reference="Android 7.6.01 H61F6DiyConfig.getBasicEffectList/getMixEffectList",
+        source_reference="H61F6 app basic and mixed DIY lists",
     )
     for family in H1A42_DIY_FAMILIES
 )
@@ -783,7 +783,7 @@ H7025_DIY_FAMILIES: Final = tuple(
     replace(
         family,
         multi_rate_min=0,
-        source_reference="Android 7.6.01 H7025DiyConfig.getBasicEffectList/getMixEffectList",
+        source_reference="H7025 app basic and mixed DIY lists",
     )
     for family in H7020_DIY_FAMILIES[:6]
 )
@@ -829,7 +829,7 @@ H6076_DIY_FAMILIES: Final = tuple(
         rate_max=100,
         multi_rate_min=1,
         palette_max=8,
-        source_reference="Android 7.6.01 H6072DiyNewConfig.getBasicEffectList/getMixEffectList, H6076 goods 69",
+        source_reference="H6072 app basic and mixed DIY lists, H6076 goods 69",
     )
     for name, label, family, variants in (
         ("fade", "Fade", 0, (1, 0)),
@@ -1160,7 +1160,7 @@ def _h617a_catalogue_templates(
     )
 
 
-# Android 7.6.01 ParamsV2 seeds, in selector order (DiyM 1087..1117).
+# App ParamsV2 seeds, in selector order.
 # Seed IC quantities are opaque preset values, never device geometry metadata.
 H617A_NATIVE_DIY_SEEDS: Final = (
     (
@@ -1247,9 +1247,9 @@ H7020_NATIVE_DIY_TEMPLATES: Final = tuple(
     )
     for template_id, _body_effect, label, seed in H7020_NATIVE_DIY_SEEDS
 )
-# ScenesOp.changeEffectStr4Sku uses 60 for H6102 presets 504/506. This is
+# The app uses 60 for H6102 presets 504/506. This is
 # preset construction evidence, not permission to infer runtime physical geometry.
-# DiyColorParams.Companion.a() supplies the app's seven-colour defaults;
+# The app's seven-colour defaults are used;
 # raw ParamsV2 carrier seeds do not themselves satisfy the editor's bounds.
 _RGBIC_APP_PALETTE = ((255, 0, 0), (255, 127, 0), (255, 255, 0), (0, 255, 0), (0, 0, 255), (0, 255, 255), (139, 0, 255))
 
@@ -2314,7 +2314,7 @@ def validate_effect_eligibility(
 
 
 def validate_native_diy(content: LayeredEffect, model: str, profile: ModelProfile) -> bool:
-    """Only geometry-dependent edits need IC metadata; APK seeds remain presets."""
+    """Only geometry-dependent edits need IC metadata; app seeds remain presets."""
     catalogue = MODEL_EFFECT_CATALOGUES.get(model)
     if catalogue is None or profile.effect_grammar != "H617A":
         raise ValueError("native DIY templates require an exact compatible catalogue")
@@ -2368,7 +2368,7 @@ def validate_native_diy(content: LayeredEffect, model: str, profile: ModelProfil
                 for layer in moving
             )
             if not all(layer.selected_movement.enabled and layer.selected_movement.enter_exit for layer in moving):
-                raise ValueError("Bloom movement must retain its APK direction topology")
+                raise ValueError("Bloom movement must retain its app direction topology")
             if topology == ((0, 5, 1, count // 2, 0), (5, 5, 1, count // 2, 2)):
                 pass
             elif any(topology == ((0, 0, 1, count, direction), (0, 0, 1, 1, direction)) for direction in (0, 2)):
@@ -2376,7 +2376,7 @@ def validate_native_diy(content: LayeredEffect, model: str, profile: ModelProfil
                     raise ValueError("Bloom one-way inactive layer must contain one black colour")
                 indices = (2,)
             else:
-                raise ValueError("Bloom movement must retain its APK direction topology")
+                raise ValueError("Bloom movement must retain its app direction topology")
         sizes = tuple(len(content.layers[index].palette) for index in indices)
         total = sum(sizes)
         if not minimum <= total <= maximum or sizes != tuple(
@@ -2417,13 +2417,13 @@ def validate_native_diy(content: LayeredEffect, model: str, profile: ModelProfil
                     and 1 <= layer.selection.random_ic_min <= layer.selection.random_ic_max <= min(25, count * 4 // 5)
                 )
             ):
-                raise ValueError("Sky star size is outside APK physical-IC bounds")
+                raise ValueError("Sky star size is outside app physical-IC bounds")
             if (
                 content.native_diy == 503
                 and len(layer.palette) != len(original.palette)
                 and len(layer.palette) > min(max(1, count * 2 // 10), 8)
             ):
-                raise ValueError("Meteor palette is outside APK physical-IC bounds")
+                raise ValueError("Meteor palette is outside app physical-IC bounds")
             if (
                 content.native_diy == 504
                 and layer.selection != original.selection

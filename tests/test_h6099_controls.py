@@ -1,4 +1,4 @@
-"""APK-derived standalone controls; no hardware or calibration-display qualification."""
+"""app-derived standalone controls; no hardware or calibration-display qualification."""
 
 import asyncio
 import time

@@ -685,7 +685,7 @@ def test_h617a_apk_schema_counterexamples_are_synthetic() -> None:
     ack = _parse(CommandWrite, H6199_POWER_ACK)
     assert ack.body.is_on == 0
     flat = _parse(DiyType04, bytes.fromhex("01020401003203ff000000"))
-    assert flat.body.padding == [0]  # APK names this octet as empty sequence length.
+    assert flat.body.padding == [0]  # The app names this octet as empty sequence length.
 
 
 def test_h6199_direct_register_extensions_not_app_captures() -> None:
@@ -1365,7 +1365,7 @@ def test_h6199_generic_command_acknowledgements_are_distinct_from_writes(frame: 
 
 @pytest.mark.parametrize("status,tail", [(0, bytes(16)), (1, bytes(16)), (0xFF, bytes(range(16)))])
 def test_h6199_diy_upload_notification_is_not_state(hass, status: int, tail: bytes) -> None:
-    # Only the all-zero response is live evidence; other values probe APK semantics
+    # Only the all-zero response is live evidence; other values probe app semantics
     # and unknown-byte preservation without assigning meanings to the tail.
     frame = bytearray(H6199_DIY_UPLOAD_ACK)
     frame[2] = status

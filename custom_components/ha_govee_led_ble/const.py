@@ -602,7 +602,7 @@ _H6076_MUSIC_PROFILE = replace(
     music_modes=_H6076_ALL_MUSIC_MODES,
     readback_music_modes=(),
     music_variants=H6076_MUSIC_VARIANTS,
-    # MultipleController4Music uploads the companion before the selector and the lamp acknowledges it.
+    # The app uploads the companion before the selector and the lamp acknowledges it.
     music_upload_before_selector=True,
     music_requires_upload_ack=True,
     music_params_require_activation=True,
@@ -1593,7 +1593,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         status_grammar="H6125",
         profile_identity_fields=frozenset({"fw_version", "hw_version"}),
         effect_grammar="H617A",
-        # Static replies carry the SubModeColorV2 Kelvin field, as on H6102.
+        # Static replies carry the V2 Kelvin field, as on H6102.
         static_readback_kelvin=True,
         static_readback_zero_kelvin_is_rgb=True,
         static_readback_gradual=True,
@@ -1645,7 +1645,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         # The app writes the latest Type04 upload through this slot on the pact-1 route.
         a1_diy_selector=0xFE,
         advanced_diy_selector=402,
-        # MultipleController4Music uploads the companion before the selector and waits for its acknowledgement.
+        # The app uploads the companion before the selector and waits for its acknowledgement.
         music_upload_before_selector=True,
         music_requires_upload_ack=True,
         diy_requires_upload_ack=True,
@@ -2204,7 +2204,7 @@ def device_profile(
                 outbound_transform=h60a6_legacy_outbound_transform,
             )
         hw = FirmwareVersion.parse(hardware)
-        # Android KelvinConfig.S2: HW >=1.04.03 uses the 2700 K table;
+        # App behaviour: HW >=1.04.03 uses the 2700 K table;
         # older hardware uses 2200 K. Unknown retains conservative bounds.
         if model == "H60A1" and hw is not None and hw.identity_number() < 10403:
             profile = replace(profile, min_color_temp_kelvin=2200)

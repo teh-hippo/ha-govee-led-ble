@@ -80,7 +80,7 @@ def test_edit_known_body_preserves_every_unrequested_companion():
 @pytest.mark.parametrize("model", ["H617A", "H617E", "H6099"])
 @pytest.mark.parametrize("calm,tail", [(None, "0b51"), (False, "0a50"), (True, "0a14")])
 def test_retained_bloom_explicit_style_sets_both_speeds(model, calm, tail):
-    # APK RgbMusicZhanFang.java:17-24 sets both speeds for either explicit style.
+    # The app sets both speeds for either explicit style.
     profile = get_profile(model)
     original = bytes.fromhex("30020102030405060b51")
     edited = edit_music_body(original, "bloom", {}, profile=profile, calm=calm)

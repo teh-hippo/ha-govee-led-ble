@@ -1,4 +1,4 @@
-"""APK-derived H6099 music semantics, not physical-device qualification."""
+"""app-derived H6099 music semantics, not physical-device qualification."""
 
 from dataclasses import replace
 from unittest.mock import AsyncMock, patch
