@@ -1006,7 +1006,7 @@ def test_declared_boolean_controls_round_trip(hass, model: str, profile: ModelPr
                 assert coordinator.bar_enable_mask == cmd[2]
                 assert all(coordinator._field_revisions[f"boolean_{name}"] > 0 for name in expected)
                 continue
-            if profile.setting_grammar == "H607C":
+            if profile.setting_grammar == "H607C" and control != "gradual":
                 expected = {"pole_enabled": True, "base_enabled": True} | {control: enabled}
                 mask = 0x81 | (2 if expected["pole_enabled"] else 0) | (4 if expected["base_enabled"] else 0)
                 reply = _status(domain_byte, bytes((8, 37, mask)))
@@ -1014,7 +1014,8 @@ def test_declared_boolean_controls_round_trip(hass, model: str, profile: ModelPr
                 assert decoded is not None and status_is_authorized(decoded, profile)
                 assert a.parse_boolean_control(decoded.generated, model, profile=profile) == expected
                 _consume_status(coordinator, reply)
-                assert coordinator.boolean_control_state == expected and coordinator.is_on
+                assert {name: coordinator.boolean_control_state[name] for name in expected} == expected
+                assert coordinator.is_on
                 assert coordinator.hw_version is None
                 assert all(coordinator._field_revisions[f"boolean_{name}"] > 0 for name in expected)
                 continue
@@ -1028,7 +1029,7 @@ def test_declared_boolean_controls_round_trip(hass, model: str, profile: ModelPr
 
         if profile.setting_grammar == "H6046":
             continue
-        if profile.setting_grammar == "H607C":
+        if profile.setting_grammar == "H607C" and control != "gradual":
             bad_reply = _status(domain_byte, bytes((8, 37, 0x80)))
             bad_reply = bad_reply[:-1] + bytes((bad_reply[-1] ^ 1,))
             coordinator._notify_callback(None, bytearray(bad_reply))

@@ -3,11 +3,12 @@
 import time
 from dataclasses import replace
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from bleak.exc import BleakError
 from homeassistant.core import ServiceCall
-from homeassistant.exceptions import ServiceValidationError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 
 from custom_components.ha_govee_led_ble import generated_protocol_adapter as adapter
 from custom_components.ha_govee_led_ble.const import DOMAIN, ModelProfile, ReadDomain, get_profile
@@ -34,6 +35,7 @@ from custom_components.ha_govee_led_ble.effect_runtime import (
 )
 from custom_components.ha_govee_led_ble.effect_websocket_payloads import item_summary
 from custom_components.ha_govee_led_ble.h607c_effects import decode_zoned_diy, encode_zoned_diy
+from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.light_commands import build_segment_color, build_segment_color_temp
 from custom_components.ha_govee_led_ble.music_commands import (
     build_zoned_music_body,
@@ -77,7 +79,7 @@ def profile():
         supports_segment_writes=True,
         supports_segment_brightness=True,
         supports_segment_color_temperature=True,
-        boolean_controls=frozenset({"pole_enabled", "base_enabled"}),
+        boolean_controls=frozenset({"pole_enabled", "base_enabled", "gradual"}),
         supports_power_on_behaviour=True,
         supports_scenes=True,
         supports_custom_effects=True,
@@ -151,8 +153,13 @@ def test_native_controls_are_independent_and_queries_use_exact_selectors(profile
         adapter.require_profile_packet(memory, replace(profile, supports_power_on_behaviour=False))
     for packet in (pole, base, memory):
         assert adapter.parse_command(packet, "H607C", profile=profile) is not None
-    with pytest.raises(ValueError):
-        adapter.build_boolean_control("gradual", True, "H607C", profile=profile)
+    gradual = adapter.build_boolean_control("gradual", True, "H607C", profile=profile)
+    assert gradual == bytes.fromhex("33a3010000000000000000000000000000000091")
+    assert adapter.build_boolean_control_query("gradual", "H607C", profile=profile) == bytes.fromhex(
+        "aaa3000000000000000000000000000000000009"
+    )
+    adapter.require_profile_packet(gradual, profile)
+    assert adapter.parse_command(gradual, "H607C", profile=profile) is not None
 
 
 def test_native_diy_zone_edits_preserve_sibling_disable_state_and_extensions():
@@ -479,6 +486,97 @@ async def test_native_preview_rejects_incomplete_recovery_state_before_writes(pr
     with pytest.raises(RuntimeError, match="restor"):
         await async_prepare_effect_control_state(coordinator, require_restorable_static=True)
     coordinator._async_write_packet.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    ("control", "reply", "succeeds"), [("gradual", True, True), ("gradual", False, False), ("pole_enabled", True, True)]
+)
+async def test_h607c_settings_verify_only_their_own_fresh_register(hass, monkeypatch, control, reply, succeeds):
+    c = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H607C", configuration_url=None)
+    c.pact_type, c.pact_code = 1, 1
+    c._resolve_device_profile()
+    c._notification_token = object()
+    c._notify_started_monotonic = time.monotonic()
+    device = MagicMock(is_connected=True, disconnect=AsyncMock())
+    c._client = device
+    monkeypatch.setattr(c, "_ensure_connected", AsyncMock(return_value=device))
+    monkeypatch.setattr(c, "_renew_foreground_lease", lambda: None)
+    monkeypatch.setattr(c, "async_prepare_h607c_control", AsyncMock(return_value=lambda: None))
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet == adapter.build_boolean_control_query("gradual", "H607C", profile=c.profile):
+            c._notify_callback(None, bytearray(frame(f"aaa3{int(reply):02x}")))
+        elif packet == adapter.build_boolean_control_query("pole_enabled", "H607C", profile=c.profile):
+            c._notify_callback(None, bytearray(frame("aa07082507")))
+
+    device.write_gatt_char = AsyncMock(side_effect=write)
+    if succeeds:
+        await c.async_set_boolean_control(control, True)
+        assert c.boolean_control_state[control] is True
+    else:
+        with pytest.raises(ValueError, match="confirm"):
+            await c.async_set_boolean_control(control, True)
+        assert c.boolean_control_state[control] is False
+
+
+async def test_h607c_gradual_ack_does_not_confirm_a_missing_register_reply(hass, monkeypatch, virtual_clock):
+    c = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H607C", configuration_url=None)
+    c.pact_type, c.pact_code = 1, 1
+    c._resolve_device_profile()
+    c._notification_token = object()
+    c._notify_started_monotonic = time.monotonic()
+    device = MagicMock(is_connected=True, disconnect=AsyncMock())
+    c._client = device
+    monkeypatch.setattr(c, "_ensure_connected", AsyncMock(return_value=device))
+    monkeypatch.setattr(c, "_renew_foreground_lease", lambda: None)
+    monkeypatch.setattr(c, "async_prepare_h607c_control", AsyncMock(return_value=lambda: None))
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet == adapter.build_boolean_control("gradual", True, "H607C", profile=c.profile):
+            c._notify_callback(None, bytearray(frame("33a300")))
+
+    async def disconnect(_client):
+        device.is_connected = False
+        c._clear_client_state(device)
+
+    device.write_gatt_char = AsyncMock(side_effect=write)
+    monkeypatch.setattr(c, "_disconnect_if_current_locked", disconnect)
+    with pytest.raises(ValueError, match="readback"):
+        await c.async_set_boolean_control("gradual", True)
+    assert c._client is None
+    assert "gradual" not in c.boolean_control_state
+    assert device.write_gatt_char.await_count == 2
+
+
+async def test_h607c_saved_effect_guard_prevents_kelvin_retry_on_new_connection(hass, monkeypatch):
+    c = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H607C", configuration_url=None)
+    c.pact_type, c.pact_code = 1, 1
+    c._resolve_device_profile()
+    c.is_on = True
+    first = MagicMock(is_connected=True, disconnect=AsyncMock(), write_gatt_char=AsyncMock(side_effect=BleakError()))
+    second = MagicMock(is_connected=True, disconnect=AsyncMock(), write_gatt_char=AsyncMock())
+    c._client = first
+    c._notification_token = object()
+
+    async def ensure_connected():
+        if c._client is None:
+            c._client = second
+            c._notification_token = object()
+        return c._client
+
+    def saved_effect_guard():
+        if c._client is not first:
+            raise HomeAssistantError("saved effect context changed")
+
+    monkeypatch.setattr(c, "_ensure_connected", ensure_connected)
+    monkeypatch.setattr(c, "_renew_foreground_lease", lambda: None)
+    light = GoveeBLELight(c)
+    light.hass = hass
+    light.entity_id = "light.h607c"
+    with pytest.raises(HomeAssistantError, match="context changed"):
+        await light._async_turn_on(color_temp_kelvin=3200, video_write_guard=saved_effect_guard)
+    first.write_gatt_char.assert_awaited_once()
+    second.write_gatt_char.assert_not_awaited()
 
 
 def test_native_paint_keeps_exact_model_identity_through_library_and_compilation():

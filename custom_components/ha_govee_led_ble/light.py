@@ -315,7 +315,11 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
 
     @property
     def supported_color_modes(self) -> set[ColorMode]:
-        profile = self.coordinator.profile
+        profile = (
+            self.coordinator.native_presentation_profile
+            if self.coordinator.model == "H607C"
+            else self.coordinator.profile
+        )
         modes = set()
         if profile.supports_rgb:
             modes.add(ColorMode.RGB)
@@ -357,11 +361,21 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
 
     @property
     def min_color_temp_kelvin(self) -> int:
-        return self.coordinator.profile.min_color_temp_kelvin
+        profile = (
+            self.coordinator.native_presentation_profile
+            if self.coordinator.model == "H607C"
+            else self.coordinator.profile
+        )
+        return profile.min_color_temp_kelvin
 
     @property
     def max_color_temp_kelvin(self) -> int:
-        return self.coordinator.profile.max_color_temp_kelvin
+        profile = (
+            self.coordinator.native_presentation_profile
+            if self.coordinator.model == "H607C"
+            else self.coordinator.profile
+        )
+        return profile.max_color_temp_kelvin
 
     @property
     def color_temp_kelvin(self) -> int | None:
@@ -921,8 +935,8 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                     self._attr_color_mode = ColorMode.RGB
                 await coordinator.send_command(packet)
 
-    def _validate_basic_request(self, kwargs: Mapping[str, Any]) -> None:
-        profile = self.coordinator.profile
+    def _validate_basic_request(self, kwargs: Mapping[str, Any], *, profile: ModelProfile | None = None) -> None:
+        profile = self.coordinator.profile if profile is None else profile
         model = self.coordinator.model
         with self._rollback():
             if ATTR_BRIGHTNESS in kwargs:
@@ -938,13 +952,23 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 )
 
     async def async_turn_on(self, **kwargs: Any) -> None:
-        if ATTR_RGB_COLOR in kwargs or ATTR_COLOR_TEMP_KELVIN in kwargs:
+        if (ATTR_RGB_COLOR in kwargs or ATTR_COLOR_TEMP_KELVIN in kwargs) and not (
+            self.coordinator.profile.brightness_zero_turns_off and kwargs.get(ATTR_BRIGHTNESS) == 0
+        ):
+            guard = None
+            if self.coordinator.model == "H607C":
+                self._validate_basic_request(kwargs, profile=self.coordinator.native_presentation_profile)
+                guard = await self.coordinator.async_prepare_h607c_control()
             async with self.coordinator.async_mask_transaction():
-                await self._async_prepare_turn_on(**kwargs)
+                await self._async_prepare_turn_on(native_write_guard=guard, **kwargs)
         else:
             await self._async_prepare_turn_on(**kwargs)
 
-    async def _async_prepare_turn_on(self, **kwargs: Any) -> None:
+    async def _async_prepare_turn_on(
+        self, *, native_write_guard: Callable[[], None] | None = None, **kwargs: Any
+    ) -> None:
+        if native_write_guard is not None:
+            native_write_guard()
         active_workspace = self._matching_active_workspace()
         if self.coordinator.profile.brightness_zero_turns_off and kwargs.get(ATTR_BRIGHTNESS) == 0:
             await self._async_supersede_preview()
@@ -966,6 +990,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             await self._async_apply_saved_item(
                 item,
                 turn_on_kwargs=remaining,
+                native_write_guard=native_write_guard,
             )
             return
         video_guards: list[Callable[[], None]] = []
@@ -974,7 +999,11 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             if ATTR_EFFECT in kwargs
             else None
         )
+        if native_write_guard is not None:
+            native_write_guard()
         await self._async_supersede_preview()
+        if native_write_guard is not None:
+            native_write_guard()
         clear_workspace = active_workspace is not None and (
             ATTR_RGB_COLOR in kwargs or ATTR_COLOR_TEMP_KELVIN in kwargs or ATTR_EFFECT in kwargs
         )
@@ -986,6 +1015,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 clear_workspace_on_success=clear_workspace,
                 prepared_effect=prepared_effect,
                 video_write_guard=video_guards[0] if video_guards else None,
+                native_write_guard=native_write_guard,
                 **kwargs,
             )
 
@@ -996,6 +1026,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         operation_id: UUID | None = None,
         turn_on_kwargs: dict[str, Any] | None = None,
         diy_code: int | None = None,
+        native_write_guard: Callable[[], None] | None = None,
     ) -> DeploymentRecord:
         assert self._effect_backend is not None
         assert self._config_entry_id is not None
@@ -1022,6 +1053,8 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                     )
 
                 def guard() -> None:
+                    if native_write_guard is not None:
+                        native_write_guard()
                     validate_compiled_geometry(compiled, self.coordinator.profile)
                     validate_video_request(self.coordinator, current.content)
 
@@ -1178,16 +1211,25 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         clear_workspace_on_success: bool = False,
         prepared_effect: Callable[[], Awaitable[None]] | None = None,
         video_write_guard: Callable[[], None] | None = None,
+        native_write_guard: Callable[[], None] | None = None,
         **kwargs: Any,
     ) -> None:
         self._validate_basic_request(kwargs)
 
+        def combined_guard() -> None:
+            if native_write_guard is not None:
+                native_write_guard()
+            if video_write_guard is not None:
+                video_write_guard()
+
         async def send(packet: bytes) -> None:
-            if video_write_guard is None:
+            if video_write_guard is None and native_write_guard is None:
                 await self.coordinator.send_command(packet)
+            elif video_write_guard is None:
+                await self.coordinator.send_command(packet, write_guard=native_write_guard)
             else:
                 await _send_video_setting(
-                    self.coordinator, packet, frozenset(), writer=None, write_guard=video_write_guard
+                    self.coordinator, packet, frozenset(), writer=None, write_guard=combined_guard
                 )
 
         if ATTR_BRIGHTNESS in kwargs:
@@ -1256,7 +1298,13 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                         and self.coordinator.profile.supports_segments
                     ):
                         await self.coordinator.async_set_segment_kelvin(
-                            packet, requested_kelvin=kwargs[ATTR_COLOR_TEMP_KELVIN]
+                            packet,
+                            requested_kelvin=kwargs[ATTR_COLOR_TEMP_KELVIN],
+                            **(
+                                {"write_guard": combined_guard}
+                                if native_write_guard is not None or video_write_guard is not None
+                                else {}
+                            ),
                         )
                     else:
                         await send(packet)

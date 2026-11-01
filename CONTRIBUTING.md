@@ -40,6 +40,8 @@ Every exact SKU has its own profile, support quality, catalogue identity, and pr
   Set `profile_pact_dependent` when Pact alone changes capabilities, so runtime resolution also runs before hardware or firmware replies arrive.
   Declared `physical_ic_count` represents product geometry; `ReadDomain.PHYSICAL_IC_COUNT` (`aa 40`) measures installed geometry on the active strip and overrides declared product geometry when observed.
   Cached identity stabilises UI presentation across polls and Release-mode disconnects, while operation admission and physical writes require current-connection confirmation.
+  H607C native colour and Gradual controls remain visible when Pact is missing; refresh identity before taking user control and reject writes without a current qualified source.
+  A connection marker's Pact is authoritative only on that connection; conflicting marker and advertisement identities fail closed.
   Identity observations invalidate authorisation only when a capability depends on that field.  Background setup and polling retry a changed identity or profile once with fresh queries; command verification remains strict.
   Resolve authorisation from each individually confirmed identity field; a missing sibling must not discard fresh evidence for an independent capability.
   State-readable devices default to Release mode and use Hold mode only when configured for periodic polling.

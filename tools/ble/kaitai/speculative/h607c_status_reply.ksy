@@ -31,6 +31,7 @@ seq:
         'aa_domain::fw_version': h6102_status_reply::version_body
         'aa_domain::hw_version': hardware_body
         'aa_domain::power_on_behaviour': h607c_control::power_on_state
+        'aa_domain::multi_effect': h607c_control::gradual_state
   - id: checksum
     type: u1
 enums:
@@ -41,6 +42,7 @@ enums:
     0x06: fw_version
     0x07: hw_version
     0x41: power_on_behaviour
+    0xa3: multi_effect
   hardware_selector:
     3: version
     8: device_info

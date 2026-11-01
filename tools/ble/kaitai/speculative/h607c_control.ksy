@@ -10,6 +10,8 @@ doc: |
   commands. Power-on writes carry selector 02 and previous/on/off state;
   its query uses selector zero and replies retain an independent open flag.
   Device-info AA replies and EE/30 asynchronous flags have different envelopes.
+  Gradual colour change uses the independent ordinary A3 boolean register;
+  its AA/A3 query reply is not a multipart upload result.
   Unknown flags and suffixes remain opaque. Persistence and timing are unqualified.
 seq:
   - id: header
@@ -24,12 +26,14 @@ seq:
       cases:
         'command::zone_enable': zone_enable
         'command::power_on_behaviour': power_on_command
+        'command::gradual': gradual_state
   - id: checksum
     type: u1
 enums:
   command:
     0x30: zone_enable
     0x41: power_on_behaviour
+    0xa3: gradual
   zone:
     0: pole_enabled
     1: base_enabled
@@ -38,6 +42,22 @@ enums:
     2: pole
     4: base
 types:
+  gradual_state:
+    seq:
+      - id: flag
+        type: u1
+        valid:
+          any-of: [0, 1]
+      - id: unknown_tail
+        size-eos: true
+  gradual_query:
+    seq:
+      - id: header
+        contents: [0xaa, 0xa3]
+      - id: unknown_tail
+        size: 17
+      - id: checksum
+        type: u1
   zone_enable:
     seq:
       - id: zone

@@ -175,18 +175,30 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
         self._notify_state_changed()
 
     async def async_paint_segments(self, groups: list[dict[str, Any]], rgb_scale: int = 100) -> None:
-        self._require_support(
-            "paint_segments",
-            supported=self.coordinator.profile.supports_segments and self.coordinator.profile.supports_rgb,
-        )
         try:
             resolved = scale_segment_groups(((group["segments"], group["rgb_color"]) for group in groups), rgb_scale)
+            guard = None
+            if self.coordinator.model == "H607C":
+                build_segment_paint(
+                    resolved, self.coordinator.model, profile=self.coordinator.native_presentation_profile
+                )
+                guard = await self.coordinator.async_prepare_h607c_control()
+            self._require_support(
+                "paint_segments",
+                supported=self.coordinator.profile.supports_segments and self.coordinator.profile.supports_rgb,
+            )
             # Preflight serialization before disturbing an active preview or claiming user control.
             build_segment_paint(resolved, self.coordinator.model, profile=self.coordinator.profile)
+            if guard is not None:
+                guard()
             async with self.coordinator.async_mask_transaction():
                 await self._async_supersede_preview()
+                if guard is not None:
+                    guard()
                 async with async_control_intent(self.coordinator, ControlIntent.USER):
-                    await self.coordinator.async_paint_segments(resolved)
+                    await self.coordinator.async_paint_segments(
+                        resolved, **({"write_guard": guard} if guard is not None else {})
+                    )
         except (KeyError, TypeError, ValueError) as err:
             raise ServiceValidationError(
                 translation_domain=DOMAIN,
@@ -205,10 +217,24 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
         await self.async_paint_segments([group])
 
     async def async_set_segment_color_temp(self, segments: list[int], color_temp_kelvin: int) -> None:
+        guard = None
+        if self.coordinator.model == "H607C":
+            try:
+                build_segment_color_temp(
+                    segments,
+                    color_temp_kelvin,
+                    self.coordinator.model,
+                    profile=self.coordinator.native_presentation_profile,
+                )
+            except (TypeError, ValueError) as err:
+                raise ServiceValidationError(translation_domain=DOMAIN, translation_key="invalid_segments") from err
+            guard = await self.coordinator.async_prepare_h607c_control()
         async with self.coordinator.async_mask_transaction():
-            await self._async_set_segment_color_temp(segments, color_temp_kelvin)
+            await self._async_set_segment_color_temp(segments, color_temp_kelvin, write_guard=guard)
 
-    async def _async_set_segment_color_temp(self, segments: list[int], color_temp_kelvin: int) -> None:
+    async def _async_set_segment_color_temp(
+        self, segments: list[int], color_temp_kelvin: int, *, write_guard: Callable[[], None] | None = None
+    ) -> None:
         """Verify settled rendering without claiming per-segment Kelvin readback."""
         c = self.coordinator
         self._require_support(
@@ -222,10 +248,18 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
         try:
             segments = list(segments)
             packet = build_segment_color_temp(segments, color_temp_kelvin, c.model, profile=c.profile)
+            if write_guard is not None:
+                write_guard()
             await self._async_supersede_preview()
+            if write_guard is not None:
+                write_guard()
             async with async_control_intent(c, ControlIntent.USER):
                 try:
-                    await c.async_set_segment_kelvin(packet, requested_kelvin=color_temp_kelvin)
+                    await c.async_set_segment_kelvin(
+                        packet,
+                        requested_kelvin=color_temp_kelvin,
+                        **({"write_guard": write_guard} if write_guard is not None else {}),
+                    )
                 finally:
                     self._notify_state_changed()
         except (TypeError, ValueError) as err:
@@ -242,10 +276,21 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
             ) from err
 
     async def async_set_segment_brightness(self, segments: list[int], brightness: int) -> None:
+        guard = None
+        if self.coordinator.model == "H607C":
+            try:
+                build_segment_brightness(
+                    segments, brightness, self.coordinator.model, profile=self.coordinator.native_presentation_profile
+                )
+            except (TypeError, ValueError) as err:
+                raise ServiceValidationError(translation_domain=DOMAIN, translation_key="invalid_segments") from err
+            guard = await self.coordinator.async_prepare_h607c_control()
         async with self.coordinator.async_mask_transaction():
-            await self._async_set_segment_brightness(segments, brightness)
+            await self._async_set_segment_brightness(segments, brightness, write_guard=guard)
 
-    async def _async_set_segment_brightness(self, segments: list[int], brightness: int) -> None:
+    async def _async_set_segment_brightness(
+        self, segments: list[int], brightness: int, *, write_guard: Callable[[], None] | None = None
+    ) -> None:
         self._require_support(
             "set_segment_brightness",
             supported=(
@@ -255,9 +300,15 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
         try:
             segments = list(segments)
             build_segment_brightness(segments, brightness, self.coordinator.model, profile=self.coordinator.profile)
+            if write_guard is not None:
+                write_guard()
             await self._async_supersede_preview()
+            if write_guard is not None:
+                write_guard()
             async with async_control_intent(self.coordinator, ControlIntent.USER):
-                await self.coordinator.async_set_segment_brightness(segments, brightness)
+                await self.coordinator.async_set_segment_brightness(
+                    segments, brightness, **({"write_guard": write_guard} if write_guard is not None else {})
+                )
                 self._notify_state_changed()
         except (TypeError, ValueError) as err:
             raise ServiceValidationError(

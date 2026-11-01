@@ -323,12 +323,15 @@ def require_profile_packet(frame: bytes, profile: ModelProfile) -> None:
                 or operation == "power_on_behaviour"
                 and profile.supports_power_on_behaviour
                 and getattr(setting.body.state, "name", None) is not None
+                or operation == "gradual"
+                and "gradual" in profile.boolean_controls
             ):
                 return
             raise ValueError("Native setting is outside profile capabilities")
         for root_type, query_allowed in (
             (H607cControl.DeviceInfoQuery, bool(profile.boolean_controls & H607cControl.Zone.__members__.keys())),
             (H607cControl.PowerOnQuery, profile.supports_power_on_behaviour),
+            (H607cControl.GradualQuery, "gradual" in profile.boolean_controls),
         ):
             query = _parse_xor_frame(frame, "native", {"native": ("h607c_control.query", root_type)}).parsed
             if query is not None:
@@ -771,17 +774,23 @@ def build_boolean_control(
     if profile.setting_grammar == "H607C":
         if (
             control not in profile.boolean_controls
-            or control not in H607cControl.Zone.__members__
+            or control not in {*H607cControl.Zone.__members__, "gradual"}
             or type(enabled) is not bool
         ):
             raise ValueError("Unsupported native zone control")
         root = H607cControl()
         root.header = b"\x33"
-        root.opcode = H607cControl.Command.zone_enable
-        root.body = _child(H607cControl.ZoneEnable, root)
-        root.body.zone = H607cControl.Zone[control]
-        root.body.enabled = int(enabled)
-        root.body.unknown_tail = bytes(15)
+        if control == "gradual":
+            root.opcode = H607cControl.Command.gradual
+            root.body = _child(H607cControl.GradualState, root)
+            root.body.flag = int(enabled)
+            root.body.unknown_tail = bytes(16)
+        else:
+            root.opcode = H607cControl.Command.zone_enable
+            root.body = _child(H607cControl.ZoneEnable, root)
+            root.body.zone = H607cControl.Zone[control]
+            root.body.enabled = int(enabled)
+            root.body.unknown_tail = bytes(15)
         return _serialize_xor(root)
     if profile.setting_grammar == "H6046":
         if control not in profile.boolean_controls or type(enabled) is not bool or type(sibling_enabled) is not bool:
@@ -856,6 +865,11 @@ def build_boolean_control_query(control: str, model: str, *, profile: ModelProfi
     """Read a declared boolean register independently of ordinary read domains."""
     profile = profile or get_profile(model)
     if profile.setting_grammar == "H607C":
+        if control == "gradual" and control in profile.boolean_controls:
+            root = H607cControl.GradualQuery()
+            root.header = b"\xaa\xa3"
+            root.unknown_tail = bytes(17)
+            return _serialize_xor(root)
         if control not in profile.boolean_controls or control not in H607cControl.Zone.__members__:
             raise ValueError("Unsupported native zone control")
         root = H607cControl.DeviceInfoQuery()
@@ -1033,7 +1047,7 @@ def parse_boolean_control(generated: Any, model: str, *, profile: ModelProfile |
     profile = profile or get_profile(model)
     domain = getattr(generated, "domain", None)
     domain = domain if isinstance(domain, str) else getattr(domain, "name", "")
-    if profile.setting_grammar == "H607C":
+    if profile.setting_grammar == "H607C" and domain in {"zone_enable", "hw_version"}:
         flags = (
             generated.body.flags
             if domain == "zone_enable"

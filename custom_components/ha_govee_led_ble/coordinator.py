@@ -14,6 +14,7 @@ from bleak_retry_connector import establish_connection
 from homeassistant.components import bluetooth
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import UpdateFailed
@@ -248,6 +249,12 @@ class GoveeBLECoordinator(
         self.subordinate_21_version: str | None = None
         self.pact_type: int | None = None
         self.pact_code: int | None = None
+        self._h607c_advertised_pacts: set[tuple[int, int]] = set()
+        self._h607c_advertisement_observations: dict[str, tuple[float, frozenset[tuple[int, int]]]] = {}
+        self._h607c_marker_pact: tuple[int, int] | None = None
+        self._h607c_last_marker_pact: tuple[int, int] | None = None
+        self._h607c_marker_seen = False
+        self._h607c_pact_conflict = False
         self.boolean_control_state: dict[str, bool] = {}
         self.low_blue_light: LowBlueLightState | None = None
         self.power_on_behaviour: str | None = None
@@ -475,7 +482,9 @@ class GoveeBLECoordinator(
         """Register BLE presence tracking once, before the first refresh (HA idiom)."""
         self._present = bluetooth.async_address_present(self.hass, self.address, connectable=True)
         self._note_advertisement(bluetooth.async_last_service_info(self.hass, self.address, connectable=True))
-        unsubs = (
+        if self.model == "H607C":
+            self._refresh_h607c_advertisements()
+        unsubs = [
             bluetooth.async_register_callback(
                 self.hass,
                 self._async_on_advertisement,
@@ -483,7 +492,20 @@ class GoveeBLECoordinator(
                 bluetooth.BluetoothScanningMode.PASSIVE,
             ),
             bluetooth.async_track_unavailable(self.hass, self._async_on_unavailable, self.address, connectable=True),
-        )
+        ]
+        if self.model == "H607C":
+            register_all = getattr(bluetooth, "async_register_advertisement_callback", None)
+            if register_all is not None:
+                unsubs.append(register_all(self.hass, self._async_on_h607c_advertisement, self.address))
+            else:
+                unsubs.append(
+                    bluetooth.async_register_callback(
+                        self.hass,
+                        self._async_on_h607c_advertisement_change,
+                        bluetooth.BluetoothCallbackMatcher(address=self.address, connectable=False),
+                        bluetooth.BluetoothScanningMode.PASSIVE,
+                    )
+                )
         for unsub in unsubs:
             if self.config_entry is not None:
                 self.config_entry.async_on_unload(unsub)
@@ -495,11 +517,26 @@ class GoveeBLECoordinator(
         previous_pact = self.pact_type, self.pact_code
         was_present = self._present
         self._note_advertisement(_service_info)
+        if self.model == "H607C":
+            self._refresh_h607c_advertisements()
         self._set_present(True)
         if was_present and previous_pact != (self.pact_type, self.pact_code):
             self.async_update_listeners()
 
-    def _note_advertisement(self, service_info: bluetooth.BluetoothServiceInfoBleak | None) -> None:
+    @callback
+    def _async_on_h607c_advertisement(self, service_info: bluetooth.BluetoothServiceInfoBleak) -> None:
+        self._note_advertisement(service_info)
+        self._refresh_h607c_advertisements()
+
+    @callback
+    def _async_on_h607c_advertisement_change(
+        self, service_info: bluetooth.BluetoothServiceInfoBleak, _change: bluetooth.BluetoothChange
+    ) -> None:
+        self._async_on_h607c_advertisement(service_info)
+
+    def _note_advertisement(
+        self, service_info: bluetooth.BluetoothServiceInfoBleak | None, *, cached: bool = False
+    ) -> None:
         if service_info is None:
             return
         name = getattr(service_info, "name", None)
@@ -517,18 +554,107 @@ class GoveeBLECoordinator(
             advertisement = parse_govee_advertisement(service_info.manufacturer_data)
             if advertisement is not None:
                 pact = advertisement.pact_type, advertisement.pact_code
-                if pact != (self.pact_type, self.pact_code):
-                    self.pact_type, self.pact_code = pact
-                    self._authorization_generation += 1
-                self._resolve_device_profile()
+                if self.model == "H607C":
+                    source = service_info.source
+                    timestamp = service_info.time
+                    previous = self._h607c_advertisement_observations.get(source)
+                    if previous is None or timestamp > previous[0]:
+                        self._h607c_advertisement_observations[source] = (timestamp, frozenset({pact}))
+                    elif timestamp == previous[0] and not cached:
+                        self._h607c_advertisement_observations[source] = (timestamp, previous[1] | {pact})
+                else:
+                    if pact != (self.pact_type, self.pact_code):
+                        self.pact_type, self.pact_code = pact
+                        self._authorization_generation += 1
+                    self._resolve_device_profile()
                 if advertisement.supports_encryption:
                     self._advertised_encryption = True
                     if self._encryption is not None and self._encryption.version == 0:
                         self._encryption.reset()
+                        if self.model == "H607C" and self._h607c_marker_pact is not None:
+                            self._h607c_marker_pact = None
                 else:
                     self._advertised_plaintext = True
 
-    def _resolve_device_profile(self) -> None:
+    def _refresh_h607c_advertisements(self) -> None:
+        for connectable in (True, False):
+            service_info = bluetooth.async_last_service_info(self.hass, self.address, connectable=connectable)
+            if service_info is not None:
+                self._note_advertisement(service_info, cached=True)
+        self._prune_h607c_advertisements()
+
+    def _prune_h607c_advertisements(self) -> None:
+        cutoff = time.monotonic() - bluetooth.FALLBACK_MAXIMUM_STALE_ADVERTISEMENT_SECONDS
+        self._h607c_advertisement_observations = {
+            source: observation
+            for source, observation in self._h607c_advertisement_observations.items()
+            if observation[0] >= cutoff
+        }
+        self._h607c_advertised_pacts = {
+            pact for _, pacts in self._h607c_advertisement_observations.values() for pact in pacts
+        }
+        self._resolve_h607c_pact()
+
+    def _resolve_h607c_pact(self, *, preserve_state: bool = False) -> None:
+        pacts = set(self._h607c_advertised_pacts)
+        if self._h607c_marker_pact is not None:
+            pacts.add(self._h607c_marker_pact)
+        conflict = len(pacts) > 1
+        pact = next(iter(pacts)) if len(pacts) == 1 else (None, None)
+        if pact != (self.pact_type, self.pact_code) or conflict != self._h607c_pact_conflict:
+            self.pact_type, self.pact_code = pact
+            self._h607c_pact_conflict = conflict
+            self._authorization_generation += 1
+            self._resolve_device_profile(preserve_state=preserve_state)
+            self.async_update_listeners()
+
+    @property
+    def native_presentation_profile(self) -> ModelProfile:
+        if self.model == "H607C" and self.pact_type is None and not self._h607c_pact_conflict:
+            return get_profile(self.model)
+        return self.profile
+
+    @property
+    def h607c_pact_readiness(self) -> str:
+        if self._h607c_pact_conflict:
+            return "conflicting"
+        if self.pact_type is None or self.pact_code is None:
+            return "stale" if self._h607c_marker_seen else "missing"
+        return "ready" if self.profile.supports_rgb else "unsupported"
+
+    async def async_prepare_h607c_control(self) -> Callable[[], None]:
+        if self.model != "H607C":
+            return lambda: None
+        self._refresh_h607c_advertisements()
+        async with async_control_intent(self, ControlIntent.BACKGROUND):
+            async with self._lock:
+                client = await self._ensure_connected()
+                if self._h607c_advertisement_observations:
+                    self._prune_h607c_advertisements()
+                if not self._authorization_profile().supports_rgb or self._h607c_pact_conflict:
+                    await self._disconnect_if_current_locked(client)
+                    raise HomeAssistantError(translation_domain=DOMAIN, translation_key="identity_not_ready")
+                token = self._notification_token
+                generation = self._authorization_generation
+                self._renew_foreground_lease()
+
+        def guard() -> None:
+            if self._h607c_advertisement_observations:
+                self._prune_h607c_advertisements()
+            if (
+                self._client is not client
+                or not client.is_connected
+                or self._notification_token is not token
+                or self._authorization_generation != generation
+                or (self._encryption is not None and not self._encryption.ready)
+                or not self._authorization_profile().supports_rgb
+                or self._h607c_pact_conflict
+            ):
+                raise HomeAssistantError(translation_domain=DOMAIN, translation_key="identity_not_ready")
+
+        return guard
+
+    def _resolve_device_profile(self, *, preserve_state: bool = False) -> None:
         declared = get_profile(self.model)
         if (
             not declared.profile_identity_fields
@@ -570,14 +696,17 @@ class GoveeBLECoordinator(
                 setattr(self, spec.key, None)
         self._configured_strings_confirmed = False
         self._segment_query_generation = None
-        self.boolean_control_state = {
-            key: value for key, value in self.boolean_control_state.items() if key in profile.boolean_controls
-        }
+        if not preserve_state:
+            self.boolean_control_state = {
+                key: value for key, value in self.boolean_control_state.items() if key in profile.boolean_controls
+            }
         if not profile.supports_low_blue_light:
             self.low_blue_light = None
         self._profile_generation += 1
         self._expected_state.clear()
         self._sync_device_configuration_url()
+        if preserve_state:
+            return
         if self.model not in {"H60A1", "H60A6"}:
             self.brightness_pct = 100
         self.color_mode = None
@@ -690,6 +819,7 @@ class GoveeBLECoordinator(
                             refreshed = await self.refresh_state(
                                 refresh_all=True,
                                 required_domains=self.profile.setup_required_read_domains,
+                                **({"query_native_settings": False} if self.profile.setting_grammar == "H607C" else {}),
                             )
                             if generation == self._profile_generation and (
                                 refreshed
@@ -705,6 +835,19 @@ class GoveeBLECoordinator(
                                 await self._disconnect_if_current_locked(client)
                             raise BleakError(f"State query failed for {self.address}")
                         read_succeeded = True
+                        if self.profile.setting_grammar == "H607C":
+                            try:
+                                async with self._lock:
+                                    deadline = time.monotonic() + 2.0
+                                    for query, fields in self._setting_queries(self._authorization_profile()):
+                                        if self._client is not client or time.monotonic() >= deadline:
+                                            break
+                                        if not await self._async_read_setting_fields(
+                                            client, query, fields, deadline=deadline
+                                        ):
+                                            break
+                            except BleakError:
+                                _LOGGER.debug("Optional native setting query failed", exc_info=True)
                         if self.profile.supports_low_blue_light and self.identity_fields_confirmed(
                             frozenset({"fw_version"})
                         ):
@@ -815,6 +958,14 @@ class GoveeBLECoordinator(
             self._require_not_dreamview_claimed()
             if self._client is not client or not client.is_connected:
                 raise GoveeCryptoError("disconnected_during_setup")
+            if self.model == "H607C":
+                self._h607c_marker_pact = self._encryption.marker_pact
+                self._h607c_marker_seen |= self._h607c_marker_pact is not None
+                same_marker = (
+                    self._h607c_marker_pact is not None and self._h607c_marker_pact == self._h607c_last_marker_pact
+                )
+                self._resolve_h607c_pact(preserve_state=same_marker)
+                self._h607c_last_marker_pact = self._h607c_marker_pact
             if self.profile.requires_notifications:
                 identity_baselines = {
                     domain: self._domain_revisions.get(domain, 0)
@@ -939,6 +1090,9 @@ class GoveeBLECoordinator(
         self._segment_query_generation = None
         if self._encryption is not None:
             self._encryption.reset()
+        if self.model == "H607C" and self._h607c_marker_pact is not None:
+            self._h607c_marker_pact = None
+            self._resolve_h607c_pact(preserve_state=True)
         if client is not None:
             self.last_disconnected_at = datetime.now().astimezone().isoformat(timespec="seconds")
         self._notify_started_monotonic = None
@@ -1042,6 +1196,8 @@ class GoveeBLECoordinator(
             # The caller owns reconnect/retry policy; never write across an abandoned query.
             query_kind = "segment" if self._segment_query_incomplete else "bulk"
             raise BleakError(f"Incomplete {query_kind} query requires a new connection")
+        if self.model == "H607C" and self._h607c_advertisement_observations:
+            self._prune_h607c_advertisements()
         packet_validator(packet, self.profile)
         self._validate_authorized_packet(packet, packet_validator)
         if (
@@ -1167,6 +1323,23 @@ class GoveeBLECoordinator(
         ):
             self._static_rgb_known = self.segment_colors == [rgb_intent] * self.profile.segment_count
 
+    def _setting_queries(self, profile: ModelProfile) -> list[tuple[bytes, tuple[str, ...]]]:
+        from .generated_protocol_adapter import build_boolean_control_query, build_power_on_behaviour_query
+
+        queries: dict[bytes, tuple[str, ...]] = {}
+        if profile.setting_grammar != "H60A6":
+            for control in sorted(profile.boolean_controls):
+                query = build_boolean_control_query(control, self.model, profile=profile)
+                queries[query] = (*queries.get(query, ()), f"boolean_{control}")
+        if profile.supports_power_on_behaviour and profile.bulk_status_grammar is None:
+            fields = (
+                ("power_on_behaviour", "power_on_open_flag")
+                if profile.setting_grammar == "H607C"
+                else ("power_on_behaviour",)
+            )
+            queries[build_power_on_behaviour_query(profile)] = fields
+        return list(queries.items())
+
     async def _send_state_queries(
         self,
         *,
@@ -1181,6 +1354,7 @@ class GoveeBLECoordinator(
         required_domains: frozenset[ReadDomain] | None = None,
         optional_baselines: dict[str, int] | None = None,
         deadline: float | None = None,
+        query_native_settings: bool = True,
     ) -> bool:
         client = self._client
         if client is None or not client.is_connected or self._segment_query_incomplete or self._bulk_query_incomplete:
@@ -1314,23 +1488,8 @@ class GoveeBLECoordinator(
                         (build_h6199_control_query(control), ReadDomain.OTHER, (control,))
                         for control in H6199_NATIVE_CONTROLS
                     )
-            if full_query and profile.boolean_controls and profile.setting_grammar != "H60A6":
-                from .generated_protocol_adapter import build_boolean_control_query
-
-                boolean_queries: dict[bytes, tuple[str, ...]] = {}
-                for control in sorted(profile.boolean_controls):
-                    query = build_boolean_control_query(control, self.model, profile=profile)
-                    boolean_queries[query] = (*boolean_queries.get(query, ()), f"boolean_{control}")
-                queries.extend((query, ReadDomain.OTHER, fields) for query, fields in boolean_queries.items())
-            if full_query and profile.supports_power_on_behaviour and profile.bulk_status_grammar is None:
-                from .generated_protocol_adapter import build_power_on_behaviour_query
-
-                power_fields = (
-                    ("power_on_behaviour", "power_on_open_flag")
-                    if profile.setting_grammar == "H607C"
-                    else ("power_on_behaviour",)
-                )
-                queries.append((build_power_on_behaviour_query(profile), ReadDomain.OTHER, power_fields))
+            if full_query and query_native_settings:
+                queries.extend((query, ReadDomain.OTHER, fields) for query, fields in self._setting_queries(profile))
             required = (
                 required_domains
                 if required_domains is not None
@@ -1542,6 +1701,8 @@ class GoveeBLECoordinator(
         return self.profile.profile_identity_fields | frozenset(video_identity_fields(self.profile))
 
     def _authorization_profile(self) -> ModelProfile:
+        if self.model == "H607C" and self._h607c_advertisement_observations:
+            self._prune_h607c_advertisements()
         fields = self.profile.profile_identity_fields
         if not fields or self.identity_fields_confirmed(fields):
             return self.profile
@@ -1673,7 +1834,10 @@ class GoveeBLECoordinator(
                 raise ValueError("Configured strings changed but bulb state could not be read")
 
     async def async_set_boolean_control(self, control: str, enabled: bool) -> None:
-        await self._async_set_verified_setting(control, enabled)
+        if type(enabled) is not bool:
+            raise ValueError("Boolean setting requires a boolean")
+        guard = await self.async_prepare_h607c_control() if self.model == "H607C" and control == "gradual" else None
+        await self._async_set_verified_setting(control, enabled, write_guard=guard)
 
     async def async_set_low_blue_light(self, *, enabled: bool | None = None, level: int | None = None) -> None:
         from .low_blue_light import async_set_setting
@@ -1683,7 +1847,9 @@ class GoveeBLECoordinator(
     async def async_set_power_on_behaviour(self, value: str) -> None:
         await self._async_set_verified_setting("power_on_behaviour", value)
 
-    async def _async_set_verified_setting(self, control: str, value: bool | str) -> None:
+    async def _async_set_verified_setting(
+        self, control: str, value: bool | str, *, write_guard: Callable[[], None] | None = None
+    ) -> None:
         from .generated_protocol_adapter import (
             build_boolean_control,
             build_boolean_control_query,
@@ -1691,6 +1857,8 @@ class GoveeBLECoordinator(
         )
 
         def qualified() -> None:
+            if write_guard is not None:
+                write_guard()
             if not (
                 self.profile.supports_power_on_behaviour
                 if control == "power_on_behaviour"
@@ -1755,7 +1923,9 @@ class GoveeBLECoordinator(
                     fields = (
                         ("power_on_behaviour", "power_on_open_flag")
                         if control == "power_on_behaviour"
-                        else tuple(f"boolean_{name}" for name in sorted(self.profile.boolean_controls))
+                        else (field,)
+                        if control == "gradual"
+                        else ("boolean_pole_enabled", "boolean_base_enabled")
                     )
                     if not await self._async_read_setting_fields(client, query, fields, deadline=deadline):
                         raise ValueError("Device did not provide complete native setting readback")
@@ -2049,6 +2219,7 @@ class GoveeBLECoordinator(
         refresh_display_settings: bool | frozenset[str] = False,
         refresh_relative_brightness: bool = False,
         refresh_all: bool = False,
+        query_native_settings: bool = True,
         query_segments: bool | None = None,
         required_domains: frozenset[ReadDomain] | None = None,
         timeout: float = 2.0,
@@ -2271,6 +2442,8 @@ class GoveeBLECoordinator(
                         | ({ReadDomain.RELATIVE_BRIGHTNESS} if "relative_brightness" in requested_registers else set()),
                         "optional_baselines": optional_baselines,
                     }
+                if not query_native_settings:
+                    query_options["query_native_settings"] = False
                 if query_segments is not None:
                     query_options["query_segments"] = query_segments
                 field_baselines = {field: self._field_revisions.get(field, 0) for field in expectations}
