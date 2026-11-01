@@ -151,6 +151,10 @@ def kelvin_rendering_matches(rgb: tuple[int, int, int], kelvin: int, profile: Mo
 
 
 def normalize_kelvin(kelvin: int, profile: ModelProfile) -> int:
+    """Round to the profile's Kelvin step (ties upward) before building, presenting or verifying a request.
+
+    Persisted off-grid values use the same normalisation for restoration writes and their expectations.
+    """
     value = _clamp(kelvin, profile.min_color_temp_kelvin, profile.max_color_temp_kelvin)
     step = profile.color_temp_step_kelvin
     return _clamp(((value + step // 2) // step) * step, profile.min_color_temp_kelvin, profile.max_color_temp_kelvin)

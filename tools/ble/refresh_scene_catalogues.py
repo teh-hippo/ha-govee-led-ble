@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Refresh the committed per-model scene snapshots from Govee's catalogue API."""
+"""Refresh the committed per-model scene snapshots from Govee's catalogue API.
+
+Run ``make protocol`` first.  Refresh a new SKU's snapshot before registering its runtime profile:
+runtime imports load every registered catalogue, so the tool may fail to start otherwise.  Commit the full
+snapshot; catalogue availability proves scene identity only, not transport, activation or readback.
+"""
 
 from __future__ import annotations
 
