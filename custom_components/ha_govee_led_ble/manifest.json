@@ -527,5 +527,5 @@
     "requirements": [
         "kaitaistruct==0.11"
     ],
-    "version": "7.30.1"
+    "version": "7.31.0"
 }
