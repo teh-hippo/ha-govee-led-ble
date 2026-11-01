@@ -38,4 +38,4 @@ Decode-only Kaitai documentation of these is fine; runtime control is not.
 ## Development
 
 Run `make protocol` after a fresh clone, a new worktree or any `.ksy` change, and `make check` before finishing.
-Maintainers: see [docs/release-candidates.md](docs/release-candidates.md) for release-candidate qualification.
+Release candidates for hardware testing can be built from any branch: see [docs/release-candidates.md](docs/release-candidates.md).

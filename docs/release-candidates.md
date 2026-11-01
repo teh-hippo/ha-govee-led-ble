@@ -1,28 +1,20 @@
-# Release-candidate qualification
+# Release candidates
 
-Use a published RC installed through HACS for live qualification, not SSH deployment or direct file copying.
-When release and live testing are authorised, follow this established route without asking the owner to choose a deployment mechanism again.
+A release candidate (RC) is a prerelease package built from any branch for live testing on hardware.  RCs never move GitHub's latest release, and feature branches keep the stable source version.
+Agents and contributors can request one whenever testing on a device needs it; use an RC, not SSH deployment or copying files.
 
-The [prerelease workflow](../.github/workflows/prerelease.yml) delegates packaging and publication to the
-[shared Home Assistant prerelease workflow](https://github.com/teh-hippo/common-repo-configs).
-The caller pins a released provider commit by full SHA, with its release tag alongside the pin.  Review a provider release before updating that pin.
-Build-only runs (`publish=false`) upload the deterministic ZIP, checksum and build metadata without creating a release.
-Only the artifact manifest receives the normalised version: `7.13.1-rc.2.h6102` becomes `7.13.1rc2`.
-Feature branches keep the stable source version, and prereleases never move GitHub's latest release.
+## Building one
 
-1. Run the final `make check`, commit the reviewed candidate, and push its feature branch.
-   Dispatch the prerelease workflow with that branch selected, its exact lowercase 40-character commit SHA as `target_sha`,
-   a fresh `version` in `MAJOR.MINOR.PATCH-rc.N.SUFFIX` form, and `publish=true`.
-   The SHA must be reachable from the selected branch.  Set `release_notes` to the exact maintainer-approved public notes; publishing requires non-empty notes.
-   Require a successful run and verify the tag's target SHA and the package checksum.
-2. Before deployment, capture the installed release and the test devices' restorable state, including hidden mode/settings when a light is off.
-   If a state cannot be safely restored, resolve that before changing it.
-3. Discover the integration's HACS `update` entity through Home Assistant.
-   Refresh it with `homeassistant.update_entity`, then call `update.install` with the exact RC tag as `version`; do not rely on `latest_version`.
-   Confirm the installed tag, then restart Home Assistant with `homeassistant.restart` to load the new Python code.
-4. Wait for Home Assistant and the target config entries to load, then confirm the runtime manifest version in diagnostics matches the RC.
-   HACS installation metadata alone proves downloaded files, not running code.
-   Exercise the affected workflows through the normal REST/WebSocket interfaces and require fresh BLE readback rather than optimistic entity state.
-5. Clean up temporary previews and restore each device's captured state even if a test fails, then verify restoration through fresh readback.
-   Keep diagnostics private and bounded.  Report the exact RC, observed results and any unverified behaviour.
-   Publish another exact-SHA RC for subsequent source fixes rather than hotpatching the installation or reusing a tag.
+Run the **Prerelease Package** workflow (`workflow_dispatch`) on the branch, after the final `make check` and with the reviewed commit pushed.
+Only `publish` is required.  Left blank, `target_sha` is the branch head, `version` is the next patch with `-rc.<run number>.<branch>`, and `release_notes` is a generic candidate note.
+Set `publish=true` to create the tag and prerelease; `publish=false` uploads the package, checksum and metadata without releasing.
+Publish another RC for later fixes rather than reusing a tag or hotpatching an installation.
+The workflow delegates to a pinned [shared prerelease workflow](https://github.com/teh-hippo/common-repo-configs), which stamps only the artifact manifest (`7.13.1-rc.2.h6102` becomes `7.13.1rc2`).
+
+## Qualifying on hardware
+
+1. Capture the installed release and each test device's restorable state, including hidden mode and settings when a light is off.
+2. Refresh the integration's HACS `update` entity with `homeassistant.update_entity`, call `update.install` with the exact RC tag as `version`, then restart Home Assistant.
+3. Confirm the running manifest version in diagnostics matches the RC; HACS metadata alone proves only downloaded files.
+4. Exercise the affected workflows and require fresh BLE readback, not optimistic state.
+5. Restore every device even when a test fails, and verify it by fresh readback.  Keep diagnostics private and report the exact RC, observed results and anything unverified.
