@@ -8,7 +8,7 @@ meta:
     - h6102_status_reply
 doc: |
   H6076.
-  In Android 7.6.01, H6076 (goods type 69) uses the shared power, percentage
+  H6076 uses the shared power, percentage
   brightness, firmware, hardware, and gradual (0xa3) status layouts, dispatches
   AA05 mode 15 to static colour/Kelvin, 04 to scenes, 0A to DIY, and 0F to
   music state, and reads A5 segment pages of four brightness/RGB records across

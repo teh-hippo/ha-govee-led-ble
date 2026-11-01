@@ -3,7 +3,7 @@ meta:
   title: Govee H6099 logical command acknowledgement
   endian: le
 doc: |
-  H6099 command ACK.  Android 7.6.01 H6099
+  H6099 command ACK.  H6099
   single-frame command handlers read a zero success byte at body offset zero.
   Tail bytes remain unknown; this structure records receipt, never setting
   values or fresh device state.  Exact-device reply tails, firmware differences,

@@ -55,11 +55,11 @@ test("device music geometry replaces catalogue defaults without leaking across d
   model.customCatalogue!.models.H6099 = { ...catalogue, sku: "H6099", painted_addressing: "physical_ic" };
   const settings = {
     piano_keys: {
-      available: true, style: false, calm_default: false, colour: false, evidence: "APK", palette_size: 7,
+      available: true, style: false, calm_default: false, colour: false, evidence: "template", palette_size: 7,
       parameters: { key_count: { kind: "number", default: 18, min: 9, max: 36, options: [] } },
     },
     hopping: {
-      available: true, style: false, calm_default: false, colour: false, evidence: "APK", palette_size: 7,
+      available: true, style: false, calm_default: false, colour: false, evidence: "template", palette_size: 7,
       parameters: { background: { kind: "number", default: 0x010101, min: 0, max: 0xffffff, options: [] } },
     },
   };

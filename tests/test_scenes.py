@@ -155,7 +155,7 @@ def test_aurora_b_matches_current_ios_capture():
 
 
 def test_glacier_speed_default_rewrites_the_stale_param_bytes():
-    """Glacier 2175 ships 0xff where its own option list says 250, and the app rewrites it."""
+    """Glacier 2175 ships 0xff where its own option list says 250, and the client rewrites it."""
     scene = SCENES["glacier"]
     stored = base64.b64decode(scene.param)
     assert scene.speed is not None and scene.speed.default_index == 2

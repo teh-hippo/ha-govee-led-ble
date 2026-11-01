@@ -8,7 +8,7 @@ meta:
 doc: |
   H617A 20-byte command frame.  The final byte is the XOR of bytes 0 through 18.
   The shared boolean payload also covers H6102 limit opcode 0E, which
-  emits 0E and one boolean byte in Android 7.6.01.  This app-derived extension is
+  emits 0E and one boolean byte.  This reconstructed extension is
   not H617A product authorisation or capture qualification.
 seq:
   - id: header
@@ -77,9 +77,9 @@ types:
         size-eos: true
   multi_effect_cmd:
     doc: >
-      Boolean gradual-change register. The app writes false as the prologue to
-      per-segment paint batches and labels the switch as gradual colour change. True is
-      accepted, read back and retained across power. H617A goods type 73 is explicitly
+      Boolean gradual-change register. False is written as the prologue to
+      per-segment paint batches; the switch is labelled gradual colour change. True is
+      accepted, read back and retained across power. H617A is explicitly
       marked as not supporting gradual change, and paired native-scene, segment-paint and
       static-colour comparisons produced no visible difference. The raw state is retained
       as an unsupported device register rather than exposed as a capability.

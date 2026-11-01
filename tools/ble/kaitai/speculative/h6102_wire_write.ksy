@@ -6,8 +6,7 @@ meta:
     - ../govee_shared
 doc: |
   H6102.
-  Evidence source class: reachable Android 7.6.01 producer/consumer behaviour
-  and owner-verified frames on Pact 1/1. No official-app BLE
+  Evidence source class: owner-verified frames on Pact 1/1. No official-app BLE
   capture is available.
   Compatibility hypothesis: Pact 1 codes 1 and 2 use a 20..254 master
   brightness register and the 0x11 music selector; intermediate Pact 1

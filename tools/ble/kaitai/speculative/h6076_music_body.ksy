@@ -8,19 +8,19 @@ meta:
     - h617a_control_payload
 doc: |
   H6076.
-  Evidence source classes: a reporter's decrypted Android HCI snoop of the Govee
+  Evidence source classes: a reporter's decrypted HCI snoop of the official
   app driving an H6076 (hardware 3.05.00, software 1.04.05, V1 encrypted
-  session), which shows the Torch and Separation bodies in full, and Android
-  Govee 7.5.30 music companion upload behaviour.
-  Compatibility hypothesis: the app's default bodies for the five companion-backed
+  session), which shows the Torch and Separation bodies in full.
+ 
+  Compatibility hypothesis: the default bodies for the five companion-backed
   effects other than Separation are the A3 command 0x41 body, a palette count and
   that many RGB triples, with no further field.  Separation appends the
   three-byte tail it shares with H617A: a split point, a fade flag and a speed
-  byte that the app sets to 94 or 97 below 30 ICs and to 98 or 99 from 30, for
+  byte observed as 94 or 97 below 30 ICs and to 98 or 99 from 30, for
   fade on or off.  The selector that follows is described by h6076_music_write.ksy
   and the lamp's reply by h6076_music_ack.ksy.
   Skittles, Candy Crush, Fusion and Shiny were not captured in full.  Their bodies
-  follow the Torch layout in the app producer code.  The reporter's separate LAN
+  follow the Torch layout.  The reporter's separate LAN
   integration (scroom/ha-govee-local-segments) builds byte-identical bodies and
   Owners report that all twelve effects react on the lamp; that is plaintext replay, not
   a Bluetooth capture.

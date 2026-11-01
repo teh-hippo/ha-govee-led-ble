@@ -113,9 +113,9 @@ H6046_MUSIC_VARIANTS = (
 # Captured values, not values calculated from logical colour zones or guessed IC counts.
 H617A_MUSIC_VARIANTS = (
     MusicVariant(0x03, "H617A qualified selector style", supports_style=True),
-    MusicVariant(0x04, "H617A app legacy music editor; fixed-colour register readback"),
-    MusicVariant(0x05, "H617A app: Energetic has no editor", supports_fixed_colour=False),
-    MusicVariant(0x06, "H617A app legacy music editor; fixed-colour register readback"),
+    MusicVariant(0x04, "H617A fixed-colour register readback"),
+    MusicVariant(0x05, "H617A Energetic has no editor", supports_fixed_colour=False),
+    MusicVariant(0x06, "H617A fixed-colour register readback"),
     MusicVariant(
         0x30,
         "H617A captured Bloom companion",
@@ -167,7 +167,7 @@ H617A_MUSIC_VARIANTS = (
     ),
     MusicVariant(
         0x34,
-        "H617A captured Piano preset; app GangQinJian gradient and physical-IC key bounds",
+        "H617A captured Piano preset; GangQinJian gradient and physical-IC key bounds",
         "music_body",
         bytes.fromhex("3407ff0000ff7f00ffff0000ff000000ff00ffff8b00ff000f0a0407000000"),
         (
@@ -304,16 +304,16 @@ H617E_MUSIC_VARIANTS = (
 )
 
 
-# H6099 app music bodies: unpadded, not H617A capture templates.
+# H6099 music bodies: unpadded, not H617A capture templates.
 _H6099_PALETTE = "07ff0000ff7f00ffff0000ff000000ff00ffff8b00ff"
 H6099_MUSIC_VARIANTS = (
-    MusicVariant(3, "H6099 app Rhythm legacy selector", supports_style=True),
-    MusicVariant(4, "H6099 app Spectrum legacy selector"),
-    MusicVariant(5, "H6099 app legacy Energetic selector; new-detail upload path unresolved"),
-    MusicVariant(6, "H6099 app Rolling legacy selector"),
+    MusicVariant(3, "H6099 Rhythm legacy selector", supports_style=True),
+    MusicVariant(4, "H6099 Spectrum legacy selector"),
+    MusicVariant(5, "H6099 legacy Energetic selector; new-detail upload path unresolved"),
+    MusicVariant(6, "H6099 Rolling legacy selector"),
     MusicVariant(
         0x30,
-        "H6099 app music mode ZhanFang",
+        "H6099 ZhanFang music mode",
         "h6099_music_parameters",
         bytes.fromhex("30" + _H6099_PALETTE + "0a50"),
         supports_style=True,
@@ -322,7 +322,7 @@ H6099_MUSIC_VARIANTS = (
     ),
     MusicVariant(
         0x31,
-        "H6099 app music mode CuiCan",
+        "H6099 CuiCan music mode",
         "h6099_music_parameters",
         bytes.fromhex("31" + _H6099_PALETTE + "05640a"),
         supports_style=True,
@@ -331,7 +331,7 @@ H6099_MUSIC_VARIANTS = (
     ),
     MusicVariant(
         0x32,
-        "H6099 app music mode FenLi",
+        "H6099 FenLi music mode",
         "h6099_music_parameters",
         bytes.fromhex("32" + _H6099_PALETTE + "030061"),
         (
@@ -344,7 +344,7 @@ H6099_MUSIC_VARIANTS = (
     ),
     MusicVariant(
         0x33,
-        "H6099 app music mode YueDong; the no-colour marker is RGB 1,1,1",
+        "H6099 YueDong music mode; the no-colour marker is RGB 1,1,1",
         "h6099_music_parameters",
         bytes.fromhex("33" + _H6099_PALETTE + "010101196201030000"),
         (
@@ -357,7 +357,7 @@ H6099_MUSIC_VARIANTS = (
     ),
     MusicVariant(
         0x34,
-        "H6099 app music mode GangQinJian",
+        "H6099 GangQinJian music mode",
         "h6099_music_parameters",
         bytes.fromhex("34" + _H6099_PALETTE + "0000000000"),
         (
@@ -370,7 +370,7 @@ H6099_MUSIC_VARIANTS = (
     ),
     MusicVariant(
         0x35,
-        "H6099 app music mode DuiJi",
+        "H6099 DuiJi music mode",
         "h6099_music_parameters",
         bytes.fromhex("35" + _H6099_PALETTE + "01000000"),
         (
@@ -389,10 +389,10 @@ H6099_MUSIC_VARIANTS = (
     ),
     MusicVariant(
         0x37,
-        "H6099 app case 55: default piece retained, UI indices 0/1 used as speed/fade",
+        "H6099 case 55: default piece retained, UI indices 0/1 used as speed/fade",
         "h6099_music_parameters",
         bytes.fromhex("37" + _H6099_PALETTE + "000000"),
-        # The app never sets the piece and ignores UI index 2. Do not advertise those controls.
+        # The piece is never set and UI index 2 is ignored. Do not advertise those controls.
         requires_physical_ic_count=True,
         palette_bounds=(1, 8),
         supports_fixed_colour=False,
@@ -498,12 +498,12 @@ H6097_MUSIC_VARIANTS = (
     ),
 )
 
-# H66A0 app music modes, goods 327.
+# H66A0 music modes.
 H66A0_MUSIC_VARIANTS = (
     *(
         replace(
             variant,
-            evidence=variant.evidence.replace("H6099 app", "H66A0 app"),
+            evidence=variant.evidence.replace("H6099 ", "H66A0 "),
             layout="h66a0_music_parameters" if variant.layout == "h6099_music_parameters" else variant.layout,
         )
         for variant in H6099_MUSIC_VARIANTS
@@ -511,7 +511,7 @@ H66A0_MUSIC_VARIANTS = (
     ),
     MusicVariant(
         0x37,
-        "H66A0 app music mode ZhouYe",
+        "H66A0 ZhouYe music mode",
         "h66a0_music_parameters",
         bytes.fromhex("37" + _H6099_PALETTE + "0d1400"),
         (
@@ -534,7 +534,7 @@ H66A0_MUSIC_VARIANTS = (
     ),
     MusicVariant(
         0x84,
-        "H66A0 app music mode ShuiHua",
+        "H66A0 ShuiHua music mode",
         "h66a0_music_parameters",
         bytes.fromhex("84" + _H6099_PALETTE),
         palette_bounds=(1, 8),
@@ -542,7 +542,7 @@ H66A0_MUSIC_VARIANTS = (
     ),
     MusicVariant(
         0x85,
-        "H66A0 app music mode (unnamed)",
+        "H66A0 music mode",
         "h66a0_music_parameters",
         bytes.fromhex("85" + _H6099_PALETTE),
         palette_bounds=(1, 8),
@@ -550,7 +550,7 @@ H66A0_MUSIC_VARIANTS = (
     ),
     MusicVariant(
         0x55,
-        "H66A0 app music mode Caihui",
+        "H66A0 Caihui music mode",
         "h66a0_music_parameters",
         bytes.fromhex("55" + _H6099_PALETTE + "01"),
         palette_bounds=(1, 8),
@@ -558,7 +558,7 @@ H66A0_MUSIC_VARIANTS = (
     ),
     MusicVariant(
         0xA9,
-        "H66A0 app music mode JiePai",
+        "H66A0 JiePai music mode",
         "h66a0_music_parameters",
         bytes.fromhex("a9" + _H6099_PALETTE + "0100"),
         palette_bounds=(1, 8),
@@ -566,7 +566,7 @@ H66A0_MUSIC_VARIANTS = (
     ),
     MusicVariant(
         0x78,
-        "H66A0 app music mode Windmill",
+        "H66A0 Windmill music mode",
         "h66a0_music_parameters",
         bytes.fromhex("78" + _H6099_PALETTE),
         palette_bounds=(2, 8),
@@ -574,7 +574,7 @@ H66A0_MUSIC_VARIANTS = (
     ),
     MusicVariant(
         0x53,
-        "H66A0 app music mode FlowingLight",
+        "H66A0 FlowingLight music mode",
         "h66a0_music_parameters",
         bytes.fromhex("53" + _H6099_PALETTE + "01"),
         palette_bounds=(1, 8),
@@ -582,19 +582,19 @@ H66A0_MUSIC_VARIANTS = (
     ),
 )
 
-# H1A42 app music modes, goods 400 hardware sweep.
+# H1A42 music modes, hardware sweep.
 H1A42_MUSIC_VARIANTS = (
     *(
         replace(
             variant,
-            evidence=variant.evidence.replace("H6099 app", "H1A42 app"),
+            evidence=variant.evidence.replace("H6099 ", "H1A42 "),
         )
         for variant in H6099_MUSIC_VARIANTS
         if variant.mode_code in (3, 4, 5, 6)
     ),
     MusicVariant(
         0x84,
-        "H1A42 app music mode ShuiHua",
+        "H1A42 ShuiHua music mode",
         "h1a42_music_parameters",
         bytes.fromhex("84" + _H6099_PALETTE),
         palette_bounds=(1, 8),
@@ -602,7 +602,7 @@ H1A42_MUSIC_VARIANTS = (
     ),
     MusicVariant(
         0x85,
-        "H1A42 app music mode TanHuang",
+        "H1A42 TanHuang music mode",
         "h1a42_music_parameters",
         bytes.fromhex("85" + _H6099_PALETTE),
         palette_bounds=(2, 8),
@@ -610,7 +610,7 @@ H1A42_MUSIC_VARIANTS = (
     ),
     MusicVariant(
         0x92,
-        "H1A42 app music mode FeiDieUFO",
+        "H1A42 FeiDieUFO music mode",
         "h1a42_music_parameters",
         bytes.fromhex("92" + _H6099_PALETTE),
         palette_bounds=(1, 8),
@@ -618,7 +618,7 @@ H1A42_MUSIC_VARIANTS = (
     ),
     MusicVariant(
         0xA3,
-        "H1A42 app music mode YouDong",
+        "H1A42 YouDong music mode",
         "h1a42_music_parameters",
         bytes.fromhex("a3" + _H6099_PALETTE),
         palette_bounds=(1, 8),
@@ -626,15 +626,15 @@ H1A42_MUSIC_VARIANTS = (
     ),
 )
 
-# H61F5 app music modes, goods 261 hardware sweep.
+# H61F5 music modes, hardware sweep.
 H61F5_MUSIC_VARIANTS = (
     *(
         replace(
             variant,
             evidence=(
-                "H61F5 app Energetic legacy selector"
+                "H61F5 Energetic legacy selector"
                 if variant.mode_code == 5
-                else variant.evidence.replace("H6099 app", "H61F5 app")
+                else variant.evidence.replace("H6099 ", "H61F5 ")
             ),
             layout="h61f5_music_parameters" if variant.layout == "h6099_music_parameters" else variant.layout,
         )
@@ -643,7 +643,7 @@ H61F5_MUSIC_VARIANTS = (
     ),
     MusicVariant(
         0x37,
-        "H61F5 app music mode ZhouYe",
+        "H61F5 ZhouYe music mode",
         "h61f5_music_parameters",
         bytes.fromhex("37" + _H6099_PALETTE + "071400"),
         (
@@ -666,7 +666,7 @@ H61F5_MUSIC_VARIANTS = (
     ),
     MusicVariant(
         0x84,
-        "H61F5 app music mode ShuiHua",
+        "H61F5 ShuiHua music mode",
         "h61f5_music_parameters",
         bytes.fromhex("84" + _H6099_PALETTE),
         palette_bounds=(1, 8),
@@ -674,7 +674,7 @@ H61F5_MUSIC_VARIANTS = (
     ),
     MusicVariant(
         0x85,
-        "H61F5 app music mode TanHuang",
+        "H61F5 TanHuang music mode",
         "h61f5_music_parameters",
         bytes.fromhex("85" + _H6099_PALETTE),
         palette_bounds=(2, 8),
@@ -682,7 +682,7 @@ H61F5_MUSIC_VARIANTS = (
     ),
     MusicVariant(
         0x8B,
-        "H61F5 app music mode LiuYing",
+        "H61F5 LiuYing music mode",
         "h61f5_music_parameters",
         bytes.fromhex("8b" + _H6099_PALETTE),
         palette_bounds=(4, 8),
@@ -690,7 +690,7 @@ H61F5_MUSIC_VARIANTS = (
     ),
     MusicVariant(
         0x92,
-        "H61F5 app music mode FeiDieUFO",
+        "H61F5 FeiDieUFO music mode",
         "h61f5_music_parameters",
         bytes.fromhex("92" + _H6099_PALETTE),
         palette_bounds=(1, 8),
@@ -698,7 +698,7 @@ H61F5_MUSIC_VARIANTS = (
     ),
     MusicVariant(
         0xA3,
-        "H61F5 app music mode YouDong",
+        "H61F5 YouDong music mode",
         "h61f5_music_parameters",
         bytes.fromhex("a3" + _H6099_PALETTE),
         palette_bounds=(1, 8),
@@ -706,17 +706,17 @@ H61F5_MUSIC_VARIANTS = (
     ),
 )
 
-# The RGBIC app music modes share these named palette/tail encodings;
+# The RGBIC music modes share these named palette/tail encodings;
 # its Day/Night indices and Piano defaults differ from H6099 and are explicit.
 H6102_MUSIC_VARIANTS = (
-    MusicVariant(5, "RGBIC app basic Energetic", supports_fixed_colour=False),
-    MusicVariant(3, "RGBIC app basic Rhythm", supports_style=True),
-    MusicVariant(4, "RGBIC app basic Spectrum"),
-    MusicVariant(6, "RGBIC app basic Rolling"),
+    MusicVariant(5, "RGBIC basic Energetic", supports_fixed_colour=False),
+    MusicVariant(3, "RGBIC basic Rhythm", supports_style=True),
+    MusicVariant(4, "RGBIC basic Spectrum"),
+    MusicVariant(6, "RGBIC basic Rolling"),
     *(
         replace(
             variant,
-            evidence="H6102 RGBIC app music mode, palette/tail shared with H6099",
+            evidence="H6102 RGBIC music mode, palette/tail shared with H6099",
             physical_defaults="rgbic",
             parameters=tuple(
                 replace(
@@ -732,7 +732,7 @@ H6102_MUSIC_VARIANTS = (
     ),
     MusicVariant(
         0x37,
-        "H6102 RGBIC app music mode",
+        "H6102 RGBIC music mode",
         "music_body",
         bytes.fromhex("37" + _H6099_PALETTE + "071400"),
         (
@@ -756,16 +756,16 @@ H6102_MUSIC_VARIANTS = (
     ),
 )
 
-# H6125 pact 1 reaches the same RGBIC app music producers as H6102 through the
-# dreamcolorlightv1 route; only the selector submode differs, and the transform owns that.
+# H6125 pact 1 reaches the same RGBIC music encodings as H6102 through the
+# DreamColor route; only the selector submode differs, and the transform owns that.
 H6125_MUSIC_VARIANTS = H6102_MUSIC_VARIANTS
 
-# H617C uses the same RGBIC app music producers through music_body so legacy
+# H617C uses the same RGBIC music encodings through music_body so legacy
 # zero-padded H617C recovery bodies and newly authored bodies both validate.
 H617C_MUSIC_VARIANTS = tuple(
     replace(
         variant,
-        evidence="H617C RGBIC app music mode over music_body",
+        evidence="H617C RGBIC music mode over music_body",
         layout="music_body" if variant.layout == "h6099_music_parameters" else variant.layout,
         style_companions=(0x50, 0x14)
         if variant.mode_code == 0x30
@@ -790,7 +790,7 @@ H617C_MUSIC_VARIANTS = tuple(
 _H6076_MODE = import_module(
     "custom_components.ha_govee_led_ble.generated_protocol.h6076_music_write"
 ).H6076MusicWrite.MusicMode
-# The app's default seven-colour palette; the capture-backed Torch body carries it unchanged.
+# The default seven-colour palette; the capture-backed Torch body carries it unchanged.
 _H6076_PALETTE = "ff0000ff7f00ffff0000ff000000ff00ffff8b00ff"
 
 
@@ -804,13 +804,13 @@ H6076_LEGACY_MUSIC_VARIANTS = (
     *(
         MusicVariant(int(mode), f"H6076 {mode.name}: fixed-colour flag and RGB in the selector; {evidence}")
         for mode, evidence in (
-            (_H6076_MODE.bounce, "capture and app producer"),
-            (_H6076_MODE.hopping, "capture and app producer"),
-            (_H6076_MODE.beat, "capture and app producer"),
-            (_H6076_MODE.spray, "capture and app producer"),
+            (_H6076_MODE.bounce, "capture and reconstruction"),
+            (_H6076_MODE.hopping, "capture and reconstruction"),
+            (_H6076_MODE.beat, "capture and reconstruction"),
+            (_H6076_MODE.spray, "capture and reconstruction"),
         )
     ),
-    MusicVariant(int(_H6076_MODE.rhythm), "H6076 capture and app producer: Dynamic/Calm byte", supports_style=True),
+    MusicVariant(int(_H6076_MODE.rhythm), "H6076 capture and reconstruction: Dynamic/Calm byte", supports_style=True),
 )
 
 # Legacy selectors keep their parameters in the selector; companion-backed effects upload an A3 body first.
@@ -819,13 +819,13 @@ H6076_MUSIC_VARIANTS = (
         MusicVariant(int(mode), f"H6076 {mode.name}: fixed-colour flag and RGB in the selector; {evidence}")
         for mode, evidence in (
             (_H6076_MODE.energetic, "captured"),
-            (_H6076_MODE.bounce, "capture and app producer"),
-            (_H6076_MODE.hopping, "capture and app producer"),
-            (_H6076_MODE.beat, "capture and app producer"),
-            (_H6076_MODE.spray, "capture and app producer"),
+            (_H6076_MODE.bounce, "capture and reconstruction"),
+            (_H6076_MODE.hopping, "capture and reconstruction"),
+            (_H6076_MODE.beat, "capture and reconstruction"),
+            (_H6076_MODE.spray, "capture and reconstruction"),
         )
     ),
-    MusicVariant(int(_H6076_MODE.rhythm), "H6076 capture and app producer: Dynamic/Calm byte", supports_style=True),
+    MusicVariant(int(_H6076_MODE.rhythm), "H6076 capture and reconstruction: Dynamic/Calm byte", supports_style=True),
     MusicVariant(
         int(_H6076_MODE.separation),
         "H6076 capture: default Separation companion, point 2 and gradient off",
@@ -857,10 +857,10 @@ H6076_MUSIC_VARIANTS = (
         )
         for mode, bounds, evidence in (
             (_H6076_MODE.torch, (1, 8), "captured"),
-            (_H6076_MODE.skittles, (2, 8), "app producer and reporter LAN replay"),
-            (_H6076_MODE.candy_crush, (3, 8), "app producer and reporter LAN replay"),
-            (_H6076_MODE.fusion, (2, 8), "app producer and reporter LAN replay"),
-            (_H6076_MODE.shiny, (4, 8), "app producer and reporter LAN replay"),
+            (_H6076_MODE.skittles, (2, 8), "reconstruction and reporter LAN replay"),
+            (_H6076_MODE.candy_crush, (3, 8), "reconstruction and reporter LAN replay"),
+            (_H6076_MODE.fusion, (2, 8), "reconstruction and reporter LAN replay"),
+            (_H6076_MODE.shiny, (4, 8), "reconstruction and reporter LAN replay"),
         )
     ),
 )
@@ -1051,7 +1051,7 @@ H7025_MUSIC_VARIANTS = (
     ),
     MusicVariant(
         0x34,
-        "H7025 Piano tail 00 05 0a 04 04; app limits palette to five and keeps gradient off",
+        "H7025 Piano tail 00 05 0a 04 04; palette is limited to five and gradient stays off",
         "h7025_music_body",
         bytes.fromhex("3405ff0000ff7f00ffff0000ff000000ff00050a0404"),
         palette_bounds=(1, 5),

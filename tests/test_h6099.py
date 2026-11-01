@@ -1,4 +1,4 @@
-"""Exact H6099 app hypotheses, not physical device qualification."""
+"""Exact H6099 hypotheses, not physical device qualification."""
 
 from unittest.mock import patch
 

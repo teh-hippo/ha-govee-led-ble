@@ -22,7 +22,7 @@ async def test_optional_count_is_diagnostic_only(hass, value):
     before = coordinator.profile
     diagnostic = await async_get_config_entry_diagnostics(hass, entry)
     assert diagnostic["coordinator"]["light_count_observation"] is None
-    # 15 is direct-device evidence; other values exercise the app signed-byte boundary.
+    # 15 is direct-device evidence; other values exercise the signed-byte boundary.
     payload = bytes([0xAA, 0x0F, value]) + bytes(16)
     packet = payload + bytes([xor_checksum(payload)])
     decoded = decode_status_frame(packet)

@@ -5,7 +5,7 @@ meta:
   imports:
     - ../govee_shared
 doc: |
-  H61F5.  The app's H61F6 music control (goodsType 261)
+  H61F5.  H61F6 music control
   uploads A3 command 41 (mode followed by this palette and tail) before sending
   the mode selector.  Physical IC count (50 on uncut H61F5, read via AA 40)
   controls dependent geometry.

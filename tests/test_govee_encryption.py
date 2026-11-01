@@ -1,4 +1,4 @@
-"""Synthetic app transport checks, not H6099 hardware qualification."""
+"""Synthetic transport checks, not H6099 hardware qualification."""
 
 import asyncio
 import json

@@ -7,7 +7,7 @@ meta:
     - govee_common
     - speculative/h617a_control_payload
 doc: >
-  Capture-backed H617A music envelope and presets.  Generalised app-derived tails
+  Capture-backed H617A music envelope and presets.  Generalised reconstructed tails
   remain in speculative/h617a_control_payload.ksy for Fountain;
   importing them does not promote their evidence class.  Palette-relative tails are
   read and written by the generated adapter.  A structurally valid alternative

@@ -100,7 +100,7 @@ def test_music_rejects_out_of_bounds(sensitivity):
         ({"pact_type": None, "fw_version": "1.00.01"}, "sound_effects", "evidence_gap"),
     ],
 )
-def test_apk_revision_gates(changes, control, expected):
+def test_revision_gates(changes, control, expected):
     identity = SimpleNamespace(**(QUALIFIED | changes))
     states = video_control_states(MODEL_PROFILES["H6199"], identity)
     assert states[control] == expected

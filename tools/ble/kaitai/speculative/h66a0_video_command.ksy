@@ -4,7 +4,7 @@ meta:
 doc: |
   H66A0 video-only.  Based on
   Fredde87/ha-govee-led-ble round2 command_write.ksy video_body_h66a0 and
-  Android 7.6.01 TV-light video mode behaviour.  Contributor reports app preset reads
+  TV-light video mode behaviour.  Contributor reports preset reads
   08 Vivid, 09 Solid, 0a Smooth, 0b Delicate and a separate opaque byte.
   Independent captures, firmware coverage and owner qualification remain
   unresolved.  This codec does not register H66A0 as a supported model.

@@ -43,7 +43,7 @@ def h6199_camera_controls_state(model: str, identity: object) -> CapabilityState
 
 
 def _h6199_video_states(identity: object) -> dict[str, CapabilityState]:
-    # 0x20 is Wi-Fi hardware, 0x21 Wi-Fi firmware; the app's minimum is 1.00.30.
+    # 0x20 is Wi-Fi hardware, 0x21 Wi-Fi firmware; the minimum is 1.00.30.
     fw, hw, wifi_hw, wifi_fw = (
         identity_version(getattr(identity, field, None))
         for field in ("fw_version", "hw_version", "subordinate_20_version", "subordinate_21_version")

@@ -9,7 +9,7 @@ meta:
 doc: |
   H7025.
   The reporter's working snapshot replays corroborate the IDs and tail prefixes
-  selected by Android 7.6.01 H7025 music authoring.  This is not an H617A body alias.
+  selected by H7025 music authoring.  This is not an H617A body alias.
   Its exact caller supplies Hopping ID 48, independently of the shared Hopping
   builder's default ID 5E, and emits background RGB, brightness, and two zero
   bytes.  Rolling and Separation similarly emit direction and two zero bytes,
@@ -20,7 +20,7 @@ doc: |
   that byte is unconfirmed.  Piano and Day/Night reuse the named shared tails
   with exact-H7025 defaults and editor permissions.  Palette counts do not
   establish physical IC count.
-  The app's multi-packet uploader emits 15 initial stream bytes and up to 17
+  The multi-packet upload emits 15 initial stream bytes and up to 17
   final bytes.  The reporter's eight-byte final threshold remains a separate,
   unresolved snapshot/firmware observation; it does not change shared framing.
   Unresolved: revision differences, raw snapshot sequences, all field bounds

@@ -5,7 +5,7 @@ meta:
   imports:
     - ../govee_shared
 doc: |
-  H6099 command, checked against Android 7.6.01
+  H6099 command
   H6099 command behaviour.  Mode 0x15 supplies static colours and segment masks,
   mode 0x00 supplies the six-byte video body, mode 0x0a supplies the
   little-endian DIY selector, and mode 0x13 distinguishes legacy and
@@ -187,7 +187,7 @@ types:
       - id: unknown_tail
         size-eos: true
   black_border_payload:
-    doc: Android 7.6.01 H6099 black-border control writes A9 0B 01 enabled.
+    doc: H6099 black-border control writes A9 0B 01 enabled.
     seq:
       - id: is_on
         type: u1

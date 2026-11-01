@@ -6,7 +6,7 @@ meta:
     - ../govee_shared
 doc: |
   SPECULATIVE H601C support request (feat/h60a-h601c-support; issue number
-  not supplied).  Compatibility hypothesis from Android 7.6.01 goods type 111:
+  not supplied).  Compatibility hypothesis:
   AA050D carries direct RGB at bytes 3..5, big-endian Kelvin at 6..7, and
   companion RGB at 8..10; bytes 11..18 are ignored and remain opaque.
   Shared power, brightness, firmware, and hardware status layouts supply the
@@ -14,7 +14,7 @@ doc: |
   reuse status_query for the shared query envelope.  Unknown domains and modes
   remain raw, never inferred effects.  Physical acceptance, response presence,
   identity encoding across revisions, and encryption remain unqualified.
-  These are app-derived layouts, not official-app BLE captures.
+  These are reconstructed layouts, not official-app BLE captures.
 seq:
   - id: header
     contents: [0xaa]

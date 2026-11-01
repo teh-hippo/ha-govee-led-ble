@@ -109,7 +109,7 @@ def reassemble_a1_02_upload(frames: Sequence[bytes], final_index: int) -> bytes:
 
 
 def fragment_a3(type_byte: int, body: bytes, *, terminator: bool = False) -> list[bytes]:
-    """Fragment one A3 body using the app's data-frame and terminator rules."""
+    """Fragment one A3 body using the data-frame and terminator rules."""
     data = bytes([type_byte]) + body
     chunk_count = math.ceil((len(data) + 2) / A3_CHUNK_SIZE)
     trailing_terminator = terminator or chunk_count == 1

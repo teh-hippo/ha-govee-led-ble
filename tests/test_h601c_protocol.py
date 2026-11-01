@@ -87,7 +87,7 @@ def test_static_derived_vectors_and_expectations(kelvin, hex_packet):
 
 
 def test_complete_supported_lookup_and_unknown_companion():
-    # Independently transcribed first entries of the ordered app constant map.
+    # Independently transcribed first entries of the ordered constant map.
     companions = (
         "ffae54 ffb25b ffb662 ffb969 ffbd6f ffc076 ffc37c ffc682 ffc987 ffcb8d "
         "ffce92 ffd097 ffd39c ffd5a1 ffd7a6 ffd9ab ffdbaf ffddb4 ffdfb8 ffe1bc "

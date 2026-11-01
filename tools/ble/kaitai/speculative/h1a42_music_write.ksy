@@ -6,7 +6,7 @@ meta:
     - ../govee_shared
 doc: |
   H1A42.  Hardware measurements and
-  the app's H1A43 music control (goodsType 400) select the eight mode IDs below over 33 05 13.
+  H1A43 music control select the eight mode IDs below over 33 05 13.
   Classic modes (03..06) carry sensitivity, calm flag, fixed-colour flag, and
   optional RGB triple.  Palette modes (84, 85, 92, A3) carry only mode ID and
   sensitivity after an A3 41 companion upload.  AA 05 13 status replies parse the

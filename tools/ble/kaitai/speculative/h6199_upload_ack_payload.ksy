@@ -7,7 +7,7 @@ doc: |
   On 2026-09-17 HW 3.02.01/FW 1.10.04 returned the same checksum-valid
   A3/04/00 response three times during palette DIY workflows.  These are
   integration notifications, not official-app captures.
-  In Android 7.6.01, H6199 DIY uploads use protocol A3 command 0x04 with the
+  H6199 DIY uploads use protocol A3 command 0x04 with the
   result byte at absolute offset 2 (zero means success), matching replies on
   protocol and command only.  The sixteen trailing bytes have no established
   meaning and are preserved.  Negative results, nonzero tails, other upload

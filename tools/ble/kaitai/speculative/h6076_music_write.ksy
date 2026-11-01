@@ -6,10 +6,9 @@ meta:
     - ../govee_shared
 doc: |
   H6076.
-  Evidence source classes: a reporter's decrypted Android HCI snoop of the Govee
+  Evidence source classes: a reporter's decrypted HCI snoop of the official
   app driving an H6076 (hardware 3.05.00, software 1.04.05, V1 encrypted
-  session) and Android Govee 7.5.30 floor-lamp music selector and capability-gate
-  behaviour.  The capture is
+  session).  The capture is
   reporter-supplied and its raw file has not been reviewed, and no integration or
   owner BLE test of an H6076 exists yet.
   Compatibility hypothesis: the H6076 writes its music selector at submode 0x0f,
@@ -56,7 +55,7 @@ types:
         type: u1
         enum: music_mode
       - id: sensitivity
-        doc: The app slider runs from 0x00 to 0x63.
+        doc: The slider runs from 0x00 to 0x63.
         type: u1
       - id: settings
         size: 14

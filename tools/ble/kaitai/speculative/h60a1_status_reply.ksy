@@ -11,7 +11,7 @@ doc: |
   cedhuf/ha-govee-led-ble f8d4267309e7bac38460c728e05616d07f879b3e,
   docs/h60a-support-findings.md and tests/test_h60a_protocol.py: HW 1.04.03,
   FW 1.02.20 power and page-four literal, 2026-10-09/10 decrypted owner sessions.
-  Android 7.6.01 H60A capability metadata specifies fourteen segment records at
+  H60A capability metadata specifies fourteen segment records at
   four per group, and the grouped segment-colour parser consumes only the
   meaningful brightness/RGB records.  Unused slots are opaque.
   Unresolved: other revisions, identity response presence, unused bytes,

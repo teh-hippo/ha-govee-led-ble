@@ -6,13 +6,13 @@ meta:
     - ../govee_shared
 doc: |
   H7025.
-  Android 7.6.01 H7025 music authoring selects the following exact-product IDs.
+  H7025 music authoring selects the following exact-product IDs.
   Rhythm uses 33 05 13 03, sensitivity, calm flag, and a fixed-colour flag;
   a nonzero fixed-colour flag adds one RGB triple, not a palette.
   Other modes use only ID and sensitivity after a complete A3/41 upload.
   The sensitivity-only editor reuses the resident body without uploading it.
   AA05 status replies parse the same selector fields.
-  The reported 33 05 00 shortcut is not emitted by the app.
+  The reported 33 05 00 shortcut is not emitted.
   Unresolved: reporter hardware/firmware/app versions, response availability,
   unused bytes, and successful BLE application on the reporter's device.
 seq:

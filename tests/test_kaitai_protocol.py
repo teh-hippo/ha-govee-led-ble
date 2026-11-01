@@ -317,7 +317,7 @@ COMMAND_STATIC = bytes.fromhex("330515010000000e10ffcb8dff7f000000000005")
 # 2020 public H6125 boot log: brightness register write 0xfe and the 0x14 register reply.
 H6125_BRIGHTNESS_WRITE = bytes.fromhex("3304fe00000000000000000000000000000000c9")
 H6125_BRIGHTNESS_REPLY = bytes.fromhex("aa041400000000000000000000000000000000ba")
-# Submode 0x11 layouts follow the app producer; no identified H6125 capture exists.
+# Submode 0x11 layouts follow the reconstructed layout; no identified H6125 capture exists.
 H6125_MUSIC_WRITE = bytes.fromhex("33051111320101ff0000000000000000000000fb")
 H6125_MUSIC_STATUS = bytes.fromhex("aa051111320101ff000000000000000000000062")
 # Reporter's decrypted HCI frames.  The selector fields were listed before padding and checksum.
@@ -661,7 +661,7 @@ def test_h617a_direct_register_replay_not_app_captures(hass) -> None:
     # The count reply is currently raw/unnamed, not a physical-IC observation.
 
 
-def test_h617a_apk_schema_counterexamples_are_synthetic() -> None:
+def test_h617a_schema_counterexamples_are_synthetic() -> None:
     """Document current parser limits, without claiming these replies occurred live."""
     query = _parse(StatusQuery, bytes.fromhex("aa050100000000000000000000000000000000ae"))
     assert query.body.selector == 1
@@ -685,7 +685,7 @@ def test_h617a_apk_schema_counterexamples_are_synthetic() -> None:
     ack = _parse(CommandWrite, H6199_POWER_ACK)
     assert ack.body.is_on == 0
     flat = _parse(DiyType04, bytes.fromhex("01020401003203ff000000"))
-    assert flat.body.padding == [0]  # The app names this octet as empty sequence length.
+    assert flat.body.padding == [0]  # This octet is the empty sequence length.
 
 
 def test_h6199_direct_register_extensions_not_app_captures() -> None:
@@ -1365,7 +1365,7 @@ def test_h6199_generic_command_acknowledgements_are_distinct_from_writes(frame: 
 
 @pytest.mark.parametrize("status,tail", [(0, bytes(16)), (1, bytes(16)), (0xFF, bytes(range(16)))])
 def test_h6199_diy_upload_notification_is_not_state(hass, status: int, tail: bytes) -> None:
-    # Only the all-zero response is live evidence; other values probe app semantics
+    # Only the all-zero response is live evidence; other values probe reconstructed semantics
     # and unknown-byte preservation without assigning meanings to the tail.
     frame = bytearray(H6199_DIY_UPLOAD_ACK)
     frame[2] = status

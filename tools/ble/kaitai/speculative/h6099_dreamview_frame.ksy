@@ -3,13 +3,13 @@ meta:
   title: H6099 DreamView module commands and individual reads
   endian: be
 doc: |
-  H6099, H66A0.  The app's DreamView
+  H6099, H66A0.  DreamView
   control selects module 0x60.  Group switch writes {on, 1}, queries with
   discriminator 1, and reads the first reply byte as on.  Individual module 0x60
   commands establish the member brightness, member connection, same brightness,
   saturation, video settings, sound, and delete layouts.  Brightness reads consume all
-  16 returned bytes; connection reads copy 10 bytes (goods type 191 supports
-  seven members; goods type 327 H66A0 supports ten members).  Never trim zeros
+  16 returned bytes; connection reads copy 10 bytes (H6099 supports
+  seven members; H66A0 supports ten members).  Never trim zeros
   or infer membership from slots.  Video settings encode apply area (0 All,
   1 Part) and content mode (0 Game, 1 Movie).  reports H66A0
   Part/Game and Part/Movie writes and individual readback while the group stays

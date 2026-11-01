@@ -8,7 +8,7 @@ import { decodeCustomCataloguePayload } from "../../src/catalogue-validation";
 import { buildCustomEffectEntries } from "../../src/custom-effect-list";
 import backendContracts from "../fixtures/backend-contracts.json";
 
-test("APK Meteor Shower 3/1/1 seed preserves every original slot on same-length edits", () => {
+test("Native Meteor Shower 3/1/1 seed preserves every original slot on same-length edits", () => {
   const template = backendContracts.responses.custom_catalogue.models.H617A.templates.find(
     (template) => template.id === "template:native-diy:504",
   )!;
@@ -91,7 +91,7 @@ test("canonical packed controls preserve siblings, BE high byte, and extension b
   expect(edited.layers[1]).toEqual(content.layers[1]);
 });
 
-test("all seven named edits retain identity and follow APK producers", () => {
+test("all seven named edits retain identity and follow native producers", () => {
   const colours: RGB[] = [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]];
   for (const code of [501, 502, 503, 504, 505, 506, 507]) {
     const count = [3, 2, 1, 3, 2, 4, 2][code - 501];

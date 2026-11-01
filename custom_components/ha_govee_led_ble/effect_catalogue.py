@@ -82,7 +82,7 @@ class DiyEffectFamily:
     variations: tuple[DiyEffectVariation, ...]
     supports_multi: bool
     rate: str = "speed"
-    source_reference: str = "GoveeHome V7.5.30 dreamcolorlightv1.adjust.Diy"
+    source_reference: str = "DIY roster"
     category: str = "single_layer"
     rate_min: int = 0
     rate_max: int = 100
@@ -249,7 +249,7 @@ class ModelEffectCatalogue:
     brightness_max: int = 100
     painted_addressing: str = "segments"
     painted_background: tuple[int, int, int] = (0, 0, 0)
-    # Exact-model app authoring bounds; wire grammar alone does not qualify them.
+    # Exact-model authoring bounds; wire grammar alone does not qualify them.
     native_diy_palette_groups: tuple[tuple[int, tuple[int, ...], int, int], ...] = ()
     native_diy_templates: tuple[NativeDiyTemplateContract, ...] = ()
     diy_slot_policy: str = "fixed"
@@ -411,9 +411,7 @@ class ModelEffectCatalogue:
         return result
 
 
-# GoveeHome V7.5.30 exposes these basic Type04 families through
-# dreamcolorlightv1.adjust.Diy.e(), with the same base roster retained by later
-# revisions.  The family and variation bytes use the structure defined by
+# These basic Type04 families form the base roster.  The family and variation bytes use the structure defined by
 # diy_type04.ksy.
 H617A_TYPE04_FAMILIES: Final = (
     DiyEffectFamily(
@@ -509,7 +507,7 @@ H617A_PAINTED_EFFECTS: Final = tuple(
     for effect in DiyType03.Effect
 )
 
-# Exact H6102 goods-18 roster from the app.
+# Exact H6102 roster.
 # The shared A3 grammar does not grant H617A native 501..507 presets.
 H6102_DIY_FAMILIES: Final = tuple(
     DiyEffectFamily(
@@ -525,7 +523,7 @@ H6102_DIY_FAMILIES: Final = tuple(
         rate_min=1,
         multi_rate_min=0,
         palette_max=3 if family == 10 else 8,
-        source_reference="H6102 app DIY roster, goods 18",
+        source_reference="H6102 DIY roster",
     )
     for name, label, family, variants in (
         ("fade", "Fade", 0, (0, 1, 2)),
@@ -539,7 +537,7 @@ H6102_DIY_FAMILIES: Final = tuple(
     )
 )
 
-# H6099 app DIY lists, goods 191.
+# H6099 DIY lists.
 H6046_DIY_FAMILIES: Final = tuple(
     DiyEffectFamily(
         name,
@@ -579,7 +577,7 @@ H6099_DIY_FAMILIES: Final = tuple(
         rate_min=50 if family == 4 else 1,
         rate_max=50 if family == 4 else 100,
         palette_max=3 if family == 10 else 8,
-        source_reference="H6099 app basic and mixed DIY lists",
+        source_reference="H6099 basic and mixed DIY lists",
     )
     for name, label, family, variants in (
         ("fade", "Fade", 0, (0, 1, 2)),
@@ -621,7 +619,7 @@ H6097_DIY_FAMILIES: Final = tuple(
     )
 )
 
-# H66A0 app DIY lists, goods 327.
+# H66A0 DIY lists.
 H66A0_DIY_FAMILIES: Final = tuple(
     DiyEffectFamily(
         name,
@@ -636,7 +634,7 @@ H66A0_DIY_FAMILIES: Final = tuple(
         rate_min=1,
         rate_max=100,
         palette_max=3 if family == 10 else 8,
-        source_reference="H66A0 app basic and mixed DIY lists",
+        source_reference="H66A0 basic and mixed DIY lists",
     )
     for name, label, family, variants in (
         ("fade", "Fade", 0, (0, 1, 2)),
@@ -653,7 +651,7 @@ H66A0_DIY_FAMILIES: Final = tuple(
     )
 )
 
-# H1A42 app DIY lists, goods 400.
+# H1A42 DIY lists.
 H1A42_DIY_FAMILIES: Final = tuple(
     DiyEffectFamily(
         name,
@@ -669,7 +667,7 @@ H1A42_DIY_FAMILIES: Final = tuple(
         rate_max=100,
         multi_rate_min=0,
         palette_max=3 if family == 10 else 8,
-        source_reference="H1A42 app basic and mixed DIY lists",
+        source_reference="H1A42 basic and mixed DIY lists",
     )
     for name, label, family, variants in (
         ("fade", "Fade", 0, (0, 1, 2)),
@@ -683,11 +681,11 @@ H1A42_DIY_FAMILIES: Final = tuple(
     )
 )
 
-# H61F6 app DIY lists, goods 261.
+# H61F6 DIY lists.
 H61F5_DIY_FAMILIES: Final = tuple(
     replace(
         family,
-        source_reference="H61F6 app basic and mixed DIY lists",
+        source_reference="H61F6 basic and mixed DIY lists",
     )
     for family in H1A42_DIY_FAMILIES
 )
@@ -783,7 +781,7 @@ H7025_DIY_FAMILIES: Final = tuple(
     replace(
         family,
         multi_rate_min=0,
-        source_reference="H7025 app basic and mixed DIY lists",
+        source_reference="H7025 basic and mixed DIY lists",
     )
     for family in H7020_DIY_FAMILIES[:6]
 )
@@ -829,7 +827,7 @@ H6076_DIY_FAMILIES: Final = tuple(
         rate_max=100,
         multi_rate_min=1,
         palette_max=8,
-        source_reference="H6072 app basic and mixed DIY lists, H6076 goods 69",
+        source_reference="H6072 basic and mixed DIY lists",
     )
     for name, label, family, variants in (
         ("fade", "Fade", 0, (1, 0)),
@@ -1160,7 +1158,7 @@ def _h617a_catalogue_templates(
     )
 
 
-# App ParamsV2 seeds, in selector order.
+# Native DIY seeds, in selector order.
 # Seed IC quantities are opaque preset values, never device geometry metadata.
 H617A_NATIVE_DIY_SEEDS: Final = (
     (
@@ -1247,10 +1245,10 @@ H7020_NATIVE_DIY_TEMPLATES: Final = tuple(
     )
     for template_id, _body_effect, label, seed in H7020_NATIVE_DIY_SEEDS
 )
-# The app uses 60 for H6102 presets 504/506. This is
+# H6102 presets 504/506 use 60. This is
 # preset construction evidence, not permission to infer runtime physical geometry.
-# The app's seven-colour defaults are used;
-# raw ParamsV2 carrier seeds do not themselves satisfy the editor's bounds.
+# The seven-colour defaults are used;
+# raw carrier seeds do not themselves satisfy the editor's bounds.
 _RGBIC_APP_PALETTE = ((255, 0, 0), (255, 127, 0), (255, 255, 0), (0, 255, 0), (0, 0, 255), (0, 255, 255), (139, 0, 255))
 
 
@@ -1411,7 +1409,7 @@ H617C_DIY_FAMILIES: Final = tuple(
     replace(family, source_reference="H617C DreamColor basic and mixed DIY") for family in H6125_DIY_FAMILIES
 )
 H617C_NATIVE_MUSIC_MODES: Final = _native_music_modes("H617C")
-# The selector order follows the app, not the wire codes.
+# The selector order follows the product UI, not the wire codes.
 H6076_NATIVE_MUSIC_MODES: Final = tuple(
     NativeModeOption(slug, _mode_label(slug)) for slug in MODEL_PROFILES["H6076"].music_modes
 )
@@ -2314,7 +2312,7 @@ def validate_effect_eligibility(
 
 
 def validate_native_diy(content: LayeredEffect, model: str, profile: ModelProfile) -> bool:
-    """Only geometry-dependent edits need IC metadata; app seeds remain presets."""
+    """Only geometry-dependent edits need IC metadata; native seeds remain presets."""
     catalogue = MODEL_EFFECT_CATALOGUES.get(model)
     if catalogue is None or profile.effect_grammar != "H617A":
         raise ValueError("native DIY templates require an exact compatible catalogue")
@@ -2339,13 +2337,13 @@ def validate_native_diy(content: LayeredEffect, model: str, profile: ModelProfil
     assert isinstance(seed, LayeredEffect)
     if len(content.layers) != len(seed.layers):
         raise ValueError("native DIY must retain its template layer count")
-    # NewConfigManager + ParamsV2 split app palettes round-robin across these layers.
+    # Palettes are split round-robin across these layers.
     for selector, indices, minimum, maximum in catalogue.native_diy_palette_groups:
         if selector != content.native_diy:
             continue
         if selector == 506 and indices == (2, 3):
-            # ParamsV2:1185-1227: split two-way palette, or one active full-strip
-            # layer plus a black single-IC layer. DiyTemp4BloomV1:88-95: 2..8 each.
+            # Split two-way palette, or one active full-strip
+            # layer plus a black single-IC layer; 2..8 colours each.
             moving = content.layers[2:]
             original_moving = seed.layers[2:]
             geometry_changed = any(
@@ -2368,7 +2366,7 @@ def validate_native_diy(content: LayeredEffect, model: str, profile: ModelProfil
                 for layer in moving
             )
             if not all(layer.selected_movement.enabled and layer.selected_movement.enter_exit for layer in moving):
-                raise ValueError("Bloom movement must retain its app direction topology")
+                raise ValueError("Bloom movement must retain its direction topology")
             if topology == ((0, 5, 1, count // 2, 0), (5, 5, 1, count // 2, 2)):
                 pass
             elif any(topology == ((0, 0, 1, count, direction), (0, 0, 1, 1, direction)) for direction in (0, 2)):
@@ -2376,7 +2374,7 @@ def validate_native_diy(content: LayeredEffect, model: str, profile: ModelProfil
                     raise ValueError("Bloom one-way inactive layer must contain one black colour")
                 indices = (2,)
             else:
-                raise ValueError("Bloom movement must retain its app direction topology")
+                raise ValueError("Bloom movement must retain its direction topology")
         sizes = tuple(len(content.layers[index].palette) for index in indices)
         total = sum(sizes)
         if not minimum <= total <= maximum or sizes != tuple(
@@ -2417,13 +2415,13 @@ def validate_native_diy(content: LayeredEffect, model: str, profile: ModelProfil
                     and 1 <= layer.selection.random_ic_min <= layer.selection.random_ic_max <= min(25, count * 4 // 5)
                 )
             ):
-                raise ValueError("Sky star size is outside app physical-IC bounds")
+                raise ValueError("Sky star size is outside physical-IC bounds")
             if (
                 content.native_diy == 503
                 and len(layer.palette) != len(original.palette)
                 and len(layer.palette) > min(max(1, count * 2 // 10), 8)
             ):
-                raise ValueError("Meteor palette is outside app physical-IC bounds")
+                raise ValueError("Meteor palette is outside physical-IC bounds")
             if (
                 content.native_diy == 504
                 and layer.selection != original.selection

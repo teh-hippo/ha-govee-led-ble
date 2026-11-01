@@ -704,7 +704,7 @@ def _h6076_selector(fields: str) -> bytes:
 
 
 def test_h6076_torch_uploads_the_reporters_captured_frames_before_its_selector() -> None:
-    # The app's Torch effect at full sensitivity, as decrypted from an HCI snoop.
+    # The Torch effect at full sensitivity, as decrypted from an HCI snoop.
     captured = (
         H("a3000102415007ff0000ff7f00ffff0000ff0036"),
         H("a3ff0000ff00ffff8b00ff0000000000000000d7"),

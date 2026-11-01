@@ -1,7 +1,7 @@
 """Govee app crypto primitives; wire layouts belong to speculative Kaitai.
 
 V1 is the vendor's unauthenticated AES-ECB/RC4 scheme, not modern secure
-messaging. The app-global constants are not per-device secrets.
+messaging. The vendor-global constants are not per-device secrets.
 """
 
 import io
@@ -59,7 +59,7 @@ def v1_transform(data: bytes, key: bytes, *, encrypt: bool) -> bytes:
 
 
 def build_v1_handshake(opcode: int) -> bytes:
-    # Crypto framing, matching the app. Both phases use the app key.
+    # Crypto framing. Both phases use the shared key.
     if opcode not in (1, 2):
         raise GoveeCryptoError("invalid_handshake_opcode")
     body = bytes((0xE7, opcode)) + os.urandom(17)

@@ -7,11 +7,11 @@ meta:
     - ../diy_type03
     - ../diy_type04
 doc: |
-  H6099 catalogue.  Android 7.6.01
+  H6099 catalogue.
   H6099 scene handling uploads type-1 and type-2 A3 bodies before activating a
   little-endian scene selector.  Exact-SKU catalogue parameters fit the shared
   type-1 and layered structures.  Physical upload, activation, and restoration
-  remain unqualified.  Goods type 191 also uploads shared type-04 Basic/Mixed
+  remain unqualified.  H6099 also uploads shared type-04 Basic/Mixed
   bodies (without an FE prefix) and type-03 Graffiti bodies, then activates
   ordinary 0x0a DIY with default code 254.  Graffiti indices address physical
   ICs, not the 14 logical segments.  This does not authorise arbitrary Advanced

@@ -6,7 +6,7 @@ meta:
     - ../govee_shared
 doc: |
   H6125.
-  Evidence source class: application producers and public legacy observations.
+  Evidence source class: public legacy observations.
   Compatibility hypothesis: pact 1 uses a scaled brightness register and the
   0x11 music selector. Older controllers use 0x0b RGB with a segment mask;
   the original H612526 music selector is 0x0c with a separate mode codebook.

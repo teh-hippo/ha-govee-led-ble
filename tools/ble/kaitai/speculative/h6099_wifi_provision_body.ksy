@@ -4,7 +4,7 @@ meta:
   endian: be
 doc: |
   H6099.  Hypothesis: H6099 Wi-Fi provisioning
-  uses the shared multi-packet provisioning body in Govee Android 7.6.01:
+  uses the shared multi-packet provisioning body:
   byte-length-prefixed SSID and password fields, run mode, timezone hour, IoT
   version, timezone minute, and branch-dependent extension bytes.  Input is the
   reassembled logical body, not a BLE frame or encrypted envelope.
