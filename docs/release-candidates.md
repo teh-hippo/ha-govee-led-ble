@@ -7,7 +7,7 @@ Agents and contributors can request one whenever testing on a device needs it; u
 
 Run the **Prerelease Package** workflow (`workflow_dispatch`) on the branch, after the final `make check` and with the reviewed commit pushed.
 Only `publish` is required.  Left blank, `target_sha` is the branch head, `version` is the next patch with `-rc.<run number>.<branch>`, and `release_notes` is a generic candidate note.
-Set `publish=true` to create the tag and prerelease; `publish=false` uploads the package, checksum and metadata without releasing.
+Set `publish=true` to create the tag and prerelease, which is what HACS installs.  `publish=false` is a dry run: it uploads the package, checksum and metadata as a run artifact (`gh run download <run id>`) without releasing.
 Publish another RC for later fixes rather than reusing a tag or hotpatching an installation.
 The workflow delegates to a pinned [shared prerelease workflow](https://github.com/teh-hippo/common-repo-configs), which stamps only the artifact manifest (`7.13.1-rc.2.h6102` becomes `7.13.1rc2`).
 
