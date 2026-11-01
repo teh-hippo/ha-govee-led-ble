@@ -78,7 +78,7 @@ from .effect_storage import (
 )
 from .entity import GoveeBLEEntity
 from .generated_protocol_adapter import build_brightness, build_power, require_profile_packet
-from .light_commands import build_color_rgb, build_color_temp, kelvin_companion_rgb, normalize_kelvin
+from .light_commands import build_color_rgb, build_color_temp, kelvin_rendering_matches, normalize_kelvin
 from .light_services import (
     _GoveeLightServicesMixin,
 )
@@ -642,14 +642,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 restored_kelvin is not None
                 and coordinator.segment_colors
                 and len(set(coordinator.segment_colors)) == 1
-                and (
-                    (
-                        coordinator.profile.segment_kelvin_renders_device_rgb
-                        and coordinator.segment_colors[0][0] >= 200
-                        and coordinator.segment_colors[0][1] >= 100
-                    )
-                    or coordinator.segment_colors[0] == kelvin_companion_rgb(restored_kelvin, coordinator.profile)
-                )
+                and kelvin_rendering_matches(coordinator.segment_colors[0], restored_kelvin, coordinator.profile)
             ):
                 coordinator.color_temp_kelvin = restored_kelvin
                 coordinator.color_temp_kelvin_source = "restored"
