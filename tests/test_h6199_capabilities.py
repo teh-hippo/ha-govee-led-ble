@@ -3,7 +3,7 @@
 import asyncio
 from dataclasses import replace
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
 
@@ -366,7 +366,7 @@ async def test_real_reconnect_waits_for_identity_before_guard(lifecycle, hass, m
     assert len(clients) == 2
 
 
-async def test_poll_preserves_delayed_native_replies_until_next_query(lifecycle, virtual_clock):
+async def test_poll_preserves_delayed_native_replies_until_next_query(lifecycle, monkeypatch, virtual_clock):
     from custom_components.ha_govee_led_ble.light import GoveeBLELight
     from custom_components.ha_govee_led_ble.select import GoveeBLEControlSelect
     from custom_components.ha_govee_led_ble.sensor import GoveeBLECameraStatus
@@ -375,23 +375,28 @@ async def test_poll_preserves_delayed_native_replies_until_next_query(lifecycle,
     entry = SimpleNamespace(runtime_data=c, entry_id="test")
     selects = [GoveeBLEControlSelect(entry, field) for field in ("strip_direction", "camera_position", "gradient")]
     sensor = GoveeBLECameraStatus(c)
+    monkeypatch.setattr(sensor, "async_write_ha_state", Mock())
+    remove = c.async_add_listener(sensor._handle_coordinator_update)
     light = GoveeBLELight(c)
-    await c._async_update_data()
-    assert c._client is None and not clients[-1].is_connected
-    assert c.segment_state_source == "observed" and not c._segment_query_incomplete
-    assert [entity.current_option for entity in selects] == ["anticlockwise", "bottom", "on"]
-    assert sensor.native_value == "healthy" and light.available
-    for control in ("strip_direction", "camera_position", "gradient", "camera_status"):
-        del replies[build_h6199_control_query(control)]
-    # Avoid the static-mode gradient companion answering the independent missing query.
-    from tests.test_h6199_native_controls import frame
+    try:
+        await c._async_update_data()
+        assert c._client is None and not clients[-1].is_connected
+        assert c.segment_state_source == "observed" and not c._segment_query_incomplete
+        assert [entity.current_option for entity in selects] == ["anticlockwise", "bottom", "on"]
+        assert sensor.native_value == "healthy" and light.available
+        for control in ("strip_direction", "camera_position", "gradient", "camera_status"):
+            del replies[build_h6199_control_query(control)]
+        # Avoid the static-mode gradient companion answering the independent missing query.
+        from tests.test_h6199_native_controls import frame
 
-    replies[build_colour_mode_query("H6199")] = frame("aa05000100640064")
-    await c._async_update_data()
-    assert len(clients) == 2 and c._client is None
-    assert all(entity.current_option is None for entity in selects)
-    assert sensor.native_value == "unknown" and light.available
-    assert c.is_on and c._first_refresh_done
+        replies[build_colour_mode_query("H6199")] = frame("aa05000100640064")
+        await c._async_update_data()
+        assert len(clients) == 2 and c._client is None
+        assert all(entity.current_option is None for entity in selects)
+        assert sensor.native_value == "healthy" and light.available
+        assert c.camera_status == "unknown" and c.is_on and c._first_refresh_done
+    finally:
+        remove()
 
 
 async def test_basic_setup_with_missing_identity_uses_real_lifecycle(lifecycle):

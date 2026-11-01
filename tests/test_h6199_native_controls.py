@@ -50,6 +50,17 @@ def coordinator(hass, monkeypatch):
     return c
 
 
+@pytest.fixture
+def camera_sensor(coordinator, monkeypatch):
+    entity = sensor.GoveeBLECameraStatus(coordinator)
+    monkeypatch.setattr(entity, "async_write_ha_state", Mock())
+    remove = coordinator.async_add_listener(entity._handle_coordinator_update)
+    try:
+        yield entity
+    finally:
+        remove()
+
+
 @pytest.mark.parametrize("control,opcode", [("strip_direction", "30"), ("camera_position", "31"), ("gradient", "a3")])
 def test_generated_builders_replies_acks(control, opcode):
     query = build_h6199_control_query(control)
@@ -81,7 +92,7 @@ def test_invalid_writes(value):
         build_h6199_control_query("dreamview")
 
 
-async def test_diy_static_and_camera_observation_preserve_light(coordinator):
+async def test_diy_static_and_camera_observation_preserve_light(coordinator, camera_sensor):
     c = coordinator
     c.is_on = True
     c._notify_callback(None, bytearray(bytes.fromhex("aa050afe0000000000000000000000000000005b")))
@@ -92,17 +103,74 @@ async def test_diy_static_and_camera_observation_preserve_light(coordinator):
     assert c.gradient == 1 and c.color_mode is ParsedMode.COLOUR
     assert c.color_temp_kelvin_source != "observed" and c.rgb_color_source != "observed"
     light = GoveeBLELight(c)
-    diagnostic = sensor.GoveeBLECameraStatus(c)
+    diagnostic = camera_sensor
+    assert diagnostic.native_value == "unknown"
     assert build_h6199_control_query("camera_status") == frame("aa32")
     for value, expected in ((0, "absent"), (1, "healthy"), (2, "incompatible"), (255, "unknown")):
         c._notify_callback(None, bytearray(frame(f"aa32{value:02x}")))
         assert diagnostic.native_value == expected
         assert light.available and c.is_on
-    c.camera_status = "healthy"
+    c._notify_callback(None, bytearray(frame("aa3201")))
+    c._notify_callback(None, bytearray(frame("aa3201")))
+    assert sensor.GoveeBLECameraStatus(c).native_value == "healthy"
     await c._send_state_queries()
     assert diagnostic.native_value == "healthy" and light.available
-    c._clear_client_state(c._client)
+    c._present = True
+    client = c._client
+    client.is_connected = False
+    c._disconnected_callback(client)
     assert c.camera_status == "unknown" and c.gradient is None
+    assert diagnostic.native_value == "healthy" and diagnostic.available
+    assert sensor.GoveeBLECameraStatus(c).native_value == "unknown"
+    c._set_present(False)
+    assert not diagnostic.available
+
+
+async def test_camera_report_cache_does_not_restore_across_qualification_or_authorise_video(coordinator, camera_sensor):
+    c = coordinator
+    c._notify_callback(None, bytearray(frame("aa3201")))
+    assert camera_sensor.native_value == "healthy"
+    c._notify_callback(None, bytearray(frame("aa06" + b"1.11.00".hex())))
+    assert camera_sensor.native_value == "unknown"
+    c._notify_callback(None, bytearray(frame("aa3202")))
+    c._notify_callback(None, bytearray(frame("aa06" + b"1.10.04".hex())))
+    assert camera_sensor.native_value == "unknown"
+    c._notify_callback(None, bytearray(frame("aa3201")))
+    assert camera_sensor.native_value == "healthy"
+    c._notify_callback(None, bytearray(frame("aa3202")))
+    assert camera_sensor.native_value == "incompatible"
+    assert "Game" not in GoveeBLELight(c).effect_list
+    c._expire_optional_observations({"camera_status": c._field_revisions["camera_status"]})
+    assert c.camera_status == "unknown" and camera_sensor.native_value == "incompatible"
+    assert "Game" in GoveeBLELight(c).effect_list
+
+
+@pytest.mark.parametrize("report_timing", ["before", "during"])
+async def test_deferred_camera_sensor_discards_unqualified_reports(coordinator, hass, monkeypatch, report_timing):
+    c = coordinator
+    if report_timing == "before":
+        c._notify_callback(None, bytearray(frame("aa3201")))
+    c._notify_callback(None, bytearray(frame("aa06" + b"1.11.00".hex())))
+    entry = SimpleNamespace(runtime_data=c, async_on_unload=Mock())
+    added = []
+    await sensor.async_setup_entry(hass, entry, added.extend)
+    assert not added
+    if report_timing == "during":
+        c._notify_callback(None, bytearray(frame("aa3202")))
+    c._notify_callback(None, bytearray(frame("aa06" + b"1.10.04".hex())))
+    entity = added[0]
+    monkeypatch.setattr(entity, "async_write_ha_state", Mock())
+    remove = c.async_add_listener(entity._handle_coordinator_update)
+    try:
+        assert entity.native_value == "unknown"
+        c._notify_callback(None, bytearray(frame("aa3201")))
+        assert entity.native_value == "healthy"
+        c._expire_optional_observations({"camera_status": c._field_revisions["camera_status"]})
+        assert entity.native_value == "healthy"
+    finally:
+        remove()
+        for call in entry.async_on_unload.call_args_list:
+            call.args[0]()
 
 
 @pytest.mark.parametrize("control,opcode", [("strip_direction", "30"), ("camera_position", "31"), ("gradient", "a3")])
@@ -201,11 +269,11 @@ async def test_native_entity_to_generated_wire_and_fresh_notification(coordinato
 
 @pytest.mark.parametrize("connection_mode", ["release", "hold"])
 async def test_optional_camera_silence_does_not_fail_basic_refresh(
-    coordinator, monkeypatch, virtual_clock, connection_mode
+    coordinator, camera_sensor, monkeypatch, virtual_clock, connection_mode
 ):
     c = coordinator
     c.connection_mode = connection_mode
-    c.camera_status = "healthy"
+    c._notify_callback(None, bytearray(frame("aa3201")))
 
     async def respond(_uuid, packet, **kwargs):
         replies = {frame("aa01"): frame("aa0101"), frame("aa04"): frame("aa042a"), frame("aa05"): frame("aa051500")}
@@ -236,6 +304,7 @@ async def test_optional_camera_silence_does_not_fail_basic_refresh(
     if connection_mode == "hold":
         assert all(packet[:2] != b"\xaa\xa5" for packet in packets)
     assert c.camera_status == "unknown" and c.is_on and GoveeBLELight(c).available
+    assert camera_sensor.native_value == "healthy"
     assert c.brightness_pct == 42 and c.color_mode is ParsedMode.COLOUR
     c._client.disconnect.assert_not_awaited()
 

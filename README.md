@@ -37,6 +37,9 @@
 
 To request support for another model or contribute protocol schemas, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
+On qualified H6199 revisions, Camera status shows the last report received from the camera and starts unknown until a report arrives.
+Missing replies or brief Bluetooth reconnects do not change that report; this diagnostic is not a real-time connection monitor.
+
 ## Effect Studio
 
 Effect Studio is a Home Assistant sidebar panel that gives you full control of supported devices' effect capabilities.  Explore built-in scenes, create custom effects with colours and layers, tune music and camera/video settings, and preview changes live before saving.  The panel shows the controls available for your device.
