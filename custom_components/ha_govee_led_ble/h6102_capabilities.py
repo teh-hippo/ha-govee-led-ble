@@ -1,4 +1,4 @@
-"""Exact H6102 APK candidate capabilities, resolved per device."""
+"""Exact H6102 app candidate capabilities, resolved per device."""
 
 from dataclasses import dataclass, replace
 from typing import Literal

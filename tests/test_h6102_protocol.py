@@ -1,4 +1,4 @@
-"""H6102 APK hypotheses and profile-directed shared codecs, not app captures."""
+"""H6102 app hypotheses and profile-directed shared codecs, not app captures."""
 
 from dataclasses import replace
 

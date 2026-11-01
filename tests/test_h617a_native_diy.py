@@ -1,4 +1,4 @@
-"""APK-source candidates only: no radio, HA instance or rendering claims."""
+"""app-source candidates only: no radio, HA instance or rendering claims."""
 
 import base64
 import json

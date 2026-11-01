@@ -43,8 +43,7 @@ def h6199_camera_controls_state(model: str, identity: object) -> CapabilityState
 
 
 def _h6199_video_states(identity: object) -> dict[str, CapabilityState]:
-    # Android 7.6.01 pact_tvlightv2/pact/Support.java:331-402. 0x20 is
-    # Wi-Fi hardware, 0x21 Wi-Fi firmware; DeviceSkus.f119828e is 1.00.30.
+    # 0x20 is Wi-Fi hardware, 0x21 Wi-Fi firmware; the app's minimum is 1.00.30.
     fw, hw, wifi_hw, wifi_fw = (
         identity_version(getattr(identity, field, None))
         for field in ("fw_version", "hw_version", "subordinate_20_version", "subordinate_21_version")
@@ -71,7 +70,7 @@ def _h6199_video_states(identity: object) -> dict[str, CapabilityState]:
     if pact in ((3, 1), (4, 1)):
         sound = CapabilityState.SUPPORTED
     else:
-        # OtaType: major 1 is Telink; major 3 except 3.04 is FRK V1.
+        # Hardware major 1 is Telink; major 3 except 3.04 is FRK V1.
         sound = state(
             None if hw is None else hw // 10000 in (1, 3) and hw // 100 != 304,
             None if fw is None or hw is None else fw >= (10601 if hw // 10000 == 1 else 10702),

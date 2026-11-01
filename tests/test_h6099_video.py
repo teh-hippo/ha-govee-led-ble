@@ -1,4 +1,4 @@
-"""H6099 APK video evidence and requested-only firmware gating, not owner qualification."""
+"""H6099 app video evidence and requested-only firmware gating, not owner qualification."""
 
 import asyncio
 from dataclasses import replace
