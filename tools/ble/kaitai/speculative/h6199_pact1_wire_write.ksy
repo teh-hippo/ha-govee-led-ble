@@ -5,7 +5,7 @@ meta:
   imports:
     - ../govee_shared
 doc: |
-  SPECULATIVE H6199 Pact 1/1, issue #293.
+  H6199 Pact 1/1.
   Compatibility hypothesis: the legacy producer uses a scaled 20..254 brightness
   register and static-colour selector 0x0b with RGB, a two-byte Kelvin field and
   a little-endian fifteen-bit segment mask.  Runtime authoring permits only

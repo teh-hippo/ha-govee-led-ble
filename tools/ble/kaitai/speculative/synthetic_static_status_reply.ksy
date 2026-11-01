@@ -6,7 +6,7 @@ meta:
     - /govee_segment_page
     - /status_reply
 doc: |
-  SPECULATIVE test-only layout for issue #286, not a device protocol claim.
+  test-only layout, not a device protocol claim.
   H7001 is a synthetic exact profile, not a supported product. Flags, RGB and
   Kelvin fields here are invented solely to exercise optional observation;
   no physical device is assumed to use these bytes. Segment pages reuse the

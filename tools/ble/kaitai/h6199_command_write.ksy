@@ -7,7 +7,7 @@ meta:
     - speculative/h6199_control_payload
 doc: |
   H6199 20-byte command frame.  The final byte is the XOR of bytes 0 through 18.
-  Issue #294 DIY0a, direction30, position31 and Gradient A3 extensions are
+  DIY0a, direction30, position31 and Gradient A3 extensions are
   speculative exact-model app/direct-register evidence, not official-app captures;
   their payloads remain in speculative/h6199_control_payload.ksy.
 seq:

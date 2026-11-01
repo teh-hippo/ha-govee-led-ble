@@ -5,7 +5,7 @@ meta:
   imports:
     - ../govee_shared
 doc: |
-  SPECULATIVE H6076, issue #343.
+  H6076.
   Evidence source classes: a reporter's decrypted Android HCI snoop of the Govee
   app driving an H6076 (hardware 3.05.00, software 1.04.05, V1 encrypted
   session) and Android Govee 7.5.30 floor-lamp music selector and capability-gate

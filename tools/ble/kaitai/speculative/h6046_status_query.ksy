@@ -3,7 +3,7 @@ meta:
   title: Govee H6046 status queries
   endian: le
 doc: |
-  SPECULATIVE (audited prospective) H6046, support issue #479.
+  H6046.
   Evidence class: exact-model behavioural audit, not captures or hardware
   qualification. Known Pact 1/1 and 2/1 use these 20-byte AA queries.
   XOR of bytes 0..18 occupies byte 19 and is checked by the transport.

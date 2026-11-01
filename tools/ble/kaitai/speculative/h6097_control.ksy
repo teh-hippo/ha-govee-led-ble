@@ -5,7 +5,7 @@ meta:
   imports:
     - h60a_bulk
 doc: |
-  SPECULATIVE H6097 support for issue #431.  The ordinary 41 register uses
+  H6097.  The ordinary 41 register uses
   selector 02 and the shared previous/on/off state codebook, not a boolean or
   bulk query.  Reply availability/status is independent of the state byte.
   Unknown state values and suffixes remain opaque to runtime semantics.

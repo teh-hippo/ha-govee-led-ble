@@ -5,8 +5,8 @@ meta:
   imports:
     - ../govee_shared
 doc: |
-  SPECULATIVE H617A support work under capability umbrella issue #286;
-  Fountain alternative geometry also relates to issue #129 (whose historical
+  H617A support work under capability umbrella;
+  Fountain alternative geometry also relates to (whose historical
   segment-count wording must not be interpreted as physical IC metadata).
   Hypothesis: Android 7.6.01 H617A music authoring uses the generalised
   mode-specific tails below.

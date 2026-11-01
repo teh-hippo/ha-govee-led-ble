@@ -12,7 +12,7 @@ meta:
     - h607c_paint_body
     - h607c_dreamview_group
 doc: |
-  SPECULATIVE H607C, support request #507, owner confirmations #511.
+  H607C.
   Compatibility hypothesis: catalogue/body family and transport command are
   independent. The scene command itself supplies its catalogue marker once.
   Music adds its mode after command 41; native DIY uses command 56 and

@@ -5,7 +5,7 @@ meta:
   imports:
     - h6046_command_write
 doc: |
-  SPECULATIVE (audited prospective) H6046, support issue #479.
+  H6046.
   Evidence class: exact-model behavioural audit, not captures or hardware
   qualification. Known Pact 1/1 and 2/1 use ordinary 0x33 command results and
   A3 upload results. Each 20-byte frame ends with XOR of bytes 0..18.

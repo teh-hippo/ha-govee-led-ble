@@ -7,7 +7,7 @@ meta:
     - ../govee_shared
     - h6102_status_reply
 doc: |
-  SPECULATIVE H6125, issue #117.
+  H6125.
   Evidence source class: reachable Android 7.6.01 status-parsing behaviour; no
   official-app BLE capture of an identified H6125 is available.
   Compatibility hypothesis: the extended pact-1 route replies with the

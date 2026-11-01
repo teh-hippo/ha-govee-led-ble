@@ -8,7 +8,7 @@ meta:
     - h6097_music_write
     - ../govee_segment_page
 doc: |
-  SPECULATIVE H6097 support for issue #431.  Power, percent brightness,
+  H6097.  Power, percent brightness,
   identities, static Kelvin, fourteen-zone pages, physical IC count and video
   settings share the H6099 field layouts.  Ordinary AA41 adds the three-state
   power-on setting.  Music confirms only mode and sensitivity: contradictory

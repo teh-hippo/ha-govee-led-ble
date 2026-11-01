@@ -7,7 +7,7 @@ meta:
     - ../govee_common
     - ../govee_shared
 doc: |
-  SPECULATIVE H7020, support PR #363. Candidate commands use the shared
+  H7020. Candidate commands use the shared
   20-byte envelope, with four-byte masks for up to two fifteen-bulb strings.
   Colour temperature uses white direct RGB and a table-derived companion.
   The configured string count is not physical attachment detection.

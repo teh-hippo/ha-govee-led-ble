@@ -5,7 +5,7 @@ meta:
   imports:
     - ../govee_shared
 doc: |
-  SPECULATIVE H61F5 issue #392.  Android 7.6.01 MusicModeNewH61F6 (goodsType 261)
+  H61F5.  Android 7.6.01 MusicModeNewH61F6 (goodsType 261)
   uploads A3 command 41 (mode followed by this palette and tail) before sending
   the mode selector.  Physical IC count (50 on uncut H61F5, read via AA 40)
   controls dependent geometry.

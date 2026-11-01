@@ -5,7 +5,7 @@ meta:
   imports:
     - ../govee_shared
 doc: |
-  SPECULATIVE H6097 support for issue #431.  Classic selectors 03, 04 and 06
+  H6097.  Classic selectors 03, 04 and 06
   carry sensitivity, style and optional fixed RGB.  Energetic (05) instead
   uploads a companion before its mode/sensitivity-only selector, as do the
   newer modes.  Unknown suffixes, rendered results, ACK timing and revision

@@ -3,7 +3,7 @@ meta:
   title: H607C candidate onboard music selector
   endian: le
 doc: |
-  SPECULATIVE H607C, support request #507, owner confirmations #511.
+  H607C.
   Compatibility hypothesis: selector 13 carries the native mode and
   sensitivity after its companion upload. Paired mode 130 selects independent
   pole/base sections. Mode 115 retains a numeric name until its presentation

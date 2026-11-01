@@ -5,7 +5,7 @@ meta:
   imports:
     - ../govee_shared
 doc: |
-  SPECULATIVE H60A6 native DIY body for #402.  Compatibility hypothesis:
+  H60A6 native DIY.  Compatibility hypothesis:
   family 797 uses a complete 0x50-prefixed body with a little-endian payload
   length, background palette and length-delimited typed layers.  This is not
   an A3 logical header.  Each recognised layer has a speed byte and a

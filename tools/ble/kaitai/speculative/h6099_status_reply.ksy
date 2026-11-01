@@ -6,7 +6,7 @@ meta:
     - ../govee_shared
     - ../govee_segment_page
 doc: |
-  SPECULATIVE H6099 reply frame for issue #258, checked against Android 7.6.01
+  H6099 reply, checked against Android 7.6.01
   H6099 status parsing.  AA 05 15 contains a flag followed by big-endian Kelvin
   (zero for RGB).  Companion-backed music replies carry only mode and
   sensitivity; trailing bytes are not legacy style or fixed colour.  Mode 0x0a

@@ -7,7 +7,7 @@ meta:
     - ../govee_shared
     - h617a_control_payload
 doc: |
-  SPECULATIVE H6076, issue #343.
+  H6076.
   Evidence source classes: a reporter's decrypted Android HCI snoop of the Govee
   app driving an H6076 (hardware 3.05.00, software 1.04.05, V1 encrypted
   session), which shows the Torch and Separation bodies in full, and Android
@@ -22,7 +22,7 @@ doc: |
   Skittles, Candy Crush, Fusion and Shiny were not captured in full.  Their bodies
   follow the Torch layout in the app producer code.  The reporter's separate LAN
   integration (scroom/ha-govee-local-segments) builds byte-identical bodies and
-  reports that all twelve effects react on the lamp; that is plaintext replay, not
+  Owners report that all twelve effects react on the lamp; that is plaintext replay, not
   a Bluetooth capture.
   Unresolved assumptions: the H6076's physical IC count, which decides the
   Separation speed byte beyond the captured 0x61 (fewer than 30 ICs, fade off),

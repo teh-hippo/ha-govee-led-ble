@@ -7,7 +7,7 @@ meta:
     - ../govee_common
     - ../govee_shared
 doc: |
-  SPECULATIVE H617C, issue #413.
+  H617C.
   Compatibility hypothesis: the H617C modern DreamColor route (product type 70,
   Pact 10/1) replies with 20-byte XOR-checksummed AA frames carrying power,
   percentage brightness, active colour mode, firmware and hardware version

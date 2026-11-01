@@ -1,4 +1,4 @@
-"""Issue #297: a different generated grammar survives every native video entry."""
+"""A different generated grammar survives every native video entry."""
 
 from dataclasses import replace
 from importlib import import_module

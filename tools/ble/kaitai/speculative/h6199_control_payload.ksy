@@ -3,7 +3,7 @@ meta:
   title: H6199 installation, Gradient and DIY selector payloads
   endian: le
 doc: |
-  SPECULATIVE H6199 additions for issue #294.  Android 7.6.01 exact-model
+  H6199.  Android 7.6.01 exact-model
   camera settings and light control behaviour plus direct register tests on HW3.02.01,
   FW1.10.04, WiFi HW1.03.00/FW1.00.33, Pact2/1 establish the hypothesis.
   These are NOT official-app BLE captures or schema promotion evidence.

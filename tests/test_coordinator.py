@@ -1400,7 +1400,7 @@ def test_note_identity_retains_versions_until_own_device_is_registered(hass, coo
 
 
 def test_keep_alive_started_as_background_task(coord):
-    """#86 guard: the lifetime keep-alive loop must be a background task (never a tracked
+    """Guard: the lifetime keep-alive loop must be a background task (never a tracked
     setup task), or HA bootstrap waits on it and logs a "blocking start up" warning."""
     created = {}
 

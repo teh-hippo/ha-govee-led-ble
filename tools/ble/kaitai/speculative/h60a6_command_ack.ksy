@@ -3,7 +3,7 @@ meta:
   title: H60A6 ordinary and native effect acknowledgements
   endian: le
 doc: |
-  SPECULATIVE H60A6 support for issue #402.  Compatibility hypothesis:
+  H60A6.  Compatibility hypothesis:
   ordinary 33 and A4/58 replies put the result after the opcode, whereas
   A3/58 has one opaque byte before the result.  Zero denotes success.
   Acknowledgements have

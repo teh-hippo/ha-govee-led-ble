@@ -5,7 +5,7 @@ meta:
   imports:
     - ../govee_shared
 doc: |
-  SPECULATIVE H1A42 issue #391.  Android 7.6.01 MusicModeNewH1A43 (goodsType 400)
+  H1A42.  Android 7.6.01 MusicModeNewH1A43 (goodsType 400)
   uploads this payload under A3 subtype 0x41 before the 33 05 13 music selector
   for palette-backed modes.
 seq:

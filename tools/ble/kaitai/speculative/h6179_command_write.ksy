@@ -5,10 +5,10 @@ meta:
   imports:
     - ../govee_shared
 doc: |
-  SPECULATIVE H6179 compatibility hypothesis: exact-SKU command writes use a
+  H6179 compatibility hypothesis: exact-SKU command writes use a
   20-byte 0x33 envelope with the candidate power, brightness, mode, scene, DIY,
   static-colour, music, and boolean current-adaptation layouts below.
-  Owner confirmations: #448.  Current adaptation may restart the controller;
+   Current adaptation may restart the controller;
   its value must be queried afresh after reconnecting.
   Unresolved assumptions: no exact-model capture verifies the selectors, field
   meanings, brightness scale, optional music colour, opaque tails, or XOR

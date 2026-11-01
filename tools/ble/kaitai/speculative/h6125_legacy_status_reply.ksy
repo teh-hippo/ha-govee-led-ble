@@ -7,7 +7,7 @@ meta:
     - h6102_status_reply
     - govee_rgb_segment_page
 doc: |
-  SPECULATIVE H6125, issue #117.
+  H6125.
   Compatibility hypothesis: legacy controllers use submode 0x0b colour and
   A2 RGB-only pages. The original H612526 route uses submode 0x0c music.
   Application consumers establish these layouts, not firmware acceptance.

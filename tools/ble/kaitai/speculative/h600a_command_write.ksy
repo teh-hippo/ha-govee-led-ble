@@ -5,7 +5,7 @@ meta:
   imports:
     - ../govee_shared
 doc: |
-  SPECULATIVE H600A support request #492, owner confirmations #494.
+  H600A.
   Compatibility hypothesis: known Pact 1/1 and 2/1 controllers use shared
   power and percentage brightness commands, mode 0D with direct RGB,
   big-endian Kelvin and companion RGB, and little-endian 16-bit scene/DIY

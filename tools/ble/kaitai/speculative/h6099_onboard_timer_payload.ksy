@@ -2,7 +2,7 @@ meta:
   id: h6099_onboard_timer_payload
   title: H6099 onboard timer logical payloads (documentation only)
 doc: |
-  SPECULATIVE H6099, support issue #258.  Hypothesis: Govee Android 7.6.01
+  H6099.  Hypothesis: Govee Android 7.6.01
   H6099 timer payloads use opcode 0x23 with a 17-byte read-all reply body (frame
   offsets 2 through 18) containing one ignored prefix byte and four four-byte
   timer records.  Nested types describe the one-byte query and five-byte write

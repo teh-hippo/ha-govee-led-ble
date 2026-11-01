@@ -5,7 +5,7 @@ meta:
   imports:
     - ../govee_shared
 doc: |
-  SPECULATIVE RGB-only pages, H6125 #117 and H6072 #486.
+  RGB-only pages, H6125 and H6072.
   Compatibility hypothesis: legacy A2 pages contain a one-based group and
   model-declared RGB-only slots, with no brightness byte. Only the declared
   segment count is meaningful. Unused slots and suffix bytes remain opaque;

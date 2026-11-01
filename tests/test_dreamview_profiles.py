@@ -230,7 +230,7 @@ async def test_h66a0_dreamview_profile_capacity_and_synthetic_group(hass):
     with pytest.raises(ValueError):
         build_dreamview_command("member_brightness", {"index": 10, "level": 80}, h66a0)
 
-    # Synthetic members exercise the two-member layout reported in issue #408.
+    # Synthetic members exercise the two-member layout reported by an owner.
     h1a42_member = member(
         address="AA:BB:CC:DD:EE:01",
         cmd_ver=1,

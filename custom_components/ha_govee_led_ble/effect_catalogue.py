@@ -854,7 +854,7 @@ H600A_DIY_FAMILIES: Final = tuple(
         rate_min=0,
         rate_max=100,
         palette_max=8,
-        source_reference="H600A whole-bulb basic and mixed DIY codebook (#492)",
+        source_reference="H600A whole-bulb basic and mixed DIY codebook",
     )
     for name, label, family in (
         ("fade", "Fade", 0),
@@ -1542,7 +1542,7 @@ H7025_NATIVE_MUSIC_MODES: Final = tuple(
 )
 
 H60A1_DIY_FAMILIES: Final = tuple(
-    replace(family, palette_max=8, source_reference="H60A1 #402")
+    replace(family, palette_max=8, source_reference="H60A1")
     for family in H617A_TYPE04_FAMILIES
     if family.family in (0, 1, 2, 3, 8, 9, 10)
 )

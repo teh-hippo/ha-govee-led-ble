@@ -5,7 +5,7 @@ meta:
   imports:
     - h60a_bulk
 doc: |
-  SPECULATIVE H60A6 support for issue #402.  Compatibility hypothesis:
+  H60A6.  Compatibility hypothesis:
   independently writable panel/ring enable registers are available on Pact
   1/1, 1/2 and 1/3, independent of segmented-colour geometry.  EE30 reports
   master, panel and ring flags independently; only bit zero is interpreted.

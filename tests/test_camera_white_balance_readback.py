@@ -1,8 +1,8 @@
-"""Issue #303 regression checks for protocol, readback and camera applicability.
+"""Regression checks for protocol, readback and camera applicability.
 
 Only BLE connection/I/O is stubbed unless a test explicitly isolates validation.
 Synthetic profiles prove software capability boundaries, not H66A0 qualification.
-Run: uv run --no-sync pytest tests/test_issue_303.py -v --tb=short
+Run: uv run --no-sync pytest tests/test_camera_white_balance_readback.py -v --tb=short
 """
 
 from dataclasses import replace

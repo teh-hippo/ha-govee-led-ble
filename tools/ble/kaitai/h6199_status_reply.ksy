@@ -9,7 +9,7 @@ meta:
 doc: |
   H6199 20-byte status reply.  The final byte is the XOR of bytes 0 through 18.
   Segment groups carry 4+4+4+3 records; the final four bytes remain opaque.
-  Issue #294 DIY, static Gradient, direction30, position31, status32 and A3
+  DIY, static Gradient, direction30, position31, status32 and A3
   extensions are speculative app/direct-register evidence, not official-app
   captures; payloads remain in speculative/h6199_control_payload.ksy.
 seq:

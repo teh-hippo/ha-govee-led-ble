@@ -583,7 +583,7 @@ H66A0_MUSIC_VARIANTS = (
     ),
 )
 
-# Android 7.6.01 h61d3/adjustNew/music/MusicModeNewH1A43, goods 400 + issue #391 hardware sweep.
+# Android 7.6.01 h61d3/adjustNew/music/MusicModeNewH1A43, goods 400 hardware sweep.
 H1A42_MUSIC_VARIANTS = (
     *(
         replace(
@@ -627,7 +627,7 @@ H1A42_MUSIC_VARIANTS = (
     ),
 )
 
-# Android 7.6.01 h61d3/adjustNew/music/MusicModeNewH61F6, goods 261 + issue #392 hardware sweep.
+# Android 7.6.01 h61d3/adjustNew/music/MusicModeNewH61F6, goods 261 hardware sweep.
 H61F5_MUSIC_VARIANTS = (
     *(
         replace(
@@ -1015,7 +1015,7 @@ H7025_MUSIC_VARIANTS = (
     ),
     MusicVariant(
         0x48,
-        "H7025 Hopping producer and issue #148 background/brightness replay",
+        "H7025 Hopping producer and background/brightness replay",
         "h7025_music_body",
         bytes.fromhex(f"4807{_H7025_PALETTE}010101030000"),
         (
@@ -1054,7 +1054,7 @@ H7025_MUSIC_VARIANTS = (
     ),
     MusicVariant(
         0x34,
-        "H7025 issue #148 Piano tail 00 05 0a 04 04; app limits palette to five and keeps gradient off",
+        "H7025 Piano tail 00 05 0a 04 04; app limits palette to five and keeps gradient off",
         "h7025_music_body",
         bytes.fromhex("3405ff0000ff7f00ffff0000ff000000ff00050a0404"),
         palette_bounds=(1, 5),

@@ -5,7 +5,7 @@ meta:
   imports:
     - ../govee_shared
 doc: |
-  SPECULATIVE H60A6 support for issue #402.  Compatibility hypothesis:
+  H60A6.  Compatibility hypothesis:
   Pact 1/1 uses the whole-device 0D colour operation, without a segment mask.
   Kelvin writes use a white direct-RGB prefix and a companion RGB value.
   This route is independent of native panel/ring enable flags and is not

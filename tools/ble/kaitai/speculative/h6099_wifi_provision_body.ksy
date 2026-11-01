@@ -3,7 +3,7 @@ meta:
   title: H6099 Wi-Fi provisioning common body (documentation only)
   endian: be
 doc: |
-  SPECULATIVE H6099, support issue #258.  Hypothesis: H6099 Wi-Fi provisioning
+  H6099.  Hypothesis: H6099 Wi-Fi provisioning
   uses the shared multi-packet provisioning body in Govee Android 7.6.01:
   byte-length-prefixed SSID and password fields, run mode, timezone hour, IoT
   version, timezone minute, and branch-dependent extension bytes.  Input is the

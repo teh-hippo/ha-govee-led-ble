@@ -5,7 +5,7 @@ meta:
   imports:
     - h6076_music_write
 doc: |
-  SPECULATIVE H6072, owner confirmations #486.
+  H6072.
   Compatibility hypothesis: the six legacy selectors and six companion-backed
   selectors share the floor-lamp music records. Product admission and companion
   defaults are independently qualified for H6072.

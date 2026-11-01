@@ -7,7 +7,7 @@ meta:
     - ../govee_shared
     - h617a_control_payload
 doc: |
-  SPECULATIVE H7025, issue #148.
+  H7025.
   The reporter's working snapshot replays corroborate the IDs and tail prefixes
   selected by Android 7.6.01 H7025 music authoring.  This is not an H617A body alias.
   Its exact caller supplies Hopping ID 48, independently of the shared Hopping

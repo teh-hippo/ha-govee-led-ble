@@ -5,7 +5,7 @@ meta:
   imports:
     - h60a_bulk
 doc: |
-  SPECULATIVE H607C, support request #507, owner confirmations #511.
+  H607C.
   Compatibility hypothesis: pole/base writes are independent selector/boolean
   commands. Power-on writes carry selector 02 and previous/on/off state;
   its query uses selector zero and replies retain an independent open flag.

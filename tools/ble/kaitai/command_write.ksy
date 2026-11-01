@@ -7,7 +7,7 @@ meta:
     - govee_common
 doc: |
   H617A 20-byte command frame.  The final byte is the XOR of bytes 0 through 18.
-  The shared boolean payload also covers H6102 limit opcode 0E (#115), which
+  The shared boolean payload also covers H6102 limit opcode 0E, which
   emits 0E and one boolean byte in Android 7.6.01.  This app-derived extension is
   not H617A product authorisation or capture qualification.
 seq:

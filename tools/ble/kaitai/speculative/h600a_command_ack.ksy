@@ -3,7 +3,7 @@ meta:
   title: Govee H600A ordinary and A3 upload acknowledgement
   endian: le
 doc: |
-  SPECULATIVE H600A support request #492, owner confirmations #494.
+  H600A.
   Compatibility hypothesis: ordinary 33 replies and A3/01 scene or A3/04 DIY
   upload results carry a zero-success status at byte 2. Positive upload
   results precede activation; they do not establish state or rendering.

@@ -557,7 +557,7 @@ _H6076_PROFILE = ModelProfile(
     min_color_temp_kelvin=2700,
     max_color_temp_kelvin=6500,
     readback_min_color_temp_kelvin=2200,
-    # Issue #476: static status can omit Kelvin. Segment rendering confirms plausible
+    # Static status can omit Kelvin. Segment rendering confirms plausible
     # white, not an exact Kelvin measurement or losslessly restorable native-white intent.
     kelvin_companion_uses_table=True,
     color_temp_step_kelvin=100,

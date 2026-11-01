@@ -2,7 +2,7 @@ meta:
   id: h6125_legacy_segment_query
   title: Govee H6125 legacy RGB-only segment query
 doc: |
-  SPECULATIVE H6125, issue #117.
+  H6125.
   Compatibility hypothesis: legacy segment readback queries four A2 groups
   for fifteen logical segments.  The command carries a one-based group and
   zero-filled request bytes.  Reply padding and hardware acceptance remain

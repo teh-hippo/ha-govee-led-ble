@@ -5,7 +5,7 @@ meta:
   imports:
     - ../govee_shared
 doc: |
-  SPECULATIVE H607C, support request #507, owner confirmations #511.
+  H607C.
   Compatibility hypothesis: native bodies begin with 0b and a family byte.
   Composite 153 stores two effect/length/parameter sections, without
   repeating each section's native marker or family. A zero effect and

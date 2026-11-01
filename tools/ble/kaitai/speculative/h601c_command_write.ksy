@@ -5,7 +5,7 @@ meta:
   imports:
     - ../govee_shared
 doc: |
-  SPECULATIVE H601C support request (#329, #403).  H601C uses mode 0D with
+  H601C.  H601C uses mode 0D with
   direct RGB, big-endian Kelvin, and companion RGB; mode 04 with a 16-bit
   little-endian scene selector; and mode 0A with a 16-bit little-endian DIY
   selector.  Explicit Kelvin uses direct FFFFFF and the first ordered entry

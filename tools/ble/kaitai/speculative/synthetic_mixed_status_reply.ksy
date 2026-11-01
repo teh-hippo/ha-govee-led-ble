@@ -6,7 +6,7 @@ meta:
     - /status_reply
     - /govee_segment_page
 doc: |
-  SPECULATIVE test-only composition for issue #278, not a device protocol claim.
+  test-only composition, not a device protocol claim.
   Reuses H617A power status with the fixture's 14-segment, four-slot layout.
   These are the only readable domains of the synthetic integration profile.
   This does not extend H66A0 evidence or enable any runtime model.

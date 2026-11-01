@@ -5,7 +5,7 @@ meta:
   imports:
     - ../govee_shared
 doc: |
-  SPECULATIVE H607C, support request #507.
+  H607C.
   Compatibility hypothesis: catalogue type 6 carries a marker-prefixed
   length-delimited layer container. A3 upload uses subtype 0a and removes
   that marker once. Common layer fields retain their existing encoding;

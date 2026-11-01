@@ -5,7 +5,7 @@ meta:
   imports:
     - ../govee_shared
 doc: |
-  SPECULATIVE H1A42 issue #391.  Hardware measurements and Android 7.6.01
+  H1A42.  Hardware measurements and Android 7.6.01
   MusicModeNewH1A43 (goodsType 400) select the eight mode IDs below over 33 05 13.
   Classic modes (03..06) carry sensitivity, calm flag, fixed-colour flag, and
   optional RGB triple.  Palette modes (84, 85, 92, A3) carry only mode ID and

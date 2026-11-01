@@ -5,7 +5,7 @@ meta:
   imports:
     - h60a6_diy_body
 doc: |
-  SPECULATIVE H60A6 support for issue #402.  Compatibility hypothesis:
+  H60A6.  Compatibility hypothesis:
   native paint bodies use A4, a sixteen-bit frame index/count and subtype 58.
   Frames have a trailing XOR byte.  The start frame contains marker 01,
   count and subtype; the final frame has index FFFF.  Single-data-frame

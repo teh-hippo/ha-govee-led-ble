@@ -5,7 +5,7 @@ meta:
   imports:
     - ../govee_shared
 doc: |
-  SPECULATIVE H60A1 and H60A6 support for issue #402.  Compatibility
+  H60A1 and H60A6.  Compatibility
   hypothesis: AC03 reads return ordered, fixed-size response frames carrying
   a complete sequence of domain/length/value records.  The first response
   declares the frame count and final-frame payload length.  Single-frame

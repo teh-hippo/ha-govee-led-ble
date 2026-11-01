@@ -5,7 +5,7 @@ meta:
   imports:
     - ../govee_shared
 doc: |
-  SPECULATIVE H66A0 issue #390.  Android 7.6.01 H66A0 music control uploads A3
+  H66A0.  Android 7.6.01 H66A0 music control uploads A3
   command 41 (mode followed by this palette and tail) before sending the mode
   selector.  Default companions carry seven RGB colours, and the mode
   configuration admits 1-8 colours (2-8 for Windmill).  Physical IC count (90

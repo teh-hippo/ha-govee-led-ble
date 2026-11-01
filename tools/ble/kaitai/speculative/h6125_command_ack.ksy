@@ -2,7 +2,7 @@ meta:
   id: h6125_command_ack
   title: Govee H6125 ordinary, A1 and A3 acknowledgements
 doc: |
-  SPECULATIVE H6125, issue #117.
+  H6125.
   Compatibility hypothesis: ordinary replies and A1 uploads use result byte 2;
   A3 music uploads use result byte 3, while A3 DIY uses byte 2.
   The shared single-frame, A1, and A3 acknowledgement handlers
