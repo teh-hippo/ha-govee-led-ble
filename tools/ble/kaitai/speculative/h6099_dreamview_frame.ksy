@@ -1,9 +1,9 @@
 meta:
   id: h6099_dreamview_frame
-  title: H6099 MovieFeastV2 module commands and individual reads
+  title: H6099 DreamView module commands and individual reads
   endian: be
 doc: |
-  H6099, H66A0.  Android 7.6.01 MovieFeastV2
+  H6099, H66A0.  The app's DreamView
   control selects module 0x60.  Group switch writes {on, 1}, queries with
   discriminator 1, and reads the first reply byte as on.  Individual module 0x60
   commands establish the member brightness, member connection, same brightness,
