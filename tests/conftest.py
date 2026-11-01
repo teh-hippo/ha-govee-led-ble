@@ -27,6 +27,11 @@ from tests.coordinator_test_support import _CONFIGURATION_URL
 
 @pytest.fixture
 async def virtual_clock():
+    """Advance asyncio timers and coordinator monotonic timestamps together.
+
+    Never patch a monotonic clock independently of absolute asyncio deadlines; filesystem/executor-backed
+    operations and real-time lifecycle tests stay outside virtual time.
+    """
     clock = VirtualClock()
     # Keep existing timers and coordinator receipt timestamps in the event loop's time domain.
     clock.vtime = asyncio.get_running_loop().time()

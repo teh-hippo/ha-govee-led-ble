@@ -172,6 +172,7 @@ class ModelProfile:
     dreamview_requires_group_ack: bool = False
     video_firmware_conditions: tuple[VideoFirmwareCondition, ...] = ()
     profile_identity_fields: frozenset[str] = frozenset()
+    # Set when Pact alone changes capabilities, so the profile also resolves before hardware/firmware replies arrive.
     profile_pact_dependent: bool = False
     # Exact-product revision policy, independent of compatible wire grammars.
     video_revision_policy: str | None = None
@@ -221,6 +222,7 @@ class ModelProfile:
     music_retry_after_upload: bool = True
     music_params_require_activation: bool = False
     # Physical IC count is independent of logical segment_count. None means unknown.
+    # Declared product geometry: the installed count read from the device (ReadDomain.PHYSICAL_IC_COUNT) overrides it.
     physical_ic_count: int | None = None
     ic_per_segment: int | None = None
     music_sensitivity_min: int = 0
@@ -247,6 +249,7 @@ class ModelProfile:
     scene_catalogue_sku: str | None = None
     legacy_scene_catalogue_sku: str | None = None
     selector_only_scene_bits: int | None = None
+    # scene_codes limits selector eligibility per revision; local_scenes use scene_id 0, effect_id = selector.
     scene_codes: frozenset[int] | None = None
     local_scenes: tuple[tuple[int, str], ...] = ()
     advanced_scene_carrier: tuple[int, int] | None = None

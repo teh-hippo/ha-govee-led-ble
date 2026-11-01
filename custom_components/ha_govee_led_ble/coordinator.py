@@ -1185,7 +1185,13 @@ class GoveeBLECoordinator(
         packet_validator: Callable[[bytes, ModelProfile], None] = require_profile_packet,
         on_write: Callable[[], None] | None = None,
     ) -> None:
-        """Write on the caller's connection without changing its transaction policy."""
+        """Write on the caller's connection without changing its transaction policy.
+
+        This is the only outbound BLE write path.  It validates the request against the effective profile,
+        applies the synchronous, stateless ``outbound_transform``, and installs optimistic state and command
+        expectations only once those guards pass.  Callers validate and build the full request before
+        cancelling previews, acquiring control or mutating state.
+        """
         try:
             self._require_not_shutdown()
             self._require_not_dreamview_claimed()
