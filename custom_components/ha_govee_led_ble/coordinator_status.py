@@ -94,6 +94,8 @@ def status_is_authorized(decoded: ParsedStatusEnvelope, profile: ModelProfile) -
     """Boolean registers have independent authorization, not the catch-all OTHER domain."""
     domain = decoded.generated.domain
     domain_name = domain if isinstance(domain, str) else getattr(domain, "name", "")
+    if getattr(decoded.generated, "is_device_info", False):
+        return profile.setting_grammar == "H607C" and bool(profile.boolean_controls)
     if domain_name == "bar_enable":
         return profile.setting_grammar == "H6046" and bool(profile.boolean_controls)
     if domain_name == "power_off_memory" and profile.setting_grammar == "H6046":
@@ -127,6 +129,7 @@ class ParsedColorModeResponse:
     effect: str | None = None
     scene_code: int | None = None
     diy_code: int | None = None
+    diy_companion: int | None = None
     music_mode: str | None = None
     video_mode: str | None = None
     video_parameters: dict[str, Any] | None = None
@@ -346,7 +349,9 @@ def parse_color_mode(generated: Any, model: str, *, profile: ModelProfile | None
         )
     if mode_name == "diy":
         detail = getattr(body, "mode_body", getattr(body, "detail", body))
-        return ParsedColorModeResponse(mode=ParsedMode.DIY, diy_code=int(detail.code))
+        return ParsedColorModeResponse(
+            mode=ParsedMode.DIY, diy_code=int(detail.code), diy_companion=getattr(detail, "companion", None)
+        )
     if mode_name == "music":
         detail = body.mode_body
         if not getattr(detail, "is_legacy", True):

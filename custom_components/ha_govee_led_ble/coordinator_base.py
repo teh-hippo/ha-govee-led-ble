@@ -82,6 +82,8 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     blank_screen_low_brightness_duration_seconds: int | None
     blank_screen_same_tone_duration_seconds: int | None
     diy_code: int | None
+    diy_companion: int | None
+    power_on_open_flag: int | None
     color_mode: ParsedMode | None
     _control_lock: BLEControlArbiter
     _lock: asyncio.Lock

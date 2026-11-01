@@ -191,6 +191,69 @@ def coordinator(hass, model="H6099", *, entry_id="dreamview-entry") -> Any:
     return c
 
 
+@pytest.mark.parametrize("operation", ["replace", "delete"])
+@pytest.mark.parametrize("accepted", [True, False])
+async def test_native_membership_acknowledgements_reach_the_transaction_through_notifications(
+    hass, operation, accepted
+):
+    c = coordinator(hass, "H607C")
+    c.pact_type, c.pact_code = 1, 1
+    c._resolve_device_profile()
+    client = SimpleNamespace(is_connected=True, write_gatt_char=AsyncMock())
+    c._client = client
+    c._notification_token = object()
+    c._ensure_connected = AsyncMock(return_value=client)
+    c._disconnect_locked = AsyncMock()
+    c._renew_foreground_lease = Mock()
+    members = (DreamviewMember(cmd_ver=1, mark=1, area_num=1, name="external-member"),)
+    terminal = (
+        build_dreamview_group(members, c.profile)[-1]
+        if operation == "replace"
+        else build_dreamview_command("delete_group", {}, c.profile)
+    )
+    response = (
+        frame("a36000" if accepted else "a36001")
+        if operation == "replace"
+        else frame("33600700" if accepted else "33600701")
+    )
+
+    async def transmit(_uuid, packet, *, response):
+        if packet == terminal:
+            pending = c._dreamview_ack
+            assert pending is not None
+            c._notify_callback(None, bytearray(frame("a35600")))
+            assert not pending[-1].done()
+            c._notify_callback(None, bytearray(acknowledgement))
+
+    acknowledgement = response
+    client.write_gatt_char.side_effect = transmit
+    with patch(
+        "custom_components.ha_govee_led_ble.coordinator_dreamview.async_release_dreamview_claims_for_centre",
+        new_callable=AsyncMock,
+    ) as release:
+
+        async def apply():
+            if operation == "replace":
+                await c.async_replace_dreamview_group(members)
+            else:
+                await c.async_delete_dreamview_group()
+
+        if accepted:
+            await apply()
+            assert c._dreamview_last_write == "accepted"
+            assert c._dreamview_authored["accepted"] is True
+            if operation == "delete":
+                release.assert_awaited_once_with(hass, c.config_entry.entry_id)
+            else:
+                release.assert_not_awaited()
+            c._disconnect_locked.assert_not_awaited()
+        else:
+            with pytest.raises(RuntimeError, match="rejected"):
+                await apply()
+            release.assert_not_awaited()
+            c._disconnect_locked.assert_awaited_once()
+
+
 async def test_physical_writer_retry_guards_and_private_authorship(hass) -> None:
     c = coordinator(hass)
     client = SimpleNamespace(

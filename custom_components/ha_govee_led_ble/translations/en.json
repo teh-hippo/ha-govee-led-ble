@@ -8,7 +8,9 @@
       "panel_enabled": {"name": "Panel enabled"},
       "ring_enabled": {"name": "Ring enabled"},
       "left_bar_enabled": {"name": "Left light bar enabled"},
-      "right_bar_enabled": {"name": "Right light bar enabled"}
+      "right_bar_enabled": {"name": "Right light bar enabled"},
+      "pole_enabled": {"name": "Pole enabled"},
+      "base_enabled": {"name": "Base enabled"}
     },
     "number": {
       "low_blue_light_level": {"name": "Low-blue-light level"}

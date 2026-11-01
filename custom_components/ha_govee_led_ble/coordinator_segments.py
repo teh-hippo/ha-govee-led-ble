@@ -158,7 +158,11 @@ class _SegmentMixin(_CoordinatorBase):
         return tuple(observed)
 
     async def async_refresh_segments(self, *, timeout: float = 2.0) -> bool:
-        if not self.profile.state_readable or not self.profile.supports_segments:
+        if (
+            not self.profile.state_readable
+            or not self.profile.supports_segments
+            or not self.profile.can_read(ReadDomain.SEGMENTS)
+        ):
             return False
         async with async_control_intent(self, ControlIntent.USER):
             async with self._lock:
@@ -188,6 +192,9 @@ class _SegmentMixin(_CoordinatorBase):
         selected = {index for index in range(profile.segment_count) if static.segment_mask & (1 << index)}
         if not selected or static.segment_mask & ~profile.whole_device_mask:
             raise ValueError("Kelvin mask is outside the current geometry")
+        if not profile.can_read(ReadDomain.SEGMENTS):
+            await self.send_command(packet)
+            return
         expected = kelvin_companion_rgb(static.kelvin, profile)
 
         def rendering_matches(colors: set[tuple[int, int, int]]) -> bool:
@@ -373,7 +380,7 @@ class _SegmentMixin(_CoordinatorBase):
                             except Exception:
                                 _LOGGER.debug("Partial segment paint reconciliation failed", exc_info=True)
                         raise
-                if (
+                if self.profile.can_read(ReadDomain.SEGMENTS) and (
                     not await self.async_refresh_segments()
                     or any(self.segment_colors[index] != rgb for index, rgb in expected_colors.items())
                     or (expected_brightness is not None and self.segment_brightness != expected_brightness)
@@ -410,7 +417,7 @@ class _SegmentMixin(_CoordinatorBase):
             segment_revision = self._field_revisions.get("segment_colors", 0)
             try:
                 await self.send_command(packet, write_guard=before_write)
-                if (
+                if self.profile.can_read(ReadDomain.SEGMENTS) and (
                     not await self.async_refresh_segments()
                     or any(self.segment_brightness[index] != value for index, value in expected_brightness.items())
                     or (expected_colors is not None and self.segment_colors != expected_colors)

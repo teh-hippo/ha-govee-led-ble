@@ -55,6 +55,7 @@ from .layered_scene import (
 from .layered_scene import (
     _catalogue_ref_to_value as _catalogue_ref_to_dict,
 )
+from .music_semantics import MusicZone
 from .native_effect import NativeEffect as NativeEffect
 from .native_effect import native_effect_from_value, native_effect_to_value
 from .protocol_core import MAX_SCENE_PARAM_BYTES
@@ -125,8 +126,11 @@ class PaintedEffect:
     segments: tuple[RGB | None, ...]
     background: RGB = (0, 0, 0)
     addressing: str = "segments"
+    model: str | None = None
 
     def __post_init__(self) -> None:
+        if self.model is not None:
+            _validate_supported_model(self.model, "painted effect")
         validate_bounded_string(
             self.effect,
             "painted effect name",
@@ -188,6 +192,7 @@ class MusicProfile:
     calm: bool | None = None
     parameters: Mapping[str, JsonValue] = field(default_factory=dict)
     palette: tuple[RGB, ...] | None = None
+    zones: tuple[MusicZone, ...] | None = None
 
     def __post_init__(self) -> None:
         _validate_identifier(self.model, "model")
@@ -220,6 +225,34 @@ class MusicProfile:
             maximum_bytes=MAX_EFFECT_DOCUMENT_BYTES,
             error_type=EffectValidationError,
         )
+        if self.zones is not None:
+            if (
+                not isinstance(self.zones, tuple)
+                or not profile.native_zones
+                or len(self.zones) != len(profile.native_zones)
+            ):
+                raise EffectValidationError("music zones must match the model's native geometry")
+            for zone, (name, _, _) in zip(self.zones, profile.native_zones, strict=True):
+                if not isinstance(zone, MusicZone) or zone.id != name:
+                    raise EffectValidationError("music zone identity or order is invalid")
+                _validate_identifier(zone.mode, "music zone mode")
+                if not isinstance(zone.parameters, Mapping):
+                    raise EffectValidationError("music zone parameters must be a mapping")
+                if zone.palette is not None:
+                    if not isinstance(zone.palette, tuple) or not 1 <= len(zone.palette) <= 8:
+                        raise EffectValidationError("music zone palette must contain 1 to 8 RGB tuples")
+                    for rgb in zone.palette:
+                        _validate_rgb(rgb, "music zone palette colour")
+                        if any(type(channel) is not int for channel in rgb):
+                            raise EffectValidationError("music zone palette channels must be integers")
+                if zone.body is not None and (not isinstance(zone.body, bytes) or not 1 <= len(zone.body) <= 256):
+                    raise EffectValidationError("music zone body must contain 1 to 256 bytes")
+                validate_json_document(
+                    dict(zone.parameters),
+                    "music zone parameters",
+                    maximum_bytes=MAX_EFFECT_DOCUMENT_BYTES,
+                    error_type=EffectValidationError,
+                )
 
 
 def _validate_supported_model(value: str, feature: str) -> None:
@@ -771,6 +804,7 @@ def _content_to_dict(content: EffectContent) -> dict[str, JsonValue]:
             "segments": [None if segment is None else list(segment) for segment in content.segments],
             **({"background": list(content.background)} if content.background != (0, 0, 0) else {}),
             **({"addressing": content.addressing} if content.addressing != "segments" else {}),
+            **({"model": content.model} if content.model is not None else {}),
         }
     if isinstance(content, SingleEffect):
         return {
@@ -818,6 +852,22 @@ def _content_to_dict(content: EffectContent) -> dict[str, JsonValue]:
             "calm": content.calm,
             "parameters": dict(content.parameters),
             **({"palette": [list(rgb) for rgb in content.palette]} if content.palette is not None else {}),
+            **(
+                {
+                    "zones": [
+                        {
+                            "id": zone.id,
+                            "mode": zone.mode,
+                            "parameters": dict(zone.parameters),
+                            **({"palette": [list(rgb) for rgb in zone.palette]} if zone.palette is not None else {}),
+                            **({"body": zone.body.hex()} if zone.body is not None else {}),
+                        }
+                        for zone in content.zones
+                    ]
+                }
+                if content.zones is not None
+                else {}
+            ),
         }
     if isinstance(content, VideoProfile):
         return {
@@ -910,6 +960,7 @@ def _content_from_dict(raw: Mapping[str, Any]) -> EffectContent:
             segments=_painted_segments_from_value(raw.get("segments")),
             background=_rgb_from_value(raw.get("background", [0, 0, 0]), "painted background"),
             addressing=_optional_str(raw, "addressing") or "segments",
+            model=_optional_str(raw, "model"),
         )
     if kind == "h617a_single":
         return SingleEffect(
@@ -956,6 +1007,18 @@ def _content_from_dict(raw: Mapping[str, Any]) -> EffectContent:
             calm=_required_optional_bool(raw, "calm"),
             parameters=cast(dict[str, JsonValue], dict(_required_mapping(raw, "parameters"))),
             palette=_palette_from_value(raw["palette"]) if "palette" in raw else None,
+            zones=tuple(
+                MusicZone(
+                    id=_required_str(zone, "id"),
+                    mode=_required_str(zone, "mode"),
+                    parameters=dict(_required_mapping(zone, "parameters")),
+                    palette=_palette_from_value(zone["palette"]) if "palette" in zone else None,
+                    body=_hex_bytes(zone["body"], "music zone body") if "body" in zone else None,
+                )
+                for zone in (_as_mapping(value, "music zone") for value in _required_sequence(raw, "zones"))
+            )
+            if "zones" in raw
+            else None,
         )
     if kind == "video_profile":
         return VideoProfile(

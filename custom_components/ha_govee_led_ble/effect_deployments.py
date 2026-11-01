@@ -13,7 +13,7 @@ from uuid import UUID
 
 from homeassistant.core import HomeAssistant
 
-from .const import DOMAIN, MODEL_PROFILES, ModelProfile
+from .const import DOMAIN, MODEL_PROFILES, NATIVE_ZONE_CONTROLS, ModelProfile
 from .effect_domain import LibraryItem, SourceKind, effect_content_from_dict, effect_content_hash
 from .effect_limits import (
     MAX_DEPLOYMENT_RECORDS,
@@ -94,11 +94,14 @@ class PriorControlState:
     ring_enabled: bool | None = None
     left_bar_enabled: bool | None = None
     right_bar_enabled: bool | None = None
+    pole_enabled: bool | None = None
+    base_enabled: bool | None = None
     left_bar_kelvin: int | None = None
     right_bar_kelvin: int | None = None
     effect: str | None = None
     scene_code: int | None = None
     diy_code: int | None = None
+    diy_companion: int | None = None
     music_mode: str = "off"
     music_model: str | None = None
     # None is a legacy snapshot: read its named fields. An explicit mapping wins.
@@ -152,7 +155,7 @@ class PriorControlState:
             raise EffectStorageError("prior static RGB intent must be a boolean")
         if self.static_gradual is not None and type(self.static_gradual) is not bool:
             raise EffectStorageError("prior static gradual must be a boolean or null")
-        for zone_enabled in (self.panel_enabled, self.ring_enabled, self.left_bar_enabled, self.right_bar_enabled):
+        for zone_enabled in (getattr(self, name) for name in NATIVE_ZONE_CONTROLS):
             if zone_enabled is not None and type(zone_enabled) is not bool:
                 raise EffectStorageError("prior zone enablement must be a boolean or null")
         for kelvin in (self.left_bar_kelvin, self.right_bar_kelvin):
@@ -266,7 +269,7 @@ class PriorControlState:
                     maximum=MAX_IDENTIFIER_LENGTH,
                     error_type=EffectStorageError,
                 )
-        for code, name in ((self.scene_code, "scene"), (self.diy_code, "DIY")):
+        for code, name in ((self.scene_code, "scene"), (self.diy_code, "DIY"), (self.diy_companion, "DIY companion")):
             if code is not None and (not isinstance(code, int) or isinstance(code, bool) or not 0 <= code <= 0xFFFF):
                 raise EffectStorageError(f"prior {name} code must be from 0 to 65535")
         if (
@@ -399,6 +402,8 @@ class PriorControlState:
                 for field, value in (
                     ("left_bar_enabled", self.left_bar_enabled),
                     ("right_bar_enabled", self.right_bar_enabled),
+                    ("pole_enabled", self.pole_enabled),
+                    ("base_enabled", self.base_enabled),
                     ("left_bar_kelvin", self.left_bar_kelvin),
                     ("right_bar_kelvin", self.right_bar_kelvin),
                 )
@@ -419,6 +424,7 @@ class PriorControlState:
             "effect": self.effect,
             "scene_code": self.scene_code,
             "diy_code": self.diy_code,
+            **({"diy_companion": self.diy_companion} if self.diy_companion is not None else {}),
             "music_mode": self.music_mode,
             "music_model": self.music_model,
             **({"music_parameters": dict(self.music_parameters)} if self.music_parameters is not None else {}),
@@ -524,6 +530,8 @@ class PriorControlState:
             ring_enabled=_optional_bool(raw, "ring_enabled"),
             left_bar_enabled=_optional_bool(raw, "left_bar_enabled"),
             right_bar_enabled=_optional_bool(raw, "right_bar_enabled"),
+            pole_enabled=_optional_bool(raw, "pole_enabled"),
+            base_enabled=_optional_bool(raw, "base_enabled"),
             left_bar_kelvin=_optional_int(raw, "left_bar_kelvin"),
             right_bar_kelvin=_optional_int(raw, "right_bar_kelvin"),
             segment_colors=segment_colors,
@@ -531,6 +539,7 @@ class PriorControlState:
             effect=_optional_str(raw, "effect"),
             scene_code=_optional_int(raw, "scene_code"),
             diy_code=_optional_int(raw, "diy_code"),
+            diy_companion=_optional_int(raw, "diy_companion"),
             music_mode=_optional_str(raw, "music_mode") or "off",
             music_model=model,
             music_parameters=parameters,

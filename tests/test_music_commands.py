@@ -1010,7 +1010,9 @@ def test_h7020_selector_parameter_uses_shared_compilation_without_upload(monkeyp
     )
     monkeypatch.setitem(MODEL_PROFILES, "TEST-H7020", profile)
     selectors = []
-    monkeypatch.setattr("custom_components.ha_govee_led_ble.music_commands.build_power", lambda *_args: b"power")
+    monkeypatch.setattr(
+        "custom_components.ha_govee_led_ble.music_commands.build_power", lambda *_args, **_kwargs: b"power"
+    )
 
     def selector(*_args, **kwargs):
         selectors.append(kwargs.get("selector_parameters", {}))

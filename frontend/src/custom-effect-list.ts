@@ -22,7 +22,7 @@ export type CustomEffectListEntry =
       kind: "native-diy";
       key: string;
       label: string;
-      category: "single-layer" | "advanced";
+      category: "single-layer" | "multi-layer" | "advanced";
     }
   | {
       kind: "paint";
@@ -60,12 +60,12 @@ export function buildCustomEffectEntries(
   const catalogue = context.catalogue;
   const entries: CustomEffectListEntry[] = [
     ...(catalogue?.templates?.filter((template) =>
-      (template.category === "single-layer" || template.category === "advanced") &&
+      (template.category === "single-layer" || template.category === "multi-layer" || template.category === "advanced") &&
       (template.content.kind === "native_effect" ||
         template.content.kind === "advanced" && template.content.native_diy !== undefined),
     ).map((template): CustomEffectListEntry => ({
       kind: "native-diy", key: template.id, label: template.label,
-      category: template.category === "single-layer" ? "single-layer" : "advanced",
+      category: template.category === "multi-layer" ? "multi-layer" : template.category === "single-layer" ? "single-layer" : "advanced",
     })) ?? []),
     ...(catalogue?.painted_effects.length
       ? [
@@ -78,7 +78,8 @@ export function buildCustomEffectEntries(
         ]
       : []),
     ...(catalogue?.effects
-      .filter((effect) => effect.category === "single_layer")
+      .filter((effect) => effect.category === "single_layer" &&
+        !catalogue?.templates?.some(template => template.content.kind === "native_effect" && template.content.family === effect.family))
       .map(
         (effect): CustomEffectListEntry => ({
           kind: "single",
@@ -107,7 +108,7 @@ export function buildCustomEffectEntries(
           kind: "saved",
           key: `saved:${item.id}`,
           label: item.name,
-          category: customEffectCategoryForKind(item.kind),
+          category: item.native_workflow === "multi" ? "multi-layer" : customEffectCategoryForKind(item.kind),
           item,
         }),
       ),
@@ -164,6 +165,8 @@ export function customEffectCategoryAvailable(
       );
     case "multi-layer":
       return (
+        Boolean(context.catalogue?.templates?.some(template => template.category === "multi-layer" &&
+          template.content.kind === "native_effect")) && context.catalogue?.apply.multi === "supported" ||
         customEffectKindAvailable(context, "h617a_multi") ||
         customEffectKindAvailable(context, "h6179_mixed_diy")
       );

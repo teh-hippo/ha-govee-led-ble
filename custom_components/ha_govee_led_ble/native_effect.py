@@ -46,6 +46,8 @@ class NativeDiyLayer:
     direction: int = 0
     angle: int = 0
     opaque: bytes = b""
+    enabled: bool = True
+    secondary_palette: tuple[RGB, ...] = ()
 
     def __post_init__(self) -> None:
         _number(self.kind, 255, "layer kind")
@@ -56,6 +58,10 @@ class NativeDiyLayer:
         if len(self.palette) > 255 or len(self.points) > 255:
             raise LayeredSceneValidationError("native palette or point list exceeds its count field")
         for colour in self.palette:
+            _rgb(colour)
+        if type(self.enabled) is not bool or len(self.secondary_palette) > 255:
+            raise LayeredSceneValidationError("invalid native zone state or secondary palette")
+        for colour in self.secondary_palette:
             _rgb(colour)
         for point in self.points:
             _number(point, 255, "point")
@@ -130,13 +136,46 @@ class NativeEffect:
     model: str = "H60A6"
 
     def __post_init__(self) -> None:
-        if self.model != "H60A6" or self.family not in (797, 798):
+        if self.model == "H607C":
+            from .protocol_core import H607cDiyBody
+
+            families = H607cDiyBody.Family
+            expected_count = 2 if self.family == families.paired else 1
+            if (
+                self.family not in families
+                or len(self.layers) != expected_count
+                or any(not isinstance(layer, NativeDiyLayer | NativeOpaqueLayer) for layer in self.layers)
+            ):
+                raise LayeredSceneValidationError("invalid native zoned DIY structure")
+            if self.template is not None:
+                raise LayeredSceneValidationError("native zoned DIY is not a layered catalogue scene")
+            first = self.layers[0]
+            if (
+                self.family != families.paired
+                and isinstance(first, NativeDiyLayer | NativeOpaqueLayer)
+                and first.kind != self.family
+            ):
+                raise LayeredSceneValidationError("single native DIY must retain its body family")
+            if (
+                self.backgrounds
+                or self.background_flag
+                or self.background != (0, 0, 0)
+                or self.background_brightness != 100
+                or self.show_type != 1
+            ):
+                raise LayeredSceneValidationError("unrepresented native zone background fields")
+        elif self.model != "H60A6" or self.family not in (797, 798):
             raise LayeredSceneValidationError("unsupported native effect model or family")
         if not 1 <= len(self.layers) <= 255 or len(self.backgrounds) > 255:
             raise LayeredSceneValidationError("native effect exceeds its layer or background count field")
-        expected = NativeDiyLayer if self.family == 797 else NativePaintLayer
+        expected = NativeDiyLayer if self.family == 797 or self.model == "H607C" else NativePaintLayer
         if any(not isinstance(layer, expected | NativeOpaqueLayer) for layer in self.layers):
             raise LayeredSceneValidationError("native layer does not match its effect family")
+        if self.model == "H60A6" and any(
+            isinstance(layer, NativeDiyLayer) and (not layer.enabled or layer.secondary_palette)
+            for layer in self.layers
+        ):
+            raise LayeredSceneValidationError("zone parameters do not match the native layered grammar")
         for name in ("background_flag", "background_brightness", "show_type"):
             _number(getattr(self, name), 255, name)
         for colour in (*self.backgrounds, self.background):
@@ -149,6 +188,16 @@ class NativeEffect:
             raise LayeredSceneValidationError("native scene identity does not match its model")
         if self.speed_index is not None:
             _number(self.speed_index, 255, "scene speed index")
+
+    @property
+    def workflow(self) -> str:
+        if self.template is not None:
+            return "layered_scenes"
+        if self.model == "H607C":
+            from .protocol_core import H607cDiyBody
+
+            return "multi" if self.family == H607cDiyBody.Family.paired else "single"
+        return "painted" if self.family == 798 else "advanced" if self.preset_id in (11, 12) else "single"
 
 
 def native_effect_to_value(content: NativeEffect) -> dict[str, Any]:
@@ -168,6 +217,14 @@ def native_effect_to_value(content: NativeEffect) -> dict[str, Any]:
                     "direction": layer.direction,
                     "angle": layer.angle,
                     "opaque": layer.opaque.hex(),
+                    **(
+                        {
+                            "enabled": layer.enabled,
+                            "secondary_palette": [list(colour) for colour in layer.secondary_palette],
+                        }
+                        if content.model == "H607C"
+                        else {}
+                    ),
                 }
             )
         elif isinstance(layer, NativePaintLayer):
@@ -224,6 +281,8 @@ def native_effect_from_value(raw: Mapping[str, Any]) -> NativeEffect:
                     direction=_optional_int(layer, "direction") or 0,
                     angle=_optional_int(layer, "angle") or 0,
                     opaque=_hex_bytes(layer.get("opaque", ""), "native layer opaque"),
+                    enabled=layer.get("enabled", True),
+                    secondary_palette=tuple(_colour(value) for value in layer.get("secondary_palette", ())),
                 )
             )
         elif layer_type == "paint":

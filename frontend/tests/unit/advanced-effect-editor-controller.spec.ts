@@ -126,6 +126,23 @@ test("adding and copying layers install content and move selection", () => {
   expect(copied.layers[1].palette[0][0]).toBe(255);
 });
 
+test("new layers retain the selected native zone trailer without copying visible settings", () => {
+  const controller = new AdvancedEffectEditorController();
+  const content = blankAdvancedContent();
+  content.layers[0].excess = "010101ff";
+  content.layers.push({ ...blankLayer(), excess: "00020001ff", palette: [[1, 2, 3]] });
+  controller.sync(content, false);
+  controller.selectLayer(1);
+
+  const added = controller.addLayer()!;
+
+  expect(added.layers[2]).toEqual({ ...blankLayer(), excess: "00020001ff" });
+  expect(content.layers).toHaveLength(2);
+  expect(added.layers[1].palette).toEqual([[1, 2, 3]]);
+  const copied = controller.copyLayer()!;
+  expect(copied.layers[3].excess).toBe("00020001ff");
+});
+
 test("deleting and reordering layers retain the active logical layer", () => {
   const controller = new AdvancedEffectEditorController();
   const content = blankAdvancedContent();

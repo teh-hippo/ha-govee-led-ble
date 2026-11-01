@@ -202,6 +202,7 @@ partial writes and complete-but-mismatched readback, not only missing replies.
 Independent master and zone-enable flags stay independent in controls and recovery.
 Abandoned segment, bulk, native-setting or combined native-zone queries quarantine their subscription until reconnect; late replies never make it reusable.
 Deliberate effect Apply may skip unrelated ambiguous segment reads, but must retain fresh recovery snapshots for models with unambiguous static readback.
+Qualified segment writes without a readback layout are write-only controls: do not require unavailable confirmation or present optimistic state as observed.  Keep Preview/restoration admission strict.
 Preview requires fresh native zone flags and a restorable mode, even when a selector alone can be observed.
 An aggregate Kelvin value or RGB segment page cannot establish every zone's native-white intent.
 Kelvin confirmation may retry complete transitional segment snapshots within a bounded deadline, without replaying the write or changing the original sibling/brightness baseline.

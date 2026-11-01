@@ -50,5 +50,6 @@ export function cloneMusicProfileContent(
     colour: content.colour === null ? null : cloneRgb(content.colour),
     parameters: structuredClone(content.parameters),
     ...(content.palette === undefined ? {} : { palette: content.palette.map(cloneRgb) }),
+    ...(content.zones === undefined ? {} : { zones: structuredClone(content.zones) }),
   };
 }

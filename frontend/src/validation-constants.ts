@@ -1,4 +1,9 @@
-export const CUSTOM_CATALOGUE_SCHEMA_VERSION = 11;
+export const CUSTOM_CATALOGUE_SCHEMA_VERSION = 12;
+export const PAINTED_EFFECT_IDS = [
+  "cycle", "clockwise", "counter_clockwise", "twinkle", "gradient", "breathe",
+  "upward", "downward", "native_2", "native_15", "native_19", "native_20",
+] as const;
+export type PaintedEffectId = typeof PAINTED_EFFECT_IDS[number];
 export const MAX_EFFECT_NAME_LENGTH = 128;
 export const MAX_EFFECT_DOCUMENT_BYTES = 65_536;
 export const MAX_EDITOR_DEVICES = 512;

@@ -133,18 +133,13 @@ export interface ActiveEffectWorkspace {
 
 export interface PaintedContent {
   kind: "h617a_painted";
-  effect:
-    | "cycle"
-    | "clockwise"
-    | "counter_clockwise"
-    | "twinkle"
-    | "gradient"
-    | "breathe";
+  effect: import("./validation-constants").PaintedEffectId;
   speed: number;
   brightness: number;
   segments: (RGB | null)[];
   background?: RGB;
   addressing?: "segments" | "physical_ic";
+  model?: ModelSku;
 }
 
 export interface SingleContent {
@@ -205,6 +200,8 @@ export interface NativeDiyLayer {
   direction: number;
   angle: number;
   opaque: string;
+  enabled?: boolean;
+  secondary_palette?: RGB[];
 }
 
 export interface NativePaintLayer {
@@ -229,7 +226,7 @@ export interface NativeOpaqueLayer {
 export interface NativeEffectContent {
   kind: "native_effect";
   model: ModelSku;
-  family: 797 | 798;
+  family: number;
   layers: (NativeDiyLayer | NativePaintLayer | NativeOpaqueLayer)[];
   backgrounds: RGB[];
   background_flag: number;
@@ -244,6 +241,14 @@ export interface NativeEffectContent {
 
 export type NativeSceneContent = NativeEffectContent & { template: CatalogueRef };
 
+export interface MusicZone {
+  id: string;
+  mode: string;
+  parameters: JsonObject;
+  palette?: RGB[];
+  body?: string;
+}
+
 export interface MusicProfileContent {
   kind: "music_profile";
   model: ModelSku;
@@ -253,6 +258,7 @@ export interface MusicProfileContent {
   calm: boolean | null;
   parameters: JsonObject;
   palette?: RGB[];
+  zones?: MusicZone[];
 }
 
 export interface RelativeBrightness {
@@ -413,6 +419,9 @@ export interface PaletteDiyFamily {
   supports_multi: boolean;
   rate: "speed" | "sensitivity" | "none";
   palette_max?: number;
+  palette_min?: number;
+  secondary_palette?: { min: number; max: number };
+  palette_labels?: [string, string];
   rate_min: number;
   multi_rate_min?: number;
   rate_max: number;
@@ -443,7 +452,7 @@ export type CatalogueTemplateContent =
 export interface CatalogueTemplate {
   id: string;
   label: string;
-  category: "single-layer" | "music" | "video" | "advanced";
+  category: "single-layer" | "multi-layer" | "music" | "video" | "advanced";
   content: CatalogueTemplateContent;
 }
 
@@ -482,6 +491,7 @@ export interface RetainedMusicEdit {
 }
 
 export interface ModelEffectCatalogue {
+  native_zones?: { id: string; label: string; segment_count: number; physical_ic_budget: number }[];
   native_actions?: EffectStudioModeOption[];
   painted_addressing?: "segments" | "physical_ic";
   painted_background?: RGB;
@@ -526,7 +536,7 @@ export interface ModelEffectCatalogue {
 }
 
 export interface EffectStudioCatalogue extends ModelEffectCatalogue {
-  schema_version: 11;
+  schema_version: 12;
   sku: ModelSku;
   models: Record<ModelSku, ModelEffectCatalogue>;
 }
@@ -627,6 +637,7 @@ export interface LibrarySummary {
   origin: LibraryOrigin;
   model?: ModelSku;
   template?: CatalogueRef;
+  native_workflow?: "single" | "multi";
 }
 
 export interface LibrarySnapshot {

@@ -13,8 +13,11 @@ from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_segment_query, parse_status
+from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.light_commands import (
+    build_color_temp,
     build_segment_brightness,
+    build_segment_color_temp,
     build_segment_paint,
     kelvin_to_rgb,
 )
@@ -22,6 +25,40 @@ from custom_components.ha_govee_led_ble.transport import WRITE_UUID
 from tests.coordinator_test_support import _CONFIGURATION_URL, _packet
 
 M = "custom_components.ha_govee_led_ble.coordinator"
+
+
+@pytest.mark.parametrize("operation", ["whole-kelvin", "segment-kelvin", "rgb", "brightness"])
+async def test_native_write_only_controls_do_not_require_unavailable_segment_replies(hass, operation):
+    c = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H607C", configuration_url=_CONFIGURATION_URL)
+    c.pact_type, c.pact_code = 1, 1
+    c._resolve_device_profile()
+    c.is_on = True
+    client = SimpleNamespace(is_connected=True, write_gatt_char=AsyncMock())
+    c._client = client
+    c._ensure_connected = AsyncMock(return_value=client)
+    c._renew_foreground_lease = MagicMock()
+    c.async_refresh_segments = AsyncMock(return_value=False)
+    if operation == "whole-kelvin":
+        light = GoveeBLELight(c)
+        light.hass = hass
+        light.entity_id = "light.native_floor_lamp"
+        await light.async_turn_on(color_temp_kelvin=2200)
+        expected = build_color_temp(2200, "H607C", profile=c.profile)
+    elif operation == "segment-kelvin":
+        expected = build_segment_color_temp([13], 2200, "H607C", profile=c.profile)
+        await c.async_set_segment_kelvin(expected, requested_kelvin=2200)
+    elif operation == "rgb":
+        groups = [([13], (1, 2, 3))]
+        expected = build_segment_paint(groups, "H607C", profile=c.profile)[0]
+        await c.async_paint_segments(groups)
+    else:
+        expected = build_segment_brightness([13], 31, "H607C", profile=c.profile)
+        await c.async_set_segment_brightness([13], 31)
+    assert client.write_gatt_char.await_args.args[1] == expected
+    c.async_refresh_segments.assert_not_awaited()
+    assert c.segment_state_source == "optimistic"
+    assert c._field_revisions.get("segment_colors", 0) == 0
+    assert c._static_rgb_known is False
 
 
 def test_segment_colors_initial_state(coord, h6199):

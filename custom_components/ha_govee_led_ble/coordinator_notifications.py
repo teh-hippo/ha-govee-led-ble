@@ -9,6 +9,7 @@ from typing import Any
 from bleak import BleakClient
 
 from .const import (
+    NATIVE_ZONE_CONTROLS,
     PERCENT_BRIGHTNESS_STATUS_GRAMMARS,
     WHOLE_BULB_GRAMMARS,
     ReadDomain,
@@ -49,6 +50,7 @@ _LOGGER = logging.getLogger(__name__)
 
 EXPECTED_STATE_TTL = 2.0
 _COLOR_MODE_FIELDS = (
+    "diy_companion",
     "video_full_screen",
     "video_parameters",
     "video_saturation",
@@ -90,6 +92,8 @@ class _NotificationMixin(_CoordinatorBase):
             profile=self.profile,
         )
         if "color_mode" in expectations:
+            if self.profile.setting_grammar == "H607C":
+                self._field_received_at.pop("diy_companion", None)
             if expectations["color_mode"][0] is not ParsedMode.COLOUR:
                 if self.rgb_color_source == "observed":
                     self.rgb_color_source = "retained"
@@ -146,7 +150,10 @@ class _NotificationMixin(_CoordinatorBase):
         else:
             mode_detail = None
         observed_color_mode = parsed.mode, mode_detail
-        if not self._accept_expected("color_mode", observed_color_mode):
+        mode_values: dict[str, Any] = {"color_mode": observed_color_mode}
+        if parsed.mode is ParsedMode.DIY and parsed.diy_companion is not None:
+            mode_values["diy_companion"] = parsed.diy_companion
+        if not self._accept_expected_values(mode_values):
             return ()
         if parsed.mode is not ParsedMode.COLOUR or self.color_mode is not ParsedMode.COLOUR:
             self._static_rgb_known = False
@@ -430,8 +437,8 @@ class _NotificationMixin(_CoordinatorBase):
             status = zone_result.parsed
             zone_values: dict[str, bool] = {
                 name: bool(getattr(status, name))
-                for name in ("panel_enabled", "ring_enabled")
-                if name in self.profile.boolean_controls
+                for name in NATIVE_ZONE_CONTROLS
+                if name in self.profile.boolean_controls and hasattr(status, name)
             }
             self.boolean_control_state.update(zone_values)
             self._mark_received(StatusDomain.OTHER, *(f"boolean_{name}" for name in zone_values))
@@ -440,6 +447,11 @@ class _NotificationMixin(_CoordinatorBase):
                 self._mark_received(StatusDomain.POWER, "is_on")
             self._record_packet("rx", frame, outcome="parsed", reason="native_zone_status", parser=zone_result.parser)
             self.async_set_updated_data(self.data or {})
+            return
+        if self._handle_dreamview_notification(frame):
+            self._record_packet(
+                "rx", frame, outcome="parsed", reason="dreamview_status_parsed", parser=dreamview_parser(self.profile)
+            )
             return
         ack = parse_command_ack_result(frame, self.model, profile=self.profile)
         if ack.parsed is not None:
@@ -469,11 +481,6 @@ class _NotificationMixin(_CoordinatorBase):
                 ):
                     future.set_result(ack_success)
             self._record_packet("rx", frame, outcome="parsed", reason="command_ack_parsed", parser=ack.parser)
-            return
-        if self._handle_dreamview_notification(frame):
-            self._record_packet(
-                "rx", frame, outcome="parsed", reason="dreamview_status_parsed", parser=dreamview_parser(self.profile)
-            )
             return
         if frame[:1] == b"\x33":
             command = parse_command_result(frame, self.model, profile=self.profile)
@@ -562,10 +569,23 @@ class _NotificationMixin(_CoordinatorBase):
                 observed = tuple(values)
             if getattr(generated.domain, "name", None) == "power_on_behaviour":
                 value = getattr(generated.body.state, "name", None)
-                if not generated.body.availability or value is None:
+                if (hasattr(generated.body, "availability") and not generated.body.availability) or value is None:
                     raise ValueError("Power-on behaviour is unavailable or unknown")
                 self.power_on_behaviour = value
                 observed = ("power_on_behaviour",)
+                if hasattr(generated.body, "open_flag"):
+                    self.power_on_open_flag = int(generated.body.open_flag)
+                    observed += ("power_on_open_flag",)
+            elif getattr(generated, "is_device_info", False):
+                flags = generated.body.detail.flags
+                if self.profile.can_read(ReadDomain.POWER) and self._accept_expected(
+                    "is_on", bool(flags.master_enabled)
+                ):
+                    self.is_on = bool(flags.master_enabled)
+                    observed += ("is_on",)
+                self._mark_received(StatusDomain.OTHER, *observed)
+                self.async_set_updated_data(self.data or {})
+                return
             elif domain is StatusDomain.CONFIGURED_STRINGS:
                 self._apply_configured_strings(int(generated.body.count))
                 observed = ("configured_strings",)

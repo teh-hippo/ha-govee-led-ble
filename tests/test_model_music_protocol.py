@@ -4,7 +4,7 @@ from dataclasses import replace
 
 import pytest
 
-from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, device_profile
+from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ModelProfile, device_profile
 from custom_components.ha_govee_led_ble.music_protocol import (
     _MUSIC_PARAMETER_WRITE_CODES_BY_MODEL,
     MUSIC_MODE_CODES_BY_MODEL,
@@ -15,6 +15,7 @@ from custom_components.ha_govee_led_ble.music_protocol import (
     H61f5MusicWrite,
     H66a0MusicParameters,
     H66a0MusicWrite,
+    H607cMusicWrite,
     H6046CommandWrite,
     H6046MusicBody,
     H6076MusicBody,
@@ -71,10 +72,20 @@ def test_model_music_codebooks_preserve_existing_models_and_add_h6179() -> None:
 
 
 def test_music_code_lookup_and_reverse_lookup_are_model_specific() -> None:
-    for model, codes in MUSIC_MODE_CODES_BY_MODEL.items():
+    for grammar, codes in MUSIC_MODE_CODES_BY_MODEL.items():
+        profile = ModelProfile(
+            "Isolated music codec", command_grammar=grammar, music_grammar=grammar, music_modes=tuple(codes)
+        )
         for slug, code in codes.items():
-            assert music_code_for(model, slug) == code
-            assert music_slug_for(model, code) == slug
+            assert music_code_for("codec-fixture", slug, profile=profile) == code
+            assert music_slug_for("codec-fixture", code, profile=profile) == slug
+            if grammar in MODEL_PROFILES:
+                assert music_code_for(grammar, slug) == code
+                assert music_slug_for(grammar, code) == slug
+            else:
+                with pytest.raises(ValueError, match="no music mode codebook"):
+                    music_code_for(grammar, slug)
+                assert music_slug_for(grammar, code) is None
 
     assert music_code_for("H6179", "mode_1") == 0x01
     assert music_slug_for("H617A", 0x01) is None
@@ -162,6 +173,7 @@ def test_codebooks_match_generated_kaitai_enums_and_gate_on_effective_profile() 
         "H61F5": H61f5MusicWrite.MusicMode,
         "H6076": H6076MusicWrite.MusicMode,
         "H6072": H6076MusicWrite.MusicMode,
+        "H607C": H607cMusicWrite.MusicMode,
         "H6179": H6179CommandWrite.MusicEffect,
         "H6199": H6199CommandWrite.MusicMode,
         "H7020": H7020CommandWrite.MusicMode,
@@ -181,6 +193,7 @@ def test_codebooks_match_generated_kaitai_enums_and_gate_on_effective_profile() 
         "H61F5": H61f5MusicParameters.MusicMode,
         "H6076": H6076MusicBody.MusicMode,
         "H6072": H6076MusicBody.MusicMode,
+        "H607C": H607cMusicWrite.MusicMode,
         "H7025": H7025MusicBody.MusicMode,
     }
     for grammar, enum_type in expected_parameter_enums.items():

@@ -58,3 +58,10 @@ if (new URLSearchParams(location.search).has("bar-colours")) {
 }
 const mode = new URLSearchParams(location.search).get("mode");
 if (mode) editor.content = {...editor.content, mode};
+if (new URLSearchParams(location.search).has("paired")) {
+  const native = decodeCustomCataloguePayload(contracts.responses.custom_catalogue, decodeEffectContent).models.H607C;
+  const template = native.templates!.find(candidate => candidate.id === "template:music:paired")!;
+  if (template.content.kind !== "music_profile") throw new Error("Paired music template is missing");
+  editor.catalogue = native;
+  editor.content = structuredClone(template.content);
+}

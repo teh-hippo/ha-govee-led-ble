@@ -8,17 +8,17 @@ from kaitaistruct import KaitaiStructError
 
 from .const import ModelProfile, get_profile
 from .effect_domain import LayeredScene, NativeEffect, PaletteScene
-from .generated_protocol_adapter import build_scene_activation
+from .generated_protocol_adapter import build_scene_activation, parse_scene_body
 from .h60a6_effects import encode_native_body
 from .layered_scene import CatalogueRef, LayeredEffect
 from .layered_scene_decoder import decode_layered_scene, encode_layered_scene
 from .palette_scene_decoder import encode_palette_scene
-from .protocol_core import H60a6DiyBody, H60a6EffectFrame, H60a6PaintBody, serialize_native_body
+from .protocol_core import H60a6DiyBody, H60a6EffectFrame, H60a6PaintBody, H607cSceneBody, serialize_native_body
 from .scenes import SceneEntry, SceneSpeed, scene_for_profile, scene_selector_code
 from .transport import fragment_a3, fragment_a4
 
 
-def apply_scene_speed(payload: bytes, speed: SceneSpeed, index: int) -> bytes:
+def apply_scene_speed(payload: bytes, speed: SceneSpeed, index: int, *, scene_type: int = 2) -> bytes:
     """Apply one speed option through the generated layered-scene fields."""
     if speed.layer_speeds:
         if not 0 <= index < speed.option_count:
@@ -30,7 +30,7 @@ def apply_scene_speed(payload: bytes, speed: SceneSpeed, index: int) -> bytes:
                 raise ValueError("Scene speed targets an unknown native layer")
             layer.body.speed = value
         return serialize_native_body(root)
-    scene = decode_layered_scene(CatalogueRef("H617A", 0, 0), payload)
+    scene = decode_layered_scene(CatalogueRef("H617A", 0, 0), payload, scene_type=scene_type)
     layers = list(scene.effect.layers)
     for page in speed.pages:
         if not 0 <= page.page < len(layers):
@@ -58,7 +58,7 @@ def apply_scene_speed(payload: bytes, speed: SceneSpeed, index: int) -> bytes:
             colour_speed=(_speed_value(page.colour_speed, index) if page.colour_speed else layer.colour_speed),
             brightness_patterns=tuple(brightness_patterns),
         )
-    return encode_layered_scene(replace(scene, effect=LayeredEffect(tuple(layers))))
+    return encode_layered_scene(replace(scene, effect=LayeredEffect(tuple(layers))), scene_type=scene_type)
 
 
 def _speed_value(options: tuple[int, ...], index: int) -> int:
@@ -93,6 +93,10 @@ def native_scene_upload_route(scene: SceneEntry, profile: ModelProfile) -> tuple
         raise ValueError("Native scene has no documented upload family")
     if scene.scene_type == 5:
         raise ValueError("Device profile does not support this native scene body")
+    if profile.effect_grammar == "H607C" or scene.scene_type == int(H607cSceneBody.CatalogueType.layered_scene):
+        if profile.effect_grammar != "H607C" or scene.scene_type != int(H607cSceneBody.CatalogueType.layered_scene):
+            raise ValueError("Device profile does not support this layered scene body")
+        return "a3", int(H607cSceneBody.UploadSubtype.layered_scene)
     return "a3", scene.scene_type
 
 
@@ -123,6 +127,9 @@ def build_native_scene_packets(
     route = native_scene_upload_route(scene, profile)
     if payload and scene.scene_type == 5:
         _parse_ceiling_scene_body(payload, scene.diy_effect_codes[0])
+    if payload and scene.scene_type == int(H607cSceneBody.CatalogueType.layered_scene):
+        parsed, _padding = parse_scene_body(payload, scene_type=scene.scene_type)
+        payload = payload[len(parsed.marker) :]
     upload = (
         (fragment_a4 if route[0] == "a4" else fragment_a3)(route[1], payload) if payload and route is not None else []
     )
@@ -145,6 +152,8 @@ def resolve_native_scene_body(
             if len(scene.diy_effect_codes) != 1:
                 raise ValueError("Native scene has no documented body family")
             _parse_ceiling_scene_body(canonical_body, scene.diy_effect_codes[0])
+        elif scene.scene_type == int(H607cSceneBody.CatalogueType.layered_scene):
+            parse_scene_body(canonical_body, scene_type=scene.scene_type)
         return canonical_body, speed_index
 
     payload = base64.b64decode(scene.param, validate=True) if scene.param else b""
@@ -152,7 +161,7 @@ def resolve_native_scene_body(
         resolved_speed = scene.speed.default_index if speed_index is None else speed_index
         if not 0 <= resolved_speed < scene.speed.option_count:
             raise ValueError(f"scene speed index {resolved_speed} outside 0..{scene.speed.option_count - 1}")
-        return apply_scene_speed(payload, scene.speed, resolved_speed), resolved_speed
+        return apply_scene_speed(payload, scene.speed, resolved_speed, scene_type=scene.scene_type), resolved_speed
     if speed_index is not None:
         raise ValueError("This scene does not expose a documented Speed control")
     return payload, None
@@ -173,9 +182,9 @@ def encode_authored_scene_body(
             raise ValueError("native content does not match the catalogue body family")
         body = encode_native_body(content)
     else:
-        if scene.scene_type != 2:
+        if scene.scene_type not in {2, int(H607cSceneBody.CatalogueType.layered_scene)}:
             raise ValueError("layered content does not match the native scene type")
-        body = encode_layered_scene(content)
+        body = encode_layered_scene(content, scene_type=scene.scene_type)
     if scene.speed is None:
         if content.speed_index is not None:
             raise ValueError("this scene does not expose a documented Speed control")
@@ -185,4 +194,4 @@ def encode_authored_scene_body(
     resolved_speed = scene.speed.default_index if content.speed_index is None else content.speed_index
     if not 0 <= resolved_speed < scene.speed.option_count:
         raise ValueError(f"scene speed index {resolved_speed} outside 0..{scene.speed.option_count - 1}")
-    return apply_scene_speed(body, scene.speed, resolved_speed), resolved_speed
+    return apply_scene_speed(body, scene.speed, resolved_speed, scene_type=scene.scene_type), resolved_speed

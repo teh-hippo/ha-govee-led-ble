@@ -34,6 +34,7 @@ from .native_scenes import (
     resolve_native_scene_body,
 )
 from .palette_scene_decoder import decode_palette_scene
+from .protocol_core import H607cSceneBody
 from .scenes import (
     MODEL_SCENE_LABELS,
     MODEL_SCENES,
@@ -345,8 +346,8 @@ def _scene_content(
         body = base64.b64decode(entry.param, validate=True)
     if entry.scene_type == 1 and body:
         return decode_palette_scene(template, body, speed_index=speed_index)
-    if entry.scene_type == 2 and body:
-        return decode_layered_scene(template, body, speed_index=speed_index)
+    if entry.scene_type in {2, int(H607cSceneBody.CatalogueType.layered_scene)} and body:
+        return decode_layered_scene(template, body, speed_index=speed_index, scene_type=entry.scene_type)
     if entry.scene_type == 5 and body:
         body, resolved_speed = resolve_native_scene_body(entry, speed_index=speed_index, canonical_body=canonical_body)
         if len(entry.diy_effect_codes) != 1:
@@ -382,6 +383,7 @@ def _validate_scene_content_identity(
             1: PaletteScene,
             2: LayeredScene,
             5: NativeEffect,
+            int(H607cSceneBody.CatalogueType.layered_scene): LayeredScene,
         }.get(entry.scene_type)
     )
     if expected_type is None or not isinstance(content, expected_type):
@@ -419,7 +421,7 @@ def resolve_scene_application_body(
         raise ValueError(f"scene speed index {resolved_speed} outside 0..{speed.option_count - 1}")
     body = scene_default.canonical_body
     if speed_index is not None and speed_index != scene_default.speed_index:
-        body = apply_scene_speed(body, speed, speed_index)
+        body = apply_scene_speed(body, speed, speed_index, scene_type=scene.scene_type)
     return body, resolved_speed
 
 
@@ -431,7 +433,8 @@ def _scene_summary(model: str, entry: SceneEntry) -> dict[str, JsonValue]:
         else "palette"
         if entry.scene_type == 1
         else "layers"
-        if entry.scene_type == 2 or (entry.scene_type == 5 and entry.diy_effect_codes in {(797,), (798,)})
+        if entry.scene_type in {2, int(H607cSceneBody.CatalogueType.layered_scene)}
+        or (entry.scene_type == 5 and entry.diy_effect_codes in {(797,), (798,)})
         else "opaque"
     )
     return {

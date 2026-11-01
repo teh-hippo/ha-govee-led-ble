@@ -27,6 +27,7 @@ import type {
   JsonObject,
   ModelEffectCatalogue,
   MusicProfileContent,
+  MusicZone,
   RetainedMusicEdit,
   RGB,
 } from "./types";
@@ -48,6 +49,9 @@ export class GoveeMusicProfileEditor extends LitElement {
 
   @property({ type: Boolean })
   public modeSelectionEnabled = false;
+
+  @property({ type: Boolean })
+  public showSensitivity = true;
 
   @property({ attribute: false })
   public retainedEdit?: RetainedMusicEdit | null;
@@ -98,7 +102,7 @@ export class GoveeMusicProfileEditor extends LitElement {
       <section class="card">
         <div class="parameter-stack">
           ${this.renderModeSelector()}
-          ${this.renderRangeField(
+          ${this.showSensitivity ? this.renderRangeField(
             "Sensitivity",
             sensitivity,
             sensitivityMinimum,
@@ -109,7 +113,7 @@ export class GoveeMusicProfileEditor extends LitElement {
                 content.sensitivity = value;
                 return content;
               }),
-          )}
+          ) : nothing}
 
           ${wholeColour ? html`<label class="field">
             <span>Colour mode</span>
@@ -213,6 +217,7 @@ export class GoveeMusicProfileEditor extends LitElement {
           ` : nothing}
         </div>
       </section>
+      ${this.renderZones()}
       ${this.retainedEdit?.mode === this.content.mode ? html`
         <section class="card">
           <h3>Edit retained device music</h3>
@@ -242,6 +247,54 @@ export class GoveeMusicProfileEditor extends LitElement {
             }))}>Apply retained-body edits</button>
         </section>` : nothing}
     `;
+  }
+
+  private renderZones() {
+    const content = this.content;
+    const catalogue = this.catalogue;
+    if (!content?.zones || !catalogue?.native_zones) return nothing;
+    const childCatalogue = {
+      ...catalogue,
+      music_modes: catalogue.music_modes.filter(mode => mode.id !== content.mode),
+    };
+    return html`${content.zones.map((zone, index) => html`
+      <section class="card">
+        <h3>${catalogue.native_zones![index]?.label ?? zone.id}</h3>
+        <govee-music-profile-editor .content=${{
+          kind: "music_profile", model: content.model, mode: zone.mode, sensitivity: content.sensitivity,
+          colour: null, calm: null, parameters: zone.parameters,
+          ...(zone.palette === undefined ? {} : { palette: zone.palette }),
+        } satisfies MusicProfileContent}
+          .catalogue=${childCatalogue} .disabled=${this.disabled} .modeSelectionEnabled=${true} .showSensitivity=${false}
+          @mode-changed=${(event: CustomEvent<MusicModeChange>) => {
+            event.stopPropagation();
+            if (!childCatalogue.music_modes.some(mode => mode.id === event.detail.mode)) return;
+            this.updateZone(index, zone.mode, { id: zone.id, mode: event.detail.mode, parameters: {} });
+          }}
+          @content-changed=${(event: CustomEvent<{ content: MusicProfileContent; interaction: LivePreviewInteraction }>) => {
+            event.stopPropagation();
+            const changed = event.detail.content;
+            this.updateZone(index, zone.mode, {
+              ...zone, parameters: changed.parameters,
+              ...(changed.palette === undefined ? {} : { palette: changed.palette }),
+            }, event.detail.interaction, changed.palette === undefined);
+          }}
+        ></govee-music-profile-editor>
+      </section>
+    `)}`;
+  }
+
+  private updateZone(index: number, mode: string, zone: MusicZone,
+    interaction: LivePreviewInteraction = "committed", removePalette = false): void {
+    if (this.content?.zones?.[index]?.mode !== mode) return;
+    this.updateContent(content => {
+      const current = content.zones![index];
+      if (zone.mode === mode) zone = { ...current, parameters: { ...current.parameters, ...zone.parameters },
+        ...(zone.palette === undefined ? {} : { palette: zone.palette }) };
+      if (removePalette) delete zone.palette;
+      content.zones![index] = zone;
+      return content;
+    }, interaction);
   }
 
   private renderRangeField(

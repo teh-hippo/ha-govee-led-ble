@@ -27,6 +27,7 @@ from .effect_catalogue import (
 )
 from .effect_commands import (
     DiyPaintGroup,
+    build_h607c_diy_painted,
     build_h617a_diy_multi,
     build_h617a_diy_painted,
     build_h617a_diy_single,
@@ -60,12 +61,12 @@ from .generated_protocol_adapter import build_diy_activation, build_scene_activa
 from .h60a6_effects import encode_native_body
 from .layered_scene import CatalogueRef
 from .layered_scene_decoder import encode_layered_scene, encode_workshop_effect
-from .music_commands import resolve_music_profile
+from .music_commands import build_zoned_music_body, resolve_music_profile
 from .music_protocol import music_code_for
 from .music_semantics import music_parameters_depend_on_ic, music_variant
 from .native_effect import NativeDiyLayer
 from .native_scenes import apply_scene_speed, build_native_scene_packets, encode_authored_scene_body
-from .protocol_core import H60a6EffectFrame, H6199EffectUpload, SceneBody
+from .protocol_core import H60a6EffectFrame, H607cDiyBody, H607cPaintBody, H607cSceneBody, H6199EffectUpload, SceneBody
 from .scenes import MODEL_SCENES, SceneEntry, resolve_scene_identity, scene_for_profile, scene_selector_code
 from .transport import fragment_a3
 
@@ -136,6 +137,7 @@ class CompiledMusicProfile:
     content_kind: str = "music_profile"
     diy_code: None = None
     palette: tuple[tuple[int, int, int], ...] | None = None
+    music_body: bytes | None = None
 
     @property
     def progress_total(self) -> int:
@@ -203,7 +205,10 @@ def validate_compiled_geometry(compiled: CompiledApplication, profile: ModelProf
             )
         if not supported:
             raise ValueError("Device profile no longer supports the compiled effect")
-        if compiled.content_kind == "native_effect" and profile.effect_grammar != "H60A6":
+        if (
+            compiled.content_kind == "native_effect"
+            and profile.effect_grammar != get_profile(compiled.model).effect_grammar
+        ):
             raise ValueError("Device native effect grammar changed since compilation")
         if compiled.scene_entry is not None:
             entry = scene_for_profile(compiled.scene_entry, profile)
@@ -237,6 +242,8 @@ def validate_compiled_geometry(compiled: CompiledApplication, profile: ModelProf
                 "h6179_mixed_diy": CapabilityWorkflow.MULTI,
                 "native_effect": CapabilityWorkflow.LAYERED_SCENES
                 if compiled.scene_entry is not None
+                else CapabilityWorkflow.MULTI
+                if profile.effect_grammar == "H607C" and compiled.body_effect_code == H607cDiyBody.Family.paired
                 else CapabilityWorkflow.PAINTED
                 if compiled.upload_transport == "a4"
                 else CapabilityWorkflow.SINGLE,
@@ -299,6 +306,9 @@ def compatibility(item: LibraryItem, model: str, *, profile: ModelProfile | None
                 content.parameters,
                 profile=profile,
                 palette=content.palette,
+                original_body=build_zoned_music_body(profile, content.mode, content.zones)
+                if content.zones is not None
+                else None,
             )
         except ValueError as error:
             return CompatibilityResult(CompatibilityState.INCOMPATIBLE, (str(error),))
@@ -346,6 +356,12 @@ def compatibility(item: LibraryItem, model: str, *, profile: ModelProfile | None
         return CompatibilityResult(CompatibilityState.COMPATIBLE)
     if isinstance(content, NativeEffect):
         try:
+            if profile.effect_grammar == "H607C":
+                require_effect_route(model, CapabilityWorkflow(content.workflow), ("H607C",), profile=profile)
+                validate_effect_eligibility(content, model, profile=profile)
+                resolve_diy_code(item, model=model, profile=profile)
+                encode_native_body(content)
+                return CompatibilityResult(CompatibilityState.COMPATIBLE)
             workflow = (
                 CapabilityWorkflow.LAYERED_SCENES
                 if content.template is not None
@@ -447,7 +463,11 @@ def compatibility(item: LibraryItem, model: str, *, profile: ModelProfile | None
             _resolve_scene(
                 model,
                 content.template,
-                expected_scene_type=1 if isinstance(content, PaletteScene) else 2,
+                expected_scene_type=1
+                if isinstance(content, PaletteScene)
+                else int(H607cSceneBody.CatalogueType.layered_scene)
+                if profile.effect_grammar == "H607C"
+                else 2,
             )
             if isinstance(content, PaletteScene) and content.speed_index is not None:
                 raise ValueError("type-1 palette scenes do not expose a documented Speed control")
@@ -609,8 +629,15 @@ def resolve_diy_code(
         )
         profile = get_profile("H617A" if model is None else model) if profile is None else profile
         grammar = require_effect_route(
-            "H617A" if model is None else model, workflow, ("H6046", "H617A", "H6099"), profile=profile
+            "H617A" if model is None else model, workflow, ("H6046", "H617A", "H6099", "H607C"), profile=profile
         )
+        if grammar == "H607C":
+            if not isinstance(content, PaintedEffect):
+                raise ValueError("native DIY requires its independently bounded zone definition")
+            selector = int(H607cPaintBody.ActivationSelector.static_paint)
+            if requested is not None and requested != selector:
+                raise ValueError("native paint requires its exact activation selector")
+            return selector
         a1_selector = None if isinstance(content, PaintedEffect) else profile.a1_diy_selector
         approved_slot = model is not None and requires_approved_diy_slot(model)
         if model is not None:
@@ -768,31 +795,26 @@ def compile_scene_effect(
         activation = packets[-1]
         if upload:
             evidence_codes.append("scene_payload_readback_unavailable")
-    elif isinstance(content, PaletteScene):
-        content_kind = "scene_palette"
-        scene_key, entry = _resolve_scene(model, content.template, expected_scene_type=1)
-        scene_type = 1
-        payload, _speed = encode_authored_scene_body(content, entry)
-        upload = tuple(fragment_a3(scene_type, payload))
-        activation = build_scene_activation(
-            model, scene_selector_code(model, entry, profile=profile), entry.music_code, profile=profile
+    elif isinstance(content, PaletteScene | LayeredScene):
+        content_kind = "scene_palette" if isinstance(content, PaletteScene) else "scene_layered"
+        scene_key, entry = _resolve_scene(
+            model,
+            content.template,
+            expected_scene_type=1
+            if isinstance(content, PaletteScene)
+            else int(H607cSceneBody.CatalogueType.layered_scene)
+            if profile.effect_grammar == "H607C"
+            else 2,
         )
+        payload, speed = encode_authored_scene_body(content, entry)
+        packets = tuple(
+            build_native_scene_packets(model, entry, speed_index=speed, canonical_body=payload, profile=profile)
+        )
+        upload = packets[:-1]
+        activation = packets[-1]
         evidence_codes.append("scene_payload_readback_unavailable")
-    elif isinstance(content, LayeredScene):
-        content_kind = "scene_layered"
-        scene_key, entry = _resolve_scene(model, content.template, expected_scene_type=2)
-        scene_type = 2
-        payload, _speed = encode_authored_scene_body(content, entry)
-        upload = tuple(fragment_a3(scene_type, payload))
-        activation = build_scene_activation(
-            model, scene_selector_code(model, entry, profile=profile), entry.music_code, profile=profile
-        )
-        evidence_codes.extend(
-            (
-                "scene_payload_readback_unavailable",
-                "layered_field_semantics_uncalibrated",
-            )
-        )
+        if isinstance(content, LayeredScene):
+            evidence_codes.append("layered_field_semantics_uncalibrated")
     elif isinstance(content, LayeredEffect):
         content_kind = "advanced"
         scene_key, entry = _advanced_carrier(model)
@@ -835,14 +857,8 @@ def compile_scene_effect(
         evidence_codes=tuple(evidence_codes),
         scene_entry=entry,
         scene_route=(profile.command_grammar, profile.effect_grammar, profile.selector_only_scene_bits),
-        upload_subtype=_builtin_upload_route(entry, profile)[1]
-        if upload and isinstance(content, BuiltinScene)
-        else entry.scene_type
-        if upload
-        else None,
-        upload_transport=_builtin_upload_route(entry, profile)[0]
-        if upload and isinstance(content, BuiltinScene)
-        else "a3",
+        upload_subtype=_builtin_upload_route(entry, profile)[1] if upload else None,
+        upload_transport=_builtin_upload_route(entry, profile)[0] if upload else "a3",
     )
 
 
@@ -871,8 +887,12 @@ def compile_native_effect(
     result = compatibility(item, model, profile=profile)
     if result.state is CompatibilityState.INCOMPATIBLE:
         raise ValueError("; ".join(result.reasons))
-    route = "a4" if content.family == 798 else "a3"
-    subtype = int(H60a6EffectFrame.Subtype.native_effect)
+    route = "a4" if content.family == 798 and profile.effect_grammar == "H60A6" else "a3"
+    subtype = (
+        int(H607cDiyBody.UploadSubtype.native_diy)
+        if profile.effect_grammar == "H607C"
+        else int(H60a6EffectFrame.Subtype.native_effect)
+    )
     body = encode_native_body(content)
     entry = None
     scene_key = None
@@ -910,6 +930,7 @@ def compile_native_effect(
         ),
         upload_transport=route,
         upload_subtype=subtype,
+        body_effect_code=content.family if profile.effect_grammar == "H607C" else None,
         physical_ic_count=profile.physical_ic_count if content.family == 798 else None,
         scene_entry=entry,
         scene_route=(profile.command_grammar, profile.effect_grammar, profile.selector_only_scene_bits)
@@ -933,7 +954,7 @@ def compile_h617a(
     content = item.content
     if isinstance(content, PaintedEffect):
         content_kind = "h617a_painted"
-        upload = build_h617a_diy_painted(
+        upload = (build_h607c_diy_painted if profile.effect_grammar == "H607C" else build_h617a_diy_painted)(
             content.effect,
             content.speed,
             content.brightness,
@@ -1136,6 +1157,7 @@ def compile_music_profile(
         raise ValueError("content is not a music profile")
     if content.model != model:
         raise ValueError(f"music profile targets {content.model}, not {model}")
+    body = build_zoned_music_body(profile, content.mode, content.zones) if content.zones is not None else None
     calm, parameters, packets = resolve_music_profile(
         model,
         content.mode,
@@ -1145,6 +1167,7 @@ def compile_music_profile(
         content.parameters,
         profile=profile,
         palette=content.palette,
+        original_body=body,
     )
     payload = {
         "kind": "music_profile",
@@ -1167,6 +1190,7 @@ def compile_music_profile(
         calm=calm,
         parameters=MappingProxyType(parameters),
         palette=content.palette,
+        music_body=body,
         artifact_sha256=_semantic_digest(payload),
         packets=packets,
         physical_ic_count=profile.physical_ic_count,

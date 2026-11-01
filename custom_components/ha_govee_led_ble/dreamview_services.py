@@ -42,22 +42,27 @@ def _boolean(value: Any) -> bool:
 
 
 def _members(value: Any) -> list[dict[str, Any]]:
+    identity = {vol.Required("cmd_ver"): _integer(255), vol.Optional("address"): str, vol.Optional("name"): str}
     schema = vol.Schema(
         vol.All(
             [
-                {
-                    vol.Required("cmd_ver"): _integer(255),
-                    vol.Required("is_rgbic"): _boolean,
-                    vol.Required("zones"): vol.All([_integer(255)], vol.Length(min=1, max=255)),
-                    vol.Optional("address"): str,
-                    vol.Optional("name"): str,
-                }
+                vol.Any(
+                    {
+                        **identity,
+                        vol.Required("is_rgbic"): _boolean,
+                        vol.Required("zones"): vol.All([_integer(255)], vol.Length(min=1, max=255)),
+                    },
+                    {**identity, vol.Required("mark"): _integer(255), vol.Required("area_num"): _integer(255)},
+                )
             ],
             vol.Length(min=1, max=255),
         )
     )
     try:
-        members = [DreamviewMember(**{**item, "zones": tuple(item["zones"])}) for item in schema(value)]
+        members = [
+            DreamviewMember(**{**item, **({"zones": tuple(item["zones"])} if "zones" in item else {})})
+            for item in schema(value)
+        ]
         if len({(member.address, member.name) for member in members}) != len(members):
             raise ValueError("Duplicate DreamView identity")
         return [member.as_dict() for member in members]
@@ -108,7 +113,10 @@ async def _async_dreamview_service(entity: Any, call: ServiceCall, *, name: str)
             values = {field: choices[values[field]].value for field, choices in DREAMVIEW_VIDEO_FIELDS.items()}
         members: tuple[DreamviewMember, ...] = ()
         if setting == "replace":
-            members = tuple(DreamviewMember(**{**item, "zones": tuple(item["zones"])}) for item in values["members"])
+            members = tuple(
+                DreamviewMember(**{**item, **({"zones": tuple(item["zones"])} if "zones" in item else {})})
+                for item in values["members"]
+            )
             build_dreamview_group(members, c.profile)
             await c.async_validate_dreamview_members(members)
         elif setting != "read":

@@ -10,7 +10,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import GoveeBLEConfigEntry
-from .const import DOMAIN
+from .const import DOMAIN, NATIVE_ZONE_CONTROLS
 from .entity import GoveeBLEEntity
 
 PARALLEL_UPDATES = 0
@@ -45,7 +45,7 @@ class GoveeBLEControlSwitch(GoveeBLEEntity, SwitchEntity):
         self._attr_translation_key = control
         self._attr_unique_id = f"{self.coordinator.address.replace(':', '').lower()}_{control}"
         self._attr_device_info = self.coordinator.device_info
-        if control in {"panel_enabled", "ring_enabled", "left_bar_enabled", "right_bar_enabled"}:
+        if control in NATIVE_ZONE_CONTROLS:
             self._attr_entity_category = None
             self._attr_entity_registry_visible_default = False
 

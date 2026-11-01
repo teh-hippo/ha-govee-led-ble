@@ -11,7 +11,7 @@ from functools import partial
 from typing import Any
 from uuid import UUID, uuid4
 
-from .const import ModelProfile, ReadDomain, get_profile
+from .const import NATIVE_ZONE_CONTROLS, ModelProfile, ReadDomain, get_profile
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator import GoveeBLECoordinator
 from .coordinator_status import ParsedMode
@@ -103,6 +103,7 @@ async def async_apply_compiled_profile(
             compiled.parameters,
             profile=coordinator.profile,
             palette=compiled.palette,
+            original_body=compiled.music_body,
         )
         if tuple(packet for packet, _ in writes) != compiled.packets:
             raise ValueError("Music request changed since compilation; refresh and retry")
@@ -1485,11 +1486,23 @@ async def async_prepare_effect_control_state(
     prior_mode = prior.mode if isinstance(prior, PriorControlState) else _coordinator_mode(coordinator)
     if require_restorable_static:
         if any(
-            name in profile.boolean_controls and getattr(prior, name, None) is None
-            for name in ("panel_enabled", "ring_enabled", "left_bar_enabled", "right_bar_enabled")
+            name in profile.boolean_controls and getattr(prior, name, None) is None for name in NATIVE_ZONE_CONTROLS
         ):
-            zones = "left and right bar" if profile.setting_grammar == "H6046" else "panel and ring"
+            zones = (
+                "left and right bar"
+                if profile.setting_grammar == "H6046"
+                else "pole and base"
+                if profile.setting_grammar == "H607C"
+                else "panel and ring"
+            )
             raise RuntimeError(f"Could not read restorable {zones} enablement before preview")
+        if (
+            profile.setting_grammar == "H607C"
+            and prior_mode == "custom"
+            and isinstance(prior, PriorControlState)
+            and prior.diy_companion is None
+        ):
+            raise RuntimeError("The current native DIY companion cannot be safely restored after preview")
         if (
             prior_mode == "music"
             and isinstance(prior, PriorControlState)

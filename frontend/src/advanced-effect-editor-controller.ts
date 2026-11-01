@@ -108,6 +108,7 @@ export class AdvancedEffectEditorController {
       return undefined;
     }
     const layer = blankLayer();
+    layer.excess = this.content.layers[this.activeLayerIndex]?.excess ?? "";
     setAdvancedLayerLabel(layer, nextAdvancedLayerLabel(this.content));
     const layers = [...this.content.layers.map(cloneLayer), layer];
     this.activateLayer(layers.length - 1);

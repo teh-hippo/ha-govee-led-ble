@@ -132,7 +132,9 @@ export function effectContentEligible(
 ): boolean {
   if (content.kind === "native_effect") {
     return catalogue?.sku === model && content.model === model &&
-      (content.family === 798 ? catalogue.apply.painted === "supported" : catalogue.apply.single === "supported");
+      (catalogue.native_zones?.length === content.layers.length
+        ? catalogue.apply.multi === "supported"
+        : content.family === 798 ? catalogue.apply.painted === "supported" : catalogue.apply.single === "supported");
   }
   if (content.kind === "advanced" && content.native_diy !== undefined) {
     return catalogue?.sku === model && catalogue?.templates?.some((template) =>
@@ -148,6 +150,18 @@ export function effectContentEligible(
   if (content.kind === "music_profile") {
     if (!catalogue || catalogue.sku !== model || content.model !== model ||
         !catalogue.music_modes.some((mode) => mode.id === content.mode)) return false;
+    if (content.zones !== undefined) {
+      const template = catalogue.templates?.find(candidate => candidate.content.kind === "music_profile" && candidate.content.mode === content.mode);
+      if (template?.content.kind !== "music_profile" || template.content.zones === undefined ||
+          content.zones.length !== catalogue.native_zones?.length ||
+          content.zones.length !== template.content.zones.length) return false;
+      if (!content.zones.every((zone, index) => zone.id === catalogue.native_zones![index].id &&
+          zone.mode !== content.mode && effectContentEligible({
+            kind: "music_profile", model: content.model, mode: zone.mode, sensitivity: content.sensitivity,
+            colour: null, calm: null, parameters: zone.parameters,
+            ...(zone.palette === undefined ? {} : { palette: zone.palette }),
+          }, catalogue, model, segmentCount))) return false;
+    }
     const settings = catalogue.music_settings[content.mode];
     if (!settings?.available || !Number.isInteger(content.sensitivity) ||
         content.sensitivity < catalogue.limits.music_sensitivity_min ||
@@ -175,6 +189,7 @@ export function effectContentEligible(
   const limits = catalogue.limits;
   if (content.kind === "h617a_painted") {
     return (
+      (content.model === undefined || content.model === model) &&
       catalogue.apply.painted === "supported" &&
       catalogue.painted_effects.some((effect) => effect.id === content.effect) &&
       (content.addressing ?? "segments") === (catalogue.painted_addressing ?? "segments") &&
@@ -254,6 +269,7 @@ export function blankCustomEffect(
       } : {}),
       speed: Math.max(catalogue.limits.speed_min, Math.min(50, catalogue.limits.speed_max)),
       brightness: catalogue.limits.brightness_max,
+      ...(catalogue.native_zones ? {model: catalogue.sku} : {}),
     };
   }
   const mixed = kind === "h617a_multi" || kind === "h6179_mixed_diy";
@@ -735,6 +751,7 @@ export function upsertSummary(
 
 function libraryItemModel(item: LibraryItem): ModelSku | undefined {
   const content = item.content;
+  if (content.kind === "h617a_painted" && content.model !== undefined) return content.model;
   if (
     content.kind === "h6179_single_diy" ||
     content.kind === "h6179_mixed_diy" ||

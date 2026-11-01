@@ -109,6 +109,56 @@ def _generated(module: str, class_name: str) -> type[Any]:
     return getattr(import_module(f"{_MODULE_PREFIX}{module}"), class_name)
 
 
+def test_h607c_endpoint_scene_keeps_named_v2_trailer_and_opaque_extensions():
+    """#507 exact-SKU catalogue selector 16183, not an official-app BLE capture."""
+    raw = bytes.fromhex("0a01220000000400019797000014140300140201fa01ff96371000fa0000800000020001ff")
+    root = _generated("h607c_scene_body", "H607cSceneBody").from_bytes(raw)
+    root._read()
+    assert root.num_records == 1
+    record = root.records[0]
+    trailer = _generated("h607c_scene_body", "H607cSceneBody").LayerTrailer.from_bytes(record.body.excess)
+    trailer._read()
+    assert (trailer.sub_device, trailer.extension, trailer.tail, trailer.unknown) == (0, b"\x00\x01", 255, b"")
+    assert protocol_core.serialize_native_body(root) == raw
+    runtime_root = protocol_core.H607cSceneBody.from_bytes(raw)
+    runtime_root._read()
+    for malformed in (b"", b"\x00\x02\x01", b"\x00\x02\x00\x01"):
+        runtime_root.records[0].body.excess = malformed
+        with pytest.raises(KaitaiStructError):
+            generated_protocol_adapter.serialize_scene_body_param(runtime_root)
+
+
+@pytest.mark.parametrize(
+    ("module", "name", "raw"),
+    [
+        ("h607c_command_write", "H607cCommandWrite", "3305150111223300000000000110000000000033"),
+        ("h607c_control", "H607cControl", "3330000100000000000000000000000000000002"),
+        ("h607c_status_query", "H607cStatusQuery", "aa070300000000000000000000000000000000ae"),
+        ("h607c_status_reply", "H607cStatusReply", "aa07082585000000000000000000000000000005"),
+        ("h607c_command_ack", "H607cCommandAck", "a3413300000000000000000000000000000000d1"),
+        ("h607c_diy_body", "H607cDiyBody", "0b996a09593202ff00000000ff0000"),
+        ("h607c_paint_body", "H607cPaintBody", "0900640000000102ff0000008f"),
+        ("h607c_dreamview_group", "H607cDreamviewGroup", "010100076655443322110d"),
+    ],
+)
+def test_h607c_reconstructed_fields_round_trip(module, name, raw):
+    """#507/#511 reconstructed vectors, not owner or official-app captures."""
+    data = bytes.fromhex(raw)
+    root = _generated(module, name).from_bytes(data)
+    root._read()
+    assert root._io.is_eof()
+    assert protocol_core.serialize_native_body(root) == data
+
+
+def test_h607c_reconstructed_native_notification_uses_the_ee_envelope():
+    """#507/#511 reconstructed asynchronous native flags, not a captured AA reply."""
+    data = bytes.fromhex("ee3025850000000000000000000000000000007e")
+    root = _generated("h607c_control", "H607cControl").ZoneNotification.from_bytes(data)
+    root._read()
+    assert root.body.flags.mask == 0x85 and root.body.unknown_prefix == 37
+    assert protocol_core.serialize_native_body(root) == data
+
+
 @pytest.mark.parametrize(
     ("raw", "operation"),
     [

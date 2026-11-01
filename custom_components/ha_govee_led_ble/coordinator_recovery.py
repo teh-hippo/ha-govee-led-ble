@@ -6,6 +6,7 @@ from contextlib import nullcontext
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any, cast
 
+from .const import NATIVE_ZONE_CONTROLS
 from .control_arbiter import ControlIntent
 from .coordinator_base import _CoordinatorBase
 from .coordinator_status import (
@@ -67,7 +68,7 @@ class _RecoveryMixin(_CoordinatorBase):
         zone_flags = {
             name: value
             for name, value in self.boolean_control_state.items()
-            if name in {"panel_enabled", "ring_enabled", "left_bar_enabled", "right_bar_enabled"}
+            if name in NATIVE_ZONE_CONTROLS
             and self._notify_started_monotonic is not None
             and self._field_received_at.get(f"boolean_{name}", -1) >= self._notify_started_monotonic
         }
@@ -97,6 +98,8 @@ class _RecoveryMixin(_CoordinatorBase):
             ring_enabled=zone_flags.get("ring_enabled"),
             left_bar_enabled=zone_flags.get("left_bar_enabled"),
             right_bar_enabled=zone_flags.get("right_bar_enabled"),
+            pole_enabled=zone_flags.get("pole_enabled"),
+            base_enabled=zone_flags.get("base_enabled"),
             left_bar_kelvin=self.left_bar_kelvin
             if self._notify_started_monotonic is not None
             and self._field_received_at.get("left_bar_kelvin", -1) >= self._notify_started_monotonic
@@ -112,6 +115,11 @@ class _RecoveryMixin(_CoordinatorBase):
             effect=self.effect,
             scene_code=self.scene_code,
             diy_code=self.diy_code,
+            diy_companion=self.diy_companion
+            if self.color_mode is ParsedMode.DIY
+            and self._notify_started_monotonic is not None
+            and self._field_received_at.get("diy_companion", -1) >= self._notify_started_monotonic
+            else None,
             music_mode=self.music_mode,
             music_model=self.model,
             music_parameters=capture_music_parameters(self, self.profile, self.music_mode),
@@ -162,12 +170,7 @@ class _RecoveryMixin(_CoordinatorBase):
         overwritten_diy_code: int | None,
     ) -> bool:
         restored = await self._async_restore_effect_appearance(state, overwritten_diy_code=overwritten_diy_code)
-        native_zones = self.profile.boolean_controls & {
-            "panel_enabled",
-            "ring_enabled",
-            "left_bar_enabled",
-            "right_bar_enabled",
-        }
+        native_zones = self.profile.boolean_controls.intersection(NATIVE_ZONE_CONTROLS)
         if not native_zones:
             return restored
         expected = {name: value for name in native_zones if (value := getattr(state, name)) is not None}
@@ -181,6 +184,16 @@ class _RecoveryMixin(_CoordinatorBase):
                 if not await self._as_coordinator._async_read_bar_flags(
                     client,
                     build_boolean_control_query(next(iter(native_zones)), self.model, profile=self.profile),
+                    deadline=time.monotonic() + 4.0,
+                ):
+                    return False
+            elif self.profile.setting_grammar == "H607C":
+                from .generated_protocol_adapter import build_boolean_control_query
+
+                if not await self._as_coordinator._async_read_setting_fields(
+                    client,
+                    build_boolean_control_query(next(iter(native_zones)), self.model, profile=self.profile),
+                    tuple(f"boolean_{name}" for name in sorted(native_zones)),
                     deadline=time.monotonic() + 4.0,
                 ):
                     return False
@@ -477,12 +490,22 @@ class _RecoveryMixin(_CoordinatorBase):
             or not self.profile.supports_custom_effects
         ):
             return False
-        activation = build_diy_activation(state.diy_code, self.model, profile=self.profile)
+        if self.profile.command_grammar == "H607C" and state.diy_companion is None:
+            return False
+        activation = build_diy_activation(
+            state.diy_code,
+            self.model,
+            profile=self.profile,
+            companion=state.diy_companion if self.profile.command_grammar == "H607C" else None,
+        )
         await self.send_command(build_power(True, self.model))
         await self.send_command(build_brightness(state.brightness_pct, self.model))
+        expected: dict[str, Any] = {"is_on": True, "diy_code": state.diy_code}
+        if self.profile.command_grammar == "H607C":
+            expected["diy_companion"] = state.diy_companion
         await self.send_command(activation, state_values={"diy_code": state.diy_code})
         return (
-            await self.async_observe_effect({"is_on": True, "diy_code": state.diy_code}) is True
+            await self.async_observe_effect(expected) is True
             and await self.refresh_state(expected_on=True, expected_brightness=state.brightness_pct) is True
             and complete
         )
