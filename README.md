@@ -35,7 +35,7 @@
 | **H7020** | ✅ Supported |
 | **H7025** | [🚧 Experimental](https://github.com/teh-hippo/ha-govee-led-ble/issues/451) |
 
-To request support for another model or contribute protocol schemas, see [CONTRIBUTING.md](CONTRIBUTING.md).
+To request another model or suggest a device-specific fix, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 H607C exposes candidate RGB, colour-temperature and Gradual controls.  If its Bluetooth protocol identity is unavailable or conflicting, colour and Gradual writes require a compatible identity before they can proceed.
 
@@ -98,7 +98,7 @@ make check
 make package
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for architecture, repository non-goals, and validation rules.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for architecture, repository non-goals and development commands.
 
 ## License
 

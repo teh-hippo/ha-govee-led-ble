@@ -21,7 +21,7 @@ Read and follow [`CONTRIBUTING.md`](../CONTRIBUTING.md) before planning or imple
 
 ## Agent-specific reminders
 
-- Use the four-section new-model plan from `CONTRIBUTING.md`; do not invent a provider-specific planning format.
+- Use the four-section plan in `.github/PULL_REQUEST_TEMPLATE.md` for new-model work; do not invent a provider-specific planning format.
 - Trace the complete affected path before editing, then prefer shared profile, adapter, coordinator, and test paths over model-specific duplicates.
 - Never edit generated protocol or frontend outputs manually.
 - Run focused existing checks while iterating and `make check` before declaring the final tree complete.
