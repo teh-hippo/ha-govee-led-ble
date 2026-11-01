@@ -1,9 +1,9 @@
 meta:
   id: h6099_dreamview_group
-  title: H6099 MovieFeastV2 authored membership
+  title: H6099 DreamView authored membership
   endian: be
 doc: |
-  H6099, H66A0.  Android 7.6.01 MovieFeastV2
+  H6099, H66A0.  The app's DreamView
   group upload over A3 type 0x50 supports at most seven sub-devices on H6099
   (goods type 191) and ten sub-devices on H66A0 (goods type 327).  The payload
   prefixes a member count followed by the member records below.  MAC bytes use
