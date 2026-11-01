@@ -1,4 +1,4 @@
-"""Ordinary H6099 DIY app evidence; no physical-device qualification."""
+"""Ordinary H6099 DIY evidence; no physical-device qualification."""
 
 from dataclasses import replace
 

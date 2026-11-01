@@ -8,11 +8,10 @@ meta:
     - ../govee_shared
 doc: |
   H6102.
-  Evidence source class: reachable Android 7.6.01 protocol behaviour.
-  Compatibility hypothesis: the modern DreamColor route (goods type 18, Pact 10)
+  Compatibility hypothesis: the modern DreamColor route (Pact 10)
   uses the shared power, identity, and mode fields and fifteen logical segments
   in five three-record A5 pages.  No official-app BLE capture or complete owner
-  readback qualification is available.  The 1.03.01 firmware threshold is an app
+  readback qualification is available.  The 1.03.01 firmware threshold is a
   migration condition, not a wire predicate.  Segment page replies consume the
   one-based group and three brightness/RGB records; the final four bytes are
   ignored rather than validated as zeroes.  Mode replies carry a gradual flag and
@@ -28,7 +27,7 @@ doc: |
   effective profile selects the semantic conversion, not the reply value.
   The owner also reports register FF after another controller writes 255.
   Preserve the raw register and expose a Pact 1 upper-bound normalisation:
-  the app accepts an unsigned reply byte and caps its display at register 254.
+  an unsigned reply byte is accepted and display is capped at register 254.
 seq:
   - id: header
     contents: [0xaa]

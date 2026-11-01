@@ -602,7 +602,7 @@ _H6076_MUSIC_PROFILE = replace(
     music_modes=_H6076_ALL_MUSIC_MODES,
     readback_music_modes=(),
     music_variants=H6076_MUSIC_VARIANTS,
-    # The app uploads the companion before the selector and the lamp acknowledges it.
+    # The companion is uploaded before the selector and the lamp acknowledges it.
     music_upload_before_selector=True,
     music_requires_upload_ack=True,
     music_params_require_activation=True,
@@ -1642,10 +1642,10 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         scene_catalogue_sku="H6125",
         local_scenes=((249, "Work"),),
         effect_readback="diy_code_only",
-        # The app writes the latest Type04 upload through this slot on the pact-1 route.
+        # The latest Type04 upload is written through this slot on the pact-1 route.
         a1_diy_selector=0xFE,
         advanced_diy_selector=402,
-        # The app uploads the companion before the selector and waits for its acknowledgement.
+        # The companion is uploaded before the selector and its acknowledgement is awaited.
         music_upload_before_selector=True,
         music_requires_upload_ack=True,
         diy_requires_upload_ack=True,

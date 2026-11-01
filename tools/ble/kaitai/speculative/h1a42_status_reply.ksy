@@ -7,7 +7,7 @@ meta:
     - ../govee_shared
 doc: |
   H1A42.
-  Compatibility hypothesis: the H1A42 LED Strip Light 2 (goodsType 400, Pact 1/2)
+  Compatibility hypothesis: the H1A42 LED Strip Light 2 (Pact 1/2)
   replies with 20-byte XOR-checksummed AA frames carrying power, percentage
   brightness, active colour mode, firmware and hardware version strings,
   subordinate version strings (AA 20 / AA 21), physical IC count (AA 40),

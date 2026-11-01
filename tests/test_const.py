@@ -42,7 +42,7 @@ def test_segment_count_and_supports_segments():
     assert MODEL_PROFILES["H617A"].segment_group_count == 5
     assert MODEL_PROFILES["H6199"].segment_group_count == 4
     assert MODEL_PROFILES["H617A"].supports_segments
-    # Both models paint segments. The H6199 was gated off until captured app writes on it were
+    # Both models paint segments. The H6199 was gated off until captured official-app writes on it were
     # reproduced byte for byte, whole-strip and per-segment, including the union frame that proves
     # the field is a mask and not an index.
     assert MODEL_PROFILES["H6199"].supports_segments

@@ -88,7 +88,7 @@ class DreamviewMember:
             if integer(zone) not in (*range(11), 255):
                 raise ValueError("Areas must be wire 1..10, 0 (unassigned), or 255 (disabled)")
         if self.zones == (255,):
-            raise ValueError("The app does not establish disabling a single-area member")
+            raise ValueError("Disabling a single-area member is not established")
 
     def as_dict(self) -> dict[str, Any]:
         """Private persistence only; do not include this in diagnostics."""

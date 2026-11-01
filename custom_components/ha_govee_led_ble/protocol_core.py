@@ -790,7 +790,7 @@ def _set_effect_layer_lengths(records: list[Any]) -> None:
 
 
 def encode_wire_brightness(percent: int, wire_range: tuple[int, int]) -> int:
-    """Map a 1..100 percentage onto a device register range with the app's linear rule."""
+    """Map a 1..100 percentage onto a device register range with a linear rule."""
     if not isinstance(percent, int) or isinstance(percent, bool) or not 1 <= percent <= 100:
         raise ValueError("brightness must be an integer from 1 to 100")
     low, high = wire_range

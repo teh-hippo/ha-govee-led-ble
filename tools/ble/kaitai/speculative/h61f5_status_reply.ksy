@@ -7,7 +7,7 @@ meta:
     - ../govee_shared
 doc: |
   H61F5.
-  Compatibility hypothesis: the H61F5 Strip Light 2 Pro (goodsType 261, Pact 3/1)
+  Compatibility hypothesis: the H61F5 Strip Light 2 Pro (Pact 3/1)
   replies with 20-byte XOR-checksummed AA frames carrying power, percentage
   brightness, active colour mode, firmware and hardware version strings,
   subordinate version strings (AA 20 / AA 21), physical IC count (AA 40),

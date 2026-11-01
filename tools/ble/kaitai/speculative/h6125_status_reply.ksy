@@ -8,12 +8,12 @@ meta:
     - h6102_status_reply
 doc: |
   H6125.
-  Evidence source class: reachable Android 7.6.01 status-parsing behaviour; no
+  Evidence source class: reconstructed; no
   official-app BLE capture of an identified H6125 is available.
   Compatibility hypothesis: the extended pact-1 route replies with the
   shared power, identity, static, scene, DIY and fifteen-segment layouts, plus a
   brightness register, the submode 0x11 music layout and the gradual register.
-  In Android 7.6.01, mode replies carry a gradual flag and big-endian Kelvin for
+  mode replies carry a gradual flag and big-endian Kelvin for
   static colour (0x15), little-endian codes for scenes (0x04) and DIY (0x0a),
   and effect, sensitivity, and per-effect settings for music (0x11); segment
   pages carry three brightness/RGB records per group, and brightness replies

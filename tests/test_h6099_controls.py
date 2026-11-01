@@ -1,4 +1,4 @@
-"""app-derived standalone controls; no hardware or calibration-display qualification."""
+"""Reconstructed standalone controls; no hardware or calibration-display qualification."""
 
 import asyncio
 import time

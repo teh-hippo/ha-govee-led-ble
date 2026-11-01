@@ -10,7 +10,7 @@ doc: |
   H6199 20-byte status reply.  The final byte is the XOR of bytes 0 through 18.
   Segment groups carry 4+4+4+3 records; the final four bytes remain opaque.
   DIY, static Gradient, direction30, position31, status32 and A3
-  extensions are speculative app/direct-register evidence, not official-app
+  extensions are speculative reconstructed/direct-register evidence, not official-app
   captures; payloads remain in speculative/h6199_control_payload.ksy.
 seq:
   - id: header
@@ -100,7 +100,7 @@ types:
         valid: 0
         repeat: eos
   scalar_white_balance_state:
-    doc: Govee Android 7.6.01 H6099 white-balance status reads the scalar byte after selector and length.
+    doc: H6099 white-balance status reads the scalar byte after selector and length.
     seq:
       - id: value
         type: u1
@@ -124,7 +124,7 @@ types:
         size-eos: true
   blank_screen_state:
     doc: |
-      Blank-screen detection policy. The app parser reads the same two modes and second-based
+      Blank-screen detection policy. The same two modes are read and second-based
       durations written by h6199_command_write::blank_screen_payload.
     seq:
       - id: is_enabled
@@ -140,7 +140,7 @@ types:
         size-eos: true
   relative_brightness_body:
     doc: |
-      The shared app parser always reads six value slots. H6199 reports edge_count 4; the final
+      Six value slots are always read. H6199 reports edge_count 4; the final
       strip-left and strip-right slots belong to six-segment hardware and are retained without
       constraining reads so an unexpected firmware value remains observable.
     seq:

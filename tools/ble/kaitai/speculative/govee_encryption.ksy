@@ -3,7 +3,7 @@ meta:
   endian: be
 doc: |
   H6099 encrypted transport.
-  Hypothesis: H6099 uses the shared Govee Home 7.6.01 Android BLE encryption
+  Hypothesis: H6099 uses the shared Govee BLE encryption
   protocol.  No H6099 official-app capture or owner qualification establishes
   compatibility.  V1 uses a two-phase AES-ECB handshake and full-block AES-ECB
   with an RC4 tail transform; V2 uses AES-GCM with 16-byte tags only.

@@ -5,13 +5,13 @@ meta:
   imports:
     - ../govee_shared
 doc: |
-  H6099.  Android 7.6.01 H6099 music control uploads A3
+  H6099.  H6099 music control uploads A3
   command 41 (mode followed by this palette and tail) before sending the mode
   selector.  Default companions carry seven RGB colours, and the mode
   configuration admits 1-8 colours.  Shared music parameter builders define the
   mode-specific tail fields below.  Physical IC count, not fourteen logical
-  zones, controls dependent geometry.  Day/Night's app UI parameter indices
-  disagree with its payload builder (no segment count is applied, index 0 sets
+  zones, controls dependent geometry.  Day/Night's UI parameter indices
+  disagree with its payload (no segment count is applied, index 0 sets
   speed, and index 1 sets fade), so those UI parameters remain unqualified.
   Energetic's companion upload path differs from the legacy selector path and
   remains unresolved.  No official-app capture or owner qualification yet.

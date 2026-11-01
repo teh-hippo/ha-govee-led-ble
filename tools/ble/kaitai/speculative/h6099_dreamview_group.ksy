@@ -3,9 +3,9 @@ meta:
   title: H6099 DreamView authored membership
   endian: be
 doc: |
-  H6099, H66A0.  The app's DreamView
+  H6099, H66A0.  DreamView
   group upload over A3 type 0x50 supports at most seven sub-devices on H6099
-  (goods type 191) and ten sub-devices on H66A0 (goods type 327).  The payload
+  and ten sub-devices on H66A0.  The payload
   prefixes a member count followed by the member records below.  MAC bytes use
   reversed display order, and name bytes use UTF-8.  cmd_ver is supplied
   externally, never inferred.  The protocol maps UI areas 1..20 onto wire

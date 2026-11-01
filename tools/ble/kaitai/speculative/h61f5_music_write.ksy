@@ -5,7 +5,7 @@ meta:
   imports:
     - ../govee_shared
 doc: |
-  H61F5.  The app's H61F6 music control (goodsType 261)
+  H61F5.  H61F6 music control
   selects the sixteen mode IDs below over 33 05 13.  Classic modes (03..06) carry
   sensitivity, calm flag, fixed-colour flag, and optional RGB triple.  Newer
   modes (30..A3) carry only mode ID and sensitivity after an A3 41 companion

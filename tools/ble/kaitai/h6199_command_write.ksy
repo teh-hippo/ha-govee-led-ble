@@ -8,7 +8,7 @@ meta:
 doc: |
   H6199 20-byte command frame.  The final byte is the XOR of bytes 0 through 18.
   DIY0a, direction30, position31 and Gradient A3 extensions are
-  speculative exact-model app/direct-register evidence, not official-app captures;
+  speculative exact-model reconstructed/direct-register evidence, not official-app captures;
   their payloads remain in speculative/h6199_control_payload.ksy.
 seq:
   - id: header
@@ -120,8 +120,8 @@ types:
           max: 100
   relative_brightness_body:
     doc: |
-      H6199 exposes four edge controls. The shared app controller always writes two additional
-      strip slots used by six-segment hardware, but its H6199 path leaves them at zero.
+      H6199 exposes four edge controls. Two additional strip slots are used by six-segment
+      hardware; the H6199 path leaves them at zero.
     seq:
       - id: selector
         contents: [0x01]
@@ -160,7 +160,7 @@ types:
         size-eos: true
   scalar_white_balance_payload:
     doc: |
-      Govee Android 7.6.01 H6099 white-balance control writes A9 selector 6,
+      H6099 white-balance control writes A9 selector 6,
       length 1.  Encoding knowledge only, not H6099 qualification.
     seq:
       - id: value
@@ -179,7 +179,7 @@ types:
         size-eos: true
   blank_screen_payload:
     doc: |
-      Blank-screen detection policy. The app UI labels the two policies Low Brightness and
+      Blank-screen detection policy. The two policies are labelled Low Brightness and
       Same Tone and stores both durations in seconds. The captured H6199 state selects Same
       Tone with durations 10 and 120 seconds.
     seq:

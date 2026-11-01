@@ -19,7 +19,7 @@ types:
         type: u2le
   music_selector:
     doc: >
-      In Android 7.6.01, companion-backed modes carry only mode and sensitivity.
+      companion-backed modes carry only mode and sensitivity.
       Legacy fixed colour is a zero/nonzero flag, not a palette count.  The
       uninterpreted suffix stays opaque.
     seq:

@@ -4,11 +4,11 @@ meta:
   endian: le
 doc: |
   H617A 20-byte status query.  The final byte is the XOR of bytes 0 through 18.
-  AA0F reuses zero_body based on Android 7.6.01 light-count query
+  AA0F reuses zero_body based on light-count query
   behaviour and direct H617A queries, not official-app captures.
   This route remains speculative; see speculative/h617a_control_payload.ksy.
-  AA0501 is also emitted by the shared Android 7.6.01 mode query builder on the
-  H6102 goods-18 route.  Direct H617A queries answered both AA0500 and
+  AA0501 is also emitted by the shared mode query builder on the
+  H6102 route.  Direct H617A queries answered both AA0500 and
   AA0501 (2026-09-16).  This does not establish that AA0500 fails on H6102.
   H6102 limit and gradual queries use the shared zero-body single-frame
   query format.  Product authorisation remains in the effective profile.

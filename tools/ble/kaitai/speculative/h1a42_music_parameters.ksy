@@ -5,7 +5,7 @@ meta:
   imports:
     - ../govee_shared
 doc: |
-  H1A42.  The app's H1A43 music control (goodsType 400)
+  H1A42.  H1A43 music control
   uploads this payload under A3 subtype 0x41 before the 33 05 13 music selector
   for palette-backed modes.
 seq:

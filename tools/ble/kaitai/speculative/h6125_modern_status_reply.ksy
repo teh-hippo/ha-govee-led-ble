@@ -10,7 +10,7 @@ doc: |
   H6125.
   Compatibility hypothesis: the pact-10 DreamColor route uses percentage
   brightness, submode 0x13 music and five three-record brightness/RGB pages.
-  Reachable application consumers share these fields with the H6102 modern
+  These fields are shared with the H6102 modern
   route. This does not establish hardware qualification or zero-valued tails.
   Unresolved assumptions: firmware-specific reply presence and unused bytes.
 seq:

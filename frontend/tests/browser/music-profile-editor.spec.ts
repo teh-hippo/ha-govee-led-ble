@@ -185,7 +185,7 @@ test("retained-body edit emits only explicit intent and leaves fresh content int
     editor.retainedEdit = {
       mode: editor.content!.mode, revision: 7, parameters: { gradient: false }, calm: null,
       settings: { available: false, style: false, calm_default: false, colour: false,
-        evidence: "APK", palette_size: 2, parameters: {
+        evidence: "template", palette_size: 2, parameters: {
           gradient: { kind: "switch", default: false, min: 0, max: 1, options: [] },
         } },
     };

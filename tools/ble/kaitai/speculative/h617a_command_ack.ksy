@@ -4,7 +4,7 @@ meta:
   endian: le
 doc: |
   H617A support work under capability umbrella.
-  In Android 7.6.01, ordinary 0x33 command replies and A3/02 or A3/04 DIY/scene
+  ordinary 0x33 command replies and A3/02 or A3/04 DIY/scene
   uploads report status at absolute byte 2, whereas A3/41 music uploads report
   status at absolute byte 3, with zero meaning success.  The H617A workflow
   activates native DIY and music only after a positive upload result.
@@ -19,7 +19,7 @@ doc: |
   H617E and other command_grammar=H617A consumers structurally share this parser;
   this adds no exact-SKU ACK qualification or upload-ACK policy for them.  H6099
   retains its independent speculative command-ACK parser and upload policy.
-  H6102 (goods type 18, Pact 10) and H7025 independently use the same
+  H6102 (Pact 10) and H7025 independently use the same
   A3/02 and A3/04 byte-2 and A3/41 byte-3 acknowledgement layouts and require a
   positive upload result before activation; schema reuse is not donor
   qualification, and no H7025 mode echo, transaction token, or LAN receipt

@@ -69,7 +69,7 @@ types:
         type: u1
         doc: >
           Packed applied area. The low nibble is the zero-based area index and the high
-          nibble is the area width in tenths. Width 0 is the app's canonical encoding
+          nibble is the area width in tenths. Width 0 is the canonical encoding
           for width 10; raw 0x00 and 0xa0 are therefore semantically full width at index
           0 but remain byte-distinct and must round-trip unchanged.
       - id: select_type
@@ -83,7 +83,7 @@ types:
         doc: 'Low byte of BE quantity for types 0/1; random minimum for 2; gap IC count for 3.'
       - id: layer_flags
         type: u1
-        doc: 'Android 7.6.01: high nibble brightness algorithm 0..2, low nibble brightness type 0..3.  Other values remain preserved.'
+        doc: 'high nibble brightness algorithm 0..2, low nibble brightness type 0..3.  Other values remain preserved.'
       - id: num_brightness_blocks
         type: u1
       - id: brightness_blocks
@@ -146,8 +146,8 @@ types:
       - id: config
         type: u1
         doc: >
-          Packed colour stride, layout and brightness flag. Layout 1 is present in the
-          app parser and historical cross-SKU data, including stride-5 inline records on
+          Packed colour stride, layout and brightness flag. Layout 1 is present in
+          historical cross-SKU data, including stride-5 inline records on
           exact-SKU downlight/backlight catalogues, while a crafted H617A 0x93 body was
           acknowledged without replacing the active layout-0 Halloween body. H617A
           support is therefore rejected rather than inferred from parser structure.

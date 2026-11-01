@@ -261,7 +261,7 @@ def test_h617a_energetic_rejects_fixed_colour():
         ("hopping", {"background": 0x2060A0}, {}),
     ],
 )
-def test_apk_reachable_music_fields_resolve_and_encode(mode, params, extra):
+def test_reachable_music_fields_resolve_and_encode(mode, params, extra):
     calm, resolved, packets = resolve_music_profile("H617A", mode, 50, None, None, params, **extra)
     assert calm is False
     assert resolved.items() >= params.items()

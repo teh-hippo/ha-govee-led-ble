@@ -12,7 +12,7 @@ doc: |
   f8d4267309e7bac38460c728e05616d07f879b3e, docs/h60a-support-findings.md
   and tests/test_h60a_protocol.py: HW 1.04.03, FW 1.00.41 power and page-one/
   page-four literals, 2026-10-09/10 decrypted owner sessions.
-  In Android 7.6.01 H60A capability metadata, Pact 1/1 has one zone, Pact 1/2+
+  Pact 1/1 has one zone, Pact 1/2+
   has thirteen segments across four-slot pages, and Pact 1/3+ adds masked
   Kelvin; the grouped segment-colour parser consumes only meaningful records.
   Unresolved: legacy one-zone reply layout, other revisions, identity presence,

@@ -11,8 +11,7 @@ doc: |
   H6125.
   Compatibility hypothesis: the intermediate DreamColor route keeps 0x0b
   RGB and A2 RGB-only pages, but uses 0x11 music and 16-bit scene/DIY selectors.
-  Reachable application consumers establish the separate layouts. The app
-  migration threshold alone is not a firmware compatibility guarantee.
+  A migration threshold alone is not a firmware compatibility guarantee.
   Unresolved assumptions: per-revision reply presence and unused bytes.
 seq:
   - id: header

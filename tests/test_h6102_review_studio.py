@@ -104,7 +104,7 @@ def test_native_templates_satisfy_qualified_bounds_without_geometry(selector):
 
 
 @pytest.mark.parametrize("selector,index,count", [(502, 0, 8), (504, 0, 8), (505, 1, 2), (506, 0, 8)])
-def test_other_apk_palette_groups_reject_out_of_bounds(selector, index, count):
+def test_other_palette_groups_reject_out_of_bounds(selector, index, count):
     content = resolve_catalogue_template("H6102", f"template:native-diy:{selector}").content
     assert isinstance(content, LayeredEffect)
     layers = list(content.layers)

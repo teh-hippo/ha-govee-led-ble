@@ -252,7 +252,7 @@ export function nativeDiyPalette(content: AdvancedContent, secondary = false): E
     groups.flatMap((group) => group[index] ? [group[index]] : [])).flat();
 }
 
-/** APK ParamsV2 named edits over the same canonical layers used by the encoder. */
+/** Named edits over the same canonical layers used by the encoder. */
 export function updateNativeDiy(content: AdvancedContent, edit: NativeDiyEdit, physicalIcCount?: number | null): AdvancedContent {
   const result = cloneAdvancedContent(content);
   const layers = result.layers;
@@ -332,7 +332,7 @@ export function updateNativeDiy(content: AdvancedContent, edit: NativeDiyEdit, p
     const minimum = edit.starMin ?? layers[0].selection.param_2;
     const maximum = edit.starMax ?? layers[0].selection.param_1;
     if (minimum < 1 || maximum < minimum || maximum > Math.min(25, Math.floor(physicalIcCount * 4 / 5))) {
-      throw new Error("Sky star size is outside APK physical-IC bounds");
+      throw new Error("Sky star size is outside physical-IC bounds");
     }
     layers.forEach((layer) => { layer.selection = { type: 2, param_1: maximum, param_2: minimum }; });
   }

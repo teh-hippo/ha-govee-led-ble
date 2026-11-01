@@ -21,7 +21,7 @@ def classify_h6102_rgb(
     pact_type: int | None = None,
     pact_code: int | None = None,
 ) -> H6102RgbVariant | None:
-    """The app's 1.03.01 UI migration is not a wire-encoding boundary."""
+    """The 1.03.01 UI migration is not a wire-encoding boundary."""
     if pact_type == 10 and pact_code in (1, 2):
         return H6102RgbVariant.EXTENDED
     if (

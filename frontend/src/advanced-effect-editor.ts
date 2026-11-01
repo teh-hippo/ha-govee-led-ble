@@ -688,7 +688,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
     const pattern = first.brightness_patterns[0];
     return html`<section class="card">
       <h3>${names[code - 501]} · Native DIY ${code}</h3>
-      <p>APK template preset. Playback and rendering await device qualification.</p>
+      <p>Template preset. Playback and rendering await device qualification.</p>
       ${palette(code === 506 ? "Bloom colours" : code === 507 ? "Moving colours" : "Effect colours")}
       ${code === 506 || code === 507 ? palette(code === 506 ? "Moving colours" : "Stack colours", true) : nothing}
       ${code === 501 || code === 505 ? html`<h4>Background</h4><govee-palette-editor
@@ -717,7 +717,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
           ${code === 506 ? html`<option value="2">Two-way</option>` : nothing}
         </select></label>` : nothing}
       ${this.physicalIcCount == null && [502, 503, 504, 506].includes(code)
-        ? html`<p>Physical IC count is unknown; dependent controls retain the APK seed. Logical segment count is not used as IC geometry.</p>` : nothing}
+        ? html`<p>Physical IC count is unknown; dependent controls retain the template seed. Logical segment count is not used as IC geometry.</p>` : nothing}
     </section>`;
   }
 

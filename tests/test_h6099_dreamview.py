@@ -1,4 +1,4 @@
-"""app-derived software checks only; no hardware or membership qualification."""
+"""Reconstructed software checks only; no hardware or membership qualification."""
 
 import asyncio
 import io
@@ -139,7 +139,7 @@ def test_member_validation(overrides) -> None:
     ],
 )
 @pytest.mark.parametrize("model", ["H6097", "H6099"])
-def test_apk_command_bytes(setting, values, prefix, model) -> None:
+def test_command_bytes(setting, values, prefix, model) -> None:
     assert build_dreamview_command(setting, values, get_profile(model)) == frame(prefix)
 
 

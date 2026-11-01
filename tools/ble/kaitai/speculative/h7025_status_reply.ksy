@@ -8,7 +8,7 @@ meta:
     - h6102_status_reply
 doc: |
   H7025.
-  In Android 7.6.01, H7025 uses the shared power, brightness, and identity
+  H7025 uses the shared power, brightness, and identity
   status layouts, dispatches AA05 mode 15 to static colour, 04 to scenes, 0A to
   DIY, and 13 to music state, and reads A5 segment pages of four brightness/RGB
   records across fifteen logical positions.  Music replies carry only ID and
@@ -18,7 +18,7 @@ doc: |
   Shared H617A command_write/status_query codecs provide power, percent
   brightness, AA0501, identity queries, A5 segment queries, and two-byte-mask
   330515 colour/Kelvin/brightness writes; H7025 has fifteen bulbs and a
-  2700..6500 Kelvin range.  Goods type 296 uses command version 0 and Kelvin
+  2700..6500 Kelvin range.  H7025 uses command version 0 and Kelvin
   type 1, emitting RGB with a two-byte mask and direct white RGB plus
   table-derived companion RGB for Kelvin.
   Common payload imports do not inherit H6102's product capabilities.
