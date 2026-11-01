@@ -251,6 +251,7 @@ class GoveeBLECoordinator(
         self.boolean_control_state: dict[str, bool] = {}
         self.low_blue_light: LowBlueLightState | None = None
         self.power_on_behaviour: str | None = None
+        self.power_on_open_flag: int | None = None
         self._bulk_collector: BulkStatusCollector | None = None
         self._bulk_query_deadline: float | None = None
         self._bulk_query_incomplete = False
@@ -267,6 +268,7 @@ class GoveeBLECoordinator(
         self.music_mode = "off"
         self.video_mode = "off"
         self.diy_code: int | None = None
+        self.diy_companion: int | None = None
         self.color_mode: ParsedMode | None = None
         self._scene_code: int | None = None
         self._pre_mode_snapshot = PreModeSnapshot(kind="rgb", rgb=(255, 255, 255))
@@ -955,6 +957,7 @@ class GoveeBLECoordinator(
             self.boolean_control_state.clear()
             self.low_blue_light = None
             self.power_on_behaviour = None
+            self.power_on_open_flag = None
         self._physical_ic_count_confirmed = False
         if self.profile.can_read(ReadDomain.PHYSICAL_IC_COUNT) and get_profile(self.model).physical_ic_count is None:
             self._observed_physical_ic_count = None
@@ -1322,7 +1325,12 @@ class GoveeBLECoordinator(
             if full_query and profile.supports_power_on_behaviour and profile.bulk_status_grammar is None:
                 from .generated_protocol_adapter import build_power_on_behaviour_query
 
-                queries.append((build_power_on_behaviour_query(profile), ReadDomain.OTHER, ("power_on_behaviour",)))
+                power_fields = (
+                    ("power_on_behaviour", "power_on_open_flag")
+                    if profile.setting_grammar == "H607C"
+                    else ("power_on_behaviour",)
+                )
+                queries.append((build_power_on_behaviour_query(profile), ReadDomain.OTHER, power_fields))
             required = (
                 required_domains
                 if required_domains is not None
@@ -1354,6 +1362,10 @@ class GoveeBLECoordinator(
                 if time.monotonic() >= deadline:
                     return all(d not in required for _, d, _ in queries[index:])
                 baselines = {field: self._field_revisions.get(field, 0) for field in fields}
+                if profile.setting_grammar == "H607C" and domain is ReadDomain.OTHER:
+                    if not await self._async_read_setting_fields(client, query, fields, deadline=deadline):
+                        return domain not in required and all(d not in required for _, d, _ in queries[index + 1 :])
+                    continue
                 if profile.setting_grammar == "H6046" and set(fields) == {
                     "boolean_left_bar_enabled",
                     "boolean_right_bar_enabled",
@@ -1734,6 +1746,19 @@ class GoveeBLECoordinator(
                         domain = "power_on_behaviour" if control == "power_on_behaviour" else "zone_enable"
                         if not await self._async_read_bulk_status(client, deadline=deadline, domains=(domain,)):
                             raise ValueError("Device did not provide complete setting readback")
+                elif self.profile.setting_grammar == "H607C":
+                    query = (
+                        build_power_on_behaviour_query(self.profile)
+                        if control == "power_on_behaviour"
+                        else build_boolean_control_query(control, self.model, profile=self.profile)
+                    )
+                    fields = (
+                        ("power_on_behaviour", "power_on_open_flag")
+                        if control == "power_on_behaviour"
+                        else tuple(f"boolean_{name}" for name in sorted(self.profile.boolean_controls))
+                    )
+                    if not await self._async_read_setting_fields(client, query, fields, deadline=deadline):
+                        raise ValueError("Device did not provide complete native setting readback")
                 else:
                     await self._async_write_packet(
                         client,
@@ -2650,6 +2675,7 @@ class GoveeBLECoordinator(
                     "scene_code",
                     "unknown_scene_code",
                     "diy_code",
+                    "diy_companion",
                     "music_mode",
                     "music_sensitivity",
                     "music_calm",

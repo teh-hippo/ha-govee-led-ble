@@ -1,12 +1,14 @@
 import { describe, expect, test, vi } from "vitest";
 
 import type { EffectStudioApi } from "../../src/api";
+import { blankLayer } from "../../src/advanced-effect-model";
 import { SceneBrowserWorkflow } from "../../src/scene-browser-workflow";
 import type {
   BuiltinSceneContent,
   DeviceCapabilities,
   LibraryItem,
   LibrarySummary,
+  LayeredSceneContent,
   SceneCatalogue,
   SceneDetail,
   SceneSummary,
@@ -132,6 +134,36 @@ function harness(api: EffectStudioApi) {
 }
 
 describe("SceneBrowserWorkflow", () => {
+  test.each([2, 6])("opens the shared layer editor for catalogue type %s", async (sceneType) => {
+    const scene: SceneSummary = { ...firstScene, scene_type: sceneType, parameter_kind: "layers" };
+    const layered: LayeredSceneContent = {
+      kind: "scene_layered",
+      template: content(scene).template,
+      effect: { layers: [{ ...blankLayer(), excess: "00020001ff" }] },
+      speed_index: 1,
+      raw_param: "",
+    };
+    const api = {
+      sceneCatalogue: vi.fn().mockResolvedValue({ ...catalogue, scenes: [scene] }),
+      sceneDetail: vi.fn().mockResolvedValue({
+        scene, content: layered, catalogue_content: layered, has_default: false,
+      }),
+    } as unknown as EffectStudioApi;
+    const { workflow } = harness(api);
+    await workflow.loadCatalogue();
+    await workflow.selectBuiltin(scene);
+
+    const selection = workflow.edit(true);
+
+    expect(selection?.content).toEqual(layered);
+    expect(selection?.catalogue_content).toEqual(layered);
+    expect(workflow.state.editingCopy).toBe(false);
+    if (selection?.content.kind === "scene_layered") {
+      selection.content.effect.layers[0].excess = "";
+    }
+    expect(layered.effect.layers[0].excess).toBe("00020001ff");
+  });
+
   test("a stale scene response cannot replace the latest selection", async () => {
     const first = deferred<SceneDetail>();
     const second = deferred<SceneDetail>();

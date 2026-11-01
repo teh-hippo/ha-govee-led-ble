@@ -421,6 +421,12 @@ def test_h6102_candidate_uses_complete_exact_snapshot():
             "a2fe1e022e8eb96c5786ebc380e4f3dcfff6fcc99b8644ab28a6ebae0cf9e8c3",
         ),
         (
+            "H607C",
+            8,
+            104,
+            "304196bb11fb73e3c1054ff0ff2515a425df159d7b1d79032e970acc1cb4c612",
+        ),
+        (
             "H6102",
             12,
             240,
@@ -507,3 +513,44 @@ def test_h7020_snapshot_preserves_the_scene_2983_default_rewrite_contract():
         (21, 81, 220),
         (47, 221, 215),
     ]
+
+
+def test_h607c_refresh_uses_page_default_instead_of_outer_speed_index():
+    data = json.loads((SNAPSHOT_DIR / "H607C.json").read_text(encoding="utf-8"))
+    assert sum("speed" in effect for effect in data["effects"]) == 49
+    source = next(effect for effect in data["effects"] if effect["code"] == 10871)
+    effect = _effect(source["effect_id"], source["code"])
+    effect.update(
+        {
+            "sceneType": source["scene_type"],
+            "scenceParam": source["param"],
+            "speedInfo": {
+                "supSpeed": True,
+                "speedIndex": 0,
+                "config": json.dumps([{"page": 0, "moveIn": [224, 234, 242, 249], "defaultIndex": 1}]),
+            },
+        }
+    )
+    raw = {
+        "status": 200,
+        "data": {
+            "categories": [
+                {
+                    "categoryId": 1,
+                    "categoryName": "Natural",
+                    "scenes": [{"sceneId": source["scene_id"], "sceneName": source["name"], "lightEffects": [effect]}],
+                }
+            ]
+        },
+    }
+    refreshed = build_snapshot(raw, "H607C")["effects"][0]
+    assert refreshed["speed"] == source["speed"]
+    speed = _load_speed(refreshed["speed"])
+    assert speed is not None and speed.default_index == 1
+    stored = base64.b64decode(source["param"], validate=True)
+    rewritten = apply_scene_speed(stored, speed, speed.default_index, scene_type=6)
+    assert [
+        (index, before, after)
+        for index, (before, after) in enumerate(zip(stored, rewritten, strict=True))
+        if before != after
+    ] == [(30, 224, 234)]

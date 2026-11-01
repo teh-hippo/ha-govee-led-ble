@@ -15,7 +15,7 @@ from .generated_protocol_adapter import (
 )
 from .h6179_effect_codec import encode_h6179_effect
 from .light_commands import SEGMENT_COUNT
-from .protocol_core import DIY_PAINTED_EFFECTS
+from .protocol_core import DIY_PAINTED_EFFECTS, H607cPaintBody, new_child, new_rgb, serialize_native_body
 from .protocol_h6179 import build_h6179_diy_activation as build_h6179_activation
 from .protocol_h6199 import build_h6199_palette_diy_envelope
 from .transport import fragment_a1_02, fragment_a3, fragment_a3_envelope
@@ -27,6 +27,37 @@ type RGB = tuple[int, int, int]
 class DiyPaintGroup:
     fill: RGB
     segments: tuple[int, ...]
+
+
+def build_h607c_diy_painted(
+    effect: str, speed: int, brightness: int, background: RGB, groups: Sequence[DiyPaintGroup], *, segment_count: int
+) -> list[bytes]:
+    """Encode the native paint body without treating its direction as an upload command."""
+    _validate_percent(speed, "speed")
+    _validate_percent(brightness, "brightness")
+    _validate_rgb(background, "background")
+    if effect not in H607cPaintBody.Direction.__members__ or not 1 <= segment_count <= 255:
+        raise ValueError("unsupported native paint direction or physical geometry")
+    root = H607cPaintBody()
+    root.direction = H607cPaintBody.Direction[effect]
+    root.speed, root.background_brightness = speed, brightness
+    root.background = new_rgb(root, background)
+    root.num_groups, root.groups = len(groups), []
+    root.unknown_tail = b""
+    seen: set[int] = set()
+    for group in groups:
+        _validate_rgb(group.fill, "paint colour")
+        if not group.segments:
+            raise ValueError("native paint positions are outside the physical geometry or duplicated")
+        for index in group.segments:
+            if type(index) is not int or not 0 <= index < segment_count or index in seen:
+                raise ValueError("native paint positions are outside the physical geometry or duplicated")
+            seen.add(index)
+        node = new_child(H607cPaintBody.Group, root)
+        node.num_positions, node.positions = len(group.segments), list(group.segments)
+        node.colour = new_rgb(node, group.fill)
+        root.groups.append(node)
+    return fragment_a3(int(H607cPaintBody.UploadSubtype.paint), serialize_native_body(root))
 
 
 def _validate_percent(value: int, name: str) -> None:

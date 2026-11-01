@@ -860,6 +860,9 @@ export class PanelEditorController {
     ) {
       return undefined;
     }
+    const template = catalogue.templates?.find(candidate =>
+      candidate.content.kind === "music_profile" && candidate.content.mode === mode);
+    if (template?.content.kind === "music_profile") return cloneMusicProfileContent(template.content);
     return {
       kind: "music_profile",
       model: selectedModel,

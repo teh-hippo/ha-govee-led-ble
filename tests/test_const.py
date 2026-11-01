@@ -146,7 +146,23 @@ def test_support_quality_has_only_supported_and_experimental_states():
     }
     assert {
         model for model, profile in MODEL_PROFILES.items() if profile.support_quality is SupportQuality.EXPERIMENTAL
-    } == {"H6072", "H6179", "H7025"}
+    } == {"H6072", "H607C", "H6179", "H7025"}
+
+
+@pytest.mark.parametrize("pact", [(1, 1), (2, 1), (None, None), (3, 7)])
+def test_h607c_pact_admission_keeps_its_zones_and_does_not_invent_version_gates(pact):
+    profile = device_profile("H607C", *pact, firmware="1.01.06.13", hardware="3.04.01 1.04.01/1.06.24")
+    known = pact in {(1, 1), (2, 1)}
+    assert profile.supports_rgb is known
+    assert profile.supports_scenes is known
+    assert bool(profile.music_modes) is known
+    assert bool(profile.boolean_controls) is known
+    assert profile.supports_power_on_behaviour is known
+    assert profile.native_zones == (("pole", 8, 144), ("base", 5, 30))
+    assert profile.segment_group_count == 0 and not profile.can_read(ReadDomain.SEGMENTS)
+    assert profile.confirmation_issue == 511 and profile.support_quality is SupportQuality.EXPERIMENTAL
+    if known:
+        assert profile == MODEL_PROFILES["H607C"]
 
 
 def test_h6125_is_an_exact_supported_profile_on_the_shared_dreamcolor_route():

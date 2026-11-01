@@ -856,7 +856,7 @@ export class SceneBrowserWorkflow {
         name: selectedItem?.name ?? selectedScene.display_name,
       };
     }
-    if (selectedScene.scene_type === 2 && content?.kind === "scene_layered") {
+    if (selectedScene.parameter_kind === "layers" && content?.kind === "scene_layered") {
       const catalogueContent =
         selectedItem?.content.kind === "scene_layered"
           ? selectedItem.content

@@ -37,13 +37,14 @@ from .effect_domain import (
 from .generated_protocol.diy_type03 import DiyType03  # type: ignore[attr-defined]
 from .h60a6_effects import native_diy_preset
 from .layered_scene_decoder import decode_workshop_effect
-from .music_commands import music_default_available
+from .music_commands import default_music_zones, music_default_available
 from .music_protocol import music_code_for, music_codebook
 from .music_semantics import music_parameters_available, music_params_for_mode, music_variant
-from .protocol_core import H60a6PaintBody
+from .native_effect import NativeDiyLayer, NativeOpaqueLayer
+from .protocol_core import H60a6PaintBody, H607cDiyBody, H607cPaintBody
 from .protocol_music_params import music_default_palette
 
-EFFECT_STUDIO_CATALOGUE_SCHEMA_VERSION: Final = 11
+EFFECT_STUDIO_CATALOGUE_SCHEMA_VERSION: Final = 12
 LEGACY_CATALOGUE_SKU: Final = "H617A"
 
 # H617A Type04 uploads are selected with DIY code 24.
@@ -87,6 +88,10 @@ class DiyEffectFamily:
     rate_max: int = 100
     palette_max: int | None = None
     multi_rate_min: int | None = None
+    palette_min: int | None = None
+    secondary_palette_min: int | None = None
+    secondary_palette_max: int | None = None
+    palette_labels: tuple[str, str] | None = None
 
     def to_dict(self) -> dict[str, JsonValue]:
         return {
@@ -101,6 +106,13 @@ class DiyEffectFamily:
             "rate_max": self.rate_max,
             **({"multi_rate_min": self.multi_rate_min} if self.multi_rate_min is not None else {}),
             **({"palette_max": self.palette_max} if self.palette_max is not None else {}),
+            **({"palette_min": self.palette_min} if self.palette_min is not None else {}),
+            **(
+                {"secondary_palette": {"min": self.secondary_palette_min, "max": self.secondary_palette_max}}
+                if self.secondary_palette_min is not None
+                else {}
+            ),
+            **({"palette_labels": list(self.palette_labels)} if self.palette_labels is not None else {}),
         }
 
 
@@ -250,6 +262,21 @@ class ModelEffectCatalogue:
         profile = MODEL_PROFILES[self.sku] if profile is None else profile
         result: dict[str, JsonValue] = {
             "sku": self.sku,
+            **(
+                {
+                    "native_zones": [
+                        {
+                            "id": name,
+                            "label": name.capitalize(),
+                            "segment_count": logical,
+                            "physical_ic_budget": physical,
+                        }
+                        for name, logical, physical in profile.native_zones
+                    ]
+                }
+                if profile.native_zones
+                else {}
+            ),
             **({"native_actions": [action.to_dict() for action in self.native_actions]} if self.native_actions else {}),
             "painted_effects": [
                 dict(effect)
@@ -269,7 +296,7 @@ class ModelEffectCatalogue:
             "music_modes": [mode.to_dict() for mode in self.music_modes if mode.id in profile.music_modes],
             "music_settings": {
                 mode.id: {
-                    "available": music_default_available(self.sku, mode.id, profile=profile),
+                    "available": (available := music_default_available(self.sku, mode.id, profile=profile)),
                     "style": bool(
                         (variant := music_variant(profile, music_code_for(self.sku, mode.id, profile=profile)))
                         and variant.supports_style
@@ -277,7 +304,9 @@ class ModelEffectCatalogue:
                     "calm_default": variant.calm_default if variant else False,
                     "colour": bool(profile.supports_music_color and variant and variant.supports_fixed_colour),
                     "evidence": variant.evidence if variant else None,
-                    "palette_size": variant.template[1] if variant and variant.template else 0,
+                    "palette_size": len(music_default_palette(variant))
+                    if available and variant and variant.template
+                    else 0,
                     **(
                         {
                             "palette": {
@@ -1069,6 +1098,7 @@ def _music_template(model: str, mode: NativeModeOption) -> CatalogueTemplate:
             colour=None,
             calm=variant.calm_default if variant and variant.supports_style else None,
             parameters={},
+            zones=default_music_zones(profile, mode.id),
         ),
     )
 
@@ -1388,6 +1418,125 @@ H6076_NATIVE_MUSIC_MODES: Final = tuple(
 H6072_NATIVE_MUSIC_MODES: Final = tuple(
     NativeModeOption(slug, _mode_label(slug)) for slug in MODEL_PROFILES["H6072"].music_modes
 )
+H607C_NATIVE_MUSIC_MODES: Final = tuple(
+    NativeModeOption(slug, _mode_label(slug)) for slug in MODEL_PROFILES["H607C"].music_modes
+)
+
+H607C_DIY_FAMILIES: Final = tuple(
+    DiyEffectFamily(
+        id=kind.name,
+        label=label,
+        family=int(kind),
+        variations=tuple(
+            DiyEffectVariation(f"variation_{int(variant)}", f"Variation {index + 1}", int(variant))
+            for index, variant in enumerate(variants)
+        ),
+        supports_multi=True,
+        source_reference="H607C candidate native zone parameters",
+        rate_min=50 if kind == H607cDiyBody.Family.drip else 0,
+        rate_max=50 if kind == H607cDiyBody.Family.drip else 100,
+        palette_min=bounds[0],
+        palette_max=bounds[1],
+        secondary_palette_min=secondary[0] if secondary else None,
+        secondary_palette_max=secondary[1] if secondary else None,
+        palette_labels=("Background", "Accent colours")
+        if kind == H607cDiyBody.Family.shimmer
+        else ("Moving colours", "Breathing colours")
+        if kind == H607cDiyBody.Family.drip
+        else None,
+    )
+    for kind, label, variants, bounds, secondary in (
+        (
+            H607cDiyBody.Family.gradual,
+            "Gradual",
+            (H607cDiyBody.Variant.native_89, H607cDiyBody.Variant.native_88),
+            (2, 8),
+            None,
+        ),
+        (
+            H607cDiyBody.Family.breathe,
+            "Breathe",
+            (H607cDiyBody.Variant.native_89, H607cDiyBody.Variant.native_88),
+            (2, 8),
+            None,
+        ),
+        (
+            H607cDiyBody.Family.stream,
+            "Flow",
+            (H607cDiyBody.Variant.native_13, H607cDiyBody.Variant.native_14),
+            (2, 8),
+            None,
+        ),
+        (H607cDiyBody.Family.colour_wall, "Colour wall", (H607cDiyBody.Variant.primary,), (2, 8), None),
+        (H607cDiyBody.Family.shimmer, "Shimmer", (H607cDiyBody.Variant.primary,), (1, 1), (1, 8)),
+        (H607cDiyBody.Family.chase, "Chase", (H607cDiyBody.Variant.primary,), (2, 8), None),
+        (
+            H607cDiyBody.Family.shock,
+            "Flash",
+            (H607cDiyBody.Variant.native_89, H607cDiyBody.Variant.native_88),
+            (1, 8),
+            None,
+        ),
+        (H607cDiyBody.Family.drip, "Drip", (H607cDiyBody.Variant.primary,), (1, 8), (2, 8)),
+        (H607cDiyBody.Family.lava, "Lava", (H607cDiyBody.Variant.primary,), (3, 8), None),
+    )
+)
+
+
+def _native_zone_layer(family: DiyEffectFamily, variant: int | None = None) -> NativeDiyLayer:
+    return NativeDiyLayer(
+        kind=family.family,
+        parameter=family.variations[0].variant if variant is None else variant,
+        speed=50,
+        palette=DEFAULT_PALETTE[: family.palette_max or 8],
+        secondary_palette=DEFAULT_PALETTE[: family.secondary_palette_max] if family.secondary_palette_max else (),
+    )
+
+
+def _h607c_templates() -> tuple[CatalogueTemplate, ...]:
+    return (
+        CatalogueTemplate(
+            id="template:paint",
+            label="Paint",
+            category="single-layer",
+            content=PaintedEffect(
+                effect=H607cPaintBody.Direction.upward.name,
+                speed=0,
+                brightness=100,
+                segments=(None,) * MODEL_PROFILES["H607C"].native_zones[0][2],
+                addressing="physical_ic",
+                model="H607C",
+            ),
+        ),
+        *(
+            CatalogueTemplate(
+                id=f"template:native:{family.family}:{variation.variant}",
+                label=f"{family.label} {index + 1}" if len(family.variations) > 1 else family.label,
+                category="single-layer",
+                content=NativeEffect(
+                    model="H607C",
+                    family=family.family,
+                    layers=(_native_zone_layer(family, variation.variant),),
+                    preset_id=family.family,
+                ),
+            )
+            for family in H607C_DIY_FAMILIES
+            for index, variation in enumerate(family.variations)
+        ),
+        CatalogueTemplate(
+            id="template:native:paired",
+            label="Pole and base",
+            category="multi-layer",
+            content=NativeEffect(
+                model="H607C",
+                family=int(H607cDiyBody.Family.paired),
+                layers=(_native_zone_layer(H607C_DIY_FAMILIES[0]), _native_zone_layer(H607C_DIY_FAMILIES[1])),
+            ),
+        ),
+        *(_music_template("H607C", mode) for mode in H607C_NATIVE_MUSIC_MODES),
+    )
+
+
 H7025_NATIVE_MUSIC_MODES: Final = tuple(
     NativeModeOption(slug, _mode_label(slug)) for slug in MODEL_PROFILES["H7025"].music_modes
 )
@@ -1914,6 +2063,34 @@ MODEL_EFFECT_CATALOGUES: Final = {
         ),
         diy_slot_policy="approved_observed",
     ),
+    "H607C": ModelEffectCatalogue(
+        sku="H607C",
+        painted_addressing="physical_ic",
+        painted_effects=tuple(
+            {"id": direction.name, "label": direction.name.replace("_", " ").capitalize()}
+            for direction in H607cPaintBody.Direction
+        ),
+        effects=H607C_DIY_FAMILIES,
+        music_modes=H607C_NATIVE_MUSIC_MODES,
+        video_modes=(),
+        templates=_h607c_templates(),
+        workshop_templates=(),
+        supports=CatalogueSupport(
+            multi=workflow_capability_state("H607C", CapabilityWorkflow.MULTI),
+            advanced=CapabilityState.UNSUPPORTED,
+            workshop=workflow_capability_state("H607C", CapabilityWorkflow.WORKSHOP),
+        ),
+        apply=ApplySupport(
+            painted=studio_apply_capability_state("H607C", CapabilityWorkflow.PAINTED),
+            single=studio_apply_capability_state("H607C", CapabilityWorkflow.SINGLE),
+            multi=studio_apply_capability_state("H607C", CapabilityWorkflow.MULTI),
+            palette_diy=CapabilityState.UNSUPPORTED,
+            workshop=studio_apply_capability_state("H607C", CapabilityWorkflow.WORKSHOP),
+        ),
+        multi_max=2,
+        temporary_diy_selector=int(H607cDiyBody.ActivationSelector.temporary),
+        advanced_create=False,
+    ),
     "H6076": ModelEffectCatalogue(
         sku="H6076",
         painted_addressing="physical_ic",
@@ -2054,7 +2231,7 @@ MODEL_EFFECT_CATALOGUES: Final = {
 
 
 def validate_effect_eligibility(
-    content: PaintedEffect | SingleEffect | MultiEffect | PaletteDiyEffect,
+    content: PaintedEffect | SingleEffect | MultiEffect | PaletteDiyEffect | NativeEffect,
     model: str,
     *,
     profile: ModelProfile | None = None,
@@ -2066,7 +2243,34 @@ def validate_effect_eligibility(
     catalogue = MODEL_EFFECT_CATALOGUES.get(model)
     if catalogue is None:
         raise ValueError(f"{model} has no custom-effect catalogue")
+    if isinstance(content, NativeEffect):
+        if content.model != model or profile.effect_grammar != "H607C":
+            raise ValueError("native zone content does not match the effective profile")
+        if not any(isinstance(layer, NativeDiyLayer) and layer.enabled for layer in content.layers):
+            raise ValueError("select at least one native effect section")
+        for layer in content.layers:
+            if isinstance(layer, NativeOpaqueLayer) or not isinstance(layer, NativeDiyLayer):
+                raise ValueError("unqualified native zone parameters cannot be authored")
+            if not layer.enabled:
+                continue
+            family = next((family for family in catalogue.effects if family.family == layer.kind), None)
+            if family is None or layer.parameter not in {variation.variant for variation in family.variations}:
+                raise ValueError("native DIY family or variation is unsupported")
+            if not (family.palette_min or 1) <= len(layer.palette) <= (family.palette_max or catalogue.palette_max):
+                raise ValueError("native DIY palette is outside its variant bounds")
+            if family.secondary_palette_min is None:
+                if layer.secondary_palette:
+                    raise ValueError("this native effect has no secondary palette")
+            elif (
+                not family.secondary_palette_min <= len(layer.secondary_palette) <= (family.secondary_palette_max or 0)
+            ):
+                raise ValueError("native secondary palette is outside its variant bounds")
+            if not family.rate_min <= layer.speed <= family.rate_max:
+                raise ValueError("native DIY rate is outside its variant bounds")
+        return
     if isinstance(content, PaintedEffect):
+        if content.model is not None and content.model != model:
+            raise ValueError("painted effect identity does not match the target model")
         if content.effect not in {effect["id"] for effect in catalogue.painted_effects}:
             raise ValueError(f"{model} painted effect {content.effect!r} is not supported")
         profile = get_profile(model) if profile is None else profile
@@ -2083,6 +2287,8 @@ def validate_effect_eligibility(
         if not catalogue.brightness_min <= content.brightness <= catalogue.brightness_max:
             raise ValueError(f"{model} painted brightness is outside catalogue limits")
     else:
+        if profile.effect_grammar == "H607C":
+            raise ValueError("native DIY requires its independently bounded zone definition")
         if not catalogue.palette_min <= len(content.palette) <= catalogue.palette_max:
             raise ValueError(f"{model} palette is outside catalogue limits")
         multi = isinstance(content, MultiEffect)
@@ -2245,13 +2451,7 @@ def _template_available(template: CatalogueTemplate, profile: ModelProfile) -> b
     elif isinstance(content, LayeredEffect):
         workflow = CapabilityWorkflow.ADVANCED
     elif isinstance(content, NativeEffect):
-        workflow = (
-            CapabilityWorkflow.PAINTED
-            if content.family == 798
-            else CapabilityWorkflow.ADVANCED
-            if content.preset_id in (11, 12)
-            else CapabilityWorkflow.SINGLE
-        )
+        workflow = CapabilityWorkflow(content.workflow)
     elif isinstance(content, SingleEffect | H6179SingleDiyEffect):
         workflow = CapabilityWorkflow.SINGLE
     elif isinstance(content, MultiEffect | H6179MixedDiyEffect):
@@ -2419,7 +2619,7 @@ def validate_catalogue_template_identity(
         == (canonical.model, canonical.family, canonical.preset_id, canonical.template)
         or isinstance(canonical, PaintedEffect)
         and isinstance(content, PaintedEffect)
-        and canonical.addressing == content.addressing
+        and (canonical.addressing, canonical.model) == (content.addressing, content.model)
         or isinstance(canonical, SingleEffect)
         and isinstance(content, SingleEffect)
         and (content.family, content.variant) == (canonical.family, canonical.variant)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import io
+import json
 from collections import Counter
 from dataclasses import replace
 from typing import Any, cast
@@ -30,18 +31,162 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     effect_content_to_dict,
 )
 from custom_components.ha_govee_led_ble.effect_protocol_decoder import decode_a3_effect, decode_effect_frames
+from custom_components.ha_govee_led_ble.effect_scene_defaults import NativeSceneDefault
+from custom_components.ha_govee_led_ble.effect_scenes import resolve_scene_application_body, scene_detail_payload
 from custom_components.ha_govee_led_ble.generated_protocol.scene_body import SceneBody
-from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_scene_activation, parse_scene_body_param
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
+    build_scene_activation,
+    parse_scene_body,
+    parse_scene_body_param,
+)
 from custom_components.ha_govee_led_ble.h60a6_effects import decode_native_scene, encode_native_body, native_diy_preset
-from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_layered_scene, encode_layered_scene
+from custom_components.ha_govee_led_ble.layered_scene_decoder import (
+    decode_catalogue_layered_scene,
+    decode_layered_scene,
+    encode_layered_scene,
+)
 from custom_components.ha_govee_led_ble.native_effect import NativeDiyLayer, NativePaintLayer
-from custom_components.ha_govee_led_ble.native_scenes import apply_scene_speed, build_native_scene_packets
+from custom_components.ha_govee_led_ble.native_scenes import (
+    apply_scene_speed,
+    build_native_scene_packets,
+    resolve_native_scene_body,
+)
 from custom_components.ha_govee_led_ble.palette_scene_decoder import decode_catalogue_palette_scene
-from custom_components.ha_govee_led_ble.protocol_core import H60a6DiyBody, _check_tree, _write
-from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES, SCENE_ENTRIES, SceneEntry
-from custom_components.ha_govee_led_ble.transport import fragment_a3, xor_checksum
+from custom_components.ha_govee_led_ble.protocol_core import (
+    MAX_SCENE_PARAM_BYTES,
+    H60a6DiyBody,
+    _check_tree,
+    _write,
+)
+from custom_components.ha_govee_led_ble.scenes import (
+    MODEL_SCENES,
+    SCENE_ENTRIES,
+    SceneEntry,
+)
+from custom_components.ha_govee_led_ble.transport import fragment_a3, reassemble_a3, xor_checksum
 
 _LAYERED_SCENE_TYPE = int(SceneBody.SceneType.scene_v2)
+
+
+@pytest.fixture
+def h607c_catalogue():
+    return SCENE_ENTRIES["H607C"]
+
+
+def test_h607c_endpoint_layers_round_trip_and_compile_without_a_second_marker(h607c_catalogue):
+    for entry in h607c_catalogue:
+        template = _reference("H607C", entry)
+        builtin = compile_effect(LibraryItem.new("Catalogue", BuiltinScene(template)), "H607C")
+        if not entry.param:
+            assert builtin.upload_packets == ()
+            continue
+        raw = _raw_param(entry)
+        content = decode_catalogue_layered_scene("H607C", entry)
+        assert isinstance(content, LayeredScene)
+        restored = effect_content_from_dict(json.loads(json.dumps(effect_content_to_dict(content))))
+        assert restored == content
+        assert encode_layered_scene(restored, scene_type=entry.scene_type) == raw
+        authored = compile_effect(LibraryItem.new("Saved layers", restored), "H607C")
+        assert authored.packets == builtin.packets
+        assert authored.upload_subtype == builtin.upload_subtype == 0x0A
+        body, _speed = resolve_native_scene_body(entry)
+        envelope = reassemble_a3(builtin.upload_packets)
+        assert envelope[2 : 2 + len(body)] == body
+        assert not any(envelope[2 + len(body) :])
+        parsed, _padding = parse_scene_body(body, scene_type=entry.scene_type)
+        assert len(parsed.records) == len(content.effect.layers)
+
+
+@pytest.mark.parametrize("code", [10871, 10873])
+def test_h607c_speed_rewrites_named_fields_and_preserves_every_v2_trailer(h607c_catalogue, code):
+    entry = next(entry for entry in h607c_catalogue if entry.code == code)
+    assert entry.speed is not None
+    before = decode_catalogue_layered_scene("H607C", entry)
+    assert before is not None
+    for index in range(entry.speed.option_count):
+        payload = apply_scene_speed(_raw_param(entry), entry.speed, index, scene_type=entry.scene_type)
+        after = decode_layered_scene(before.template, payload, scene_type=entry.scene_type)
+        for layer_index, (old, new) in enumerate(zip(before.effect.layers, after.effect.layers, strict=True)):
+            page = next((page for page in entry.speed.pages if page.page == layer_index), None)
+            expected = (
+                replace(old, selected_movement=replace(old.selected_movement, speed=page.move_in[index]))
+                if page
+                else old
+            )
+            assert new == expected
+
+
+def test_h607c_new_layer_preserves_the_source_zone_trailer(h607c_catalogue):
+    entry = next(entry for entry in h607c_catalogue if entry.code == 16183)
+    content = decode_catalogue_layered_scene("H607C", entry)
+    assert content is not None
+    layer = content.effect.layers[0]
+    edited = replace(
+        content,
+        effect=replace(
+            content.effect,
+            layers=(*content.effect.layers, replace(layer, palette=((1, 2, 3),), colour_speed=128)),
+        ),
+    )
+    raw = encode_layered_scene(edited, scene_type=entry.scene_type)
+    reparsed = decode_layered_scene(content.template, raw, scene_type=entry.scene_type)
+    assert reparsed.effect == edited.effect
+    assert reparsed.effect.layers[1].excess == layer.excess
+
+
+@pytest.mark.parametrize("parameter_size", [4333, 4334, 4335])
+def test_h607c_parameter_limit_includes_a3_header_bytes(h607c_catalogue, parameter_size):
+    entry = next(entry for entry in h607c_catalogue if entry.code == 16183)
+    content = decode_catalogue_layered_scene("H607C", entry)
+    assert content is not None
+    raw = _raw_param(entry)
+    padded = replace(content, trailing_padding=parameter_size - len(raw))
+    if parameter_size + 2 > MAX_SCENE_PARAM_BYTES:
+        with pytest.raises(ValueError, match="parameter bound"):
+            encode_layered_scene(padded, scene_type=entry.scene_type)
+    else:
+        body = encode_layered_scene(padded, scene_type=entry.scene_type)
+        assert len(body) == parameter_size
+        packets = build_native_scene_packets("H607C", entry, canonical_body=body)
+        assert len(packets[:-1]) == 255
+
+
+def test_h607c_saved_scene_speed_keeps_the_container_and_other_layer_edits(h607c_catalogue):
+    entry = next(entry for entry in h607c_catalogue if entry.code == 10873)
+    detail = scene_detail_payload("H607C", entry.scene_id, entry.effect_id)
+    content = effect_content_from_dict(cast(dict[str, Any], detail["content"]))
+    assert isinstance(content, LayeredScene)
+    assert cast(dict[str, Any], detail["scene"])["parameter_kind"] == "layers"
+    edited = replace(
+        content,
+        effect=replace(
+            content.effect,
+            layers=(replace(content.effect.layers[0], palette=((1, 2, 3),)), *content.effect.layers[1:]),
+        ),
+        speed_index=0,
+    )
+    compiled = compile_effect(LibraryItem.new("Edited native layers", edited), "H607C")
+    body = encode_layered_scene(edited, scene_type=entry.scene_type)
+    default = NativeSceneDefault(
+        config_entry_id="entry",
+        scene_id=entry.scene_id,
+        effect_id=entry.effect_id,
+        updated_at="2026-11-01T00:00:00Z",
+        canonical_body=body,
+        speed_index=0,
+    )
+    assert compiled.upload_packets == tuple(fragment_a3(0x0A, body[1:]))
+    reapplied, speed_index = resolve_scene_application_body(entry, scene_default=default, speed_index=2)
+    assert speed_index == 2
+    after = decode_layered_scene(content.template, reapplied, scene_type=entry.scene_type)
+    assert after.effect.layers[0] == edited.effect.layers[0]
+    assert after.effect.layers[1] == replace(
+        edited.effect.layers[1], selected_movement=replace(edited.effect.layers[1].selected_movement, speed=252)
+    )
+    restored = scene_detail_payload("H607C", entry.scene_id, entry.effect_id, scene_default=default)
+    assert effect_content_from_dict(cast(dict[str, Any], restored["content"])) == replace(edited, raw_param=body)
+    with pytest.raises(ValueError, match="does not support this layered scene body"):
+        build_native_scene_packets("H607C", entry, profile=replace(MODEL_PROFILES["H607C"], effect_grammar="H617A"))
 
 
 def test_all_h60a6_native_catalogue_bodies_round_trip_through_saved_semantics() -> None:

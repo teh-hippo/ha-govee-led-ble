@@ -124,6 +124,8 @@ def expectations_from_packet(
     elif operation == "multi":
         mode = getattr(generated.body.sub, "name", None)
         detail = generated.body.sub_body
+        if mode == "diy" and hasattr(detail, "companion"):
+            expectations["diy_companion"] = int(detail.companion)
         if mode == "music":
             music_mode = music_slug_for(model, int(detail.mode_id), profile=profile)
             expectations["music_mode"] = music_mode

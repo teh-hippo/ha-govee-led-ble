@@ -1,6 +1,31 @@
 import { expect, test } from "@playwright/test";
 import type { GoveeMusicProfileEditor } from "../../src/music-profile-editor";
 
+test("paired music edits isolate zones and do not bubble child mode changes to the parent", async ({ page }) => {
+  await page.goto("/tests/browser/fixtures/music-profile-editor.html?paired");
+  const editor = page.locator("body > govee-music-profile-editor");
+  const children = editor.locator("govee-music-profile-editor");
+  await expect(children).toHaveCount(2);
+  await expect(page.getByRole("slider", {name: "Sensitivity", exact: true})).toHaveCount(1);
+  await expect(children.getByLabel("Reactive effect").locator("option[value='paired']")).toHaveCount(0);
+  const original = await editor.evaluate(el => (el as GoveeMusicProfileEditor).content);
+  await children.nth(1).getByLabel("Reactive effect").selectOption("shiny");
+  const changed = await editor.evaluate(el => (el as GoveeMusicProfileEditor).content!);
+  expect(changed.mode).toBe("paired");
+  expect(changed.zones![0]).toEqual(original!.zones![0]);
+  expect(changed.zones![1]).toEqual({id: "base", mode: "shiny", parameters: {}});
+  await expect(children.nth(1).locator("govee-palette-editor")).toBeVisible();
+  await children.nth(0).getByRole("slider", {name: "Relative brightness", exact: true}).evaluate(el => {
+    (el as HTMLInputElement).value = "31";
+    el.dispatchEvent(new Event("input", {bubbles: true}));
+    el.dispatchEvent(new Event("change", {bubbles: true}));
+  });
+  const final = await editor.evaluate(el => (el as GoveeMusicProfileEditor).content!);
+  expect(final.zones![0].parameters.relative_brightness).toBe(31);
+  expect(final.zones![1]).toEqual(changed.zones![1]);
+  expect(final.zones![0].body).toBe(original!.zones![0].body);
+});
+
 for (const width of [390, 1280]) {
   test(`optional music palette edits, bounds and reset at ${width}px`, async ({ page }) => {
     await page.setViewportSize({width, height: 900});

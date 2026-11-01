@@ -26,6 +26,7 @@ from .music_semantics import (
     H7020_MUSIC_VARIANTS,
     H7025_MUSIC_VARIANTS,
     MusicVariant,
+    h607c_music_variants,
 )
 
 DOMAIN = "ha_govee_led_ble"
@@ -107,6 +108,16 @@ _IDENTITY_READ_DOMAINS = frozenset(
         ReadDomain.PHYSICAL_IC_COUNT,
     }
 )
+
+NATIVE_ZONE_CONTROLS = (
+    "panel_enabled",
+    "ring_enabled",
+    "left_bar_enabled",
+    "right_bar_enabled",
+    "pole_enabled",
+    "base_enabled",
+)
+H607C_NATIVE_ZONES = (("pole", 8, 144), ("base", 5, 30))
 
 
 @dataclass(frozen=True)
@@ -223,6 +234,7 @@ class ModelProfile:
     static_readback_gradual: bool = False
     whole_device_mask: int = 0
     segment_count: int = 0
+    native_zones: tuple[tuple[str, int, int], ...] = ()
     segment_group_size: int = 0
     segment_colour_mode_ambiguous: bool = False
     configured_string_counts: tuple[int, ...] = ()
@@ -266,12 +278,18 @@ class ModelProfile:
             "gradual",
             "limit",
             "power_off_memory",
-            "panel_enabled",
-            "ring_enabled",
-            "left_bar_enabled",
-            "right_bar_enabled",
+            *NATIVE_ZONE_CONTROLS,
         }:
             raise ValueError("unknown boolean device setting")
+        if self.native_zones and (
+            len({name for name, _, _ in self.native_zones}) != len(self.native_zones)
+            or any(
+                not name or type(logical) is not int or logical < 1 or type(physical) is not int or physical < 1
+                for name, logical, physical in self.native_zones
+            )
+            or sum(logical for _, logical, _ in self.native_zones) != self.segment_count
+        ):
+            raise ValueError("native zones must partition logical segments with independent positive physical budgets")
         if self.configured_string_counts and (
             self.bulbs_per_string <= 0
             or any(type(count) is not int or count <= 0 for count in self.configured_string_counts)
@@ -1431,6 +1449,81 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     ),
     "H6076": _H6076_MUSIC_PROFILE,
     "H6072": _H6072_PROFILE,
+    "H607C": ModelProfile(
+        "H607C Floor Lamp 2",
+        support_quality=SupportQuality.EXPERIMENTAL,
+        confirmation_issue=511,
+        command_grammar="H607C",
+        command_ack_grammar="H607C",
+        status_grammar="H607C",
+        setting_grammar="H607C",
+        effect_grammar="H607C",
+        effect_workflows=frozenset({"native_scenes", "layered_scenes", "native_music", "single", "multi", "painted"}),
+        command_operations=frozenset({"power", "brightness", "static", "scene", "diy", "music", "effect_upload"}),
+        profile_pact_dependent=True,
+        read_domains=frozenset(
+            {ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE, ReadDomain.FIRMWARE, ReadDomain.HARDWARE}
+        ),
+        setup_required_read_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS}),
+        brightness_zero_turns_off=True,
+        supports_rgb=True,
+        supports_color_temperature=True,
+        min_color_temp_kelvin=2200,
+        max_color_temp_kelvin=6500,
+        kelvin_direct_rgb=(255, 255, 255),
+        kelvin_companion_uses_table=True,
+        whole_device_mask=0x1FFF,
+        segment_count=13,
+        native_zones=H607C_NATIVE_ZONES,
+        physical_ic_count=H607C_NATIVE_ZONES[0][2],
+        supports_segment_writes=True,
+        supports_segment_brightness=True,
+        supports_segment_color_temperature=True,
+        segment_colour_mode_ambiguous=True,
+        scene_catalogue_sku="H607C",
+        supports_scenes=True,
+        supports_custom_effects=True,
+        supports_multi_layered_effects=True,
+        diy_upload_transport="a3",
+        diy_requires_upload_ack=True,
+        effect_retry_after_upload=False,
+        effect_readback="diy_code_only",
+        music_grammar="H607C",
+        music_modes=(
+            "native_115",
+            "rhythm",
+            "hopping",
+            "fusion",
+            "shiny",
+            "magic",
+            "paired",
+            "colour_dots",
+            "splash",
+            "spring",
+        ),
+        music_variants=h607c_music_variants(H607C_NATIVE_ZONES[0][2], H607C_NATIVE_ZONES[1][2]),
+        music_upload_before_selector=True,
+        music_requires_upload_ack=True,
+        music_retry_after_upload=False,
+        music_params_require_activation=True,
+        boolean_controls=frozenset({"pole_enabled", "base_enabled"}),
+        supports_power_on_behaviour=True,
+        dreamview_grammar="H607C",
+        dreamview_operations=frozenset(
+            {
+                "replace_group",
+                "switch_group",
+                "member_brightness",
+                "same_brightness",
+                "member_connect",
+                "delete_group",
+            }
+        ),
+        dreamview_reads=frozenset({"switch_group", "member_brightness", "same_brightness", "member_connect"}),
+        dreamview_max_sub_devices=10,
+        dreamview_requires_group_ack=True,
+        connection_idle_timeout=3.0,
+    ),
     "H6102": ModelProfile(
         "H6102 LED Strip",
         support_quality=SupportQuality.SUPPORTED,
@@ -2052,7 +2145,7 @@ def device_profile(
     hardware: str | None = None,
 ) -> ModelProfile:
     """Resolve exact-product capabilities from evidenced revision context."""
-    if model in {"H6046", "H6097", "H7020"}:
+    if model in {"H6046", "H607C", "H6097", "H7020"}:
         profile = get_profile(model)
         if (pact_type, pact_code) in {(1, 1), (2, 1)}:
             return profile

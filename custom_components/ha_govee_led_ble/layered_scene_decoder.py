@@ -29,6 +29,7 @@ from .layered_scene import (
 )
 from .protocol_core import (
     GoveeShared,
+    H607cSceneBody,
     H6199EffectUpload,
     SceneBody,
     SceneParameterTooLargeError,
@@ -61,9 +62,10 @@ def decode_layered_scene(
     raw_param: bytes,
     *,
     speed_index: int | None = None,
+    scene_type: int = 2,
 ) -> LayeredScene:
-    """Decode a type-2 parameter while preserving source-only bytes."""
-    parsed, trailing_padding = parse_scene_body(raw_param)
+    """Decode layered fields while preserving source-only bytes and V2 trailers."""
+    parsed, trailing_padding = parse_scene_body(raw_param, scene_type=scene_type)
     return LayeredScene(
         template=template,
         effect=LayeredEffect(tuple(_decode_layer(record.body) for record in parsed.records)),
@@ -74,25 +76,37 @@ def decode_layered_scene(
 
 
 def decode_catalogue_layered_scene(sku: str, entry: SceneEntry) -> LayeredScene | None:
-    """Decode one type-2 catalogue entry, returning None for other scene grammars."""
-    if entry.scene_type != int(SceneBody.SceneType.scene_v2):
+    """Decode one layered catalogue entry, returning None for other scene grammars."""
+    if entry.scene_type not in {
+        int(SceneBody.SceneType.scene_v2),
+        int(H607cSceneBody.CatalogueType.layered_scene),
+    }:
         return None
     if not entry.param:
-        raise ValueError("type-2 catalogue scene has no parameter")
+        raise ValueError("layered catalogue scene has no parameter")
     return decode_layered_scene(
         CatalogueRef(sku=sku, scene_id=entry.scene_id, effect_id=entry.effect_id),
         base64.b64decode(entry.param, validate=True),
         speed_index=entry.speed.default_index if entry.speed is not None else None,
+        scene_type=entry.scene_type,
     )
 
 
-def encode_layered_scene(scene: LayeredScene) -> bytes:
-    """Serialize a canonical layered scene back to its type-2 parameter bytes."""
-    root = SceneBody()
-    root.scene_type = SceneBody.SceneType.scene_v2
+def encode_layered_scene(scene: LayeredScene, *, scene_type: int = 2) -> bytes:
+    """Serialize canonical layers through the selected catalogue container."""
+    if scene_type == int(H607cSceneBody.CatalogueType.layered_scene):
+        root = H607cSceneBody()
+        root.marker = bytes((int(H607cSceneBody.UploadSubtype.layered_scene),))
+        record_type = H607cSceneBody.Record
+    elif scene_type == int(SceneBody.SceneType.scene_v2):
+        root = SceneBody()
+        root.scene_type = SceneBody.SceneType.scene_v2
+        record_type = SceneBody.Record
+    else:
+        raise ValueError(f"Unsupported layered scene type {scene_type}")
     layers = scene.effect.layers
     root.num_records = len(layers)
-    root.records = [_encode_record(SceneBody.Record, root, layer) for layer in layers]
+    root.records = [_encode_record(record_type, root, layer) for layer in layers]
     root.padding = [0] * scene.trailing_padding
     try:
         return serialize_scene_body_param(root)

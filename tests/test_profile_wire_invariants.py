@@ -104,6 +104,7 @@ def _consume_status(coordinator: GoveeBLECoordinator, frame: bytes) -> None:
 
 # Runtime qualification contexts that produce distinct effective profiles through device_profile().
 _QUALIFIED_CONTEXTS: tuple[tuple[str, str, int | None, int | None, str | None, str | None], ...] = (
+    ("H607C-bootstrap", "H607C", None, None, None, None),
     ("H6072-bootstrap", "H6072", None, None, None, None),
     ("H6072-legacy", "H6072", 1, 1, "1.00.10", None),
     ("H6072-new-scenes-old-static", "H6072", 1, 1, "1.01.00", "1.00.00"),
@@ -270,6 +271,8 @@ def _status_color_mode_enum(profile: ModelProfile):
 
 
 def _status_music_enum(profile: ModelProfile):
+    if profile.status_grammar == "H607C":
+        return protocol_core.H607cMusicWrite.MusicMode
     if profile.status_grammar == "H6046":
         return protocol_core.H6046CommandWrite.MusicMode
     if profile.status_grammar == "H6097":
@@ -1003,6 +1006,18 @@ def test_declared_boolean_controls_round_trip(hass, model: str, profile: ModelPr
                 assert coordinator.bar_enable_mask == cmd[2]
                 assert all(coordinator._field_revisions[f"boolean_{name}"] > 0 for name in expected)
                 continue
+            if profile.setting_grammar == "H607C":
+                expected = {"pole_enabled": True, "base_enabled": True} | {control: enabled}
+                mask = 0x81 | (2 if expected["pole_enabled"] else 0) | (4 if expected["base_enabled"] else 0)
+                reply = _status(domain_byte, bytes((8, 37, mask)))
+                decoded = decode_status_frame(reply, model, profile=profile)
+                assert decoded is not None and status_is_authorized(decoded, profile)
+                assert a.parse_boolean_control(decoded.generated, model, profile=profile) == expected
+                _consume_status(coordinator, reply)
+                assert coordinator.boolean_control_state == expected and coordinator.is_on
+                assert coordinator.hw_version is None
+                assert all(coordinator._field_revisions[f"boolean_{name}"] > 0 for name in expected)
+                continue
             reply = _status(domain_byte, bytes([int(enabled)]))
             decoded = decode_status_frame(reply, model, profile=profile)
             assert decoded is not None and status_is_authorized(decoded, profile)
@@ -1012,6 +1027,13 @@ def test_declared_boolean_controls_round_trip(hass, model: str, profile: ModelPr
             assert coordinator._field_revisions[f"boolean_{control}"] > 0
 
         if profile.setting_grammar == "H6046":
+            continue
+        if profile.setting_grammar == "H607C":
+            bad_reply = _status(domain_byte, bytes((8, 37, 0x80)))
+            bad_reply = bad_reply[:-1] + bytes((bad_reply[-1] ^ 1,))
+            coordinator._notify_callback(None, bytearray(bad_reply))
+            assert coordinator.packet_log[-1]["reason"] == "invalid_checksum"
+            assert coordinator.boolean_control_state[control] is True
             continue
         bad_reply = (
             _xor(b"\xee\x30\x02" + bytes(16)) if profile.setting_grammar == "H60A6" else _status(domain_byte, b"\x02")

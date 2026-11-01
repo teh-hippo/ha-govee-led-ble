@@ -25,7 +25,7 @@ function installFutureCatalogue(
   }
   model.customCatalogue = {
     ...catalogue,
-    schema_version: 11,
+    schema_version: 12,
     sku: "H617A",
     models: {
       H617A: { ...catalogue, sku: "H617A" },

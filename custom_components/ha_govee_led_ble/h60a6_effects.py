@@ -123,6 +123,10 @@ def _serialise(value: Any) -> bytes:
 
 def encode_native_body(content: NativeEffect) -> bytes:
     """Build all lengths and byte order through generated native structures."""
+    if content.model == "H607C":
+        from .h607c_effects import encode_zoned_diy
+
+        return encode_zoned_diy(content)
     content.__post_init__()
     if content.family == 797:
         root = H60a6DiyBody()

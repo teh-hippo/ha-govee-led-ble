@@ -3,13 +3,22 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from importlib import import_module
 from math import ceil
 from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     from .const import ModelProfile
+
+
+@dataclass(frozen=True, slots=True)
+class MusicZone:
+    id: str
+    mode: str
+    parameters: Mapping[str, Any] = field(default_factory=dict)
+    palette: tuple[tuple[int, int, int], ...] | None = None
+    body: bytes | None = None
 
 
 @dataclass(frozen=True)
@@ -53,6 +62,7 @@ COMPANION_MUSIC_LAYOUTS = frozenset(
         "music_body",
         "h6076_music_body",
         "h6072_music_body",
+        "h607c_music_body",
         "h6099_music_parameters",
         "h6097_music_parameters",
         "h66a0_music_parameters",
@@ -876,6 +886,68 @@ H6072_MUSIC_VARIANTS = tuple(
     )
     for variant in H6076_MUSIC_VARIANTS
 )
+
+
+def h607c_music_variants(main_ic_count: int, base_ic_count: int) -> tuple[MusicVariant, ...]:
+    from .h607c_effects import music_template
+    from .protocol_core import H607cMusicWrite
+
+    mode = H607cMusicWrite.MusicMode
+    palette = ((255, 0, 0), (255, 127, 0), (255, 255, 0), (0, 255, 0), (0, 0, 255), (0, 255, 255), (139, 0, 255))
+    variants = [
+        MusicVariant(
+            int(code),
+            "H607C candidate native palette and preserved parameters",
+            "h607c_music_body",
+            music_template(code, palette, unknown, ic_count=main_ic_count),
+            palette_bounds=bounds,
+            supports_fixed_colour=False,
+        )
+        for code, bounds, unknown in (
+            (mode.native_115, (2, 8), b"\x01"),
+            (mode.rhythm, (2, 8), b"\x00\x01\x00"),
+            (mode.fusion, (2, 8), b""),
+            (mode.shiny, (4, 8), b"\x03\x00"),
+            (mode.magic, (1, 8), b""),
+            (mode.colour_dots, (1, 8), b""),
+            (mode.splash, (1, 8), b""),
+            (mode.spring, (2, 8), b""),
+        )
+    ]
+    variants.append(
+        MusicVariant(
+            int(mode.hopping),
+            "H607C candidate physical-zone Hopping parameters",
+            "h607c_music_body",
+            music_template(mode.hopping, palette, ic_count=main_ic_count),
+            parameters=(
+                MusicParamSpec("music_background", "background", "background", "number", 0, 0, 0xFFFFFF),
+                MusicParamSpec(
+                    "music_background_brightness", "relative_brightness", "background_brightness", "number", 25, 0, 50
+                ),
+            ),
+            requires_physical_ic_count=True,
+            palette_bounds=(1, 8),
+            supports_fixed_colour=False,
+        )
+    )
+    variants.append(
+        MusicVariant(
+            int(mode.paired),
+            "H607C candidate independent pole/base music",
+            "h607c_music_body",
+            music_template(
+                mode.paired,
+                zones=(
+                    (mode.hopping, palette, b"", main_ic_count),
+                    (mode.rhythm, palette, b"\x00\x01\x00", base_ic_count),
+                ),
+            ),
+            supports_fixed_colour=False,
+        )
+    )
+    return tuple(variants)
+
 
 H7020_MUSIC_VARIANTS = (
     MusicVariant(

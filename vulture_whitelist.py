@@ -54,6 +54,10 @@ _.music_fixed_colour
 _.music_left_colour
 _.music_right_colour
 
+# --- Native setting readback ---
+# The verified-setting reader selects these fields through getattr.
+_.power_on_open_flag
+
 # --- Enum members ---
 # Enum members. Enums are built from wire or stored values, so a member that is never named in code is still
 # vocabulary the decoder can return.
@@ -114,6 +118,11 @@ _.bottom_percent  # generated_protocol_adapter.py
 _.dynamic  # generated_protocol_adapter.py
 _.left_percent  # generated_protocol_adapter.py
 _.manual  # generated_protocol_adapter.py
+_.num_colours  # h607c_effects.py
+_.num_positions  # effect_commands.py
+_.piece_length_min  # h607c_effects.py
+_.piece_length_max  # h607c_effects.py
+_.positions  # effect_commands.py
 _.relative_brightness_percent  # generated_protocol_adapter.py
 _.reserved  # protocol_h6199.py
 _.rhythm_response  # generated_protocol_adapter.py

@@ -16,6 +16,7 @@
 | **H601C** | ✅ Supported |
 | **H6046** | ✅ Supported |
 | **H6072** | [🚧 Experimental](https://github.com/teh-hippo/ha-govee-led-ble/issues/486) |
+| **H607C** | [🚧 Experimental](https://github.com/teh-hippo/ha-govee-led-ble/issues/511) |
 | **H6076** | ✅ Supported |
 | **H6097** | ✅ Supported |
 | **H6099** | ✅ Supported |
@@ -48,6 +49,10 @@ Effect Studio is a Home Assistant sidebar panel that gives you full control of s
 
 On compatible revisions, H6097, H6099, H6199 and H66A0 expose DreamView group actions separately from the backlight's standalone video effects.
 H6097 and H6099 support up to seven members; H66A0 supports up to ten.  Set both DreamView choices explicitly:
+
+H607C has candidate Music DreamView membership, switch, brightness and connection controls for up to ten members.
+Its group-effect recipes are not yet qualified; ordinary onboard music and paired pole/base editing are separate and available.
+H607C does not expose the camera/video settings below.
 
 ```yaml
 action: ha_govee_led_ble.set_dreamview_video_settings

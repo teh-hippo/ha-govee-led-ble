@@ -1,6 +1,7 @@
 import { LitElement, css, html, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
 import { paintNativeLayerPoint } from "./effect-editor-model";
+import { renderNativeZoneEditor } from "./native-zone-editor";
 
 import type { LivePreviewInteraction } from "./live-preview-controller";
 import "./palette-editor";
@@ -22,6 +23,7 @@ import type {
   ModelEffectCatalogue,
   MultiContent,
   NativeEffectContent,
+  NativeDiyLayer,
   NativePaintLayer,
   PaletteDiyEffectContent,
   RGB,
@@ -183,6 +185,20 @@ export class GoveeCustomEffectEditor extends LitElement {
 
   protected render() {
     if (this.nativeContent && this.catalogue) {
+      if (this.catalogue.native_zones?.length) {
+        return renderNativeZoneEditor(
+          this.nativeContent, this.catalogue, this.disabled,
+          (index, update, family, kind, interaction) => {
+            const current = this.nativeContent;
+            const layer = current?.layers[index];
+            if (!current || current.family !== family || !layer || layer.type === "paint" || layer.kind !== kind) return;
+            const layers = structuredClone(current.layers);
+            layers[index] = (layer.type === "opaque" && update.type === "diy"
+              ? structuredClone(update) : { ...layers[index], ...update }) as NativeDiyLayer;
+            this.nativeChanged({ ...current, layers, speed_index: null }, interaction);
+          },
+        );
+      }
       return this.renderNative();
     }
     if (!this.content || !this.catalogue) {

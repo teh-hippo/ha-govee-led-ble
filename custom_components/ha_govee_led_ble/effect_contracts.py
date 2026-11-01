@@ -18,8 +18,8 @@ from .effect_limits import (
     MAX_SCENE_CATALOGUE_ENTRIES,
 )
 
-EDITOR_API_VERSION: Final = 17
-EDITOR_ASSET_VERSION: Final = 27
+EDITOR_API_VERSION: Final = 18
+EDITOR_ASSET_VERSION: Final = 28
 EFFECT_COMPILER_VERSION: Final = 6
 RELEASE_CAPABILITY_SCHEMA_VERSION: Final = 1
 
@@ -436,6 +436,28 @@ _RELEASE_CAPABILITY_BASE: Final = (
 
 
 RELEASE_CAPABILITY_CONTRACT: Final = (
+    _capability(
+        "H607C",
+        _W.WORKSHOP,
+        "Workshop",
+        "workshop",
+        _R.NONE,
+        _S.A3_EFFECT_UPLOAD,
+        _V.UNVERIFIED,
+        _P.NOT_VALIDATED,
+        _E.STRUCTURAL,
+    ),
+    *(
+        _capability("H607C", workflow, label, kind, route, strategy, _V.SELECTION_ONLY, _P.NOT_VALIDATED, _E.STRUCTURAL)
+        for workflow, label, kind, route, strategy in (
+            (_W.NATIVE_SCENES, "Scenes", "scene_builtin", _R.STUDIO_SCENE_APPLY, _S.NATIVE_EFFECT_SELECTION),
+            (_W.LAYERED_SCENES, "Layered scenes", "scene_layered", _R.STUDIO_CUSTOM_APPLY, _S.MODEL_SCENE_ENGINE),
+            (_W.SINGLE, "Native DIY", "native_effect", _R.STUDIO_CUSTOM_APPLY, _S.A3_EFFECT_UPLOAD),
+            (_W.MULTI, "Pole and base DIY", "native_effect", _R.STUDIO_CUSTOM_APPLY, _S.A3_EFFECT_UPLOAD),
+            (_W.PAINTED, "Paint", "h617a_painted", _R.STUDIO_CUSTOM_APPLY, _S.A3_EFFECT_UPLOAD),
+            (_W.NATIVE_MUSIC, "Music", "music_profile", _R.STUDIO_CUSTOM_APPLY, _S.COORDINATOR_WRITER),
+        )
+    ),
     *(capability for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H6046"),
     *(
         _capability(
@@ -877,7 +899,7 @@ def profile_supports_workflow(profile: ModelProfile, workflow: CapabilityWorkflo
 def require_effect_route(
     model: str,
     workflow: CapabilityWorkflow,
-    grammars: tuple[str, ...] = ("H6046", "H617A", "H6199", "H6099", "H6179", "H60A6"),
+    grammars: tuple[str, ...] = ("H6046", "H617A", "H6199", "H6099", "H6179", "H60A6", "H607C"),
     *,
     profile: ModelProfile | None = None,
 ) -> str:

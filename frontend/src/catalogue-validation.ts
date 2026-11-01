@@ -39,6 +39,7 @@ import {
   MAX_CUSTOM_CATALOGUE_BYTES,
   MAX_EFFECT_NAME_LENGTH,
   MAX_IDENTIFIER_LENGTH,
+  PAINTED_EFFECT_IDS,
 } from "./validation-constants";
 
 const RELEASE_WORKFLOW_IDS = [
@@ -205,6 +206,17 @@ export function decodeModelEffectCatalogue(
   }
   return {
     sku,
+    ...(catalogue.native_zones === undefined ? {} : {
+      native_zones: arrayValue(catalogue.native_zones, `${name} native zones`, 255).map((value) => {
+        const zone = objectValue(value, "native zone");
+        return {
+          id: boundedString(zone.id, "native zone ID", MAX_IDENTIFIER_LENGTH),
+          label: boundedString(zone.label, "native zone label", MAX_EFFECT_NAME_LENGTH),
+          segment_count: integerValue(zone.segment_count, "native logical segments", 1, 255),
+          physical_ic_budget: integerValue(zone.physical_ic_budget, "native physical budget", 1, 65535),
+        };
+      }),
+    }),
     diy_slot_policy: enumString(
       catalogue.diy_slot_policy ?? "fixed",
       ["fixed", "approved_observed"],
@@ -445,7 +457,7 @@ function decodeCatalogueTemplates(
         ),
         category: enumString(
           template.category,
-          ["single-layer", "music", "video", "advanced"],
+          ["single-layer", "multi-layer", "music", "video", "advanced"],
           `${name}[${index}] category`,
         ) as CatalogueTemplate["category"],
         content,
@@ -504,14 +516,7 @@ function decodePaintedEffectTemplates(
     return {
       id: enumString(
         effect.id,
-        [
-          "cycle",
-          "clockwise",
-          "counter_clockwise",
-          "twinkle",
-          "gradient",
-          "breathe",
-        ],
+        PAINTED_EFFECT_IDS,
         `${name} ID`,
       ) as PaintedContent["effect"],
       label: boundedString(
@@ -543,6 +548,22 @@ function decodePaletteDiyFamilies(
         );
       }
       const decoded: PaletteDiyFamily = {
+        ...(effect.palette_min === undefined ? {} : { palette_min: integerValue(effect.palette_min, "family palette minimum", 1, 85) }),
+        ...(effect.secondary_palette === undefined ? {} : {
+          secondary_palette: (() => {
+            const bounds = objectValue(effect.secondary_palette, "secondary palette bounds");
+            const minimum = integerValue(bounds.min, "secondary palette minimum", 1, 85);
+            const maximum = integerValue(bounds.max, "secondary palette maximum", minimum, 85);
+            return { min: minimum, max: maximum };
+          })(),
+        }),
+        ...(effect.palette_labels === undefined ? {} : {
+          palette_labels: (() => {
+            const labels = arrayValue(effect.palette_labels, "native palette labels", 2);
+            if (labels.length !== 2) invalid("native palette labels require two names");
+            return labels.map(value => boundedString(value, "palette label", MAX_EFFECT_NAME_LENGTH)) as [string, string];
+          })(),
+        }),
         ...(effect.palette_max === undefined ? {} : { palette_max: integerValue(effect.palette_max, "family palette maximum", 1, 85) }),
         rate_min: integerValue(effect.rate_min, `${name} minimum rate`, 0, 100),
         ...(effect.multi_rate_min === undefined ? {} : { multi_rate_min: integerValue(effect.multi_rate_min, `${name} Multi minimum rate`, 0, 100) }),

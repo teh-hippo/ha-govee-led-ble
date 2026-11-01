@@ -566,6 +566,39 @@ H6046MusicBody = cast(
 H6072CommandWrite = cast(
     Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h6072_command_write").H6072CommandWrite
 )
+H607cSceneBody = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h607c_scene_body").H607cSceneBody
+)
+H607cCommandWrite = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h607c_command_write").H607cCommandWrite
+)
+H607cControl = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h607c_control").H607cControl
+)
+H607cStatusQuery = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h607c_status_query").H607cStatusQuery
+)
+H607cStatusReply = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h607c_status_reply").H607cStatusReply
+)
+H607cCommandAck = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h607c_command_ack").H607cCommandAck
+)
+H607cMusicWrite = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h607c_music_write").H607cMusicWrite
+)
+H607cMusicBody = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h607c_music_body").H607cMusicBody
+)
+H607cEffectUpload = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h607c_effect_upload").H607cEffectUpload
+)
+H607cDiyBody = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h607c_diy_body").H607cDiyBody
+)
+H607cPaintBody = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h607c_paint_body").H607cPaintBody
+)
 H6072StatusReply = cast(
     Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h6072_status_reply").H6072StatusReply
 )
@@ -588,6 +621,7 @@ H6072MusicAck = cast(
 _STATUS_ROOTS = {
     "H600A": ("h600a_status_reply", H600aStatusReply),
     "H6072": ("h6072_status_reply", H6072StatusReply),
+    "H607C": ("h607c_status_reply", H607cStatusReply),
     "H6046": ("h6046_status_reply", H6046StatusReply),
     "H60A1": ("h60a1_status_reply", H60a1StatusReply),
     "H60A6": ("h60a6_status_reply", H60a6StatusReply),
@@ -616,6 +650,7 @@ _COMMAND_ROOTS = {
     "H600A": ("h600a_command_write", H600aCommandWrite),
     "H6072": ("h6072_command_write", H6072CommandWrite),
     "H6072-legacy": ("h6072_command_write", H6072CommandWrite),
+    "H607C": ("h607c_command_write", H607cCommandWrite),
     "H6046": ("h6046_command_write", H6046CommandWrite),
     "H601C": ("h601c_command_write", H601cCommandWrite),
     "H6099": ("h6099_command_write", H6099CommandWrite),
@@ -630,6 +665,7 @@ _STATUS_QUERY_ROOTS = {
     "H600A": ("status_query", StatusQuery),
     "H6072": ("h6072_status_query", H6072StatusQuery),
     "H6072-legacy": ("h6072_legacy_query", H6072LegacyQuery),
+    "H607C": ("h607c_status_query", H607cStatusQuery),
     "H6046": ("h6046_status_query", H6046StatusQuery),
     "H601C": ("status_query", StatusQuery),
     "H6099": ("h6099_status_query", H6099StatusQuery),
@@ -648,6 +684,7 @@ _H6076_ACK_ROOTS = {
 
 _MUSIC_WRITE_ROOTS = {
     "H6072": ("h6072_music_write", H6072MusicWrite),
+    "H607C": ("h607c_music_write", H607cMusicWrite),
     "H6097": ("h6097_music_write", H6097MusicWrite),
     "H6076": ("h6076_music_write", H6076MusicWrite),
     "H66A0": ("h66a0_music_write", H66a0MusicWrite),
@@ -659,6 +696,7 @@ _MUSIC_WRITE_ROOTS = {
 
 _COMMAND_ACK_ROOTS = {
     "H600A": ("h600a_command_ack", H600aCommandAck),
+    "H607C": ("h607c_command_ack", H607cCommandAck),
     "H6046": ("h6046_command_ack", H6046CommandAck),
     "H60A6": ("h60a6_command_ack", H60a6CommandAck),
     "H6125": ("h6125_command_ack", H6125CommandAck),
@@ -672,11 +710,11 @@ _COMMAND_ACK_ROOTS = {
 def _has_unknown_discriminator(parsed: Any, parser: str) -> bool:
     if getattr(parsed.opcode, "name", None) is None:
         return True
-    if parser in {"command_write", "h7020_command_write"} and parsed.opcode.name == "multi":
+    if parser in {"command_write", "h7020_command_write", "h607c_command_write"} and parsed.opcode.name == "multi":
         sub = getattr(parsed.body.sub, "name", None)
         return (
             sub is None
-            or (parser == "h7020_command_write" and sub == "static" and not parsed.is_static)
+            or (parser in {"h7020_command_write", "h607c_command_write"} and sub == "static" and not parsed.is_static)
             or (
                 parser == "h7020_command_write"
                 and sub == "music"

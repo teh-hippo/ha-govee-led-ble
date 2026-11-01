@@ -71,6 +71,7 @@ import {
   MAX_USER_STATE_NAVIGATION_BYTES,
   MOVEMENT_UNKNOWN_FLAGS_MASK,
   PALETTE_CONFIG_RESERVED_MASK,
+  PAINTED_EFFECT_IDS,
   SCENE_TRAILING_PADDING_MAX,
 } from "./validation-constants";
 
@@ -520,6 +521,9 @@ export function decodeLibrarySnapshot(value: unknown): LibrarySnapshot {
         origin: decodeOrigin(summary.origin),
         ...(model ? { model } : {}),
         ...(template ? { template } : {}),
+        ...(summary.native_workflow === undefined ? {} : {
+          native_workflow: enumString(summary.native_workflow, ["single", "multi"], "native workflow"),
+        }),
       };
     }),
   };
@@ -807,6 +811,7 @@ export function decodeCatalogueTemplateDefaultDetail(
   const content = decodeEffectContent(detail.content);
   const catalogueContent = decodeEffectContent(detail.catalogue_content);
   const supported = new Set([
+    "native_effect",
     "h617a_painted",
     "h617a_single",
     "h6179_single_diy",
@@ -865,17 +870,11 @@ export function decodeEffectContent(value: unknown): EffectContent {
       return {
         kind,
         ...(content.addressing === undefined ? {} : { addressing }),
+        ...(content.model === undefined ? {} : { model: boundedString(content.model, "painted model", MAX_IDENTIFIER_LENGTH) }),
         ...(content.background === undefined ? {} : { background: rgbValue(content.background, "painted background") }),
         effect: enumString(
           content.effect,
-          [
-            "cycle",
-            "clockwise",
-            "counter_clockwise",
-            "twinkle",
-            "gradient",
-            "breathe",
-          ],
+          PAINTED_EFFECT_IDS,
           "painted effect",
         ),
         speed: integerValue(content.speed, "painted speed", 0, 100),
@@ -1016,6 +1015,20 @@ export function decodeEffectContent(value: unknown): EffectContent {
           content.parameters,
           "music profile parameters",
         ) as JsonObject,
+        ...(content.zones === undefined ? {} : {
+          zones: arrayValue(content.zones, "music zones", 2).map(value => {
+            const zone = boundedRecord(value, "music zone");
+            const body = zone.body === undefined ? undefined : hexString(zone.body, "music zone body");
+            if (body !== undefined && (body.length < 2 || body.length > 512)) throw new Error("Music zone body exceeds its byte budget");
+            return {
+              id: boundedString(zone.id, "music zone identity", MAX_IDENTIFIER_LENGTH),
+              mode: boundedString(zone.mode, "music zone mode", MAX_IDENTIFIER_LENGTH),
+              parameters: boundedRecord(zone.parameters, "music zone parameters") as JsonObject,
+              ...(zone.palette === undefined ? {} : { palette: paletteValue(zone.palette, "music zone palette", 8) }),
+              ...(body === undefined ? {} : { body }),
+            };
+          }),
+        }),
       } satisfies MusicProfileContent;
     case "video_profile":
       if ([content.blank_screen_detection, content.blank_screen_low_brightness_duration_seconds,
@@ -1179,19 +1192,23 @@ export function decodeEffectContent(value: unknown): EffectContent {
 }
 
 function nativeEffectContent(content: Record<string, unknown>): NativeEffectContent {
-  const family = integerValue(content.family, "native family", 797, 798) as 797 | 798;
+  const model = enumString(content.model, ["H60A6", "H607C"], "native model");
+  const zoned = model === "H607C";
+  const family = integerValue(content.family, "native family", 0, 65535);
+  if ((!zoned && family !== 797 && family !== 798) || (zoned && family > 255)) invalid("unsupported native family");
   const layerValues = arrayValue(content.layers, "native layers", 255);
   if (!layerValues.length) invalid("native effects require at least one layer");
+  if (zoned && layerValues.length > 2) invalid("native zoned effects cannot add layers");
   return {
     kind: "native_effect",
-    model: enumString(content.model, ["H60A6"], "native model"),
+    model,
     family,
     layers: layerValues.map(value => {
       const layer = objectValue(value, "native layer");
       const type = enumString(layer.type, ["diy", "paint", "opaque"], "native layer type");
       if (type === "opaque") return { type, kind: byteValue(layer.kind, "native kind"), data: hexString(layer.data, "native data") };
       if (type === "diy") {
-        if (family !== 797) invalid("DIY layer does not match native family");
+        if (!zoned && family !== 797) invalid("DIY layer does not match native family");
         return {
           type, kind: byteValue(layer.kind, "native kind"), speed: integerValue(layer.speed, "native speed", 0, 100),
           palette: arrayValue(layer.palette, "native palette", 255).map(value => rgbValue(value, "native colour")),
@@ -1200,6 +1217,10 @@ function nativeEffectContent(content: Record<string, unknown>): NativeEffectCont
           points: arrayValue(layer.points, "native points", 255).map(value => byteValue(value, "native point")),
           direction: byteValue(layer.direction, "native direction"), angle: integerValue(layer.angle, "native angle", 0, 65535),
           opaque: hexString(layer.opaque, "native opaque"),
+          ...(zoned ? {
+            enabled: booleanValue(layer.enabled ?? true, "native effect section"),
+            secondary_palette: arrayValue(layer.secondary_palette ?? [], "native secondary palette", 255).map(value => rgbValue(value, "native colour")),
+          } : {}),
         };
       }
       if (family !== 798) invalid("paint layer does not match native family");

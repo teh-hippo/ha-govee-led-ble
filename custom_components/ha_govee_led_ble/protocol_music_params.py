@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import io
 from enum import IntEnum
 from importlib import import_module
 from typing import Any
 
+from kaitaistruct import KaitaiStream
+
 from .music_semantics import COMPANION_MUSIC_LAYOUTS, MusicVariant
 from .protocol_core import (
+    H607cMusicBody,
+    H607cMusicWrite,
     H617aControlPayload,
     H6072MusicBody,
     H6076MusicBody,
@@ -15,7 +20,9 @@ from .protocol_core import (
     MusicBody,
     _check_tree,
     _rgb,
+    _serialize_a3_scene_param,
     _write,
+    serialize_native_body,
 )
 
 
@@ -24,7 +31,40 @@ def music_default_palette(variant: MusicVariant | None) -> tuple[tuple[int, int,
     if variant is None or not variant.template:
         raise ValueError("music palette layout is unqualified")
     root = parse_music_parameters(variant, variant.template)
-    return tuple((int(rgb.red), int(rgb.green), int(rgb.blue)) for rgb in root.palette)
+    fields = root.body if variant.layout == "h607c_music_body" else root
+    if not hasattr(fields, "palette"):
+        return ()
+    return tuple((int(rgb.red), int(rgb.green), int(rgb.blue)) for rgb in fields.palette)
+
+
+def native_music_zone_body(zone: Any) -> bytes:
+    root = H607cMusicBody()
+    root.command, root.mode, root.padding = b"\x41", zone.mode, []
+    root.body = H607cMusicBody.Parameters(
+        zone.mode, KaitaiStream(io.BytesIO(serialize_native_body(zone.body))), _parent=root, _root=root
+    )
+    root.body._read()
+    return _serialize_a3_scene_param(root)
+
+
+def encode_native_music_zones(variant: MusicVariant, bodies: tuple[bytes, ...]) -> bytes:
+    root = parse_music_parameters(variant, variant.template)
+    if variant.layout != "h607c_music_body" or root.mode != H607cMusicWrite.MusicMode.paired or len(bodies) != 2:
+        raise ValueError("music mode does not support independent native zones")
+    for zone, body in zip((root.body.pole, root.body.base), bodies, strict=True):
+        child = H607cMusicBody.from_bytes(b"\x01\x02\x41" + body)
+        child._read()
+        if child.mode == H607cMusicWrite.MusicMode.paired or not child._io.is_eof():
+            raise ValueError("nested paired music is unsupported")
+        zone.mode = child.mode
+        zone.body = H607cMusicBody.Parameters(
+            zone.mode, KaitaiStream(io.BytesIO(serialize_native_body(child.body))), _parent=zone, _root=root
+        )
+        zone.body._read()
+        zone.len_parameters = len(serialize_native_body(zone.body))
+        if zone.len_parameters > 255:
+            raise ValueError("native music zone exceeds its byte budget")
+    return _serialize_a3_scene_param(root)
 
 
 def parse_music_parameters(variant: MusicVariant, body: bytes) -> Any:
@@ -35,6 +75,12 @@ def parse_music_parameters(variant: MusicVariant, body: bytes) -> Any:
         from .protocol_core import H6046MusicBody
 
         root = H6046MusicBody.from_bytes(b"\x01\x02\x41" + body)
+        root._read()
+        if int(root.mode) != variant.mode_code or not root._io.is_eof():
+            raise ValueError("music body does not match qualified layout")
+        return root
+    if variant.layout == "h607c_music_body":
+        root = H607cMusicBody.from_bytes(b"\x01\x02\x41" + body)
         root._read()
         if int(root.mode) != variant.mode_code or not root._io.is_eof():
             raise ValueError("music body does not match qualified layout")
@@ -124,6 +170,11 @@ def encode_music_parameters(
         raise ValueError("music parameter layout is unqualified")
     root = parse_music_parameters(variant, variant.template)
     length = len(variant.template) + 3
+    fields = root.body if variant.layout == "h607c_music_body" else root
+    if not hasattr(fields, "palette"):
+        if parameters or palette is not None or calm:
+            raise ValueError("paired music requires independent zone edits")
+        return variant.template
     if palette is not None:
         if variant.palette_bounds is None or not variant.palette_bounds[0] <= len(palette) <= variant.palette_bounds[1]:
             raise ValueError("palette count is outside music variant bounds")
@@ -132,10 +183,10 @@ def encode_music_parameters(
             for rgb in palette
         ):
             raise ValueError("invalid music palette")
-        length += 3 * (len(palette) - root.num_palette)
-        root.num_palette = len(palette)
-        root.palette = [_rgb(root, *rgb) for rgb in palette]
-    tail = root.tail
+        length += 3 * (len(palette) - fields.num_palette)
+        fields.num_palette = len(palette)
+        fields.palette = [_rgb(fields, *rgb) for rgb in palette]
+    tail = fields.tail
     for spec in variant.parameters:
         if spec.profile_key not in parameters:
             continue
@@ -155,7 +206,7 @@ def encode_music_parameters(
                 raise ValueError("music parameter requires a qualified enum value")
             setattr(tail, spec.wire_field, type(current)[str(value)])
     if (
-        isinstance(tail, H617aControlPayload.HoppingTail)
+        isinstance(tail, H617aControlPayload.HoppingTail | H607cMusicBody.HoppingParameters)
         and physical_ic_count is not None
         and not preserve_companions
         and (variant.requires_physical_ic_count or any(spec.requires_physical_ic_count for spec in variant.parameters))

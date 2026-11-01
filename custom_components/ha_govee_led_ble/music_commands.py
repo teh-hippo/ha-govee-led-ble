@@ -11,6 +11,7 @@ from .generated_protocol_adapter import build_music_mode, build_power
 from .music_protocol import H6046CommandWrite, music_code_for, music_codebook, music_mode_has_parameter_write
 from .music_semantics import (
     COMPANION_MUSIC_LAYOUTS,
+    MusicZone,
     compile_music_parameters,
     encode_music_selector_parameters,
     music_body_params_for_mode,
@@ -19,7 +20,14 @@ from .music_semantics import (
     music_variant,
     retained_music_profile,
 )
-from .protocol_music_params import encode_music_parameters, music_default_palette, parse_music_parameters
+from .protocol_core import H607cMusicWrite
+from .protocol_music_params import (
+    encode_music_parameters,
+    encode_native_music_zones,
+    music_default_palette,
+    native_music_zone_body,
+    parse_music_parameters,
+)
 from .transport import fragment_a3
 
 
@@ -121,7 +129,7 @@ def prepare_music_request(
         for target_colour, target_parameters in _music_selector_targets(colour, selector_parameters, profile)
     )
     control = (*companion, *selectors) if profile.music_upload_before_selector else (*selectors, *companion)
-    return (build_power(True, model), *control)
+    return (build_power(True, model, profile=profile), *control)
 
 
 def resolve_music_profile(
@@ -134,6 +142,7 @@ def resolve_music_profile(
     *,
     profile: ModelProfile | None = None,
     palette: Sequence[tuple[int, int, int]] | None = None,
+    original_body: bytes | None = None,
 ) -> tuple[bool, dict[str, int | bool | str], tuple[bytes, ...]]:
     """Resolve and validate the complete target request without changing device state."""
     profile = get_profile(model) if profile is None else profile
@@ -147,10 +156,80 @@ def resolve_music_profile(
         raise ValueError(f"{model} does not support a fixed music colour")
     resolved_calm = calm if calm is not None else variant.calm_default if variant and variant.supports_style else False
     compiled = compile_music_parameters(parameters, mode_code, profile)
-    packets = prepare_music_request(
-        model, mode, sensitivity, colour, resolved_calm, compiled, profile=profile, palette=palette
+    packets = (
+        prepare_music_request(
+            model, mode, sensitivity, colour, resolved_calm, compiled, profile=profile, palette=palette
+        )
+        if original_body is None
+        else tuple(
+            packet
+            for packet, _ in prepare_music_profile_writes(
+                model,
+                mode,
+                sensitivity,
+                colour,
+                resolved_calm,
+                parameters,
+                profile=profile,
+                palette=palette,
+                original_body=original_body,
+            )
+        )
     )
     return resolved_calm, compiled, packets
+
+
+def default_music_zones(profile: ModelProfile, mode: str) -> tuple[MusicZone, ...] | None:
+    variant = music_variant(profile, music_codebook(profile).get(mode, -1))
+    if profile.music_grammar != "H607C" or variant is None or variant.mode_code != H607cMusicWrite.MusicMode.paired:
+        return None
+    root = parse_music_parameters(variant, variant.template)
+    names = {code: slug for slug, code in music_codebook(profile).items()}
+    return tuple(
+        MusicZone(name, names[int(zone.mode)], body=native_music_zone_body(zone))
+        for (name, _, _), zone in zip(profile.native_zones, (root.body.pole, root.body.base), strict=True)
+    )
+
+
+def build_zoned_music_body(profile: ModelProfile, mode: str, zones: tuple[MusicZone, ...]) -> bytes:
+    variant = music_variant(profile, music_codebook(profile).get(mode, -1))
+    if (
+        profile.music_grammar != "H607C"
+        or variant is None
+        or variant.mode_code != H607cMusicWrite.MusicMode.paired
+        or len(zones) != 2
+        or len(profile.native_zones) != 2
+    ):
+        raise ValueError("music mode does not support independent native zones")
+    bodies = []
+    for zone, (name, _, budget) in zip(zones, profile.native_zones, strict=True):
+        if (
+            not isinstance(zone, MusicZone)
+            or zone.id != name
+            or zone.mode not in profile.music_modes
+            or zone.mode == mode
+        ):
+            raise ValueError("music zone identity or mode is unsupported")
+        child_profile = replace(profile, physical_ic_count=budget)
+        code = music_codebook(child_profile)[zone.mode]
+        child_variant = music_variant(child_profile, code)
+        if child_variant is None or child_variant.layout != variant.layout or not child_variant.evidence:
+            raise ValueError("music zone layout is unqualified")
+        compiled = compile_music_parameters(zone.parameters, code, child_profile)
+        if zone.body is not None:
+            validate_music_body(zone.body, zone.mode, profile=child_profile)
+            child_variant = replace(child_variant, template=zone.body)
+            compiled = {key: compiled[key] for key in zone.parameters}
+        body = encode_music_parameters(
+            child_variant,
+            compiled,
+            palette=None if zone.palette is None else list(zone.palette),
+            calm=None,
+            physical_ic_count=budget,
+            preserve_companions=zone.body is not None,
+        )
+        bodies.append(body)
+    return encode_native_music_zones(variant, tuple(bodies))
 
 
 def prepare_music_profile_writes(
@@ -278,7 +357,14 @@ def validate_music_body(body: bytes, mode: str, *, profile: ModelProfile) -> Any
     if mode not in profile.music_modes or variant is None or not variant.evidence:
         raise ValueError("music body mode is unqualified")
     try:
-        return parse_music_parameters(variant, body)
+        root = parse_music_parameters(variant, body)
+        if variant.layout == "h607c_music_body" and variant.mode_code == H607cMusicWrite.MusicMode.paired:
+            admitted = {music_codebook(profile)[slug] for slug in profile.music_modes} - {variant.mode_code}
+            if any(
+                int(zone.mode) not in admitted or not zone.len_parameters for zone in (root.body.pole, root.body.base)
+            ):
+                raise ValueError("music zone mode is unqualified")
+        return root
     except (KaitaiStructError, EOFError) as error:
         raise ValueError("invalid original music body") from error
 

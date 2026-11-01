@@ -165,6 +165,14 @@
         {
             "local_name": "H6072_*"
         },
+        {"local_name": "ihoment_H607C*"},
+        {"local_name": "Govee_H607C*"},
+        {"local_name": "Minger_H607C*"},
+        {"local_name": "GBK_H607C*"},
+        {"local_name": "GVH_H607C*"},
+        {"local_name": "GVH607C*"},
+        {"local_name": "GV607C*"},
+        {"local_name": "H607C_*"},
         {
             "local_name": "Govee_H6076*"
         },

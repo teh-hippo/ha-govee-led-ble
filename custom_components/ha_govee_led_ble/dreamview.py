@@ -1,7 +1,7 @@
 """DreamView semantics over explicitly compatible generated wire structures.
 
-Selectively reuses issue #257's immutable member model and group framing, not
-its default cmd_ver, digest, camera assumptions or active member identification.
+Camera members retain their area-value vectors; Music members carry an
+exclusive scalar-area form without inheriting camera controls.
 """
 
 from __future__ import annotations
@@ -16,13 +16,15 @@ from typing import Any, cast
 from kaitaistruct import KaitaiStream, KaitaiStructError
 
 from .const import ModelProfile
-from .protocol_core import _check_tree, _serialize_xor, _serialized_length, _write
+from .protocol_core import H607cCommandAck, H607cEffectUpload, _check_tree, _serialize_xor, _serialized_length, _write
 from .transport import A3_CHUNK_SIZE, fragment_a3, xor_checksum
 
 Frame = cast(Any, import_module(f"{__package__}.generated_protocol.h6099_dreamview_frame").H6099DreamviewFrame)
 LegacyFrame = cast(Any, import_module(f"{__package__}.generated_protocol.h6199_dreamview_frame").H6199DreamviewFrame)
 Group = cast(Any, import_module(f"{__package__}.generated_protocol.h6099_dreamview_group").H6099DreamviewGroup)
-_FRAMES = {"H6099": Frame, "H6199": LegacyFrame}
+MusicFrame = cast(Any, import_module(f"{__package__}.generated_protocol.h607c_dreamview_frame").H607cDreamviewFrame)
+MusicGroup = cast(Any, import_module(f"{__package__}.generated_protocol.h607c_dreamview_group").H607cDreamviewGroup)
+_FRAMES = {"H6099": Frame, "H6199": LegacyFrame, "H607C": MusicFrame}
 DREAMVIEW_READ_SETTINGS = tuple(command.name for command in Frame.Command if command != Frame.Command.delete_group)
 DREAMVIEW_VIDEO_FIELDS = {"apply_area": Frame.ApplyArea, "content_mode": Frame.ContentMode}
 
@@ -50,14 +52,23 @@ class DreamviewMember:
     """Explicit known member metadata; identity is never included in repr/errors."""
 
     cmd_ver: int
-    is_rgbic: bool
-    zones: tuple[int, ...]
+    is_rgbic: bool | None = None
+    zones: tuple[int, ...] = ()
     address: str | None = field(default=None, repr=False)
     name: str | None = field(default=None, repr=False)
+    mark: int | None = None
+    area_num: int | None = None
 
     def __post_init__(self) -> None:
         integer(self.cmd_ver)
-        if type(self.is_rgbic) is not bool:
+        music_member = self.mark is not None or self.area_num is not None
+        if music_member:
+            if self.mark is None or self.area_num is None or self.is_rgbic is not None or self.zones:
+                raise ValueError("Music members require mark/area_num without camera fields")
+            integer(self.mark)
+            if integer(self.area_num) == 0:
+                raise ValueError("Music member area_num must be from 1 to 255")
+        elif type(self.is_rgbic) is not bool:
             raise ValueError("is_rgbic must be a boolean")
         if (self.address is None) == (self.name is None):
             raise ValueError("Supply exactly one BLE address or BLE name")
@@ -71,7 +82,7 @@ class DreamviewMember:
         if self.name is not None:
             if not isinstance(self.name, str) or not 1 <= len(self.name.encode("utf-8")) <= 255:
                 raise ValueError("BLE name must encode to 1..255 UTF-8 bytes")
-        if not isinstance(self.zones, tuple) or not 1 <= len(self.zones) <= 255:
+        if not isinstance(self.zones, tuple) or (not music_member and not 1 <= len(self.zones) <= 255):
             raise ValueError("Supply 1..255 explicit areas")
         for zone in self.zones:
             if integer(zone) not in (*range(11), 255):
@@ -83,8 +94,11 @@ class DreamviewMember:
         """Private persistence only; do not include this in diagnostics."""
         return {
             "cmd_ver": self.cmd_ver,
-            "is_rgbic": self.is_rgbic,
-            "zones": list(self.zones),
+            **(
+                {"mark": self.mark, "area_num": self.area_num}
+                if self.mark is not None
+                else {"is_rgbic": self.is_rgbic, "zones": list(self.zones)}
+            ),
             **({"address": self.address} if self.address is not None else {"name": self.name}),
         }
 
@@ -93,24 +107,34 @@ def build_dreamview_group(members: Sequence[DreamviewMember], profile: ModelProf
     """Build the entire bounded upload before any device-control side effect."""
     require_dreamview(profile, "replace_group", member_count=len(members))
     seen: set[tuple[str | None, str | None]] = set()
-    root = Group()
+    group_type = MusicGroup if profile.dreamview_grammar == "H607C" else Group
+    root = group_type()
     root.num_members = len(members)
     root.members = []
     root.unknown = b""
     for member in members:
+        music_member = member.mark is not None
+        if music_member != (group_type is MusicGroup):
+            raise ValueError("DreamView member form does not match the group grammar")
         identity = (member.address, member.name)
         if identity in seen:
             raise ValueError("Duplicate DreamView identity")
         seen.add(identity)
-        record = Group.Member(_parent=root, _root=root)
-        record.is_rgbic, record.cmd_ver = int(member.is_rgbic), member.cmd_ver
-        record.identity_kind = Group.IdentityKind.mac if member.address is not None else Group.IdentityKind.name
+        record = group_type.Member(_parent=root, _root=root)
+        record.cmd_ver = member.cmd_ver
+        if music_member:
+            record.mark, record.area_num = member.mark, member.area_num
+        else:
+            record.is_rgbic = int(cast(bool, member.is_rgbic))
+            record.area_count, record.area_values = len(member.zones), list(member.zones)
+        record.identity_kind = (
+            group_type.IdentityKind.mac if member.address is not None else group_type.IdentityKind.name
+        )
         if member.address is not None:
             record.reversed_mac = bytes.fromhex(member.address.replace(":", ""))[::-1]
         else:
             record.name_bytes = cast(str, member.name).encode("utf-8")
-            record.name_len = len(record.name_bytes)
-        record.area_count, record.area_values = len(member.zones), list(member.zones)
+            setattr(record, "len_name_bytes" if music_member else "name_len", len(record.name_bytes))
         root.members.append(record)
     _check_tree(root)
     length = _serialized_length(root)
@@ -132,15 +156,24 @@ def build_dreamview_command(setting: str, values: Mapping[str, Any], profile: Mo
         "video_settings": {"apply_area": 255, "content_mode": 255},
         "sound": {"enabled": bool, "softness": 100},
         "delete_group": {},
+        "music": {"music_type": 255, "selector": 65535, "second_parameter": 255, "sensitivity": 99},
     }
-    if setting not in fields or values.keys() != fields[setting].keys():
-        raise ValueError("Supply exactly the fields required by this DreamView setting")
     frame_type = _FRAMES[cast(str, profile.dreamview_grammar)]
+    if (
+        setting not in fields
+        or setting not in frame_type.Command.__members__
+        or values.keys() != fields[setting].keys()
+    ):
+        raise ValueError("Supply exactly the fields required by this DreamView setting")
     root = frame_type(False)
     root.header, root.command = frame_type.Header.write, frame_type.Command[setting]
-    if frame_type is Frame:
+    if frame_type in {Frame, MusicFrame}:
         root.module = bytes((root.module_value,))
     root.body = frame_type.WriteBody(_parent=root, _root=root)
+    target = root.body
+    if setting == "music":
+        root.body.music = frame_type.MusicParameters(_parent=root.body, _root=root)
+        target = root.body.music
     for name, bound in fields[setting].items():
         value = values[name]
         if bound is bool:
@@ -149,23 +182,31 @@ def build_dreamview_command(setting: str, values: Mapping[str, Any], profile: Mo
             value = int(value)
         else:
             value = integer(value, cast(int, bound))
-        setattr(root.body, name, value)
-    root.body.discriminator = bytes((root.discriminator_value,))
-    root.body.unknown = bytes(root.body_size - len(values) - root.discriminator_size)
+        setattr(target, name, value)
+    if root.discriminator_size:
+        root.body.discriminator = bytes((root.discriminator_value,))
+    if frame_type is MusicFrame and setting == "delete_group":
+        root.body.clear = b"\xff"
+    root.body.unknown = b""
+    _check_tree(root.body)
+    root.body.unknown = bytes(root.body_size - _serialized_length(root.body))
     return _serialize_xor(root)
 
 
 def build_dreamview_query(setting: str, profile: ModelProfile) -> bytes:
     require_dreamview(profile, setting, read=True)
-    if setting not in DREAMVIEW_READ_SETTINGS:
+    if setting not in DREAMVIEW_READ_SETTINGS and not (profile.dreamview_grammar == "H607C" and setting == "music"):
         raise ValueError("Unsupported DreamView read")
     frame_type = _FRAMES[cast(str, profile.dreamview_grammar)]
+    if setting not in frame_type.Command.__members__:
+        raise ValueError("Unsupported DreamView read")
     root = frame_type(True)
     root.header, root.command = frame_type.Header.read, frame_type.Command[setting]
-    if frame_type is Frame:
+    if frame_type in {Frame, MusicFrame}:
         root.module = bytes((root.module_value,))
     root.body = frame_type.QueryBody(_parent=root, _root=root)
-    root.body.discriminator = bytes((root.discriminator_value,))
+    if root.discriminator_size:
+        root.body.discriminator = bytes((root.discriminator_value,))
     root.body.unknown = bytes(root.body_size - root.discriminator_size)
     return _serialize_xor(root)
 
@@ -190,7 +231,7 @@ def parse_dreamview_status(frame: bytes, profile: ModelProfile | None = None) ->
     if root.header != frame_type.Header.read or root.command not in frame_type.Command:
         return None
     setting = root.command.name
-    if setting not in DREAMVIEW_READ_SETTINGS:
+    if setting not in DREAMVIEW_READ_SETTINGS and not (frame_type is MusicFrame and setting == "music"):
         return None
     body = root.body
     fields = {
@@ -201,20 +242,33 @@ def parse_dreamview_status(frame: bytes, profile: ModelProfile | None = None) ->
         "saturation": ("saturation",),
         "video_settings": ("apply_area", "content_mode"),
         "sound": ("enabled", "softness"),
+        "music": ("music_type", "selector", "second_parameter", "sensitivity"),
     }
-    observed = {name: getattr(body, name) for name in fields[setting]}
+    observed = {name: getattr(body.music if setting == "music" else body, name) for name in fields[setting]}
     # Keep raw slot bytes and uncertain tails. Zero is not proof that a slot is empty.
     observed["unknown"] = list(body.unknown)
     return setting, {name: list(value) if isinstance(value, bytes) else value for name, value in observed.items()}
 
 
 def parse_dreamview_ack(frame: bytes, profile: ModelProfile) -> tuple[str, bool] | None:
-    if profile.dreamview_grammar != "H6199" or len(frame) != 20 or xor_checksum(frame):
+    frame_type = {"H6199": LegacyFrame, "H607C": MusicFrame}.get(cast(str, profile.dreamview_grammar))
+    if frame_type is None or len(frame) != 20 or xor_checksum(frame):
         return None
-    root = LegacyFrame.Acknowledgement(KaitaiStream(io.BytesIO(frame)))
+    if frame_type is MusicFrame:
+        try:
+            upload = H607cCommandAck.from_bytes(frame)
+            upload._read()
+        except KaitaiStructError:
+            pass
+        else:
+            if upload.is_upload and upload.opcode == H607cEffectUpload.Kind.dreamview_group:
+                return "replace_group", bool(upload.is_success)
+    root = frame_type.Acknowledgement(KaitaiStream(io.BytesIO(frame)))
     try:
         root._read()
     except KaitaiStructError:
+        return None
+    if getattr(root.operation, "name", None) is None:
         return None
     return root.operation.name, bool(root.is_success)
 

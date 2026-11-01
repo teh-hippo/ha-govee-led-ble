@@ -30,11 +30,11 @@ APP_VERSION = "9999999"
 SNAPSHOT_DIR = Path(__file__).parents[2] / "custom_components" / "ha_govee_led_ble" / "scene_catalogues"
 DEFAULT_SKUS = tuple(sorted(path.stem for path in SNAPSHOT_DIR.glob("*.json")))
 
-_SPEED_METADATA_SKUS = frozenset({"H6046", "H6072", "H6097", "H60A1", "H60A6", "H617A", "H7020", "H7025"})
+_SPEED_METADATA_SKUS = frozenset({"H6046", "H6072", "H607C", "H6097", "H60A1", "H60A6", "H617A", "H7020", "H7025"})
 
 # These models derive the initial speed selection from metadata and rewrite every
 # configured field before upload, so embedded field values are not the default-speed invariant.
-_METADATA_DEFAULT_SPEED_SKUS = frozenset({"H60A1", "H7020", "H7025"})
+_METADATA_DEFAULT_SPEED_SKUS = frozenset({"H607C", "H60A1", "H7020", "H7025"})
 
 # Glacier's application path was captured rewriting its stale stored movement fields.
 _CAPTURE_VERIFIED_SPEED_DEFAULT_REWRITES = frozenset({("H617A", 1026, 1088)})
@@ -102,6 +102,17 @@ def _parse_native_scene_layers(param: str) -> list[Any]:
     return cast(list[Any], parsed.payload.layers)
 
 
+def _parse_scene_v2_records(param: str) -> list[Any]:
+    from custom_components.ha_govee_led_ble.generated_protocol_adapter import parse_scene_body
+    from custom_components.ha_govee_led_ble.protocol_core import H607cSceneBody
+
+    parsed, _padding = parse_scene_body(
+        base64.b64decode(param, validate=True),
+        scene_type=int(H607cSceneBody.CatalogueType.layered_scene),
+    )
+    return cast(list[Any], parsed.records)
+
+
 def _snapshot_layer_speed(
     effect: dict[str, Any],
     config: dict[str, Any],
@@ -139,10 +150,11 @@ def _snapshot_speed(
         if not isinstance(config, dict):
             raise ValueError(f"{label}: native DIY Speed config must be a per-layer object")
         return _snapshot_layer_speed(effect, config, label)
-    if int(effect.get("sceneType", 2)) != 2:
-        raise ValueError(f"{label}: only type-2 scenes can expose Speed")
+    scene_type = int(effect.get("sceneType", 2))
+    if scene_type not in {2, 6}:
+        raise ValueError(f"{label}: only layered scenes can expose page Speed")
     if not isinstance(config, list):
-        raise ValueError(f"{label}: type-2 Speed config must be a page list")
+        raise ValueError(f"{label}: layered Speed config must be a page list")
 
     entries = [entry for entry in config if any(key in entry for key in ("moveIn", "moveAll", "color", "bright"))]
     if not entries:
@@ -152,7 +164,7 @@ def _snapshot_speed(
     if len(default_indices) != 1:
         raise ValueError(f"{label}: inconsistent default Speed positions")
     default_index = default_indices.pop()
-    records = _parse_scene_records(str(effect["scenceParam"]))
+    records = (_parse_scene_v2_records if scene_type == 6 else _parse_scene_records)(str(effect["scenceParam"]))
     pages: list[dict[str, Any]] = []
     option_counts: set[int] = set()
 

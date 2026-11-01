@@ -155,6 +155,7 @@ test("native layer moves retain authored speeds and allow building a mixed effec
     editor.addEventListener("native-content-changed", event => {
       editor.nativeContent = (event as CustomEvent<{ content: NativeEffectContent }>).detail.content;
     });
+
     document.body.replaceChildren(editor);
     await editor.updateComplete;
   });
@@ -175,6 +176,43 @@ test("native layer moves retain authored speeds and allow building a mixed effec
   expect(speeds(await state())).toEqual([85, 58, 85]);
   await editor.getByRole("button", {name: "Remove layer", exact: true}).click();
   expect(speeds(await state())).toEqual([85, 58]);
+});
+
+test("native pole/base recipes retain siblings, fixed rates and independent palettes", async ({ page }) => {
+  await page.evaluate(async () => {
+    const modulePath = "/src/custom-effect-editor.ts";
+    await import(modulePath);
+    const contracts = await fetch("/tests/fixtures/backend-contracts.json").then(response => response.json());
+    const catalogue = contracts.responses.custom_catalogue.models.H607C;
+    const editor = document.createElement("govee-custom-effect-editor") as GoveeCustomEffectEditor;
+    editor.nativeContent = structuredClone(catalogue.templates.find(
+      (template: {id: string}) => template.id === "template:native:paired",
+    ).content);
+    editor.catalogue = catalogue;
+    editor.addEventListener("native-content-changed", event => {
+      editor.nativeContent = (event as CustomEvent<{content: NativeEffectContent}>).detail.content;
+    });
+    document.body.replaceChildren(editor);
+    await editor.updateComplete;
+  });
+  const editor = page.locator("govee-custom-effect-editor");
+  const before = await editor.evaluate(element => (element as GoveeCustomEffectEditor).nativeContent!);
+  await expect(editor.getByRole("checkbox", {name: "Include this effect", exact: true})).toHaveCount(2);
+  await editor.getByRole("combobox").first().selectOption("113");
+  await expect(editor.getByText("Speed: 50 (fixed)", {exact: true})).toBeVisible();
+  const after = await editor.evaluate(element => (element as GoveeCustomEffectEditor).nativeContent!);
+  expect(after.layers[1]).toEqual(before.layers[1]);
+  expect(after.layers[0]).toMatchObject({type: "diy", kind: 113, speed: 50, enabled: true});
+  const palettes = editor.locator("section.card").first().locator("govee-palette-editor");
+  await expect(palettes).toHaveCount(2);
+  expect(await palettes.nth(0).evaluate(element => (element as HTMLElement & {minColours: number}).minColours)).toBe(1);
+  expect(await palettes.nth(1).evaluate(element => (element as HTMLElement & {minColours: number}).minColours)).toBe(2);
+  await editor.getByRole("checkbox", {name: "Include this effect", exact: true}).first().uncheck();
+  const disabled = await editor.evaluate(element => (element as GoveeCustomEffectEditor).nativeContent!);
+  expect(disabled.layers[0]).toMatchObject({enabled: false});
+  expect(disabled.layers[1]).toEqual(before.layers[1]);
+  await expect(editor.getByRole("button", {name: "Add layer", exact: true})).toHaveCount(0);
+  await expect(editor.getByRole("button", {name: "Move later", exact: true})).toHaveCount(0);
 });
 
 test("painted segment taps finish with a committed interaction", async ({

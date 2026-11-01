@@ -56,6 +56,16 @@ test("native DIY catalogue entries reach the existing template loader keys", () 
   expect(entries.every(entry => entry.kind === "native-diy")).toBe(true);
 });
 
+test("native family descriptions do not create nonexistent legacy template choices", () => {
+  const catalogue = decodeCustomCataloguePayload(backendContracts.responses.custom_catalogue, decodeEffectContent).models.H607C;
+  const entries = buildCustomEffectEntries({model: "H607C", catalogue, libraryItems: []}, "all");
+  const templateIds = new Set(catalogue.templates!.map(template => template.id));
+  expect(entries.length).toBeGreaterThan(0);
+  expect(entries.every(entry => templateIds.has(entry.key))).toBe(true);
+  expect(entries.some(entry => entry.key.startsWith("template:single:"))).toBe(false);
+  expect(catalogue.effects).toHaveLength(9);
+});
+
 test("canonical packed controls preserve siblings, BE high byte, and extension bits", () => {
   const layer = blankLayer();
   layer.unknown_flags = 0x21;
