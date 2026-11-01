@@ -15,7 +15,7 @@ Neither a model nor an issue argument is mandatory.  Resolve exact SKUs from att
 
 ## Boundaries
 
-- Follow `CONTRIBUTING.md` for architecture, full candidate support, excluded features, evidence classes, validation and delivery.
+- Follow `CONTRIBUTING.md` for architecture and excluded features.  Target full in-scope support across hardware and firmware revisions: enable every defensible capability backed by exact-model evidence or speculative Kaitai, keep only disproven or unsafe paths disabled, and preserve unknowns rather than inventing facts.
   Audit the full in-scope feature/revision surface, prioritising the reported failure.  Missing owner qualification alone does not withhold defensible candidates.
 - Include evidenced neighbouring fixes.  Ask whether major gaps belong in the current issue/PR or a follow-up, and before materially changing the implementation approach.
   Keep deferred findings visible; delivery scope and audit coverage are separate.
@@ -31,7 +31,7 @@ Neither a model nor an issue argument is mandatory.  Resolve exact SKUs from att
 
 Perform the available intake, causal trace and audit below **now**, then construct the plan from their findings.
 Do not substitute implementation todos such as "run govee-align", "inspect the packets" or "audit the model".
-Use the four-section `CONTRIBUTING.md` structure:
+Use the four-section structure of `.github/PULL_REQUEST_TEMPLATE.md`:
 
 1. **Request and known context:** Reproduction, expected/actual behaviour, identities, versions and transport environment.
 2. **Research findings:** Causal evidence, packet/semantic differences, contrary evidence, audit coverage and unresolved explanations.
@@ -50,6 +50,7 @@ Treat proposed causes and workarounds as hypotheses.  Keep owners, revisions, en
 Record the action, expected/actual result, working controls and latest outcome with source links.
 Without a specific report, begin the model audit rather than requiring an issue or inventing a failure.
 
+Read the model's `.ksy` schemas first (`tools/ble/kaitai/`; `speculative/` holds unconfirmed hypotheses): they are the protocol documentation, and a wire fix belongs there.
 Trace connection/subscription -> identity admission -> request construction -> framing/transformation -> physical write -> replies -> parsing -> state -> verification.
 Identify the last successful stage and first evidenced divergence; a service error does not prove a malformed command.
 Compare observed TX/RX with current generated output and decoded semantics at the same protocol layer:
