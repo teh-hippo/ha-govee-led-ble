@@ -4,12 +4,14 @@ on:
   workflow_dispatch:
     inputs:
       target_sha:
-        description: Exact commit SHA from the selected branch
-        required: true
+        description: Exact commit SHA from the selected branch (default - the branch head)
+        required: false
+        default: ""
         type: string
       version:
-        description: Prerelease version, for example 7.2.0-rc.4.foundation
-        required: true
+        description: Prerelease version, for example 7.2.0-rc.4.foundation (default - next patch, run number, branch)
+        required: false
+        default: ""
         type: string
       publish:
         description: Create the GitHub prerelease and tag
@@ -17,26 +19,62 @@ on:
         default: false
         type: boolean
       release_notes:
-        description: Exact maintainer-approved public release notes, required when publishing
+        description: Public release notes (default - a generic candidate note)
         required: false
         default: ""
         type: string
 
 concurrency:
-  group: prerelease-${{ inputs.target_sha }}
+  group: prerelease-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      target_sha: ${{ steps.defaults.outputs.target_sha }}
+      version: ${{ steps.defaults.outputs.version }}
+      release_notes: ${{ steps.defaults.outputs.release_notes }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - id: defaults
+        env:
+          INPUT_SHA: ${{ inputs.target_sha }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_NOTES: ${{ inputs.release_notes }}
+          BRANCH: ${{ github.ref_name }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os, re, subprocess
+          sha = os.environ["INPUT_SHA"] or subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          version = os.environ["INPUT_VERSION"]
+          if not version:
+              current = json.load(open("custom_components/ha_govee_led_ble/manifest.json"))["version"]
+              major, minor, patch = (int(part) for part in re.match(r"(\d+)\.(\d+)\.(\d+)", current).groups())
+              suffix = re.sub(r"[^0-9A-Za-z]+", "-", os.environ["BRANCH"]).strip("-")[:24]
+              version = f"{major}.{minor}.{patch + 1}-rc.{os.environ['RUN_NUMBER']}.{suffix}"
+          notes = os.environ["INPUT_NOTES"] or f"Release candidate for testing from {os.environ['BRANCH']} at {sha[:12]}."
+          print(f"target_sha={sha}")
+          print(f"version={version}")
+          print("release_notes<<EOF_NOTES")
+          print(notes)
+          print("EOF_NOTES")
+          PY
+
   package:
+    needs: prepare
     uses: teh-hippo/common-repo-configs/.github/workflows/ha-prerelease.yml@ce9adfb359fc249f59717d9f72aa4d3052e850cf # v3.5.5
     permissions:
       contents: write
     with:
       integration: ha_govee_led_ble
-      target_sha: ${{ inputs.target_sha }}
-      version: ${{ inputs.version }}
+      target_sha: ${{ needs.prepare.outputs.target_sha }}
+      version: ${{ needs.prepare.outputs.version }}
       publish: ${{ inputs.publish }}
-      release_notes: ${{ inputs.release_notes }}
+      release_notes: ${{ needs.prepare.outputs.release_notes }}
       make_target: package
       node_version_file: .node-version
       mise_install_args: github:kaitai-io/kaitai_struct_compiler
