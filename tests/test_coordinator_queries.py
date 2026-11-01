@@ -3,9 +3,11 @@
 import asyncio
 import time
 from dataclasses import replace
+from types import SimpleNamespace
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
+from bleak.exc import BleakError
 
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ModelProfile, ReadDomain
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
@@ -23,11 +25,86 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_white_balance_query,
 )
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES
-from custom_components.ha_govee_led_ble.transport import WRITE_UUID, xor_checksum
+from custom_components.ha_govee_led_ble.transport import ENCRYPTION_UUID, WRITE_UUID, xor_checksum
 from custom_components.ha_govee_led_ble.video_applicability import video_identity_fields
 from tests.coordinator_test_support import _CONFIGURATION_URL, _c, _packet
 
 M = "custom_components.ha_govee_led_ble.coordinator"
+
+
+@pytest.mark.parametrize("missing", ["zone", "power_on"])
+@pytest.mark.parametrize("transport_error", [False, True])
+async def test_h607c_optional_setting_timeout_preserves_required_setup(
+    hass, monkeypatch, virtual_clock, missing, transport_error
+):
+    c = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H607C", configuration_url=None)
+    c.pact_type, c.pact_code = 1, 1
+    c._resolve_device_profile()
+    c._present = True
+    client = MagicMock(is_connected=True, disconnect=AsyncMock(), start_notify=AsyncMock())
+
+    async def connect():
+        c._client = client
+        await c._start_notify()
+        return client
+
+    async def disconnect(_client):
+        client.is_connected = False
+        c._clear_client_state(client)
+
+    async def write(_uuid, packet, **_kwargs):
+        receive = client.start_notify.await_args.args[1]
+        expected_query = b"\xaa\x07\x08" if missing == "zone" else b"\xaa\x41\x00"
+        if transport_error and packet.startswith(expected_query):
+            raise BleakError("optional query failed")
+        if packet == build_power_query("H607C", profile=c.profile):
+            receive(None, bytearray(_packet(0xAA, 1, [1])))
+        elif packet == build_brightness_query("H607C", profile=c.profile):
+            receive(None, bytearray(_packet(0xAA, 4, [37])))
+        elif packet[:3] == b"\xaa\x07\x08" and missing != "zone":
+            receive(None, bytearray(_packet(0xAA, 7, [8, 37, 7])))
+        elif packet[:2] == b"\xaa\xa3":
+            receive(None, bytearray(_packet(0xAA, 0xA3, [0])))
+
+    client.write_gatt_char = AsyncMock(side_effect=write)
+    monkeypatch.setattr(c, "_ensure_connected", AsyncMock(side_effect=connect))
+    monkeypatch.setattr(c, "_disconnect_if_current_locked", AsyncMock(side_effect=disconnect))
+    snapshot = await c._async_update_data()
+    assert snapshot["is_on"] and snapshot["brightness_pct"] == 37
+    assert c._state_read_available
+    assert c._client is None and not client.is_connected
+    assert c._notification_token is None
+    expected_query = b"\xaa\x07\x08" if missing == "zone" else b"\xaa\x41\x00"
+    assert client.write_gatt_char.await_args.args[1].startswith(expected_query)
+    client.start_notify.await_args.args[1](None, bytearray(_packet(0xAA, 7, [8, 37, 0])))
+    assert not c.boolean_control_state
+
+
+async def test_h607c_marker_only_poll_preserves_brightness_after_optional_timeout(hass, monkeypatch, virtual_clock):
+    c = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H607C", configuration_url=None)
+    device = MagicMock(is_connected=True, mtu_size=100)
+    device.services = [SimpleNamespace(characteristics=[SimpleNamespace(uuid=ENCRYPTION_UUID)])]
+    device.read_gatt_char = AsyncMock(return_value=bytes.fromhex("020000000101"))
+    device.start_notify = AsyncMock()
+
+    async def write(_uuid, packet, **_kwargs):
+        receive = device.start_notify.await_args.args[1]
+        if packet == build_power_query("H607C", profile=c.profile):
+            receive(None, bytearray(_packet(0xAA, 1, [1])))
+        elif packet == build_brightness_query("H607C", profile=c.profile):
+            receive(None, bytearray(_packet(0xAA, 4, [37])))
+
+    async def disconnect():
+        device.is_connected = False
+
+    device.write_gatt_char = AsyncMock(side_effect=write)
+    device.disconnect = AsyncMock(side_effect=disconnect)
+    monkeypatch.setattr(f"{M}.async_establish_ble_connection", AsyncMock(return_value=device))
+    monkeypatch.setattr(c, "_start_keep_alive", lambda: None)
+    snapshot = await c._async_update_data()
+    assert snapshot["is_on"] and snapshot["brightness_pct"] == 37
+    assert c._state_read_available and c._client is None
+    assert c.h607c_pact_readiness == "stale" and not c.profile.supports_rgb
 
 
 @pytest.mark.parametrize(("poll", "reply_brightness"), [(False, True), (True, True), (False, False)])

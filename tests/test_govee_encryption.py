@@ -3,9 +3,10 @@
 import asyncio
 import json
 import os
+import time
 from dataclasses import replace
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from bleak import BleakError
@@ -13,6 +14,7 @@ from bleak.backends.bluezdbus.client import BleakClientBlueZDBus
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from dbus_fast.constants import MessageType
 from habluetooth.wrappers import HaBleakClientWrapper
+from homeassistant.exceptions import HomeAssistantError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.ha_govee_led_ble.advertisement import parse_govee_advertisement
@@ -34,6 +36,8 @@ from custom_components.ha_govee_led_ble.govee_encryption import (
 )
 from custom_components.ha_govee_led_ble.govee_encryption import session as session_module
 from custom_components.ha_govee_led_ble.govee_encryption.session import GoveeEncryptionSession
+from custom_components.ha_govee_led_ble.light import GoveeBLELight
+from custom_components.ha_govee_led_ble.light_commands import build_color_rgb, build_segment_color
 from custom_components.ha_govee_led_ble.music_commands import prepare_music_request
 from custom_components.ha_govee_led_ble.transport import (
     ENCRYPTION_UUID,
@@ -54,6 +58,236 @@ async def test_wire_parsing_does_not_import_on_event_loop():
         side_effect=AssertionError("Runtime protocol import blocks the event loop"),
     ):
         assert parse_wire("Marker", b"\x01\x01").version == 1
+
+
+@pytest.mark.parametrize("pact_type", [1, 2])
+async def test_h607c_marker_qualifies_rgb_only_for_current_connection(hass, monkeypatch, pact_type):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H607C", configuration_url=None)
+    device = client(bytes((2, 0, 0, 0, pact_type, 1)))
+    coordinator.is_on = True
+    monkeypatch.setattr(coordinator, "_refresh_h607c_advertisements", lambda: None)
+    monkeypatch.setattr(f"{M}.async_establish_ble_connection", AsyncMock(return_value=device))
+    monkeypatch.setattr(coordinator, "_start_keep_alive", lambda: None)
+    light = GoveeBLELight(coordinator)
+    light.hass = hass
+    light.entity_id = "light.h607c"
+    await light.async_turn_on(rgb_color=(12, 34, 56))
+    assert (coordinator.pact_type, coordinator.pact_code) == (pact_type, 1)
+    assert device.write_gatt_char.await_args.args[1] == build_color_rgb(
+        12, 34, 56, "H607C", profile=coordinator.profile
+    )
+    assert coordinator.segment_state_source == "optimistic"
+    await light.async_set_segment_color([13], (90, 120, 200))
+    assert device.write_gatt_char.await_args.args[1] == build_segment_color(
+        [13], 90, 120, 200, "H607C", profile=coordinator.profile
+    )
+    coordinator._clear_client_state(device)
+    assert coordinator.pact_type is None and not coordinator.profile.supports_rgb
+    assert coordinator.h607c_pact_readiness == "stale"
+    assert coordinator.native_presentation_profile.supports_rgb
+
+
+async def test_h607c_scanner_pact_conflict_fails_closed(hass, monkeypatch):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H607C", configuration_url=None)
+
+    def record(payload, source, timestamp):
+        return SimpleNamespace(
+            name="Govee_H607C",
+            address=coordinator.address,
+            source=source,
+            time=timestamp,
+            manufacturer_data={0x8843: bytes.fromhex(payload)},
+        )
+
+    now = time.monotonic()
+    records = [record("ec00010100", "scanner-a", now)]
+    monkeypatch.setattr(
+        f"{M}.bluetooth.async_last_service_info", lambda *args, **kwargs: records[0] if records else None
+    )
+    coordinator._refresh_h607c_advertisements()
+    assert coordinator.profile.supports_rgb and coordinator.h607c_pact_readiness == "ready"
+    coordinator._note_advertisement(record("ec00020100", "scanner-b", now))
+    coordinator._refresh_h607c_advertisements()
+    assert coordinator.h607c_pact_readiness == "conflicting"
+    assert not coordinator.profile.supports_rgb and not coordinator.native_presentation_profile.supports_rgb
+    generation = coordinator._profile_generation
+    coordinator.brightness_pct = 37
+    coordinator._async_on_advertisement(records[0], None)
+    assert coordinator._profile_generation == generation and coordinator.brightness_pct == 37
+    coordinator._h607c_advertisement_observations["scanner-b"] = (now - 1000, frozenset({(2, 1)}))
+    coordinator._refresh_h607c_advertisements()
+    assert coordinator.profile.supports_rgb and coordinator.h607c_pact_readiness == "ready"
+    records[0].time = now - 1000
+    coordinator._h607c_advertisement_observations["scanner-a"] = (now - 1000, frozenset({(1, 1)}))
+    records.clear()
+    coordinator._refresh_h607c_advertisements()
+    assert not coordinator.profile.supports_rgb and coordinator.h607c_pact_readiness == "missing"
+
+
+async def test_h607c_live_equal_timestamp_cannot_be_overwritten_by_cached_pact(hass, monkeypatch):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H607C", configuration_url=None)
+    timestamp = time.monotonic()
+    cached = SimpleNamespace(
+        name="Govee_H607C",
+        address=coordinator.address,
+        source="scanner-a",
+        time=timestamp,
+        manufacturer_data={0x8843: bytes.fromhex("ec00010100")},
+    )
+    incoming = SimpleNamespace(
+        name=cached.name,
+        address=cached.address,
+        source=cached.source,
+        time=timestamp,
+        manufacturer_data={0x8843: bytes.fromhex("ec00030100")},
+    )
+    monkeypatch.setattr(f"{M}.bluetooth.async_last_service_info", lambda *args, **kwargs: cached)
+    coordinator._refresh_h607c_advertisements()
+    assert coordinator.profile.supports_rgb
+    coordinator._async_on_h607c_advertisement(incoming)
+    assert coordinator.h607c_pact_readiness == "conflicting"
+    assert not coordinator.profile.supports_rgb
+
+
+async def test_h607c_advertisement_expiry_during_preflight_rejects_colour(hass, monkeypatch):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H607C", configuration_url=None)
+    info = SimpleNamespace(
+        name="Govee_H607C",
+        address=coordinator.address,
+        source="scanner-a",
+        time=time.monotonic(),
+        manufacturer_data={0x8843: bytes.fromhex("ec00010100")},
+    )
+    monkeypatch.setattr(f"{M}.bluetooth.async_last_service_info", lambda *args, **kwargs: info)
+    device = client()
+    coordinator._client = device
+    coordinator._notification_token = object()
+
+    async def ensure_connected():
+        coordinator._h607c_advertisement_observations["scanner-a"] = (
+            time.monotonic() - 1000,
+            frozenset({(1, 1)}),
+        )
+        return device
+
+    async def disconnect(_client):
+        device.is_connected = False
+        coordinator._clear_client_state(device)
+
+    monkeypatch.setattr(coordinator, "_ensure_connected", ensure_connected)
+    monkeypatch.setattr(coordinator, "_disconnect_if_current_locked", disconnect)
+    light = GoveeBLELight(coordinator)
+    light.hass = hass
+    light.entity_id = "light.h607c"
+    light._async_supersede_preview = AsyncMock()
+    with pytest.raises(HomeAssistantError):
+        await light.async_turn_on(rgb_color=(12, 34, 56))
+    device.write_gatt_char.assert_not_awaited()
+    light._async_supersede_preview.assert_not_awaited()
+    assert not coordinator.profile.supports_rgb
+
+
+@pytest.mark.parametrize("all_advertisements_api", [True, False])
+async def test_h607c_registers_supported_advertisement_callback(hass, monkeypatch, all_advertisements_api):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H607C", configuration_url=None)
+    register = MagicMock(return_value=lambda: None)
+    monkeypatch.setattr(f"{M}.bluetooth.async_address_present", lambda *args, **kwargs: False)
+    monkeypatch.setattr(f"{M}.bluetooth.async_last_service_info", lambda *args, **kwargs: None)
+    monkeypatch.setattr(f"{M}.bluetooth.async_register_callback", register)
+    monkeypatch.setattr(f"{M}.bluetooth.async_track_unavailable", lambda *args, **kwargs: lambda: None)
+    if all_advertisements_api:
+        register_all = MagicMock(return_value=lambda: None)
+        monkeypatch.setattr(f"{M}.bluetooth.async_register_advertisement_callback", register_all)
+    else:
+        monkeypatch.delattr(
+            "custom_components.ha_govee_led_ble.coordinator.bluetooth.async_register_advertisement_callback"
+        )
+    await coordinator._async_setup()
+    if all_advertisements_api:
+        register_all.assert_called_once()
+        assert register.call_count == 1
+    else:
+        assert register.call_count == 2
+        assert register.call_args.args[2]["connectable"] is False
+
+
+async def test_h607c_revocation_during_colour_turn_on_sends_no_user_write(hass, monkeypatch):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H607C", configuration_url=None)
+    coordinator._h607c_advertised_pacts = {(1, 1)}
+    coordinator._resolve_h607c_pact()
+    device = client()
+    coordinator._client = device
+    coordinator._notification_token = object()
+    coordinator._notify_started_monotonic = 1.0
+    monkeypatch.setattr(coordinator, "_refresh_h607c_advertisements", lambda: None)
+    monkeypatch.setattr(coordinator, "_renew_foreground_lease", lambda: None)
+    calls = 0
+
+    async def ensure_connected():
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            coordinator._h607c_advertised_pacts = {(3, 1)}
+            coordinator._resolve_h607c_pact()
+        return device
+
+    monkeypatch.setattr(coordinator, "_ensure_connected", ensure_connected)
+    light = GoveeBLELight(coordinator)
+    light.hass = hass
+    light.entity_id = "light.h607c"
+    with pytest.raises(HomeAssistantError):
+        await light.async_turn_on(rgb_color=(12, 34, 56), brightness=100)
+    device.write_gatt_char.assert_not_awaited()
+    assert not coordinator.is_on
+
+
+async def test_h607c_missing_pact_presents_colour_but_does_not_cancel_preview(hass, monkeypatch):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H607C", configuration_url=None)
+    device = client(b"\x01\x00")
+    coordinator._client = device
+    coordinator._notification_token = object()
+    monkeypatch.setattr(coordinator, "_refresh_h607c_advertisements", lambda: None)
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=device))
+
+    async def disconnect(_client):
+        device.is_connected = False
+        coordinator._clear_client_state(device)
+
+    monkeypatch.setattr(coordinator, "_disconnect_if_current_locked", disconnect)
+    light = GoveeBLELight(coordinator)
+    light.hass = hass
+    light.entity_id = "light.h607c"
+    light._async_supersede_preview = AsyncMock()
+    assert {mode.value for mode in light.supported_color_modes} == {"rgb", "color_temp"}
+    with pytest.raises(HomeAssistantError):
+        await light.async_turn_on(rgb_color=(12, 34, 56))
+    light._async_supersede_preview.assert_not_awaited()
+    device.write_gatt_char.assert_not_awaited()
+    assert not coordinator.is_on
+
+
+async def test_h607c_marker_requalification_preserves_release_state_without_fresh_observations(hass, monkeypatch):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H607C", configuration_url=None)
+    first = client(bytes.fromhex("020000000101"))
+    second = client(bytes.fromhex("020000000101"))
+    monkeypatch.setattr(f"{M}.async_establish_ble_connection", AsyncMock(side_effect=[first, second]))
+    monkeypatch.setattr(coordinator, "_start_keep_alive", lambda: None)
+    await coordinator._ensure_connected()
+    coordinator.brightness_pct = 37
+    coordinator.color_temp_kelvin = 3200
+    coordinator.boolean_control_state["gradual"] = True
+    revisions = dict(coordinator._field_revisions)
+    coordinator._intentional_disconnect_client = first
+    coordinator._clear_client_state(first)
+    coordinator._intentional_disconnect_client = None
+    assert coordinator.boolean_control_state["gradual"] is True
+    assert not coordinator._authorization_profile().supports_rgb
+    await coordinator._ensure_connected()
+    assert coordinator.profile.supports_rgb
+    assert coordinator.brightness_pct == 37 and coordinator.color_temp_kelvin == 3200
+    assert coordinator.boolean_control_state["gradual"] is True
+    assert coordinator._field_revisions == revisions
+    coordinator._clear_client_state(second)
 
 
 def v1_reply(opcode=1, key=KEY):

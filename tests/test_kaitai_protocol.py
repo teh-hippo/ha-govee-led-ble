@@ -133,8 +133,12 @@ def test_h607c_endpoint_scene_keeps_named_v2_trailer_and_opaque_extensions():
     [
         ("h607c_command_write", "H607cCommandWrite", "3305150111223300000000000110000000000033"),
         ("h607c_control", "H607cControl", "3330000100000000000000000000000000000002"),
+        ("h607c_control", "H607cControl", "33a3000000000000000000000000000000000090"),
+        ("h607c_control", "H607cControl", "33a3010000000000000000000000000000000091"),
+        ("h607c_control", "H607cControl.GradualQuery", "aaa3000000000000000000000000000000000009"),
         ("h607c_status_query", "H607cStatusQuery", "aa070300000000000000000000000000000000ae"),
         ("h607c_status_reply", "H607cStatusReply", "aa07082585000000000000000000000000000005"),
+        ("h607c_status_reply", "H607cStatusReply", "aaa3010000000000000000000000000000000008"),
         ("h607c_command_ack", "H607cCommandAck", "a3413300000000000000000000000000000000d1"),
         ("h607c_diy_body", "H607cDiyBody", "0b996a09593202ff00000000ff0000"),
         ("h607c_paint_body", "H607cPaintBody", "0900640000000102ff0000008f"),
@@ -144,7 +148,9 @@ def test_h607c_endpoint_scene_keeps_named_v2_trailer_and_opaque_extensions():
 def test_h607c_reconstructed_fields_round_trip(module, name, raw):
     """#507/#511 reconstructed vectors, not owner or official-app captures."""
     data = bytes.fromhex(raw)
-    root = _generated(module, name).from_bytes(data)
+    parent, _, child = name.partition(".")
+    root_type = _generated(module, parent)
+    root = (getattr(root_type, child) if child else root_type).from_bytes(data)
     root._read()
     assert root._io.is_eof()
     assert protocol_core.serialize_native_body(root) == data

@@ -181,6 +181,19 @@ async def async_get_config_entry_diagnostics(
     }
     if coordinator.model == "H6102":
         coordinator_data["capability_resolution"] = _h6102_capability_resolution(entry, coordinator)
+    elif coordinator.model == "H607C":
+        coordinator_data["capability_resolution"] = {
+            "pact_readiness": coordinator.h607c_pact_readiness,
+            "pact_source": "marker"
+            if coordinator._h607c_marker_pact is not None
+            else "advertisement"
+            if coordinator._h607c_advertised_pacts
+            else None,
+            "native_supports_rgb": coordinator.native_presentation_profile.supports_rgb,
+            "native_supports_color_temperature": coordinator.native_presentation_profile.supports_color_temperature,
+            "effective_supports_rgb": coordinator.profile.supports_rgb,
+            "effective_supports_color_temperature": coordinator.profile.supports_color_temperature,
+        }
     elif coordinator.profile.profile_identity_fields:
         profile = coordinator.profile
         coordinator_data["capability_resolution"] = {

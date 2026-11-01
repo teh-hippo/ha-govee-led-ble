@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import time
+from collections.abc import Callable
 from datetime import datetime
 from typing import Any
 
@@ -183,7 +184,9 @@ class _SegmentMixin(_CoordinatorBase):
                 and self._field_revisions.get("segment_colors", 0) > baseline
             )
 
-    async def async_set_segment_kelvin(self, packet: bytes, *, requested_kelvin: int) -> None:
+    async def async_set_segment_kelvin(
+        self, packet: bytes, *, requested_kelvin: int, write_guard: Callable[[], None] | None = None
+    ) -> None:
         """Confirm settled rendering on the original subscription, without replaying the write."""
         profile = self.profile
         static = parse_static_write(packet, self.model, profile=profile)
@@ -193,7 +196,10 @@ class _SegmentMixin(_CoordinatorBase):
         if not selected or static.segment_mask & ~profile.whole_device_mask:
             raise ValueError("Kelvin mask is outside the current geometry")
         if not profile.can_read(ReadDomain.SEGMENTS):
-            await self.send_command(packet)
+            if write_guard is None:
+                await self.send_command(packet)
+            else:
+                await self.send_command(packet, write_guard=write_guard)
             return
         expected = kelvin_companion_rgb(static.kelvin, profile)
 
@@ -221,6 +227,8 @@ class _SegmentMixin(_CoordinatorBase):
 
                 def guard() -> None:
                     nonlocal outcome
+                    if write_guard is not None:
+                        write_guard()
                     if (
                         self._client is not client
                         or not client.is_connected
@@ -335,11 +343,15 @@ class _SegmentMixin(_CoordinatorBase):
                         outcome,
                     )
 
-    async def async_paint_segments(self, groups: list[SegmentColorGroup]) -> None:
+    async def async_paint_segments(
+        self, groups: list[SegmentColorGroup], *, write_guard: Callable[[], None] | None = None
+    ) -> None:
         async with self.async_mask_transaction():
-            await self._async_paint_segments(groups)
+            await self._async_paint_segments(groups, write_guard=write_guard)
 
-    async def _async_paint_segments(self, groups: list[SegmentColorGroup]) -> None:
+    async def _async_paint_segments(
+        self, groups: list[SegmentColorGroup], *, write_guard: Callable[[], None] | None = None
+    ) -> None:
         """Optimistically paint colour groups onto the segment slots.
 
         Each group pairs 1-based segment indices with an RGB colour. The device does not
@@ -358,6 +370,8 @@ class _SegmentMixin(_CoordinatorBase):
 
                     def before_write() -> None:
                         nonlocal attempted, expected_colors, expected_brightness
+                        if write_guard is not None:
+                            write_guard()
                         # Historical observations cannot prove pre-write sibling state.
                         if (
                             not attempted
@@ -390,11 +404,15 @@ class _SegmentMixin(_CoordinatorBase):
                 if attempted:
                     self.async_set_updated_data(self.data or {})
 
-    async def async_set_segment_brightness(self, segments: list[int], brightness: int) -> None:
+    async def async_set_segment_brightness(
+        self, segments: list[int], brightness: int, *, write_guard: Callable[[], None] | None = None
+    ) -> None:
         async with self.async_mask_transaction():
-            await self._async_set_segment_brightness(segments, brightness)
+            await self._async_set_segment_brightness(segments, brightness, write_guard=write_guard)
 
-    async def _async_set_segment_brightness(self, segments: list[int], brightness: int) -> None:
+    async def _async_set_segment_brightness(
+        self, segments: list[int], brightness: int, *, write_guard: Callable[[], None] | None = None
+    ) -> None:
         segments = list(segments)
         value = max(0, min(100, brightness))
         packet = build_segment_brightness(segments, value, self.model, profile=self.profile)
@@ -404,6 +422,8 @@ class _SegmentMixin(_CoordinatorBase):
 
         def before_write() -> None:
             nonlocal attempted, expected_colors, expected_brightness
+            if write_guard is not None:
+                write_guard()
             if (
                 not attempted
                 and self.segment_state_source == "observed"

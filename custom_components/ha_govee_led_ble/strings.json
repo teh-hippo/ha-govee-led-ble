@@ -96,6 +96,9 @@
     }
   },
   "exceptions": {
+    "identity_not_ready": {
+      "message": "The device's Bluetooth protocol is not confirmed. Wait for a compatible advertisement and try again."
+    },
     "unsupported_model": {
       "message": "{service} is not supported on {model}"
     },

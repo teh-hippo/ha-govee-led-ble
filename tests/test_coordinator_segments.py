@@ -36,6 +36,7 @@ async def test_native_write_only_controls_do_not_require_unavailable_segment_rep
     client = SimpleNamespace(is_connected=True, write_gatt_char=AsyncMock())
     c._client = client
     c._ensure_connected = AsyncMock(return_value=client)
+    c._refresh_h607c_advertisements = MagicMock()
     c._renew_foreground_lease = MagicMock()
     c.async_refresh_segments = AsyncMock(return_value=False)
     if operation == "whole-kelvin":

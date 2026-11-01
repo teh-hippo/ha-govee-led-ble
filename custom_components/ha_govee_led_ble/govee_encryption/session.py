@@ -35,6 +35,7 @@ class GoveeEncryptionSession:
         self.last_result = "not_selected"
         self.marker_hex: str | None = None
         self.marker_error: str | None = None
+        self.marker_pact: tuple[int, int] | None = None
         self.rejected_frames = 0
         self._handshake: asyncio.Future[Any] | None = None
         self._opcode = 0
@@ -53,6 +54,7 @@ class GoveeEncryptionSession:
     def reset(self) -> None:
         self._generation += 1
         self.ready = False
+        self.marker_pact = None
         if self._handshake is not None and not self._handshake.done():
             self._handshake.set_exception(GoveeCryptoError("session_reset"))
             self._handshake.exception()
@@ -107,6 +109,8 @@ class GoveeEncryptionSession:
                     return
                 # Version zero permits plaintext only without positive encryption evidence.
                 self.version = marker.version or self.required_version
+                if marker.format == 2:
+                    self.marker_pact = (int(marker.pact_type), int(marker.pact_code))
                 self._selection_failed = False
             if self.version:
                 self.required_version = self.version
