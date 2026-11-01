@@ -139,6 +139,17 @@ def kelvin_companion_rgb(kelvin: int, profile: ModelProfile) -> tuple[int, int, 
     )
 
 
+def kelvin_rendering_matches(rgb: tuple[int, int, int], kelvin: int, profile: ModelProfile) -> bool:
+    """Whether a rendered segment colour is consistent with the Kelvin that was commanded.
+
+    shortcut: these lamps render their own white rather than the companion RGB, so any warm white
+    confirms; upgrade once a capture maps each Kelvin step to the colour the lamp actually renders.
+    """
+    if profile.segment_kelvin_renders_device_rgb and rgb[0] >= 200 and rgb[1] >= 100:
+        return True
+    return rgb == kelvin_companion_rgb(kelvin, profile)
+
+
 def normalize_kelvin(kelvin: int, profile: ModelProfile) -> int:
     value = _clamp(kelvin, profile.min_color_temp_kelvin, profile.max_color_temp_kelvin)
     step = profile.color_temp_step_kelvin

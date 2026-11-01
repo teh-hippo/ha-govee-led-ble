@@ -15,7 +15,7 @@ from .light_commands import (
     SegmentColorGroup,
     build_segment_brightness,
     build_segment_paint,
-    kelvin_companion_rgb,
+    kelvin_rendering_matches,
     parse_static_write,
 )
 
@@ -145,8 +145,7 @@ class _SegmentMixin(_CoordinatorBase):
             if (
                 kelvin is not None
                 and self._pending_kelvin != kelvin
-                and not (self.profile.segment_kelvin_renders_device_rgb and rendered[0] >= 200 and rendered[1] >= 100)
-                and rendered != kelvin_companion_rgb(kelvin, self.profile)
+                and not kelvin_rendering_matches(rendered, kelvin, self.profile)
             ):
                 kelvin = None
             if self._accept_expected_values({"rgb_color": rendered, "color_temp_kelvin": kelvin}):
@@ -201,15 +200,11 @@ class _SegmentMixin(_CoordinatorBase):
             else:
                 await self.send_command(packet, write_guard=write_guard)
             return
-        expected = kelvin_companion_rgb(static.kelvin, profile)
+
+        sent_kelvin = static.kelvin
 
         def rendering_matches(colors: set[tuple[int, int, int]]) -> bool:
-            if not profile.segment_kelvin_renders_device_rgb:
-                return colors == {expected}
-            if len(colors) != 1:
-                return False
-            red, green, _ = next(iter(colors))
-            return red >= 200 and green >= 100
+            return len(colors) == 1 and kelvin_rendering_matches(next(iter(colors)), sent_kelvin, profile)
 
         started = time.monotonic()
         rounds = 0
