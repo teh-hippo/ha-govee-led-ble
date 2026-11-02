@@ -164,6 +164,17 @@ class PriorControlState:
     music_body: bytes | None = None
 
     def __post_init__(self) -> None:
+        self._validate_flags_and_bars()
+        self._validate_video_parameters()
+        self._validate_music_body()
+        self._validate_segment_layout()
+        self._validate_music_palette_and_parameters()
+        self._validate_video_restore_controls()
+        self._validate_core_state()
+        self._validate_tunable_values()
+        self._validate_optional_readbacks()
+
+    def _validate_flags_and_bars(self) -> None:
         if type(self.static_rgb_known) is not bool:
             raise EffectStorageError("prior static RGB intent must be a boolean")
         if self.static_gradual is not None and type(self.static_gradual) is not bool:
@@ -174,6 +185,8 @@ class PriorControlState:
         for kelvin in (self.left_bar_kelvin, self.right_bar_kelvin):
             if kelvin is not None and (type(kelvin) is not int or not 0 <= kelvin <= KELVIN_RANGE_1000_10000[1]):
                 raise EffectStorageError("prior bar Kelvin must be a bounded integer or null")
+
+    def _validate_video_parameters(self) -> None:
         if self.video_parameters is not None:
             if not isinstance(self.video_parameters, Mapping):
                 raise EffectStorageError("prior video parameters must be a mapping")
@@ -188,6 +201,8 @@ class PriorControlState:
                 for key, value in self.video_parameters.items()
             ):
                 raise EffectStorageError("invalid prior video parameter")
+
+    def _validate_music_body(self) -> None:
         if self.music_body is not None:
             from .music_commands import validate_music_body
 
@@ -197,6 +212,8 @@ class PriorControlState:
                 validate_music_body(self.music_body, self.music_mode, profile=MODEL_PROFILES[self.music_model])
             except ValueError as error:
                 raise EffectStorageError("invalid prior music body") from error
+
+    def _validate_segment_layout(self) -> None:
         if self.segment_colors is not None or self.segment_brightness is not None:
             if not isinstance(self.segment_colors, tuple) or not 1 <= len(self.segment_colors) <= MAX_PRIOR_SEGMENTS:
                 raise EffectStorageError(f"prior segment layout must contain 1 to {MAX_PRIOR_SEGMENTS} colours")
@@ -211,6 +228,8 @@ class PriorControlState:
                     )
                 if any(type(value) is not int or not 0 <= value <= 100 for value in self.segment_brightness):
                     raise EffectStorageError("prior segment brightness must be from 0 to 100")
+
+    def _validate_music_palette_and_parameters(self) -> None:
         if self.music_palette is not None:
             if not isinstance(self.music_palette, tuple) or not 1 <= len(self.music_palette) <= 8:
                 raise EffectStorageError("prior music palette must contain 1 to 8 colours")
@@ -231,6 +250,8 @@ class PriorControlState:
                 )
                 if type(parameter_value) not in (int, bool, str):
                     raise EffectStorageError("prior music parameter must be an integer, boolean or string")
+
+    def _validate_video_restore_controls(self) -> None:
         if self.video_restore_controls is not None and (
             not isinstance(self.video_restore_controls, tuple)
             or any(
@@ -239,6 +260,8 @@ class PriorControlState:
             )
         ):
             raise EffectStorageError("invalid video restoration controls")
+
+    def _validate_core_state(self) -> None:
         validate_bounded_string(
             self.mode,
             "prior control mode",
@@ -286,6 +309,8 @@ class PriorControlState:
             raise EffectStorageError("prior music style must be a boolean")
         if self.music_color is not None:
             _validate_rgb(self.music_color, "prior music colour")
+
+    def _validate_tunable_values(self) -> None:
         numeric_values: tuple[tuple[int, str, int, int], ...] = (
             (self.video_saturation, "prior video saturation", 0, 100),
             (
@@ -329,6 +354,8 @@ class PriorControlState:
             "two_way",
         }:
             raise EffectStorageError("prior fountain direction is invalid")
+
+    def _validate_optional_readbacks(self) -> None:
         optional_numeric_values: tuple[tuple[int | None, str, int, int], ...] = (
             (self.white_balance_red, "prior white-balance red", 0, 255),
             (self.white_balance_blue, "prior white-balance blue", 0, 255),
