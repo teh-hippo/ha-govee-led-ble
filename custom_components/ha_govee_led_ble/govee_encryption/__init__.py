@@ -1,4 +1,4 @@
-"""Govee app crypto primitives; wire layouts belong to speculative Kaitai.
+"""Govee BLE crypto primitives; wire layouts belong to speculative Kaitai.
 
 V1 is the vendor's unauthenticated AES-ECB/RC4 scheme, not modern secure
 messaging. The vendor-global constants are not per-device secrets.

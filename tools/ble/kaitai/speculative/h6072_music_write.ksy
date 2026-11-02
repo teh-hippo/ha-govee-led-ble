@@ -9,7 +9,7 @@ doc: |
   Compatibility hypothesis: the six legacy selectors and six companion-backed
   selectors share the floor-lamp music records. Product admission and companion
   defaults are independently qualified for H6072.
-  Complete owner captures, unknown suffixes and physical rendering are unqualified.
+  Complete owner evidence, unknown suffixes and physical rendering are unqualified.
 seq:
   - id: header
     contents: [0x33]

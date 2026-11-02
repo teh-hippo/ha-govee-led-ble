@@ -6,7 +6,7 @@ meta:
     - h6046_command_write
 doc: |
   H6046.
-  Evidence class: exact-model behavioural audit, not captures or hardware
+  Evidence class: exact-model behavioural audit, not device evidence or hardware
   qualification. Known Pact 1/1 and 2/1 use ordinary 0x33 command results and
   A3 upload results. Each 20-byte frame ends with XOR of bytes 0..18.
   Ordinary commands echo the opcode and carry a result at offset 2.

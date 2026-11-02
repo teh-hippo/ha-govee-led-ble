@@ -110,7 +110,7 @@ def _generated(module: str, class_name: str) -> type[Any]:
 
 
 def test_h607c_endpoint_scene_keeps_named_v2_trailer_and_opaque_extensions():
-    """Exact-SKU catalogue selector 16183, not an official-app BLE capture."""
+    """Exact-SKU catalogue selector 16183, not device-verified."""
     raw = bytes.fromhex("0a01220000000400019797000014140300140201fa01ff96371000fa0000800000020001ff")
     root = _generated("h607c_scene_body", "H607cSceneBody").from_bytes(raw)
     root._read()
@@ -146,7 +146,7 @@ def test_h607c_endpoint_scene_keeps_named_v2_trailer_and_opaque_extensions():
     ],
 )
 def test_h607c_reconstructed_fields_round_trip(module, name, raw):
-    """Reconstructed vectors, not owner or official-app captures."""
+    """Reconstructed vectors, not owner-verified."""
     data = bytes.fromhex(raw)
     parent, _, child = name.partition(".")
     root_type = _generated(module, parent)
@@ -157,7 +157,7 @@ def test_h607c_reconstructed_fields_round_trip(module, name, raw):
 
 
 def test_h607c_reconstructed_native_notification_uses_the_ee_envelope():
-    """Reconstructed asynchronous native flags, not a captured AA reply."""
+    """Reconstructed asynchronous native flags, not a device reply."""
     data = bytes.fromhex("ee3025850000000000000000000000000000007e")
     root = _generated("h607c_control", "H607cControl").ZoneNotification.from_bytes(data)
     root._read()
@@ -178,7 +178,7 @@ def test_h607c_reconstructed_native_notification_uses_the_ee_envelope():
     ],
 )
 def test_h600a_reconstructed_whole_bulb_commands(raw, operation):
-    """Source-derived logical vectors, not owner or official-app captures."""
+    """Source-derived logical vectors, not owner-verified."""
     packet = bytes.fromhex(raw)
     root = _generated("h600a_command_write", "H600aCommandWrite").from_bytes(packet)
     root._read()
@@ -256,7 +256,7 @@ def test_h6072_reconstructed_kelvin_commands(raw, legacy):
 
 
 def test_h6097_synthetic_frames_keep_unknown_music_and_ordinary_setting_fields():
-    # Structural hypotheses, not hardware captures.
+    # Structural hypotheses, not hardware-verified.
     status_root = _generated("h6097_status_reply", "H6097StatusReply")
     setting = status_root.from_bytes(bytes.fromhex("aa410201000000000000000000000000000000e8"))
     setting._read()
@@ -317,7 +317,7 @@ COMMAND_STATIC = bytes.fromhex("330515010000000e10ffcb8dff7f000000000005")
 # 2020 public H6125 boot log: brightness register write 0xfe and the 0x14 register reply.
 H6125_BRIGHTNESS_WRITE = bytes.fromhex("3304fe00000000000000000000000000000000c9")
 H6125_BRIGHTNESS_REPLY = bytes.fromhex("aa041400000000000000000000000000000000ba")
-# Submode 0x11 layouts follow the reconstructed layout; no identified H6125 capture exists.
+# Submode 0x11 layouts follow the reconstructed layout; no identified H6125 evidence exists.
 H6125_MUSIC_WRITE = bytes.fromhex("33051111320101ff0000000000000000000000fb")
 H6125_MUSIC_STATUS = bytes.fromhex("aa051111320101ff000000000000000000000062")
 # Reporter's decrypted HCI frames.  The selector fields were listed before padding and checksum.
@@ -328,7 +328,7 @@ H6076_TORCH_BODY = (
     bytes.fromhex("a3000102415007ff0000ff7f00ffff0000ff0036"),
     bytes.fromhex("a3ff0000ff00ffff8b00ff0000000000000000d7"),
 )
-# Owner-captured H6076 segment group 2 reply (3 rendered-white records + 4 zero bytes).
+# Owner-reported H6076 segment group 2 reply (3 rendered-white records + 4 zero bytes).
 H6076_SEGMENT_GROUP2_STATUS = bytes.fromhex("aaa50264ff922764ff922764ff92270000000037")
 H6076_STATIC_KELVIN_STATUS = bytes.fromhex("aa0515010a8c000000000000000000000000003d")
 # Firmware 1.04.05: static status has a gradual bit but no Kelvin echo.
@@ -366,7 +366,7 @@ def test_h6179_automatic_music_consumes_inactive_stored_colour(frame):
 
 # Identical H6199 notification observed three times on 2026-09-17.
 H6199_DIY_UPLOAD_ACK = bytes.fromhex("a3040000000000000000000000000000000000a7")
-# H6199 Pact 1 producer fixtures, not physical-device captures.
+# H6199 Pact 1 producer fixtures, not physical-device verified.
 H6199_PACT1_BRIGHTNESS_WRITE = bytes.fromhex("33048800000000000000000000000000000000bf")
 H6199_PACT1_RGB_WRITE = bytes.fromhex("33050b2060a00000ff7f0000000000000000005d")
 TYPE03_PAINTED = bytes.fromhex(
@@ -564,7 +564,7 @@ def test_h60a6_native_ack_status_offsets(literal, protocol, success):
 
 
 def test_h60a_bulk_and_native_zone_direct_bytes():
-    """Synthetic producer fixtures, not physical-device captures."""
+    """Synthetic producer fixtures, not physical-device verified."""
     parsed = _parse(H60aBulk, bytes.fromhex("ac000100050300050304630000000000000000ca"))
     assert parsed.body.frame_count == 1 and parsed.body.final_size == 5
     payload = _parse(H60aBulk.Payload, parsed.body.payload[: parsed.body.final_size])
@@ -616,7 +616,7 @@ def test_shared_colour_mode_query_selectors(selector: int) -> None:
     assert parsed.body.zeros == [0] * 16
 
 
-def test_h617a_direct_register_replay_not_app_captures(hass) -> None:
+def test_h617a_direct_register_replay_not_device_verified(hass) -> None:
     """H617A HW 3.01.01/FW 3.02.24, direct queries on 2026-09-16."""
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H617A", configuration_url=None)
     coordinator.install_static_color(kelvin=4000)
@@ -688,7 +688,7 @@ def test_h617a_schema_counterexamples_are_synthetic() -> None:
     assert flat.body.padding == [0]  # This octet is the empty sequence length.
 
 
-def test_h6199_direct_register_extensions_not_app_captures() -> None:
+def test_h6199_direct_register_extensions_not_device_verified() -> None:
     diy = _parse(H6199StatusReply, bytes.fromhex("aa050afe0000000000000000000000000000005b"))
     assert diy.body.mode.name == "diy" and diy.body.detail.code == 254
     static = _parse(H6199StatusReply, bytes.fromhex("aa051501000000000000000000000000000000bb"))
@@ -1484,7 +1484,7 @@ def test_h6125_wire_and_status_fields_are_meaningful() -> None:
     assert status.mode_body.rgb.red == 255
 
 
-def test_h6076_selector_and_companion_fields_match_the_reporter_capture() -> None:
+def test_h6076_selector_and_companion_fields_match_the_reporter_report() -> None:
     energetic = _parse(H6076MusicWrite, H6076_ENERGETIC).selector
     assert (energetic.mode_id.name, energetic.sensitivity, energetic.settings.has_fixed_colour) == ("energetic", 99, 1)
     assert (energetic.is_legacy, energetic.has_fixed_colour) == (True, 1)
@@ -1926,7 +1926,7 @@ def test_critical_invalid_shapes_are_rejected(root_type: type[Any], raw_hex: str
         _parse(root_type, bytes.fromhex(raw_hex))
 
 
-# H6046 examples below are source-reconstructed plaintext, not hardware captures.
+# H6046 examples below are source-reconstructed plaintext, not hardware-verified.
 def test_h6046_direct_bytes_static_masks_and_selector_endianness() -> None:
     root = _generated("h6046_command_write", "H6046CommandWrite")
     all_red = _parse(root, bytes.fromhex("33051501ff00000000000000ff03000000000021")).body.detail

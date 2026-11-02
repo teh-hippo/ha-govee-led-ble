@@ -520,7 +520,7 @@ def _serialize_a3_scene_param(root: Any, *, scene_type_size: int = 1) -> bytes:
     """Frame a built A3 scene root and return its parameter bytes without envelope padding.
 
     ``linecount`` only sits in the stripped header, so the parameter is independent of it;
-    it is still set to the value a reassembled capture would carry.
+    it is still set to the value a reassembled frame would carry.
     """
     root.header = _a3_header(root)
     _check_tree(root)

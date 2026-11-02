@@ -11,7 +11,7 @@ doc: |
   20-byte envelope, with four-byte masks for up to two fifteen-bulb strings.
   Colour temperature uses white direct RGB and a table-derived companion.
   The configured string count is not physical attachment detection.
-  Unresolved assumptions: exact-model captures have not qualified mask width,
+  Unresolved assumptions: exact-model evidence have not qualified mask width,
   colour appearance, count changes, music parameters, upload activation or ACK
   timing. Unknown suffixes are retained without inferred padding constraints.
   A3/02 layered and A3/04 basic/mixed bodies reuse the shared effect schemas;

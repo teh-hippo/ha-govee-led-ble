@@ -12,7 +12,7 @@ doc: |
   Compatibility hypothesis: A3 subtype 41 carries a mode and palette.
   Separation adds split point, gradient and a topology-dependent companion.
   The declared lamp geometry selects the long-strip companion, independently
-  of the eight logical colour zones. Owner captures and ACK timing are unqualified.
+  of the eight logical colour zones. Owner evidence and ACK timing are unqualified.
 seq:
   - id: header
     type: govee_common::a3_header

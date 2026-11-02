@@ -1,4 +1,4 @@
-"""Capture-backed music parameter tests."""
+"""Evidence-backed music parameter tests."""
 
 import asyncio
 from contextlib import contextmanager
@@ -286,7 +286,7 @@ def test_h7025_six_colour_hopping_uses_app_fragmentation_with_complete_tail():
     assert envelope[2:29] == H("414806") + H("010203") * 6 + H("010101030000")
 
 
-_CAPTURED_BODIES = {
+_EVIDENCE_BODIES = {
     (0x30, ()): "0102413007ff0000ff7f00ffff0000ff000000ff00ffff8b00ff0a50000000000000",
     (0x30, ((27, 0x14),)): "0102413007ff0000ff7f00ffff0000ff000000ff00ffff8b00ff0a14000000000000",
     (0x31, ((20, 0x14), (21, 0x46))): ("0102413105ff0000ff7f00ffff0000ff000000ff14460a0000000000000000000000"),
@@ -676,7 +676,7 @@ async def test_music_shutdown_no_write_does_not_install_state(hass, operation):
 
 
 @pytest.mark.parametrize("model", ["H617A", "H617E"])
-def test_music_parameter_templates_reproduce_captured_bodies(model) -> None:
+def test_music_parameter_templates_reproduce_evidence_bodies(model) -> None:
     settings = [
         ({}, False),
         ({}, True),
@@ -687,7 +687,7 @@ def test_music_parameter_templates_reproduce_captured_bodies(model) -> None:
         ({"direction": "two_way"}, False),
         ({"segment_count": 7, "speed": 50}, False),
     ]
-    for ((mode, _), body), (parameters, calm) in zip(_CAPTURED_BODIES.items(), settings, strict=True):
+    for ((mode, _), body), (parameters, calm) in zip(_EVIDENCE_BODIES.items(), settings, strict=True):
         # Synthetic physical geometry reproduces these historical presets; logical segments are not IC evidence.
         assert _assemble(
             build_music_params(mode, parameters, profile=replace(get_profile(model), physical_ic_count=15), calm=calm)
@@ -703,15 +703,15 @@ def _h6076_selector(fields: str) -> bytes:
     return frame + bytes((xor_checksum(frame),))
 
 
-def test_h6076_torch_uploads_the_reporters_captured_frames_before_its_selector() -> None:
-    # The Torch effect at full sensitivity, as decrypted from an HCI snoop.
-    captured = (
+def test_h6076_torch_uploads_the_reporters_frames_before_its_selector() -> None:
+    # The Torch effect at full sensitivity.
+    frames = (
         H("a3000102415007ff0000ff7f00ffff0000ff0036"),
         H("a3ff0000ff00ffff8b00ff0000000000000000d7"),
     )
     assert prepare_music_request("H6076", "torch", 99, None, False, {}, profile=_H6076) == (
         build_power(True, "H6076"),
-        *captured,
+        *frames,
         _h6076_selector("33050f506300"),
     )
 

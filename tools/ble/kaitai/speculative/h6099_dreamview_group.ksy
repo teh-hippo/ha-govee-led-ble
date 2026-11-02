@@ -12,8 +12,8 @@ doc: |
   values 1..10; zero is unassigned and 0xff disables an area.  Area counts must
   be supplied explicitly.  Zero-area records and single-area disabled behaviour
   remain unresolved and are not enabled.  The H66A0 owner reports
-  that MAC-addressed 0x50 group uploads match official-app captures.
-  Attributable raw captures are not attached; name-addressed records remain
+  that MAC-addressed 0x50 group uploads are device-verified.
+  Attributable raw evidence is not attached; name-addressed records remain
   structurally evidenced candidates.  No
   membership readback exists, and a successful upload is not confirmation.
   H6097 independently selects this membership format with at most

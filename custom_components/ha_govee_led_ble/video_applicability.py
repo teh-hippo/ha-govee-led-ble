@@ -27,7 +27,7 @@ def video_identity_fields(profile: ModelProfile, controls: Iterable[str] | None 
 
 
 def h6199_camera_controls_state(model: str, identity: object) -> CapabilityState:
-    """Installation/status controls qualified only on the captured H6199 revision.
+    """Installation/status controls qualified only on the qualified H6199 revision.
 
     Other revisions remain unqualified, not inferred compatible or incompatible.
     """

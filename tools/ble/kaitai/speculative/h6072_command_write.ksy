@@ -12,7 +12,7 @@ doc: |
   static bodies share the common envelope. Legacy static selector 14 places
   its eight-zone mask after an unknown byte; newer selector 15 uses the
   shared static operations. Product revision admission is independent.
-  Exact-model captures, unused bytes, rendering and ACK timing are unqualified.
+  Exact-model evidence, unused bytes, rendering and ACK timing are unqualified.
 seq:
   - id: header
     contents: [0x33]

@@ -7,7 +7,7 @@ meta:
     - ../govee_shared
 doc: |
   H6046.
-  Evidence class: exact-model behavioural audit, not captures or hardware
+  Evidence class: exact-model behavioural audit, not device evidence or hardware
   qualification. Known Pact 1/1 and 2/1 admit four companion-backed modes.
   This is reassembled A3 content, not a 20-byte physical packet: the shared
   header gives marker 1 and transport line count, then command 0x41 and mode.

@@ -8,7 +8,7 @@ meta:
     - h6046_command_write
 doc: |
   H6046.
-  Evidence class: exact-model behavioural audit, not attributable captures or
+  Evidence class: exact-model behavioural audit, not attributable device evidence or
   owner qualification. Known Pact 1/1 and 2/1 share this modern layout.
   Frames contain 20 bytes; the transport checks XOR of bytes 0..18 at byte 19.
   Ten segment records occupy pages 4+4+2. Unused final-page slots and unknown

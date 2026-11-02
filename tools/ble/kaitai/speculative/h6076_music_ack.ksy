@@ -6,11 +6,11 @@ meta:
     - h6076_music_body
 doc: |
   H6076.
-  Evidence source classes: a reporter's decrypted HCI snoop of the official
-  app driving an H6076 (hardware 3.05.00, software 1.04.05, V1 encrypted
-  session), which lists an A3 reply of this shape after each companion upload,
-  and the observation that status at byte 3 is zero on success.  Replies match on
-  protocol and command only, so the mode echo at byte 2 is capture-only evidence.
+  Evidence source classes: a reporter's report on an H6076 (hardware 3.05.00,
+  software 1.04.05, V1 encrypted session) of an A3 reply of this shape after each
+  companion upload, and the observation that status at byte 3 is zero on success.
+  Replies match on protocol and command only, so the mode echo at byte 2 is
+  single-source evidence.
   Compatibility hypothesis: the lamp answers each A3 command 0x41 upload with a
   20-byte reply that repeats the uploaded mode and carries a zero status on
   success.  The reply does not establish applied device state.

@@ -5,7 +5,7 @@ meta:
 doc: |
   H617A 20-byte status query.  The final byte is the XOR of bytes 0 through 18.
   AA0F reuses zero_body based on light-count query
-  behaviour and direct H617A queries, not official-app captures.
+  behaviour and direct H617A queries, not device-verified.
   This route remains speculative; see speculative/h617a_control_payload.ksy.
   AA0501 is also emitted by the shared mode query builder on the
   H6102 route.  Direct H617A queries answered both AA0500 and

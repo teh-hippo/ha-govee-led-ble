@@ -9,7 +9,7 @@ doc: |
   H617A 20-byte command frame.  The final byte is the XOR of bytes 0 through 18.
   The shared boolean payload also covers H6102 limit opcode 0E, which
   emits 0E and one boolean byte.  This reconstructed extension is
-  not H617A product authorisation or capture qualification.
+  not H617A product authorisation or device qualification.
 seq:
   - id: header
     contents: [0x33]

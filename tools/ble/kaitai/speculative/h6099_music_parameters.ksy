@@ -14,7 +14,7 @@ doc: |
   disagree with its payload (no segment count is applied, index 0 sets
   speed, and index 1 sets fade), so those UI parameters remain unqualified.
   Energetic's companion upload path differs from the legacy selector path and
-  remains unresolved.  No official-app capture or owner qualification yet.
+  remains unresolved.  No device evidence or owner qualification yet.
 seq:
   - id: mode
     type: u1

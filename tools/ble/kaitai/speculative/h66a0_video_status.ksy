@@ -7,7 +7,7 @@ doc: |
   H66A0 minimal status.
   Contributor round2 reports aa 05 video replies share the command body.
   Only power, brightness and video read domains are represented. Independent
-  captures and firmware coverage remain unresolved; no runtime model enabled.
+  evidence and firmware coverage remain unresolved; no runtime model enabled.
 seq:
   - id: header
     contents: [0xaa]

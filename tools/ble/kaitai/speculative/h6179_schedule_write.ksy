@@ -6,7 +6,7 @@ doc: |
   SPECULATIVE H6179 compatibility hypothesis: exact-SKU clock, timer, sleep,
   wake, and limit writes use a 20-byte 0x33 envelope with the compact candidate
   layouts below.
-  Unresolved assumptions: no exact-model capture verifies the operation bytes,
+  Unresolved assumptions: no exact-model evidence verifies the operation bytes,
   clock marker, field meanings, flag bits, repeat-mask semantics, opaque tails,
   or XOR checksum byte.
 seq:

@@ -13,7 +13,7 @@ doc: |
   Mode, native H60A6 zone flags and power-on behaviour are independent
   observations, not proof of uploaded content or emitted light.  The AC30
   record has no master flag.  Unknown records, flag bits and suffixes remain
-  opaque.  Capture qualification, other revisions and unsolicited response
+  opaque.  Device qualification, other revisions and unsolicited response
   timing remain unresolved.  No timer or network records are interpreted.
 seq:
   - id: header

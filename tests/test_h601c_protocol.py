@@ -1,4 +1,4 @@
-"""Whole-bulb static-derived vectors and shared runtime checks; none are BLE captures."""
+"""Whole-bulb static-derived vectors and shared runtime checks; none are device-verified."""
 
 from dataclasses import replace
 from unittest.mock import AsyncMock, MagicMock

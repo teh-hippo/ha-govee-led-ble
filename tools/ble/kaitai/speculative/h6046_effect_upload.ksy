@@ -7,7 +7,7 @@ meta:
 doc: |
   H6046.
   Evidence class: exact-model behavioural audit and exact-SKU catalogue
-  structures, not captures or hardware qualification. Known Pact 1/1 and 2/1
+  structures, not device evidence or hardware qualification. Known Pact 1/1 and 2/1
   admit shared type-1 parameters, type-2 layers and H6046 type-4 flat/mixed DIY.
   This reassembled content starts with marker 1, line count and body kind.
   Physical A3 fragments use the shared 20-byte XOR envelope; this root does not

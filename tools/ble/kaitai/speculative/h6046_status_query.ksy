@@ -4,7 +4,7 @@ meta:
   endian: le
 doc: |
   H6046.
-  Evidence class: exact-model behavioural audit, not captures or hardware
+  Evidence class: exact-model behavioural audit, not device evidence or hardware
   qualification. Known Pact 1/1 and 2/1 use these 20-byte AA queries.
   XOR of bytes 0..18 occupies byte 19 and is checked by the transport.
   Replies are described by h6046_status_reply. Segment groups request four

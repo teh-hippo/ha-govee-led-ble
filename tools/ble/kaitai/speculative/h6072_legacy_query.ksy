@@ -8,7 +8,7 @@ meta:
 doc: |
   H6072.
   Compatibility hypothesis: legacy revisions query three RGB-only A2 groups
-  and share basic query bodies. Exact-model captures and timing are unqualified.
+  and share basic query bodies. Exact-model evidence and timing are unqualified.
 seq:
   - id: header
     contents: [0xaa]

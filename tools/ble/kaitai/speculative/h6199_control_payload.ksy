@@ -6,7 +6,7 @@ doc: |
   H6199.  exact-model
   camera settings and light control behaviour plus direct register tests on HW3.02.01,
   FW1.10.04, WiFi HW1.03.00/FW1.00.33, Pact2/1 establish the hypothesis.
-  These are NOT official-app BLE captures or schema promotion evidence.
+  These are NOT device-verified or schema promotion evidence.
   Direction 0/1 means clockwise/anticlockwise; camera position 0/1 top/bottom.
   Camera 0 absent and 2 incompatible are untested; only 1 healthy was tested.
   A3 and static detail expose Color > Subsection > Gradient, not HA transition

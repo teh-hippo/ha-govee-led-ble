@@ -1223,7 +1223,7 @@ def _parse_a3_scene(
     """Frame a stripped catalogue parameter and parse it through a generated A3 root.
 
     The parameter carries the real bytes only, so an unpadded read first measures the
-    genuine trailing padding before the synthetic envelope padding a reassembled capture
+    genuine trailing padding before the synthetic envelope padding a reassembled frame
     would carry is appended for the returned tree.
     """
     if not isinstance(raw_param, bytes):

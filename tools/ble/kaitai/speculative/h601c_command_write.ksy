@@ -14,7 +14,7 @@ doc: |
   Compatibility hypothesis: all identifiable H601C revisions use this command
   format, independently of Matter configuration.  This is the logical frame;
   encryption selection, physical scene/DIY acceptance, revision differences,
-  and reply availability remain unqualified.  No official-app BLE captures supplied.
+  and reply availability remain unqualified.  No device evidence is available.
 seq:
   - id: header
     contents: [0x33]

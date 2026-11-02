@@ -10,7 +10,7 @@ doc: |
   Kelvin writes use a white direct-RGB prefix and a companion RGB value.
   This route is independent of native panel/ring enable flags and is not
   used for the owner's segmented revision, which ignores legacy colour
-  writes.  Unknown suffix bytes, physical revision behaviour and captures
+  writes.  Unknown suffix bytes, physical revision behaviour and device evidence
   for explicit Pact 1/1 remain unresolved.
 seq:
   - id: header

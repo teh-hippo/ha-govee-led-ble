@@ -69,7 +69,7 @@ def parse_h6199_control(generated: Any) -> dict[str, int | str | None]:
 
 
 def h6199_diy_padding_len(palette_size: int) -> int:
-    """Return the zero padding required by the captured two-chunk DIY envelope."""
+    """Return the zero padding required by the two-chunk DIY envelope."""
     if not isinstance(palette_size, int) or isinstance(palette_size, bool) or palette_size < 0:
         raise ValueError("H6199 DIY palette size must be a non-negative integer")
     root = H6199EffectUpload()

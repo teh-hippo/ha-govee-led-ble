@@ -346,8 +346,8 @@ async def test_h6076_whole_kelvin_confirms_device_render_without_aa05_kelvin(
     """Firmware 1.04.05 answers Kelvin with AA05 15 01 0000 and paints its own white.
 
     Observed on a physical lamp: 4000 K sent with companion ffcda6 read back as the
-    table's ffd5a1 on every segment, while AA05 never carried Kelvin. The earlier
-    owner capture shows an off-table white (ff9227), so any settled warm white confirms.
+    table's ffd5a1 on every segment, while AA05 never carried Kelvin. An earlier
+    reading showed an off-table white (ff9227), so any settled warm white confirms.
     """
     c = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6076", configuration_url=None)
     c.is_on = True

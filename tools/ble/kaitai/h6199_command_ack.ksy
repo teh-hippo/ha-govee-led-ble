@@ -9,7 +9,7 @@ doc: |
   a zero success byte, and zero padding. The acknowledgement does not echo the setting or
   value, so callers verify changes with the corresponding status query.
   direction30, position31 and Gradient A3 ACKs were observed in
-  direct-register tests, not official-app BLE captures. Their use remains
+  direct-register tests, which are not device-verified. Their use remains
   speculative; a zero ACK never establishes changed state.
   A3/04 DIY upload responses observed during live qualification use
   the separate speculative payload; they are acknowledgements, not status.

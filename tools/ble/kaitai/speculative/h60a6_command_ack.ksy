@@ -8,7 +8,7 @@ doc: |
   A3/58 has one opaque byte before the result.  Zero denotes success.
   Acknowledgements have
   no transaction identifier or content/readback guarantee.  Their timing,
-  late duplicates and revision coverage require capture qualification.
+  late duplicates and revision coverage require device qualification.
   Unknown suffix bytes remain opaque.
 seq:
   - id: protocol

@@ -6,8 +6,8 @@ meta:
     - ../govee_shared
 doc: |
   H6102.
-  Evidence source class: owner-verified frames on Pact 1/1. No official-app BLE
-  capture is available.
+  Evidence source class: owner-verified frames on Pact 1/1. No device evidence is
+  available.
   Compatibility hypothesis: Pact 1 codes 1 and 2 use a 20..254 master
   brightness register and the 0x11 music selector; intermediate Pact 1
   revisions below HW 1.00.03 / FW 1.06.00 use 0x0b RGB with a 15-segment mask.

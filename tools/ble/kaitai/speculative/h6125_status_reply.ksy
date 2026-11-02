@@ -9,7 +9,7 @@ meta:
 doc: |
   H6125.
   Evidence source class: reconstructed; no
-  official-app BLE capture of an identified H6125 is available.
+  device evidence for an identified H6125 is available.
   Compatibility hypothesis: the extended pact-1 route replies with the
   shared power, identity, static, scene, DIY and fifteen-segment layouts, plus a
   brightness register, the submode 0x11 music layout and the gradual register.

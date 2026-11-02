@@ -10,7 +10,7 @@ doc: |
   H6102.
   Compatibility hypothesis: the modern DreamColor route (Pact 10)
   uses the shared power, identity, and mode fields and fifteen logical segments
-  in five three-record A5 pages.  No official-app BLE capture or complete owner
+  in five three-record A5 pages.  No device evidence or complete owner
   readback qualification is available.  The 1.03.01 firmware threshold is a
   migration condition, not a wire predicate.  Segment page replies consume the
   one-based group and three brightness/RGB records; the final four bytes are

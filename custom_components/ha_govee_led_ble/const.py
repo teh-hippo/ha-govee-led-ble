@@ -1817,7 +1817,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_video_capture_region=True,
         supports_video_saturation=True,
         supports_video_sound_effects=True,
-        # These independently captured video registers have byte-exact builders.
+        # These video registers have byte-exact builders.
         supports_white_balance=True,
         supports_white_balance_readback=True,
         video_white_balance_calibration=WHITE_BALANCE_POSITIONS,
@@ -1827,7 +1827,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         music_modes=_H6199_MUSIC_MODES,
         music_variants=(
             MusicVariant(0x05, "H6199 Energetic selector; no fixed colour", supports_fixed_colour=False),
-            MusicVariant(0x03, "H6199 captured Rhythm selector style", supports_style=True),
+            MusicVariant(0x03, "H6199 Rhythm selector style", supports_style=True),
             MusicVariant(0x04, "H6199 owner-qualified Spectrum fixed-colour readback"),
             MusicVariant(0x06, "H6199 owner-qualified Rolling fixed-colour readback"),
         ),
@@ -2217,9 +2217,9 @@ def device_profile(
             if model == "H60A1"
             else (pact_type == 1 and type(pact_code) is int and pact_code >= 2)
         )
-        captured_firmware = "1.02.20" if model == "H60A1" else "1.00.41"
+        known_firmware = "1.02.20" if model == "H60A1" else "1.00.41"
         if (pact_type, pact_code) == (None, None):
-            segmented = (hardware, firmware) == ("1.04.03", captured_firmware)
+            segmented = (hardware, firmware) == ("1.04.03", known_firmware)
         if segmented:
             segmented_kelvin = model == "H60A6" and (
                 (pact_type == 1 and type(pact_code) is int and pact_code >= 3)

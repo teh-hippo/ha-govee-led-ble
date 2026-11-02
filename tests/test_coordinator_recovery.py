@@ -1,4 +1,4 @@
-"""Coordinator control-state capture and restoration tests."""
+"""Coordinator control-state snapshot and restoration tests."""
 
 import asyncio
 import time
