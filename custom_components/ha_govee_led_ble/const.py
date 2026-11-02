@@ -192,7 +192,6 @@ class ModelProfile:
     supports_color_temperature: bool = False
     supports_low_blue_light: bool = False
     color_temp_range: tuple[int, int] = KELVIN_RANGE_2000_9000
-    kelvin_direct_rgb: tuple[int, int, int] = (0, 0, 0)
     # After a masked Kelvin write, the lamp must also report colour mode (not just matching segment colours).
     segment_kelvin_checks_colour_mode: bool = False
     supports_custom_effects: bool = False
@@ -281,10 +280,6 @@ class ModelProfile:
             raise ValueError("unknown DIY upload transport")
         if not self.restarting_boolean_controls <= self.boolean_controls:
             raise ValueError("restarting settings must be declared boolean controls")
-        if len(self.kelvin_direct_rgb) != 3 or any(
-            type(channel) is not int or not 0 <= channel <= 255 for channel in self.kelvin_direct_rgb
-        ):
-            raise ValueError("Kelvin direct RGB must contain three byte values")
         if not self.boolean_controls <= {
             "gradual",
             "limit",
@@ -524,7 +519,6 @@ _H617A_PROFILE = ModelProfile(
     supports_segment_writes=True,
     # Preserve the existing qualified segment operations independently of RGB writes.
     supports_segment_brightness=True,
-    supports_segment_color_temperature=True,
     connection_idle_timeout=3.0,
     scene_catalogue_sku="H617A",
     advanced_scene_carrier=(1013, 11836),
@@ -584,7 +578,6 @@ _H6076_PROFILE = ModelProfile(
     segment_group_size=4,
     supports_segment_writes=True,
     supports_segment_brightness=True,
-    supports_segment_color_temperature=False,
     supports_scenes=True,
     supports_custom_effects=True,
     supports_advanced_effects=True,
@@ -660,7 +653,6 @@ _H6072_PROFILE = ModelProfile(
     supports_rgb=True,
     supports_color_temperature=True,
     color_temp_range=KELVIN_RANGE_2000_9000,
-    kelvin_direct_rgb=(255, 255, 255),
     segment_kelvin_checks_colour_mode=True,
     static_readback_gradual=True,
     static_readback_nonzero_kelvin=True,
@@ -779,7 +771,6 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_rgb=True,
         supports_color_temperature=True,
         segment_kelvin_checks_colour_mode=True,
-        kelvin_direct_rgb=(255, 255, 255),
         supports_segment_writes=True,
         supports_segment_brightness=True,
         supports_segment_color_temperature=True,
@@ -942,7 +933,6 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_power_on_behaviour=True,
         supports_rgb=True,
         supports_color_temperature=True,
-        kelvin_direct_rgb=(255, 255, 255),
         static_readback_kelvin=True,
         supports_scenes=True,
         supports_video_mode=True,
@@ -1417,7 +1407,6 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         segment_group_size=3,
         supports_segment_writes=True,
         supports_segment_brightness=True,
-        supports_segment_color_temperature=True,
         connection_idle_timeout=3.0,
         scene_catalogue_sku="H617C",
         advanced_scene_carrier=(29884, 41599),
@@ -1459,14 +1448,12 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_rgb=True,
         supports_color_temperature=True,
         color_temp_range=KELVIN_RANGE_2200_6500,
-        kelvin_direct_rgb=(255, 255, 255),
         segment_kelvin_checks_colour_mode=True,
         segment_count=13,
         native_zones=H607C_NATIVE_ZONES,
         physical_ic_count=H607C_NATIVE_ZONES[0][2],
         supports_segment_writes=True,
         supports_segment_brightness=True,
-        supports_segment_color_temperature=True,
         segment_colour_mode_ambiguous=True,
         scene_catalogue_sku="H607C",
         supports_scenes=True,
@@ -1561,7 +1548,6 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         segment_group_size=3,
         supports_segment_writes=True,
         supports_segment_brightness=True,
-        supports_segment_color_temperature=True,
         effect_readback="diy_code_only",
         advanced_diy_selector=402,
         diy_requires_upload_ack=True,
@@ -1623,7 +1609,6 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         segment_group_size=3,
         supports_segment_writes=True,
         supports_segment_brightness=True,
-        supports_segment_color_temperature=True,
         connection_idle_timeout=3.0,
         scene_catalogue_sku="H6125",
         local_scenes=((249, "Work"),),
@@ -1663,7 +1648,6 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_rgb=True,
         supports_color_temperature=True,
         color_temp_range=KELVIN_RANGE_2000_9000,
-        kelvin_direct_rgb=(255, 255, 255),
         segment_count=30,
         segment_group_size=3,
         configured_string_counts=(1, 2),
@@ -1671,7 +1655,6 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         segment_colour_mode_ambiguous=True,
         supports_segment_writes=True,
         supports_segment_brightness=True,
-        supports_segment_color_temperature=True,
         static_readback_kelvin=True,
         static_readback_zero_kelvin_is_rgb=True,
         boolean_controls=frozenset({"power_off_memory"}),
@@ -1822,7 +1805,6 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         # Colour and brightness writes are observed through four explicit aa a5 query groups.
         supports_segment_writes=True,
         supports_segment_brightness=True,
-        supports_segment_color_temperature=True,
         scene_catalogue_sku="H6199",
         advanced_scene_carrier=(29884, 41599),
         default_effect_families_override=frozenset({EFFECT_FAMILY_VIDEO}),
@@ -1851,7 +1833,6 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_rgb=True,
         supports_color_temperature=True,
         color_temp_range=KELVIN_RANGE_2700_6500,
-        kelvin_direct_rgb=(255, 255, 255),
         static_readback_kelvin=True,
         static_readback_zero_kelvin_is_rgb=True,
         segment_count=15,
@@ -1989,7 +1970,6 @@ def _h6125_profile(
             music_modes=profile.music_modes if expanded_music else profile.music_modes[:4],
             a1_diy_selector=None,
             static_readback_gradual=True,
-            supports_segment_color_temperature=True,
             boolean_controls=frozenset({"gradual"}),
         )
     if pact_type != 1 or pact_code not in (1, 2) or hardware_family != 1:
@@ -2017,7 +1997,6 @@ def _h6125_profile(
         static_readback_kelvin=extended_colour,
         static_readback_zero_kelvin_is_rgb=extended_colour,
         supports_segment_brightness=extended_colour,
-        supports_segment_color_temperature=extended_colour,
         segment_group_size=3 if extended_colour else 4,
         supports_scenes=True,
         supports_advanced_effects=uploaded_scenes,
@@ -2074,7 +2053,6 @@ def _h6072_profile(
         command_grammar="H6072-legacy" if legacy_static else "H6072",
         supports_rgb=new_static or legacy_static,
         supports_color_temperature=new_static or legacy_static,
-        kelvin_direct_rgb=(255, 255, 255) if new_static else (0, 0, 0),
         supports_segment_writes=new_static or legacy_static,
         supports_segment_brightness=new_static,
         read_domains=profile.read_domains
@@ -2177,7 +2155,6 @@ def device_profile(
                 whole_device_mask=1,
                 supports_rgb=True,
                 supports_color_temperature=True,
-                kelvin_direct_rgb=(255, 255, 255),
                 outbound_transform=h60a6_legacy_outbound_transform,
             )
         hw = FirmwareVersion.parse(hardware)

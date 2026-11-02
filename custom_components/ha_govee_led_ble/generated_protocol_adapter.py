@@ -1461,6 +1461,9 @@ def _build_h617a_static_colour(
     return _serialize_xor(root)
 
 
+# The lamps ignore the direct RGB of a Kelvin write; it is constant white and only the companion colour is stored.
+KELVIN_DIRECT_RGB: tuple[int, int, int] = (255, 255, 255)
+
 # Ordered first-match companion lookup; non-table values do not interpolate.
 _TABLE_KELVIN_RGB = {
     1000 + index * 100: bytes.fromhex(rgb)
@@ -1596,14 +1599,14 @@ def build_colour_temperature(
     preview = table_kelvin_rgb(value)
     resolved = profile.command_grammar
     if resolved == "H6072-legacy":
-        return _build_h6072_legacy_colour(mask, profile.kelvin_direct_rgb, value, preview)
+        return _build_h6072_legacy_colour(mask, KELVIN_DIRECT_RGB, value, preview)
     if resolved in WHOLE_BULB_GRAMMARS:
-        return _build_whole_bulb_static_colour(mask, (255, 255, 255), value, profile)
+        return _build_whole_bulb_static_colour(mask, KELVIN_DIRECT_RGB, value, profile)
     if resolved == "H6179":
         if mask != 0:
             raise ValueError("H6179 colour temperature is inherently whole-device and has no segment mask")
         return _build_h6179_static_colour(
-            direct=(255, 255, 255),
+            direct=KELVIN_DIRECT_RGB,
             kelvin=value,
             preview=preview,
         )
@@ -1616,7 +1619,7 @@ def build_colour_temperature(
         mode.sub_mode = root_type.ModeSel.static_colour
         detail = _child(root_type.StaticColourBody, mode)
         detail.operation = root_type.StaticOperation.colour
-        detail.red, detail.green, detail.blue = profile.kelvin_direct_rgb
+        detail.red, detail.green, detail.blue = KELVIN_DIRECT_RGB
         detail.kelvin = value
         detail.preview = _rgb(detail, *preview)
         detail.segment_mask = mask
@@ -1630,7 +1633,7 @@ def build_colour_temperature(
         raise ValueError(f"{model} has no generated colour-temperature grammar")
     return _build_h617a_static_colour(
         mask,
-        direct=profile.kelvin_direct_rgb,
+        direct=KELVIN_DIRECT_RGB,
         kelvin=value,
         preview=preview,
         root_type=_COMMAND_ROOTS[resolved][1],

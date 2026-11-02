@@ -28,7 +28,7 @@ from custom_components.ha_govee_led_ble.transport import xor_checksum
 
 @pytest.mark.parametrize("segments,kelvin", [([], 3000), ([16], 3000), ([True], 3000), ([1], 1999), ([1], 9001)])
 async def test_preflight_keeps_preview_and_control_untouched(hass, monkeypatch, segments, kelvin):
-    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H617A", configuration_url=None)
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H7025", configuration_url=None)
     light = GoveeBLELight(coordinator)
     preview = AsyncMock()
     monkeypatch.setattr(light, "_async_supersede_preview", preview)
@@ -42,6 +42,25 @@ async def test_preflight_keeps_preview_and_control_untouched(hass, monkeypatch, 
     assert coordinator.control_write_attempts == 0
 
 
+@pytest.mark.parametrize("kelvin", [2600, 6600])
+async def test_out_of_range_kelvin_is_rejected_with_the_device_range_before_any_mutation(hass, monkeypatch, kelvin):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H7025", configuration_url=None)
+    light = GoveeBLELight(coordinator)
+    preview = AsyncMock()
+    monkeypatch.setattr(light, "_async_supersede_preview", preview)
+    monkeypatch.setattr(coordinator, "send_command", AsyncMock())
+    with pytest.raises(ServiceValidationError) as exc:
+        await light.async_set_segment_color_temp([1], kelvin)
+    assert exc.value.translation_key == "kelvin_out_of_range"
+    assert exc.value.translation_placeholders == {
+        "minimum": str(coordinator.profile.min_color_temp_kelvin),
+        "maximum": str(coordinator.profile.max_color_temp_kelvin),
+    }
+    preview.assert_not_awaited()
+    coordinator.send_command.assert_not_awaited()
+    assert coordinator.control_write_attempts == 0
+
+
 def test_schema_and_effective_profile_validation():
     schema = vol.Schema(_SET_SEGMENT_COLOR_TEMP_SCHEMA)
     assert schema({"segments": ["1"], "color_temp_kelvin": "3000"}) == {
@@ -50,7 +69,9 @@ def test_schema_and_effective_profile_validation():
     }
     with pytest.raises(vol.Invalid):
         schema({"segments": [1], "color_temp_kelvin": 3000.5})
-    profile = replace(get_profile("H617A"), segment_count=5, color_temp_range=(2700, 9000))
+    profile = replace(
+        get_profile("H617A"), segment_count=5, color_temp_range=(2700, 9000), supports_segment_color_temperature=True
+    )
     for segments, kelvin in (([6], 3000), ([1], 2600), ([1], True), ([1], 3000.5)):
         with pytest.raises(ValueError):
             build_segment_color_temp(segments, kelvin, profile=profile)
@@ -89,6 +110,8 @@ def test_service_registration_uses_shared_segment_schema():
 )
 async def test_masked_kelvin_requires_fresh_rgb_and_preserves_siblings(hass, monkeypatch, virtual_clock, failure):
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H617A", configuration_url=None)
+    # Exercises the shared masked writer on the 15-segment page layout, which no offered model shares.
+    coordinator.profile = replace(coordinator.profile, supports_segment_color_temperature=True)
     coordinator.install_static_color(kelvin=4000)
     # Even an old observed cache is not the baseline for sibling preservation.
     coordinator.segment_colors = [(255, 255, 255)] * 15

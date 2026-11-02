@@ -8,10 +8,12 @@ from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, device_prof
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_blank_screen,
     build_brightness,
+    build_colour_temperature,
     build_music_mode,
     build_power,
     build_segment_query,
     build_subordinate_query,
+    require_profile_packet,
     table_kelvin_rgb,
 )
 from custom_components.ha_govee_led_ble.light_commands import (
@@ -77,7 +79,26 @@ def test_native_kelvin_rounds_companion_and_mask_consistently(model, requested, 
     assert whole.kelvin == segment.kelvin == expected
     assert whole.kelvin_companion_rgb == segment.kelvin_companion_rgb == tuple(H(rgb))
     assert whole.whole_strip and segment.segment_mask == 1
-    assert build_color_temp(requested, model)[4:7] == bytes(3)
+    assert build_color_temp(requested, model)[4:7] == b"\xff" * 3
+
+
+@pytest.mark.parametrize("model", sorted(MODEL_PROFILES))
+def test_segment_kelvin_is_offered_only_where_the_profile_declares_it(model):
+    profile = MODEL_PROFILES[model]
+    if not (profile.supports_segments and profile.supports_color_temperature):
+        return
+    whole = build_color_temp(profile.min_color_temp_kelvin, model, profile=profile)
+    require_profile_packet(whole, profile)
+    assert whole[4:7] == b"\xff" * 3
+    if profile.supports_segment_color_temperature:
+        masked = build_segment_color_temp([1], profile.min_color_temp_kelvin, model, profile=profile)
+        require_profile_packet(masked, profile)
+        return
+    with pytest.raises(ValueError, match="segment colour temperature"):
+        build_segment_color_temp([1], profile.min_color_temp_kelvin, model, profile=profile)
+    partial = build_colour_temperature(profile.min_color_temp_kelvin, 1, model, profile=profile)
+    with pytest.raises(ValueError, match="segment colour temperature"):
+        require_profile_packet(partial, profile)
 
 
 @pytest.mark.parametrize("kelvin,rgb", [(1000, "ff3300"), (10000, "cfdaff")])
