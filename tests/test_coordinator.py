@@ -1671,6 +1671,7 @@ async def test_hold_keeps_connection_and_refreshes_basic_state_without_segments(
         refresh_all=True,
         query_segments=False,
         required_domains=coord.profile.setup_required_read_domains,
+        query_native_settings=True,
     )
     client.disconnect.assert_not_awaited()
 

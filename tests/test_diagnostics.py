@@ -1,7 +1,10 @@
+import json
+import time
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
+from homeassistant.components.bluetooth import FALLBACK_MAXIMUM_STALE_ADVERTISEMENT_SECONDS
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.ha_govee_led_ble.const import CONF_H6102_APP_FIRMWARE, CONF_MODEL, DOMAIN
@@ -133,6 +136,50 @@ async def test_h6076_diagnostics_expose_basic_capability_boundary(mock_h6076_coo
         "advanced",
         "workshop",
     ]
+
+
+async def test_h607c_capability_diagnostics_distinguish_sources_without_private_data(hass):
+    entry = MockConfigEntry(domain=DOMAIN, unique_id="11:22:33:44:55:66", data={CONF_MODEL: "H607C"})
+    coordinator = GoveeBLECoordinator(hass, entry.unique_id, "H607C", configuration_url=None)
+    now = time.monotonic()
+    coordinator._h607c_advertisement_observations = {
+        "private-proxy-address": (now, frozenset({(1, 1)})),
+        "old-scanner-address": (
+            now - FALLBACK_MAXIMUM_STALE_ADVERTISEMENT_SECONDS - 1,
+            frozenset({(9, 1)}),
+        ),
+    }
+    coordinator._h607c_advertised_pacts = {(1, 1), (9, 1)}
+    coordinator._h607c_marker_pact = (2, 1)
+    coordinator._resolve_h607c_pact()
+    coordinator._h607c_invalid_pact_version_seen = True
+    coordinator._h607c_last_optional_read_failure = "TimeoutError"
+    coordinator._h607c_uncertain_state_fields = {"is_on", "color"}
+    coordinator.packet_log = [{"dir": "rx", "outcome": "parsed", "raw": "aa05deadbeef"}]
+
+    resolution = (await _run(coordinator, entry, hass))["coordinator"]["capability_resolution"]
+
+    assert resolution == {
+        "pact_readiness": "conflicting",
+        "pact_source": "marker",
+        "identity_sources": {"advertisement": True, "marker": True},
+        "retained_advertisement_pacts": [[1, 1], [9, 1]],
+        "fresh_advertisement_pacts": [[1, 1]],
+        "marker_pact": [2, 1],
+        "broadcast_version_zero_seen_since_reload": True,
+        "native_supports_rgb": False,
+        "native_supports_color_temperature": False,
+        "effective_supports_rgb": False,
+        "effective_supports_color_temperature": False,
+        "candidate_supports_gradual": True,
+        "native_supports_gradual": False,
+        "effective_supports_gradual": False,
+        "last_optional_read_failure_since_reload": "TimeoutError",
+        "unconfirmed_state_fields": ["color", "is_on"],
+    }
+    summary = json.dumps(resolution)
+    for private in (entry.unique_id, "private-proxy-address", "old-scanner-address", "aa05deadbeef", "marker_hex"):
+        assert private not in summary
 
 
 @pytest.mark.parametrize(

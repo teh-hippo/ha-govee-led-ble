@@ -1436,7 +1436,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     "H6072": _H6072_PROFILE,
     "H607C": ModelProfile(
         "H607C Floor Lamp 2",
-        support_quality=SupportQuality.EXPERIMENTAL,
+        support_quality=SupportQuality.SUPPORTED,
         confirmation_issue=511,
         command_grammar="H607C",
         command_ack_grammar="H607C",
@@ -2117,13 +2117,7 @@ def device_profile(
     """Resolve exact-product capabilities from evidenced revision context."""
     if model in {"H6046", "H607C", "H6097", "H7020"}:
         profile = get_profile(model)
-<<<<<<< HEAD
         if (pact_type, pact_code) in _STANDARD_PACTS or (model == "H607C" and (pact_type, pact_code) == (2, 2)):
-||||||| parent of c853499b (fix: restore H607C colour controls)
-        if (pact_type, pact_code) in {(1, 1), (2, 1)}:
-=======
-        if (pact_type, pact_code) in {(1, 1), (2, 1)} or (model == "H607C" and (pact_type, pact_code) == (2, 2)):
->>>>>>> c853499b (fix: restore H607C colour controls)
             return profile
         return replace(
             profile,

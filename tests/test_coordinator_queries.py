@@ -33,9 +33,9 @@ M = "custom_components.ha_govee_led_ble.coordinator"
 
 
 @pytest.mark.parametrize("missing", ["zone", "power_on"])
-@pytest.mark.parametrize("transport_error", [False, True])
+@pytest.mark.parametrize("error", [None, BleakError, ValueError, TimeoutError])
 async def test_h607c_optional_setting_timeout_preserves_required_setup(
-    hass, monkeypatch, virtual_clock, missing, transport_error
+    hass, monkeypatch, virtual_clock, missing, error
 ):
     c = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H607C", configuration_url=None)
     c.pact_type, c.pact_code = 1, 1
@@ -55,8 +55,8 @@ async def test_h607c_optional_setting_timeout_preserves_required_setup(
     async def write(_uuid, packet, **_kwargs):
         receive = client.start_notify.await_args.args[1]
         expected_query = b"\xaa\x07\x08" if missing == "zone" else b"\xaa\x41\x00"
-        if transport_error and packet.startswith(expected_query):
-            raise BleakError("optional query failed")
+        if error is not None and packet.startswith(expected_query):
+            raise error("optional query failed")
         if packet == build_power_query("H607C", profile=c.profile):
             receive(None, bytearray(_packet(0xAA, 1, [1])))
         elif packet == build_brightness_query("H607C", profile=c.profile):
@@ -74,9 +74,101 @@ async def test_h607c_optional_setting_timeout_preserves_required_setup(
     assert c._state_read_available
     assert c._client is None and not client.is_connected
     assert c._notification_token is None
+    assert c._h607c_last_optional_read_failure == (error.__name__ if error is not None else "incomplete")
     expected_query = b"\xaa\x07\x08" if missing == "zone" else b"\xaa\x41\x00"
     assert client.write_gatt_char.await_args.args[1].startswith(expected_query)
     client.start_notify.await_args.args[1](None, bytearray(_packet(0xAA, 7, [8, 37, 0])))
+    assert not c.boolean_control_state
+
+
+@pytest.mark.parametrize("failure", ["identity", "unexpected"])
+async def test_h607c_setup_cleans_up_after_optional_exception(hass, monkeypatch, failure):
+    c = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H607C", configuration_url=None)
+    c.pact_type, c.pact_code = 1, 1
+    c._resolve_device_profile()
+    c.boolean_control_state["gradual"] = True
+    c.power_on_behaviour, c.power_on_open_flag = "on", 1
+    client = MagicMock(is_connected=True, disconnect=AsyncMock(), start_notify=AsyncMock())
+
+    async def connect():
+        c._client = client
+        await c._start_notify()
+        return client
+
+    async def disconnect(_client):
+        client.is_connected = False
+        c._clear_client_state(client)
+
+    async def write(_uuid, packet, **_kwargs):
+        receive = client.start_notify.await_args.args[1]
+        if packet == build_power_query(c.model, profile=c.profile):
+            receive(None, bytearray(_packet(0xAA, 1, [1])))
+        elif packet == build_brightness_query(c.model, profile=c.profile):
+            receive(None, bytearray(_packet(0xAA, 4, [37])))
+        elif packet == build_colour_mode_query(c.model, profile=c.profile):
+            receive(None, bytearray(_packet(0xAA, 5, [10, 0x34, 0x12, 10, 0])))
+
+    read_setting = c._async_read_setting_fields
+
+    async def read_after_change(client, query, fields, **kwargs):
+        if failure == "unexpected":
+            raise RuntimeError("unexpected failure")
+        c._h607c_advertised_pacts = {(3, 1)}
+        c._resolve_h607c_pact()
+        return await read_setting(client, query, fields, **kwargs)
+
+    client.write_gatt_char = AsyncMock(side_effect=write)
+    monkeypatch.setattr(c, "_ensure_connected", AsyncMock(side_effect=connect))
+    monkeypatch.setattr(c, "_disconnect_if_current_locked", AsyncMock(side_effect=disconnect))
+    monkeypatch.setattr(c, "_async_read_setting_fields", read_after_change)
+    if failure == "unexpected":
+        with pytest.raises(RuntimeError, match="unexpected"):
+            await c._async_update_data()
+    else:
+        snapshot = await c._async_update_data()
+        assert snapshot["is_on"] and snapshot["brightness_pct"] == 37
+        assert c._h607c_last_optional_read_failure == "ValueError"
+        assert not c.boolean_control_state and not c.profile.supports_rgb
+        assert c.power_on_behaviour is None and c.power_on_open_flag is None
+    assert c.is_on and c.brightness_pct == 37 and c._state_read_available
+    assert c._client is None and not client.is_connected
+
+
+async def test_h607c_hold_optional_failure_keeps_basic_read_and_quarantines_reply(hass, monkeypatch):
+    c = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H607C", configuration_url=None, connection_mode="hold")
+    c.pact_type, c.pact_code = 1, 1
+    c._resolve_device_profile()
+    c._keep_alive_ticks = 2
+    c._state_read_available = True
+    client = MagicMock(is_connected=True, start_notify=AsyncMock())
+
+    async def disconnect():
+        client.is_connected = False
+
+    async def write(_uuid, packet, **_kwargs):
+        receive = client.start_notify.await_args.args[1]
+        if packet == build_power_query(c.model, profile=c.profile):
+            receive(None, bytearray(_packet(0xAA, 1, [1])))
+        elif packet == build_brightness_query(c.model, profile=c.profile):
+            receive(None, bytearray(_packet(0xAA, 4, [37])))
+        elif packet == build_colour_mode_query(c.model, profile=c.profile):
+            receive(None, bytearray(_packet(0xAA, 5, [10, 0x34, 0x12, 10, 0])))
+        elif packet.startswith(b"\xaa\x07\x08"):
+            raise TimeoutError("optional query failed")
+
+    client.write_gatt_char = AsyncMock(side_effect=write)
+    client.disconnect = AsyncMock(side_effect=disconnect)
+    c._client = client
+    await c._start_notify()
+    monkeypatch.setattr(c, "_identity_incomplete", lambda: False)
+    monkeypatch.setattr(c, "_receive_is_stale", lambda: False)
+    monkeypatch.setattr(f"{M}.asyncio.sleep", AsyncMock())
+    await c._keep_alive_loop()
+
+    assert c.is_on and c.brightness_pct == 37 and c._state_read_available
+    assert c._h607c_last_optional_read_failure == "TimeoutError"
+    assert c._client is None and not client.is_connected and c._notification_token is None
+    client.start_notify.await_args.args[1](None, bytearray(_packet(0xAA, 7, [8, 37, 7])))
     assert not c.boolean_control_state
 
 

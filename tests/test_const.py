@@ -129,6 +129,7 @@ def test_support_quality_has_only_supported_and_experimental_states():
         "H600A",
         "H601C",
         "H6046",
+        "H607C",
         "H6076",
         "H6097",
         "H6099",
@@ -147,7 +148,7 @@ def test_support_quality_has_only_supported_and_experimental_states():
     }
     assert {
         model for model, profile in MODEL_PROFILES.items() if profile.support_quality is SupportQuality.EXPERIMENTAL
-    } == {"H6072", "H607C", "H6179", "H7025"}
+    } == {"H6072", "H6179", "H7025"}
 
 
 @pytest.mark.parametrize("pact", [(1, 1), (2, 1), (2, 2), (None, None), (3, 7)])
@@ -161,7 +162,7 @@ def test_h607c_pact_admission_keeps_its_zones_and_does_not_invent_version_gates(
     assert profile.supports_power_on_behaviour is known
     assert profile.native_zones == (("pole", 8, 144), ("base", 5, 30))
     assert profile.segment_group_count == 0 and not profile.can_read(ReadDomain.SEGMENTS)
-    assert profile.confirmation_issue == 511 and profile.support_quality is SupportQuality.EXPERIMENTAL
+    assert profile.confirmation_issue == 511 and profile.support_quality is SupportQuality.SUPPORTED
     if known:
         assert profile == MODEL_PROFILES["H607C"]
 

@@ -392,14 +392,10 @@ def test_profile_change_clears_complete_body_with_palette(hass, monkeypatch):
     c._music_body = ("hopping", BODY)
     c._music_palette = ("hopping", ((1, 2, 3),))
     monkeypatch.setattr(
-        "custom_components.ha_govee_led_ble.coordinator.parse_govee_advertisement",
-        lambda _: SimpleNamespace(pact_type=10, pact_code=1, supports_encryption=False),
-    )
-    monkeypatch.setattr(
         "custom_components.ha_govee_led_ble.coordinator.device_profile",
         lambda *args, **kwargs: replace(c.profile, supports_music_color=not c.profile.supports_music_color),
     )
-    c._note_advertisement(SimpleNamespace(manufacturer_data={}))
+    c._note_advertisement(SimpleNamespace(manufacturer_data={0x8801: bytes.fromhex("ec000a0100")}))
     assert c._music_body is None and c._music_palette is None
 
 
