@@ -10,9 +10,9 @@ doc: |
   activates native DIY and music only after a positive upload result.
   Hypothesis: these acknowledgement layouts describe H617A replies on the tested
   revision.  Ordinary positive replies have direct-device evidence; A3/negative
-  replies, suffixes, timing, and other revisions lack official-app capture or
+  replies, suffixes, timing, and other revisions lack device evidence or
   owner qualification.  Replies match protocol and command only.  Music byte 2
-  is not a transaction ID.  An H6076 capture shows it repeating the
+  is not a transaction ID.  An H6076 report shows it repeating the
   music mode; the H617A value remains unconfirmed, so the field keeps its name.
   A delayed same-subtype ACK during a later final attempt is indistinguishable.
   ACK never establishes applied device state.
@@ -29,7 +29,7 @@ doc: |
   An attempted upload is not automatically replayed after an uncertain result.
   H7020 reuses ordinary zero-success ACKs, including configured strings,
   and the A3/02 and A3/04 result-byte-2 forms.  This is candidate structural
-  compatibility, not exact-model capture qualification or state confirmation.
+  compatibility, not exact-model qualification or state confirmation.
 seq:
   - id: protocol
     type: u1

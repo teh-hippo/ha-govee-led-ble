@@ -13,7 +13,7 @@ doc: |
   The sensitivity-only editor reuses the resident body without uploading it.
   AA05 status replies parse the same selector fields.
   The reported 33 05 00 shortcut is not emitted.
-  Unresolved: reporter hardware/firmware/app versions, response availability,
+  Unresolved: reporter hardware/firmware versions, response availability,
   unused bytes, and successful BLE application on the reporter's device.
 seq:
   - id: header

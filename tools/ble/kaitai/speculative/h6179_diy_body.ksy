@@ -8,7 +8,7 @@ doc: |
   SPECULATIVE H6179 compatibility hypothesis: exact-SKU protocol-1.1 DIY
   bodies start with 0xfe and use the candidate single-family or 0xff mixed-family
   palette and pair layouts below.
-  Unresolved assumptions: no exact-model capture verifies the family selectors,
+  Unresolved assumptions: no exact-model evidence verifies the family selectors,
   variants, speed, palette length, mixed-pair length or meaning, trailing bytes,
   or transport association.
 seq:

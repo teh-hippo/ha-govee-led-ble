@@ -10,8 +10,8 @@ doc: |
   H6199 20-byte status reply.  The final byte is the XOR of bytes 0 through 18.
   Segment groups carry 4+4+4+3 records; the final four bytes remain opaque.
   DIY, static Gradient, direction30, position31, status32 and A3
-  extensions are speculative reconstructed/direct-register evidence, not official-app
-  captures; payloads remain in speculative/h6199_control_payload.ksy.
+  extensions are speculative reconstructed/direct-register evidence, not
+  device-verified; payloads remain in speculative/h6199_control_payload.ksy.
 seq:
   - id: header
     contents: [0xaa]

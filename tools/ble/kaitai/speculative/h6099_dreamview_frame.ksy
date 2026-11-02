@@ -17,10 +17,10 @@ doc: |
   slot occupancy, and reply freshness beyond
   request timing are unresolved.  No digest 0x0c or camera heuristic is
   modelled.  The H66A0 owner reports that writes for 0x01, 0x03,
-  0x04, 0x05, 0x09, 0x0b and 0x0d match official-app captures, alongside the
-  brightness query and a parsed connection reply.  Attributable raw captures
-  are not attached.  Other reads remain structurally evidenced candidates.
-  No official-app capture or owner qualification exists
+  0x04, 0x05, 0x09, 0x0b and 0x0d are device-verified, alongside the
+  brightness query and a parsed connection reply.  Attributable raw evidence
+  is not attached.  Other reads remain structurally evidenced candidates.
+  No device evidence or owner qualification exists
   for H6099.
   This root does not model command ACKs.
   H6097 independently selects the same module and group-switch

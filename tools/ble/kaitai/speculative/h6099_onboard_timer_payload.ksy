@@ -6,7 +6,7 @@ doc: |
   offsets 2 through 18) containing one ignored prefix byte and four four-byte
   timer records.  Nested types describe the one-byte query and five-byte write
   body without BLE framing.
-  Unknowns: exact-device captures, timer index range, repeat bit meanings,
+  Unknowns: exact-device evidence, timer index range, repeat bit meanings,
   ignored reply prefix, single-index reply layout, and firmware compatibility.
   Preserve packed fields without inferred enums or validity constraints.
   No runtime queries, writes, clock sync, or scheduling; use HA automations.

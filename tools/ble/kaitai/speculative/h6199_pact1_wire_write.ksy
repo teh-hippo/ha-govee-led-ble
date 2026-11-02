@@ -11,7 +11,7 @@ doc: |
   a little-endian fifteen-bit segment mask.  Runtime authoring permits only
   whole-strip RGB with zero Kelvin; the shared H6199 logical commands retain
   capability checks and optimistic semantics before this wire transform.
-  Unresolved assumptions: independent official-app captures at known brightness
+  Unresolved assumptions: independent device evidence at known brightness
   percentages, device qualification of both writes, unused frame bytes and
   command echoes.  This root does not qualify readback or other legacy modes.
   The final byte is the XOR of bytes 0 through 18.

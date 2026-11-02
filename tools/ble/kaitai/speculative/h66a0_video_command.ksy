@@ -6,7 +6,7 @@ doc: |
   Fredde87/ha-govee-led-ble round2 command_write.ksy video_body_h66a0 and
   TV-light video mode behaviour.  Contributor reports preset reads
   08 Vivid, 09 Solid, 0a Smooth, 0b Delicate and a separate opaque byte.
-  Independent captures, firmware coverage and owner qualification remain
+  Independent evidence, firmware coverage and owner qualification remain
   unresolved.  This codec does not register H66A0 as a supported model.
 seq:
   - id: header

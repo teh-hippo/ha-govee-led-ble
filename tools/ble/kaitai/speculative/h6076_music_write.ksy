@@ -6,10 +6,9 @@ meta:
     - ../govee_shared
 doc: |
   H6076.
-  Evidence source classes: a reporter's decrypted HCI snoop of the official
-  app driving an H6076 (hardware 3.05.00, software 1.04.05, V1 encrypted
-  session).  The capture is
-  reporter-supplied and its raw file has not been reviewed, and no integration or
+  Evidence source classes: a reporter's report on an H6076 (hardware 3.05.00,
+  software 1.04.05, V1 encrypted session).  The report is
+  unreviewed at the raw level, and no integration or
   owner BLE test of an H6076 exists yet.
   Compatibility hypothesis: the H6076 writes its music selector at submode 0x0f,
   not the H617A submode 0x13.  The twelve-effect screen applies to software
@@ -19,7 +18,7 @@ doc: |
   companion-backed effects carry only the sensitivity and take their palette from
   the preceding A3 body described by h6076_music_body.ksy.
   Unresolved assumptions: the value of the unused bytes after the written fields
-  (the capture lists frames before padding), whether a fixed-colour flag other
+  (the report lists frames before padding), whether a fixed-colour flag other
   than one is accepted, whether the device echoes the selector, and the behaviour
   of firmware older than 1.02.00.  The final byte is the XOR of bytes 0 through 18.
 seq:

@@ -1,4 +1,4 @@
-"""Repository ownership boundaries for external capture and physical tooling."""
+"""Repository ownership boundaries for external physical tooling."""
 
 import shutil
 import subprocess

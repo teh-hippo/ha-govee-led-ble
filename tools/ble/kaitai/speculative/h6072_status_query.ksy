@@ -7,7 +7,7 @@ meta:
 doc: |
   H6072.
   Compatibility hypothesis: common basic queries and three newer A5 segment
-  groups. Exact-model captures and revision-specific response timing are unqualified.
+  groups. Exact-model evidence and revision-specific response timing are unqualified.
 seq:
   - id: header
     contents: [0xaa]

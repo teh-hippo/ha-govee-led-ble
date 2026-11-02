@@ -11,7 +11,7 @@ doc: |
   contains length-delimited colour groups followed by action, speed,
   brightness, priority, duration and four opaque bytes.  All lengths and
   counts wider than one byte are little-endian.  This is not an A3 header.
-  Unresolved assumptions: no exact-model BLE capture qualifies every action,
+  Unresolved assumptions: no exact-model device evidence qualifies every action,
   show type, duration unit, priority rule, editor limit or firmware revision.
   Candidate action codes are 1 through 7; their meanings remain unmapped.
   Unknown layer kinds, extension bytes and opaque fields are preserved.

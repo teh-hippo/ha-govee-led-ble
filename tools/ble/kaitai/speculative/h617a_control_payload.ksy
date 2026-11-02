@@ -10,19 +10,19 @@ doc: |
   segment-count wording must not be interpreted as physical IC metadata).
   Hypothesis: H617A music authoring uses the generalised
   mode-specific tails below.
-  Existing H617A captures establish preset bytes and the palette-relative layout,
+  Existing H617A evidence establishes preset bytes and the palette-relative layout,
   not every representable value.  Newly variable Bloom no-rhythm speed, Shiny speed,
   Hopping speed/piece ranges, Piano speed/off-minimum, and Fountain piece length
-  remain reconstructed; alternate values and geometry need attributable official-app
-  captures and owner qualification.  Other fields retain their existing captured
+  remain reconstructed; alternate values and geometry need attributable device
+  evidence and owner qualification.  Other fields retain their existing
   values with reconstructed semantic names.  Grouping tails here does not erase that
   evidence.
   H617E shares music_body's structural parser but keeps its independently declared
   pre-expansion presets, controls, and IC policy.  No new H617E qualification follows.
   H6099 uses its separate speculative/h6099_music_parameters schema and exact-model
   policy; shared builders are evidence clues, not interchangeable SKU support.
-  AA0F=15 was directly observed on H617A HW3.01.01/FW3.02.24, not in an official-app
-  capture.  Its signed-positive boundary and ignored tail are reconstructed.  Shared
+  AA0F=15 was directly observed on H617A HW3.01.01/FW3.02.24.
+  Its signed-positive boundary and ignored tail are reconstructed.  Shared
   H617A-status-grammar consumers do not acquire exact-model count qualification.
   Count never establishes physical IC count or changes logical segment geometry.
   No full music-body readback, alternative IC geometry, or new rendering is qualified.

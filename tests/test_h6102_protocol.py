@@ -1,4 +1,4 @@
-"""H6102 hypotheses and profile-directed shared codecs, not official-app captures."""
+"""H6102 hypotheses and profile-directed shared codecs, not device-verified."""
 
 from dataclasses import replace
 

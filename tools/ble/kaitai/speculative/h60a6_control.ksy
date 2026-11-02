@@ -11,7 +11,7 @@ doc: |
   master, panel and ring flags independently; only bit zero is interpreted.
   No master wake, sibling rewrite or illumination relationship is inferred.
   Power-on behaviour has three states, rather than a boolean memory setting.
-  Other flag bits and suffixes are opaque.  Hardware capture qualification,
+  Other flag bits and suffixes are opaque.  Hardware qualification,
   other revisions and reply timing remain unresolved.
 seq:
   - id: header

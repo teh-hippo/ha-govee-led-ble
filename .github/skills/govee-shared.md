@@ -14,16 +14,20 @@ Use these exactly: **Experimental** (awaiting owner confirmation on hardware) an
 - Treat reported causes and workarounds as hypotheses.  Do not weaken confirmation, add retries or copy another SKU's fix without evidence.
 - Ask whether a major gap belongs in the current issue/PR or a follow-up, and before materially changing the approach.  Keep deferred findings visible.
 
-## Reference material (the Android app)
+## The evidence folder
 
-Locate the main clone with `git rev-parse --path-format=absolute --git-common-dir`; read `.reference-material/README.md` in its parent and follow its confidentiality and lookup rules.  It gives starting points, not coverage limits: look for what a lookup did not cover.
-Use the LSP for symbols and references in large Python and Java files and for Markdown/YAML outlines; read ranges, not whole files.  Read each large file once and reuse what you learned.  Use `python3` for stdlib JSON/ZIP inspection.
+A private, hidden directory in the parent of the main clone holds evidence about what devices do.  Locate the main clone with `git rev-parse --path-format=absolute --git-common-dir`, find the folder next to it, read its README first and follow its instructions.
+- It is private.  Re-implement behaviour in your own words and never copy from it.
+- Never cite the folder, its files or how evidence was obtained in the repository, issues, PRs, commits or release notes.
+- Start from the README's starting points; they are not coverage limits, so look for what a lookup did not cover.
+- Treat the evidence as the source of truth for what devices do.  Where it is ambiguous, flag the ambiguity instead of guessing.
+- Use the LSP for symbols and references in large files and for Markdown/YAML outlines; read targeted ranges, not whole files.  Read each large file once and reuse what you learned.  Use `python3` for stdlib JSON/ZIP inspection.
 
 ## Trace
 
 Connection/subscription -> identity admission -> request construction -> framing/transformation -> physical write -> replies -> parsing -> state -> verification.
 Find the last successful stage and the first evidenced divergence; a service error does not prove a malformed command.
-Compare observed TX/RX with generated output at the same layer, keeping source/version, direction, revision, sequence and timing.  Distinguish captured, reconstructed and builder-generated frames.
+Compare observed TX/RX with generated output at the same layer, keeping source/version, direction, revision, sequence and timing.  Distinguish observed, reconstructed and builder-generated frames.
 Separate wrong bytes or routing from transport failure, unanswered queries, transitional readback and wrong confirmation expectations.  Accepted writes, visible rendering, fresh observations and optimistic state are not interchangeable.
 
 ## Surface to audit for a model

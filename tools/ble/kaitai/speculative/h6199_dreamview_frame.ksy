@@ -13,7 +13,7 @@ doc: |
   match protocol and command with a zero success byte; they establish
   acceptance, not membership, rendering or synchronisation.
   Owners report an enable-query response, not group qualification.
-  Official-app captures, revision differences, negative completion replies,
+  Device evidence for revision differences, negative completion replies,
   reply tails, slot identity and maximum capacity remain unqualified.
 params:
   - id: is_query

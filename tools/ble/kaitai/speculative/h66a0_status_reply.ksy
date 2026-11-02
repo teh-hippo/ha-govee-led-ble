@@ -7,7 +7,7 @@ meta:
     - ../govee_segment_page
     - h66a0_video_command
 doc: |
-  H66A0 status reply.  All four official-app
+  H66A0 status reply.  All four
   segment pages of one read have been supplied with valid XOR checksums:
     aa a5 01 64e54444 64ffae54 64ffae54 64cf2e2e 24
     aa a5 02 64c72626 64c01f1f 64b91818 64b21111 01

@@ -8,7 +8,7 @@ meta:
 doc: |
   H6199 20-byte command frame.  The final byte is the XOR of bytes 0 through 18.
   DIY0a, direction30, position31 and Gradient A3 extensions are
-  speculative exact-model reconstructed/direct-register evidence, not official-app captures;
+  speculative exact-model reconstructed/direct-register evidence, not device-verified;
   their payloads remain in speculative/h6199_control_payload.ksy.
 seq:
   - id: header
@@ -180,7 +180,7 @@ types:
   blank_screen_payload:
     doc: |
       Blank-screen detection policy. The two policies are labelled Low Brightness and
-      Same Tone and stores both durations in seconds. The captured H6199 state selects Same
+      Same Tone and stores both durations in seconds. The observed H6199 state selects Same
       Tone with durations 10 and 120 seconds.
     seq:
       - id: is_on

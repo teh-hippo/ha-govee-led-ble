@@ -14,7 +14,7 @@ doc: |
   AA05 reports mode and one Kelvin value, not per-bulb white intent, uploaded
   effect bodies, speed or Rhythm response. Legacy music's selector-4 extra byte
   does not establish the authored selector-3 response parameter.
-  Unresolved assumptions: no exact-model captures qualify these full replies,
+  Unresolved assumptions: no exact-model evidence qualify these full replies,
   unused suffixes, ten-page completion or concurrent count-change behaviour.
   Unknown bytes are preserved; no zero-padding assumption is imposed.
 seq:

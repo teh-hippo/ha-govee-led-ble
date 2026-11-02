@@ -9,7 +9,7 @@ meta:
 doc: |
   H617A 20-byte status reply.  The final byte is the XOR of bytes 0 through 18.
   Segment replies have five groups of three records and four validated-zero bytes.
-  AA0F is an app/direct-device extension, not official-app capture
+  AA0F is a direct-device extension, not device-verified
   qualification; its payload remains in speculative/h617a_control_payload.ksy.
 seq:
   - id: header

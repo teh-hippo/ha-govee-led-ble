@@ -137,7 +137,7 @@ def test_h617e_uses_its_exact_catalogue_with_the_shared_wire_adapter():
     assert build_native_scene_packets("H617E", uploaded)[-1] == build_h617a_scene(uploaded.code)
 
 
-def test_aurora_b_matches_current_ios_capture():
+def test_aurora_b_native_packets():
     scene = SCENES["aurora b"]
 
     assert [packet.hex() for packet in build_native_scene_packets("H617A", scene)] == [

@@ -1,4 +1,4 @@
-"""Direct-register replay and software qualification; not official-app captures."""
+"""Direct-register replay and software qualification; not device-verified."""
 
 import asyncio
 from types import SimpleNamespace

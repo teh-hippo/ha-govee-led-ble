@@ -7,7 +7,7 @@ meta:
 doc: |
   H6046.
   Evidence class: exact-model behavioural audit and source-reconstructed bytes,
-  not official-app captures or owner qualification. Known Pact 1/1 and 2/1 use
+  not device-verified or owner-qualified. Known Pact 1/1 and 2/1 use
   this modern layout; no H6053 legacy range or firmware gate is assumed.
   Each frame is 20 bytes, with XOR of bytes 0..18 in the final byte; the
   transport validates that checksum. Ten segments comprise five per bar.

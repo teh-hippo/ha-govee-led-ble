@@ -41,8 +41,8 @@ _SPEED_METADATA_SKUS = frozenset({"H6046", "H6072", "H607C", "H6097", "H60A1", "
 # configured field before upload, so embedded field values are not the default-speed invariant.
 _METADATA_DEFAULT_SPEED_SKUS = frozenset({"H607C", "H60A1", "H7020", "H7025"})
 
-# Glacier's application path was captured rewriting its stale stored movement fields.
-_CAPTURE_VERIFIED_SPEED_DEFAULT_REWRITES = frozenset({("H617A", 1026, 1088)})
+# Glacier's application path rewrites its stale stored movement fields.
+_VERIFIED_SPEED_DEFAULT_REWRITES = frozenset({("H617A", 1026, 1088)})
 
 
 def fetch_library(sku: str) -> dict[str, Any]:
@@ -297,7 +297,7 @@ def build_snapshot(raw: dict[str, Any], sku: str) -> dict[str, Any]:
                         effect,
                         f"{name}-{variant}" if variant else name,
                         metadata_default_applied=sku in _METADATA_DEFAULT_SPEED_SKUS
-                        or (sku, scene_id, effect_id) in _CAPTURE_VERIFIED_SPEED_DEFAULT_REWRITES,
+                        or (sku, scene_id, effect_id) in _VERIFIED_SPEED_DEFAULT_REWRITES,
                     )
                 ):
                     entry["speed"] = speed

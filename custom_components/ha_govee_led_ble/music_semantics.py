@@ -110,7 +110,7 @@ H6046_MUSIC_VARIANTS = (
     ),
 )
 
-# Captured values, not values calculated from logical colour zones or guessed IC counts.
+# Observed values, not values calculated from logical colour zones or guessed IC counts.
 H617A_MUSIC_VARIANTS = (
     MusicVariant(0x03, "H617A qualified selector style", supports_style=True),
     MusicVariant(0x04, "H617A fixed-colour register readback"),
@@ -118,7 +118,7 @@ H617A_MUSIC_VARIANTS = (
     MusicVariant(0x06, "H617A fixed-colour register readback"),
     MusicVariant(
         0x30,
-        "H617A captured Bloom companion",
+        "H617A Bloom companion",
         "music_body",
         bytes.fromhex("3007ff0000ff7f00ffff0000ff000000ff00ffff8b00ff0a50000000000000"),
         supports_style=True,
@@ -128,7 +128,7 @@ H617A_MUSIC_VARIANTS = (
     ),
     MusicVariant(
         0x31,
-        "H617A captured Shiny companion",
+        "H617A Shiny companion",
         "music_body",
         bytes.fromhex("3105ff0000ff7f00ffff0000ff000000ff05640a0000000000000000000000"),
         supports_style=True,
@@ -138,7 +138,7 @@ H617A_MUSIC_VARIANTS = (
     ),
     MusicVariant(
         0x32,
-        "H617A qualified Separation captures",
+        "H617A qualified Separation presets",
         "music_body",
         bytes.fromhex("3205ff7f00ff0000ffff000000ff00ff0001015e0000000000000000000000"),
         (
@@ -153,7 +153,7 @@ H617A_MUSIC_VARIANTS = (
     ),
     MusicVariant(
         0x33,
-        "H617A qualified Hopping captures",
+        "H617A qualified Hopping presets",
         "music_body",
         bytes.fromhex(
             "3307ff0000ff7f00ffff0000ff000000ff00ffff8b00ffff000032620103020600000000000000000000000000000000"
@@ -167,7 +167,7 @@ H617A_MUSIC_VARIANTS = (
     ),
     MusicVariant(
         0x34,
-        "H617A captured Piano preset; GangQinJian gradient and physical-IC key bounds",
+        "H617A Piano preset; GangQinJian gradient and physical-IC key bounds",
         "music_body",
         bytes.fromhex("3407ff0000ff7f00ffff0000ff000000ff00ffff8b00ff000f0a0407000000"),
         (
@@ -182,7 +182,7 @@ H617A_MUSIC_VARIANTS = (
     ),
     MusicVariant(
         0x35,
-        "H617A qualified Fountain captures; speed pinned to captured 0x50",
+        "H617A qualified Fountain presets; speed pinned to 0x50",
         "music_body",
         bytes.fromhex("3507ff0000ff7f00ffff0000ff000000ff00ffff8b00ff0001055000000000"),
         (
@@ -202,7 +202,7 @@ H617A_MUSIC_VARIANTS = (
     ),
     MusicVariant(
         0x37,
-        "H617A qualified Day and Night captures",
+        "H617A qualified Day and Night presets",
         "music_body",
         bytes.fromhex("3707ff0000ff7f00ffff0000ff000000ff00ffff8b00ff010a000000000000"),
         (
@@ -304,7 +304,7 @@ H617E_MUSIC_VARIANTS = (
 )
 
 
-# H6099 music bodies: unpadded, not H617A capture templates.
+# H6099 music bodies: unpadded, not H617A templates.
 _H6099_PALETTE = "07ff0000ff7f00ffff0000ff000000ff00ffff8b00ff"
 H6099_MUSIC_VARIANTS = (
     MusicVariant(3, "H6099 Rhythm legacy selector", supports_style=True),
@@ -790,7 +790,7 @@ H617C_MUSIC_VARIANTS = tuple(
 _H6076_MODE = import_module(
     "custom_components.ha_govee_led_ble.generated_protocol.h6076_music_write"
 ).H6076MusicWrite.MusicMode
-# The default seven-colour palette; the capture-backed Torch body carries it unchanged.
+# The default seven-colour palette; the evidence-backed Torch body carries it unchanged.
 _H6076_PALETTE = "ff0000ff7f00ffff0000ff000000ff00ffff8b00ff"
 
 
@@ -804,13 +804,13 @@ H6076_LEGACY_MUSIC_VARIANTS = (
     *(
         MusicVariant(int(mode), f"H6076 {mode.name}: fixed-colour flag and RGB in the selector; {evidence}")
         for mode, evidence in (
-            (_H6076_MODE.bounce, "capture and reconstruction"),
-            (_H6076_MODE.hopping, "capture and reconstruction"),
-            (_H6076_MODE.beat, "capture and reconstruction"),
-            (_H6076_MODE.spray, "capture and reconstruction"),
+            (_H6076_MODE.bounce, "evidence and reconstruction"),
+            (_H6076_MODE.hopping, "evidence and reconstruction"),
+            (_H6076_MODE.beat, "evidence and reconstruction"),
+            (_H6076_MODE.spray, "evidence and reconstruction"),
         )
     ),
-    MusicVariant(int(_H6076_MODE.rhythm), "H6076 capture and reconstruction: Dynamic/Calm byte", supports_style=True),
+    MusicVariant(int(_H6076_MODE.rhythm), "H6076 evidence and reconstruction: Dynamic/Calm byte", supports_style=True),
 )
 
 # Legacy selectors keep their parameters in the selector; companion-backed effects upload an A3 body first.
@@ -818,17 +818,17 @@ H6076_MUSIC_VARIANTS = (
     *(
         MusicVariant(int(mode), f"H6076 {mode.name}: fixed-colour flag and RGB in the selector; {evidence}")
         for mode, evidence in (
-            (_H6076_MODE.energetic, "captured"),
-            (_H6076_MODE.bounce, "capture and reconstruction"),
-            (_H6076_MODE.hopping, "capture and reconstruction"),
-            (_H6076_MODE.beat, "capture and reconstruction"),
-            (_H6076_MODE.spray, "capture and reconstruction"),
+            (_H6076_MODE.energetic, "evidence-backed"),
+            (_H6076_MODE.bounce, "evidence and reconstruction"),
+            (_H6076_MODE.hopping, "evidence and reconstruction"),
+            (_H6076_MODE.beat, "evidence and reconstruction"),
+            (_H6076_MODE.spray, "evidence and reconstruction"),
         )
     ),
-    MusicVariant(int(_H6076_MODE.rhythm), "H6076 capture and reconstruction: Dynamic/Calm byte", supports_style=True),
+    MusicVariant(int(_H6076_MODE.rhythm), "H6076 evidence and reconstruction: Dynamic/Calm byte", supports_style=True),
     MusicVariant(
         int(_H6076_MODE.separation),
-        "H6076 capture: default Separation companion, point 2 and gradient off",
+        "H6076 evidence: default Separation companion, point 2 and gradient off",
         "h6076_music_body",
         _h6076_body(int(_H6076_MODE.separation), "020061"),
         (
@@ -856,7 +856,7 @@ H6076_MUSIC_VARIANTS = (
             supports_fixed_colour=False,
         )
         for mode, bounds, evidence in (
-            (_H6076_MODE.torch, (1, 8), "captured"),
+            (_H6076_MODE.torch, (1, 8), "evidence-backed"),
             (_H6076_MODE.skittles, (2, 8), "reconstruction and reporter LAN replay"),
             (_H6076_MODE.candy_crush, (3, 8), "reconstruction and reporter LAN replay"),
             (_H6076_MODE.fusion, (2, 8), "reconstruction and reporter LAN replay"),

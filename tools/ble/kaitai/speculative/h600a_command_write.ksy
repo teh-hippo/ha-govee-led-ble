@@ -12,7 +12,7 @@ doc: |
   selectors. Explicit Kelvin uses direct FFFFFF and the ordered shared
   2700..6500 K table. Frames are zero-padded and XOR-checksummed.
   Physical acceptance, encryption, revision differences and response timing
-  remain unqualified; no attributable official-app BLE capture is available.
+  remain unqualified; no attributable device evidence is available.
 seq:
   - id: header
     contents: [0x33]

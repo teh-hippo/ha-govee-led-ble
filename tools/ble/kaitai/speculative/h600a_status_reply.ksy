@@ -12,7 +12,7 @@ doc: |
   describe the remaining basic state. Unknown modes, domains, hardware
   prefix and tails remain opaque. Response availability, identity encoding
   across revisions, encryption and physical behaviour remain unqualified.
-  No attributable official-app BLE capture is available.
+  No attributable device evidence is available.
 seq:
   - id: header
     contents: [0xaa]

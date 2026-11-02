@@ -11,7 +11,7 @@ doc: |
   count and subtype; the final frame has index FFFF.  Single-data-frame
   uploads include an empty four-byte terminator.  Final frames are not
   padded.  MTU negotiation, acknowledgement timing, other revisions and
-  hardware rendering require capture qualification.  A3 DIY uses the same
+  hardware rendering require device qualification.  A3 DIY uses the same
   subtype but a different body family and framing.  Its reassembled envelope
   embeds the length-bounded DIY body separately from transport fill.
 seq:

@@ -73,7 +73,7 @@ RANDOM  # layered_scene.py
 SEGMENT  # layered_scene.py
 
 # --- Decoded wire-format fields ---
-# Fields decoded from device frames. They are populated by the parser and kept so a captured frame round-trips
+# Fields decoded from device frames. They are populated by the parser and kept so a received frame round-trips
 # losslessly, even where no feature reads the value yet.
 
 _.a3_type  # layered_scene_decoder.py

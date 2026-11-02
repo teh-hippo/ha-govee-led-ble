@@ -37,7 +37,7 @@ from custom_components.ha_govee_led_ble.light_commands import (
 from custom_components.ha_govee_led_ble.protocol_core import ProtocolParseRejection
 from custom_components.ha_govee_led_ble.transport import xor_checksum
 
-CAPTURED_PAGES = {
+EVIDENCE_PAGES = {
     "H60A6": {
         "aaa501640000ff640000ff640000ff640000ff0e": [(100, (0, 0, 255))] * 4,
         "aaa50464ffd5a1000000000000000000000000e4": [(100, (255, 213, 161))],
@@ -50,7 +50,7 @@ POWER = bytes.fromhex("aa010100000000000000000000000000000000aa")
 
 
 def frame(prefix: str) -> bytes:
-    """Synthetic frame helper; the captured literals above never pass through it."""
+    """Synthetic frame helper; the literals above never pass through it."""
     body = bytes.fromhex(prefix).ljust(19, b"\x00")
     assert len(body) == 19
     return body + bytes([xor_checksum(body)])
@@ -330,9 +330,9 @@ async def test_recovery_restores_only_known_native_flags_without_changing_master
 
 @pytest.mark.parametrize(
     ("model", "hex_frame", "records"),
-    [(model, packet, records) for model, pages in CAPTURED_PAGES.items() for packet, records in pages.items()],
+    [(model, packet, records) for model, pages in EVIDENCE_PAGES.items() for packet, records in pages.items()],
 )
-def test_captured_pages_keep_exact_cardinality(model, hex_frame, records):
+def test_evidence_pages_keep_exact_cardinality(model, hex_frame, records):
     parsed = parse_status_result(bytes.fromhex(hex_frame), model).parsed
     assert parsed is not None and parsed.body.num_segments == len(records)
     assert [(r.brightness, (r.colour.red, r.colour.green, r.colour.blue)) for r in parsed.body.segments] == records
@@ -376,7 +376,7 @@ async def test_coordinator_real_pages_panel_brightness_and_no_false_verification
     c._client = client
     monkeypatch.setattr(c, "_ensure_connected", AsyncMock(return_value=client))
     monkeypatch.setattr(c, "_renew_foreground_lease", lambda: None)
-    pages = {int(packet[4:6], 16): bytes.fromhex(packet) for packet in CAPTURED_PAGES[model]}
+    pages = {int(packet[4:6], 16): bytes.fromhex(packet) for packet in EVIDENCE_PAGES[model]}
     # Fill only missing pages with synthetic blue records. Page four remains
     # the literal owner reply, including its distinct panel colour.
     pages.update({group: frame(f"aaa5{group:02x}" + "640000ff" * 4) for group in range(1, 4) if group not in pages})
@@ -394,7 +394,7 @@ async def test_coordinator_real_pages_panel_brightness_and_no_false_verification
     assert c.segment_state_source == "initial" and c._field_revisions.get("segment_colors", 0) == 0
     assert await c.async_refresh_segments(timeout=0.1)
     assert c.segment_state_source == "observed" and len(c.segment_colors) == c.profile.segment_count
-    assert c.segment_colors[-1] == CAPTURED_PAGES[model][next(reversed(CAPTURED_PAGES[model]))][-1][1]
+    assert c.segment_colors[-1] == EVIDENCE_PAGES[model][next(reversed(EVIDENCE_PAGES[model]))][-1][1]
     assert c.color_temp_kelvin is None
     client.write_gatt_char.reset_mock()
     await c._send_state_queries()

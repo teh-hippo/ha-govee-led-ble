@@ -67,7 +67,7 @@ _H66A0_SEGMENT_PAGES = (
 )
 
 
-def test_h66a0_exact_status_root_covers_declared_reads_with_captured_pages():
+def test_h66a0_exact_status_root_covers_declared_reads_with_evidence_pages():
     frames = (
         _h6179_status(1, b"\x01"),
         _h6179_status(4, b"\x64"),

@@ -1,4 +1,4 @@
-"""H6199 software revision routing and captured music semantics, not hardware qualification."""
+"""H6199 software revision routing and qualified music semantics, not hardware qualification."""
 
 import asyncio
 from dataclasses import replace

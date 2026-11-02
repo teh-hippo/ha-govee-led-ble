@@ -6,7 +6,7 @@ doc: |
   SPECULATIVE H6179 compatibility hypothesis: exact-SKU status queries use a
   20-byte 0xaa envelope and the candidate domain and selector bytes represented
   below.
-  Unresolved assumptions: no exact-model capture verifies the domain meanings,
+  Unresolved assumptions: no exact-model evidence verifies the domain meanings,
   mode, hardware, or timer selectors, opaque body bytes, or XOR checksum byte.
 seq:
   - id: header

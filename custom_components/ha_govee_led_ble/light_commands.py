@@ -143,7 +143,7 @@ def kelvin_rendering_matches(rgb: tuple[int, int, int], kelvin: int, profile: Mo
     """Whether a rendered segment colour is consistent with the Kelvin that was commanded.
 
     shortcut: these lamps render their own white rather than the companion RGB, so any warm white
-    confirms; upgrade once a capture maps each Kelvin step to the colour the lamp actually renders.
+    confirms; upgrade once a measurement maps each Kelvin step to the colour the lamp actually renders.
     """
     if profile.segment_kelvin_renders_device_rgb and rgb[0] >= 200 and rgb[1] >= 100:
         return True

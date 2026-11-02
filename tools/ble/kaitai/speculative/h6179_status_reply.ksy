@@ -12,7 +12,7 @@ doc: |
   An owner report for hardware 1.00.01 and firmware 1.00.08 in
   jacobEAdamson/ha-govee-led-ble#1 identifies music replies containing a stored
   RGB triplet even in automatic-colour mode, plus static RGB/Kelvin replies.
-  Only abbreviated payloads are available, not complete official-app captures.
+  Only abbreviated payloads are available.
   Unresolved assumptions include other revisions, selectors and field meanings,
   string encoding, timer count rules, opaque tails, and the XOR checksum byte.
 seq:
@@ -126,7 +126,7 @@ types:
         type: u1
       - id: fixed_colour
         type: govee_shared::rgb
-        # colour bytes are shipped even when colour_mode == 0 (live capture:
+        # colour bytes are shipped even when colour_mode == 0 (observed on a lamp:
         # aa 05 0e <music_id> <sensitivity> <colour_mode=00> ff 00 00 <opaque>).
         # Reading them unconditionally keeps them out of `opaque`, so the
         # semantic zero-opaque guard no longer rejects valid music replies.

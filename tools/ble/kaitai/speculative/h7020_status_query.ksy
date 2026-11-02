@@ -11,7 +11,7 @@ doc: |
   requiring five or ten queries according to freshly confirmed configuration.
   The selected mode query is AA0501; the shared structural type also retains
   the zero-selector form without claiming exact-model acceptance.
-  Unresolved assumptions: exact-model captures have not qualified all replies,
+  Unresolved assumptions: exact-model evidence have not qualified all replies,
   page ordering, two-string behaviour or concurrent configuration changes.
 seq:
   - id: header

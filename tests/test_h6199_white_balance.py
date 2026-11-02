@@ -1,4 +1,4 @@
-"""H6199 register preservation, using the captured same-gain auto/manual replies."""
+"""H6199 register preservation, using the same-gain auto/manual replies."""
 
 from dataclasses import replace
 from unittest.mock import AsyncMock, MagicMock

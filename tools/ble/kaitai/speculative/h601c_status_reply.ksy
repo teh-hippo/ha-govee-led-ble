@@ -14,7 +14,7 @@ doc: |
   reuse status_query for the shared query envelope.  Unknown domains and modes
   remain raw, never inferred effects.  Physical acceptance, response presence,
   identity encoding across revisions, and encryption remain unqualified.
-  These are reconstructed layouts, not official-app BLE captures.
+  These are reconstructed layouts, not device-verified.
 seq:
   - id: header
     contents: [0xaa]

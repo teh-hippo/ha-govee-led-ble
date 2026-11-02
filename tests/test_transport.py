@@ -56,7 +56,7 @@ def test_xor_checksum() -> None:
     assert xor_checksum(bytearray([0xAA, 0x01] + [0] * 17)) == 0xAB
 
 
-def test_a3_fragmentation_preserves_captured_forms() -> None:
+def test_a3_fragmentation_preserves_reference_forms() -> None:
     frames = fragment_a3(0x02, bytes(20))
     assert frames == [
         H("a3000102020000000000000000000000000000a2"),

@@ -11,7 +11,7 @@ doc: |
   an A3 logical header.  Each recognised layer has a speed byte and a
   colour-count-prefixed RGB palette.  A payload length of 32 also produces a
   0x50 0x20 prefix; use exact family metadata rather than prefix-only routing.
-  Unresolved assumptions: no exact-model BLE capture qualifies these layouts,
+  Unresolved assumptions: no exact-model device evidence qualifies these layouts,
   parameter meanings, background flag, editor limits or firmware coverage.
   Unmapped parameters, unknown layer kinds and trailing layer data remain opaque.
 seq:

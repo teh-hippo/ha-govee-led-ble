@@ -8,7 +8,7 @@ doc: |
   byte-length-prefixed SSID and password fields, run mode, timezone hour, IoT
   version, timezone minute, and branch-dependent extension bytes.  Input is the
   reassembled logical body, not a BLE frame or encrypted envelope.
-  Unknowns: exact-device capture, firmware/branch selection, string encoding,
+  Unknowns: exact-device evidence, firmware/branch selection, string encoding,
   signed timezone interpretation, and optional API/Matter/security extensions.
   Preserve strings as bytes and the branch-dependent extension as opaque data.
   No runtime provisioning, cloud communication, or exact-device qualification.

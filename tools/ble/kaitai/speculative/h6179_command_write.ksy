@@ -10,7 +10,7 @@ doc: |
   static-colour, music, and boolean current-adaptation layouts below.
    Current adaptation may restart the controller;
   its value must be queried afresh after reconnecting.
-  Unresolved assumptions: no exact-model capture verifies the selectors, field
+  Unresolved assumptions: no exact-model evidence verifies the selectors, field
   meanings, brightness scale, optional music colour, opaque tails, or XOR
   checksum byte.
 seq:
