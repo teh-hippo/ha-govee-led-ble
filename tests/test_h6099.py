@@ -26,7 +26,6 @@ from custom_components.ha_govee_led_ble.effect_catalogue import MODEL_EFFECT_CAT
 from custom_components.ha_govee_led_ble.effect_compiler import compile_effect
 from custom_components.ha_govee_led_ble.effect_contracts import (
     CapabilityWorkflow,
-    PhysicalValidationState,
     VerificationConfidence,
     release_capabilities_for_model,
     require_effect_route,
@@ -101,7 +100,6 @@ def test_exact_profile_and_truthful_effect_authorization() -> None:
         CapabilityWorkflow.SINGLE,
         CapabilityWorkflow.MULTI,
     }
-    assert all(cap.physical_validation_state is PhysicalValidationState.NOT_VALIDATED for cap in capabilities)
     assert all(cap.verification_confidence is VerificationConfidence.UNVERIFIED for cap in capabilities)
     for workflow in (CapabilityWorkflow.ADVANCED, CapabilityWorkflow.PALETTE_DIY, CapabilityWorkflow.WORKSHOP):
         with pytest.raises(ValueError, match="not supported"):

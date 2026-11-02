@@ -39,9 +39,7 @@ from custom_components.ha_govee_led_ble.effect_contracts import (
     CapabilityState,
     CapabilityWorkflow,
     CompilerDeployerStrategy,
-    EvidenceClassification,
     FrontendVisibility,
-    PhysicalValidationState,
     VerificationConfidence,
     frontend_release_capabilities,
     release_capabilities_for_model,
@@ -173,10 +171,7 @@ def test_h617e_has_exact_release_capability_records():
 
     assert {capability.workflow for capability in h617c} == {capability.workflow for capability in h617a}
     assert all(
-        capability.model == "H617C"
-        and capability.verification_confidence is VerificationConfidence.SELECTION_ONLY
-        and capability.physical_validation_state is PhysicalValidationState.NOT_VALIDATED
-        and capability.diagnostics_evidence_classification is EvidenceClassification.STRUCTURAL
+        capability.model == "H617C" and capability.verification_confidence is VerificationConfidence.SELECTION_ONLY
         for capability in h617c
     )
     assert {capability.workflow for capability in h617e} == {capability.workflow for capability in h617a}
@@ -555,10 +550,6 @@ def test_model_visible_capabilities_declare_application_and_evidence_strategies(
     assert all(isinstance(capability.application_route, ApplicationRoute) for capability in visible)
     assert all(isinstance(capability.compiler_deployer_strategy, CompilerDeployerStrategy) for capability in visible)
     assert all(isinstance(capability.verification_confidence, VerificationConfidence) for capability in visible)
-    assert all(isinstance(capability.physical_validation_state, PhysicalValidationState) for capability in visible)
-    assert all(
-        isinstance(capability.diagnostics_evidence_classification, EvidenceClassification) for capability in visible
-    )
     assert all(capability.persistent_content_kind for capability in visible)
 
 
@@ -613,7 +604,6 @@ def test_release_capability_contract_routes_saved_effects_through_home_assistant
     assert h6199_diy.application_route is ApplicationRoute.HOME_ASSISTANT_CONTROL
     assert h6199_diy.compiler_deployer_strategy is CompilerDeployerStrategy.H6199_CUSTOM_ENGINE
     assert h6199_diy.verification_confidence is VerificationConfidence.SELECTION_ONLY
-    assert h6199_diy.diagnostics_evidence_classification is EvidenceClassification.STRUCTURAL
 
 
 def test_catalogue_apply_support_and_visible_workflows_derive_from_release_contract() -> None:

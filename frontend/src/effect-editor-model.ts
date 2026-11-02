@@ -105,8 +105,6 @@ export function effectOriginDescription(
       return `Govee catalogue: ${source ?? origin.source_id ?? "template"}`;
     case "imported":
       return `Imported${origin.source_id ? ` from ${origin.source_id}` : ""}`;
-    case "captured_fixture":
-      return `Captured source${origin.source_id ? `: ${origin.source_id}` : ""}`;
     case "migrated":
       return `Migrated effect${origin.source_id ? `: ${origin.source_id}` : ""}`;
     default:
