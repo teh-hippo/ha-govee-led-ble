@@ -47,6 +47,8 @@ from .protocol_h6199 import parse_h6199_control
 _LOGGER = logging.getLogger(__name__)
 
 EXPECTED_STATE_TTL = 2.0
+_COMMAND_ECHO_PREFIX = b"\x33"
+_STATUS_PREFIX = 0xAA
 _COLOR_MODE_FIELDS = (
     "diy_companion",
     "video_full_screen",
@@ -480,7 +482,7 @@ class _NotificationMixin(_CoordinatorBase):
                     future.set_result(ack_success)
             self._record_packet("rx", frame, outcome="parsed", reason="command_ack_parsed", parser=ack.parser)
             return
-        if frame[:1] == b"\x33":
+        if frame[:1] == _COMMAND_ECHO_PREFIX:
             command = parse_command_result(frame, self.model, profile=self.profile)
             reason = "command_echo_parsed"
             outcome = "parsed" if command.parsed is not None else "rejected"
@@ -511,7 +513,7 @@ class _NotificationMixin(_CoordinatorBase):
                 outcome="rejected",
                 reason=reason,
                 parser=result.parser,
-                domain=frame[1] if len(frame) > 1 and frame[0] == 0xAA else None,
+                domain=frame[1] if len(frame) > 1 and frame[0] == _STATUS_PREFIX else None,
             )
             _LOGGER.debug(
                 "Rejected %s status frame parser=%s reason=%s raw=%s",

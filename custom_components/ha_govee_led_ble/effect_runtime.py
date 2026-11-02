@@ -21,6 +21,7 @@ from .effect_active_workspace import (
 )
 from .effect_catalogue import requires_approved_diy_slot
 from .effect_compiler import (
+    DIY_ACK_EVIDENCE,
     ActivationMode,
     CompiledApplication,
     CompiledEffect,
@@ -622,7 +623,7 @@ class EffectDeploymentEngine:
                             current = replace(current, phase=DeploymentPhase.ACTIVATING)
                             await self._deployments.async_put(current, expected_version=None)
                         ack_options: dict[str, Any] = {}
-                        if "native_diy_positive_ack_required" in compiled.evidence_codes:
+                        if DIY_ACK_EVIDENCE in compiled.evidence_codes:
                             ack_options = {"require_upload_ack": True, "upload_ack_index": upload_count - 1}
                         a1_activation = compiled.activation_packet if compiled.upload_transport == "a1_02" else None
                         if a1_activation is not None:

@@ -1304,17 +1304,9 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             self.coordinator,
             ControlIntent.USER,
         ):
-            await self._async_turn_off(
-                clear_workspace_on_success=clear_workspace,
-                **kwargs,
-            )
+            await self._async_turn_off(clear_workspace_on_success=clear_workspace)
 
-    async def _async_turn_off(
-        self,
-        *,
-        clear_workspace_on_success: bool = False,
-        **kwargs: Any,
-    ) -> None:
+    async def _async_turn_off(self, *, clear_workspace_on_success: bool = False) -> None:
         power_off = partial(
             self.coordinator.send_command,
             build_power(False, self.coordinator.model),

@@ -70,6 +70,8 @@ from .protocol_core import H60a6EffectFrame, H607cDiyBody, H607cPaintBody, H607c
 from .scenes import MODEL_SCENES, SceneEntry, resolve_scene_identity, scene_for_profile, scene_selector_code
 from .transport import fragment_a3
 
+DIY_ACK_EVIDENCE = "native_diy_positive_ack_required"
+
 
 class CompatibilityState(StrEnum):
     COMPATIBLE = "compatible"
@@ -713,7 +715,7 @@ def _compile_workshop_effect(
         artifact_sha256=sha256(b"".join(packets)).hexdigest(),
         evidence_codes=(
             "effect_content_readback_unavailable",
-            *(("native_diy_positive_ack_required",) if profile.diy_requires_upload_ack else ()),
+            *((DIY_ACK_EVIDENCE,) if profile.diy_requires_upload_ack else ()),
         ),
         upload_subtype=body_kind,
     )
@@ -765,7 +767,7 @@ def compile_scene_effect(
             artifact_sha256=sha256(b"".join((*upload, activation))).hexdigest(),
             evidence_codes=(
                 *(
-                    ("native_diy_positive_ack_required",)
+                    (DIY_ACK_EVIDENCE,)
                     if contract is not None or profile.diy_requires_upload_ack or profile.supports_color_mode_readback
                     else ()
                 ),
@@ -840,7 +842,7 @@ def compile_scene_effect(
         raise ValueError("unsupported scene effect content")
 
     if upload and profile.diy_requires_upload_ack:
-        evidence_codes.append("native_diy_positive_ack_required")
+        evidence_codes.append(DIY_ACK_EVIDENCE)
     digest = sha256(b"".join((*upload, activation))).hexdigest()
     return CompiledEffect(
         item_id=str(item.id),
@@ -924,7 +926,7 @@ def compile_native_effect(
         activation_packet=activation,
         artifact_sha256=sha256(b"".join((*upload, activation))).hexdigest(),
         evidence_codes=(
-            ("native_diy_positive_ack_required", "effect_content_readback_unavailable")
+            (DIY_ACK_EVIDENCE, "effect_content_readback_unavailable")
             if profile.diy_requires_upload_ack
             else ("effect_content_readback_unavailable",)
         ),
@@ -997,7 +999,7 @@ def compile_h617a(
         upload_packets=tuple(upload),
         activation_packet=activation,
         artifact_sha256=digest,
-        evidence_codes=("native_diy_positive_ack_required",) if profile.diy_requires_upload_ack else (),
+        evidence_codes=(DIY_ACK_EVIDENCE,) if profile.diy_requires_upload_ack else (),
         physical_ic_count=profile.physical_ic_count
         if isinstance(content, PaintedEffect) and content.addressing == "physical_ic"
         else None,

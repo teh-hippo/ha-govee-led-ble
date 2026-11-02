@@ -34,11 +34,16 @@ from tests.test_govee_encryption import client, v1_reply, v2_reply
 async def test_bloom_last_fragment_failure_restarts_all_packets(hass, route, version, reject_reconnect):
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6099", configuration_url=None)
     transformed = []
+
+    def outbound_transform(packet: bytes) -> bytes:
+        transformed.append(packet)
+        return b"\xfe" + packet
+
     coordinator.profile = replace(
         coordinator.profile,
         read_domains=frozenset(),
         setup_required_read_domains=frozenset(),
-        outbound_transform=lambda packet: transformed.append(packet) or b"\xfe" + packet,
+        outbound_transform=outbound_transform,
     )
     coordinator.music_sensitivity = 42
     coordinator.music_calm = route == "native"

@@ -53,6 +53,19 @@ DEPLOYMENT_STORE_MINOR_VERSION: Final = 0
 DEPLOYMENT_STORE_KEY: Final = f"{DOMAIN}.effect_deployments"
 MAX_DEPLOYMENT_PROGRESS: Final = 1024
 MAX_DEPLOYMENT_EVIDENCE_CODES: Final = 8
+MAX_PRIOR_SEGMENTS: Final = 30
+_VIDEO_RESTORE_CONTROLS: Final = frozenset(
+    {
+        "capture_region",
+        "saturation",
+        "sound_effects",
+        "white_balance",
+        "relative_brightness",
+        "blank_screen",
+        "blank_screen_policy",
+        "black_border",
+    }
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -185,15 +198,17 @@ class PriorControlState:
             except ValueError as error:
                 raise EffectStorageError("invalid prior music body") from error
         if self.segment_colors is not None or self.segment_brightness is not None:
-            if not isinstance(self.segment_colors, tuple) or not 1 <= len(self.segment_colors) <= 30:
-                raise EffectStorageError("prior segment layout must contain 1 to 30 colours")
+            if not isinstance(self.segment_colors, tuple) or not 1 <= len(self.segment_colors) <= MAX_PRIOR_SEGMENTS:
+                raise EffectStorageError(f"prior segment layout must contain 1 to {MAX_PRIOR_SEGMENTS} colours")
             for rgb in self.segment_colors:
                 _validate_rgb(rgb, "prior segment colour")
             if self.segment_brightness is not None:
                 if not isinstance(self.segment_brightness, tuple) or len(self.segment_colors) != len(
                     self.segment_brightness
                 ):
-                    raise EffectStorageError("prior segment layout must contain matching 1 to 30 element tuples")
+                    raise EffectStorageError(
+                        f"prior segment layout must contain matching 1 to {MAX_PRIOR_SEGMENTS} element tuples"
+                    )
                 if any(type(value) is not int or not 0 <= value <= 100 for value in self.segment_brightness):
                     raise EffectStorageError("prior segment brightness must be from 0 to 100")
         if self.music_palette is not None:
@@ -219,18 +234,7 @@ class PriorControlState:
         if self.video_restore_controls is not None and (
             not isinstance(self.video_restore_controls, tuple)
             or any(
-                not isinstance(control, str)
-                or control
-                not in {
-                    "capture_region",
-                    "saturation",
-                    "sound_effects",
-                    "white_balance",
-                    "relative_brightness",
-                    "blank_screen",
-                    "blank_screen_policy",
-                    "black_border",
-                }
+                not isinstance(control, str) or control not in _VIDEO_RESTORE_CONTROLS
                 for control in self.video_restore_controls
             )
         ):
