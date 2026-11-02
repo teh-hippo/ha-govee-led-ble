@@ -81,9 +81,7 @@ def test_geometry_requires_positive_revision_evidence(model, pact, hardware, fir
     assert p.supports_segments is segmented
     assert p.supports_rgb is (segmented or legacy_colour)
     assert p.supports_color_temperature is (segmented or legacy_colour)
-    expected_seg_kelvin = (
-        segmented and model == "H60A6" and (pact == (1, 3) or (hardware, firmware) == ("1.04.03", "1.00.41"))
-    )
+    expected_seg_kelvin = segmented and model == "H60A6"
     assert p.supports_segment_color_temperature is expected_seg_kelvin
     assert p.can_read(ReadDomain.SEGMENTS) is segmented
     assert p.segment_count == (14 if model == "H60A1" else 1 if pact == (1, 1) else 13)

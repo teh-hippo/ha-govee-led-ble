@@ -121,7 +121,6 @@ _QUALIFIED_CONTEXTS: tuple[tuple[str, str, int | None, int | None, str | None, s
     ("H60A1-segmented-2200k", "H60A1", 2, 1, "1.02.20", "1.04.02"),
     ("H60A6-pact-1-1", "H60A6", 1, 1, None, None),
     ("H60A6-pact-1-2", "H60A6", 1, 2, None, None),
-    ("H60A6-pact-1-3", "H60A6", 1, 3, "1.00.41", "1.04.03"),
     ("H60A6-unqualified", "H60A6", None, None, None, None),
     ("H60A6-pact-1-4", "H60A6", 1, 4, None, None),
     ("H6076-unqualified", "H6076", None, None, None, None),

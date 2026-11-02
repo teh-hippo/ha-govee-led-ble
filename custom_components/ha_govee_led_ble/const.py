@@ -2177,16 +2177,12 @@ def device_profile(
         if (pact_type, pact_code) == (None, None):
             segmented = (hardware, firmware) == ("1.04.03", known_firmware)
         if segmented:
-            segmented_kelvin = model == "H60A6" and (
-                (pact_type == 1 and type(pact_code) is int and pact_code >= 3)
-                or (hardware, firmware) == ("1.04.03", "1.00.41")
-            )
             return replace(
                 profile,
                 supports_rgb=True,
                 supports_color_temperature=True,
                 supports_segment_writes=True,
-                supports_segment_color_temperature=segmented_kelvin,
+                supports_segment_color_temperature=model == "H60A6",
                 read_domains=profile.read_domains | {ReadDomain.SEGMENTS},
             )
         return profile
