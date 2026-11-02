@@ -14,12 +14,11 @@ from custom_components.ha_govee_led_ble.effect_catalogue import MODEL_EFFECT_CAT
 from custom_components.ha_govee_led_ble.effect_compiler import compile_application
 from custom_components.ha_govee_led_ble.effect_deployments import PriorControlState
 from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, MusicProfile
-from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_segment_colour
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_segment_colour, table_kelvin_rgb
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.light_commands import (
     build_color_temp,
     build_segment_color,
-    kelvin_to_rgb,
     parse_static_write,
 )
 from custom_components.ha_govee_led_ble.music_commands import resolve_music_profile
@@ -225,7 +224,7 @@ async def test_static_attempt_failure_keeps_new_segment_notification(coordinator
 def test_nonuniform_segment_observation_invalidates_global_kelvin(coordinator):
     coordinator.color_mode = ParsedMode.COLOUR
     coordinator.install_static_color(kelvin=4000)
-    colours = [kelvin_to_rgb(4000)] * 15
+    colours = [table_kelvin_rgb(4000)] * 15
     observe_segments(coordinator, colours, [100] * 15)
     colours[0] = (0, 0, 255)
     observe_segments(coordinator, colours, [100] * 15)
@@ -310,14 +309,13 @@ def test_profile_kelvin_range_follows_declared_target(monkeypatch):
             "Synthetic wider Kelvin range",
             command_grammar="H617A",
             supports_color_temperature=True,
-            min_color_temp_kelvin=1500,
-            max_color_temp_kelvin=10000,
+            color_temp_range=(1500, 10000),
             whole_device_mask=0x7FFF,
         ),
     )
     parsed = parse_static_write(build_color_temp(1500, "H9904"), "H9904")
     assert parsed.kelvin == 1500
-    assert parsed.kelvin_companion_rgb == kelvin_to_rgb(1500)
+    assert parsed.kelvin_companion_rgb == table_kelvin_rgb(1500)
     assert parse_static_write(build_color_temp(1500, "H617A"), "H617A").kelvin == 2000
 
 

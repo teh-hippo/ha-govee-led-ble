@@ -25,7 +25,6 @@ from custom_components.ha_govee_led_ble.light_commands import (
     build_segment_brightness,
     build_segment_color,
     build_segment_color_temp,
-    kelvin_to_rgb,
     parse_static_write,
 )
 from custom_components.ha_govee_led_ble.transport import xor_checksum
@@ -65,13 +64,13 @@ def profile(request, monkeypatch):
             "supports_segment_color_temperature",
             build_segment_color_temp,
             ([1], 3000),
-            lambda p: build_colour_temperature(3000, kelvin_to_rgb(3000), 1, profile=p),
+            lambda p: build_colour_temperature(3000, 1, profile=p),
         ),
         (
             "supports_color_temperature",
             build_segment_color_temp,
             ([1], 3000),
-            lambda p: build_colour_temperature(3000, kelvin_to_rgb(3000), 1, profile=p),
+            lambda p: build_colour_temperature(3000, 1, profile=p),
         ),
     ],
 )
@@ -130,7 +129,7 @@ def test_raw_mask_geometry(profile, mask):
     for packet in (
         build_segment_colour(mask, 1, 2, 3, profile=profile),
         build_brightness_mask(mask, 50, profile=profile),
-        build_colour_temperature(3000, kelvin_to_rgb(3000), mask, profile=profile),
+        build_colour_temperature(3000, mask, profile=profile),
     ):
         with pytest.raises(ValueError, match="no segments|geometry"):
             require_profile_packet(packet, profile)

@@ -18,8 +18,9 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_brightness,
     build_power,
     build_scene_activation,
+    table_kelvin_rgb,
 )
-from custom_components.ha_govee_led_ble.light_commands import build_color_rgb, kelvin_companion_rgb
+from custom_components.ha_govee_led_ble.light_commands import build_color_rgb
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES, scene_selector_code
 from custom_components.ha_govee_led_ble.transport import WRITE_UUID
 from custom_components.ha_govee_led_ble.video_applicability import video_identity_fields
@@ -80,14 +81,13 @@ async def test_h6046_bar_write_preserves_fresh_sibling_and_unknown_flags(hass, m
 
 async def test_h6046_mixed_native_white_revokes_known_rgb_even_when_rendering_is_unchanged(hass):
     from custom_components.ha_govee_led_ble.effect_runtime import async_prepare_effect_control_state
-    from custom_components.ha_govee_led_ble.light_commands import kelvin_companion_rgb
 
     coord = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6046", configuration_url=_CONFIGURATION_URL)
     coord.pact_type, coord.pact_code = 1, 1
     coord._resolve_device_profile()
     coord._notify_started_monotonic = time.monotonic()
     coord.color_mode = ParsedMode.COLOUR
-    coord.segment_colors = [kelvin_companion_rgb(2700, coord.profile)] * 10
+    coord.segment_colors = [table_kelvin_rgb(2700)] * 10
     coord.segment_state_source = "observed"
     coord._static_rgb_known = True
     coord._notify_callback(None, bytearray(_packet(0xAA, 0x33, [0x11])))
@@ -120,10 +120,9 @@ async def test_h6072_optional_nonzero_kelvin_revokes_rgb_only_preview_recovery(h
 
 
 def test_h6046_recovery_persists_both_white_points_and_native_power_flags():
-    from custom_components.ha_govee_led_ble.light_commands import kelvin_companion_rgb
 
     profile = device_profile("H6046", 1, 1)
-    colours = (kelvin_companion_rgb(2700, profile),) * 5 + (kelvin_companion_rgb(6500, profile),) * 5
+    colours = (table_kelvin_rgb(2700),) * 5 + (table_kelvin_rgb(6500),) * 5
     state = PriorControlState(
         mode="colour",
         is_on=False,
@@ -557,7 +556,7 @@ async def test_h6179_zero_kelvin_rgb_observation_replaces_retained_white_and_res
     coordinator._notify_callback(None, bytearray(_packet(0xAA, 1, [1])))
     coordinator._notify_callback(None, bytearray(_packet(0xAA, 5, [0x0D, 255, 255, 255, 0x0E, 0x10, 255, 203, 141])))
     assert coordinator.color_temp_kelvin == 3600
-    rgb = kelvin_companion_rgb(3600, coordinator.profile)
+    rgb = table_kelvin_rgb(3600)
     coordinator._notify_callback(None, bytearray(_packet(0xAA, 5, [0x0D, *rgb, 0, 0, 0, 0, 0])))
     state = PriorControlState.from_dict(coordinator.capture_effect_control_state().to_dict())
     assert state.color_temp_kelvin is None and state.rgb_color == rgb

@@ -275,7 +275,7 @@ class _SegmentMixin(_CoordinatorBase):
                         self._renew_foreground_lease()
                         while True:
                             kelvin_revision = self._field_revisions.get("color_temp_kelvin", 0)
-                            await read_pages(deadline, mode=profile.kelvin_companion_uses_table)
+                            await read_pages(deadline, mode=profile.segment_kelvin_checks_colour_mode)
                             rounds += 1
                             selected_colors = {self.segment_colors[index] for index in selected}
                             preserved = self.segment_brightness == before_brightness and all(
@@ -295,7 +295,7 @@ class _SegmentMixin(_CoordinatorBase):
                                     and self.color_temp_kelvin == static.kelvin
                                 )
                             mode_matches = (
-                                not profile.kelvin_companion_uses_table or self.color_mode is ParsedMode.COLOUR
+                                not profile.segment_kelvin_checks_colour_mode or self.color_mode is ParsedMode.COLOUR
                             )
                             if preserved and matches and mode_matches:
                                 if static.whole_strip and not profile.static_readback_kelvin:
@@ -325,14 +325,14 @@ class _SegmentMixin(_CoordinatorBase):
                         self.color_temp_kelvin_source = "initial"
                         self.async_set_updated_data(self.data or {})
                     _LOGGER.debug(
-                        "Kelvin verification model=%s requested=%s sent=%s mask=%x segments=%s table=%s "
+                        "Kelvin verification model=%s requested=%s sent=%s mask=%x segments=%s checks_mode=%s "
                         "rounds=%s elapsed=%.3f outcome=%s",
                         self.model,
                         requested_kelvin,
                         static.kelvin,
                         static.segment_mask,
                         profile.segment_count,
-                        profile.kelvin_companion_uses_table,
+                        profile.segment_kelvin_checks_colour_mode,
                         rounds,
                         time.monotonic() - started,
                         outcome,

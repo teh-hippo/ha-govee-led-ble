@@ -109,6 +109,13 @@ _IDENTITY_READ_DOMAINS = frozenset(
     }
 )
 
+# Every colour temperature is a 100 K step of the shared companion-colour table.
+KELVIN_STEP = 100
+KELVIN_RANGE_2000_9000 = (2000, 9000)
+KELVIN_RANGE_2200_6500 = (2200, 6500)
+KELVIN_RANGE_2700_6500 = (2700, 6500)
+KELVIN_RANGE_1000_10000 = (1000, 10000)
+
 NATIVE_ZONE_CONTROLS = (
     "panel_enabled",
     "ring_enabled",
@@ -182,12 +189,11 @@ class ModelProfile:
     supports_installation_direction: bool = False
     supports_color_temperature: bool = False
     supports_low_blue_light: bool = False
-    min_color_temp_kelvin: int = 2000
-    max_color_temp_kelvin: int = 9000
+    color_temp_range: tuple[int, int] = KELVIN_RANGE_2000_9000
     readback_min_color_temp_kelvin: int | None = None
     kelvin_direct_rgb: tuple[int, int, int] = (0, 0, 0)
-    kelvin_companion_uses_table: bool = False
-    color_temp_step_kelvin: int = 1
+    # After a masked Kelvin write, the lamp must also report colour mode (not just matching segment colours).
+    segment_kelvin_checks_colour_mode: bool = False
     supports_custom_effects: bool = False
     supports_scenes: bool = False
     supports_video_mode: bool = False
@@ -271,8 +277,6 @@ class ModelProfile:
             raise ValueError("unknown DIY upload transport")
         if not self.restarting_boolean_controls <= self.boolean_controls:
             raise ValueError("restarting settings must be declared boolean controls")
-        if type(self.color_temp_step_kelvin) is not int or self.color_temp_step_kelvin < 1:
-            raise ValueError("Kelvin step must be a positive integer")
         if len(self.kelvin_direct_rgb) != 3 or any(
             type(channel) is not int or not 0 <= channel <= 255 for channel in self.kelvin_direct_rgb
         ):
@@ -417,6 +421,14 @@ class ModelProfile:
         return self.can_read(ReadDomain.COLOUR_MODE) or self.can_read(ReadDomain.MODE)
 
     @property
+    def min_color_temp_kelvin(self) -> int:
+        return self.color_temp_range[0]
+
+    @property
+    def max_color_temp_kelvin(self) -> int:
+        return self.color_temp_range[1]
+
+    @property
     def supports_segments(self) -> bool:
         return self.segment_count > 0 and self.supports_segment_writes
 
@@ -557,13 +569,11 @@ _H6076_PROFILE = ModelProfile(
     setup_required_read_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS}),
     supports_rgb=True,
     supports_color_temperature=True,
-    min_color_temp_kelvin=2700,
-    max_color_temp_kelvin=6500,
+    color_temp_range=KELVIN_RANGE_2700_6500,
     readback_min_color_temp_kelvin=2200,
     # Static status can omit Kelvin. Segment rendering confirms plausible
     # white, not an exact Kelvin measurement or losslessly restorable native-white intent.
-    kelvin_companion_uses_table=True,
-    color_temp_step_kelvin=100,
+    segment_kelvin_checks_colour_mode=True,
     segment_colour_mode_ambiguous=True,
     segment_kelvin_renders_device_rgb=True,
     static_readback_gradual=True,
@@ -600,7 +610,7 @@ _H6076_PROFILE = ModelProfile(
 
 _H6076_MUSIC_PROFILE = replace(
     _H6076_PROFILE,
-    min_color_temp_kelvin=2200,
+    color_temp_range=KELVIN_RANGE_2200_6500,
     readback_min_color_temp_kelvin=None,
     music_modes=_H6076_ALL_MUSIC_MODES,
     readback_music_modes=(),
@@ -649,11 +659,9 @@ _H6072_PROFILE = ModelProfile(
     profile_pact_dependent=True,
     supports_rgb=True,
     supports_color_temperature=True,
-    min_color_temp_kelvin=2200,
-    max_color_temp_kelvin=6500,
+    color_temp_range=KELVIN_RANGE_2000_9000,
     kelvin_direct_rgb=(255, 255, 255),
-    kelvin_companion_uses_table=True,
-    color_temp_step_kelvin=100,
+    segment_kelvin_checks_colour_mode=True,
     static_readback_gradual=True,
     static_readback_nonzero_kelvin=True,
     segment_colour_mode_ambiguous=True,
@@ -727,11 +735,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         ),
         supports_rgb=True,
         supports_color_temperature=True,
-        min_color_temp_kelvin=2700,
-        max_color_temp_kelvin=6500,
-        color_temp_step_kelvin=100,
-        kelvin_direct_rgb=(255, 255, 255),
-        kelvin_companion_uses_table=True,
+        color_temp_range=KELVIN_RANGE_2700_6500,
         static_readback_echoes_color=True,
         static_readback_kelvin=True,
         static_readback_zero_kelvin_is_rgb=True,
@@ -775,7 +779,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         setup_required_read_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE}),
         supports_rgb=True,
         supports_color_temperature=True,
-        kelvin_companion_uses_table=True,
+        segment_kelvin_checks_colour_mode=True,
         kelvin_direct_rgb=(255, 255, 255),
         supports_segment_writes=True,
         supports_segment_brightness=True,
@@ -826,8 +830,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         segment_colour_mode_ambiguous=True,
         profile_identity_fields=frozenset({"fw_version", "hw_version"}),
         setup_required_read_domains=frozenset({ReadDomain.POWER}),
-        min_color_temp_kelvin=2700,
-        max_color_temp_kelvin=6500,
+        color_temp_range=KELVIN_RANGE_2700_6500,
         whole_device_mask=0x3FFF,
         segment_count=14,
         segment_group_size=4,
@@ -860,8 +863,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         segment_colour_mode_ambiguous=True,
         profile_identity_fields=frozenset({"fw_version", "hw_version"}),
         setup_required_read_domains=frozenset({ReadDomain.POWER}),
-        min_color_temp_kelvin=2700,
-        max_color_temp_kelvin=6500,
+        color_temp_range=KELVIN_RANGE_2700_6500,
         whole_device_mask=0x1FFF,
         segment_count=13,
         segment_group_size=4,
@@ -876,8 +878,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         colour_mode_query_selector=1,
         supports_rgb=True,
         supports_color_temperature=True,
-        min_color_temp_kelvin=2700,
-        max_color_temp_kelvin=6500,
+        color_temp_range=KELVIN_RANGE_2700_6500,
         supports_custom_effects=True,
         supports_scenes=True,
         supports_multi_layered_effects=True,
@@ -1203,10 +1204,8 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_segment_brightness=True,
         supports_segment_color_temperature=True,
         segment_kelvin_renders_device_rgb=True,
-        min_color_temp_kelvin=2700,
-        max_color_temp_kelvin=6500,
-        kelvin_companion_uses_table=True,
-        color_temp_step_kelvin=100,
+        color_temp_range=KELVIN_RANGE_2700_6500,
+        segment_kelvin_checks_colour_mode=True,
         segment_colour_mode_ambiguous=True,
         scene_catalogue_sku="H66A0",
         supports_custom_effects=True,
@@ -1221,8 +1220,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         status_grammar="H1A42",
         effect_grammar="H617A",
         music_grammar="H1A42",
-        kelvin_companion_uses_table=True,
-        color_temp_step_kelvin=100,
+        segment_kelvin_checks_colour_mode=True,
         segment_colour_mode_ambiguous=True,
         static_readback_kelvin=True,
         static_readback_zero_kelvin_is_rgb=True,
@@ -1249,8 +1247,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         ),
         supports_rgb=True,
         supports_color_temperature=True,
-        min_color_temp_kelvin=1000,
-        max_color_temp_kelvin=10000,
+        color_temp_range=KELVIN_RANGE_1000_10000,
         supports_custom_effects=True,
         supports_scenes=True,
         music_modes=(
@@ -1285,8 +1282,8 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         status_grammar="H61F5",
         effect_grammar="H617A",
         music_grammar="H61F5",
-        kelvin_companion_uses_table=True,
-        color_temp_step_kelvin=100,
+        profile_pact_dependent=True,
+        segment_kelvin_checks_colour_mode=True,
         segment_colour_mode_ambiguous=True,
         static_readback_gradual=True,
         read_domains=frozenset(
@@ -1311,8 +1308,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         ),
         supports_rgb=True,
         supports_color_temperature=True,
-        min_color_temp_kelvin=2700,
-        max_color_temp_kelvin=6500,
+        color_temp_range=KELVIN_RANGE_2700_6500,
         supports_custom_effects=True,
         supports_scenes=True,
         music_modes=(
@@ -1471,10 +1467,9 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         brightness_zero_turns_off=True,
         supports_rgb=True,
         supports_color_temperature=True,
-        min_color_temp_kelvin=2200,
-        max_color_temp_kelvin=6500,
+        color_temp_range=KELVIN_RANGE_2200_6500,
         kelvin_direct_rgb=(255, 255, 255),
-        kelvin_companion_uses_table=True,
+        segment_kelvin_checks_colour_mode=True,
         whole_device_mask=0x1FFF,
         segment_count=13,
         native_zones=H607C_NATIVE_ZONES,
@@ -1679,8 +1674,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         setup_required_read_domains=frozenset({ReadDomain.POWER}),
         supports_rgb=True,
         supports_color_temperature=True,
-        min_color_temp_kelvin=2000,
-        max_color_temp_kelvin=9000,
+        color_temp_range=KELVIN_RANGE_2000_9000,
         kelvin_direct_rgb=(255, 255, 255),
         whole_device_mask=0x3FFFFFFF,
         segment_count=30,
@@ -1734,8 +1728,6 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         ),
         supports_rgb=True,
         supports_color_temperature=True,
-        kelvin_direct_rgb=(255, 255, 255),
-        color_temp_step_kelvin=100,
         supports_custom_effects=True,
         supports_scenes=True,
         supports_multi_layered_effects=True,
@@ -1872,8 +1864,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         setup_required_read_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE}),
         supports_rgb=True,
         supports_color_temperature=True,
-        min_color_temp_kelvin=2700,
-        max_color_temp_kelvin=6500,
+        color_temp_range=KELVIN_RANGE_2700_6500,
         kelvin_direct_rgb=(255, 255, 255),
         static_readback_kelvin=True,
         static_readback_zero_kelvin_is_rgb=True,
@@ -2133,10 +2124,10 @@ def _h6076_profile(pact_type: int | None, pact_code: int | None, firmware: str |
         else _H6076_PROFILE
     )
     if (pact_type, pact_code) == (1, 1):
-        return replace(base, min_color_temp_kelvin=2200, readback_min_color_temp_kelvin=None)
+        return replace(base, color_temp_range=KELVIN_RANGE_2200_6500, readback_min_color_temp_kelvin=None)
     if (pact_type, pact_code) == (2, 1):
-        return replace(base, min_color_temp_kelvin=2700, readback_min_color_temp_kelvin=None)
-    return replace(base, min_color_temp_kelvin=2700, readback_min_color_temp_kelvin=2200)
+        return replace(base, color_temp_range=KELVIN_RANGE_2700_6500, readback_min_color_temp_kelvin=None)
+    return replace(base, color_temp_range=KELVIN_RANGE_2700_6500, readback_min_color_temp_kelvin=2200)
 
 
 def device_profile(
@@ -2207,10 +2198,9 @@ def device_profile(
                 outbound_transform=h60a6_legacy_outbound_transform,
             )
         hw = FirmwareVersion.parse(hardware)
-        # App behaviour: HW >=1.04.03 uses the 2700 K table;
-        # older hardware uses 2200 K. Unknown retains conservative bounds.
+        # Hardware from 1.04.03 has a 2700 K floor; older hardware 2200 K. Unknown keeps the higher floor.
         if model == "H60A1" and hw is not None and hw.identity_number() < 10403:
-            profile = replace(profile, min_color_temp_kelvin=2200)
+            profile = replace(profile, color_temp_range=KELVIN_RANGE_2200_6500)
         # The owner tuple qualifies absent Pact metadata, never a contradictory topology.
         segmented = (
             ((pact_type, pact_code) in {(1, 1), (2, 1)})
@@ -2234,6 +2224,11 @@ def device_profile(
                 read_domains=profile.read_domains | {ReadDomain.SEGMENTS},
             )
         return profile
+    if model == "H61F5":
+        profile = get_profile(model)
+        return (
+            replace(profile, color_temp_range=KELVIN_RANGE_1000_10000) if (pact_type, pact_code) == (4, 1) else profile
+        )
     if model == "H6199":
         from .firmware_version import FirmwareVersion
 

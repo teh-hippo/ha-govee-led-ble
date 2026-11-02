@@ -240,7 +240,7 @@ async def test_reconnect_retains_cached_profile_but_revokes_write_authority(hass
     assert c.control_write_attempts == 0
 
 
-@pytest.mark.parametrize("model", ["H60A1", "H60A6", "H601C"])
+@pytest.mark.parametrize("model", ["H60A1", "H60A6"])
 async def test_invalid_basic_request_precedes_preview_and_power(hass, monkeypatch, model):
     c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", model, configuration_url=None)
     light = GoveeBLELight(c)

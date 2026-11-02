@@ -18,6 +18,7 @@ from .generated_protocol_adapter import (
     build_brightness,
     build_diy_activation,
     build_power,
+    table_kelvin_rgb,
 )
 from .light_commands import (
     build_color_rgb,
@@ -25,7 +26,6 @@ from .light_commands import (
     build_segment_brightness,
     build_segment_color_temp,
     build_segment_paint,
-    kelvin_companion_rgb,
     normalize_kelvin,
 )
 from .music_commands import prepare_music_profile_writes
@@ -689,8 +689,7 @@ class _RecoveryMixin(_CoordinatorBase):
             and state.color_temp_kelvin is not None
             and (
                 self.profile.segment_kelvin_renders_device_rgb
-                or state.segment_colors
-                != (kelvin_companion_rgb(state.color_temp_kelvin, self.profile),) * self.profile.segment_count
+                or state.segment_colors != (table_kelvin_rgb(state.color_temp_kelvin),) * self.profile.segment_count
             )
         ):
             # Whole-device Kelvin cannot reproduce a simultaneously captured

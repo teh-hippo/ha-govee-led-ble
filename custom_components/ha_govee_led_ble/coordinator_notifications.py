@@ -33,12 +33,10 @@ from .generated_protocol_adapter import (
     parse_command_result,
     parse_physical_ic_count,
     parse_zone_notification,
+    table_kelvin_rgb,
     upload_ack_success,
 )
 from .h6099_controls import h6099_control_status
-from .light_commands import (
-    kelvin_companion_rgb,
-)
 from .music_semantics import (
     music_body_params_for_mode,
 )
@@ -279,7 +277,7 @@ class _NotificationMixin(_CoordinatorBase):
             accepted_values = dict(static_values)
             if "rgb_color" in static_values and "color_temp_kelvin" not in static_values:
                 kelvin = self.color_temp_kelvin
-                if kelvin is None or static_values["rgb_color"] != kelvin_companion_rgb(kelvin, self.profile):
+                if kelvin is None or static_values["rgb_color"] != table_kelvin_rgb(kelvin):
                     accepted_values["color_temp_kelvin"] = None
             if self._accept_expected_values(accepted_values):
                 if static_values.get("color_temp_kelvin") is not None:

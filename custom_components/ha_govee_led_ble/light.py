@@ -1286,7 +1286,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 with self._rollback():
                     self._attr_color_mode = ColorMode.COLOR_TEMP
                     if (
-                        self.coordinator.profile.kelvin_companion_uses_table
+                        self.coordinator.profile.segment_kelvin_checks_colour_mode
                         and not self.coordinator.profile.static_readback_kelvin
                         and self.coordinator.profile.supports_segments
                     ):

@@ -13,7 +13,6 @@ from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from custom_components.ha_govee_led_ble.const import get_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
-from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_colour_temperature
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.light_commands import (
     build_color_rgb,
@@ -51,17 +50,13 @@ def test_schema_and_effective_profile_validation():
     }
     with pytest.raises(vol.Invalid):
         schema({"segments": [1], "color_temp_kelvin": 3000.5})
-    profile = replace(get_profile("H617A"), segment_count=5, min_color_temp_kelvin=2700)
+    profile = replace(get_profile("H617A"), segment_count=5, color_temp_range=(2700, 9000))
     for segments, kelvin in (([6], 3000), ([1], 2600), ([1], True), ([1], 3000.5)):
         with pytest.raises(ValueError):
             build_segment_color_temp(segments, kelvin, profile=profile)
     parsed = parse_static_write(build_segment_color_temp([1, 5], 3000, profile=profile))
     assert parsed is not None
-    assert (parsed.segment_mask, parsed.kelvin, parsed.kelvin_companion_rgb) == (17, 3000, (255, 177, 109))
-    # Direct-device write used an explicitly supplied companion, not kelvin_to_rgb().
-    assert build_colour_temperature(3000, (255, 185, 105), 1) == bytes.fromhex(
-        "330515010000000bb8ffb96901000000000000bf"
-    )
+    assert (parsed.segment_mask, parsed.kelvin, parsed.kelvin_companion_rgb) == (17, 3000, (255, 185, 105))
 
 
 def test_service_registration_uses_shared_segment_schema():
@@ -104,7 +99,7 @@ async def test_masked_kelvin_requires_fresh_rgb_and_preserves_siblings(hass, mon
     monkeypatch.setattr(coordinator, "_renew_foreground_lease", MagicMock())
     monkeypatch.setattr(coordinator, "_disconnect_locked", AsyncMock())
     writes = []
-    original_colors = [(255, 205, 166)] * 14 + [(3, 4, 5)]
+    original_colors = [(255, 213, 161)] * 14 + [(3, 4, 5)]
     original_brightness = list(range(20, 35))
     colors = list(original_colors)
     brightness = list(original_brightness)
@@ -115,7 +110,7 @@ async def test_masked_kelvin_requires_fresh_rgb_and_preserves_siblings(hass, mon
             assert coordinator.segment_state_source == "optimistic"
             assert coordinator._field_revisions.get("segment_colors", 0) > 0
             if failure != "ignored":
-                colors[0] = (255, 177, 109)
+                colors[0] = (255, 185, 105)
             if failure == "mismatch":
                 colors[0] = (0, 0, 255)
             elif failure == "sibling":
@@ -181,7 +176,7 @@ async def test_masked_kelvin_requires_fresh_rgb_and_preserves_siblings(hass, mon
             assert coordinator.segment_colors == colors
             assert coordinator.segment_brightness == brightness
         if failure is None:
-            assert colors == [(255, 177, 109)] + original_colors[1:]
+            assert colors == [(255, 185, 105)] + original_colors[1:]
             assert brightness == original_brightness
             assert coordinator.async_refresh_segments.await_count == 1
 

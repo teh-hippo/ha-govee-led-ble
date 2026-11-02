@@ -373,7 +373,7 @@ def test_h6076_registry_profile_is_the_music_ceiling_of_the_basic_profile():
     assert (
         replace(
             ceiling,
-            min_color_temp_kelvin=2700,
+            color_temp_range=(2700, 6500),
             readback_min_color_temp_kelvin=2200,
             music_modes=("energetic", "rhythm", "bounce", "hopping", "beat", "spray"),
             readback_music_modes=const._H6076_ALL_MUSIC_MODES,

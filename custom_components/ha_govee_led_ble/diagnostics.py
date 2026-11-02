@@ -69,8 +69,6 @@ async def async_get_config_entry_diagnostics(
         "color_temperature_range": {
             "minimum_kelvin": coordinator.profile.min_color_temp_kelvin,
             "maximum_kelvin": coordinator.profile.max_color_temp_kelvin,
-            "step_kelvin": coordinator.profile.color_temp_step_kelvin,
-            "table_companion": coordinator.profile.kelvin_companion_uses_table,
         },
         "supports_color_mode_readback": coordinator.profile.supports_color_mode_readback,
         "supports_custom_effects": coordinator.profile.supports_custom_effects,

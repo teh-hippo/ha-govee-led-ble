@@ -12,6 +12,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_power,
     build_segment_query,
     build_subordinate_query,
+    table_kelvin_rgb,
 )
 from custom_components.ha_govee_led_ble.light_commands import (
     ALL_SEGMENTS,
@@ -23,7 +24,6 @@ from custom_components.ha_govee_led_ble.light_commands import (
     build_segment_color_temp,
     build_segment_paint,
     build_white_brightness,
-    kelvin_to_rgb,
     parse_static_write,
     scale_segment_groups,
     segments_to_mask,
@@ -123,7 +123,7 @@ def test_whole_strip_colour_temperature_and_brightness() -> None:
     assert build_white_brightness(50) == H("3305150232ff7f00000000000000000000000093")
     temperature = build_color_temp(4000)
     assert temperature[7:9] == (4000).to_bytes(2, "big")
-    assert tuple(temperature[9:12]) == kelvin_to_rgb(4000)
+    assert tuple(temperature[9:12]) == table_kelvin_rgb(4000)
     assert build_color_temp(1000)[7:9] == (2000).to_bytes(2, "big")
     assert build_color_temp(12000)[7:9] == (9000).to_bytes(2, "big")
 
@@ -249,6 +249,6 @@ def test_static_write_semantics_round_trip(model: str) -> None:
     assert black is not None and black.rgb == (0, 0, 0) and black.kelvin is None
     temperature = parse_static_write(build_color_temp(3600, model), model)
     assert temperature is not None and temperature.kelvin == 3600
-    assert temperature.kelvin_companion_rgb == kelvin_to_rgb(3600)
+    assert temperature.kelvin_companion_rgb == table_kelvin_rgb(3600)
     level = parse_static_write(build_white_brightness(80, model), model)
     assert level is not None and level.brightness_pct == 80 and level.whole_strip

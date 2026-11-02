@@ -1,10 +1,9 @@
 """Semantic colour, temperature, segment and brightness commands."""
 
-import math
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from .const import WHOLE_BULB_GRAMMARS, ModelProfile, get_profile
+from .const import KELVIN_STEP, WHOLE_BULB_GRAMMARS, ModelProfile, get_profile
 from .generated_protocol_adapter import build_colour_temperature, build_segment_colour, parse_command, table_kelvin_rgb
 from .generated_protocol_adapter import (
     build_segment_brightness as build_segment_brightness_mask,
@@ -117,28 +116,6 @@ def build_color_rgb(
     return build_segment_colour(profile.whole_device_mask, red, green, blue, model, profile=profile)
 
 
-def kelvin_to_rgb(kelvin: int) -> tuple[int, int, int]:
-    temp = _clamp(kelvin, 1000, 10000) / 100.0
-    red = 255.0 if temp <= 66 else _clamp(int(329.698727446 * ((temp - 60) ** -0.1332047592)), 0, 255)
-    green = (
-        99.4708025861 * math.log(temp) - 161.1195681661
-        if temp <= 66
-        else 288.1221695283 * ((temp - 60) ** -0.0755148492)
-    )
-    blue = 255.0 if temp >= 66 else 0.0 if temp <= 19 else 138.5177312231 * math.log(temp - 10) - 305.0447927307
-    return int(red), _clamp(int(green), 0, 255), _clamp(int(blue), 0, 255)
-
-
-def kelvin_companion_rgb(kelvin: int, profile: ModelProfile) -> tuple[int, int, int]:
-    return (
-        table_kelvin_rgb(kelvin)
-        if profile.kelvin_companion_uses_table
-        or profile.command_grammar in WHOLE_BULB_GRAMMARS
-        or profile.kelvin_direct_rgb == (255, 255, 255)
-        else kelvin_to_rgb(kelvin)
-    )
-
-
 def kelvin_rendering_matches(rgb: tuple[int, int, int], kelvin: int, profile: ModelProfile) -> bool:
     """Whether a rendered segment colour is consistent with the Kelvin that was commanded.
 
@@ -147,17 +124,17 @@ def kelvin_rendering_matches(rgb: tuple[int, int, int], kelvin: int, profile: Mo
     """
     if profile.segment_kelvin_renders_device_rgb and rgb[0] >= 200 and rgb[1] >= 100:
         return True
-    return rgb == kelvin_companion_rgb(kelvin, profile)
+    return rgb == table_kelvin_rgb(kelvin)
 
 
 def normalize_kelvin(kelvin: int, profile: ModelProfile) -> int:
-    """Round to the profile's Kelvin step (ties upward) before building, presenting or verifying a request.
+    """Round to the 100 K step (ties upward) before building, presenting or verifying a request.
 
     Persisted off-grid values use the same normalisation for restoration writes and their expectations.
     """
-    value = _clamp(kelvin, profile.min_color_temp_kelvin, profile.max_color_temp_kelvin)
-    step = profile.color_temp_step_kelvin
-    return _clamp(((value + step // 2) // step) * step, profile.min_color_temp_kelvin, profile.max_color_temp_kelvin)
+    low, high = profile.color_temp_range
+    value = _clamp(kelvin, low, high)
+    return _clamp((value + KELVIN_STEP // 2) // KELVIN_STEP * KELVIN_STEP, low, high)
 
 
 def build_color_temp(kelvin: int, model: str = "H617A", *, profile: ModelProfile | None = None) -> bytes:
@@ -165,9 +142,7 @@ def build_color_temp(kelvin: int, model: str = "H617A", *, profile: ModelProfile
     if not profile.supports_color_temperature:
         raise ValueError(f"{profile.name} does not support colour temperature")
     value = normalize_kelvin(kelvin, profile)
-    return build_colour_temperature(
-        value, kelvin_companion_rgb(value, profile), profile.whole_device_mask, model, profile=profile
-    )
+    return build_colour_temperature(value, profile.whole_device_mask, model, profile=profile)
 
 
 def build_segment_color_temp(
@@ -189,7 +164,7 @@ def build_segment_color_temp(
     if not profile.min_color_temp_kelvin <= kelvin <= profile.max_color_temp_kelvin:
         raise ValueError("Kelvin outside profile range")
     value = normalize_kelvin(kelvin, profile)
-    return build_colour_temperature(value, kelvin_companion_rgb(value, profile), mask, model, profile=profile)
+    return build_colour_temperature(value, mask, model, profile=profile)
 
 
 def build_white_brightness(percent: int, model: str = "H617A", *, profile: ModelProfile | None = None) -> bytes:

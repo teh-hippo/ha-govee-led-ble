@@ -40,8 +40,7 @@ def test_status_semantics_use_effective_grammar_roster_and_bounds() -> None:
         command_grammar="H617A",
         status_grammar="H6102",
         music_modes=("bloom",),
-        min_color_temp_kelvin=3000,
-        max_color_temp_kelvin=4500,
+        color_temp_range=(3000, 4500),
     )
     packet = frame("aa05133032")
     assert decode_status_frame_result(packet, "H9908").rejection is ProtocolParseRejection.UNSUPPORTED_MODEL
@@ -54,7 +53,7 @@ def test_status_semantics_use_effective_grammar_roster_and_bounds() -> None:
     assert static is not None
     assert parse_color_mode(static.generated, "H9908", profile=profile).color_temp_kelvin == 4000
     with pytest.raises(ValueError, match="Kelvin"):
-        parse_color_mode(static.generated, "H9908", profile=replace(profile, max_color_temp_kelvin=3500))
+        parse_color_mode(static.generated, "H9908", profile=replace(profile, color_temp_range=(3000, 3500)))
 
 
 async def test_real_coordinator_uses_effective_status_not_static_sku(hass, monkeypatch) -> None:

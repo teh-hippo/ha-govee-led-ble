@@ -65,6 +65,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_h617a_scene,
     build_power,
     build_video_mode,
+    table_kelvin_rgb,
 )
 from custom_components.ha_govee_led_ble.h6102_capabilities import resolve_h6102_capabilities
 from custom_components.ha_govee_led_ble.light import (
@@ -76,7 +77,6 @@ from custom_components.ha_govee_led_ble.light import (
 from custom_components.ha_govee_led_ble.light_commands import (
     build_color_rgb,
     build_color_temp,
-    kelvin_to_rgb,
 )
 from custom_components.ha_govee_led_ble.light_services import (
     _PAINT_SEGMENTS_SCHEMA,
@@ -520,7 +520,7 @@ async def test_failed_power_off_preserves_segment_colour_observation(hass, model
     coord = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url=None)
     coord.is_on = True
     coord._notify_callback(None, bytearray.fromhex("aa051501000000000000000000000000000000bb"))
-    old_rgb = kelvin_to_rgb(4200)
+    old_rgb = table_kelvin_rgb(4200)
     coord.install_static_color(rgb=old_rgb, kelvin=4200, source="restored")
     coord.mark_segment_state_restored([old_rgb] * 15, [100] * 15)
     revisions = dict(coord._field_revisions)
@@ -577,7 +577,7 @@ async def test_failed_colour_after_brightness_preserves_latest_observation(
         return_value=SimpleNamespace(attributes={"color_mode": ColorMode.COLOR_TEMP, "color_temp_kelvin": 4200})
     )
     await entity._async_restore_static_color()
-    rgb = kelvin_to_rgb(4200) if observed_kelvin else (10, 20, 30)
+    rgb = table_kelvin_rgb(4200) if observed_kelvin else (10, 20, 30)
 
     async def refresh(**kwargs):
         assert kwargs["expected_brightness"] == 39
@@ -1573,7 +1573,7 @@ async def test_turn_on_effect_off_restores_colour_temperature(light, mock_coordi
     await light.async_turn_on(effect="off")
 
     mock_coordinator.send_command.assert_awaited_once_with(build_color_temp(4000))
-    assert mock_coordinator.segment_colors == [kelvin_to_rgb(4000)] * 15
+    assert mock_coordinator.segment_colors == [table_kelvin_rgb(4000)] * 15
     assert light.color_mode is ColorMode.COLOR_TEMP
 
 
@@ -2266,7 +2266,7 @@ async def test_whole_strip_write_fills_segment_colors(light, mock_coordinator):
     await light.async_turn_on(rgb_color=(10, 20, 30))
     assert mock_coordinator.segment_colors == [(10, 20, 30)] * 15
     await light.async_turn_on(color_temp_kelvin=4000)
-    assert mock_coordinator.segment_colors == [kelvin_to_rgb(4000)] * 15
+    assert mock_coordinator.segment_colors == [table_kelvin_rgb(4000)] * 15
 
 
 def test_segment_colors_attribute_absent_for_zero_count(mock_coordinator):
@@ -2554,7 +2554,7 @@ async def test_restore_static_state_never_replaces_observed_segments(light, mock
 async def test_restore_kelvin_only_when_observed_companion_matches(light, mock_coordinator):
     mock_coordinator.color_mode = ParsedMode.COLOUR
     mock_coordinator.segment_state_source = "observed"
-    mock_coordinator.segment_colors = [kelvin_to_rgb(4200)] * 15
+    mock_coordinator.segment_colors = [table_kelvin_rgb(4200)] * 15
     light.async_get_last_state = AsyncMock(
         return_value=SimpleNamespace(
             attributes={
