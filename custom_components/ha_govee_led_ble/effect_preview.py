@@ -27,6 +27,7 @@ from .effect_catalogue import (
     validate_catalogue_template_identity,
 )
 from .effect_compiler import (
+    DIY_ACK_EVIDENCE,
     CompiledApplication,
     CompiledEffect,
     CompiledVideoProfile,
@@ -995,7 +996,7 @@ class EffectPreviewManager:
                             "upload_ack_index": len(compiled.upload_packets) - 1 + int(power_required),
                             "writer": writer,
                         }
-                        if "native_diy_positive_ack_required" in compiled.evidence_codes
+                        if DIY_ACK_EVIDENCE in compiled.evidence_codes
                         else {}
                     )
                     if final_activation is not None:

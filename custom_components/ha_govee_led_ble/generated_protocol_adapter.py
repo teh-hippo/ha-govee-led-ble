@@ -315,8 +315,7 @@ def require_profile_packet(frame: bytes, profile: ModelProfile) -> None:
                 return
     if profile.setting_grammar == "H607C":
         setting = _parse_xor_frame(frame, "H607C", {"H607C": ("h607c_control", H607cControl)}).parsed
-        if setting is not None and getattr(setting.opcode, "name", None) is not None:
-            operation = getattr(setting.opcode, "name", "")
+        if setting is not None and (operation := getattr(setting.opcode, "name", None)) is not None:
             if (
                 operation == "zone_enable"
                 and getattr(setting.body.zone, "name", None) in profile.boolean_controls

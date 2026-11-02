@@ -2080,12 +2080,18 @@ def _h6072_profile(
     )
 
 
+_STANDARD_PACTS = frozenset({(1, 1), (2, 1)})
+_H60A_SEGMENTED_HARDWARE = "1.04.03"
+_H60A1_SEGMENTED_FIRMWARE = "1.02.20"
+_H60A6_SEGMENTED_FIRMWARE = "1.00.41"
+
+
 def _h6076_profile(pact_type: int | None, pact_code: int | None, firmware: str | None) -> ModelProfile:
     """Resolve H6076 music modes by software version and Kelvin floor by Pact type."""
     from .firmware_version import FirmwareVersion
 
     fw = FirmwareVersion.parse(firmware)
-    known_pact = (pact_type, pact_code) in {(1, 1), (2, 1)}
+    known_pact = (pact_type, pact_code) in _STANDARD_PACTS
     base = (
         _H6076_MUSIC_PROFILE
         if known_pact and fw is not None and fw >= FirmwareVersion((1, 2))
@@ -2109,7 +2115,7 @@ def device_profile(
     """Resolve exact-product capabilities from evidenced revision context."""
     if model in {"H6046", "H607C", "H6097", "H7020"}:
         profile = get_profile(model)
-        if (pact_type, pact_code) in {(1, 1), (2, 1)}:
+        if (pact_type, pact_code) in _STANDARD_PACTS:
             return profile
         return replace(
             profile,
@@ -2150,7 +2156,8 @@ def device_profile(
         profile = get_profile(model)
         if model == "H60A6" and not (
             (pact_type, pact_code) in {(1, 1), (1, 2), (1, 3)}
-            or (pact_type, pact_code, hardware, firmware) == (None, None, "1.04.03", "1.00.41")
+            or (pact_type, pact_code, hardware, firmware)
+            == (None, None, _H60A_SEGMENTED_HARDWARE, _H60A6_SEGMENTED_FIRMWARE)
         ):
             profile = replace(profile, boolean_controls=frozenset(), supports_power_on_behaviour=False)
         if model == "H60A6" and (pact_type, pact_code) == (1, 1):
@@ -2169,13 +2176,13 @@ def device_profile(
             profile = replace(profile, color_temp_range=KELVIN_RANGE_2200_6500)
         # The owner tuple qualifies absent Pact metadata, never a contradictory topology.
         segmented = (
-            ((pact_type, pact_code) in {(1, 1), (2, 1)})
+            ((pact_type, pact_code) in _STANDARD_PACTS)
             if model == "H60A1"
             else (pact_type == 1 and type(pact_code) is int and pact_code >= 2)
         )
-        known_firmware = "1.02.20" if model == "H60A1" else "1.00.41"
+        known_firmware = _H60A1_SEGMENTED_FIRMWARE if model == "H60A1" else _H60A6_SEGMENTED_FIRMWARE
         if (pact_type, pact_code) == (None, None):
-            segmented = (hardware, firmware) == ("1.04.03", known_firmware)
+            segmented = (hardware, firmware) == (_H60A_SEGMENTED_HARDWARE, known_firmware)
         if segmented:
             return replace(
                 profile,

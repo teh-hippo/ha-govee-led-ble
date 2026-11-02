@@ -266,11 +266,11 @@ def _make_coord(**ov) -> MagicMock:
     c.refresh_state, c.async_set_updated_data = AsyncMock(return_value=True), MagicMock()
     c.unknown_scene_code = None
 
-    async def write_effect_sequence(packets, **_kwargs) -> None:
+    async def write_effect_sequence(packets, **kwargs) -> None:
         for packet in packets:
-            if (guard := _kwargs.get("write_guard")) is not None:
+            if (guard := kwargs.get("write_guard")) is not None:
                 guard()
-            for field, value in (_kwargs.get("state_values") or {}).items():
+            for field, value in (kwargs.get("state_values") or {}).items():
                 setattr(c, field, value)
             await c.send_command(packet)
 

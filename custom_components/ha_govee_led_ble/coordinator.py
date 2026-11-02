@@ -113,6 +113,8 @@ from .video_applicability import (
 
 EFFECT_SEQUENCE_ATTEMPTS = 3
 UPLOAD_ACK_TIMEOUT = 2.0
+# How long to wait on one device exchange: a query's reply or a control write's confirmation.
+STATE_QUERY_TIMEOUT = 2.0
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -843,7 +845,7 @@ class GoveeBLECoordinator(
                         if self.profile.setting_grammar == "H607C":
                             try:
                                 async with self._lock:
-                                    deadline = time.monotonic() + 2.0
+                                    deadline = time.monotonic() + STATE_QUERY_TIMEOUT
                                     for query, fields in self._setting_queries(self._authorization_profile()):
                                         if self._client is not client or time.monotonic() >= deadline:
                                             break
@@ -865,7 +867,7 @@ class GoveeBLECoordinator(
                                         client,
                                         build_query(self.profile),
                                         ("low_blue_light",),
-                                        deadline=time.monotonic() + 2.0,
+                                        deadline=time.monotonic() + STATE_QUERY_TIMEOUT,
                                     )
                             except BleakError, ValueError, TimeoutError:
                                 _LOGGER.debug("Optional low-blue-light query failed", exc_info=True)
@@ -1177,6 +1179,22 @@ class GoveeBLECoordinator(
         if changed:
             self.async_set_updated_data(self.data or {})
 
+    def _require_writable_packet(
+        self,
+        packet: bytes,
+        packet_validator: Callable[[bytes, ModelProfile], None],
+        *,
+        arm_expected: bool,
+    ) -> None:
+        packet_validator(packet, self.profile)
+        self._validate_authorized_packet(packet, packet_validator)
+        if (
+            arm_expected
+            and self.profile.configured_string_counts
+            and parse_static_write(packet, self.model, profile=self.profile) is not None
+        ):
+            self._require_mask_transaction()
+
     async def _async_write_packet(
         self,
         client: BleakClient,
@@ -1209,14 +1227,7 @@ class GoveeBLECoordinator(
             raise BleakError(f"Incomplete {query_kind} query requires a new connection")
         if self.model == "H607C" and self._h607c_advertisement_observations:
             self._prune_h607c_advertisements()
-        packet_validator(packet, self.profile)
-        self._validate_authorized_packet(packet, packet_validator)
-        if (
-            arm_expected
-            and self.profile.configured_string_counts
-            and parse_static_write(packet, self.model, profile=self.profile) is not None
-        ):
-            self._require_mask_transaction()
+        self._require_writable_packet(packet, packet_validator, arm_expected=arm_expected)
         generation = self._profile_generation
         authorization_generation = self._authorization_generation
         wire_packet = packet
@@ -1236,14 +1247,7 @@ class GoveeBLECoordinator(
         except BleakError:
             await self._disconnect_locked()
             raise
-        packet_validator(packet, self.profile)
-        self._validate_authorized_packet(packet, packet_validator)
-        if (
-            arm_expected
-            and self.profile.configured_string_counts
-            and parse_static_write(packet, self.model, profile=self.profile) is not None
-        ):
-            self._require_mask_transaction()
+        self._require_writable_packet(packet, packet_validator, arm_expected=arm_expected)
         if arm_expected and generation != self._profile_generation:
             raise ValueError("Device profile changed before control write; refresh and retry")
         if arm_expected and authorization_generation != self._authorization_generation:
@@ -1372,7 +1376,7 @@ class GoveeBLECoordinator(
             return False
         token = self._notification_token
         if deadline is None:
-            deadline = time.monotonic() + 2.0
+            deadline = time.monotonic() + STATE_QUERY_TIMEOUT
         full_query = query_power and query_brightness and query_color_mode
         if self.profile.configured_string_counts and (full_query or query_segments is True):
             if not self._has_mask_transaction():
@@ -1620,7 +1624,7 @@ class GoveeBLECoordinator(
         except BleakError:
             return False
 
-    async def async_set_h6199_control(self, control: str, value: int, *, timeout: float = 2.0) -> None:
+    async def async_set_h6199_control(self, control: str, value: int, *, timeout: float = STATE_QUERY_TIMEOUT) -> None:
         """Write one register and require a fresh reply, never an ACK or cached value."""
         packet = build_h6199_control(control, value)
 
@@ -1804,7 +1808,7 @@ class GoveeBLECoordinator(
         async with async_control_intent(self, intent):
             async with self._lock:
                 client = await self._ensure_connected()
-                if not await self._read_configured_strings(client, deadline=time.monotonic() + 2.0):
+                if not await self._read_configured_strings(client, deadline=time.monotonic() + STATE_QUERY_TIMEOUT):
                     raise ValueError("Cannot confirm configured bulb layout; refresh and retry")
             self._mask_transaction = (asyncio.current_task(), self._notification_token, self._profile_generation)
             try:
@@ -1834,7 +1838,7 @@ class GoveeBLECoordinator(
                         await self._async_write_packet(client, packet, arm_expected=True, before_write=before_write)
                         if not await future:
                             raise ValueError("Device rejected configured string count")
-                    if not await self._read_configured_strings(client, deadline=time.monotonic() + 2.0):
+                    if not await self._read_configured_strings(client, deadline=time.monotonic() + STATE_QUERY_TIMEOUT):
                         raise ValueError("Device did not provide fresh configured string count")
                     if self.configured_strings != count:
                         raise ValueError("Device did not confirm requested string count")
@@ -2237,7 +2241,7 @@ class GoveeBLECoordinator(
         query_native_settings: bool = True,
         query_segments: bool | None = None,
         required_domains: frozenset[ReadDomain] | None = None,
-        timeout: float = 2.0,
+        timeout: float = STATE_QUERY_TIMEOUT,
     ) -> bool:
         if not self.profile.state_readable:
             return False
@@ -2328,18 +2332,12 @@ class GoveeBLECoordinator(
         query_color = self.profile.supports_color_mode_readback and (
             expected_zero_kelvin or expected_music_auto_color or any(value is not None for value in color_expectations)
         )
-        display_settings = (
-            frozenset({"white_balance", "blank_screen"})
-            | (
-                {"black_border"}
-                if video_control_states(self.profile, self)["black_border"] is CapabilityState.SUPPORTED
-                else set()
-            )
-            if refresh_display_settings is True
-            else frozenset()
-            if refresh_display_settings is False
-            else refresh_display_settings
-        )
+        if refresh_display_settings is True:
+            display_settings = {"white_balance", "blank_screen"}
+            if video_control_states(self.profile, self)["black_border"] is CapabilityState.SUPPORTED:
+                display_settings.add("black_border")
+        else:
+            display_settings = set(refresh_display_settings or ())
         if not display_settings <= {"white_balance", "blank_screen", "black_border"}:
             raise ValueError("unknown display setting requested for refresh")
         query_white_balance = (
@@ -3043,7 +3041,7 @@ class GoveeBLECoordinator(
         except Exception:
             if self._static_write_attempts != attempts and self.profile.can_read(ReadDomain.SEGMENTS):
                 try:
-                    async with asyncio.timeout(2.0):
+                    async with asyncio.timeout(STATE_QUERY_TIMEOUT):
                         await self.async_refresh_segments()
                 except Exception:
                     _LOGGER.debug("Static write reconciliation failed", exc_info=True)
