@@ -2081,6 +2081,8 @@ def _h6072_profile(
 
 
 _STANDARD_PACTS = frozenset({(1, 1), (2, 1)})
+_H60A6_NATIVE_CONTROL_PACTS = frozenset({(1, 1), (1, 2), (1, 3)})
+_H6199_DREAMVIEW_PACTS = frozenset({(1, 1), (2, 1), (3, 1), (4, 1)})
 _H60A_SEGMENTED_HARDWARE = "1.04.03"
 _H60A1_SEGMENTED_FIRMWARE = "1.02.20"
 _H60A6_SEGMENTED_FIRMWARE = "1.00.41"
@@ -2155,7 +2157,7 @@ def device_profile(
 
         profile = get_profile(model)
         if model == "H60A6" and not (
-            (pact_type, pact_code) in {(1, 1), (1, 2), (1, 3)}
+            (pact_type, pact_code) in _H60A6_NATIVE_CONTROL_PACTS
             or (pact_type, pact_code, hardware, firmware)
             == (None, None, _H60A_SEGMENTED_HARDWARE, _H60A6_SEGMENTED_FIRMWARE)
         ):
@@ -2202,7 +2204,7 @@ def device_profile(
         from .firmware_version import FirmwareVersion
 
         profile = H6199_PACT1_PROFILE if (pact_type, pact_code) == (1, 1) else get_profile(model)
-        if (pact_type, pact_code) not in {(1, 1), (2, 1), (3, 1), (4, 1)}:
+        if (pact_type, pact_code) not in _H6199_DREAMVIEW_PACTS:
             return replace(profile, dreamview_operations=frozenset(), dreamview_reads=frozenset())
         fw, hw = FirmwareVersion.parse(firmware), FirmwareVersion.parse(hardware)
         if fw is None or hw is None or fw < FirmwareVersion((1, 9)) or hw < FirmwareVersion((3, 2, 1)):

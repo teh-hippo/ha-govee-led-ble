@@ -21,6 +21,8 @@ from .light_commands import (
 
 _LOGGER = logging.getLogger(__name__)
 
+_SEGMENT_READ_TIMEOUT = 2.0
+
 
 class _SegmentMixin(_CoordinatorBase):
     @property
@@ -157,7 +159,7 @@ class _SegmentMixin(_CoordinatorBase):
                 observed.append("rgb_color")
         return tuple(observed)
 
-    async def async_refresh_segments(self, *, timeout: float = 2.0) -> bool:
+    async def async_refresh_segments(self, *, timeout: float = _SEGMENT_READ_TIMEOUT) -> bool:
         if (
             not self.profile.state_readable
             or not self.profile.supports_segments
@@ -267,8 +269,8 @@ class _SegmentMixin(_CoordinatorBase):
                             outcome = "write_failed"
                             if self._static_write_attempts != attempts:
                                 try:
-                                    async with asyncio.timeout(2.0):
-                                        await read_pages(min(deadline, time.monotonic() + 2.0))
+                                    async with asyncio.timeout(_SEGMENT_READ_TIMEOUT):
+                                        await read_pages(min(deadline, time.monotonic() + _SEGMENT_READ_TIMEOUT))
                                 except Exception:
                                     _LOGGER.debug("Failed Kelvin write reconciliation did not complete", exc_info=True)
                             raise
@@ -385,7 +387,7 @@ class _SegmentMixin(_CoordinatorBase):
                         # A later pre-write failure still leaves earlier groups applied.
                         if attempted and self._static_write_attempts == attempts:
                             try:
-                                async with asyncio.timeout(2.0):
+                                async with asyncio.timeout(_SEGMENT_READ_TIMEOUT):
                                     await self.async_refresh_segments()
                             except Exception:
                                 _LOGGER.debug("Partial segment paint reconciliation failed", exc_info=True)
