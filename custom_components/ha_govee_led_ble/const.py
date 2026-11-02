@@ -2117,7 +2117,13 @@ def device_profile(
     """Resolve exact-product capabilities from evidenced revision context."""
     if model in {"H6046", "H607C", "H6097", "H7020"}:
         profile = get_profile(model)
-        if (pact_type, pact_code) in _STANDARD_PACTS:
+<<<<<<< HEAD
+        if (pact_type, pact_code) in _STANDARD_PACTS or (model == "H607C" and (pact_type, pact_code) == (2, 2)):
+||||||| parent of c853499b (fix: restore H607C colour controls)
+        if (pact_type, pact_code) in {(1, 1), (2, 1)}:
+=======
+        if (pact_type, pact_code) in {(1, 1), (2, 1)} or (model == "H607C" and (pact_type, pact_code) == (2, 2)):
+>>>>>>> c853499b (fix: restore H607C colour controls)
             return profile
         return replace(
             profile,

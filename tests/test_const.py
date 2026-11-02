@@ -150,10 +150,10 @@ def test_support_quality_has_only_supported_and_experimental_states():
     } == {"H6072", "H607C", "H6179", "H7025"}
 
 
-@pytest.mark.parametrize("pact", [(1, 1), (2, 1), (None, None), (3, 7)])
+@pytest.mark.parametrize("pact", [(1, 1), (2, 1), (2, 2), (None, None), (3, 7)])
 def test_h607c_pact_admission_keeps_its_zones_and_does_not_invent_version_gates(pact):
     profile = device_profile("H607C", *pact, firmware="1.01.06.13", hardware="3.04.01 1.04.01/1.06.24")
-    known = pact in {(1, 1), (2, 1)}
+    known = pact in {(1, 1), (2, 1), (2, 2)}
     assert profile.supports_rgb is known
     assert profile.supports_scenes is known
     assert bool(profile.music_modes) is known
@@ -197,7 +197,7 @@ def test_owner_confirmation_issues_are_exact_sku_and_cover_experimental_models()
     assert MODEL_PROFILES["H617F"].confirmation_issue is None
 
 
-@pytest.mark.parametrize("pact", [(1, 1), (2, 1), (None, None), (10, 3)])
+@pytest.mark.parametrize("pact", [(1, 1), (2, 1), (2, 2), (None, None), (10, 3)])
 def test_h6097_pact_admission_does_not_depend_on_version_query_success(pact):
     profile = device_profile("H6097", *pact)
     known = pact in {(1, 1), (2, 1)}
@@ -307,11 +307,12 @@ def test_h7020_candidate_is_qualified_by_pact_not_guessed_firmware():
     assert (profile.min_color_temp_kelvin, profile.max_color_temp_kelvin) == (2000, 9000)
     for pact in (1, 2):
         assert device_profile("H7020", pact, 1) is profile
-    for pact, code in ((None, None), (1, 2), (3, 1)):
+    for pact, code in ((None, None), (1, 2), (2, 2), (3, 1)):
         unknown = device_profile("H7020", pact, code)
         assert unknown.command_operations == {"power", "brightness"}
         assert not unknown.supports_segments and not unknown.supports_music_mode
         assert not unknown.boolean_controls and not unknown.configured_string_counts
+    assert device_profile("H6046", 2, 2).command_operations == {"power", "brightness"}
 
 
 def test_h6076_profile_is_basic_and_fail_closed_until_identity_qualifies_music():
