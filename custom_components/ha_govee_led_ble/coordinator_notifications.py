@@ -49,6 +49,7 @@ _LOGGER = logging.getLogger(__name__)
 EXPECTED_STATE_TTL = 2.0
 _COMMAND_ECHO_PREFIX = b"\x33"
 _STATUS_PREFIX = 0xAA
+_STATIC_SOURCE_ATTRS = {"rgb_color": "rgb_color_source", "color_temp_kelvin": "color_temp_kelvin_source"}
 _COLOR_MODE_FIELDS = (
     "diy_companion",
     "video_full_screen",
@@ -292,7 +293,7 @@ class _NotificationMixin(_CoordinatorBase):
                     self.rgb_color_source = "retained"
                 for attr, value in accepted_values.items():
                     setattr(self, attr, value)
-                    setattr(self, f"{attr}_source", "observed" if attr in static_values else "initial")
+                    setattr(self, _STATIC_SOURCE_ATTRS[attr], "observed" if attr in static_values else "initial")
                 if (
                     "rgb_color" in static_values
                     and "color_temp_kelvin" not in static_values

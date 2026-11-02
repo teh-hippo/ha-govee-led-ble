@@ -1179,6 +1179,16 @@ class GoveeBLECoordinator(
         if changed:
             self.async_set_updated_data(self.data or {})
 
+    def _static_field_observed(self, field: str) -> bool:
+        """Whether a colour readback field was observed from the device, not retained or assumed."""
+        if field == "rgb_color":
+            source = self.rgb_color_source
+        elif field == "color_temp_kelvin":
+            source = self.color_temp_kelvin_source
+        else:
+            return True
+        return self.color_mode is ParsedMode.COLOUR and source == "observed"
+
     def _require_writable_packet(
         self,
         packet: bytes,
@@ -2139,10 +2149,7 @@ class GoveeBLECoordinator(
                 for field, baseline in field_baselines.items()
                 if self._field_revisions.get(field, 0) > baseline
                 and self._field_received_at.get(field, float("inf")) <= deadline
-                and (
-                    field not in {"rgb_color", "color_temp_kelvin"}
-                    or (self.color_mode is ParsedMode.COLOUR and getattr(self, f"{field}_source") == "observed")
-                )
+                and self._static_field_observed(field)
             }
             if expectations is not None and any(
                 field != "effect" and field in fresh_fields and getattr(self, field) != expected
@@ -2924,10 +2931,7 @@ class GoveeBLECoordinator(
         if any(
             field != "effect"
             and self._field_revisions.get(field, 0) > field_baselines[field]
-            and (
-                field not in {"rgb_color", "color_temp_kelvin"}
-                or (self.color_mode is ParsedMode.COLOUR and getattr(self, f"{field}_source") == "observed")
-            )
+            and self._static_field_observed(field)
             and getattr(self, field) != expected
             for field, expected in expectations.items()
         ):

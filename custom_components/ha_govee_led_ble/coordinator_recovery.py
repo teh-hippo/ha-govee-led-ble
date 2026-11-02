@@ -57,6 +57,14 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
+# (name passed to apply_active_video_mode, coordinator/state attribute, restore control)
+_VIDEO_VALUE_FIELDS = (
+    ("full_screen", "video_full_screen", "capture_region"),
+    ("saturation", "video_saturation", "saturation"),
+    ("sound_effects", "video_sound_effects", "sound_effects"),
+    ("sound_effects_softness", "video_sound_effects_softness", "sound_effects"),
+)
+
 
 class _RecoveryMixin(_CoordinatorBase):
     @property
@@ -635,31 +643,17 @@ class _RecoveryMixin(_CoordinatorBase):
     async def _restore_video_mode(self, state: PriorControlState, permitted: set[str], complete: bool) -> bool:
         await self.send_command(build_power(True, self.model))
         await self.send_command(build_brightness(state.brightness_pct, self.model))
-        for field, control in (
-            ("full_screen", "capture_region"),
-            ("saturation", "saturation"),
-            ("sound_effects", "sound_effects"),
-            ("sound_effects_softness", "sound_effects"),
-        ):
+        for _name, attr, control in _VIDEO_VALUE_FIELDS:
             if (
                 state.video_restore_controls is None or control in state.video_restore_controls
             ) and control not in permitted:
-                complete = complete and getattr(self, f"video_{field}") == getattr(state, f"video_{field}")
-        restored = frozenset(
-            field
-            for field, control in (
-                ("full_screen", "capture_region"),
-                ("saturation", "saturation"),
-                ("sound_effects", "sound_effects"),
-                ("sound_effects_softness", "sound_effects"),
-            )
-            if control in permitted
-        )
+                complete = complete and getattr(self, attr) == getattr(state, attr)
+        restored = [(name, attr) for name, attr, control in _VIDEO_VALUE_FIELDS if control in permitted]
         return (
             await apply_active_video_mode(
                 self._as_coordinator,
                 mode=state.video_mode,
-                requested_values={field: getattr(state, f"video_{field}") for field in restored},
+                requested_values={name: getattr(state, attr) for name, attr in restored},
                 parameters=state.video_parameters,
             )
             and await self.refresh_state(expected_on=True, expected_brightness=state.brightness_pct) is True
