@@ -47,7 +47,7 @@ from custom_components.ha_govee_led_ble.govee_encryption import (
 from custom_components.ha_govee_led_ble.govee_encryption import session as session_module
 from custom_components.ha_govee_led_ble.govee_encryption.session import GoveeEncryptionSession
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
-from custom_components.ha_govee_led_ble.light_commands import build_color_rgb, build_segment_color
+from custom_components.ha_govee_led_ble.light_commands import build_color_rgb, build_color_temp, build_segment_color
 from custom_components.ha_govee_led_ble.music_commands import prepare_music_request
 from custom_components.ha_govee_led_ble.transport import (
     ENCRYPTION_UUID,
@@ -71,10 +71,10 @@ async def test_wire_parsing_does_not_import_on_event_loop():
         assert parse_wire("Marker", b"\x01\x01").version == 1
 
 
-@pytest.mark.parametrize("pact_type", [1, 2])
-async def test_h607c_marker_qualifies_rgb_only_for_current_connection(hass, monkeypatch, pact_type):
+@pytest.mark.parametrize("pact_type,pact_code", [(1, 1), (2, 1), (2, 2)])
+async def test_h607c_marker_qualifies_rgb_only_for_current_connection(hass, monkeypatch, pact_type, pact_code):
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H607C", configuration_url=None)
-    device = client(bytes((2, 0, 0, 0, pact_type, 1)))
+    device = client(bytes((2, 0, 0, 0, pact_type, pact_code)))
     coordinator.is_on = True
     monkeypatch.setattr(coordinator, "_refresh_h607c_advertisements", lambda: None)
     monkeypatch.setattr(f"{M}.async_establish_ble_connection", AsyncMock(return_value=device))
@@ -83,11 +83,13 @@ async def test_h607c_marker_qualifies_rgb_only_for_current_connection(hass, monk
     light.hass = hass
     light.entity_id = "light.h607c"
     await light.async_turn_on(rgb_color=(12, 34, 56))
-    assert (coordinator.pact_type, coordinator.pact_code) == (pact_type, 1)
+    assert (coordinator.pact_type, coordinator.pact_code) == (pact_type, pact_code)
     assert device.write_gatt_char.await_args.args[1] == build_color_rgb(
         12, 34, 56, "H607C", profile=coordinator.profile
     )
     assert coordinator.segment_state_source == "optimistic"
+    await light.async_turn_on(color_temp_kelvin=3200)
+    assert device.write_gatt_char.await_args.args[1] == build_color_temp(3200, "H607C", profile=coordinator.profile)
     await light.async_set_segment_color([13], (90, 120, 200))
     assert device.write_gatt_char.await_args.args[1] == build_segment_color(
         [13], 90, 120, 200, "H607C", profile=coordinator.profile
@@ -484,6 +486,7 @@ async def _register_h607c_entities(hass, coordinator):
         ("missing", {"rgb", "color_temp"}, "unknown"),
         ("stale", {"rgb", "color_temp"}, "unknown"),
         ("supported", {"rgb", "color_temp"}, "on"),
+        ("supported_2_2", {"rgb", "color_temp"}, "unknown"),
         ("unsupported", {"brightness"}, None),
         ("conflicting", {"brightness"}, None),
     ],
@@ -495,9 +498,12 @@ async def test_h607c_registered_entities_present_identity_states(hass, identity,
         coordinator._h607c_marker_seen = identity == "stale"
         coordinator._resolve_device_profile()
     else:
-        coordinator._h607c_advertised_pacts = (
-            {(1, 1), (2, 1)} if identity == "conflicting" else {(1, 1)} if identity == "supported" else {(3, 1)}
-        )
+        coordinator._h607c_advertised_pacts = {
+            "conflicting": {(1, 1), (2, 1)},
+            "supported": {(1, 1)},
+            "supported_2_2": {(2, 2)},
+            "unsupported": {(3, 1)},
+        }[identity]
         coordinator._resolve_h607c_pact()
     if identity == "supported":
         coordinator.boolean_control_state["gradual"] = True
