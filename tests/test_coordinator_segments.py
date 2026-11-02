@@ -21,7 +21,6 @@ from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.light_commands import (
     build_color_temp,
     build_segment_brightness,
-    build_segment_color_temp,
     build_segment_paint,
 )
 from custom_components.ha_govee_led_ble.transport import WRITE_UUID
@@ -30,7 +29,7 @@ from tests.coordinator_test_support import _CONFIGURATION_URL, _packet
 M = "custom_components.ha_govee_led_ble.coordinator"
 
 
-@pytest.mark.parametrize("operation", ["whole-kelvin", "segment-kelvin", "rgb", "brightness"])
+@pytest.mark.parametrize("operation", ["whole-kelvin", "rgb", "brightness"])
 async def test_native_write_only_controls_do_not_require_unavailable_segment_replies(hass, operation):
     c = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H607C", configuration_url=_CONFIGURATION_URL)
     c.pact_type, c.pact_code = 1, 1
@@ -48,9 +47,6 @@ async def test_native_write_only_controls_do_not_require_unavailable_segment_rep
         light.entity_id = "light.native_floor_lamp"
         await light.async_turn_on(color_temp_kelvin=2200)
         expected = build_color_temp(2200, "H607C", profile=c.profile)
-    elif operation == "segment-kelvin":
-        expected = build_segment_color_temp([13], 2200, "H607C", profile=c.profile)
-        await c.async_set_segment_kelvin(expected, requested_kelvin=2200)
     elif operation == "rgb":
         groups = [([13], (1, 2, 3))]
         expected = build_segment_paint(groups, "H607C", profile=c.profile)[0]

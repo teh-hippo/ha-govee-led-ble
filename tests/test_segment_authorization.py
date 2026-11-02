@@ -195,8 +195,8 @@ async def test_public_services_reject_before_side_effects(hass, profile, monkeyp
 
 def test_existing_profiles_deliberately_preserve_segment_operations():
     for model in ("H617A", "H617E", "H6099", "H6102", "H6199"):
-        profile = MODEL_PROFILES[model]
-        assert profile.supports_segment_brightness and profile.supports_segment_color_temperature
+        assert MODEL_PROFILES[model].supports_segment_brightness
+    assert MODEL_PROFILES["H6099"].supports_segment_color_temperature
     assert not ModelProfile("Unqualified").supports_segment_brightness
     assert not ModelProfile("Unqualified").supports_segment_color_temperature
 

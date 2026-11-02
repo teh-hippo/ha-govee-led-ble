@@ -4,7 +4,13 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 from .const import KELVIN_STEP, WHOLE_BULB_GRAMMARS, ModelProfile, get_profile
-from .generated_protocol_adapter import build_colour_temperature, build_segment_colour, parse_command, table_kelvin_rgb
+from .generated_protocol_adapter import (
+    KELVIN_DIRECT_RGB,
+    build_colour_temperature,
+    build_segment_colour,
+    parse_command,
+    table_kelvin_rgb,
+)
 from .generated_protocol_adapter import (
     build_segment_brightness as build_segment_brightness_mask,
 )
@@ -270,9 +276,9 @@ def parse_static_write(
         if detail.operation.name == "colour":
             rgb = (int(detail.red), int(detail.green), int(detail.blue))
             kelvin = int(detail.kelvin)
-            if kelvin and profile.kelvin_direct_rgb == (255, 255, 255) and rgb != profile.kelvin_direct_rgb:
-                raise ValueError("Kelvin direct RGB does not match the profile")
-            if rgb == profile.kelvin_direct_rgb and kelvin:
+            if kelvin and rgb != KELVIN_DIRECT_RGB:
+                raise ValueError("Kelvin requires direct white RGB")
+            if kelvin:
                 preview = detail.preview
                 return ParsedStaticWrite(
                     operation=operation,
@@ -304,10 +310,9 @@ def parse_static_write(
         rgb = (int(body.rgb_direct.red), int(body.rgb_direct.green), int(body.rgb_direct.blue))
         kelvin = int(body.kelvin)
         mask = int(body.mask.bits)
-        sentinel = profile.kelvin_direct_rgb
-        if kelvin and sentinel == (255, 255, 255) and rgb != sentinel:
+        if kelvin and rgb != KELVIN_DIRECT_RGB:
             raise ValueError("Kelvin requires direct white RGB")
-        if rgb == sentinel and kelvin:
+        if kelvin:
             return ParsedStaticWrite(
                 operation=operation,
                 segment_mask=mask,

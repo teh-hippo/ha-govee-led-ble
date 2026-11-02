@@ -60,10 +60,10 @@ def test_h6072_legacy_and_new_static_are_not_interchangeable():
         )
 
 
-def test_h6072_kelvin_keeps_revision_specific_direct_rgb_and_normalisation():
+def test_h6072_kelvin_normalises_and_uses_white_direct_rgb():
     legacy = device_profile("H6072", 1, 1, firmware="1.00.10", hardware="1.00.01")
     current = device_profile("H6072", 2, 1, firmware="2.04.10", hardware="3.02.00")
-    assert build_color_temp(2201, "H6072", profile=legacy)[2:13] == bytes.fromhex("140000000898ff982900ff")
+    assert build_color_temp(2201, "H6072", profile=legacy)[2:13] == bytes.fromhex("14ffffff0898ff982900ff")
     assert build_color_temp(2201, "H6072", profile=current)[2:14] == bytes.fromhex("1501ffffff0898ff9829ff00")
 
 

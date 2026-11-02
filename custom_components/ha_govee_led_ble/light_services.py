@@ -217,24 +217,10 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
         await self.async_paint_segments([group])
 
     async def async_set_segment_color_temp(self, segments: list[int], color_temp_kelvin: int) -> None:
-        guard = None
-        if self.coordinator.identity_gated_controls:
-            try:
-                build_segment_color_temp(
-                    segments,
-                    color_temp_kelvin,
-                    self.coordinator.model,
-                    profile=self.coordinator.native_presentation_profile,
-                )
-            except (TypeError, ValueError) as err:
-                raise ServiceValidationError(translation_domain=DOMAIN, translation_key="invalid_segments") from err
-            guard = await self.coordinator.async_prepare_identity_gated_control()
         async with self.coordinator.async_mask_transaction():
-            await self._async_set_segment_color_temp(segments, color_temp_kelvin, write_guard=guard)
+            await self._async_set_segment_color_temp(segments, color_temp_kelvin)
 
-    async def _async_set_segment_color_temp(
-        self, segments: list[int], color_temp_kelvin: int, *, write_guard: Callable[[], None] | None = None
-    ) -> None:
+    async def _async_set_segment_color_temp(self, segments: list[int], color_temp_kelvin: int) -> None:
         """Verify settled rendering without claiming per-segment Kelvin readback."""
         c = self.coordinator
         self._require_support(
@@ -245,21 +231,20 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
                 and c.profile.supports_segment_color_temperature
             ),
         )
+        low, high = c.profile.min_color_temp_kelvin, c.profile.max_color_temp_kelvin
+        if not low <= color_temp_kelvin <= high:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="kelvin_out_of_range",
+                translation_placeholders={"minimum": str(low), "maximum": str(high)},
+            )
         try:
             segments = list(segments)
             packet = build_segment_color_temp(segments, color_temp_kelvin, c.model, profile=c.profile)
-            if write_guard is not None:
-                write_guard()
             await self._async_supersede_preview()
-            if write_guard is not None:
-                write_guard()
             async with async_control_intent(c, ControlIntent.USER):
                 try:
-                    await c.async_set_segment_kelvin(
-                        packet,
-                        requested_kelvin=color_temp_kelvin,
-                        **({"write_guard": write_guard} if write_guard is not None else {}),
-                    )
+                    await c.async_set_segment_kelvin(packet, requested_kelvin=color_temp_kelvin)
                 finally:
                     self._notify_state_changed()
         except (TypeError, ValueError) as err:

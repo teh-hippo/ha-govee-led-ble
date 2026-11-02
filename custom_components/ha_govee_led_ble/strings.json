@@ -108,6 +108,9 @@
     "invalid_segments": {
       "message": "Select at least one valid segment."
     },
+    "kelvin_out_of_range": {
+      "message": "Choose a colour temperature between {minimum} K and {maximum} K for this device."
+    },
     "device_command_failed": {
       "message": "The device command failed."
     },

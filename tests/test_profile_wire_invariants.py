@@ -902,16 +902,13 @@ def test_diy_commands_and_status_readback(hass, model: str, profile: ModelProfil
         assert coordinator.color_mode is ParsedMode.DIY and coordinator.diy_code == diy_code
 
 
-def test_h6046_kelvin_direct_bytes_do_not_change_h6076_encoding():
+def test_kelvin_writes_carry_constant_white_direct_rgb():
     for packet in (
         build_color_temp(2700, "H6046"),
         build_segment_color_temp(range(1, 6), 2700, "H6046"),
+        build_color_temp(2700, "H6076"),
     ):
-        assert packet[:9] == bytes.fromhex("33051501ffffff0a8c")
-    legacy_packet = build_color_temp(2700, "H6076")
-    legacy = a.parse_command(legacy_packet, "H6076")
-    direct = legacy.body.sub_body.static_body.rgb_direct
-    assert (direct.red, direct.green, direct.blue) == (0, 0, 0)
+        assert packet[2:9] == bytes.fromhex("1501ffffff0a8c")
 
 
 @pytest.mark.parametrize(("model", "profile"), _COLOUR_MODE_READBACK_PROFILES)
