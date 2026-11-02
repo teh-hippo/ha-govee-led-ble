@@ -162,8 +162,6 @@ async def test_basic_setup_survives_optional_silence(hass, monkeypatch, revision
     assert coordinator._first_refresh_done
     assert coordinator.profile.setup_required_read_domains == {
         ReadDomain.POWER,
-        ReadDomain.BRIGHTNESS,
-        ReadDomain.COLOUR_MODE,
     }
     optional = {
         build_white_balance_query("H6199"),
@@ -409,7 +407,7 @@ async def test_basic_setup_with_missing_identity_uses_real_lifecycle(lifecycle):
 
 
 @pytest.mark.parametrize("missing_domain", [None, "power", "brightness", "colour_mode"])
-async def test_issue_293_setup_requires_only_basic_readback(lifecycle, missing_domain, virtual_clock):
+async def test_issue_293_setup_requires_power_readback(lifecycle, missing_domain, virtual_clock):
     from homeassistant.helpers.update_coordinator import UpdateFailed
 
     from tests.test_h6199_native_controls import frame
@@ -429,9 +427,11 @@ async def test_issue_293_setup_requires_only_basic_readback(lifecycle, missing_d
         if query not in allowed or query == basic.get(missing_domain):
             del replies[query]
 
-    if missing_domain is None:
+    if missing_domain in (None, "brightness", "colour_mode"):
         await c._async_update_data()
-        assert c.available and c.is_on and c.brightness_pct == 50
+        assert c.available and c.is_on
+        if missing_domain is None:
+            assert c.brightness_pct == 50
     else:
         with pytest.raises(UpdateFailed, match="unreachable at setup"):
             await c._async_update_data()
