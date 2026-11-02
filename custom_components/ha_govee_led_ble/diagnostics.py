@@ -1,13 +1,15 @@
 """Diagnostics for HA Govee LED BLE."""
 
+import time
 from collections.abc import Mapping
 from typing import Any, cast
 
+from homeassistant.components.bluetooth import FALLBACK_MAXIMUM_STALE_ADVERTISEMENT_SECONDS
 from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.core import HomeAssistant
 
 from . import GoveeBLEConfigEntry
-from .const import CONF_H6102_APP_FIRMWARE, CONF_H6102_APP_HARDWARE, CONF_H6102_PACT
+from .const import CONF_H6102_APP_FIRMWARE, CONF_H6102_APP_HARDWARE, CONF_H6102_PACT, get_profile
 from .coordinator import PACKET_LOG_LIMIT, PACKET_LOG_RAW_BYTES_LIMIT
 from .coordinator_status import decode_status_frame
 from .effect_contracts import diagnostics_release_capabilities
@@ -180,17 +182,38 @@ async def async_get_config_entry_diagnostics(
     if coordinator.model == "H6102":
         coordinator_data["capability_resolution"] = _h6102_capability_resolution(entry, coordinator)
     elif coordinator.model == "H607C":
+        cutoff = time.monotonic() - FALLBACK_MAXIMUM_STALE_ADVERTISEMENT_SECONDS
+        fresh_pacts = {
+            pact
+            for timestamp, pacts in coordinator._h607c_advertisement_observations.values()
+            if timestamp >= cutoff
+            for pact in pacts
+        }
+        marker_pact = coordinator._h607c_marker_pact
         coordinator_data["capability_resolution"] = {
             "pact_readiness": coordinator.h607c_pact_readiness,
             "pact_source": "marker"
-            if coordinator._h607c_marker_pact is not None
+            if marker_pact is not None
             else "advertisement"
             if coordinator._h607c_advertised_pacts
             else None,
+            "identity_sources": {
+                "advertisement": bool(coordinator._h607c_advertised_pacts),
+                "marker": marker_pact is not None,
+            },
+            "retained_advertisement_pacts": [list(pact) for pact in sorted(coordinator._h607c_advertised_pacts)],
+            "fresh_advertisement_pacts": [list(pact) for pact in sorted(fresh_pacts)],
+            "marker_pact": list(marker_pact) if marker_pact is not None else None,
+            "broadcast_version_zero_seen_since_reload": coordinator._h607c_invalid_pact_version_seen,
             "native_supports_rgb": coordinator.native_presentation_profile.supports_rgb,
             "native_supports_color_temperature": coordinator.native_presentation_profile.supports_color_temperature,
             "effective_supports_rgb": coordinator.profile.supports_rgb,
             "effective_supports_color_temperature": coordinator.profile.supports_color_temperature,
+            "candidate_supports_gradual": "gradual" in get_profile(coordinator.model).boolean_controls,
+            "native_supports_gradual": "gradual" in coordinator.native_presentation_profile.boolean_controls,
+            "effective_supports_gradual": "gradual" in coordinator.profile.boolean_controls,
+            "last_optional_read_failure_since_reload": coordinator._h607c_last_optional_read_failure,
+            "unconfirmed_state_fields": sorted(coordinator._h607c_uncertain_state_fields),
         }
     elif coordinator.profile.profile_identity_fields:
         profile = coordinator.profile

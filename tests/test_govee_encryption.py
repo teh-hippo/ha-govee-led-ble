@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 import os
 import time
 from dataclasses import replace
@@ -16,13 +17,21 @@ from dbus_fast.constants import MessageType
 from habluetooth.wrappers import HaBleakClientWrapper
 from homeassistant.components.light import ColorMode
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.entity_component import EntityComponent
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.ha_govee_led_ble import light as light_platform
+from custom_components.ha_govee_led_ble import switch as switch_platform
 from custom_components.ha_govee_led_ble.advertisement import parse_govee_advertisement
-from custom_components.ha_govee_led_ble.const import DOMAIN
+from custom_components.ha_govee_led_ble.const import CONF_MODEL, DOMAIN
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
-from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_power, build_power_query
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
+    build_brightness_query,
+    build_power,
+    build_power_query,
+)
 from custom_components.ha_govee_led_ble.govee_encryption import (
     KEY_COMMUNICATION,
     KEY_HANDSHAKE,
@@ -47,6 +56,7 @@ from custom_components.ha_govee_led_ble.transport import (
     fragment_a3,
     xor_checksum,
 )
+from tests.coordinator_test_support import _packet
 
 KEY = bytes(range(16))
 IV = bytes(range(8))
@@ -213,7 +223,7 @@ async def test_h607c_registers_supported_advertisement_callback(hass, monkeypatc
         assert register.call_args.args[2]["connectable"] is False
 
 
-async def test_h607c_revocation_during_colour_turn_on_sends_no_user_write(hass, monkeypatch):
+async def test_h607c_revocation_during_colour_turn_on_sends_no_user_write(hass, monkeypatch, caplog):
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H607C", configuration_url=None)
     coordinator._h607c_advertised_pacts = {(1, 1)}
     coordinator._resolve_h607c_pact()
@@ -237,10 +247,198 @@ async def test_h607c_revocation_during_colour_turn_on_sends_no_user_write(hass, 
     light = GoveeBLELight(coordinator)
     light.hass = hass
     light.entity_id = "light.h607c"
-    with pytest.raises(HomeAssistantError):
+    with pytest.raises(HomeAssistantError) as error:
         await light.async_turn_on(rgb_color=(12, 34, 56), brightness=100)
+    assert error.value.translation_key == "identity_not_ready"
     device.write_gatt_char.assert_not_awaited()
     assert not coordinator.is_on
+    assert not coordinator._h607c_uncertain_state_fields
+    assert "may have partially changed" not in caplog.text
+
+
+@pytest.fixture
+def h607c_light(hass, monkeypatch):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H607C", configuration_url=None)
+    coordinator._h607c_advertised_pacts = {(1, 1)}
+    coordinator._resolve_h607c_pact()
+    coordinator._present = True
+    device = client()
+    coordinator._client = device
+    coordinator._notification_token = object()
+    coordinator._notify_started_monotonic = time.monotonic()
+    monkeypatch.setattr(coordinator, "_refresh_h607c_advertisements", lambda: None)
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=device))
+    monkeypatch.setattr(coordinator, "_renew_foreground_lease", lambda: None)
+    light = GoveeBLELight(coordinator)
+    light.hass = hass
+    light.entity_id = "light.h607c"
+    return coordinator, device, light
+
+
+@pytest.mark.parametrize("confirmation", ["none", "notification", "reconcile"])
+async def test_h607c_interrupted_power_reports_or_reconciles_uncertainty(
+    h607c_light, monkeypatch, caplog, confirmation
+):
+    coordinator, device, light = h607c_light
+
+    def observe(opcode, value):
+        coordinator._notify_callback(None, bytearray(_packet(0xAA, opcode, [value])))
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet == build_power(True, coordinator.model):
+            coordinator._h607c_advertised_pacts = {(3, 1)}
+            coordinator._resolve_h607c_pact()
+            if confirmation == "notification":
+                observe(1, 1)
+        elif confirmation == "reconcile" and packet == build_power_query(
+            coordinator.model, profile=coordinator.profile
+        ):
+            observe(1, 1)
+        elif confirmation == "reconcile" and packet == build_brightness_query(
+            coordinator.model, profile=coordinator.profile
+        ):
+            observe(4, 37)
+
+    device.write_gatt_char.side_effect = write
+    if confirmation == "none":
+        monkeypatch.setattr(coordinator, "_refresh_connected_state", AsyncMock(return_value=False))
+    with pytest.raises(HomeAssistantError) as error:
+        await light.async_turn_on(rgb_color=(12, 34, 56), brightness=100)
+
+    assert error.value.translation_key == "partial_command"
+    assert coordinator.control_write_attempts == 1
+    assert device.write_gatt_char.await_count == (3 if confirmation == "reconcile" else 1)
+    warnings = [record.message for record in caplog.records if "may have partially changed" in record.message]
+    assert len(warnings) == 1 and "H607C" in warnings[0] and "light.h607c" in warnings[0] and "power" in warnings[0]
+    assert coordinator.address not in warnings[0]
+    if confirmation == "none":
+        assert light.is_on is None and light.state is None and light.assumed_state
+        assert light.extra_state_attributes["unconfirmed_state_fields"] == ["is_on"]
+        observe(1, 0)
+        assert light.is_on is False and not coordinator._h607c_uncertain_state_fields
+    else:
+        assert light.is_on is True and not coordinator._h607c_uncertain_state_fields
+        if confirmation == "reconcile":
+            assert coordinator.brightness_pct == 37
+
+
+@pytest.mark.parametrize("fresh_notification", [False, True])
+async def test_h607c_interrupted_brightness_preserves_only_fresh_observations(
+    h607c_light, monkeypatch, caplog, fresh_notification
+):
+    coordinator, device, light = h607c_light
+    coordinator.is_on = True
+    coordinator._notify_callback(None, bytearray(_packet(0xAA, 4, [37])))
+    monkeypatch.setattr(coordinator, "_refresh_connected_state", AsyncMock(return_value=False))
+
+    async def write(_uuid, packet, **_kwargs):
+        coordinator._h607c_advertised_pacts = {(3, 1)}
+        coordinator._resolve_h607c_pact()
+        if fresh_notification:
+            coordinator._notify_callback(None, bytearray(_packet(0xAA, 4, [50])))
+
+    device.write_gatt_char.side_effect = write
+    with pytest.raises(HomeAssistantError) as error:
+        await light.async_turn_on(rgb_color=(12, 34, 56), brightness=128)
+
+    assert error.value.translation_key == "partial_command"
+    assert coordinator.control_write_attempts == 1 and device.write_gatt_char.await_count == 1
+    assert light.is_on is True
+    assert "brightness request was interrupted" in caplog.text
+    if fresh_notification:
+        assert coordinator.brightness_pct == 50 and light.brightness == round(50 * 255 / 100)
+        assert not coordinator._h607c_uncertain_state_fields
+    else:
+        assert light.brightness is None
+        assert coordinator._h607c_uncertain_state_fields == {"brightness_pct"}
+        coordinator._notify_callback(None, bytearray(_packet(0xAA, 4, [37])))
+        assert light.brightness == round(37 * 255 / 100)
+        assert not coordinator._h607c_uncertain_state_fields
+
+
+@pytest.mark.parametrize(
+    ("field", "kwargs", "opcode", "value"),
+    [
+        ("is_on", {"rgb_color": (12, 34, 56)}, 1, 0),
+        ("brightness_pct", {"rgb_color": (12, 34, 56), "brightness": 128}, 4, 37),
+    ],
+)
+async def test_h607c_prewrite_notification_does_not_confirm_failed_write(
+    h607c_light, monkeypatch, field, kwargs, opcode, value
+):
+    coordinator, device, light = h607c_light
+    coordinator.is_on = field != "is_on"
+    connections = 0
+
+    async def ensure_connected():
+        nonlocal connections
+        connections += 1
+        if connections == 2:
+            coordinator._notify_callback(None, bytearray(_packet(0xAA, opcode, [value])))
+        return device
+
+    monkeypatch.setattr(coordinator, "_ensure_connected", ensure_connected)
+    monkeypatch.setattr(coordinator, "_refresh_connected_state", AsyncMock(return_value=False))
+    device.write_gatt_char.side_effect = ValueError("write interrupted")
+    with pytest.raises(HomeAssistantError) as error:
+        await light.async_turn_on(**kwargs)
+
+    assert error.value.translation_key == "partial_command"
+    assert coordinator._h607c_uncertain_state_fields == {field}
+    assert (light.is_on if field == "is_on" else light.brightness) is None
+
+
+async def test_h607c_transport_failure_does_not_replay_colour_write(h607c_light, monkeypatch):
+    coordinator, first, light = h607c_light
+    coordinator.is_on = True
+    first.write_gatt_char.side_effect = BleakError("transport lost")
+    second = client()
+
+    async def ensure_connected():
+        if coordinator._client is None:
+            coordinator._client = second
+            coordinator._notification_token = object()
+        return coordinator._client
+
+    monkeypatch.setattr(coordinator, "_ensure_connected", ensure_connected)
+    with pytest.raises(HomeAssistantError) as error:
+        await light.async_turn_on(rgb_color=(12, 34, 56))
+
+    assert error.value.translation_key == "partial_command"
+    first.write_gatt_char.assert_awaited_once()
+    second.write_gatt_char.assert_not_awaited()
+    assert coordinator._h607c_uncertain_state_fields == {"color"}
+
+
+@pytest.mark.parametrize("kwargs", [{"rgb_color": (12, 34, 56)}, {"color_temp_kelvin": 3200}])
+@pytest.mark.parametrize("cancelled", [False, True])
+async def test_h607c_interrupted_colour_is_not_reported_as_confirmed(h607c_light, caplog, kwargs, cancelled):
+    coordinator, device, light = h607c_light
+    coordinator.is_on = True
+    device.write_gatt_char.side_effect = asyncio.CancelledError if cancelled else ValueError("write interrupted")
+
+    with pytest.raises(asyncio.CancelledError if cancelled else HomeAssistantError) as error:
+        await light.async_turn_on(**kwargs)
+    if not cancelled:
+        assert error.value.translation_key == "partial_command"
+    assert coordinator.control_write_attempts == 1 and device.write_gatt_char.await_count == 1
+    assert light.color_mode is ColorMode.UNKNOWN and light.rgb_color is None and light.color_temp_kelvin is None
+    assert light.state_attributes["color_mode"] is ColorMode.UNKNOWN
+    assert light.extra_state_attributes["unconfirmed_state_fields"] == ["color"]
+    assert light.extra_state_attributes["segment_colors"] is None
+    assert light.assumed_state and "color_mode" not in coordinator._expected_state
+    assert caplog.text.count("may have partially changed") == 1
+
+
+async def test_h607c_unconfirmed_power_is_not_retried_during_colour_request(h607c_light, monkeypatch, caplog):
+    coordinator, device, light = h607c_light
+    monkeypatch.setattr(coordinator, "refresh_state", AsyncMock(return_value=False))
+    monkeypatch.setattr(coordinator, "_refresh_connected_state", AsyncMock(return_value=False))
+    with pytest.raises(HomeAssistantError) as error:
+        await light.async_turn_on(rgb_color=(12, 34, 56))
+    assert error.value.translation_key == "partial_command"
+    assert coordinator.control_write_attempts == 1 and device.write_gatt_char.await_count == 1
+    assert light.is_on is None and caplog.text.count("may have partially changed") == 1
 
 
 async def test_h607c_missing_pact_presents_colour_but_does_not_cancel_preview(hass, monkeypatch):
@@ -268,6 +466,125 @@ async def test_h607c_missing_pact_presents_colour_but_does_not_cancel_preview(ha
     assert not coordinator.is_on
 
 
+async def _register_h607c_entities(hass, coordinator):
+    entry = MockConfigEntry(domain=DOMAIN, unique_id=coordinator.address, data={CONF_MODEL: "H607C"})
+    entry.add_to_hass(hass)
+    entry.runtime_data = coordinator
+    for domain, module in (("light", light_platform), ("switch", switch_platform)):
+        component = EntityComponent(logging.getLogger(__name__), domain, hass)
+        platform = component._async_init_entity_platform(DOMAIN, module)
+        assert await platform.async_setup_entry(entry)
+    await hass.async_block_till_done()
+    return entry
+
+
+@pytest.mark.parametrize(
+    ("identity", "modes", "gradual_state"),
+    [
+        ("missing", {"rgb", "color_temp"}, "unknown"),
+        ("stale", {"rgb", "color_temp"}, "unknown"),
+        ("supported", {"rgb", "color_temp"}, "on"),
+        ("unsupported", {"brightness"}, None),
+        ("conflicting", {"brightness"}, None),
+    ],
+)
+async def test_h607c_registered_entities_present_identity_states(hass, identity, modes, gradual_state):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H607C", configuration_url=None)
+    coordinator._present = coordinator.is_on = True
+    if identity in {"missing", "stale"}:
+        coordinator._h607c_marker_seen = identity == "stale"
+        coordinator._resolve_device_profile()
+    else:
+        coordinator._h607c_advertised_pacts = (
+            {(1, 1), (2, 1)} if identity == "conflicting" else {(1, 1)} if identity == "supported" else {(3, 1)}
+        )
+        coordinator._resolve_h607c_pact()
+    if identity == "supported":
+        coordinator.boolean_control_state["gradual"] = True
+    entry = await _register_h607c_entities(hass, coordinator)
+    entries = er.async_entries_for_config_entry(er.async_get(hass), entry.entry_id)
+    light = next(item for item in entries if item.domain == "light")
+    gradual = next((item for item in entries if item.unique_id.endswith("_gradual")), None)
+    state = hass.states.get(light.entity_id)
+    assert state is not None and state.state == "on"
+    assert set(state.attributes["supported_color_modes"]) == modes
+    assert state.attributes["color_mode"] == ("rgb" if "rgb" in modes else "brightness")
+    if gradual_state is None:
+        assert gradual is None
+    else:
+        assert gradual is not None
+        assert hass.states.get(gradual.entity_id).state == gradual_state
+
+
+async def test_h607c_registered_gradual_tracks_identity_and_release_reconnect(hass):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H607C", configuration_url=None)
+    coordinator._present = coordinator.is_on = True
+    coordinator._h607c_advertised_pacts = {(3, 1)}
+    coordinator._resolve_h607c_pact()
+    entry = await _register_h607c_entities(hass, coordinator)
+    registry = er.async_get(hass)
+    assert not any(
+        item.unique_id.endswith("_gradual") for item in er.async_entries_for_config_entry(registry, entry.entry_id)
+    )
+
+    coordinator._h607c_advertised_pacts = {(1, 1)}
+    coordinator._resolve_h607c_pact()
+    await hass.async_block_till_done()
+    gradual = next(
+        item
+        for item in er.async_entries_for_config_entry(registry, entry.entry_id)
+        if item.unique_id.endswith("_gradual")
+    )
+    assert hass.states.get(gradual.entity_id).state == "unknown"
+
+    coordinator._h607c_advertised_pacts = {(1, 1), (2, 1)}
+    coordinator._resolve_h607c_pact()
+    await hass.async_block_till_done()
+    assert hass.states.get(gradual.entity_id).state == "unavailable"
+
+    coordinator._h607c_advertised_pacts.clear()
+    coordinator._h607c_marker_seen = True
+    coordinator._h607c_marker_pact = (1, 1)
+    coordinator._resolve_h607c_pact()
+    first = client()
+    coordinator._client = first
+    coordinator._clear_client_state(first)
+    await hass.async_block_till_done()
+    assert coordinator.h607c_pact_readiness == "stale"
+    assert hass.states.get(gradual.entity_id).state == "unknown"
+
+    coordinator._client = client()
+    coordinator._h607c_marker_pact = (1, 1)
+    coordinator._resolve_h607c_pact(preserve_state=True)
+    await hass.async_block_till_done()
+    assert coordinator.h607c_pact_readiness == "ready"
+    assert hass.states.get(gradual.entity_id).state == "unknown"
+
+
+async def test_h607c_registered_light_exposes_colour_uncertainty_and_assumed_retry(hass, h607c_light):
+    coordinator, device, light = h607c_light
+    coordinator.is_on = True
+    entry = await _register_h607c_entities(hass, coordinator)
+    registered = next(
+        item for item in er.async_entries_for_config_entry(er.async_get(hass), entry.entry_id) if item.domain == "light"
+    )
+    device.write_gatt_char.side_effect = ValueError("write interrupted")
+    with pytest.raises(HomeAssistantError):
+        await light.async_turn_on(rgb_color=(12, 34, 56))
+    await hass.async_block_till_done()
+    state = hass.states.get(registered.entity_id)
+    assert state.state == "on" and state.attributes["color_mode"] == "unknown"
+    assert state.attributes["unconfirmed_state_fields"] == ["color"] and state.attributes["rgb_color"] is None
+
+    device.write_gatt_char.side_effect = None
+    await light.async_turn_on(rgb_color=(40, 50, 60))
+    await hass.async_block_till_done()
+    state = hass.states.get(registered.entity_id)
+    assert state.attributes["color_mode"] == "rgb" and state.attributes["rgb_color"] == (40, 50, 60)
+    assert state.attributes["unconfirmed_state_fields"] == ["color"] and state.attributes["assumed_state"] is True
+    assert light.extra_restore_state_data is None
+
+
 async def test_h607c_marker_requalification_preserves_release_state_without_fresh_observations(hass, monkeypatch):
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H607C", configuration_url=None)
     first = client(bytes.fromhex("020000000101"))
@@ -290,6 +607,30 @@ async def test_h607c_marker_requalification_preserves_release_state_without_fres
     assert coordinator.boolean_control_state["gradual"] is True
     assert coordinator._field_revisions == revisions
     coordinator._clear_client_state(second)
+
+
+async def test_h607c_unsupported_identity_invalidates_state_preserved_during_release(hass):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H607C", configuration_url=None)
+    coordinator._h607c_marker_seen = True
+    coordinator._h607c_marker_pact = (1, 1)
+    coordinator._resolve_h607c_pact()
+    coordinator._notify_callback(None, bytearray(_packet(0xAA, 4, [37])))
+    coordinator.color_temp_kelvin = 3200
+    coordinator.boolean_control_state["gradual"] = True
+    coordinator.power_on_behaviour, coordinator.power_on_open_flag = "on", 1
+    device = client()
+    coordinator._client = coordinator._intentional_disconnect_client = device
+    coordinator._clear_client_state(device)
+    coordinator._intentional_disconnect_client = None
+    assert coordinator.h607c_pact_readiness == "stale"
+    assert coordinator.boolean_control_state["gradual"] and coordinator.color_temp_kelvin == 3200
+
+    coordinator._h607c_advertised_pacts = {(3, 1)}
+    coordinator._resolve_h607c_pact()
+    assert coordinator.h607c_pact_readiness == "unsupported"
+    assert coordinator.brightness_pct == 37
+    assert coordinator.color_temp_kelvin is None and not coordinator.boolean_control_state
+    assert coordinator.power_on_behaviour is None and coordinator.power_on_open_flag is None
 
 
 def v1_reply(opcode=1, key=KEY):
@@ -449,12 +790,89 @@ def test_advertisement_and_omissions(hass):
         assert coordinator._advertised_encryption
 
 
+@pytest.mark.parametrize(
+    ("company_id", "pacts", "encrypted", "plaintext", "invalid_version"),
+    [
+        (0x8800, frozenset(), False, False, True),
+        (0x8840, frozenset(), True, False, True),
+        (0x8801, frozenset({(1, 1)}), False, True, False),
+        (0x8843, frozenset({(1, 1)}), True, False, False),
+    ],
+)
+def test_advertisement_version_qualifies_identity_separately_from_encryption(
+    company_id, pacts, encrypted, plaintext, invalid_version
+):
+    parsed = parse_govee_advertisement({company_id: bytes.fromhex("ec00010100")})
+    assert parsed is not None
+    assert parsed.pacts == pacts
+    assert parsed.supports_encryption is encrypted
+    assert parsed.supports_plaintext is plaintext
+    assert parsed.invalid_version_seen is invalid_version
+
+
+@pytest.mark.parametrize("invalid_first", [False, True])
+async def test_h607c_invalid_advertisement_cannot_mask_valid_identity_or_encryption(hass, invalid_first):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H607C", configuration_url=None)
+    records = [(0x8840, bytes.fromhex("ec00030100")), (0x8801, bytes.fromhex("ec00010100"))]
+    if not invalid_first:
+        records.reverse()
+    info = SimpleNamespace(name="Govee_H607C", source="scanner", time=time.monotonic(), manufacturer_data=dict(records))
+    coordinator._note_advertisement(info)
+    coordinator._prune_h607c_advertisements()
+
+    assert (coordinator.pact_type, coordinator.pact_code) == (1, 1)
+    assert coordinator.h607c_pact_readiness == "ready"
+    assert coordinator._advertised_encryption and coordinator._advertised_plaintext
+    assert coordinator._h607c_invalid_pact_version_seen
+
+
+async def test_h607c_newer_invalid_version_revokes_old_scanner_pact(hass):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H607C", configuration_url=None)
+    now = time.monotonic()
+    valid = SimpleNamespace(
+        name="Govee_H607C",
+        source="scanner",
+        time=now,
+        manufacturer_data={0x8843: bytes.fromhex("ec00010100")},
+    )
+    invalid = SimpleNamespace(
+        name=valid.name,
+        source=valid.source,
+        time=now + 0.001,
+        manufacturer_data={0x8840: bytes.fromhex("ec00010100")},
+    )
+    coordinator._note_advertisement(valid)
+    coordinator._prune_h607c_advertisements()
+    assert coordinator.h607c_pact_readiness == "ready"
+
+    coordinator._note_advertisement(invalid)
+    coordinator._note_advertisement(valid, cached=True)
+    coordinator._prune_h607c_advertisements()
+    assert coordinator.h607c_pact_readiness == "missing"
+    assert not coordinator._authorization_profile().supports_rgb
+    assert coordinator._advertised_encryption and not coordinator._advertised_plaintext
+
+
+async def test_h607c_conflicting_valid_pacts_in_one_advertisement_fail_closed(hass):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H607C", configuration_url=None)
+    info = SimpleNamespace(
+        name="Govee_H607C",
+        source="scanner",
+        time=time.monotonic(),
+        manufacturer_data={0x8801: bytes.fromhex("ec00010100"), 0x8802: bytes.fromhex("ec00020100")},
+    )
+    coordinator._note_advertisement(info)
+    coordinator._prune_h607c_advertisements()
+    assert coordinator.h607c_pact_readiness == "conflicting"
+    assert not coordinator._authorization_profile().supports_rgb
+
+
 def test_h6097_owner_advertisement_requires_encrypted_negotiation(hass):
     # Non-identifying manufacturer record supplied by an owner.
     data = {0x8843: bytes.fromhex("ec00020100")}
     parsed = parse_govee_advertisement(data)
     assert parsed is not None and parsed.supports_encryption
-    assert (parsed.pact_type, parsed.pact_code) == (2, 1)
+    assert parsed.pacts == frozenset({(2, 1)})
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6097", configuration_url=None)
     coordinator._note_advertisement(SimpleNamespace(manufacturer_data=data))
     assert coordinator._advertised_encryption and not coordinator._advertised_plaintext

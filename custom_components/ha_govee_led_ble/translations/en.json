@@ -114,6 +114,9 @@
     "device_command_failed": {
       "message": "The device command failed."
     },
+    "partial_command": {
+      "message": "The command was interrupted after a write was attempted. The light may have partially changed."
+    },
     "camera_absent": {
       "message": "Video mode is unavailable because the camera is absent. Connect the camera and try again."
     },

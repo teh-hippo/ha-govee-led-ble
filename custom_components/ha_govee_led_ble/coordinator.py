@@ -255,6 +255,10 @@ class GoveeBLECoordinator(
         self._h607c_last_marker_pact: tuple[int, int] | None = None
         self._h607c_marker_seen = False
         self._h607c_pact_conflict = False
+        self._h607c_invalid_pact_version_seen = False
+        self._h607c_last_optional_read_failure: str | None = None
+        self._h607c_uncertain_state_fields: set[str] = set()
+        self._h607c_failed_color_write = False
         self.boolean_control_state: dict[str, bool] = {}
         self.low_blue_light: LowBlueLightState | None = None
         self.power_on_behaviour: str | None = None
@@ -553,16 +557,17 @@ class GoveeBLECoordinator(
         if isinstance(service_info.manufacturer_data, Mapping):
             advertisement = parse_govee_advertisement(service_info.manufacturer_data)
             if advertisement is not None:
-                pact = advertisement.pact_type, advertisement.pact_code
                 if self.model == "H607C":
+                    self._h607c_invalid_pact_version_seen |= advertisement.invalid_version_seen
                     source = service_info.source
                     timestamp = service_info.time
                     previous = self._h607c_advertisement_observations.get(source)
                     if previous is None or timestamp > previous[0]:
-                        self._h607c_advertisement_observations[source] = (timestamp, frozenset({pact}))
+                        self._h607c_advertisement_observations[source] = (timestamp, advertisement.pacts)
                     elif timestamp == previous[0] and not cached:
-                        self._h607c_advertisement_observations[source] = (timestamp, previous[1] | {pact})
-                else:
+                        self._h607c_advertisement_observations[source] = (timestamp, previous[1] | advertisement.pacts)
+                elif advertisement.pacts:
+                    pact = next(iter(advertisement.pacts)) if len(advertisement.pacts) == 1 else (None, None)
                     if pact != (self.pact_type, self.pact_code):
                         self.pact_type, self.pact_code = pact
                         self._authorization_generation += 1
@@ -573,7 +578,7 @@ class GoveeBLECoordinator(
                         self._encryption.reset()
                         if self.model == "H607C" and self._h607c_marker_pact is not None:
                             self._h607c_marker_pact = None
-                else:
+                if advertisement.supports_plaintext:
                     self._advertised_plaintext = True
 
     def _refresh_h607c_advertisements(self) -> None:
@@ -690,11 +695,20 @@ class GoveeBLECoordinator(
             if profile.configured_string_counts and self.configured_strings in profile.configured_string_counts:
                 bulbs = self.configured_strings * profile.bulbs_per_string
                 profile = replace(profile, segment_count=bulbs)
-        if profile == self.profile:
+        if profile == self.profile and not (self.model == "H607C" and not preserve_state and not profile.supports_rgb):
             if context_changed:
                 self._profile_generation += 1
                 self._expected_state.clear()
             return
+        preserve_brightness = (
+            self.model == "H607C"
+            and self.profile.status_grammar == profile.status_grammar
+            and self.profile.brightness_wire_range == profile.brightness_wire_range
+            and self.profile.can_read(ReadDomain.BRIGHTNESS)
+            and profile.can_read(ReadDomain.BRIGHTNESS)
+            and self._field_revisions.get("brightness_pct", 0) > 0
+            and "brightness_pct" not in self._expected_state
+        )
         self.profile = profile
         for variant in profile.music_variants:
             for spec in variant.selector_parameters:
@@ -705,6 +719,8 @@ class GoveeBLECoordinator(
             self.boolean_control_state = {
                 key: value for key, value in self.boolean_control_state.items() if key in profile.boolean_controls
             }
+            if not profile.supports_power_on_behaviour:
+                self.power_on_behaviour = self.power_on_open_flag = None
         if not profile.supports_low_blue_light:
             self.low_blue_light = None
         self._profile_generation += 1
@@ -712,7 +728,7 @@ class GoveeBLECoordinator(
         self._sync_device_configuration_url()
         if preserve_state:
             return
-        if self.model not in {"H60A1", "H60A6"}:
+        if self.model not in {"H60A1", "H60A6"} and not preserve_brightness:
             self.brightness_pct = 100
         self.color_mode = None
         self.effect = self.diy_code = self._scene_code = None
@@ -841,18 +857,7 @@ class GoveeBLECoordinator(
                             raise BleakError(f"State query failed for {self.address}")
                         read_succeeded = True
                         if self.profile.setting_grammar == "H607C":
-                            try:
-                                async with self._lock:
-                                    deadline = time.monotonic() + 2.0
-                                    for query, fields in self._setting_queries(self._authorization_profile()):
-                                        if self._client is not client or time.monotonic() >= deadline:
-                                            break
-                                        if not await self._async_read_setting_fields(
-                                            client, query, fields, deadline=deadline
-                                        ):
-                                            break
-                            except BleakError:
-                                _LOGGER.debug("Optional native setting query failed", exc_info=True)
+                            await self._async_read_optional_h607c_settings(client)
                         if self.profile.supports_low_blue_light and self.identity_fields_confirmed(
                             frozenset({"fw_version"})
                         ):
@@ -871,8 +876,13 @@ class GoveeBLECoordinator(
                                 _LOGGER.debug("Optional low-blue-light query failed", exc_info=True)
                     finally:
                         self._state_read_available = read_succeeded
-                    if client is not previous_client and self.connection_mode != CONNECTION_MODE_HOLD:
-                        await self._disconnect_if_current_locked(client)
+                        client = self._client
+                        if (
+                            client is not None
+                            and client is not previous_client
+                            and (not read_succeeded or self.connection_mode != CONNECTION_MODE_HOLD)
+                        ):
+                            await self._disconnect_if_current_locked(client)
             except BleakError as err:
                 # Missing state revokes read-based reachability, not independent advertisement evidence.
                 self._log_availability_transition()
@@ -1156,6 +1166,12 @@ class GoveeBLECoordinator(
         for field in fields:
             self._field_revisions[field] = self._field_revisions.get(field, 0) + 1
             self._field_received_at[field] = received_at
+            self._h607c_uncertain_state_fields.discard(field)
+        if ("rgb_color" in fields and self.rgb_color_source == "observed") or (
+            "color_temp_kelvin" in fields and self.color_temp_kelvin_source == "observed"
+        ):
+            self._h607c_uncertain_state_fields.discard("color")
+            self._h607c_failed_color_write = False
         self._revision_event.set()
 
     @callback
@@ -1350,6 +1366,24 @@ class GoveeBLECoordinator(
             )
             queries[build_power_on_behaviour_query(profile)] = fields
         return list(queries.items())
+
+    async def _async_read_optional_h607c_settings(self, client: BleakClient) -> None:
+        try:
+            async with self._lock:
+                deadline = time.monotonic() + 2.0
+                for query, fields in self._setting_queries(self._authorization_profile()):
+                    if self._client is not client or not client.is_connected:
+                        self._h607c_last_optional_read_failure = "disconnected"
+                        break
+                    if time.monotonic() >= deadline:
+                        self._h607c_last_optional_read_failure = "deadline"
+                        break
+                    if not await self._async_read_setting_fields(client, query, fields, deadline=deadline):
+                        self._h607c_last_optional_read_failure = "incomplete"
+                        break
+        except (BleakError, ValueError, TimeoutError) as err:
+            self._h607c_last_optional_read_failure = type(err).__name__
+            _LOGGER.debug("Optional native setting query failed for Govee %s", self.model, exc_info=True)
 
     async def _send_state_queries(
         self,
@@ -2988,11 +3022,15 @@ class GoveeBLECoordinator(
                     generation = self._profile_generation
                     authorization_generation = self._authorization_generation
                     if self.connection_mode == CONNECTION_MODE_HOLD and full:
+                        h607c_settings = self.profile.setting_grammar == "H607C"
                         ok = await self._refresh_connected_state(
                             refresh_all=True,
                             query_segments=False,
                             required_domains=self.profile.setup_required_read_domains,
+                            query_native_settings=not h607c_settings,
                         )
+                        if ok and h607c_settings and client is not None:
+                            await self._async_read_optional_h607c_settings(client)
                     else:
                         async with self._lock:
                             ok = await self._send_state_queries(

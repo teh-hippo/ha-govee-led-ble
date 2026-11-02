@@ -25,6 +25,9 @@ types:
         type: u1
       - id: unknown_tail
         size-eos: true
+    instances:
+      broadcast_version:
+        value: flags & 0x0f
   marker:
     seq:
       - id: format

@@ -157,6 +157,8 @@ def _make_coord(**ov) -> MagicMock:
         _notification_token=None,
         _field_revisions={},
         _domain_revisions={},
+        _h607c_uncertain_state_fields=set(),
+        _h607c_failed_color_write=False,
         _profile_generation=0,
         _authorization_generation=0,
         _confirmed_identity_fields=set(),
