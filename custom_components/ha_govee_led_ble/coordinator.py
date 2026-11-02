@@ -53,7 +53,7 @@ from .coordinator_h6102 import _H6102Mixin
 from .coordinator_modes import PreModeSnapshot, _ActiveModeMixin
 from .coordinator_notifications import _OPTIONAL_CONTROL_DOMAINS, _NotificationMixin
 from .coordinator_recovery import _RecoveryMixin
-from .coordinator_segments import _SegmentMixin
+from .coordinator_segments import _SEGMENT_READ_TIMEOUT, _SegmentMixin
 from .coordinator_status import (
     ParsedMode,
     StatusDomain,
@@ -3041,7 +3041,7 @@ class GoveeBLECoordinator(
         except Exception:
             if self._static_write_attempts != attempts and self.profile.can_read(ReadDomain.SEGMENTS):
                 try:
-                    async with asyncio.timeout(STATE_QUERY_TIMEOUT):
+                    async with asyncio.timeout(_SEGMENT_READ_TIMEOUT):
                         await self.async_refresh_segments()
                 except Exception:
                     _LOGGER.debug("Static write reconciliation failed", exc_info=True)
