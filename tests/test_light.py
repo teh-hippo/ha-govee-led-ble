@@ -194,6 +194,39 @@ def test_basic_and_color_props(light, mock_coordinator):
     assert light.rgb_color is None and light.color_temp_kelvin == 4000
 
 
+@pytest.mark.parametrize("remembered", [ColorMode.RGB, ColorMode.COLOR_TEMP])
+def test_active_effect_reports_brightness_and_keeps_remembered_colour(light, mock_coordinator, remembered):
+    mock_coordinator.is_on = True
+    mock_coordinator.brightness_pct = 50
+    mock_coordinator.rgb_color = (128, 64, 32)
+    mock_coordinator.color_temp_kelvin = 4000
+    mock_coordinator.color_mode = ParsedMode.COLOUR
+    light._attr_color_mode = remembered
+    expected = (
+        {"rgb_color": (128, 64, 32), "color_temp_kelvin": None}
+        if remembered is ColorMode.RGB
+        else {"rgb_color": None, "color_temp_kelvin": 4000}
+    )
+    assert light.color_mode is remembered
+    assert (light.rgb_color, light.color_temp_kelvin) == tuple(expected.values())
+
+    mock_coordinator.color_mode = ParsedMode.SCENE
+    mock_coordinator.effect = "rainbow"
+    assert light.color_mode is ColorMode.BRIGHTNESS
+    assert light.rgb_color is None and light.color_temp_kelvin is None
+    attrs = light.state_attributes
+    assert attrs["color_mode"] is ColorMode.BRIGHTNESS
+    assert attrs["brightness"] == 128
+    assert attrs["rgb_color"] is None and attrs["color_temp_kelvin"] is None
+    assert light.extra_restore_state_data is None
+
+    # A colour or Kelvin write clears the effect; the remembered mode and values return.
+    mock_coordinator.color_mode = ParsedMode.COLOUR
+    mock_coordinator.effect = None
+    assert light.color_mode is remembered
+    assert (light.rgb_color, light.color_temp_kelvin) == tuple(expected.values())
+
+
 @pytest.mark.parametrize("source", ["saved", "unknown", "template", "stale_saved"])
 async def test_effect_preflight_precedes_light_side_effects(hass, mock_coordinator, monkeypatch, source):
     backend = await EffectBackend.async_create(hass)
@@ -2506,6 +2539,21 @@ async def test_h6076_restores_static_colour_after_off_state_restart(
     if color_mode is ColorMode.RGB:
         assert state_attributes["rgb_color"] == rgb_color
     assert state_attributes["color_temp_kelvin"] == color_temp_kelvin
+
+
+async def test_restore_ignores_state_saved_during_an_effect(light, mock_coordinator):
+    mock_coordinator.rgb_color = (1, 2, 3)
+    light.async_get_last_state = AsyncMock(
+        return_value=SimpleNamespace(
+            attributes={"color_mode": "brightness", "effect": "Rainbow", "rgb_color": None, "color_temp_kelvin": None}
+        )
+    )
+    light.async_get_last_extra_data = AsyncMock(return_value=None)
+
+    await light._async_restore_static_color()
+
+    assert mock_coordinator.rgb_color == (1, 2, 3)
+    mock_coordinator.async_set_updated_data.assert_not_called()
 
 
 async def test_restore_static_colour_ignores_malformed_extra_data(light, mock_coordinator):
