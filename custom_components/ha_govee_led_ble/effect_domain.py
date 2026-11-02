@@ -83,7 +83,6 @@ class SourceKind(StrEnum):
     AUTHORED = "authored"
     IMPORTED = "imported"
     CATALOGUE_TEMPLATE = "catalogue_template"
-    CAPTURED_FIXTURE = "captured_fixture"
     MIGRATED = "migrated"
 
 

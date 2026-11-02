@@ -72,18 +72,6 @@ class VerificationConfidence(StrEnum):
     UNVERIFIED = "unverified"
 
 
-class PhysicalValidationState(StrEnum):
-    APPLICATION_VALIDATED = "application_validated"
-    CAPTURE_VALIDATED = "capture_validated"
-    NOT_VALIDATED = "not_validated"
-
-
-class EvidenceClassification(StrEnum):
-    DETERMINISTIC = "deterministic"
-    STRUCTURAL = "structural"
-    LIVE = "live"
-
-
 class FrontendApplicationState(StrEnum):
     STUDIO = "studio"
     HOME_ASSISTANT = "home_assistant"
@@ -100,8 +88,6 @@ class ReleaseCapability:
     application_route: ApplicationRoute
     compiler_deployer_strategy: CompilerDeployerStrategy
     verification_confidence: VerificationConfidence
-    physical_validation_state: PhysicalValidationState
-    diagnostics_evidence_classification: EvidenceClassification
 
     @property
     def frontend_application(self) -> FrontendApplicationState:
@@ -130,8 +116,6 @@ class ReleaseCapability:
             "application_route": self.application_route.value,
             "compiler_deployer_strategy": self.compiler_deployer_strategy.value,
             "verification_confidence": self.verification_confidence.value,
-            "physical_validation_state": self.physical_validation_state.value,
-            "evidence_classification": self.diagnostics_evidence_classification.value,
         }
 
 
@@ -143,8 +127,6 @@ def _capability(
     application_route: ApplicationRoute,
     compiler_deployer_strategy: CompilerDeployerStrategy,
     verification_confidence: VerificationConfidence,
-    physical_validation_state: PhysicalValidationState,
-    diagnostics_evidence_classification: EvidenceClassification,
 ) -> ReleaseCapability:
     return ReleaseCapability(
         model=model,
@@ -155,19 +137,15 @@ def _capability(
         application_route=application_route,
         compiler_deployer_strategy=compiler_deployer_strategy,
         verification_confidence=verification_confidence,
-        physical_validation_state=physical_validation_state,
-        diagnostics_evidence_classification=diagnostics_evidence_classification,
     )
 
 
 # Short aliases keep the capability table one row per line.
-_W, _R, _S, _V, _P, _E = (
+_W, _R, _S, _V = (
     CapabilityWorkflow,
     ApplicationRoute,
     CompilerDeployerStrategy,
     VerificationConfidence,
-    PhysicalValidationState,
-    EvidenceClassification,
 )
 
 
@@ -181,8 +159,6 @@ _RELEASE_CAPABILITY_BASE: Final = (
             route,
             strategy,
             _V.SELECTION_ONLY,
-            _P.NOT_VALIDATED,
-            _E.STRUCTURAL,
         )
         for workflow, label, kind, route, strategy in (
             (_W.NATIVE_SCENES, "Scenes", "scene_builtin", _R.STUDIO_SCENE_APPLY, _S.NATIVE_EFFECT_SELECTION),
@@ -209,8 +185,6 @@ _RELEASE_CAPABILITY_BASE: Final = (
         _R.STUDIO_SCENE_APPLY,
         _S.NATIVE_EFFECT_SELECTION,
         _V.STATE_CONFIRMED,
-        _P.APPLICATION_VALIDATED,
-        _E.STRUCTURAL,
     ),
     _capability(
         "H617A",
@@ -220,8 +194,6 @@ _RELEASE_CAPABILITY_BASE: Final = (
         _R.HOME_ASSISTANT_CONTROL,
         _S.MODEL_SCENE_ENGINE,
         _V.SELECTION_ONLY,
-        _P.CAPTURE_VALIDATED,
-        _E.STRUCTURAL,
     ),
     _capability(
         "H617A",
@@ -231,8 +203,6 @@ _RELEASE_CAPABILITY_BASE: Final = (
         _R.HOME_ASSISTANT_CONTROL,
         _S.MODEL_SCENE_ENGINE,
         _V.SELECTION_ONLY,
-        _P.CAPTURE_VALIDATED,
-        _E.STRUCTURAL,
     ),
     _capability(
         "H617A",
@@ -242,8 +212,6 @@ _RELEASE_CAPABILITY_BASE: Final = (
         _R.HOME_ASSISTANT_CONTROL,
         _S.H617A_CUSTOM_ENGINE,
         _V.SELECTION_ONLY,
-        _P.APPLICATION_VALIDATED,
-        _E.DETERMINISTIC,
     ),
     _capability(
         "H617A",
@@ -253,8 +221,6 @@ _RELEASE_CAPABILITY_BASE: Final = (
         _R.HOME_ASSISTANT_CONTROL,
         _S.H617A_CUSTOM_ENGINE,
         _V.SELECTION_ONLY,
-        _P.APPLICATION_VALIDATED,
-        _E.STRUCTURAL,
     ),
     _capability(
         "H617A",
@@ -264,8 +230,6 @@ _RELEASE_CAPABILITY_BASE: Final = (
         _R.HOME_ASSISTANT_CONTROL,
         _S.H617A_CUSTOM_ENGINE,
         _V.SELECTION_ONLY,
-        _P.APPLICATION_VALIDATED,
-        _E.STRUCTURAL,
     ),
     _capability(
         "H617A",
@@ -275,8 +239,6 @@ _RELEASE_CAPABILITY_BASE: Final = (
         _R.HOME_ASSISTANT_CONTROL,
         _S.COORDINATOR_WRITER,
         _V.SELECTION_ONLY,
-        _P.APPLICATION_VALIDATED,
-        _E.LIVE,
     ),
     _capability(
         "H617A",
@@ -286,8 +248,6 @@ _RELEASE_CAPABILITY_BASE: Final = (
         _R.HOME_ASSISTANT_CONTROL,
         _S.MODEL_SCENE_ENGINE,
         _V.SELECTION_ONLY,
-        _P.CAPTURE_VALIDATED,
-        _E.STRUCTURAL,
     ),
     _capability(
         "H617A",
@@ -297,8 +257,6 @@ _RELEASE_CAPABILITY_BASE: Final = (
         _R.HOME_ASSISTANT_CONTROL,
         _S.A3_EFFECT_UPLOAD,
         _V.SELECTION_ONLY,
-        _P.CAPTURE_VALIDATED,
-        _E.STRUCTURAL,
     ),
     _capability(
         "H6179",
@@ -308,8 +266,6 @@ _RELEASE_CAPABILITY_BASE: Final = (
         _R.STUDIO_SCENE_APPLY,
         _S.NATIVE_EFFECT_SELECTION,
         _V.SELECTION_ONLY,
-        _P.NOT_VALIDATED,
-        _E.STRUCTURAL,
     ),
     _capability(
         "H6179",
@@ -319,8 +275,6 @@ _RELEASE_CAPABILITY_BASE: Final = (
         _R.HOME_ASSISTANT_CONTROL,
         _S.H6179_EFFECT_UPLOAD,
         _V.SELECTION_ONLY,
-        _P.NOT_VALIDATED,
-        _E.STRUCTURAL,
     ),
     _capability(
         "H6179",
@@ -330,8 +284,6 @@ _RELEASE_CAPABILITY_BASE: Final = (
         _R.HOME_ASSISTANT_CONTROL,
         _S.H6179_EFFECT_UPLOAD,
         _V.SELECTION_ONLY,
-        _P.NOT_VALIDATED,
-        _E.STRUCTURAL,
     ),
     _capability(
         "H6179",
@@ -341,8 +293,6 @@ _RELEASE_CAPABILITY_BASE: Final = (
         _R.HOME_ASSISTANT_CONTROL,
         _S.COORDINATOR_WRITER,
         _V.SELECTION_ONLY,
-        _P.NOT_VALIDATED,
-        _E.STRUCTURAL,
     ),
     _capability(
         "H6199",
@@ -352,8 +302,6 @@ _RELEASE_CAPABILITY_BASE: Final = (
         _R.STUDIO_SCENE_APPLY,
         _S.NATIVE_EFFECT_SELECTION,
         _V.STATE_CONFIRMED,
-        _P.APPLICATION_VALIDATED,
-        _E.STRUCTURAL,
     ),
     _capability(
         "H6199",
@@ -363,8 +311,6 @@ _RELEASE_CAPABILITY_BASE: Final = (
         _R.HOME_ASSISTANT_CONTROL,
         _S.MODEL_SCENE_ENGINE,
         _V.SELECTION_ONLY,
-        _P.CAPTURE_VALIDATED,
-        _E.STRUCTURAL,
     ),
     _capability(
         "H6199",
@@ -374,8 +320,6 @@ _RELEASE_CAPABILITY_BASE: Final = (
         _R.HOME_ASSISTANT_CONTROL,
         _S.MODEL_SCENE_ENGINE,
         _V.SELECTION_ONLY,
-        _P.CAPTURE_VALIDATED,
-        _E.STRUCTURAL,
     ),
     _capability(
         "H6199",
@@ -385,8 +329,6 @@ _RELEASE_CAPABILITY_BASE: Final = (
         _R.HOME_ASSISTANT_CONTROL,
         _S.H6199_CUSTOM_ENGINE,
         _V.SELECTION_ONLY,
-        _P.CAPTURE_VALIDATED,
-        _E.STRUCTURAL,
     ),
     _capability(
         "H6199",
@@ -396,8 +338,6 @@ _RELEASE_CAPABILITY_BASE: Final = (
         _R.HOME_ASSISTANT_CONTROL,
         _S.COORDINATOR_WRITER,
         _V.STATE_CONFIRMED,
-        _P.APPLICATION_VALIDATED,
-        _E.LIVE,
     ),
     _capability(
         "H6199",
@@ -407,8 +347,6 @@ _RELEASE_CAPABILITY_BASE: Final = (
         _R.HOME_ASSISTANT_CONTROL,
         _S.COORDINATOR_WRITER,
         _V.STATE_CONFIRMED,
-        _P.APPLICATION_VALIDATED,
-        _E.LIVE,
     ),
     _capability(
         "H6199",
@@ -418,8 +356,6 @@ _RELEASE_CAPABILITY_BASE: Final = (
         _R.HOME_ASSISTANT_CONTROL,
         _S.MODEL_SCENE_ENGINE,
         _V.SELECTION_ONLY,
-        _P.CAPTURE_VALIDATED,
-        _E.STRUCTURAL,
     ),
     _capability(
         "H6199",
@@ -429,8 +365,6 @@ _RELEASE_CAPABILITY_BASE: Final = (
         _R.HOME_ASSISTANT_CONTROL,
         _S.A3_EFFECT_UPLOAD,
         _V.SELECTION_ONLY,
-        _P.CAPTURE_VALIDATED,
-        _E.STRUCTURAL,
     ),
 )
 
@@ -444,11 +378,9 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         _R.NONE,
         _S.A3_EFFECT_UPLOAD,
         _V.UNVERIFIED,
-        _P.NOT_VALIDATED,
-        _E.STRUCTURAL,
     ),
     *(
-        _capability("H607C", workflow, label, kind, route, strategy, _V.SELECTION_ONLY, _P.NOT_VALIDATED, _E.STRUCTURAL)
+        _capability("H607C", workflow, label, kind, route, strategy, _V.SELECTION_ONLY)
         for workflow, label, kind, route, strategy in (
             (_W.NATIVE_SCENES, "Scenes", "scene_builtin", _R.STUDIO_SCENE_APPLY, _S.NATIVE_EFFECT_SELECTION),
             (_W.LAYERED_SCENES, "Layered scenes", "scene_layered", _R.STUDIO_CUSTOM_APPLY, _S.MODEL_SCENE_ENGINE),
@@ -468,8 +400,6 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
             _R.STUDIO_SCENE_APPLY if workflow is _W.NATIVE_SCENES else _R.HOME_ASSISTANT_CONTROL,
             _S.NATIVE_EFFECT_SELECTION if workflow is _W.NATIVE_SCENES else _S.A3_EFFECT_UPLOAD,
             _V.SELECTION_ONLY,
-            _P.NOT_VALIDATED,
-            _E.STRUCTURAL,
         )
         for model, workflow, label, kind in (
             ("H60A1", _W.NATIVE_SCENES, "Scenes", "scene_builtin"),
@@ -485,7 +415,7 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         )
     ),
     *(
-        _capability("H600A", workflow, label, kind, route, strategy, _V.SELECTION_ONLY, _P.NOT_VALIDATED, _E.STRUCTURAL)
+        _capability("H600A", workflow, label, kind, route, strategy, _V.SELECTION_ONLY)
         for workflow, label, kind, route, strategy in (
             (_W.NATIVE_SCENES, "Scenes", "scene_builtin", _R.STUDIO_SCENE_APPLY, _S.NATIVE_EFFECT_SELECTION),
             (
@@ -500,7 +430,7 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         )
     ),
     *(
-        _capability("H601C", workflow, label, kind, route, strategy, _V.UNVERIFIED, _P.NOT_VALIDATED, _E.STRUCTURAL)
+        _capability("H601C", workflow, label, kind, route, strategy, _V.UNVERIFIED)
         for workflow, label, kind, route, strategy in (
             (_W.NATIVE_SCENES, "Scenes", "scene_builtin", _R.STUDIO_SCENE_APPLY, _S.NATIVE_EFFECT_SELECTION),
             (
@@ -515,7 +445,7 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         )
     ),
     *(
-        _capability("H6102", workflow, label, kind, route, strategy, _V.SELECTION_ONLY, _P.NOT_VALIDATED, _E.STRUCTURAL)
+        _capability("H6102", workflow, label, kind, route, strategy, _V.SELECTION_ONLY)
         for workflow, label, kind, route, strategy in (
             (_W.NATIVE_SCENES, "Scenes", "scene_builtin", _R.STUDIO_SCENE_APPLY, _S.NATIVE_EFFECT_SELECTION),
             (_W.SINGLE, "Single", "h617a_single", _R.HOME_ASSISTANT_CONTROL, _S.H617A_CUSTOM_ENGINE),
@@ -542,8 +472,6 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
             route,
             strategy,
             _V.UNVERIFIED,
-            _P.NOT_VALIDATED,
-            _E.STRUCTURAL,
         )
         for workflow, label, kind, route, strategy in (
             (_W.PAINTED, "Graffiti", "h617a_painted", _R.HOME_ASSISTANT_CONTROL, _S.A3_EFFECT_UPLOAD),
@@ -571,8 +499,6 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
             _R.HOME_ASSISTANT_CONTROL,
             _S.A3_EFFECT_UPLOAD,
             _V.UNVERIFIED,
-            _P.NOT_VALIDATED,
-            _E.STRUCTURAL,
         )
         for workflow, label, kind in (
             (_W.PAINTED, "Graffiti", "h617a_painted"),
@@ -588,8 +514,6 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         _R.STUDIO_SCENE_APPLY,
         _S.NATIVE_EFFECT_SELECTION,
         _V.UNVERIFIED,
-        _P.NOT_VALIDATED,
-        _E.STRUCTURAL,
     ),
     _capability(
         "H6099",
@@ -599,8 +523,6 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         _R.HOME_ASSISTANT_CONTROL,
         _S.COORDINATOR_WRITER,
         _V.UNVERIFIED,
-        _P.NOT_VALIDATED,
-        _E.STRUCTURAL,
     ),
     _capability(
         "H6099",
@@ -610,8 +532,6 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         _R.HOME_ASSISTANT_CONTROL,
         _S.COORDINATOR_WRITER,
         _V.UNVERIFIED,
-        _P.NOT_VALIDATED,
-        _E.STRUCTURAL,
     ),
     *(
         _capability(
@@ -622,8 +542,6 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
             _R.HOME_ASSISTANT_CONTROL,
             _S.A3_EFFECT_UPLOAD,
             _V.UNVERIFIED,
-            _P.NOT_VALIDATED,
-            _E.STRUCTURAL,
         )
         for workflow, label, kind in (
             (_W.PAINTED, "Graffiti", "h617a_painted"),
@@ -639,8 +557,6 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         _R.STUDIO_SCENE_APPLY,
         _S.NATIVE_EFFECT_SELECTION,
         _V.SELECTION_ONLY,
-        _P.CAPTURE_VALIDATED,
-        _E.STRUCTURAL,
     ),
     _capability(
         "H66A0",
@@ -650,8 +566,6 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         _R.HOME_ASSISTANT_CONTROL,
         _S.COORDINATOR_WRITER,
         _V.SELECTION_ONLY,
-        _P.CAPTURE_VALIDATED,
-        _E.STRUCTURAL,
     ),
     _capability(
         "H66A0",
@@ -661,8 +575,6 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         _R.HOME_ASSISTANT_CONTROL,
         _S.COORDINATOR_WRITER,
         _V.UNVERIFIED,
-        _P.NOT_VALIDATED,
-        _E.STRUCTURAL,
     ),
     *(
         _capability(
@@ -673,8 +585,6 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
             _R.HOME_ASSISTANT_CONTROL,
             _S.A3_EFFECT_UPLOAD,
             _V.UNVERIFIED,
-            _P.NOT_VALIDATED,
-            _E.STRUCTURAL,
         )
         for workflow, label, kind in (
             (_W.PAINTED, "Graffiti", "h617a_painted"),
@@ -690,8 +600,6 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         _R.STUDIO_SCENE_APPLY,
         _S.NATIVE_EFFECT_SELECTION,
         _V.SELECTION_ONLY,
-        _P.CAPTURE_VALIDATED,
-        _E.STRUCTURAL,
     ),
     _capability(
         "H1A42",
@@ -701,8 +609,6 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         _R.HOME_ASSISTANT_CONTROL,
         _S.COORDINATOR_WRITER,
         _V.SELECTION_ONLY,
-        _P.CAPTURE_VALIDATED,
-        _E.STRUCTURAL,
     ),
     *(
         _capability(
@@ -713,8 +619,6 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
             _R.HOME_ASSISTANT_CONTROL,
             _S.A3_EFFECT_UPLOAD,
             _V.UNVERIFIED,
-            _P.NOT_VALIDATED,
-            _E.STRUCTURAL,
         )
         for workflow, label, kind in (
             (_W.PAINTED, "Graffiti", "h617a_painted"),
@@ -730,8 +634,6 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         _R.STUDIO_SCENE_APPLY,
         _S.NATIVE_EFFECT_SELECTION,
         _V.SELECTION_ONLY,
-        _P.CAPTURE_VALIDATED,
-        _E.STRUCTURAL,
     ),
     _capability(
         "H61F5",
@@ -741,11 +643,9 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         _R.HOME_ASSISTANT_CONTROL,
         _S.COORDINATOR_WRITER,
         _V.SELECTION_ONLY,
-        _P.CAPTURE_VALIDATED,
-        _E.STRUCTURAL,
     ),
     *(
-        _capability("H7025", workflow, label, kind, route, strategy, _V.SELECTION_ONLY, _P.NOT_VALIDATED, _E.STRUCTURAL)
+        _capability("H7025", workflow, label, kind, route, strategy, _V.SELECTION_ONLY)
         for workflow, label, kind, route, strategy in (
             (_W.NATIVE_SCENES, "Scenes", "scene_builtin", _R.STUDIO_SCENE_APPLY, _S.NATIVE_EFFECT_SELECTION),
             (_W.LAYERED_SCENES, "Layered scenes", "scene_layered", _R.HOME_ASSISTANT_CONTROL, _S.MODEL_SCENE_ENGINE),
@@ -759,8 +659,6 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
             capability,
             model="H6125",
             verification_confidence=_V.SELECTION_ONLY,
-            physical_validation_state=_P.NOT_VALIDATED,
-            diagnostics_evidence_classification=_E.STRUCTURAL,
         )
         for capability in _RELEASE_CAPABILITY_BASE
         if capability.model == "H617A"
@@ -782,8 +680,6 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
             capability,
             model="H6076",
             verification_confidence=_V.SELECTION_ONLY,
-            physical_validation_state=_P.NOT_VALIDATED,
-            diagnostics_evidence_classification=_E.STRUCTURAL,
         )
         for capability in _RELEASE_CAPABILITY_BASE
         if capability.model == "H617A"
@@ -804,8 +700,6 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
             capability,
             model="H6072",
             verification_confidence=_V.SELECTION_ONLY,
-            physical_validation_state=_P.NOT_VALIDATED,
-            diagnostics_evidence_classification=_E.STRUCTURAL,
         )
         for capability in _RELEASE_CAPABILITY_BASE
         if capability.model == "H617A"
@@ -827,8 +721,6 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
             capability,
             model="H617C",
             verification_confidence=_V.SELECTION_ONLY,
-            physical_validation_state=_P.NOT_VALIDATED,
-            diagnostics_evidence_classification=_E.STRUCTURAL,
         )
         for capability in _RELEASE_CAPABILITY_BASE
         if capability.model == "H617A"
@@ -838,7 +730,7 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
     *(replace(capability, model="H617F") for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H617A"),
     *(capability for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H6199"),
     *(
-        _capability("H7020", workflow, label, kind, route, strategy, _V.SELECTION_ONLY, _P.NOT_VALIDATED, _E.STRUCTURAL)
+        _capability("H7020", workflow, label, kind, route, strategy, _V.SELECTION_ONLY)
         for workflow, label, kind, route, strategy in (
             (_W.NATIVE_SCENES, "Scenes", "scene_builtin", _R.STUDIO_SCENE_APPLY, _S.NATIVE_EFFECT_SELECTION),
             (_W.LAYERED_SCENES, "Layered scenes", "scene_layered", _R.HOME_ASSISTANT_CONTROL, _S.MODEL_SCENE_ENGINE),

@@ -64,7 +64,6 @@ _.power_on_open_flag
 
 BRIGHTEST_DARKEST  # layered_scene.py
 BRIGHTEST_DARKEST_BRIGHTEST  # layered_scene.py
-CAPTURED_FIXTURE  # effect_domain.py
 CONTINUOUS  # layered_scene.py
 DARKEST_BRIGHTEST  # layered_scene.py
 DARKEST_BRIGHTEST_DARKEST  # layered_scene.py
