@@ -2521,7 +2521,7 @@ async def test_restore_static_colour_ignores_malformed_extra_data(light, mock_co
 
     await light._async_restore_static_color()
 
-    assert light._attr_color_mode is ColorMode.RGB
+    assert light.color_mode is ColorMode.RGB
     assert mock_coordinator.color_temp_kelvin is None
     mock_coordinator.async_set_updated_data.assert_not_called()
 
@@ -2626,7 +2626,7 @@ async def test_failed_rgb_keeps_unset_music_style_for_native_bloom(hass, monkeyp
         "Synthetic Bloom default",
         command_grammar="H617A",
         supports_rgb=True,
-        whole_device_mask=0x7FFF,
+        whole_device_mask_override=0x7FFF,
         music_modes=("bloom",),
         music_variants=(replace(bloom, calm_default=True),),
     )
@@ -2665,7 +2665,15 @@ async def test_failed_rgb_preserves_newer_observed_music_style(hass):
     assert coord._music_calm is True and coord.music_sensitivity == 88
 
 
-@pytest.mark.parametrize(("stored", "expected"), [(3123, 3100), (3150, 3200), (1500, 2000), (12000, 9000)])
+@pytest.mark.parametrize(("stored", "expected"), [(3123, 3100), (3150, 3200), (500, 1000), (12000, 10000)])
 def test_restored_kelvin_is_quantised_to_the_table_grid(stored: int, expected: int) -> None:
     restored = _coerce_static_color({"color_mode": "color_temp", "color_temp_kelvin": stored}, MODEL_PROFILES["H617A"])
     assert restored is not None and restored.color_temp_kelvin == expected
+
+
+def test_restored_kelvin_is_presented_inside_the_current_device_range(light, mock_coordinator):
+    mock_coordinator.color_temp_kelvin = 1500
+    light._attr_color_mode = ColorMode.COLOR_TEMP
+    mock_coordinator.color_mode = None
+    mock_coordinator.color_temp_kelvin_source = "restored"
+    assert light.color_temp_kelvin == mock_coordinator.profile.min_color_temp_kelvin

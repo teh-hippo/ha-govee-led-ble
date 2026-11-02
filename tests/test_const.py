@@ -602,3 +602,10 @@ def test_every_colour_temperature_range_lies_on_the_kelvin_table_grid() -> None:
         ):
             low, high = device_profile(model, *pact, firmware=firmware, hardware=hardware).color_temp_range
             assert 1000 <= low <= high <= 10000 and low % const.KELVIN_STEP == high % const.KELVIN_STEP == 0, model
+
+
+def test_whole_device_mask_follows_segment_count_unless_overridden():
+    profile = MODEL_PROFILES["H617A"]
+    assert replace(profile, segment_count=5).whole_device_mask == 0b11111
+    assert MODEL_PROFILES["H600A"].whole_device_mask == 1
+    assert replace(MODEL_PROFILES["H600A"], segment_count=3).whole_device_mask == 1

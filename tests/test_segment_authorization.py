@@ -44,7 +44,7 @@ def profile(request, monkeypatch):
         supports_segment_color_temperature=True,
         segment_count=5,
         segment_group_size=3 if request.param == "H617A" else 4,
-        whole_device_mask=31,
+        whole_device_mask_override=31,
     )
     monkeypatch.setitem(MODEL_PROFILES, "H9901", profile)
     return profile
@@ -139,7 +139,7 @@ def test_raw_mask_geometry(profile, mask):
     "change",
     [
         {"segment_count": 4},
-        {"whole_device_mask": 15},
+        {"whole_device_mask_override": 15},
         {"supports_segment_brightness": False},
         {"supports_segment_writes": False},
     ],
@@ -206,7 +206,11 @@ def test_full_segment_brightness_array_cannot_bypass_capability_gate():
     packet = payload + bytes([xor_checksum(payload)])
     profile = MODEL_PROFILES["H617A"]
     require_profile_packet(packet, profile)
-    for change in ({"supports_segment_brightness": False}, {"segment_count": 5}, {"whole_device_mask": 0x001F}):
+    for change in (
+        {"supports_segment_brightness": False},
+        {"segment_count": 5},
+        {"whole_device_mask_override": 0x001F},
+    ):
         with pytest.raises(ValueError, match="segment brightness"):
             require_profile_packet(packet, replace(profile, **change))
 
@@ -219,7 +223,7 @@ async def test_all_segment_brightness_rejects_stale_geometry_before_physical_att
     if array:
         payload = bytes.fromhex("33051503") + bytes([50]) * 15
         packet = payload + bytes([xor_checksum(payload)])
-        narrowed = replace(profile, whole_device_mask=0x001F)
+        narrowed = replace(profile, whole_device_mask_override=0x001F)
     else:
         packet = build_brightness_mask(0x7FFF, 50, profile=profile)
         narrowed = replace(profile, segment_count=4)

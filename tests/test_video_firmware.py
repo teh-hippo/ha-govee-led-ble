@@ -98,7 +98,7 @@ def test_correct_identity_and_qualification(monkeypatch: pytest.MonkeyPatch, ver
 async def test_admission_recheck_omission_and_recovery(hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch):
     # This recovery case also restores a whole-device static RGB snapshot.
     monkeypatch.setitem(
-        MODEL_PROFILES, "H7000", replace(gated(monkeypatch), supports_rgb=True, whole_device_mask=0x7FFF)
+        MODEL_PROFILES, "H7000", replace(gated(monkeypatch), supports_rgb=True, whole_device_mask_override=0x7FFF)
     )
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H7000", configuration_url="test")
     monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock())

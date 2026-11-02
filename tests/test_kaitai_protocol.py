@@ -240,7 +240,7 @@ def test_h6072_reconstructed_three_record_pages(raw, group, count, brightness):
 @pytest.mark.parametrize(
     ("raw", "legacy"),
     [
-        ("3305140000000898ff982900ff00000000000003", True),
+        ("330514ffffff0898ff982900ff000000000000fc", True),
         ("33051501ffffff0898ff9829ff000000000000fc", False),
     ],
 )
@@ -249,9 +249,7 @@ def test_h6072_reconstructed_kelvin_commands(raw, legacy):
     root._read()
     body = root.body.sub_body if legacy else root.body.sub_body.static_body
     assert body.kelvin == 2200
-    assert (body.rgb_direct.red, body.rgb_direct.green, body.rgb_direct.blue) == (
-        (0, 0, 0) if legacy else (255, 255, 255)
-    )
+    assert (body.rgb_direct.red, body.rgb_direct.green, body.rgb_direct.blue) == (255, 255, 255)
     assert (body.mask if legacy else body.mask.bits) == 0xFF
 
 
@@ -480,7 +478,7 @@ def test_h7020_kelvin_and_four_byte_masks(h7020_profile, kelvin, companion):
     from custom_components.ha_govee_led_ble.light_commands import parse_static_write
 
     for mask in (0x7FFF, 0x3FFFFFFF):
-        profile = replace(h7020_profile, whole_device_mask=mask, segment_count=mask.bit_count())
+        profile = replace(h7020_profile, segment_count=mask.bit_count())
         packet = build_color_temp(kelvin, "H7020", profile=profile)
         expected = b"\x33\x05\x15\x01\xff\xff\xff" + kelvin.to_bytes(2, "big")
         expected += bytes.fromhex(companion) + mask.to_bytes(4, "little") + bytes(3)
@@ -499,7 +497,7 @@ def test_h7020_mask_bounds_preserve_legacy_encoding(h7020_profile):
     parsed = parse_static_write(packet, profile=h7020_profile)
     assert parsed is not None and parsed.segment_mask == 0x20008001
     generated_protocol_adapter.require_profile_packet(packet, h7020_profile)
-    fifteen = replace(h7020_profile, segment_count=15, whole_device_mask=0x7FFF)
+    fifteen = replace(h7020_profile, segment_count=15)
     assert build_color_rgb(1, 2, 3, profile=fifteen) == build_color_rgb(1, 2, 3, "H617A")
     with pytest.raises(ValueError, match="geometry"):
         generated_protocol_adapter.require_profile_packet(packet, fifteen)
@@ -736,7 +734,7 @@ def static_coordinator(hass, monkeypatch):
             segment_count=15,
             segment_group_size=3,
             supports_segment_writes=True,
-            whole_device_mask=0x7FFF,
+            whole_device_mask_override=0x7FFF,
         ),
     )
     return GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H7001", configuration_url=None)
@@ -1673,7 +1671,7 @@ async def test_four_slot_profile_observes_every_declared_domain(
         segment_count=14,
         segment_group_size=4,
         supports_segment_writes=True,
-        whole_device_mask=0x3FFF,
+        whole_device_mask_override=0x3FFF,
     )
     monkeypatch.setitem(MODEL_PROFILES, model, profile)
     monkeypatch.setitem(protocol_core._STATUS_ROOTS, status_grammar, (schema, root))

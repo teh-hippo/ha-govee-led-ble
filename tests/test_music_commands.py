@@ -1274,7 +1274,7 @@ async def test_alternate_fountain_direction_survives_capture_and_recovery(hass, 
         music_modes=("fountain", "rhythm"),
         music_variants=(variant,),
         supports_rgb=True,
-        whole_device_mask=0x7FFF,
+        whole_device_mask_override=0x7FFF,
     )
     monkeypatch.setitem(MODEL_PROFILES, "TEST-FOUNTAIN", profile)
     compiled = compile_music_profile(

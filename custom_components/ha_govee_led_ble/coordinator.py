@@ -689,7 +689,7 @@ class GoveeBLECoordinator(
                 profile = replace(profile, physical_ic_count=self.profile.physical_ic_count)
             if profile.configured_string_counts and self.configured_strings in profile.configured_string_counts:
                 bulbs = self.configured_strings * profile.bulbs_per_string
-                profile = replace(profile, segment_count=bulbs, whole_device_mask=(1 << bulbs) - 1)
+                profile = replace(profile, segment_count=bulbs)
         if profile == self.profile:
             if context_changed:
                 self._profile_generation += 1
@@ -1749,7 +1749,7 @@ class GoveeBLECoordinator(
         self.configured_strings = count
         self._configured_strings_confirmed = False
         bulbs = count * self.profile.bulbs_per_string
-        self.profile = replace(self.profile, segment_count=bulbs, whole_device_mask=(1 << bulbs) - 1)
+        self.profile = replace(self.profile, segment_count=bulbs)
         self._profile_generation += 1
         self._expected_state.clear()
         self._segment_query_generation = None

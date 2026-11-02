@@ -109,6 +109,10 @@ _IDENTITY_READ_DOMAINS = frozenset(
     }
 )
 
+# Seconds a connection stays open after the last command, for single bulbs and for everything else that opts in.
+IDLE_TIMEOUT_BULB = 1.5
+IDLE_TIMEOUT_STANDARD = 3.0
+
 # Every colour temperature is a 100 K step of the shared companion-colour table.
 KELVIN_STEP = 100
 KELVIN_RANGE_2000_9000 = (2000, 9000)
@@ -192,8 +196,8 @@ class ModelProfile:
     supports_color_temperature: bool = False
     supports_low_blue_light: bool = False
     color_temp_range: tuple[int, int] = KELVIN_RANGE_2000_9000
-    # After a masked Kelvin write, the lamp must also report colour mode (not just matching segment colours).
-    segment_kelvin_checks_colour_mode: bool = False
+    # Whole-lamp Kelvin is confirmed from a settled read that must also report colour mode, not just matching colours.
+    kelvin_verification_reads_colour_mode: bool = False
     supports_custom_effects: bool = False
     supports_scenes: bool = False
     supports_video_mode: bool = False
@@ -240,7 +244,8 @@ class ModelProfile:
     static_readback_nonzero_kelvin: bool = False
     static_readback_zero_kelvin_is_rgb: bool = False
     static_readback_gradual: bool = False
-    whole_device_mask: int = 0
+    # Overrides the all-segments mask for devices whose addressable mask differs from their segment count.
+    whole_device_mask_override: int = 0
     segment_count: int = 0
     native_zones: tuple[tuple[str, int, int], ...] = ()
     segment_group_size: int = 0
@@ -250,7 +255,8 @@ class ModelProfile:
     supports_segment_writes: bool = False
     supports_segment_brightness: bool = False
     supports_segment_color_temperature: bool = False
-    segment_kelvin_renders_device_rgb: bool = False
+    # The lamp shows its own warm white rather than the companion colour, so any warm white confirms a Kelvin write.
+    kelvin_renders_device_white: bool = False
     connection_idle_timeout: float | None = None
     scene_catalogue_sku: str | None = None
     legacy_scene_catalogue_sku: str | None = None
@@ -272,10 +278,11 @@ class ModelProfile:
     default_effect_families_override: frozenset[str] | None = None
     effect_readback: str = "none"
 
+    @property
+    def whole_device_mask(self) -> int:
+        return self.whole_device_mask_override or (1 << self.segment_count) - 1
+
     def __post_init__(self) -> None:
-        if not self.whole_device_mask:
-            # Segmented devices address every segment; whole-bulb models and unsegmented exceptions set it explicitly.
-            object.__setattr__(self, "whole_device_mask", (1 << self.segment_count) - 1)
         if self.diy_upload_transport not in {None, "a1_02", "a3"}:
             raise ValueError("unknown DIY upload transport")
         if not self.restarting_boolean_controls <= self.boolean_controls:
@@ -519,7 +526,7 @@ _H617A_PROFILE = ModelProfile(
     supports_segment_writes=True,
     # Preserve the existing qualified segment operations independently of RGB writes.
     supports_segment_brightness=True,
-    connection_idle_timeout=3.0,
+    connection_idle_timeout=IDLE_TIMEOUT_STANDARD,
     scene_catalogue_sku="H617A",
     advanced_scene_carrier=(1013, 11836),
     effect_readback="diy_code_only",
@@ -569,9 +576,9 @@ _H6076_PROFILE = ModelProfile(
     color_temp_range=KELVIN_RANGE_2700_6500,
     # Static status can omit Kelvin. Segment rendering confirms plausible
     # white, not an exact Kelvin measurement or losslessly restorable native-white intent.
-    segment_kelvin_checks_colour_mode=True,
+    kelvin_verification_reads_colour_mode=True,
     segment_colour_mode_ambiguous=True,
-    segment_kelvin_renders_device_rgb=True,
+    kelvin_renders_device_white=True,
     static_readback_gradual=True,
     physical_ic_count=14,
     segment_count=7,
@@ -586,7 +593,7 @@ _H6076_PROFILE = ModelProfile(
     advanced_diy_selector=402,
     diy_requires_upload_ack=True,
     boolean_controls=frozenset({"gradual"}),
-    connection_idle_timeout=3.0,
+    connection_idle_timeout=IDLE_TIMEOUT_STANDARD,
     scene_catalogue_sku="H6076",
     music_grammar="H6076",
     music_modes=(
@@ -653,11 +660,11 @@ _H6072_PROFILE = ModelProfile(
     supports_rgb=True,
     supports_color_temperature=True,
     color_temp_range=KELVIN_RANGE_2000_9000,
-    segment_kelvin_checks_colour_mode=True,
+    kelvin_verification_reads_colour_mode=True,
     static_readback_gradual=True,
     static_readback_nonzero_kelvin=True,
     segment_colour_mode_ambiguous=True,
-    segment_kelvin_renders_device_rgb=True,
+    kelvin_renders_device_white=True,
     segment_count=8,
     segment_group_size=3,
     physical_ic_count=66,
@@ -707,7 +714,7 @@ _H6072_PROFILE = ModelProfile(
     music_params_require_activation=True,
     supports_low_blue_light=True,
     boolean_controls=frozenset({"gradual"}),
-    connection_idle_timeout=3.0,
+    connection_idle_timeout=IDLE_TIMEOUT_STANDARD,
 )
 
 MODEL_PROFILES: dict[str, ModelProfile] = {
@@ -735,8 +742,8 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_multi_layered_effects=True,
         diy_requires_upload_ack=True,
         effect_readback="diy_code_only",
-        whole_device_mask=1,
-        connection_idle_timeout=1.5,
+        whole_device_mask_override=1,
+        connection_idle_timeout=IDLE_TIMEOUT_BULB,
         scene_catalogue_sku="H600A",
         music_modes=(),
         effect_retry_after_upload=False,
@@ -770,7 +777,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         setup_required_read_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE}),
         supports_rgb=True,
         supports_color_temperature=True,
-        segment_kelvin_checks_colour_mode=True,
+        kelvin_verification_reads_colour_mode=True,
         supports_segment_writes=True,
         supports_segment_brightness=True,
         supports_segment_color_temperature=True,
@@ -869,8 +876,8 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_custom_effects=True,
         supports_scenes=True,
         supports_multi_layered_effects=True,
-        whole_device_mask=1,
-        connection_idle_timeout=1.5,
+        whole_device_mask_override=1,
+        connection_idle_timeout=IDLE_TIMEOUT_BULB,
         scene_catalogue_sku="H601C",
     ),
     "H6097": ModelProfile(
@@ -1186,9 +1193,9 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_segment_writes=True,
         supports_segment_brightness=True,
         supports_segment_color_temperature=True,
-        segment_kelvin_renders_device_rgb=True,
+        kelvin_renders_device_white=True,
         color_temp_range=KELVIN_RANGE_2700_6500,
-        segment_kelvin_checks_colour_mode=True,
+        kelvin_verification_reads_colour_mode=True,
         segment_colour_mode_ambiguous=True,
         scene_catalogue_sku="H66A0",
         supports_custom_effects=True,
@@ -1203,7 +1210,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         status_grammar="H1A42",
         effect_grammar="H617A",
         music_grammar="H1A42",
-        segment_kelvin_checks_colour_mode=True,
+        kelvin_verification_reads_colour_mode=True,
         segment_colour_mode_ambiguous=True,
         static_readback_kelvin=True,
         static_readback_zero_kelvin_is_rgb=True,
@@ -1265,7 +1272,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         effect_grammar="H617A",
         music_grammar="H61F5",
         profile_pact_dependent=True,
-        segment_kelvin_checks_colour_mode=True,
+        kelvin_verification_reads_colour_mode=True,
         segment_colour_mode_ambiguous=True,
         static_readback_gradual=True,
         read_domains=frozenset(
@@ -1407,7 +1414,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         segment_group_size=3,
         supports_segment_writes=True,
         supports_segment_brightness=True,
-        connection_idle_timeout=3.0,
+        connection_idle_timeout=IDLE_TIMEOUT_STANDARD,
         scene_catalogue_sku="H617C",
         advanced_scene_carrier=(29884, 41599),
         advanced_diy_selector=402,
@@ -1448,7 +1455,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_rgb=True,
         supports_color_temperature=True,
         color_temp_range=KELVIN_RANGE_2200_6500,
-        segment_kelvin_checks_colour_mode=True,
+        kelvin_verification_reads_colour_mode=True,
         segment_count=13,
         native_zones=H607C_NATIVE_ZONES,
         physical_ic_count=H607C_NATIVE_ZONES[0][2],
@@ -1497,7 +1504,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         dreamview_reads=frozenset({"switch_group", "member_brightness", "same_brightness", "member_connect"}),
         dreamview_max_sub_devices=10,
         dreamview_requires_group_ack=True,
-        connection_idle_timeout=3.0,
+        connection_idle_timeout=IDLE_TIMEOUT_STANDARD,
     ),
     "H6102": ModelProfile(
         "H6102 LED Strip",
@@ -1554,7 +1561,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         music_upload_before_selector=True,
         music_requires_upload_ack=True,
         boolean_controls=frozenset({"gradual", "limit"}),
-        connection_idle_timeout=3.0,
+        connection_idle_timeout=IDLE_TIMEOUT_STANDARD,
         scene_catalogue_sku="H6102",
     ),
     "H6125": ModelProfile(
@@ -1609,7 +1616,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         segment_group_size=3,
         supports_segment_writes=True,
         supports_segment_brightness=True,
-        connection_idle_timeout=3.0,
+        connection_idle_timeout=IDLE_TIMEOUT_STANDARD,
         scene_catalogue_sku="H6125",
         local_scenes=((249, "Work"),),
         effect_readback="diy_code_only",
@@ -1669,7 +1676,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         music_sensitivity_min=0,
         music_sensitivity_max=99,
         supports_music_color=True,
-        connection_idle_timeout=3.0,
+        connection_idle_timeout=IDLE_TIMEOUT_STANDARD,
     ),
     "H6179": ModelProfile(
         "H6179 RGB TV Backlight",
@@ -1847,7 +1854,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         scene_catalogue_sku="H7025",
         diy_requires_upload_ack=True,
         effect_readback="diy_code_only",
-        connection_idle_timeout=3.0,
+        connection_idle_timeout=IDLE_TIMEOUT_STANDARD,
         music_modes=(
             "rhythm",
             "sway",
@@ -1895,7 +1902,7 @@ H6199_PACT1_PROFILE = ModelProfile(
     read_domains=frozenset({ReadDomain.POWER, ReadDomain.FIRMWARE, ReadDomain.HARDWARE}),
     setup_required_read_domains=frozenset({ReadDomain.POWER}),
     supports_rgb=True,
-    whole_device_mask=0x7FFF,
+    whole_device_mask_override=0x7FFF,
     brightness_wire_range=(20, 254),
     outbound_transform=_h6199_pact1_wire,
     profile_identity_fields=frozenset({"fw_version", "hw_version"}),
@@ -2152,7 +2159,6 @@ def device_profile(
             return replace(
                 profile,
                 segment_count=1,
-                whole_device_mask=1,
                 supports_rgb=True,
                 supports_color_temperature=True,
                 outbound_transform=h60a6_legacy_outbound_transform,

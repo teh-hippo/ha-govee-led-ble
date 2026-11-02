@@ -310,7 +310,7 @@ def test_profile_kelvin_range_follows_declared_target(monkeypatch):
             command_grammar="H617A",
             supports_color_temperature=True,
             color_temp_range=(1500, 10000),
-            whole_device_mask=0x7FFF,
+            whole_device_mask_override=0x7FFF,
         ),
     )
     parsed = parse_static_write(build_color_temp(1500, "H9904"), "H9904")
@@ -329,7 +329,7 @@ def test_selectable_segment_limit_follows_declared_target(monkeypatch):
             supports_rgb=True,
             segment_count=16,
             supports_segment_writes=True,
-            whole_device_mask=0xFFFF,
+            whole_device_mask_override=0xFFFF,
         ),
     )
     wire = build_segment_colour(0x8000, 1, 2, 3, "H9905")

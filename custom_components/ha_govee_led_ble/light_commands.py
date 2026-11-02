@@ -3,7 +3,7 @@
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from .const import KELVIN_STEP, WHOLE_BULB_GRAMMARS, ModelProfile, get_profile
+from .const import KELVIN_RANGE_1000_10000, KELVIN_STEP, WHOLE_BULB_GRAMMARS, ModelProfile, get_profile
 from .generated_protocol_adapter import (
     KELVIN_DIRECT_RGB,
     build_colour_temperature,
@@ -128,17 +128,18 @@ def kelvin_rendering_matches(rgb: tuple[int, int, int], kelvin: int, profile: Mo
     shortcut: these lamps render their own white rather than the companion RGB, so any warm white
     confirms; upgrade once a measurement maps each Kelvin step to the colour the lamp actually renders.
     """
-    if profile.segment_kelvin_renders_device_rgb and rgb[0] >= 200 and rgb[1] >= 100:
+    if profile.kelvin_renders_device_white and rgb[0] >= 200 and rgb[1] >= 100:
         return True
     return rgb == table_kelvin_rgb(kelvin)
 
 
-def normalize_kelvin(kelvin: int, profile: ModelProfile) -> int:
+def normalize_kelvin(kelvin: int, profile: ModelProfile | None = None) -> int:
     """Round to the 100 K step (ties upward) before building, presenting or verifying a request.
 
     Persisted off-grid values use the same normalisation for restoration writes and their expectations.
+    Without a profile the value is bounded by the shared table only.
     """
-    low, high = profile.color_temp_range
+    low, high = profile.color_temp_range if profile else KELVIN_RANGE_1000_10000
     value = _clamp(kelvin, low, high)
     return _clamp((value + KELVIN_STEP // 2) // KELVIN_STEP * KELVIN_STEP, low, high)
 
