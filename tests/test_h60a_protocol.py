@@ -26,13 +26,13 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_segment_query,
     parse_status_result,
     require_profile_packet,
+    table_kelvin_rgb,
 )
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.light_commands import (
     build_color_temp,
     build_segment_color,
     build_segment_color_temp,
-    kelvin_to_rgb,
 )
 from custom_components.ha_govee_led_ble.protocol_core import ProtocolParseRejection
 from custom_components.ha_govee_led_ble.transport import xor_checksum
@@ -427,8 +427,8 @@ async def test_coordinator_real_pages_panel_brightness_and_no_false_verification
     await light.async_turn_on(color_temp_kelvin=4000)
     assert client.write_gatt_char.await_args.args[1] == kelvin_packet
     assert light.color_temp_kelvin == 4000
-    assert c.segment_colors == [kelvin_to_rgb(4000)] * c.profile.segment_count
-    companion_hex = bytes((100, *kelvin_to_rgb(4000))).hex()
+    assert c.segment_colors == [table_kelvin_rgb(4000)] * c.profile.segment_count
+    companion_hex = bytes((100, *table_kelvin_rgb(4000))).hex()
     replies.update(
         {
             build_segment_query(group, model, profile=c.profile): frame(f"aaa5{group:02x}" + companion_hex * 4)
@@ -440,11 +440,11 @@ async def test_coordinator_real_pages_panel_brightness_and_no_false_verification
     if model == "H60A6":
         seg_packet = build_segment_color_temp([13], 6500, model, profile=c.profile)
         require_profile_packet(seg_packet, c.profile)
-        panel_hex = bytes((100, *kelvin_to_rgb(6500))).hex()
+        panel_hex = bytes((100, *table_kelvin_rgb(6500))).hex()
         replies[build_segment_query(4, model, profile=c.profile)] = frame("aaa504" + panel_hex)
         await light.async_set_segment_color_temp([13], 6500)
-        assert c.segment_colors[12] == kelvin_to_rgb(6500)
-        assert c.segment_colors[:12] == [kelvin_to_rgb(4000)] * 12
+        assert c.segment_colors[12] == table_kelvin_rgb(6500)
+        assert c.segment_colors[:12] == [table_kelvin_rgb(4000)] * 12
     else:
         with pytest.raises(ValueError, match="segment colour temperature"):
             build_segment_color_temp([14], 6500, model, profile=c.profile)

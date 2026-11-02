@@ -1,4 +1,4 @@
-"""Exact H6102 app candidate capabilities, resolved per device."""
+"""Exact H6102 candidate capabilities, resolved per device."""
 
 from dataclasses import dataclass, replace
 from typing import Literal
@@ -82,7 +82,7 @@ def resolve_h6102_capabilities(
         pact_code=pact_code,
     )
     if pact_type == 10 and pact_code in (1, 2):
-        # Support.newProtocol4SupportMultiMusicMode: hardware family AND firmware.
+        # The extra music modes need both the hardware family and the firmware.
         # Basic four selectors are unconditional in the modern route.
         music_modes = _BASE_PROFILE.music_modes[:4]
         if version is not None and hw is not None and hardware is not None and len(hardware) == 7:

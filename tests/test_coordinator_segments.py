@@ -12,14 +12,17 @@ from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ReadDomain
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
-from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_segment_query, parse_status
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
+    build_segment_query,
+    parse_status,
+    table_kelvin_rgb,
+)
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.light_commands import (
     build_color_temp,
     build_segment_brightness,
     build_segment_color_temp,
     build_segment_paint,
-    kelvin_to_rgb,
 )
 from custom_components.ha_govee_led_ble.transport import WRITE_UUID
 from tests.coordinator_test_support import _CONFIGURATION_URL, _packet
@@ -174,7 +177,7 @@ def test_h6199_static_segment_readback_updates_uniform_rgb(h6199):
 def test_h6199_static_segment_readback_preserves_matching_kelvin_companion(h6199):
     h6199.color_mode = ParsedMode.COLOUR
     h6199.color_temp_kelvin = 2000
-    companion = kelvin_to_rgb(2000)
+    companion = table_kelvin_rgb(2000)
 
     _send_uniform_segment_replies(h6199, companion)
 

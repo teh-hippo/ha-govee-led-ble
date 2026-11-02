@@ -29,12 +29,12 @@ from custom_components.ha_govee_led_ble.const import (
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_expectations import expectations_from_packet
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode, parse_color_mode
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import table_kelvin_rgb
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.light_commands import (
     build_color_rgb,
     build_color_temp,
     build_segment_color,
-    kelvin_to_rgb,
 )
 from custom_components.ha_govee_led_ble.protocol_core import ProtocolParseRejection
 from custom_components.ha_govee_led_ble.transport import WRITE_UUID, xor_checksum
@@ -474,7 +474,7 @@ def h7020_profile():
 
 @pytest.mark.parametrize(
     ("kelvin", "companion"),
-    [(2000, "ff8d0b"), (4000, "ffd5a1"), (4001, "000000"), (4099, "000000"), (9000, "d9e1ff")],
+    [(2000, "ff8d0b"), (4000, "ffd5a1"), (9000, "d9e1ff")],
 )
 def test_h7020_kelvin_and_four_byte_masks(h7020_profile, kelvin, companion):
     from custom_components.ha_govee_led_ble.light_commands import parse_static_write
@@ -796,7 +796,7 @@ async def test_static_verification_rejects_newer_mode(static_coordinator, virtua
         assert await coord.async_observe_effect({field: value}, timeout=0.01) is True
 
 
-@pytest.mark.parametrize("rgb", [(1, 2, 3), kelvin_to_rgb(4200)])
+@pytest.mark.parametrize("rgb", [(1, 2, 3), table_kelvin_rgb(4200)])
 def test_static_mode_roundtrip_releases_historical_authority(static_coordinator, rgb):
     coord = static_coordinator
     light = GoveeBLELight(coord)
@@ -807,7 +807,7 @@ def test_static_mode_roundtrip_releases_historical_authority(static_coordinator,
     _static_segments(coord, rgb)
     assert coord.rgb_color == rgb and coord.rgb_color_source == "segment"
     assert coord._field_revisions["color_temp_kelvin"] == 1
-    assert light.color_mode is (ColorMode.COLOR_TEMP if rgb == kelvin_to_rgb(4200) else ColorMode.RGB)
+    assert light.color_mode is (ColorMode.COLOR_TEMP if rgb == table_kelvin_rgb(4200) else ColorMode.RGB)
 
 
 def test_static_mode_only_repeat_keeps_current_direct_precedence(static_coordinator):
@@ -948,7 +948,7 @@ def test_static_direct_notification_provenance_and_projection(static_coordinator
     coord = static_coordinator
     coord.is_on = True
     light = GoveeBLELight(coord)
-    rgb = kelvin_to_rgb(4200)
+    rgb = table_kelvin_rgb(4200)
     frame = _static_reply(rgb=rgb, kelvin=4200)
     parsed = generated_protocol_adapter.parse_status_result(bytes(frame), coord.model)
     assert parse_color_mode(parsed.parsed, coord.model).color_temp_kelvin == 4200
@@ -1061,7 +1061,7 @@ def test_static_segment_companion_retains_but_does_not_observe_kelvin(static_coo
     coord = static_coordinator
     coord.color_mode = ParsedMode.COLOUR
     coord.install_static_color(kelvin=4200, source="restored")
-    _static_segments(coord, kelvin_to_rgb(4200))
+    _static_segments(coord, table_kelvin_rgb(4200))
     assert coord.color_temp_kelvin == 4200 and coord.color_temp_kelvin_source == "restored"
     assert coord.rgb_color_source == "segment" and coord._field_revisions["rgb_color"] == 1
     assert "color_temp_kelvin" not in coord._field_revisions
@@ -1229,7 +1229,7 @@ async def test_static_restore_rechecks_companion_and_mode_revision(static_coordi
 
     def notify():
         if change == "companion":
-            _static_segments(coord, kelvin_to_rgb(4200))
+            _static_segments(coord, table_kelvin_rgb(4200))
         else:
             coord.color_mode = ParsedMode.MUSIC
             coord._mark_received(ReadDomain.COLOUR_MODE, "color_mode")

@@ -1585,7 +1585,6 @@ def build_segment_colour(
 
 def build_colour_temperature(
     kelvin: int,
-    preview: tuple[int, int, int],
     mask: int,
     model: str = "H617A",
     *,
@@ -1593,11 +1592,12 @@ def build_colour_temperature(
 ) -> bytes:
     profile = profile or get_profile(model)
     value = max(profile.min_color_temp_kelvin, min(profile.max_color_temp_kelvin, kelvin))
+    preview = table_kelvin_rgb(value)
     resolved = profile.command_grammar
     if resolved == "H6072-legacy":
         return _build_h6072_legacy_colour(mask, profile.kelvin_direct_rgb, value, preview)
     if resolved in WHOLE_BULB_GRAMMARS:
-        return _build_whole_bulb_static_colour(mask, (255, 255, 255), kelvin, profile)
+        return _build_whole_bulb_static_colour(mask, (255, 255, 255), value, profile)
     if resolved == "H6179":
         if mask != 0:
             raise ValueError("H6179 colour temperature is inherently whole-device and has no segment mask")
@@ -1631,7 +1631,7 @@ def build_colour_temperature(
         mask,
         direct=profile.kelvin_direct_rgb,
         kelvin=value,
-        preview=table_kelvin_rgb(value) if profile.kelvin_direct_rgb == (255, 255, 255) else preview,
+        preview=preview,
         root_type=_COMMAND_ROOTS[resolved][1],
     )
 

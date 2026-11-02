@@ -367,7 +367,7 @@ class PriorControlState:
             raise EffectStorageError("prior black-border state must be a boolean or null")
 
     def restorable_bar_white(self, profile: ModelProfile) -> bool:
-        from .light_commands import kelvin_companion_rgb
+        from .generated_protocol_adapter import table_kelvin_rgb
 
         if profile.setting_grammar != "H6046" or self.segment_colors is None:
             return False
@@ -377,7 +377,7 @@ class PriorControlState:
         return all(
             kelvin is not None
             and profile.min_color_temp_kelvin <= kelvin <= profile.max_color_temp_kelvin
-            and self.segment_colors[start : start + half] == (kelvin_companion_rgb(kelvin, profile),) * half
+            and self.segment_colors[start : start + half] == (table_kelvin_rgb(kelvin),) * half
             for start, kelvin in ((0, self.left_bar_kelvin), (half, self.right_bar_kelvin))
         )
 

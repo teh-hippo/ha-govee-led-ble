@@ -20,12 +20,11 @@ from custom_components.ha_govee_led_ble.effect_deployments import (
 from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, SingleEffect
 from custom_components.ha_govee_led_ble.effect_persistence_validation import EffectStorageError
 from custom_components.ha_govee_led_ble.effect_runtime import EffectDeploymentEngine
-from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_scene_activation
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_scene_activation, table_kelvin_rgb
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.light_commands import (
     build_color_rgb,
     build_color_temp,
-    kelvin_to_rgb,
     parse_static_write,
 )
 from custom_components.ha_govee_led_ble.music_commands import prepare_music_profile_writes
@@ -53,7 +52,7 @@ async def radio(hass, monkeypatch):
         "brightness_reply_override": None,
         "accept_kelvin": True,
         "register_reply": True,
-        "colours": [kelvin_to_rgb(4500)] * 15,
+        "colours": [table_kelvin_rgb(4500)] * 15,
         "relative": [100] * 15,
         "accept_rgb_kelvin": True,
         "fault_upload": False,

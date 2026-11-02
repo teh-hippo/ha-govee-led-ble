@@ -47,8 +47,7 @@ PROFILE = ModelProfile(
     ),
     supports_rgb=True,
     supports_color_temperature=True,
-    min_color_temp_kelvin=2700,
-    max_color_temp_kelvin=6500,
+    color_temp_range=(2700, 6500),
     static_readback_echoes_color=True,
     static_readback_kelvin=True,
     static_readback_zero_kelvin_is_rgb=True,
@@ -100,8 +99,7 @@ def test_complete_supported_lookup_and_unknown_companion():
         assert packet[3:6] == bytes.fromhex("ffffff")
         assert packet[6:8] == kelvin.to_bytes(2, "big")
         assert packet[8:11].hex() == companion
-    with pytest.raises(ValueError, match="100 K steps"):
-        build_color_temp(2750, profile=PROFILE)
+    assert build_color_temp(2750, profile=PROFILE) == build_color_temp(2800, profile=PROFILE)
     assert build_color_temp(1000, profile=PROFILE) == build_color_temp(2700, profile=PROFILE)
     assert build_color_temp(9000, profile=PROFILE) == build_color_temp(6500, profile=PROFILE)
 
