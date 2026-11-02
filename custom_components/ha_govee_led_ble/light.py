@@ -27,6 +27,7 @@ from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import ExtraStoredData, RestoreEntity
 from homeassistant.util import dt as dt_util
+from homeassistant.util.color import brightness_to_value
 
 from .const import (
     DOMAIN,
@@ -159,10 +160,7 @@ def _coerce_static_color(
         return None
     return _StaticColorRestoreData(
         restored_mode,
-        color_temp_kelvin=max(
-            profile.min_color_temp_kelvin,
-            min(profile.max_color_temp_kelvin, restored_kelvin),
-        ),
+        color_temp_kelvin=normalize_kelvin(restored_kelvin, profile),
     )
 
 
@@ -361,21 +359,11 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
 
     @property
     def min_color_temp_kelvin(self) -> int:
-        profile = (
-            self.coordinator.native_presentation_profile
-            if self.coordinator.model == "H607C"
-            else self.coordinator.profile
-        )
-        return profile.min_color_temp_kelvin
+        return self.coordinator.profile.min_color_temp_kelvin
 
     @property
     def max_color_temp_kelvin(self) -> int:
-        profile = (
-            self.coordinator.native_presentation_profile
-            if self.coordinator.model == "H607C"
-            else self.coordinator.profile
-        )
-        return profile.max_color_temp_kelvin
+        return self.coordinator.profile.max_color_temp_kelvin
 
     @property
     def color_temp_kelvin(self) -> int | None:
@@ -491,7 +479,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             return
         value = last_state.attributes.get(ATTR_BRIGHTNESS)
         if type(value) is int and 0 <= value <= 255:
-            coordinator.brightness_pct = round(value * 100 / 255)
+            coordinator.brightness_pct = round(brightness_to_value((1, 100), value))
 
     def _library_updated(self, snapshot: LibrarySnapshot) -> None:
         self._library_snapshot = snapshot
@@ -934,7 +922,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         with self._rollback():
             if ATTR_BRIGHTNESS in kwargs:
                 self._require_support("brightness", supported=self.supported_color_modes != {ColorMode.ONOFF})
-                pct = max(1, min(100, round(kwargs[ATTR_BRIGHTNESS] * 100 / 255)))
+                pct = max(1, round(brightness_to_value((1, 100), kwargs[ATTR_BRIGHTNESS])))
                 require_profile_packet(build_brightness(pct, model, profile=profile), profile)
             if ATTR_RGB_COLOR in kwargs:
                 red, green, blue = kwargs[ATTR_RGB_COLOR]
@@ -1238,7 +1226,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 await power_on()
                 await self._refresh_with_retry(expected_on=True, retry_command=power_on)
             if ATTR_BRIGHTNESS in kwargs:
-                pct = max(1, min(100, round(kwargs[ATTR_BRIGHTNESS] * 100 / 255)))
+                pct = max(1, round(brightness_to_value((1, 100), kwargs[ATTR_BRIGHTNESS])))
 
                 async def apply_brightness() -> None:
                     await send(build_brightness(pct, self.coordinator.model))

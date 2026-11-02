@@ -132,6 +132,8 @@ def test_static_writes_kelvin_readback_and_diy_selector() -> None:
     assert bad is not None
     with pytest.raises(ValueError, match="Kelvin"):
         parse_color_mode(bad.generated, "H6099")
+    near = decode_status_frame(frame("aa05150107cf"), "H6099")  # 1999 K: just below this profile's floor
+    assert near is not None and parse_color_mode(near.generated, "H6099").color_temp_kelvin == 2000
     diy = build_h6099_diy_activation(0x1234)
     assert diy == frame("33050a3412")
     assert expectations_from_packet(diy, "H6099")["color_mode"] == (ParsedMode.DIY, 0x1234)

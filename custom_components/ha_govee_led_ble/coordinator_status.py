@@ -5,6 +5,7 @@ from enum import Enum, auto
 from typing import Any, cast
 
 from .const import (
+    KELVIN_RANGE_1000_10000,
     PERCENT_BRIGHTNESS_STATUS_GRAMMARS,
     VIDEO_GRAMMARS,
     WHOLE_BULB_GRAMMARS,
@@ -18,6 +19,7 @@ from .generated_protocol_adapter import (
     parse_status_result,
     video_parameters_from_detail,
 )
+from .light_commands import normalize_kelvin
 from .protocol_core import ProtocolParseResult
 from .protocol_h6179 import ParsedH6179Status, parse_h6179_status_result
 from .scenes import scene_key_for_code
@@ -153,6 +155,13 @@ class ParsedColorModeResponse:
     raw_mode: int | None = None
 
 
+def _readback_kelvin(reported: int, profile: ModelProfile) -> int:
+    """Zero means no Kelvin; a value no device range contains is not a Kelvin reading, so it rejects the frame."""
+    if not KELVIN_RANGE_1000_10000[0] <= reported <= KELVIN_RANGE_1000_10000[1]:
+        raise ValueError("Kelvin outside any device range")
+    return normalize_kelvin(reported, profile)
+
+
 def parse_color_mode(generated: Any, model: str, *, profile: ModelProfile | None = None) -> ParsedColorModeResponse:
     profile = profile or get_profile(model)
     if profile.status_grammar == "H6179":
@@ -161,11 +170,10 @@ def parse_color_mode(generated: Any, model: str, *, profile: ModelProfile | None
         values = generated.values
         mode_name = values.get("mode")
         if mode_name == "static":
-            kelvin = int(values["kelvin"])
-            if kelvin:
+            if kelvin := int(values["kelvin"]):
                 return ParsedColorModeResponse(
                     mode=ParsedMode.COLOUR,
-                    color_temp_kelvin=kelvin,
+                    color_temp_kelvin=_readback_kelvin(kelvin, profile),
                     raw_mode=int(values["raw_mode"]),
                 )
             red, green, blue = values["rgb"]
@@ -256,12 +264,10 @@ def parse_color_mode(generated: Any, model: str, *, profile: ModelProfile | None
         if detail is None:
             raise ValueError("Static status has no details")
         if profile.status_grammar == "H6046":
-            left, right = int(detail.left_kelvin), int(detail.right_kelvin)
-            if any(
-                value and not profile.min_color_temp_kelvin <= value <= profile.max_color_temp_kelvin
-                for value in (left, right)
-            ):
-                raise ValueError("Bar Kelvin outside profile range")
+            left, right = (
+                _readback_kelvin(value, profile) if value else 0
+                for value in (int(detail.left_kelvin), int(detail.right_kelvin))
+            )
             return ParsedColorModeResponse(
                 mode=ParsedMode.COLOUR,
                 color_temp_kelvin=left if left == right and left else None,
@@ -269,16 +275,13 @@ def parse_color_mode(generated: Any, model: str, *, profile: ModelProfile | None
                 right_bar_kelvin=right,
             )
         rgb = getattr(detail, "rgb", None)
-        raw_kelvin = getattr(detail, "kelvin", None) or None
-        min_kelvin = profile.readback_min_color_temp_kelvin or profile.min_color_temp_kelvin
-        if raw_kelvin is not None and not min_kelvin <= int(raw_kelvin) <= profile.max_color_temp_kelvin:
-            raise ValueError("static Kelvin outside profile range")
+        raw_kelvin = _readback_kelvin(int(reported), profile) if (reported := getattr(detail, "kelvin", None)) else None
         return ParsedColorModeResponse(
             mode=ParsedMode.COLOUR,
             rgb_color=(int(rgb.red), int(rgb.green), int(rgb.blue))
             if rgb is not None and not (profile.status_grammar in WHOLE_BULB_GRAMMARS and raw_kelvin is not None)
             else None,
-            color_temp_kelvin=int(raw_kelvin) if raw_kelvin is not None else None,
+            color_temp_kelvin=raw_kelvin,
             multi_effect_flag=getattr(detail, "sub", None),
         )
     if profile.status_grammar in PERCENT_BRIGHTNESS_STATUS_GRAMMARS or (

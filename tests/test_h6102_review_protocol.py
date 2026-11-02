@@ -52,8 +52,8 @@ def test_status_semantics_use_effective_grammar_roster_and_bounds() -> None:
     static = decode_status_frame(frame("aa0515010fa0"), "H9908", profile=profile)
     assert static is not None
     assert parse_color_mode(static.generated, "H9908", profile=profile).color_temp_kelvin == 4000
-    with pytest.raises(ValueError, match="Kelvin"):
-        parse_color_mode(static.generated, "H9908", profile=replace(profile, color_temp_range=(3000, 3500)))
+    narrow = replace(profile, color_temp_range=(3000, 3500))
+    assert parse_color_mode(static.generated, "H9908", profile=narrow).color_temp_kelvin == 3500
 
 
 async def test_real_coordinator_uses_effective_status_not_static_sku(hass, monkeypatch) -> None:

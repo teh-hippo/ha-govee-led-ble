@@ -689,7 +689,9 @@ class _RecoveryMixin(_CoordinatorBase):
             and state.color_temp_kelvin is not None
             and (
                 self.profile.segment_kelvin_renders_device_rgb
-                or state.segment_colors != (table_kelvin_rgb(state.color_temp_kelvin),) * self.profile.segment_count
+                or state.segment_colors
+                != (table_kelvin_rgb(normalize_kelvin(state.color_temp_kelvin, self.profile)),)
+                * self.profile.segment_count
             )
         ):
             # Whole-device Kelvin cannot reproduce a simultaneously captured
@@ -727,7 +729,11 @@ class _RecoveryMixin(_CoordinatorBase):
             expected_on=True,
             expected_brightness=state.brightness_pct,
             refresh_all=True,
-            expected_color_temp_kelvin=state.color_temp_kelvin if kelvin_restore else None,
+            expected_color_temp_kelvin=(
+                normalize_kelvin(state.color_temp_kelvin, self.profile)
+                if kelvin_restore and state.color_temp_kelvin is not None
+                else None
+            ),
             expected_zero_kelvin=(
                 self.profile.static_readback_zero_kelvin_is_rgb
                 and not kelvin_restore

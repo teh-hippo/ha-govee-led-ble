@@ -218,9 +218,6 @@ async def test_real_writer_expectations_rgb_kelvin_transition_and_rejections(dev
     assert device.rgb_color == (255, 0, 0) and device.rgb_color_source == "observed"
     assert device.color_temp_kelvin is None and device.color_temp_kelvin_source == "observed"
     before = device.capture_effect_control_state()
-    revisions = dict(device._field_revisions)
-    device._notify_callback(None, bytearray(frame("aa050dffffff1965")))
-    assert device.capture_effect_control_state() == before and device._field_revisions == revisions
     calls = device._client.write_gatt_char.await_count
     with pytest.raises(ValueError):
         await device._async_write_packet(device._client, frame("330504"), arm_expected=True)
@@ -240,7 +237,7 @@ async def test_unsolicited_kelvin_demotes_old_rgb_and_preserves_companion_decode
     assert parse_status_result(packets[1], profile=PROFILE).parsed.body.detail.companion_rgb.red == 18
     with pytest.raises(ValueError, match="companion"):
         require_profile_packet(frame("33050dffffff0fa0000000"), PROFILE)
-    with pytest.raises(ValueError, match="100 K steps"):
+    with pytest.raises(ValueError, match="100 K grid"):
         require_profile_packet(frame("33050dffffff0abe000000"), PROFILE)
 
 

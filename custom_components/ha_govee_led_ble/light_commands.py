@@ -248,8 +248,6 @@ def parse_static_write(
         kelvin = int(detail.kelvin)
         if kelvin and rgb != (255, 255, 255):
             raise ValueError(f"{profile.command_grammar} Kelvin requires direct white RGB")
-        if kelvin and (kelvin - 2700) % 100:
-            raise ValueError(f"{profile.command_grammar} Kelvin must use 100 K steps from 2700 to 6500")
         return ParsedStaticWrite(
             operation=int(generated.body.sub_mode),
             segment_mask=whole_device_mask,

@@ -24,6 +24,7 @@ from custom_components.ha_govee_led_ble.light_commands import (
     build_segment_color_temp,
     build_segment_paint,
     build_white_brightness,
+    normalize_kelvin,
     parse_static_write,
     scale_segment_groups,
     segments_to_mask,
@@ -252,3 +253,18 @@ def test_static_write_semantics_round_trip(model: str) -> None:
     assert temperature.kelvin_companion_rgb == table_kelvin_rgb(3600)
     level = parse_static_write(build_white_brightness(80, model), model)
     assert level is not None and level.brightness_pct == 80 and level.whole_strip
+
+
+@pytest.mark.parametrize(
+    ("model", "kelvin", "expected"),
+    [
+        ("H617A", 3123, 3100),
+        ("H617A", 3150, 3200),
+        ("H617A", 1000, 2000),
+        ("H6099", 9500, 9000),
+        ("H601C", 2750, 2800),
+        ("H601C", 6600, 6500),
+    ],
+)
+def test_normalize_kelvin_rounds_ties_up_and_clamps_to_the_profile(model: str, kelvin: int, expected: int) -> None:
+    assert normalize_kelvin(kelvin, MODEL_PROFILES[model]) == expected

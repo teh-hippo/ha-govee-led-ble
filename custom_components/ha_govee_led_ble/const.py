@@ -190,7 +190,6 @@ class ModelProfile:
     supports_color_temperature: bool = False
     supports_low_blue_light: bool = False
     color_temp_range: tuple[int, int] = KELVIN_RANGE_2000_9000
-    readback_min_color_temp_kelvin: int | None = None
     kelvin_direct_rgb: tuple[int, int, int] = (0, 0, 0)
     # After a masked Kelvin write, the lamp must also report colour mode (not just matching segment colours).
     segment_kelvin_checks_colour_mode: bool = False
@@ -273,6 +272,9 @@ class ModelProfile:
     effect_readback: str = "none"
 
     def __post_init__(self) -> None:
+        if not self.whole_device_mask:
+            # Segmented devices address every segment; whole-bulb models and unsegmented exceptions set it explicitly.
+            object.__setattr__(self, "whole_device_mask", (1 << self.segment_count) - 1)
         if self.diy_upload_transport not in {None, "a1_02", "a3"}:
             raise ValueError("unknown DIY upload transport")
         if not self.restarting_boolean_controls <= self.boolean_controls:
@@ -513,7 +515,6 @@ _H617A_PROFILE = ModelProfile(
     supports_music_color=True,
     supports_advanced_effects=True,
     supports_multi_layered_effects=True,
-    whole_device_mask=0x7FFF,
     # H617A and H617E expose fifteen segments through five explicit aa a5 query groups of three.
     # Segment writes ACK normally but do not publish updated groups without those queries.
     segment_count=15,
@@ -570,7 +571,6 @@ _H6076_PROFILE = ModelProfile(
     supports_rgb=True,
     supports_color_temperature=True,
     color_temp_range=KELVIN_RANGE_2700_6500,
-    readback_min_color_temp_kelvin=2200,
     # Static status can omit Kelvin. Segment rendering confirms plausible
     # white, not an exact Kelvin measurement or losslessly restorable native-white intent.
     segment_kelvin_checks_colour_mode=True,
@@ -578,7 +578,6 @@ _H6076_PROFILE = ModelProfile(
     segment_kelvin_renders_device_rgb=True,
     static_readback_gradual=True,
     physical_ic_count=14,
-    whole_device_mask=0x007F,
     segment_count=7,
     segment_group_size=4,
     supports_segment_writes=True,
@@ -611,7 +610,6 @@ _H6076_PROFILE = ModelProfile(
 _H6076_MUSIC_PROFILE = replace(
     _H6076_PROFILE,
     color_temp_range=KELVIN_RANGE_2200_6500,
-    readback_min_color_temp_kelvin=None,
     music_modes=_H6076_ALL_MUSIC_MODES,
     readback_music_modes=(),
     music_variants=H6076_MUSIC_VARIANTS,
@@ -666,7 +664,6 @@ _H6072_PROFILE = ModelProfile(
     static_readback_nonzero_kelvin=True,
     segment_colour_mode_ambiguous=True,
     segment_kelvin_renders_device_rgb=True,
-    whole_device_mask=0xFF,
     segment_count=8,
     segment_group_size=3,
     physical_ic_count=66,
@@ -791,7 +788,6 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_advanced_effects=True,
         static_readback_kelvin=True,
         static_readback_zero_kelvin_is_rgb=True,
-        whole_device_mask=0x03FF,
         segment_count=10,
         segment_group_size=4,
         physical_ic_count=10,
@@ -831,7 +827,6 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         profile_identity_fields=frozenset({"fw_version", "hw_version"}),
         setup_required_read_domains=frozenset({ReadDomain.POWER}),
         color_temp_range=KELVIN_RANGE_2700_6500,
-        whole_device_mask=0x3FFF,
         segment_count=14,
         segment_group_size=4,
         # RGB, whole-device Kelvin, and segment reads require revision evidence in
@@ -864,7 +859,6 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         profile_identity_fields=frozenset({"fw_version", "hw_version"}),
         setup_required_read_domains=frozenset({ReadDomain.POWER}),
         color_temp_range=KELVIN_RANGE_2700_6500,
-        whole_device_mask=0x1FFF,
         segment_count=13,
         segment_group_size=4,
         # Pact 1/1 uses whole-device colour; 1/2+ has thirteen logical segments.
@@ -985,7 +979,6 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
             "bloom",
             "shiny",
         ),
-        whole_device_mask=0x3FFF,
         segment_count=14,
         segment_group_size=4,
         segment_colour_mode_ambiguous=True,
@@ -1088,7 +1081,6 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
             "bloom",
             "shiny",
         ),
-        whole_device_mask=0x3FFF,
         segment_count=14,
         segment_group_size=4,
         supports_segment_writes=True,
@@ -1197,7 +1189,6 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
             "windmill",
             "flowing_light",
         ),
-        whole_device_mask=0x3FFF,
         segment_count=14,
         segment_group_size=4,
         supports_segment_writes=True,
@@ -1264,7 +1255,6 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         music_upload_before_selector=True,
         supports_music_color=True,
         physical_ic_count=12,
-        whole_device_mask=0x001F,
         segment_count=5,
         segment_group_size=4,
         supports_segment_writes=True,
@@ -1334,7 +1324,6 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_music_color=True,
         physical_ic_count=50,
         ic_per_segment=5,
-        whole_device_mask=0x03FF,
         segment_count=10,
         segment_group_size=4,
         supports_segment_writes=True,
@@ -1422,7 +1411,6 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         music_requires_upload_ack=True,
         supports_music_color=True,
         physical_ic_count=30,
-        whole_device_mask=0x7FFF,
         segment_count=15,
         segment_group_size=3,
         supports_segment_writes=True,
@@ -1470,7 +1458,6 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         color_temp_range=KELVIN_RANGE_2200_6500,
         kelvin_direct_rgb=(255, 255, 255),
         segment_kelvin_checks_colour_mode=True,
-        whole_device_mask=0x1FFF,
         segment_count=13,
         native_zones=H607C_NATIVE_ZONES,
         physical_ic_count=H607C_NATIVE_ZONES[0][2],
@@ -1567,7 +1554,6 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         music_variants=H6102_MUSIC_VARIANTS,
         physical_ic_count=60,
         supports_music_color=True,
-        whole_device_mask=0x7FFF,
         segment_count=15,
         segment_group_size=3,
         supports_segment_writes=True,
@@ -1630,7 +1616,6 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_music_color=True,
         # Exact-SKU declared geometry, separate from connection-scoped measurements.
         physical_ic_count=50,
-        whole_device_mask=0x7FFF,
         segment_count=15,
         segment_group_size=3,
         supports_segment_writes=True,
@@ -1676,7 +1661,6 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_color_temperature=True,
         color_temp_range=KELVIN_RANGE_2000_9000,
         kelvin_direct_rgb=(255, 255, 255),
-        whole_device_mask=0x3FFFFFFF,
         segment_count=30,
         segment_group_size=3,
         configured_string_counts=(1, 2),
@@ -1827,7 +1811,6 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         music_sensitivity_max=100,
         supports_music_color=True,
         supports_advanced_effects=True,
-        whole_device_mask=0x7FFF,
         # Static readback identifies the mode but exposes rendered colour only through segment
         # queries. Kelvin remains last-known while its RGB companion matches.
         # Fifteen segment bits are independently writable. The aa 40 value 38 is not a segment count.
@@ -1868,7 +1851,6 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         kelvin_direct_rgb=(255, 255, 255),
         static_readback_kelvin=True,
         static_readback_zero_kelvin_is_rgb=True,
-        whole_device_mask=0x7FFF,
         segment_count=15,
         segment_group_size=4,
         segment_colour_mode_ambiguous=True,
@@ -2123,11 +2105,9 @@ def _h6076_profile(pact_type: int | None, pact_code: int | None, firmware: str |
         if known_pact and fw is not None
         else _H6076_PROFILE
     )
-    if (pact_type, pact_code) == (1, 1):
-        return replace(base, color_temp_range=KELVIN_RANGE_2200_6500, readback_min_color_temp_kelvin=None)
-    if (pact_type, pact_code) == (2, 1):
-        return replace(base, color_temp_range=KELVIN_RANGE_2700_6500, readback_min_color_temp_kelvin=None)
-    return replace(base, color_temp_range=KELVIN_RANGE_2700_6500, readback_min_color_temp_kelvin=2200)
+    return replace(
+        base, color_temp_range=KELVIN_RANGE_2200_6500 if (pact_type, pact_code) == (1, 1) else KELVIN_RANGE_2700_6500
+    )
 
 
 def device_profile(
