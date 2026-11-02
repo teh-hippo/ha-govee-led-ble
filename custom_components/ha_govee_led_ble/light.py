@@ -160,7 +160,8 @@ def _coerce_static_color(
         return None
     return _StaticColorRestoreData(
         restored_mode,
-        color_temp_kelvin=normalize_kelvin(restored_kelvin, profile),
+        # Identity may still be unresolved, so only the shared table bounds it; presentation clamps to the device range.
+        color_temp_kelvin=normalize_kelvin(restored_kelvin),
     )
 
 
@@ -231,14 +232,6 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         super().__init__(coordinator)
         self._attr_unique_id = coordinator.address.replace(":", "").lower()
         self._attr_device_info = coordinator.device_info
-        supported_color_modes = self.supported_color_modes
-        self._attr_color_mode = (
-            ColorMode.RGB
-            if ColorMode.RGB in supported_color_modes
-            else ColorMode.COLOR_TEMP
-            if ColorMode.COLOR_TEMP in supported_color_modes
-            else ColorMode.ONOFF
-        )
         self._config_entry_id = config_entry_id
         self._effect_backend = effect_backend
         self._library_snapshot = (
@@ -347,7 +340,9 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 return ColorMode.COLOR_TEMP
             if coordinator.rgb_color_source != "initial":
                 return ColorMode.RGB
-        return self._attr_color_mode if self._attr_color_mode in self.supported_color_modes else ColorMode.RGB
+        if self._attr_color_mode in self.supported_color_modes:
+            return self._attr_color_mode
+        return ColorMode.RGB if ColorMode.RGB in self.supported_color_modes else ColorMode.COLOR_TEMP
 
     @property
     def rgb_color(self) -> tuple[int, int, int] | None:
@@ -363,7 +358,10 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
 
     @property
     def color_temp_kelvin(self) -> int | None:
-        return self.coordinator.color_temp_kelvin if self.color_mode == ColorMode.COLOR_TEMP else None
+        kelvin = self.coordinator.color_temp_kelvin
+        if kelvin is None or self.color_mode != ColorMode.COLOR_TEMP:
+            return None
+        return normalize_kelvin(kelvin, self.coordinator.profile)
 
     @property
     def effect(self) -> str | None:
@@ -1270,7 +1268,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 with self._rollback():
                     self._attr_color_mode = ColorMode.COLOR_TEMP
                     if (
-                        self.coordinator.profile.segment_kelvin_checks_colour_mode
+                        self.coordinator.profile.kelvin_verification_reads_colour_mode
                         and not self.coordinator.profile.static_readback_kelvin
                         and self.coordinator.profile.supports_segments
                     ):

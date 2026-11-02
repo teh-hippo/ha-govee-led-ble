@@ -172,7 +172,7 @@ def test_h6076_whole_kelvin_rounds_with_its_companion(requested, expected, rgb):
 
 
 def test_h7020_sends_percent_brightness_and_whole_string_static_commands() -> None:
-    profile = replace(MODEL_PROFILES["H7020"], whole_device_mask=0x7FFF, segment_count=15)
+    profile = replace(MODEL_PROFILES["H7020"], segment_count=15)
     assert build_brightness(100, "H7020") == H("3304640000000000000000000000000000000053")
     assert build_color_rgb(255, 0, 0, profile=profile) == H("33051501ff00000000000000ff7f00000000005d")
     parsed = parse_static_write(build_color_rgb(10, 20, 30, "H7020"), "H7020")

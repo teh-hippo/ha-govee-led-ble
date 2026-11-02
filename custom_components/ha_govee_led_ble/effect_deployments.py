@@ -13,7 +13,7 @@ from uuid import UUID
 
 from homeassistant.core import HomeAssistant
 
-from .const import DOMAIN, MODEL_PROFILES, NATIVE_ZONE_CONTROLS, ModelProfile
+from .const import DOMAIN, KELVIN_RANGE_1000_10000, MODEL_PROFILES, NATIVE_ZONE_CONTROLS, ModelProfile
 from .effect_domain import LibraryItem, SourceKind, effect_content_from_dict, effect_content_hash
 from .effect_limits import (
     MAX_DEPLOYMENT_RECORDS,
@@ -159,7 +159,7 @@ class PriorControlState:
             if zone_enabled is not None and type(zone_enabled) is not bool:
                 raise EffectStorageError("prior zone enablement must be a boolean or null")
         for kelvin in (self.left_bar_kelvin, self.right_bar_kelvin):
-            if kelvin is not None and (type(kelvin) is not int or not 0 <= kelvin <= 10000):
+            if kelvin is not None and (type(kelvin) is not int or not 0 <= kelvin <= KELVIN_RANGE_1000_10000[1]):
                 raise EffectStorageError("prior bar Kelvin must be a bounded integer or null")
         if self.video_parameters is not None:
             if not isinstance(self.video_parameters, Mapping):
@@ -253,7 +253,7 @@ class PriorControlState:
         if self.color_temp_kelvin is not None and (
             not isinstance(self.color_temp_kelvin, int)
             or isinstance(self.color_temp_kelvin, bool)
-            or not 1000 <= self.color_temp_kelvin <= 10000
+            or not KELVIN_RANGE_1000_10000[0] <= self.color_temp_kelvin <= KELVIN_RANGE_1000_10000[1]
         ):
             raise EffectStorageError("prior colour temperature must be from 1000 to 10000")
         for value, name in (
@@ -368,6 +368,7 @@ class PriorControlState:
 
     def restorable_bar_white(self, profile: ModelProfile) -> bool:
         from .generated_protocol_adapter import table_kelvin_rgb
+        from .light_commands import normalize_kelvin
 
         if profile.setting_grammar != "H6046" or self.segment_colors is None:
             return False
@@ -377,7 +378,8 @@ class PriorControlState:
         return all(
             kelvin is not None
             and profile.min_color_temp_kelvin <= kelvin <= profile.max_color_temp_kelvin
-            and self.segment_colors[start : start + half] == (table_kelvin_rgb(kelvin),) * half
+            and self.segment_colors[start : start + half]
+            == (table_kelvin_rgb(normalize_kelvin(kelvin, profile)),) * half
             for start, kelvin in ((0, self.left_bar_kelvin), (half, self.right_bar_kelvin))
         )
 

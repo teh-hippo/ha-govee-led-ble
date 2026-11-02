@@ -688,7 +688,7 @@ class _RecoveryMixin(_CoordinatorBase):
             kelvin_restore
             and state.color_temp_kelvin is not None
             and (
-                self.profile.segment_kelvin_renders_device_rgb
+                self.profile.kelvin_renders_device_white
                 or state.segment_colors
                 != (table_kelvin_rgb(normalize_kelvin(state.color_temp_kelvin, self.profile)),)
                 * self.profile.segment_count

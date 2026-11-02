@@ -73,7 +73,7 @@ def profile():
         supports_rgb=True,
         supports_color_temperature=True,
         color_temp_range=(2200, 6500),
-        whole_device_mask=0x1FFF,
+        whole_device_mask_override=0x1FFF,
         segment_count=13,
         supports_segment_writes=True,
         supports_segment_brightness=True,
@@ -215,14 +215,14 @@ def test_static_writes_keep_high_mask_bits_and_bound_the_thirteenth_segment(prof
     for packet in (colour, white):
         adapter.require_profile_packet(packet, profile)
     with pytest.raises(ValueError, match="geometry"):
-        adapter.require_profile_packet(colour, replace(profile, segment_count=12, whole_device_mask=0xFFF))
+        adapter.require_profile_packet(colour, replace(profile, segment_count=12))
     vector = frame("330515030102030405060708090a0b0c0daabb")
     adapter.require_profile_packet(vector, profile)
     parsed_vector = adapter.parse_command(vector, "H607C", profile=profile)
     assert parsed_vector.body.sub_body.static_body.segment_percent == list(range(1, 14))
     assert parsed_vector.body.sub_body.static_body.unknown_tail == b"\xaa\xbb"
     with pytest.raises(ValueError, match="geometry"):
-        adapter.require_profile_packet(vector, replace(profile, segment_count=12, whole_device_mask=0xFFF))
+        adapter.require_profile_packet(vector, replace(profile, segment_count=12))
 
 
 def test_music_uses_two_header_bytes_upload_before_selection_and_mode_specific_results(profile):

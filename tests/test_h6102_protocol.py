@@ -118,7 +118,7 @@ def test_status_retains_kelvin_gradual_identity_and_unknown_modes() -> None:
 
 def test_effective_profile_reaches_builders_parsers_and_expectations() -> None:
     # Independent context: an unknown SKU can use declared codecs without a SKU allowlist.
-    profile = replace(get_profile("H6102"), whole_device_mask=0x0007, segment_count=3)
+    profile = replace(get_profile("H6102"), segment_count=3)
     packet = build_color_rgb(32, 64, 96, "H9901", profile=profile)
     assert packet == _frame("3305150120406000000000000700")
     static = parse_static_write(packet, "H9901", profile=profile)

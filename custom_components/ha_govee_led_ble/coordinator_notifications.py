@@ -737,7 +737,6 @@ class _NotificationMixin(_CoordinatorBase):
                                 self.profile,
                                 physical_ic_count=count,
                                 segment_count=segments,
-                                whole_device_mask=(1 << segments) - 1,
                             )
                             if len(self.segment_colors) != segments:
                                 self._profile_generation += 1

@@ -488,7 +488,7 @@ async def test_independent_sku_and_status_root_use_shared_control_paths(hass, mo
             {ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE, ReadDomain.FIRMWARE, ReadDomain.HARDWARE}
         ),
         supports_rgb=True,
-        whole_device_mask=0x7FFF,
+        whole_device_mask_override=0x7FFF,
         music_modes=("energetic",),
     )
     monkeypatch.setitem(MODEL_PROFILES, "H9908", profile)

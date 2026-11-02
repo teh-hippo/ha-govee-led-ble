@@ -14,6 +14,7 @@ from bleak.backends.bluezdbus.client import BleakClientBlueZDBus
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from dbus_fast.constants import MessageType
 from habluetooth.wrappers import HaBleakClientWrapper
+from homeassistant.components.light import ColorMode
 from homeassistant.exceptions import HomeAssistantError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -85,6 +86,7 @@ async def test_h607c_marker_qualifies_rgb_only_for_current_connection(hass, monk
     assert coordinator.pact_type is None and not coordinator.profile.supports_rgb
     assert coordinator.h607c_pact_readiness == "stale"
     assert coordinator.native_presentation_profile.supports_rgb
+    assert ColorMode.RGB in light.supported_color_modes
 
 
 async def test_h607c_scanner_pact_conflict_fails_closed(hass, monkeypatch):
