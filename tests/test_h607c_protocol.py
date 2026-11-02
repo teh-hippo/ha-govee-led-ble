@@ -500,7 +500,7 @@ async def test_h607c_settings_verify_only_their_own_fresh_register(hass, monkeyp
     c._client = device
     monkeypatch.setattr(c, "_ensure_connected", AsyncMock(return_value=device))
     monkeypatch.setattr(c, "_renew_foreground_lease", lambda: None)
-    monkeypatch.setattr(c, "async_prepare_h607c_control", AsyncMock(return_value=lambda: None))
+    monkeypatch.setattr(c, "async_prepare_identity_gated_control", AsyncMock(return_value=lambda: None))
 
     async def write(_uuid, packet, **_kwargs):
         if packet == adapter.build_boolean_control_query("gradual", "H607C", profile=c.profile):
@@ -528,7 +528,7 @@ async def test_h607c_gradual_ack_does_not_confirm_a_missing_register_reply(hass,
     c._client = device
     monkeypatch.setattr(c, "_ensure_connected", AsyncMock(return_value=device))
     monkeypatch.setattr(c, "_renew_foreground_lease", lambda: None)
-    monkeypatch.setattr(c, "async_prepare_h607c_control", AsyncMock(return_value=lambda: None))
+    monkeypatch.setattr(c, "async_prepare_identity_gated_control", AsyncMock(return_value=lambda: None))
 
     async def write(_uuid, packet, **_kwargs):
         if packet == adapter.build_boolean_control("gradual", True, "H607C", profile=c.profile):

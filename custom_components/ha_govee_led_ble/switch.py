@@ -28,7 +28,7 @@ async def async_setup_entry(
         controls = (
             profile.boolean_controls | ({"low_blue_light"} if profile.supports_low_blue_light else set())
         ) - added
-        if entry.runtime_data.model == "H607C":
+        if entry.runtime_data.identity_gated_controls:
             controls |= (entry.runtime_data.native_presentation_profile.boolean_controls & {"gradual"}) - added
         if controls:
             added.update(controls)
@@ -59,7 +59,7 @@ class GoveeBLEControlSwitch(GoveeBLEEntity, SwitchEntity):
             else self._control
             in (
                 self.coordinator.native_presentation_profile.boolean_controls
-                if self.coordinator.model == "H607C" and self._control == "gradual"
+                if self.coordinator.identity_gated_controls and self._control == "gradual"
                 else self.coordinator.profile.boolean_controls
             )
         )

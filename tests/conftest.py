@@ -223,6 +223,7 @@ def _make_coord(**ov) -> MagicMock:
     d.setdefault("effect_categories", frozenset(default_effect_categories(model)))
     d.setdefault("prefix_effect_names", False)
     d.setdefault("always_include_custom_effects", False)
+    d.setdefault("identity_gated_controls", False)
     effect_families = d["effect_families"]
     assert isinstance(effect_families, frozenset)
     d.setdefault(
@@ -289,6 +290,7 @@ def _make_coord(**ov) -> MagicMock:
         c.music_mode = c.video_mode = "off"
 
     c._enter_static_mode = MagicMock(side_effect=_enter_static_mode)
+    type(c).native_presentation_profile = PropertyMock(side_effect=lambda: c.profile)
     type(c).device_info = PropertyMock(
         return_value=DeviceInfo(
             identifiers={(DOMAIN, d["address"])},
