@@ -335,6 +335,9 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             return ColorMode.ONOFF
         if self.supported_color_modes == {ColorMode.BRIGHTNESS}:
             return ColorMode.BRIGHTNESS
+        # Colour attributes are hidden while an effect runs; the remembered colour returns when it clears.
+        if coordinator.color_mode not in (None, ParsedMode.COLOUR) and self.effect not in (None, EFFECT_OFF):
+            return ColorMode.BRIGHTNESS
         if coordinator.color_mode in (None, ParsedMode.COLOUR):
             if coordinator.color_temp_kelvin is not None and coordinator.color_temp_kelvin_source != "initial":
                 return ColorMode.COLOR_TEMP
