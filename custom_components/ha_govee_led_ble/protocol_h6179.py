@@ -52,7 +52,7 @@ def _h6179_mode_values(body: Any, *, command: bool) -> Mapping[str, Any] | None:
         direct = detail.rgb_direct if command else detail.colour
         preview = detail.rgb_preview if command else detail.temperature_colour
         kelvin = int(detail.kelvin)
-        if kelvin and not profile.min_color_temp_kelvin <= kelvin <= profile.max_color_temp_kelvin:
+        if command and kelvin and not profile.min_color_temp_kelvin <= kelvin <= profile.max_color_temp_kelvin:
             return None
         return _values(
             mode=mode,

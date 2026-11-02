@@ -1,4 +1,5 @@
 import ast
+import itertools
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -329,7 +330,6 @@ def test_h6076_profile_is_basic_and_fail_closed_until_identity_qualifies_music()
     assert profile.setup_required_read_domains == {ReadDomain.POWER, ReadDomain.BRIGHTNESS}
     assert profile.supports_rgb and profile.supports_color_temperature
     assert (profile.min_color_temp_kelvin, profile.max_color_temp_kelvin) == (2700, 6500)
-    assert profile.readback_min_color_temp_kelvin == 2200
     assert profile.supports_color_mode_readback
     assert (
         profile.supports_custom_effects and profile.supports_advanced_effects and profile.supports_multi_layered_effects
@@ -374,7 +374,6 @@ def test_h6076_registry_profile_is_the_music_ceiling_of_the_basic_profile():
         replace(
             ceiling,
             color_temp_range=(2700, 6500),
-            readback_min_color_temp_kelvin=2200,
             music_modes=("energetic", "rhythm", "bounce", "hopping", "beat", "spray"),
             readback_music_modes=const._H6076_ALL_MUSIC_MODES,
             music_variants=const.H6076_LEGACY_MUSIC_VARIANTS,
@@ -388,29 +387,26 @@ def test_h6076_registry_profile_is_the_music_ceiling_of_the_basic_profile():
 
 
 @pytest.mark.parametrize(
-    ("pact", "firmware", "qualified", "min_kelvin", "readback_min_kelvin"),
+    ("pact", "firmware", "qualified", "min_kelvin"),
     [
-        ((1, 1), "1.02.00", True, 2200, None),
-        ((2, 1), "1.04.05", True, 2700, None),
-        ((1, 1), "1.04.08", True, 2200, None),
-        ((1, 1), "1.01.99", False, 2200, None),
-        ((2, 1), "1.01.99", False, 2700, None),
-        ((1, 1), "1.2.0", False, 2200, None),
-        ((1, 1), None, False, 2200, None),
-        ((1, 2), "1.04.05", False, 2700, 2200),
-        ((3, 1), "1.04.05", False, 2700, 2200),
-        ((None, None), "1.04.05", False, 2700, 2200),
+        ((1, 1), "1.02.00", True, 2200),
+        ((2, 1), "1.04.05", True, 2700),
+        ((1, 1), "1.04.08", True, 2200),
+        ((1, 1), "1.01.99", False, 2200),
+        ((2, 1), "1.01.99", False, 2700),
+        ((1, 1), "1.2.0", False, 2200),
+        ((1, 1), None, False, 2200),
+        ((1, 2), "1.04.05", False, 2700),
+        ((3, 1), "1.04.05", False, 2700),
+        ((None, None), "1.04.05", False, 2700),
     ],
 )
-def test_h6076_music_needs_a_known_pact_and_software_1_02_or_newer(
-    pact, firmware, qualified, min_kelvin, readback_min_kelvin
-):
+def test_h6076_music_needs_a_known_pact_and_software_1_02_or_newer(pact, firmware, qualified, min_kelvin):
     profile = device_profile("H6076", *pact, firmware=firmware, hardware="3.05.00")
 
     assert (len(profile.music_modes) == 12) is qualified
     assert (len(profile.music_modes) == 6) is not qualified
     assert profile.min_color_temp_kelvin == min_kelvin
-    assert profile.readback_min_color_temp_kelvin == readback_min_kelvin
 
 
 def test_h6102_static_candidate_is_exact_and_discoverable():
@@ -594,3 +590,15 @@ async def test_new_encoding_metadata_does_not_enable_music_before_profile_constr
         with pytest.raises(ValueError, match="music mode"):
             await coordinator.async_select_music_slug("future_mode")
         coordinator.send_command.assert_not_awaited()
+
+
+def test_every_colour_temperature_range_lies_on_the_kelvin_table_grid() -> None:
+    """Bounds off the 100 K grid or outside the table would make companion colours silently black."""
+    for model in MODEL_PROFILES:
+        for pact, hardware, firmware in itertools.product(
+            [(None, None), (1, 1), (1, 3), (2, 1), (4, 1), (10, 1), (10, 2)],
+            [None, "1.00.00", "1.04.03", "3.01.00"],
+            [None, "1.00.00", "1.02.00", "2.03.00"],
+        ):
+            low, high = device_profile(model, *pact, firmware=firmware, hardware=hardware).color_temp_range
+            assert 1000 <= low <= high <= 10000 and low % const.KELVIN_STEP == high % const.KELVIN_STEP == 0, model

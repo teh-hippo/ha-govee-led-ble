@@ -16,6 +16,7 @@ import pytest
 from custom_components.ha_govee_led_ble import generated_protocol_adapter as a
 from custom_components.ha_govee_led_ble import protocol_core, protocol_music_params
 from custom_components.ha_govee_led_ble.const import (
+    KELVIN_RANGE_1000_10000,
     MODEL_PROFILES,
     WHOLE_BULB_GRAMMARS,
     ModelProfile,
@@ -125,7 +126,6 @@ _QUALIFIED_CONTEXTS: tuple[tuple[str, str, int | None, int | None, str | None, s
     ("H60A6-pact-1-4", "H60A6", 1, 4, None, None),
     ("H6076-unqualified", "H6076", None, None, None, None),
     ("H6076-pact1-unidentified-fw", "H6076", 1, 1, None, None),
-    ("H6076-pact2-unidentified-fw", "H6076", 2, 1, None, None),
     ("H6076-pact1-legacy-music", "H6076", 1, 1, "1.01.00", "3.01.01"),
     ("H6076-pact2-legacy-music", "H6076", 2, 1, "1.01.00", "3.01.01"),
     ("H6076-pact2-music", "H6076", 2, 1, "1.04.05", "3.05.00"),
@@ -935,7 +935,7 @@ def test_static_colour_and_kelvin_status_readback(hass, model: str, profile: Mod
     if profile.static_readback_kelvin:
         coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url="http://x")
         coordinator.profile = replace(profile, profile_identity_fields=frozenset())
-        min_kelvin = profile.readback_min_color_temp_kelvin or profile.min_color_temp_kelvin
+        min_kelvin = profile.min_color_temp_kelvin
         for kelvin in (min_kelvin, profile.max_color_temp_kelvin):
             kelvin_bytes = kelvin.to_bytes(2, "big")
             body = (
@@ -953,16 +953,24 @@ def test_static_colour_and_kelvin_status_readback(hass, model: str, profile: Mod
             coordinator._notify_callback(None, bytearray(reply))
             assert coordinator.color_mode is ParsedMode.COLOUR and coordinator.color_temp_kelvin == kelvin
 
-        for out_of_range in (min_kelvin - 1, profile.max_color_temp_kelvin + 1):
+        for out_of_range, clamped in (
+            (min_kelvin - 1, min_kelvin),
+            (profile.max_color_temp_kelvin + 1, profile.max_color_temp_kelvin),
+        ):
             bad_bytes = out_of_range.to_bytes(2, "big")
             bad_body = (
                 bytes([static_byte, 255, 255, 255]) + bad_bytes
                 if profile.status_grammar in WHOLE_BULB_GRAMMARS | {"H6179"}
                 else bytes([static_byte, 1]) + bad_bytes
             )
+            if profile.status_grammar == "H6046":
+                bad_body += bad_bytes
             bad_reply = _status(0x05, bad_body)
             coordinator._notify_callback(None, bytearray(bad_reply))
-            assert coordinator.packet_log[-1]["reason"] == "semantic_rejected"
+            if KELVIN_RANGE_1000_10000[0] <= out_of_range <= KELVIN_RANGE_1000_10000[1]:
+                assert coordinator.color_temp_kelvin == clamped
+            else:  # no device range contains it, so it is not a Kelvin reading
+                assert coordinator.packet_log[-1]["reason"] == "semantic_rejected"
 
 
 @pytest.mark.parametrize(("model", "profile"), _BOOLEAN_CONTROL_PROFILES)

@@ -495,8 +495,11 @@ def require_profile_packet(frame: bytes, profile: ModelProfile) -> None:
                         raise ValueError(f"{profile.name} does not support colour temperature")
                     if not static.whole_strip and not profile.supports_segment_color_temperature:
                         raise ValueError(f"{profile.name} does not support segment colour temperature")
-                    if not profile.min_color_temp_kelvin <= static.kelvin <= profile.max_color_temp_kelvin:
-                        raise ValueError("static Kelvin outside profile range")
+                    if (
+                        not profile.min_color_temp_kelvin <= static.kelvin <= profile.max_color_temp_kelvin
+                        or static.kelvin not in _TABLE_KELVIN_RGB
+                    ):
+                        raise ValueError("static Kelvin outside profile range or off the 100 K grid")
                 if static.brightness_pct is not None and not (
                     profile.supports_segments
                     and profile.supports_segment_brightness
@@ -1508,10 +1511,8 @@ def _build_whole_bulb_static_colour(
 ) -> bytes:
     if mask != profile.whole_device_mask or not mask:
         raise ValueError(f"{profile.command_grammar} supports whole-device colour only")
-    if kelvin and not 2700 <= kelvin <= 6500:
-        raise ValueError(f"{profile.command_grammar} Kelvin outside 2700..6500")
     if kelvin and kelvin not in _TABLE_KELVIN_RGB:
-        raise ValueError(f"{profile.command_grammar} Kelvin must use 100 K steps from 2700 to 6500")
+        raise ValueError(f"{profile.command_grammar} Kelvin must use the 100 K grid")
     root_type = _COMMAND_ROOTS[profile.command_grammar or ""][1]
     root = root_type()
     root.header = b"\x33"
