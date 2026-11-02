@@ -610,9 +610,14 @@ class GoveeBLECoordinator(
 
     @property
     def native_presentation_profile(self) -> ModelProfile:
-        if self.model == "H607C" and self.pact_type is None and not self._h607c_pact_conflict:
+        """Profile used to present controls; equals the effective profile unless identity gating shows more."""
+        if self.identity_gated_controls and self.pact_type is None and not self._h607c_pact_conflict:
             return get_profile(self.model)
         return self.profile
+
+    @property
+    def identity_gated_controls(self) -> bool:
+        return get_profile(self.model).requires_qualified_identity
 
     @property
     def h607c_pact_readiness(self) -> str:
@@ -622,8 +627,8 @@ class GoveeBLECoordinator(
             return "stale" if self._h607c_marker_seen else "missing"
         return "ready" if self.profile.supports_rgb else "unsupported"
 
-    async def async_prepare_h607c_control(self) -> Callable[[], None]:
-        if self.model != "H607C":
+    async def async_prepare_identity_gated_control(self) -> Callable[[], None]:
+        if not self.identity_gated_controls:
             return lambda: None
         self._refresh_h607c_advertisements()
         async with async_control_intent(self, ControlIntent.BACKGROUND):
@@ -1842,7 +1847,11 @@ class GoveeBLECoordinator(
     async def async_set_boolean_control(self, control: str, enabled: bool) -> None:
         if type(enabled) is not bool:
             raise ValueError("Boolean setting requires a boolean")
-        guard = await self.async_prepare_h607c_control() if self.model == "H607C" and control == "gradual" else None
+        guard = (
+            await self.async_prepare_identity_gated_control()
+            if self.identity_gated_controls and control == "gradual"
+            else None
+        )
         await self._async_set_verified_setting(control, enabled, write_guard=guard)
 
     async def async_set_low_blue_light(self, *, enabled: bool | None = None, level: int | None = None) -> None:

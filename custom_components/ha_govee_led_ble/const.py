@@ -181,6 +181,8 @@ class ModelProfile:
     profile_identity_fields: frozenset[str] = frozenset()
     # Set when Pact alone changes capabilities, so the profile also resolves before hardware/firmware replies arrive.
     profile_pact_dependent: bool = False
+    # Colour and Kelvin controls are presented before identity resolves, but writes need fresh qualified Pact.
+    requires_qualified_identity: bool = False
     # Exact-product revision policy, independent of compatible wire grammars.
     video_revision_policy: str | None = None
     read_domains: frozenset[ReadDomain] = frozenset()
@@ -1448,6 +1450,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         effect_workflows=frozenset({"native_scenes", "layered_scenes", "native_music", "single", "multi", "painted"}),
         command_operations=frozenset({"power", "brightness", "static", "scene", "diy", "music", "effect_upload"}),
         profile_pact_dependent=True,
+        requires_qualified_identity=True,
         read_domains=frozenset(
             {ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE, ReadDomain.FIRMWARE, ReadDomain.HARDWARE}
         ),

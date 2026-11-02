@@ -313,11 +313,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
 
     @property
     def supported_color_modes(self) -> set[ColorMode]:
-        profile = (
-            self.coordinator.native_presentation_profile
-            if self.coordinator.model == "H607C"
-            else self.coordinator.profile
-        )
+        profile = self.coordinator.native_presentation_profile
         modes = set()
         if profile.supports_rgb:
             modes.add(ColorMode.RGB)
@@ -937,9 +933,9 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             self.coordinator.profile.brightness_zero_turns_off and kwargs.get(ATTR_BRIGHTNESS) == 0
         ):
             guard = None
-            if self.coordinator.model == "H607C":
+            if self.coordinator.identity_gated_controls:
                 self._validate_basic_request(kwargs, profile=self.coordinator.native_presentation_profile)
-                guard = await self.coordinator.async_prepare_h607c_control()
+                guard = await self.coordinator.async_prepare_identity_gated_control()
             async with self.coordinator.async_mask_transaction():
                 await self._async_prepare_turn_on(native_write_guard=guard, **kwargs)
         else:

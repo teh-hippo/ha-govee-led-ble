@@ -178,11 +178,11 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
         try:
             resolved = scale_segment_groups(((group["segments"], group["rgb_color"]) for group in groups), rgb_scale)
             guard = None
-            if self.coordinator.model == "H607C":
+            if self.coordinator.identity_gated_controls:
                 build_segment_paint(
                     resolved, self.coordinator.model, profile=self.coordinator.native_presentation_profile
                 )
-                guard = await self.coordinator.async_prepare_h607c_control()
+                guard = await self.coordinator.async_prepare_identity_gated_control()
             self._require_support(
                 "paint_segments",
                 supported=self.coordinator.profile.supports_segments and self.coordinator.profile.supports_rgb,
@@ -218,7 +218,7 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
 
     async def async_set_segment_color_temp(self, segments: list[int], color_temp_kelvin: int) -> None:
         guard = None
-        if self.coordinator.model == "H607C":
+        if self.coordinator.identity_gated_controls:
             try:
                 build_segment_color_temp(
                     segments,
@@ -228,7 +228,7 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
                 )
             except (TypeError, ValueError) as err:
                 raise ServiceValidationError(translation_domain=DOMAIN, translation_key="invalid_segments") from err
-            guard = await self.coordinator.async_prepare_h607c_control()
+            guard = await self.coordinator.async_prepare_identity_gated_control()
         async with self.coordinator.async_mask_transaction():
             await self._async_set_segment_color_temp(segments, color_temp_kelvin, write_guard=guard)
 
@@ -277,14 +277,14 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
 
     async def async_set_segment_brightness(self, segments: list[int], brightness: int) -> None:
         guard = None
-        if self.coordinator.model == "H607C":
+        if self.coordinator.identity_gated_controls:
             try:
                 build_segment_brightness(
                     segments, brightness, self.coordinator.model, profile=self.coordinator.native_presentation_profile
                 )
             except (TypeError, ValueError) as err:
                 raise ServiceValidationError(translation_domain=DOMAIN, translation_key="invalid_segments") from err
-            guard = await self.coordinator.async_prepare_h607c_control()
+            guard = await self.coordinator.async_prepare_identity_gated_control()
         async with self.coordinator.async_mask_transaction():
             await self._async_set_segment_brightness(segments, brightness, write_guard=guard)
 
