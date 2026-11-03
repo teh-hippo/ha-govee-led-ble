@@ -1,5 +1,7 @@
 """Temporary H6199 readback button for #532."""
 
+import asyncio
+import logging
 from typing import Any
 
 from homeassistant.components.button import ButtonEntity
@@ -13,6 +15,7 @@ from .coordinator import GoveeBLECoordinator
 from .entity import GoveeBLEEntity
 from .video_test_controls import async_read_video_test_state, video_test_snapshot_current
 
+_LOGGER = logging.getLogger(__name__)
 PARALLEL_UPDATES = 0
 
 
@@ -30,6 +33,43 @@ class GoveeBLEVideoTestReadButton(GoveeBLEEntity, ButtonEntity):
         super().__init__(coordinator)
         self._attr_unique_id = f"{coordinator.address.replace(':', '').lower()}_video_test_read"
         self._attr_device_info = coordinator.device_info
+        self._read_token: object | None = None
+        self._read_task: asyncio.Task[None] | None = None
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self._schedule_connect_read()
+
+    async def async_will_remove_from_hass(self) -> None:
+        if self._read_task is not None:
+            self._read_task.cancel()
+        await super().async_will_remove_from_hass()
+
+    def _handle_coordinator_update(self) -> None:
+        self._schedule_connect_read()
+        super()._handle_coordinator_update()
+
+    def _schedule_connect_read(self) -> None:
+        """Read both banks once per BLE subscription, as the vendor app does on connect."""
+        token = self.coordinator._notification_token
+        if (
+            token is None
+            or token is self._read_token
+            or (self._read_task is not None and not self._read_task.done())
+            or video_test_snapshot_current(self.coordinator)
+            or not self.available
+        ):
+            return
+        self._read_token = token
+        self._read_task = self.hass.async_create_background_task(
+            self._async_connect_read(), f"{DOMAIN} video test connect read"
+        )
+
+    async def _async_connect_read(self) -> None:
+        try:
+            await async_read_video_test_state(self.coordinator)
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("Video test connect read failed: %s", err)
 
     @property
     def available(self) -> bool:

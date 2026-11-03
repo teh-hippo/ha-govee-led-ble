@@ -117,6 +117,24 @@ async def test_both_banks_readback_and_missing_replies_are_not_remembered(test_d
     assert effect.native_value == 75 and device.native_value == 25
 
 
+async def test_each_new_subscription_reads_both_banks_once(test_device, hass, virtual_clock):
+    c, entry, _, _, writes = test_device
+    read = button.GoveeBLEVideoTestReadButton(c)
+    read.hass = hass
+    area = entity(GoveeBLEVideoTestSelect, entry, "device_content_mode", hass)
+    read._schedule_connect_read()
+    first = read._read_task
+    await first
+    assert area.current_option == "game" and writes == []
+    read._schedule_connect_read()
+    assert read._read_task is first
+    c._notification_token = object()
+    read._schedule_connect_read()
+    assert read._read_task is not first
+    await read._read_task
+    assert area.current_option == "game"
+
+
 async def test_write_publishes_only_the_confirmed_value(test_device, hass, monkeypatch, virtual_clock):
     c, entry, _, _, _ = test_device
     area = entity(GoveeBLEVideoTestSelect, entry, "device_apply_area", hass)

@@ -229,7 +229,7 @@ class GoveeBLEVideoTestControl(GoveeBLEEntity):
 class GoveeBLEVideoTestNumber(GoveeBLEVideoTestControl, NumberEntity):
     _attr_native_max_value = 100
     _attr_native_step = 1
-    _attr_mode = NumberMode.BOX
+    _attr_mode = NumberMode.SLIDER
 
     @property
     def native_min_value(self) -> float:
