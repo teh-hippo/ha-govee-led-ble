@@ -292,6 +292,7 @@ class GoveeBLECoordinator(
         self.video_full_screen, self.video_sound_effects = True, False
         self.video_sound_effects_softness = 100
         self.video_parameters: dict[str, Any] | None = None
+        self.video_test_readback: dict[str, Any] | None = None
         self.music_color: tuple[int, int, int] | None = None
         self.music_fixed_colour: bool | None = None
         self.music_left_colour: int | None = None

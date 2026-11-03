@@ -147,7 +147,13 @@ async def test_pact_change_publishes_late_entities_and_effective_states(hass, co
     c.pact_type = c.pact_code = None
     entry = SimpleNamespace(runtime_data=c, entry_id="entry-a", title="Test", options={}, async_on_unload=Mock())
     selects, sensors = [], []
-    await select.async_setup_entry(hass, entry, selects.extend)
+    await select.async_setup_entry(
+        hass,
+        entry,
+        lambda entities: selects.extend(
+            entity for entity in entities if isinstance(entity, select.GoveeBLEControlSelect)
+        ),
+    )
     await sensor.async_setup_entry(hass, entry, sensors.extend)
     backend = MagicMock()
     backend.active_workspaces.get.return_value = None

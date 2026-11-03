@@ -14,6 +14,7 @@ from .effect_contracts import CapabilityState
 from .effect_setup import get_effect_backend
 from .entity import GoveeBLEEntity
 from .video_applicability import h6199_camera_controls_state
+from .video_test_controls import SELECT_CONTROLS, GoveeBLEVideoTestSelect
 
 PARALLEL_UPDATES = 0
 _OPTIONS = {
@@ -27,6 +28,8 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: GoveeBLEConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     coordinator = entry.runtime_data
+    if coordinator.model == "H6199":
+        async_add_entities([GoveeBLEVideoTestSelect(entry, control) for control in SELECT_CONTROLS])
     added = False
     strings_added = False
     power_on_added = False

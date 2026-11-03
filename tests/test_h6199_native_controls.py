@@ -315,7 +315,13 @@ async def test_platform_setup_late_identity_and_native_dispatch(coordinator, has
     entry = SimpleNamespace(runtime_data=c, entry_id="test", async_on_unload=Mock())
     added_selects, added_sensors = [], []
     c.hw_version = None
-    await select.async_setup_entry(hass, entry, added_selects.extend)
+    await select.async_setup_entry(
+        hass,
+        entry,
+        lambda entities: added_selects.extend(
+            entity for entity in entities if isinstance(entity, select.GoveeBLEControlSelect)
+        ),
+    )
     await sensor.async_setup_entry(hass, entry, added_sensors.extend)
     assert not added_selects and not added_sensors
     qualify(c)

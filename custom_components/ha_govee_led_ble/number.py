@@ -11,6 +11,7 @@ from . import GoveeBLEConfigEntry
 from .const import DOMAIN
 from .entity import GoveeBLEEntity
 from .low_blue_light import Setting
+from .video_test_controls import NUMBER_CONTROLS, GoveeBLEVideoTestNumber
 
 PARALLEL_UPDATES = 0
 
@@ -18,6 +19,8 @@ PARALLEL_UPDATES = 0
 async def async_setup_entry(
     hass: HomeAssistant, entry: GoveeBLEConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
+    if entry.runtime_data.model == "H6199":
+        async_add_entities([GoveeBLEVideoTestNumber(entry, control) for control in NUMBER_CONTROLS])
     added = False
 
     def add_qualified() -> None:

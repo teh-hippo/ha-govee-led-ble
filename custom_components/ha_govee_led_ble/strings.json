@@ -1,6 +1,8 @@
 {
   "entity": {
     "switch": {
+      "video_test_effect_sound_effects": {"name": "Video test: effect sound"},
+      "video_test_device_enabled": {"name": "Video test: device sound"},
       "low_blue_light": {"name": "Low-blue-light"},
       "gradual": {"name": "Gradual"},
       "limit": {"name": "Limit"},
@@ -13,14 +15,25 @@
       "base_enabled": {"name": "Base enabled"}
     },
     "number": {
+      "video_test_effect_saturation": {"name": "Video test: effect saturation"},
+      "video_test_effect_sound_effects_softness": {"name": "Video test: effect sound softness"},
+      "video_test_device_saturation": {"name": "Video test: device saturation"},
+      "video_test_device_softness": {"name": "Video test: device sound softness"},
       "low_blue_light_level": {"name": "Low-blue-light level"}
     },
     "select": {
+      "video_test_effect_mode": {"name": "Video test: effect mode", "state": {"movie": "Movie", "game": "Game"}},
+      "video_test_effect_full_screen": {"name": "Video test: effect area", "state": {"part": "Part", "all": "All"}},
+      "video_test_device_apply_area": {"name": "Video test: device area", "state": {"part": "Part", "all": "All"}},
+      "video_test_device_content_mode": {"name": "Video test: device content mode", "state": {"movie": "Movie", "game": "Game"}},
       "strip_direction": {"name": "Strip direction", "state": {"clockwise": "Clockwise", "anticlockwise": "Anticlockwise"}},
       "camera_position": {"name": "Camera position", "state": {"top": "Top", "bottom": "Bottom"}},
       "gradient": {"name": "Gradient", "state": {"off": "Off", "on": "On"}},
       "configured_strings": {"name": "Configured bulb strings", "state": {"1": "One string (15 bulbs)", "2": "Two strings (30 bulbs)"}},
       "power_on_behaviour": {"name": "Power-on behaviour", "state": {"previous": "Previous state", "on": "On", "off": "Off"}}
+    },
+    "button": {
+      "video_test_read": {"name": "Video test: read both banks"}
     },
     "sensor": {
       "camera_status": {"name": "Camera status", "state": {"absent": "Absent", "healthy": "Connected", "incompatible": "Incompatible", "unknown": "Unknown"}}

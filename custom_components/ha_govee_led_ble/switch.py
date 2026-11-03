@@ -12,6 +12,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from . import GoveeBLEConfigEntry
 from .const import DOMAIN, NATIVE_ZONE_CONTROLS
 from .entity import GoveeBLEEntity
+from .video_test_controls import SWITCH_CONTROLS, GoveeBLEVideoTestSwitch
 
 PARALLEL_UPDATES = 0
 
@@ -21,6 +22,8 @@ async def async_setup_entry(
     entry: GoveeBLEConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
+    if entry.runtime_data.model == "H6199":
+        async_add_entities([GoveeBLEVideoTestSwitch(entry, control) for control in SWITCH_CONTROLS])
     added: set[str] = set()
 
     def add_qualified() -> None:

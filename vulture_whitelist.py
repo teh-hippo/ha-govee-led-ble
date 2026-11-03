@@ -13,6 +13,7 @@ _.assumed_state  # light.py
 _.async_apply_custom_effect  # light.py
 async_get_config_entry_diagnostics  # diagnostics.py
 _.async_get_options_flow  # config_flow.py
+_.async_press  # button.py, called by the Home Assistant button platform
 async_migrate_entry  # __init__.py
 _._async_migrate_func  # effect_store.py
 async_remove_entry  # __init__.py
