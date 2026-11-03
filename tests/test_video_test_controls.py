@@ -111,6 +111,21 @@ async def test_both_banks_readback_and_missing_replies_are_not_remembered(test_d
     assert "saturation" in read.extra_state_attributes["device"]["missing_reads"]
     c._notification_token = object()
     assert not read.extra_state_attributes["current_subscription"]
+    missing.clear()
+    await read.async_press()
+    c._notification_token = object()
+    assert effect.native_value == 75 and device.native_value == 25
+
+
+async def test_write_publishes_only_the_confirmed_value(test_device, hass, monkeypatch, virtual_clock):
+    c, entry, _, _, _ = test_device
+    area = entity(GoveeBLEVideoTestSelect, entry, "device_apply_area", hass)
+    await button.GoveeBLEVideoTestReadButton(c).async_press()
+    shown = []
+    publish = c.async_set_updated_data
+    monkeypatch.setattr(c, "async_set_updated_data", lambda data: (shown.append(area.current_option), publish(data)))
+    await area.async_select_option("all")
+    assert None not in shown and shown[-1] == "all" and "part" not in shown[shown.index("all") :]
 
 
 @pytest.mark.parametrize(

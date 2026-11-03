@@ -54,13 +54,15 @@ def video_test_snapshot_current(coordinator: GoveeBLECoordinator) -> bool:
     )
 
 
-async def async_read_video_test_state(coordinator: GoveeBLECoordinator) -> None:
-    """Record observations only, keeping missing replies separate from remembered values."""
+async def async_read_video_test_state(coordinator: GoveeBLECoordinator, *, publish: bool = True) -> dict[str, Any]:
+    """Record observations only, keeping missing replies separate from remembered values.
+
+    Publishing replaces the previous snapshot in one update.  Entities never pass through a
+    cleared or pre-write state, which the frontend would otherwise echo back as a new selection.
+    """
     async with async_control_intent(coordinator, ControlIntent.USER):
         if coordinator.model != "H6199":
             raise ValueError("Video bank testing is only available for H6199")
-        coordinator.video_test_readback = None
-        coordinator.async_set_updated_data(coordinator.data or {})
         async with coordinator._lock:
             client = await coordinator._ensure_connected()
             profile = coordinator._authorization_profile()
@@ -93,7 +95,7 @@ async def async_read_video_test_state(coordinator: GoveeBLECoordinator) -> None:
         )
         if not current:
             raise ValueError("Video test connection changed during read; read both banks again")
-        coordinator.video_test_readback = {
+        snapshot = {
             "_client": client,
             "_token": token,
             "_generation": generation,
@@ -103,7 +105,10 @@ async def async_read_video_test_state(coordinator: GoveeBLECoordinator) -> None:
             "effect_missing_reads": sorted(field for field, value in effect.items() if value is None),
             "device": device,
         }
-        coordinator.async_set_updated_data(coordinator.data or {})
+        if publish:
+            coordinator.video_test_readback = snapshot
+            coordinator.async_set_updated_data(coordinator.data or {})
+        return snapshot
 
 
 class GoveeBLEVideoTestControl(GoveeBLEEntity):
@@ -141,8 +146,9 @@ class GoveeBLEVideoTestControl(GoveeBLEEntity):
         }
 
     def _value(self) -> Any:
+        # Keep the last read across routine reconnects; read_at and current_subscription mark its age.
         snapshot = self.coordinator.video_test_readback
-        if snapshot is None or not video_test_snapshot_current(self.coordinator):
+        if snapshot is None:
             return None
         if self._bank == "effect":
             return snapshot["effect"].get(self._field)
@@ -154,11 +160,11 @@ class GoveeBLEVideoTestControl(GoveeBLEEntity):
             async with async_control_intent(self.coordinator, ControlIntent.USER):
                 if not self.available:
                     raise ValueError("Video test control is unsupported for this device")
-                await async_read_video_test_state(self.coordinator)
+                snapshot = await async_read_video_test_state(self.coordinator, publish=False)
                 if backend := get_effect_backend(self.hass):
                     await backend.preview.async_supersede_device(self._entry.entry_id, reason="home_assistant_control")
                 if self._bank == "effect":
-                    await self._write_effect(value)
+                    await self._write_effect(value, snapshot["effect"])
                 else:
                     await self._write_device(value)
                 await async_read_video_test_state(self.coordinator)
@@ -167,10 +173,7 @@ class GoveeBLEVideoTestControl(GoveeBLEEntity):
         except Exception as err:
             raise HomeAssistantError(translation_domain=DOMAIN, translation_key="device_command_failed") from err
 
-    async def _write_effect(self, value: Any) -> None:
-        snapshot = self.coordinator.video_test_readback
-        assert snapshot is not None
-        effect = snapshot["effect"]
+    async def _write_effect(self, value: Any, effect: dict[str, Any]) -> None:
         mode = value if self._field == "mode" else effect["mode"]
         requested = {} if self._field == "mode" else {self._field: value}
         if self._field == "mode" and effect["mode"] == "off":
