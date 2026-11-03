@@ -292,17 +292,20 @@ def boolean_control_is_authorized(control: str, profile: ModelProfile) -> bool:
     )
 
 
-def require_profile_packet(frame: bytes, profile: ModelProfile) -> None:
-    """Revalidate operation capabilities and geometry at each physical attempt."""
-    from .light_commands import parse_static_write
+def _check_low_blue_light_packet(frame: bytes, profile: ModelProfile) -> bool:
+    """Native low-blue-light setting frames."""
     from .low_blue_light import parse_setting, require_low_blue_light
 
     if parse_setting(frame, profile, "envelope").parsed is not None:
         require_low_blue_light(profile)
         if not any(parse_setting(frame, profile, kind).parsed is not None for kind in ("write", "query")):
             raise ValueError("Invalid low-blue-light setting packet")
-        return
+        return True
+    return False
 
+
+def _check_h6097_setting_packet(frame: bytes, profile: ModelProfile) -> bool:
+    """H6097 power-on setting frames."""
     if profile.setting_grammar == "H6097":
         roots = {"write": ("h6097_control", H6097Control), "query": ("h6097_control.query", H6097Control.Query)}
         for grammar in roots:
@@ -312,7 +315,12 @@ def require_profile_packet(frame: bytes, profile: ModelProfile) -> None:
                     grammar == "write" and getattr(setting.body.state, "name", None) is None
                 ):
                     raise ValueError("Power-on setting is outside profile capabilities")
-                return
+                return True
+    return False
+
+
+def _check_h607c_setting_packet(frame: bytes, profile: ModelProfile) -> bool:
+    """H607C native setting writes and queries."""
     if profile.setting_grammar == "H607C":
         setting = _parse_xor_frame(frame, "H607C", {"H607C": ("h607c_control", H607cControl)}).parsed
         if setting is not None and (operation := getattr(setting.opcode, "name", None)) is not None:
@@ -325,7 +333,7 @@ def require_profile_packet(frame: bytes, profile: ModelProfile) -> None:
                 or operation == "gradual"
                 and "gradual" in profile.boolean_controls
             ):
-                return
+                return True
             raise ValueError("Native setting is outside profile capabilities")
         for root_type, query_allowed in (
             (H607cControl.DeviceInfoQuery, bool(profile.boolean_controls & H607cControl.Zone.__members__.keys())),
@@ -335,15 +343,25 @@ def require_profile_packet(frame: bytes, profile: ModelProfile) -> None:
             query = _parse_xor_frame(frame, "native", {"native": ("h607c_control.query", root_type)}).parsed
             if query is not None:
                 if query_allowed:
-                    return
+                    return True
                 raise ValueError("Native setting query is outside profile capabilities")
+    return False
+
+
+def _check_bulk_query_packet(frame: bytes, profile: ModelProfile) -> bool:
+    """H60A bulk status queries."""
     if profile.bulk_status_grammar == "H60A":
         query = _parse_xor_frame(frame, "bulk", {"bulk": ("h60a_bulk.query", H60aBulk.Query)}).parsed
         if query is not None:
             bulk_allowed = bulk_status_domains(profile)
             if all(getattr(domain, "name", None) in bulk_allowed for domain in query.domains):
-                return
+                return True
             raise ValueError("Bulk query domains are outside profile capabilities")
+    return False
+
+
+def _check_h60a6_setting_packet(frame: bytes, profile: ModelProfile) -> bool:
+    """H60A6 native setting writes."""
     if profile.setting_grammar == "H60A6":
         setting = _parse_xor_frame(frame, "setting", {"setting": ("h60a6_control", H60a6Control)}).parsed
         if setting is not None:
@@ -354,8 +372,13 @@ def require_profile_packet(frame: bytes, profile: ModelProfile) -> None:
                 or operation == "power_on_behaviour"
                 and profile.supports_power_on_behaviour
             ):
-                return
+                return True
             raise ValueError("Native setting is outside profile capabilities")
+    return False
+
+
+def _check_h60a6_effect_frame(frame: bytes, profile: ModelProfile) -> bool:
+    """H60A6 native effect upload frames."""
     if (
         profile.effect_grammar == "H60A6"
         and profile.command_operations is not None
@@ -371,7 +394,12 @@ def require_profile_packet(frame: bytes, profile: ModelProfile) -> None:
             raise ValueError("Invalid native effect frame") from error
         if native_frame.index == 0 and native_frame.body.subtype != H60a6EffectFrame.Subtype.native_effect:
             raise ValueError("Native effect subtype is outside profile capabilities")
-        return
+        return True
+    return False
+
+
+def _check_music_write_packet(frame: bytes, profile: ModelProfile) -> bool:
+    """Music mode writes."""
     if profile.music_grammar in _MUSIC_WRITE_ROOTS:
         music = _parse_xor_frame(frame, profile.music_grammar, _MUSIC_WRITE_ROOTS).parsed
         if music is not None:
@@ -385,7 +413,12 @@ def require_profile_packet(frame: bytes, profile: ModelProfile) -> None:
                 not profile.supports_music_color or (variant is not None and not variant.supports_fixed_colour)
             ):
                 raise ValueError("fixed music colour is outside profile capabilities")
-            return
+            return True
+    return False
+
+
+def _check_video_write_packet(frame: bytes, profile: ModelProfile) -> bool:
+    """Video mode writes."""
     if profile.video_grammar == "H66A0-video" and profile.supports_video_mode:
         video = parse_video_command(frame, "", profile=profile)
         if video is not None:
@@ -403,7 +436,14 @@ def require_profile_packet(frame: bytes, profile: ModelProfile) -> None:
             profile.validate_video_saturation(int(video.detail.saturation))
             if video.detail.sound_effects not in (0, 1) or not 0 <= video.detail.softness <= 100:
                 raise ValueError("invalid video sound effects or softness")
-            return
+            return True
+    return False
+
+
+def _check_command_packet(frame: bytes, profile: ModelProfile) -> bool:
+    """Ordinary command writes."""
+    from .light_commands import parse_static_write
+
     command = _parse_xor_frame(frame, profile.command_grammar, _COMMAND_ROOTS).parsed
     if command is not None:
         operation = getattr(command.opcode, "name", "")
@@ -412,7 +452,7 @@ def require_profile_packet(frame: bytes, profile: ModelProfile) -> None:
                 "left_bar_enabled",
                 "right_bar_enabled",
             }:
-                return
+                return True
             raise ValueError("Bar control is outside profile capabilities")
         if operation in {"multi", "mode"}:
             sub_attr = getattr(command.body, "sub", getattr(command.body, "sub_mode", None))
@@ -443,7 +483,7 @@ def require_profile_packet(frame: bytes, profile: ModelProfile) -> None:
         control = boolean_control_name(operation)
         if control is not None:
             if boolean_control_is_authorized(control, profile):
-                return
+                return True
             raise ValueError(f"{profile.name} does not support boolean control {control}")
         if operation == "scene" and profile.scene_codes is not None:
             detail = getattr(command.body, "sub_body", getattr(command.body, "detail", None))
@@ -506,7 +546,12 @@ def require_profile_packet(frame: bytes, profile: ModelProfile) -> None:
                     and profile.supports_white_brightness
                 ):
                     raise ValueError(f"{profile.name} does not support segment brightness")
-            return
+            return True
+    return False
+
+
+def _check_status_query_packet(frame: bytes, profile: ModelProfile) -> bool:
+    """Status queries."""
     query = _parse_xor_frame(
         frame,
         profile.command_grammar,
@@ -516,26 +561,31 @@ def require_profile_packet(frame: bytes, profile: ModelProfile) -> None:
         domain = getattr(query.domain, "name", "")
         if domain == "bar_enable":
             if profile.setting_grammar == "H6046" and profile.boolean_controls:
-                return
+                return True
             raise ValueError("Bar control readback is outside profile capabilities")
         control = boolean_control_name(domain)
         if control is not None:
             if boolean_control_is_authorized(control, profile):
-                return
+                return True
             raise ValueError(f"{profile.name} does not support boolean control {control}")
         if domain in {"physical_ic_count", "subordinate_20", "subordinate_21"}:
             if profile.can_read(ReadDomain(domain)):
-                return
+                return True
             raise ValueError(f"{profile.name} does not support {domain} readback")
         if profile.command_operations is None or domain in profile.read_domains:
-            return
+            return True
+    return False
+
+
+def _check_upload_packet(frame: bytes, profile: ModelProfile) -> bool:
+    """A3 music-parameter and effect uploads."""
     upload = _parse_xor_frame(frame, "A3", {"A3": ("command_write.upload_frame", CommandWrite.UploadFrame)}).parsed
     if upload is not None and upload.index == 0 and upload.body.subtype == 0x41:
         if (profile.command_operations is not None and "music" not in profile.command_operations) or not any(
             variant.template for variant in profile.music_variants
         ):
             raise ValueError("music parameter upload is outside profile capabilities")
-        return
+        return True
     if profile.command_operations is not None and "effect_upload" in profile.command_operations:
         if upload is not None and profile.effect_grammar == "H607C":
             if upload.index == 0:
@@ -551,11 +601,11 @@ def require_profile_packet(frame: bytes, profile: ModelProfile) -> None:
                 }
                 if not allowed.get(upload.body.subtype, False):
                     raise ValueError("Native upload command is outside profile capabilities")
-            return
+            return True
         if upload is not None and profile.effect_grammar == "H60A6":
             if upload.index == 0 and upload.body.subtype != H60a6EffectFrame.Subtype.native_effect:
                 raise ValueError("Native effect subtype is outside profile capabilities")
-            return
+            return True
         if upload is not None and profile.effect_grammar in {"H6046", "H617A"}:
             if upload.index == 0:
                 from .scenes import SCENE_ENTRIES, scene_supported
@@ -579,6 +629,31 @@ def require_profile_packet(frame: bytes, profile: ModelProfile) -> None:
                 }
                 if not allowed.get(upload.body.subtype, False):
                     raise ValueError("effect upload subtype is outside profile capabilities")
+            return True
+    return False
+
+
+def require_profile_packet(frame: bytes, profile: ModelProfile) -> None:
+    """Revalidate operation capabilities and geometry at each physical attempt.
+
+    Each ``_check_*`` stage returns True when it accepted the frame and False to let the next
+    stage try, either because the frame is not its grammar or because that grammar does not
+    apply to this profile.
+    """
+    for check in (
+        _check_low_blue_light_packet,
+        _check_h6097_setting_packet,
+        _check_h607c_setting_packet,
+        _check_bulk_query_packet,
+        _check_h60a6_setting_packet,
+        _check_h60a6_effect_frame,
+        _check_music_write_packet,
+        _check_video_write_packet,
+        _check_command_packet,
+        _check_status_query_packet,
+        _check_upload_packet,
+    ):
+        if check(frame, profile):
             return
     if profile.command_operations is None:
         return
