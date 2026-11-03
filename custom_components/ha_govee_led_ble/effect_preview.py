@@ -718,16 +718,7 @@ class EffectPreviewManager:
                     worker.verification_request = None
         for request in cancelled:
             self._publish(request, PreviewPhase.CANCELLED, error_code="session_cancelled")
-            current_health = self.health(request.config_entry_id)
-            if current_health.phase is PreviewHealthPhase.CHECKING and current_health.incident_id is not None:
-                self._set_health(
-                    request.config_entry_id,
-                    PreviewHealthPhase.DEGRADED,
-                    error_code=current_health.error_code,
-                    error_message=current_health.error_message,
-                    write_disposition=current_health.write_disposition,
-                    incident_id=current_health.incident_id,
-                )
+            self._degrade_checking_health(request.config_entry_id)
 
     async def async_supersede_device(
         self,
@@ -922,16 +913,7 @@ class EffectPreviewManager:
                 error_message="The effect could not be prepared. Review its settings before trying again.",
                 write_disposition=PreviewWriteDisposition.NOT_STARTED,
             )
-            current_health = self.health(request.config_entry_id)
-            if current_health.phase is PreviewHealthPhase.CHECKING and current_health.incident_id is not None:
-                self._set_health(
-                    request.config_entry_id,
-                    PreviewHealthPhase.DEGRADED,
-                    error_code=current_health.error_code,
-                    error_message=current_health.error_message,
-                    write_disposition=current_health.write_disposition,
-                    incident_id=current_health.incident_id,
-                )
+            self._degrade_checking_health(request.config_entry_id)
             return
 
         expectations = _verification_expectations(coordinator, request, compiled)
@@ -1036,41 +1018,24 @@ class EffectPreviewManager:
                 request,
                 PreviewPhase.CANCELLED,
                 error_code="superseded",
-                write_disposition=(
-                    PreviewWriteDisposition.COMPLETED
-                    if writer is not None and writer.completed
-                    else PreviewWriteDisposition.MAY_HAVE_STARTED
-                    if writer is not None and writer.started
-                    else PreviewWriteDisposition.NOT_STARTED
-                ),
+                write_disposition=_writer_disposition(writer),
             )
             return
         except PreviewShutdownError:
+            disposition = _writer_disposition(writer)
             self._publish(
                 request,
                 PreviewPhase.FAILED,
                 error_code="shutdown_incomplete",
                 error_message="Home Assistant stopped before the Live change completed.",
-                write_disposition=(
-                    PreviewWriteDisposition.COMPLETED
-                    if writer is not None and writer.completed
-                    else PreviewWriteDisposition.MAY_HAVE_STARTED
-                    if writer is not None and writer.started
-                    else PreviewWriteDisposition.NOT_STARTED
-                ),
+                write_disposition=disposition,
             )
             self._set_health(
                 request.config_entry_id,
                 PreviewHealthPhase.DEGRADED,
                 error_code="shutdown_incomplete",
                 error_message="Home Assistant stopped before the Live change completed.",
-                write_disposition=(
-                    PreviewWriteDisposition.COMPLETED
-                    if writer is not None and writer.completed
-                    else PreviewWriteDisposition.MAY_HAVE_STARTED
-                    if writer is not None and writer.started
-                    else PreviewWriteDisposition.NOT_STARTED
-                ),
+                write_disposition=disposition,
             )
             return
         except Exception as exc:
@@ -1083,31 +1048,25 @@ class EffectPreviewManager:
                 details={"error_type": type(exc).__name__, "sequence": request.sequence},
             )
             started = writer is not None and writer.started
+            message = (
+                "The connection stopped while writing. The light may have changed."
+                if started
+                else "The light could not be reached before the Live change started."
+            )
+            disposition = PreviewWriteDisposition.MAY_HAVE_STARTED if started else PreviewWriteDisposition.NOT_STARTED
             self._publish(
                 request,
                 PreviewPhase.FAILED,
                 error_code="transport_failed",
-                error_message=(
-                    "The light could not be reached before the Live change started."
-                    if not started
-                    else "The connection stopped while writing. The light may have changed."
-                ),
-                write_disposition=(
-                    PreviewWriteDisposition.MAY_HAVE_STARTED if started else PreviewWriteDisposition.NOT_STARTED
-                ),
+                error_message=message,
+                write_disposition=disposition,
             )
             self._set_health(
                 request.config_entry_id,
                 PreviewHealthPhase.DEGRADED,
                 error_code="transport_failed",
-                error_message=(
-                    "The light could not be reached before the Live change started."
-                    if not started
-                    else "The connection stopped while writing. The light may have changed."
-                ),
-                write_disposition=(
-                    PreviewWriteDisposition.MAY_HAVE_STARTED if started else PreviewWriteDisposition.NOT_STARTED
-                ),
+                error_message=message,
+                write_disposition=disposition,
             )
             return
 
@@ -1152,16 +1111,7 @@ class EffectPreviewManager:
                     error_message="The light changed, but its built-in default could not be saved.",
                     write_disposition=PreviewWriteDisposition.COMPLETED,
                 )
-                current_health = self.health(request.config_entry_id)
-                if current_health.phase is PreviewHealthPhase.CHECKING and current_health.incident_id is not None:
-                    self._set_health(
-                        request.config_entry_id,
-                        PreviewHealthPhase.DEGRADED,
-                        error_code=current_health.error_code,
-                        error_message=current_health.error_message,
-                        write_disposition=current_health.write_disposition,
-                        incident_id=current_health.incident_id,
-                    )
+                self._degrade_checking_health(request.config_entry_id)
                 return
 
         if await self._async_request_status_is_live(request):
@@ -1194,6 +1144,18 @@ class EffectPreviewManager:
         if expectations is None:
             self._mark_write_unverified(request)
 
+    def _degrade_checking_health(self, config_entry_id: str) -> None:
+        current_health = self.health(config_entry_id)
+        if current_health.phase is PreviewHealthPhase.CHECKING and current_health.incident_id is not None:
+            self._set_health(
+                config_entry_id,
+                PreviewHealthPhase.DEGRADED,
+                error_code=current_health.error_code,
+                error_message=current_health.error_message,
+                write_disposition=current_health.write_disposition,
+                incident_id=current_health.incident_id,
+            )
+
     def _mark_write_unverified(self, request: _PreviewRequest) -> None:
         self._diagnostics.record_evidence_gap(
             "preview_write_unverified",
@@ -1201,16 +1163,7 @@ class EffectPreviewManager:
             config_entry_id=request.config_entry_id,
             details={"sequence": request.sequence},
         )
-        current_health = self.health(request.config_entry_id)
-        if current_health.phase is PreviewHealthPhase.CHECKING and current_health.incident_id is not None:
-            self._set_health(
-                request.config_entry_id,
-                PreviewHealthPhase.DEGRADED,
-                error_code=current_health.error_code,
-                error_message=current_health.error_message,
-                write_disposition=current_health.write_disposition,
-                incident_id=current_health.incident_id,
-            )
+        self._degrade_checking_health(request.config_entry_id)
 
     async def _async_persist_built_in_default(self, request: _PreviewRequest) -> None:
         if (
@@ -1720,6 +1673,14 @@ def _snapshot_default_action(item: LibraryItem, model: str, *, profile: ModelPro
         profile=profile,
     )
     return "reset" if effect_content_hash(item.content) == effect_content_hash(template.content) else "set"
+
+
+def _writer_disposition(writer: _PreviewWriter | None) -> PreviewWriteDisposition:
+    if writer is not None and writer.completed:
+        return PreviewWriteDisposition.COMPLETED
+    if writer is not None and writer.started:
+        return PreviewWriteDisposition.MAY_HAVE_STARTED
+    return PreviewWriteDisposition.NOT_STARTED
 
 
 def _install_effect_state(coordinator: Any, compiled: CompiledEffect) -> None:
