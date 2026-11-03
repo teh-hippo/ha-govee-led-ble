@@ -2662,6 +2662,37 @@ class GoveeBLECoordinator(
                 )
                 self._renew_foreground_lease()
 
+    def _upload_ack_expectation(
+        self, packets: Sequence[bytes], require_upload_ack: bool, upload_ack_index: int | None
+    ) -> tuple[int | None, int | None, int]:
+        """The (subtype, music mode, protocol byte) an upload ACK must repeat; (None, None, 0) when none is awaited."""
+        if require_upload_ack:
+            if type(upload_ack_index) is not int or not 0 <= upload_ack_index < len(packets):
+                raise ValueError("Upload ACK requires a valid final packet index")
+            return (
+                upload_ack_subtype(packets, upload_ack_index, self.model, profile=self.profile),
+                upload_ack_mode(packets, upload_ack_index, self.model, profile=self.profile),
+                packets[upload_ack_index][0],
+            )
+        if upload_ack_index is not None:
+            raise ValueError("Upload ACK index requires require_upload_ack")
+        return None, None, 0
+
+    async def _await_upload_ack(
+        self, future: asyncio.Future[bool] | None, check_connection: Callable[[], None], protocol: int
+    ) -> None:
+        """Wait for the device's verdict on the upload whose final packet was just written."""
+        if future is None:
+            raise RuntimeError("Upload writer did not run the physical-write guard")
+        async with asyncio.timeout(UPLOAD_ACK_TIMEOUT):
+            while not future.done():
+                check_connection()
+                await asyncio.wait((future,), timeout=0.05)
+        check_connection()
+        if not future.result():
+            raise RuntimeError(f"Device rejected {protocol:02X} upload")
+        self._upload_ack = None
+
     async def async_write_effect_sequence(
         self,
         packets: Sequence[bytes],
@@ -2696,16 +2727,7 @@ class GoveeBLECoordinator(
             raise ValueError("effect sequence must contain at least one packet")
         if packet_state_values is not None and len(packet_state_values) != len(packets):
             raise ValueError("packet state must match the effect sequence length")
-        subtype = ack_mode = None
-        protocol = 0
-        if require_upload_ack:
-            if type(upload_ack_index) is not int or not 0 <= upload_ack_index < len(packets):
-                raise ValueError("Upload ACK requires a valid final packet index")
-            subtype = upload_ack_subtype(packets, upload_ack_index, self.model, profile=self.profile)
-            ack_mode = upload_ack_mode(packets, upload_ack_index, self.model, profile=self.profile)
-            protocol = packets[upload_ack_index][0]
-        elif upload_ack_index is not None:
-            raise ValueError("Upload ACK index requires require_upload_ack")
+        subtype, ack_mode, protocol = self._upload_ack_expectation(packets, require_upload_ack, upload_ack_index)
         async with async_control_intent(self, intent):
             # Preview writers acquire _lock themselves. The existing control intent
             # still owns the entire upload/ACK/selector transaction.
@@ -2805,16 +2827,7 @@ class GoveeBLECoordinator(
                                 )
                             self._renew_foreground_lease()
                             if require_upload_ack and index - 1 == upload_ack_index:
-                                if future is None:
-                                    raise RuntimeError("Upload writer did not run the physical-write guard")
-                                async with asyncio.timeout(UPLOAD_ACK_TIMEOUT):
-                                    while not future.done():
-                                        check_connection()
-                                        await asyncio.wait((future,), timeout=0.05)
-                                check_connection()
-                                if not future.result():
-                                    raise RuntimeError(f"Device rejected {protocol:02X} upload")
-                                self._upload_ack = None
+                                await self._await_upload_ack(future, check_connection, protocol)
                             if progress is not None:
                                 await progress(index)
                         break
