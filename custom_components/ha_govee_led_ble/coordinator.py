@@ -54,6 +54,7 @@ from .coordinator_h6102 import _H6102Mixin
 from .coordinator_modes import PreModeSnapshot, _ActiveModeMixin
 from .coordinator_notifications import _OPTIONAL_CONTROL_DOMAINS, _NotificationMixin
 from .coordinator_recovery import _RecoveryMixin
+from .coordinator_refresh import BLANK_SCREEN_POLICY_FIELDS, RefreshExpectations
 from .coordinator_segments import _SEGMENT_READ_TIMEOUT, _SegmentMixin
 from .coordinator_status import (
     ParsedMode,
@@ -143,11 +144,6 @@ _WHITE_BALANCE_GAIN_FIELDS = (
     "white_balance_default_flag",
     "white_balance_default_red",
     "white_balance_default_blue",
-)
-_BLANK_SCREEN_POLICY_FIELDS = (
-    "blank_screen_detection",
-    "blank_screen_low_brightness_duration_seconds",
-    "blank_screen_same_tone_duration_seconds",
 )
 
 
@@ -1447,7 +1443,7 @@ class GoveeBLECoordinator(
                     (
                         build_blank_screen_query(self.model, profile=profile),
                         ReadDomain.DISPLAY_SETTING,
-                        ("blank_screen", *_BLANK_SCREEN_POLICY_FIELDS),
+                        ("blank_screen", *BLANK_SCREEN_POLICY_FIELDS),
                     )
                 )
             if (
@@ -2242,7 +2238,7 @@ class GoveeBLECoordinator(
                     else _WHITE_BALANCE_GAIN_FIELDS
                 )
             if self.profile.supports_blank_screen and "blank_screen" in display_settings:
-                display_fields.extend(("blank_screen", *_BLANK_SCREEN_POLICY_FIELDS))
+                display_fields.extend(("blank_screen", *BLANK_SCREEN_POLICY_FIELDS))
             field_baselines.update((field, self._field_revisions.get(field, 0)) for field in display_fields)
         if refresh_relative_brightness:
             field_baselines.update(
@@ -2353,91 +2349,41 @@ class GoveeBLECoordinator(
         if not self.profile.state_readable:
             return False
         generation = self._profile_generation
-        if expected_rgb_color is not None and not self.profile.static_readback_echoes_color:
-            return False
-        if expected_color_temp_kelvin is not None and not self.profile.static_readback_kelvin:
-            return False
-        if expected_zero_kelvin and (
-            not self.profile.static_readback_zero_kelvin_is_rgb or expected_color_temp_kelvin is not None
-        ):
-            return False
-        expectations: dict[str, Any] = {
-            field: value
-            for field, value in (
-                ("effect", expected_effect),
-                ("scene_code", expected_scene_code),
-                ("is_on", expected_on),
-                ("brightness_pct", expected_brightness),
-                ("rgb_color", expected_rgb_color),
-                ("color_temp_kelvin", expected_color_temp_kelvin),
-                ("music_mode", expected_music_mode),
-                ("music_sensitivity", expected_music_sensitivity),
-                ("music_calm", expected_music_calm),
-                ("music_color", expected_music_color),
-                ("video_mode", expected_video_mode),
-                ("video_parameters", expected_video_parameters),
-                ("video_full_screen", expected_video_full_screen),
-                ("video_saturation", expected_video_saturation),
-                ("video_sound_effects", expected_video_sound_effects),
-                ("video_sound_effects_softness", expected_video_sound_effects_softness),
-                ("white_brightness", expected_white_brightness),
-            )
-            if value is not None
-        }
-        if expected_music_auto_color:
-            expectations["music_color"] = None
-        if expected_zero_kelvin:
-            expectations["color_temp_kelvin"] = None
-        if expected_rgb_color is not None or expected_color_temp_kelvin is not None or expected_zero_kelvin:
-            expectations["color_mode"] = ParsedMode.COLOUR
-        if expected_white_balance is not None:
-            fields = (
-                ("white_balance_scalar",)
-                if self.profile.video_white_balance_representation == "scalar"
-                else ("white_balance_red", "white_balance_blue")
-            )
-            expectations.update(zip(fields, expected_white_balance, strict=True))
-        if expected_white_balance_flag is not None:
-            expectations["white_balance_flag"] = expected_white_balance_flag
-        if expected_blank_screen is not None:
-            expectations["blank_screen"] = expected_blank_screen
-        if expected_blank_screen_policy is not None:
-            expectations.update(zip(_BLANK_SCREEN_POLICY_FIELDS, expected_blank_screen_policy, strict=True))
-        if expected_black_border is not None:
-            expectations["black_border"] = expected_black_border
-        if expected_relative_brightness is not None:
-            expectations["relative_brightness"] = (
-                expected_relative_brightness[0] if len(set(expected_relative_brightness)) == 1 else None
-            )
-            expectations.update(
-                (f"relative_brightness_{zone}", value)
-                for zone, value in zip(self.profile.video_brightness_zones, expected_relative_brightness, strict=True)
-            )
-        color_expectations = (
-            expected_rgb_color,
-            expected_color_temp_kelvin,
-            expected_effect,
-            expected_scene_code,
-            expected_music_mode,
-            expected_music_sensitivity,
-            expected_music_calm,
-            expected_music_color,
-            expected_video_mode,
-            expected_video_parameters,
-            expected_video_full_screen,
-            expected_video_saturation,
-            expected_video_sound_effects,
-            expected_video_sound_effects_softness,
-            expected_white_brightness,
+        expected = RefreshExpectations(
+            effect=expected_effect,
+            scene_code=expected_scene_code,
+            on=expected_on,
+            brightness=expected_brightness,
+            rgb_color=expected_rgb_color,
+            color_temp_kelvin=expected_color_temp_kelvin,
+            zero_kelvin=expected_zero_kelvin,
+            music_mode=expected_music_mode,
+            music_sensitivity=expected_music_sensitivity,
+            music_calm=expected_music_calm,
+            music_color=expected_music_color,
+            music_auto_color=expected_music_auto_color,
+            video_mode=expected_video_mode,
+            video_parameters=expected_video_parameters,
+            video_full_screen=expected_video_full_screen,
+            video_saturation=expected_video_saturation,
+            video_sound_effects=expected_video_sound_effects,
+            video_sound_effects_softness=expected_video_sound_effects_softness,
+            white_brightness=expected_white_brightness,
+            white_balance=expected_white_balance,
+            white_balance_flag=expected_white_balance_flag,
+            blank_screen=expected_blank_screen,
+            blank_screen_policy=expected_blank_screen_policy,
+            black_border=expected_black_border,
+            relative_brightness=expected_relative_brightness,
         )
-        expects_color_readback = (
-            expected_zero_kelvin or expected_music_auto_color or any(value is not None for value in color_expectations)
-        )
-        if not self.profile.supports_color_mode_readback and expects_color_readback:
+        if expected.unsupported_static_readback(self.profile):
             return False
-        query_power = expected_on is not None
-        query_brightness = expected_brightness is not None
-        query_color = self.profile.supports_color_mode_readback and expects_color_readback
+        expectations = expected.field_expectations(self.profile)
+        if not self.profile.supports_color_mode_readback and expected.expects_color_readback:
+            return False
+        query_power = expected.on is not None
+        query_brightness = expected.brightness is not None
+        query_color = self.profile.supports_color_mode_readback and expected.expects_color_readback
         display_settings: AbstractSet[str]
         if refresh_display_settings is True:
             display_settings = {"white_balance", "blank_screen"}
@@ -2447,23 +2393,15 @@ class GoveeBLECoordinator(
             display_settings = refresh_display_settings or frozenset()
         if not display_settings <= {"white_balance", "blank_screen", "black_border"}:
             raise ValueError("unknown display setting requested for refresh")
-        query_white_balance = (
-            expected_white_balance is not None
-            or expected_white_balance_flag is not None
-            or "white_balance" in display_settings
-        )
-        query_blank_screen = (
-            expected_blank_screen is not None
-            or expected_blank_screen_policy is not None
-            or "blank_screen" in display_settings
-        )
-        query_black_border = expected_black_border is not None or "black_border" in display_settings
+        query_white_balance = expected.expects_white_balance or "white_balance" in display_settings
+        query_blank_screen = expected.expects_blank_screen or "blank_screen" in display_settings
+        query_black_border = expected.expects_black_border or "black_border" in display_settings
         if (
             query_black_border
             and video_control_states(self.profile, self)["black_border"] is not CapabilityState.SUPPORTED
         ):
             return False
-        query_relative_brightness = expected_relative_brightness is not None or refresh_relative_brightness
+        query_relative_brightness = expected.expects_relative_brightness or refresh_relative_brightness
         if refresh_all:
             query_power = query_brightness = True
             query_color = self.profile.supports_color_mode_readback
@@ -2498,10 +2436,10 @@ class GoveeBLECoordinator(
             requested_registers = display_settings | {
                 control
                 for control, requested in (
-                    ("white_balance", expected_white_balance is not None or expected_white_balance_flag is not None),
-                    ("blank_screen", expected_blank_screen is not None or expected_blank_screen_policy is not None),
-                    ("black_border", expected_black_border is not None),
-                    ("relative_brightness", expected_relative_brightness is not None or refresh_relative_brightness),
+                    ("white_balance", expected.expects_white_balance),
+                    ("blank_screen", expected.expects_blank_screen),
+                    ("black_border", expected.expects_black_border),
+                    ("relative_brightness", expected.expects_relative_brightness or refresh_relative_brightness),
                 )
                 if requested
             }
