@@ -22,6 +22,7 @@ from custom_components.ha_govee_led_ble.control_arbiter import BLEControlArbiter
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.h6199_calibration import WHITE_BALANCE_RESET
+from custom_components.ha_govee_led_ble.reply_pacing import ReplyGate
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES
 from tests.coordinator_test_support import _CONFIGURATION_URL
 
@@ -130,6 +131,13 @@ def auto_enable_custom_integrations(enable_custom_integrations):
     yield
 
 
+@pytest.fixture(autouse=True)
+def disable_reply_pacing():
+    """Mock clients never reply; reply pacing tests opt back in explicitly."""
+    with patch("custom_components.ha_govee_led_ble.coordinator.REPLY_PACING_TIMEOUT", 0):
+        yield
+
+
 def _coord_defaults() -> dict[str, Any]:
     """Fresh attribute defaults for a mock H6199 coordinator; callers may mutate the result."""
     return dict(
@@ -157,6 +165,7 @@ def _coord_defaults() -> dict[str, Any]:
         _static_rgb_known=False,
         _pending_kelvin=None,
         _notification_token=None,
+        _reply_gate=ReplyGate(0),
         _field_revisions={},
         _domain_revisions={},
         _profile_generation=0,
