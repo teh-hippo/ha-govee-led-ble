@@ -4,6 +4,7 @@ import asyncio
 import logging
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
+from collections.abc import Set as AbstractSet
 from contextlib import asynccontextmanager, nullcontext
 from dataclasses import replace
 from datetime import datetime, timedelta
@@ -2214,6 +2215,105 @@ class GoveeBLECoordinator(
                 await self._ensure_connected()
             return await self._refresh_connected_state(**kwargs)
 
+    def _refresh_field_baselines(
+        self,
+        expectations: Mapping[str, Any],
+        *,
+        refresh_all: bool,
+        required_domains: frozenset[ReadDomain] | None,
+        query_black_border: bool,
+        query_white_balance: bool,
+        display_settings: AbstractSet[str],
+        refresh_display_settings: bool | frozenset[str],
+        refresh_relative_brightness: bool,
+    ) -> dict[str, int]:
+        """Field revisions captured before a refresh, so only newer observations satisfy its expectations."""
+        field_baselines = {field: self._field_revisions.get(field, 0) for field in expectations}
+        if refresh_all and query_black_border and required_domains is None:
+            field_baselines["black_border"] = self._field_revisions.get("black_border", 0)
+        if refresh_display_settings:
+            display_fields: list[str] = []
+            if query_black_border and "black_border" in display_settings:
+                display_fields.append("black_border")
+            if query_white_balance and "white_balance" in display_settings:
+                display_fields.extend(
+                    ("white_balance_scalar",)
+                    if self.profile.video_white_balance_representation == "scalar"
+                    else _WHITE_BALANCE_GAIN_FIELDS
+                )
+            if self.profile.supports_blank_screen and "blank_screen" in display_settings:
+                display_fields.extend(("blank_screen", *_BLANK_SCREEN_POLICY_FIELDS))
+            field_baselines.update((field, self._field_revisions.get(field, 0)) for field in display_fields)
+        if refresh_relative_brightness:
+            field_baselines.update(
+                (f"relative_brightness_{zone}", self._field_revisions.get(f"relative_brightness_{zone}", 0))
+                for zone in self.profile.video_brightness_zones
+            )
+        return field_baselines
+
+    @staticmethod
+    def _refresh_query_options(
+        *,
+        deadline: float,
+        refresh_all: bool,
+        required_domains: frozenset[ReadDomain] | None,
+        awaited_domains: set[ReadDomain],
+        requested_registers: AbstractSet[str],
+        optional_baselines: dict[str, int],
+        query_native_settings: bool,
+        query_segments: bool | None,
+    ) -> dict[str, Any]:
+        """Keyword options for ``_send_state_queries``; only a full or domain-scoped refresh awaits domains."""
+        query_options: dict[str, Any] = {"deadline": deadline}
+        if refresh_all or required_domains is not None:
+            query_options = {
+                "deadline": deadline,
+                "required_domains": frozenset(awaited_domains)
+                | (
+                    {ReadDomain.DISPLAY_SETTING}
+                    if requested_registers & {"white_balance", "blank_screen", "black_border"}
+                    else set()
+                )
+                | ({ReadDomain.RELATIVE_BRIGHTNESS} if "relative_brightness" in requested_registers else set()),
+                "optional_baselines": optional_baselines,
+            }
+        if not query_native_settings:
+            query_options["query_native_settings"] = False
+        if query_segments is not None:
+            query_options["query_segments"] = query_segments
+        return query_options
+
+    @staticmethod
+    def _refresh_awaited_domains(
+        profile: ModelProfile,
+        *,
+        query_power: bool,
+        query_brightness: bool,
+        query_color: bool,
+        query_display: bool,
+        query_relative_brightness: bool,
+        required_domains: frozenset[ReadDomain] | None,
+    ) -> set[ReadDomain]:
+        """The read domains a refresh must see answered, given which queries it sends."""
+        queried_domains = {
+            domain
+            for domain, enabled in (
+                (ReadDomain.POWER, query_power),
+                (ReadDomain.BRIGHTNESS, query_brightness),
+                (
+                    ReadDomain.COLOUR_MODE if profile.can_read(ReadDomain.COLOUR_MODE) else ReadDomain.MODE,
+                    query_color,
+                ),
+                (ReadDomain.DISPLAY_SETTING, query_display),
+                (ReadDomain.RELATIVE_BRIGHTNESS, query_relative_brightness),
+            )
+            if enabled and profile.can_read(domain)
+        }
+        if required_domains is None:
+            return queried_domains
+        queried_domains.update(required_domains & profile.read_domains & _OPTIONAL_CONTROL_DOMAINS)
+        return queried_domains & required_domains
+
     async def _refresh_connected_state(
         self,
         *,
@@ -2330,21 +2430,21 @@ class GoveeBLECoordinator(
             expected_video_sound_effects_softness,
             expected_white_brightness,
         )
-        if not self.profile.supports_color_mode_readback and (
+        expects_color_readback = (
             expected_zero_kelvin or expected_music_auto_color or any(value is not None for value in color_expectations)
-        ):
+        )
+        if not self.profile.supports_color_mode_readback and expects_color_readback:
             return False
         query_power = expected_on is not None
         query_brightness = expected_brightness is not None
-        query_color = self.profile.supports_color_mode_readback and (
-            expected_zero_kelvin or expected_music_auto_color or any(value is not None for value in color_expectations)
-        )
+        query_color = self.profile.supports_color_mode_readback and expects_color_readback
+        display_settings: AbstractSet[str]
         if refresh_display_settings is True:
             display_settings = {"white_balance", "blank_screen"}
             if video_control_states(self.profile, self)["black_border"] is CapabilityState.SUPPORTED:
                 display_settings.add("black_border")
         else:
-            display_settings = set(refresh_display_settings or ())
+            display_settings = refresh_display_settings or frozenset()
         if not display_settings <= {"white_balance", "blank_screen", "black_border"}:
             raise ValueError("unknown display setting requested for refresh")
         query_white_balance = (
@@ -2426,67 +2526,41 @@ class GoveeBLECoordinator(
             query_power = query_power and profile.can_read(ReadDomain.POWER)
             query_brightness = query_brightness and profile.can_read(ReadDomain.BRIGHTNESS)
             query_color = query_color and profile.supports_color_mode_readback
-            queried_domains = {
-                domain
-                for domain, enabled in (
-                    (ReadDomain.POWER, query_power),
-                    (ReadDomain.BRIGHTNESS, query_brightness),
-                    (
-                        ReadDomain.COLOUR_MODE if profile.can_read(ReadDomain.COLOUR_MODE) else ReadDomain.MODE,
-                        query_color,
-                    ),
-                    (ReadDomain.DISPLAY_SETTING, query_white_balance or query_blank_screen or query_black_border),
-                    (ReadDomain.RELATIVE_BRIGHTNESS, query_relative_brightness),
-                )
-                if enabled and profile.can_read(domain)
-            }
-            if required_domains is not None:
-                queried_domains.update(required_domains & profile.read_domains & _OPTIONAL_CONTROL_DOMAINS)
-            awaited_domains = queried_domains if required_domains is None else queried_domains & required_domains
+            awaited_domains = self._refresh_awaited_domains(
+                profile,
+                query_power=query_power,
+                query_brightness=query_brightness,
+                query_color=query_color,
+                query_display=query_white_balance or query_blank_screen or query_black_border,
+                query_relative_brightness=query_relative_brightness,
+                required_domains=required_domains,
+            )
             initial_domain_baselines = {domain: self._domain_revisions.get(domain, 0) for domain in awaited_domains}
             deadline = time.monotonic() + timeout
             optional_baselines: dict[str, int] = {}
             for attempt in range(2):
                 if time.monotonic() >= deadline:
                     break
-                query_options: dict[str, Any] = {"deadline": deadline}
-                if refresh_all or required_domains is not None:
-                    query_options = {
-                        "deadline": deadline,
-                        "required_domains": frozenset(awaited_domains)
-                        | (
-                            {ReadDomain.DISPLAY_SETTING}
-                            if requested_registers & {"white_balance", "blank_screen", "black_border"}
-                            else set()
-                        )
-                        | ({ReadDomain.RELATIVE_BRIGHTNESS} if "relative_brightness" in requested_registers else set()),
-                        "optional_baselines": optional_baselines,
-                    }
-                if not query_native_settings:
-                    query_options["query_native_settings"] = False
-                if query_segments is not None:
-                    query_options["query_segments"] = query_segments
-                field_baselines = {field: self._field_revisions.get(field, 0) for field in expectations}
-                if refresh_all and query_black_border and required_domains is None:
-                    field_baselines["black_border"] = self._field_revisions.get("black_border", 0)
-                if refresh_display_settings:
-                    display_fields: list[str] = []
-                    if query_black_border and "black_border" in display_settings:
-                        display_fields.append("black_border")
-                    if query_white_balance and "white_balance" in display_settings:
-                        display_fields.extend(
-                            ("white_balance_scalar",)
-                            if self.profile.video_white_balance_representation == "scalar"
-                            else _WHITE_BALANCE_GAIN_FIELDS
-                        )
-                    if self.profile.supports_blank_screen and "blank_screen" in display_settings:
-                        display_fields.extend(("blank_screen", *_BLANK_SCREEN_POLICY_FIELDS))
-                    field_baselines.update((field, self._field_revisions.get(field, 0)) for field in display_fields)
-                if refresh_relative_brightness:
-                    field_baselines.update(
-                        (f"relative_brightness_{zone}", self._field_revisions.get(f"relative_brightness_{zone}", 0))
-                        for zone in self.profile.video_brightness_zones
-                    )
+                query_options = self._refresh_query_options(
+                    deadline=deadline,
+                    refresh_all=refresh_all,
+                    required_domains=required_domains,
+                    awaited_domains=awaited_domains,
+                    requested_registers=requested_registers,
+                    optional_baselines=optional_baselines,
+                    query_native_settings=query_native_settings,
+                    query_segments=query_segments,
+                )
+                field_baselines = self._refresh_field_baselines(
+                    expectations,
+                    refresh_all=refresh_all,
+                    required_domains=required_domains,
+                    query_black_border=query_black_border,
+                    query_white_balance=query_white_balance,
+                    display_settings=display_settings,
+                    refresh_display_settings=refresh_display_settings,
+                    refresh_relative_brightness=refresh_relative_brightness,
+                )
                 domain_baselines = {domain: self._domain_revisions.get(domain, 0) for domain in awaited_domains}
                 async with self._lock:
                     if self._client is not client:
