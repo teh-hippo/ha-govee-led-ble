@@ -37,6 +37,7 @@ from .const import (
     CONNECTION_MODE_HOLD,
     CONNECTION_MODE_RELEASE,
     DOMAIN,
+    REPLY_PACING_TIMEOUT,
     ModelProfile,
     ReadDomain,
     SupportQuality,
@@ -101,6 +102,7 @@ from .native_profile_controls import (
     ProfileWriter,
 )
 from .protocol_h6199 import H6199_NATIVE_CONTROLS, build_h6199_control, build_h6199_control_query
+from .reply_pacing import ReplyGate
 from .scenes import (
     scene_code_is_ambiguous,
 )
@@ -208,6 +210,7 @@ class GoveeBLECoordinator(
         self._advertised_plaintext = False
         self._connection_initializing = False
         self._notification_token: object | None = None
+        self._reply_gate = ReplyGate(REPLY_PACING_TIMEOUT)
         self._confirmed_identity_fields: set[str] = set()
         self._observed_physical_ic_count: int | None = None
         self._physical_ic_count_confirmed = False
@@ -1111,6 +1114,7 @@ class GoveeBLECoordinator(
             self.last_disconnected_at = datetime.now().astimezone().isoformat(timespec="seconds")
         self._notify_started_monotonic = None
         self._last_rx_monotonic = None
+        self._reply_gate.reset()
         self._expected_state.clear()
         self._segment_query_incomplete = False
         self._bulk_query_incomplete = False
@@ -1141,6 +1145,7 @@ class GoveeBLECoordinator(
             return
         client = self._client
         token = self._notification_token = object()
+        self._reply_gate.reset()
 
         def receive(sender: Any, data: bytearray) -> None:
             if self._client is client and self._notification_token is token and client.is_connected:
@@ -1238,6 +1243,7 @@ class GoveeBLECoordinator(
         expectations only once those guards pass.  Callers validate and build the full request before
         cancelling previews, acquiring control or mutating state.
         """
+        await self._reply_gate.wait()
         try:
             self._require_not_shutdown()
             self._require_not_dreamview_claimed()
@@ -1258,6 +1264,7 @@ class GoveeBLECoordinator(
             wire_packet = transform(packet)
             if not isinstance(wire_packet, bytes) or not wire_packet:
                 raise ValueError("Outbound transform must return non-empty bytes")
+        reply_frame = wire_packet
         if self._encryption is not None:
             if self._client is not client or not client.is_connected:
                 raise GoveeCryptoError("stale_connection")
@@ -1347,6 +1354,8 @@ class GoveeBLECoordinator(
                     raise BleakError("encrypted_write_failed") from None
                 raise GoveeCryptoError("encrypted_write_failed") from None
             raise
+        if self._notification_token is token:
+            self._reply_gate.sent(reply_frame)
         packet_entry = self._record_packet("tx", wire_packet, outcome="sent", reason="write_succeeded")
         _LOGGER.debug("tx %s raw=%s", self.model, packet_entry["raw"])
         if arm_expected and generation != self._profile_generation:

@@ -113,6 +113,9 @@ _IDENTITY_READ_DOMAINS = frozenset(
 IDLE_TIMEOUT_BULB = 1.5
 IDLE_TIMEOUT_STANDARD = 3.0
 
+# Longest wait for a request's reply before the next outbound frame; replies normally arrive within 100 ms.
+REPLY_PACING_TIMEOUT = 0.5
+
 # Every colour temperature is a 100 K step of the shared companion-colour table.
 KELVIN_STEP = 100
 KELVIN_RANGE_2000_9000 = (2000, 9000)

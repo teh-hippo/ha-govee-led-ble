@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from .govee_encryption.session import GoveeEncryptionSession
     from .low_blue_light import LowBlueLightState
     from .native_profile_controls import ProfileWriter
+    from .reply_pacing import ReplyGate
 
 
 class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
@@ -114,6 +115,7 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     _encryption: GoveeEncryptionSession | None
     _notification_token: object | None
     _last_rx_monotonic: float | None
+    _reply_gate: ReplyGate
     _notify_started_monotonic: float | None
     _expected_state: dict[str, tuple[Any, float]]
     _field_revisions: dict[str, int]
