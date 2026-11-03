@@ -1,5 +1,7 @@
 """Profile-qualified native configuration controls."""
 
+from functools import partial
+
 from bleak.exc import BleakError
 from homeassistant.components.select import SelectEntity
 from homeassistant.const import EntityCategory
@@ -79,6 +81,9 @@ class GoveeBLEControlSelect(GoveeBLEEntity, SelectEntity):
     async def async_select_option(self, option: str) -> None:
         if option not in self.options:
             raise ServiceValidationError(translation_domain=DOMAIN, translation_key="invalid_control_request")
+        await self._async_latest(partial(self._async_select_control, option))
+
+    async def _async_select_control(self, option: str) -> None:
         async with async_control_intent(self.coordinator, ControlIntent.USER):
             if h6199_camera_controls_state(self.coordinator.model, self.coordinator) is not CapabilityState.SUPPORTED:
                 raise ServiceValidationError(translation_domain=DOMAIN, translation_key="invalid_control_request")
@@ -116,7 +121,7 @@ class GoveeBLEConfiguredStringsSelect(GoveeBLEEntity, SelectEntity):
         if option not in self.options:
             raise ServiceValidationError(translation_domain=DOMAIN, translation_key="invalid_control_request")
         try:
-            await self.coordinator.async_set_configured_strings(int(option))
+            await self._async_latest(partial(self.coordinator.async_set_configured_strings, int(option)))
         except (BleakError, ValueError, TimeoutError) as error:
             raise HomeAssistantError(translation_domain=DOMAIN, translation_key="device_command_failed") from error
 
@@ -144,6 +149,6 @@ class GoveeBLEPowerOnBehaviourSelect(GoveeBLEEntity, SelectEntity):
         if option not in self.options:
             raise ServiceValidationError(translation_domain=DOMAIN, translation_key="invalid_control_request")
         try:
-            await self.coordinator.async_set_power_on_behaviour(option)
+            await self._async_latest(partial(self.coordinator.async_set_power_on_behaviour, option))
         except (BleakError, ValueError, TimeoutError) as error:
             raise HomeAssistantError(translation_domain=DOMAIN, translation_key="device_command_failed") from error

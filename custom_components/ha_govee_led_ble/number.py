@@ -1,5 +1,7 @@
 """Profile-qualified native configuration levels."""
 
+from functools import partial
+
 from bleak.exc import BleakError
 from homeassistant.components.number import NumberEntity
 from homeassistant.const import EntityCategory
@@ -55,6 +57,6 @@ class GoveeBLELowBlueLightLevel(GoveeBLEEntity, NumberEntity):
         if not self.native_min_value <= value <= self.native_max_value or int(value) != value:
             raise ServiceValidationError(translation_domain=DOMAIN, translation_key="invalid_control_request")
         try:
-            await self.coordinator.async_set_low_blue_light(level=int(value))
+            await self._async_latest(partial(self.coordinator.async_set_low_blue_light, level=int(value)))
         except (BleakError, ValueError, TimeoutError) as error:
             raise HomeAssistantError(translation_domain=DOMAIN, translation_key="device_command_failed") from error

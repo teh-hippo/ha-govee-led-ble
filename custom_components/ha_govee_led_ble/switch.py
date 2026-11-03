@@ -1,5 +1,6 @@
 """Profile-qualified boolean device settings with fresh readback."""
 
+from functools import partial
 from typing import Any
 
 from bleak.exc import BleakError
@@ -81,8 +82,8 @@ class GoveeBLEControlSwitch(GoveeBLEEntity, SwitchEntity):
     async def _set(self, enabled: bool) -> None:
         try:
             if self._control == "low_blue_light":
-                await self.coordinator.async_set_low_blue_light(enabled=enabled)
+                await self._async_latest(partial(self.coordinator.async_set_low_blue_light, enabled=enabled))
             else:
-                await self.coordinator.async_set_boolean_control(self._control, enabled)
+                await self._async_latest(partial(self.coordinator.async_set_boolean_control, self._control, enabled))
         except (BleakError, ValueError, TimeoutError) as error:
             raise HomeAssistantError(translation_domain=DOMAIN, translation_key="device_command_failed") from error
