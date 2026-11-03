@@ -1,6 +1,7 @@
 import asyncio
 from dataclasses import replace
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
@@ -129,8 +130,9 @@ def auto_enable_custom_integrations(enable_custom_integrations):
     yield
 
 
-def _make_coord(**ov) -> MagicMock:
-    d = dict(
+def _coord_defaults() -> dict[str, Any]:
+    """Fresh attribute defaults for a mock H6199 coordinator; callers may mutate the result."""
+    return dict(
         address="11:22:33:44:55:66",
         model="H6199",
         profile=MODEL_PROFILES["H6199"],
@@ -216,6 +218,10 @@ def _make_coord(**ov) -> MagicMock:
         video_mode="off",
         data={},
     )
+
+
+def _make_coord(**ov) -> MagicMock:
+    d = _coord_defaults()
     d |= ov
     model = d["model"]
     assert isinstance(model, str)
