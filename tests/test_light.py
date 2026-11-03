@@ -2725,3 +2725,32 @@ def test_restored_kelvin_is_presented_inside_the_current_device_range(light, moc
     mock_coordinator.color_mode = None
     mock_coordinator.color_temp_kelvin_source = "restored"
     assert light.color_temp_kelvin == mock_coordinator.profile.min_color_temp_kelvin
+
+
+async def test_queued_light_requests_merge_into_the_newest_state(light):
+    release = asyncio.Event()
+    sent: list[object] = []
+
+    async def turn_on(**kwargs):
+        sent.append(kwargs)
+        if len(sent) == 1:
+            await release.wait()
+
+    async def turn_off():
+        sent.append("off")
+
+    light._async_handle_turn_on = turn_on
+    light._async_handle_turn_off = turn_off
+    first = asyncio.create_task(light.async_turn_on(brightness=10))
+    await asyncio.sleep(0)
+    queued = [
+        asyncio.create_task(light.async_turn_on(brightness=20, color_temp_kelvin=3000)),
+        asyncio.create_task(light.async_turn_off()),
+        asyncio.create_task(light.async_turn_on(brightness=30, color_temp_kelvin=4000)),
+        asyncio.create_task(light.async_turn_on(rgb_color=(1, 2, 3))),
+    ]
+    await asyncio.sleep(0)
+    release.set()
+    await asyncio.gather(first, *queued)
+
+    assert sent == [{"brightness": 10}, {"brightness": 30, "rgb_color": (1, 2, 3)}]

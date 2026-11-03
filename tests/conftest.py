@@ -18,7 +18,7 @@ from custom_components.ha_govee_led_ble.const import (
     default_effect_families,
     device_profile,
 )
-from custom_components.ha_govee_led_ble.control_arbiter import BLEControlArbiter
+from custom_components.ha_govee_led_ble.control_arbiter import BLEControlArbiter, LatestRequests
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.h6199_calibration import WHITE_BALANCE_RESET
@@ -280,6 +280,7 @@ def _make_coord(**ov) -> MagicMock:
     c.mark_segment_state_optimistic = MagicMock(side_effect=mark_segment_state_optimistic)
     c.mark_segment_state_restored = MagicMock(side_effect=mark_segment_state_restored)
     c._control_arbiter = c._control_lock = BLEControlArbiter()
+    c.latest_requests = LatestRequests()
     c.refresh_state, c.async_set_updated_data = AsyncMock(return_value=True), MagicMock()
     c.unknown_scene_code = None
 

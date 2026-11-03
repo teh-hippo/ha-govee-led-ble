@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable, Hashable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from enum import IntEnum
@@ -150,3 +150,25 @@ async def async_control_intent(
     """Acquire a coordinator intent through its arbiter."""
     async with coordinator._control_arbiter.hold(intent, wait=wait) as acquired:
         yield acquired
+
+
+class LatestRequests:
+    """Run user requests in arrival order, skipping any that a newer request for the same control replaced.
+
+    The first request starts at once.  Requests queued behind it are skipped when a newer request with the same key
+    arrives before their turn, so a burst of slider moves sends the first and last values only.
+    """
+
+    def __init__(self) -> None:
+        self._lock = asyncio.Lock()
+        self._latest: dict[Hashable, object] = {}
+
+    async def run(self, key: Hashable, operation: Callable[[], Awaitable[None]]) -> None:
+        token = self._latest[key] = object()
+        try:
+            async with self._lock:
+                if self._latest.get(key) is token:
+                    await operation()
+        finally:
+            if self._latest.get(key) is token:
+                del self._latest[key]

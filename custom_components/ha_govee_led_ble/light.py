@@ -103,7 +103,8 @@ from .video_applicability import (
 
 # fmt: on
 
-PARALLEL_UPDATES = 1
+PARALLEL_UPDATES = 0
+_LIGHT_MODE_ATTRS = frozenset({ATTR_RGB_COLOR, ATTR_COLOR_TEMP_KELVIN, ATTR_EFFECT})
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -223,6 +224,7 @@ async def async_setup_entry(
 
 class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, LightEntity):
     _attr_name = None
+    _pending_turn_on: dict[str, Any] | None = None
 
     def __init__(
         self,
@@ -994,6 +996,17 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 )
 
     async def async_turn_on(self, **kwargs: Any) -> None:
+        pending = self._pending_turn_on or {}
+        if kwargs.keys() & _LIGHT_MODE_ATTRS:
+            pending = {key: value for key, value in pending.items() if key not in _LIGHT_MODE_ATTRS}
+        self._pending_turn_on = {**pending, **kwargs}
+        await self._async_latest(self._async_send_pending_turn_on, "power")
+
+    async def _async_send_pending_turn_on(self) -> None:
+        kwargs, self._pending_turn_on = self._pending_turn_on or {}, None
+        await self._async_handle_turn_on(**kwargs)
+
+    async def _async_handle_turn_on(self, **kwargs: Any) -> None:
         if (ATTR_RGB_COLOR in kwargs or ATTR_COLOR_TEMP_KELVIN in kwargs) and not (
             self.coordinator.profile.brightness_zero_turns_off and kwargs.get(ATTR_BRIGHTNESS) == 0
         ):
@@ -1409,6 +1422,10 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         self._notify_state_changed()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
+        self._pending_turn_on = None
+        await self._async_latest(self._async_handle_turn_off, "power")
+
+    async def _async_handle_turn_off(self) -> None:
         clear_workspace = self._matching_active_workspace() is not None
         await self._async_supersede_preview()
         async with async_control_intent(

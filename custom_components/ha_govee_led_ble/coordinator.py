@@ -48,7 +48,7 @@ from .const import (
     model_from_ble_name,
     supported_effect_categories,
 )
-from .control_arbiter import BLEControlArbiter, ControlIntent, PreviewAdmission, async_control_intent
+from .control_arbiter import BLEControlArbiter, ControlIntent, LatestRequests, PreviewAdmission, async_control_intent
 from .coordinator_dreamview import DreamviewClaimedError, _DreamviewMixin, is_dreamview_claimed
 from .coordinator_expectations import expectations_from_packet
 from .coordinator_h6102 import _H6102Mixin
@@ -222,6 +222,7 @@ class GoveeBLECoordinator(
         self._lock = asyncio.Lock()
         self._control_arbiter = BLEControlArbiter()
         self._control_lock = self._control_arbiter
+        self.latest_requests = LatestRequests()
         self._cancel_disconnect: CALLBACK_TYPE | None = None
         self._disconnect_generation = 0
         self._intentional_disconnect_client: BleakClient | None = None
