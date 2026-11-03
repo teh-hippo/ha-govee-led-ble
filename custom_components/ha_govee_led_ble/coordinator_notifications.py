@@ -405,6 +405,126 @@ class _NotificationMixin(_CoordinatorBase):
                 self._bulk_query_deadline = None
                 self._bulk_query_incomplete = not succeeded
 
+    def _deliver_command_ack(self, ack: Any) -> None:
+        """Resolve any pending setting or upload ACK future this reply answers."""
+        setting = self._setting_ack
+        if setting is not None:
+            client, token, opcode, future = setting
+            if (
+                not ack.parsed.is_upload
+                and int(ack.parsed.opcode) == opcode
+                and self._client is client
+                and client.is_connected
+                and self._notification_token is token
+                and not future.done()
+            ):
+                future.set_result(bool(ack.parsed.is_success))
+        pending = self._upload_ack
+        if pending is not None:
+            client, token, generation, subtype, ack_mode, protocol, future = pending
+            ack_success = upload_ack_success(ack.parsed, subtype, ack_mode, protocol=protocol)
+            if (
+                ack_success is not None
+                and self._client is client
+                and client.is_connected
+                and self._notification_token is token
+                and self._profile_generation == generation
+                and not future.done()
+            ):
+                future.set_result(ack_success)
+
+    def _apply_display_setting(self, generated: Any, observed: tuple[str, ...]) -> tuple[str, ...]:
+        """Apply a display-setting reply; ``observed`` is returned unchanged when it sets nothing."""
+        if generated.body.setting == 6 and self.profile.video_white_balance_representation == "scalar":
+            scalar_value = int(generated.body.payload.value)
+            if self._accept_expected("white_balance_scalar", scalar_value):
+                self.white_balance_scalar = scalar_value
+                observed = ("white_balance_scalar",)
+        if generated.body.setting == 0 and self.profile.video_white_balance_representation == "position":
+            payload = generated.body.payload
+            values = {
+                "white_balance_flag": int(payload.current_flag),
+                "white_balance_red": int(payload.current_red),
+                "white_balance_blue": int(payload.current_blue),
+                "white_balance_default_flag": int(payload.reset_flag),
+                "white_balance_default_red": int(payload.reset_red),
+                "white_balance_default_blue": int(payload.reset_blue),
+            }
+            if self._accept_expected_values(values):
+                for field, value in values.items():
+                    setattr(self, field, value)
+                observed = tuple(values)
+        else:
+            blank_screen = (
+                bool(generated.body.payload.is_enabled)
+                if getattr(generated.body.setting, "name", None) == "blank_screen"
+                else None
+            )
+            if blank_screen is not None:
+                payload = generated.body.payload
+                values = {
+                    "blank_screen": blank_screen,
+                    "blank_screen_detection": int(payload.detection),
+                    "blank_screen_low_brightness_duration_seconds": int(payload.low_brightness_duration_seconds),
+                    "blank_screen_same_tone_duration_seconds": int(payload.same_tone_duration_seconds),
+                }
+                # A filtered reply is not fresh state, but still invalidates recovery's write guard.
+                self._blank_screen_notification_revision += 1
+                # Legacy H6199 toggle writes retain live policy, even when the
+                # enable echo is stale. Full policy writes remain atomic.
+                if self.profile.status_grammar == "H6199" and not any(
+                    field in self._expected_state for field in values if field != "blank_screen"
+                ):
+                    for field, setting_value in values.items():
+                        if field != "blank_screen":
+                            setattr(self, field, setting_value)
+                if self._accept_expected_values(values):
+                    for field, setting_value in values.items():
+                        setattr(self, field, setting_value)
+                    observed = tuple(values)
+        if getattr(generated.body.setting, "name", None) == "black_border" and self.profile.supports_black_border:
+            border = bool(generated.body.payload.is_enabled)
+            if self._accept_expected("black_border", border):
+                self.black_border = border
+                observed = ("black_border",)
+        return observed
+
+    def _apply_physical_ic_count(self, generated: Any) -> None:
+        """Adopt a reported physical IC count, resizing segment state and seeding music defaults."""
+        if (count := parse_physical_ic_count(generated)) is not None:
+            self._observed_physical_ic_count = count
+            if self._client is not None and self._client.is_connected:
+                self._physical_ic_count_confirmed = True
+            if self.profile.physical_ic_count != count:
+                if self.profile.ic_per_segment is not None:
+                    segments = min(
+                        get_profile(self.model).segment_count,
+                        max(1, ceil(count / self.profile.ic_per_segment)),
+                    )
+                    self.profile = replace(
+                        self.profile,
+                        physical_ic_count=count,
+                        segment_count=segments,
+                    )
+                    if len(self.segment_colors) != segments:
+                        self._profile_generation += 1
+                        self._segment_query_generation = None
+                        self._expected_state.clear()
+                        self.segment_colors = [(255, 255, 255)] * segments
+                        self.segment_brightness = [100] * segments
+                        self.segment_state_source = "initial"
+                        self.segment_state_observed_at = None
+                        self.segment_brightness_readable = False
+                        self._segment_groups_observed.clear()
+                        self._segment_query_colors = self._segment_query_brightness = None
+                else:
+                    self.profile = replace(self.profile, physical_ic_count=count)
+            for variant in self.profile.music_variants:
+                for spec in music_body_params_for_mode(variant.mode_code, self.profile):
+                    if spec.key not in self._initialized_music_parameters:
+                        setattr(self, spec.key, spec.default)
+                        self._initialized_music_parameters.add(spec.key)
+
     def _notify_callback(self, _sender: Any, data: bytearray) -> None:
         frame = bytes(data)
         if self._encryption is not None:
@@ -456,31 +576,7 @@ class _NotificationMixin(_CoordinatorBase):
             return
         ack = parse_command_ack_result(frame, self.model, profile=self.profile)
         if ack.parsed is not None:
-            setting = self._setting_ack
-            if setting is not None:
-                client, token, opcode, future = setting
-                if (
-                    not ack.parsed.is_upload
-                    and int(ack.parsed.opcode) == opcode
-                    and self._client is client
-                    and client.is_connected
-                    and self._notification_token is token
-                    and not future.done()
-                ):
-                    future.set_result(bool(ack.parsed.is_success))
-            pending = self._upload_ack
-            if pending is not None:
-                client, token, generation, subtype, ack_mode, protocol, future = pending
-                ack_success = upload_ack_success(ack.parsed, subtype, ack_mode, protocol=protocol)
-                if (
-                    ack_success is not None
-                    and self._client is client
-                    and client.is_connected
-                    and self._notification_token is token
-                    and self._profile_generation == generation
-                    and not future.done()
-                ):
-                    future.set_result(ack_success)
+            self._deliver_command_ack(ack)
             self._record_packet("rx", frame, outcome="parsed", reason="command_ack_parsed", parser=ack.parser)
             return
         if frame[:1] == _COMMAND_ECHO_PREFIX:
@@ -623,63 +719,7 @@ class _NotificationMixin(_CoordinatorBase):
                     return
                 observed = self._apply_color_mode_payload(generated)
             elif domain is StatusDomain.DISPLAY_SETTING:
-                if generated.body.setting == 6 and self.profile.video_white_balance_representation == "scalar":
-                    scalar_value = int(generated.body.payload.value)
-                    if self._accept_expected("white_balance_scalar", scalar_value):
-                        self.white_balance_scalar = scalar_value
-                        observed = ("white_balance_scalar",)
-                if generated.body.setting == 0 and self.profile.video_white_balance_representation == "position":
-                    payload = generated.body.payload
-                    values = {
-                        "white_balance_flag": int(payload.current_flag),
-                        "white_balance_red": int(payload.current_red),
-                        "white_balance_blue": int(payload.current_blue),
-                        "white_balance_default_flag": int(payload.reset_flag),
-                        "white_balance_default_red": int(payload.reset_red),
-                        "white_balance_default_blue": int(payload.reset_blue),
-                    }
-                    if self._accept_expected_values(values):
-                        for field, value in values.items():
-                            setattr(self, field, value)
-                        observed = tuple(values)
-                else:
-                    blank_screen = (
-                        bool(generated.body.payload.is_enabled)
-                        if getattr(generated.body.setting, "name", None) == "blank_screen"
-                        else None
-                    )
-                    if blank_screen is not None:
-                        payload = generated.body.payload
-                        values = {
-                            "blank_screen": blank_screen,
-                            "blank_screen_detection": int(payload.detection),
-                            "blank_screen_low_brightness_duration_seconds": int(
-                                payload.low_brightness_duration_seconds
-                            ),
-                            "blank_screen_same_tone_duration_seconds": int(payload.same_tone_duration_seconds),
-                        }
-                        # A filtered reply is not fresh state, but still invalidates recovery's write guard.
-                        self._blank_screen_notification_revision += 1
-                        # Legacy H6199 toggle writes retain live policy, even when the
-                        # enable echo is stale. Full policy writes remain atomic.
-                        if self.profile.status_grammar == "H6199" and not any(
-                            field in self._expected_state for field in values if field != "blank_screen"
-                        ):
-                            for field, setting_value in values.items():
-                                if field != "blank_screen":
-                                    setattr(self, field, setting_value)
-                        if self._accept_expected_values(values):
-                            for field, setting_value in values.items():
-                                setattr(self, field, setting_value)
-                            observed = tuple(values)
-                if (
-                    getattr(generated.body.setting, "name", None) == "black_border"
-                    and self.profile.supports_black_border
-                ):
-                    border = bool(generated.body.payload.is_enabled)
-                    if self._accept_expected("black_border", border):
-                        self.black_border = border
-                        observed = ("black_border",)
+                observed = self._apply_display_setting(generated, observed)
             elif domain is StatusDomain.RELATIVE_BRIGHTNESS:
                 zones = self.profile.video_brightness_zones
                 if generated.body.edge_count != len(zones):
@@ -726,39 +766,7 @@ class _NotificationMixin(_CoordinatorBase):
                     setattr(self, field, control_value)
                 observed = tuple(control_values)
             elif domain is StatusDomain.PHYSICAL_IC_COUNT:
-                if (count := parse_physical_ic_count(generated)) is not None:
-                    self._observed_physical_ic_count = count
-                    if self._client is not None and self._client.is_connected:
-                        self._physical_ic_count_confirmed = True
-                    if self.profile.physical_ic_count != count:
-                        if self.profile.ic_per_segment is not None:
-                            segments = min(
-                                get_profile(self.model).segment_count,
-                                max(1, ceil(count / self.profile.ic_per_segment)),
-                            )
-                            self.profile = replace(
-                                self.profile,
-                                physical_ic_count=count,
-                                segment_count=segments,
-                            )
-                            if len(self.segment_colors) != segments:
-                                self._profile_generation += 1
-                                self._segment_query_generation = None
-                                self._expected_state.clear()
-                                self.segment_colors = [(255, 255, 255)] * segments
-                                self.segment_brightness = [100] * segments
-                                self.segment_state_source = "initial"
-                                self.segment_state_observed_at = None
-                                self.segment_brightness_readable = False
-                                self._segment_groups_observed.clear()
-                                self._segment_query_colors = self._segment_query_brightness = None
-                        else:
-                            self.profile = replace(self.profile, physical_ic_count=count)
-                    for variant in self.profile.music_variants:
-                        for spec in music_body_params_for_mode(variant.mode_code, self.profile):
-                            if spec.key not in self._initialized_music_parameters:
-                                setattr(self, spec.key, spec.default)
-                                self._initialized_music_parameters.add(spec.key)
+                self._apply_physical_ic_count(generated)
             self._mark_received(domain, *observed)
             self.async_set_updated_data(self.data or {})
         except IndexError, ValueError:
