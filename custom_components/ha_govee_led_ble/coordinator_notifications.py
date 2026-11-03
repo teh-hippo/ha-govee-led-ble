@@ -533,6 +533,7 @@ class _NotificationMixin(_CoordinatorBase):
                 return
             frame = decoded_frame
         self._last_rx_monotonic = time.monotonic()
+        self._reply_gate.observe(frame)
         if self._handle_bulk_notification(frame):
             return
         from .low_blue_light import parse_setting, setting_state
