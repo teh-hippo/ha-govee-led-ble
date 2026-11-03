@@ -2693,6 +2693,37 @@ class GoveeBLECoordinator(
             raise RuntimeError(f"Device rejected {protocol:02X} upload")
         self._upload_ack = None
 
+    async def _write_effect_final_packet(
+        self,
+        client: BleakClient,
+        final_packet: bytes,
+        *,
+        check_connection: Callable[[], None],
+        write_guard: Callable[[], None] | None,
+        expected_values: Mapping[str, Any] | None,
+        packet_validator: Callable[[bytes, ModelProfile], None],
+        writer: ProfileWriter | None,
+    ) -> None:
+        """Write the packet that follows an effect upload, guarded by the upload's connection check."""
+
+        def final_guard() -> None:
+            check_connection()
+            if write_guard is not None:
+                write_guard()
+
+        if writer is None:
+            await self._async_write_packet(
+                client,
+                final_packet,
+                arm_expected=True,
+                before_write=final_guard,
+                expected_values=expected_values,
+                packet_validator=packet_validator,
+            )
+        else:
+            await writer(final_packet, write_guard=final_guard, expected_values=expected_values)
+        self._renew_foreground_lease()
+
     async def async_write_effect_sequence(
         self,
         packets: Sequence[bytes],
@@ -2862,28 +2893,15 @@ class GoveeBLECoordinator(
                         await asyncio.sleep(self.profile.packet_write_delay)
                     if before_final is not None:
                         await before_final()
-
-                    def final_guard() -> None:
-                        check_connection()
-                        if write_guard is not None:
-                            write_guard()
-
-                    if writer is None:
-                        await self._async_write_packet(
-                            client,
-                            final_packet,
-                            arm_expected=True,
-                            before_write=final_guard,
-                            expected_values=expected_values,
-                            packet_validator=packet_validator,
-                        )
-                    else:
-                        await writer(
-                            final_packet,
-                            write_guard=final_guard,
-                            expected_values=expected_values,
-                        )
-                    self._renew_foreground_lease()
+                    await self._write_effect_final_packet(
+                        client,
+                        final_packet,
+                        check_connection=check_connection,
+                        write_guard=write_guard,
+                        expected_values=expected_values,
+                        packet_validator=packet_validator,
+                        writer=writer,
+                    )
                     if progress is not None:
                         await progress(len(packets) + 1)
 
