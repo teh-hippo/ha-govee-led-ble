@@ -1362,6 +1362,141 @@ class GoveeBLECoordinator(
             queries[build_power_on_behaviour_query(profile)] = fields
         return list(queries.items())
 
+    def _build_state_queries(
+        self,
+        profile: ModelProfile,
+        *,
+        generation: int,
+        full_query: bool,
+        query_power: bool,
+        query_brightness: bool,
+        query_color_mode: bool,
+        query_white_balance: bool | None,
+        query_blank_screen: bool | None,
+        query_black_border: bool | None,
+        query_relative_brightness: bool | None,
+        query_segments: bool | None,
+        query_native_settings: bool,
+    ) -> tuple[list[tuple[bytes, ReadDomain, tuple[str, ...]]], dict[str, int]]:
+        """Queries to send, each with the domain it reads and the fields it should refresh."""
+        segment_baseline: dict[str, int] = {}
+        queries: list[tuple[bytes, ReadDomain, tuple[str, ...]]] = []
+        states = video_control_states(self.profile, self)
+        video_identity_ready = self.identity_fields_confirmed(video_identity_fields(self.profile))
+        confirmed_controls = {
+            control
+            for control in states
+            if self.identity_fields_confirmed(video_identity_fields(self.profile, (control,)))
+        }
+        if query_power and profile.can_read(ReadDomain.POWER):
+            queries.append((build_power_query(self.model, profile=profile), ReadDomain.POWER, ("is_on",)))
+        if query_brightness and profile.can_read(ReadDomain.BRIGHTNESS):
+            queries.append(
+                (
+                    build_brightness_query(self.model, profile=profile),
+                    ReadDomain.BRIGHTNESS,
+                    ("brightness_pct",),
+                )
+            )
+        if query_color_mode and profile.supports_color_mode_readback:
+            color_domain = ReadDomain.COLOUR_MODE if profile.can_read(ReadDomain.COLOUR_MODE) else ReadDomain.MODE
+            queries.append((build_colour_mode_query(self.model, profile=profile), color_domain, ("color_mode",)))
+        if (
+            "white_balance" in confirmed_controls
+            and profile.can_read(ReadDomain.DISPLAY_SETTING)
+            and white_balance_readback_state(self.profile, self) is CapabilityState.SUPPORTED
+            and (query_white_balance if query_white_balance is not None else full_query)
+        ):
+            queries.append(
+                (
+                    build_white_balance_query(self.model, profile=profile),
+                    ReadDomain.DISPLAY_SETTING,
+                    ("white_balance_scalar",)
+                    if self.profile.video_white_balance_representation == "scalar"
+                    else _WHITE_BALANCE_GAIN_FIELDS,
+                )
+            )
+        if (
+            "blank_screen" in confirmed_controls
+            and profile.can_read(ReadDomain.DISPLAY_SETTING)
+            and states["blank_screen"] is CapabilityState.SUPPORTED
+            and (query_blank_screen if query_blank_screen is not None else full_query)
+        ):
+            queries.append(
+                (
+                    build_blank_screen_query(self.model, profile=profile),
+                    ReadDomain.DISPLAY_SETTING,
+                    ("blank_screen", *BLANK_SCREEN_POLICY_FIELDS),
+                )
+            )
+        if (
+            "black_border" in confirmed_controls
+            and profile.can_read(ReadDomain.DISPLAY_SETTING)
+            and states["black_border"] is CapabilityState.SUPPORTED
+            and (query_black_border if query_black_border is not None else full_query)
+        ):
+            queries.append(
+                (
+                    build_black_border_query(self.model, profile=profile),
+                    ReadDomain.DISPLAY_SETTING,
+                    ("black_border",),
+                )
+            )
+        if (
+            "relative_brightness" in confirmed_controls
+            and profile.can_read(ReadDomain.RELATIVE_BRIGHTNESS)
+            and states["relative_brightness"] is CapabilityState.SUPPORTED
+            and (query_relative_brightness if query_relative_brightness is not None else full_query)
+        ):
+            queries.append(
+                (
+                    build_relative_brightness_query(self.model, profile=profile),
+                    ReadDomain.RELATIVE_BRIGHTNESS,
+                    tuple(f"relative_brightness_{zone}" for zone in self.profile.video_brightness_zones),
+                )
+            )
+        if (
+            profile.can_read(ReadDomain.SEGMENTS)
+            and profile.supports_segments
+            and (not self.profile.configured_string_counts or self._configured_strings_confirmed)
+            and (query_segments if query_segments is not None else full_query)
+        ):
+            segment_baseline = {"segment_colors": self._field_revisions.get("segment_colors", 0)}
+            self._segment_groups_observed.clear()
+            self._segment_query_colors = list(self.segment_colors)
+            self._segment_query_brightness = list(self.segment_brightness)
+            self._segment_query_generation = generation
+            queries.extend(
+                (
+                    build_segment_query(group, self.model, profile=profile),
+                    ReadDomain.SEGMENTS,
+                    ("segment_colors", "segment_brightness"),
+                )
+                for group in range(1, profile.segment_group_count + 1)
+            )
+        if full_query:
+            queries.extend(
+                (query, domain, (domain.value,))
+                for query, domain in zip(
+                    h6099_control_queries(self.model, profile),
+                    (
+                        domain
+                        for domain in (ReadDomain.INSTALLATION_DIRECTION, ReadDomain.CAMERA_HEALTH)
+                        if profile.can_read(domain)
+                    ),
+                    strict=True,
+                )
+            )
+        if full_query and video_identity_ready:
+            if h6199_camera_controls_state(self.model, self) is CapabilityState.SUPPORTED:
+                queries.extend(
+                    (build_h6199_control_query(control), ReadDomain.OTHER, (control,))
+                    for control in H6199_NATIVE_CONTROLS
+                )
+        if full_query and query_native_settings:
+            queries.extend((query, ReadDomain.OTHER, fields) for query, fields in self._setting_queries(profile))
+        return queries, segment_baseline
+
     async def _send_state_queries(
         self,
         *,
@@ -1395,123 +1530,21 @@ class GoveeBLECoordinator(
         generation = self._profile_generation
         authorization_generation = self._authorization_generation
         profile = self._authorization_profile()
-        segment_baseline: dict[str, int] = {}
         try:
-            queries: list[tuple[bytes, ReadDomain, tuple[str, ...]]] = []
-            states = video_control_states(self.profile, self)
-            video_identity_ready = self.identity_fields_confirmed(video_identity_fields(self.profile))
-            confirmed_controls = {
-                control
-                for control in states
-                if self.identity_fields_confirmed(video_identity_fields(self.profile, (control,)))
-            }
-            if query_power and profile.can_read(ReadDomain.POWER):
-                queries.append((build_power_query(self.model, profile=profile), ReadDomain.POWER, ("is_on",)))
-            if query_brightness and profile.can_read(ReadDomain.BRIGHTNESS):
-                queries.append(
-                    (
-                        build_brightness_query(self.model, profile=profile),
-                        ReadDomain.BRIGHTNESS,
-                        ("brightness_pct",),
-                    )
-                )
-            if query_color_mode and profile.supports_color_mode_readback:
-                color_domain = ReadDomain.COLOUR_MODE if profile.can_read(ReadDomain.COLOUR_MODE) else ReadDomain.MODE
-                queries.append((build_colour_mode_query(self.model, profile=profile), color_domain, ("color_mode",)))
-            if (
-                "white_balance" in confirmed_controls
-                and profile.can_read(ReadDomain.DISPLAY_SETTING)
-                and white_balance_readback_state(self.profile, self) is CapabilityState.SUPPORTED
-                and (query_white_balance if query_white_balance is not None else full_query)
-            ):
-                queries.append(
-                    (
-                        build_white_balance_query(self.model, profile=profile),
-                        ReadDomain.DISPLAY_SETTING,
-                        ("white_balance_scalar",)
-                        if self.profile.video_white_balance_representation == "scalar"
-                        else _WHITE_BALANCE_GAIN_FIELDS,
-                    )
-                )
-            if (
-                "blank_screen" in confirmed_controls
-                and profile.can_read(ReadDomain.DISPLAY_SETTING)
-                and states["blank_screen"] is CapabilityState.SUPPORTED
-                and (query_blank_screen if query_blank_screen is not None else full_query)
-            ):
-                queries.append(
-                    (
-                        build_blank_screen_query(self.model, profile=profile),
-                        ReadDomain.DISPLAY_SETTING,
-                        ("blank_screen", *BLANK_SCREEN_POLICY_FIELDS),
-                    )
-                )
-            if (
-                "black_border" in confirmed_controls
-                and profile.can_read(ReadDomain.DISPLAY_SETTING)
-                and states["black_border"] is CapabilityState.SUPPORTED
-                and (query_black_border if query_black_border is not None else full_query)
-            ):
-                queries.append(
-                    (
-                        build_black_border_query(self.model, profile=profile),
-                        ReadDomain.DISPLAY_SETTING,
-                        ("black_border",),
-                    )
-                )
-            if (
-                "relative_brightness" in confirmed_controls
-                and profile.can_read(ReadDomain.RELATIVE_BRIGHTNESS)
-                and states["relative_brightness"] is CapabilityState.SUPPORTED
-                and (query_relative_brightness if query_relative_brightness is not None else full_query)
-            ):
-                queries.append(
-                    (
-                        build_relative_brightness_query(self.model, profile=profile),
-                        ReadDomain.RELATIVE_BRIGHTNESS,
-                        tuple(f"relative_brightness_{zone}" for zone in self.profile.video_brightness_zones),
-                    )
-                )
-            if (
-                profile.can_read(ReadDomain.SEGMENTS)
-                and profile.supports_segments
-                and (not self.profile.configured_string_counts or self._configured_strings_confirmed)
-                and (query_segments if query_segments is not None else full_query)
-            ):
-                segment_baseline = {"segment_colors": self._field_revisions.get("segment_colors", 0)}
-                self._segment_groups_observed.clear()
-                self._segment_query_colors = list(self.segment_colors)
-                self._segment_query_brightness = list(self.segment_brightness)
-                self._segment_query_generation = generation
-                queries.extend(
-                    (
-                        build_segment_query(group, self.model, profile=profile),
-                        ReadDomain.SEGMENTS,
-                        ("segment_colors", "segment_brightness"),
-                    )
-                    for group in range(1, profile.segment_group_count + 1)
-                )
-            if full_query:
-                queries.extend(
-                    (query, domain, (domain.value,))
-                    for query, domain in zip(
-                        h6099_control_queries(self.model, profile),
-                        (
-                            domain
-                            for domain in (ReadDomain.INSTALLATION_DIRECTION, ReadDomain.CAMERA_HEALTH)
-                            if profile.can_read(domain)
-                        ),
-                        strict=True,
-                    )
-                )
-            if full_query and video_identity_ready:
-                if h6199_camera_controls_state(self.model, self) is CapabilityState.SUPPORTED:
-                    queries.extend(
-                        (build_h6199_control_query(control), ReadDomain.OTHER, (control,))
-                        for control in H6199_NATIVE_CONTROLS
-                    )
-            if full_query and query_native_settings:
-                queries.extend((query, ReadDomain.OTHER, fields) for query, fields in self._setting_queries(profile))
+            queries, segment_baseline = self._build_state_queries(
+                profile,
+                generation=generation,
+                full_query=full_query,
+                query_power=query_power,
+                query_brightness=query_brightness,
+                query_color_mode=query_color_mode,
+                query_white_balance=query_white_balance,
+                query_blank_screen=query_blank_screen,
+                query_black_border=query_black_border,
+                query_relative_brightness=query_relative_brightness,
+                query_segments=query_segments,
+                query_native_settings=query_native_settings,
+            )
             required = (
                 required_domains
                 if required_domains is not None
