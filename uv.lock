@@ -1505,16 +1505,16 @@ wheels = [
 
 [[package]]
 name = "mypy-extensions"
-version = "1.1.0"
+version = "1.2.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/a2/6e/371856a3fb9d31ca8dac321cda606860fa4548858c0cc45d9d1d4ca2628b/mypy_extensions-1.1.0.tar.gz", hash = "sha256:52e68efc3284861e772bbcd66823fde5ae21fd2fdb51c62a211403730b916558", size = 6343, upload-time = "2025-04-22T14:54:24.164Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d0/6f/43edf3be2748d0e40974a5ee046a8bb4c9961a4bdd3e7d5c6dcbf32d1af6/mypy_extensions-1.2.0.tar.gz", hash = "sha256:c6e275a07f1c2fc096b62940452d0eaa3f3af7de45d704787866240a7c6d5a51", size = 6566, upload-time = "2026-11-03T16:26:33.692Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/79/7b/2c79738432f5c924bef5071f933bcc9efd0473bac3b4aa584a6f7c1c8df8/mypy_extensions-1.1.0-py3-none-any.whl", hash = "sha256:1be4cccdb0f2482337c4743e60421de3a356cd97508abadd57d47403e94f5505", size = 4963, upload-time = "2025-04-22T14:54:22.983Z" },
+    { url = "https://files.pythonhosted.org/packages/b5/99/7b1adac7e97ce7bbda34792dc6e9b2f5cc5cffd1875883f78a818b2a2687/mypy_extensions-1.2.0-py3-none-any.whl", hash = "sha256:993e7a20aa5671eb41a7132cf555af30062da99729601601b9a8382b11cae768", size = 5114, upload-time = "2026-11-03T16:26:32.731Z" },
 ]
 
 [[package]]
 name = "nab"
-version = "0.0.24"
+version = "0.0.25"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "nab-index" },
@@ -1525,14 +1525,14 @@ dependencies = [
     { name = "tomli" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f7/15/c56e169e80ec6a8a705bf939a6872ba7e14d6b3551c0ba4f1689796fa8f8/nab-0.0.24.tar.gz", hash = "sha256:8c1b1a7588185e63538a870c90caa031231e407d84c6c896345546db2204f778", size = 313061, upload-time = "2026-11-03T07:13:45.597Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/bc/1e/eecba2176fca5c9b7193b93487b963e90e59122f254ba4fbfcba22d05487/nab-0.0.25.tar.gz", hash = "sha256:47767b6b9bb6d94aeedb5d9a6056353789e98666121b9198bb686c3684134899", size = 315323, upload-time = "2026-11-04T04:58:07.407Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/3b/29/87e65317ae325b09e4f88dd8dedaba80423d84e53d514bcbcc8efc9ffe41/nab-0.0.24-py3-none-any.whl", hash = "sha256:e1d39e5c8b385c478d6b80ce02e405561b360fda672ba9e78a222099505e9780", size = 142887, upload-time = "2026-11-03T07:13:44.056Z" },
+    { url = "https://files.pythonhosted.org/packages/b1/a6/5e6d3a8093295cef4ec21dac570f85645db1df0d59599d524c32a9c71a7a/nab-0.0.25-py3-none-any.whl", hash = "sha256:13748edd7775f9ac9703f9f642e6131942bf57a85e30e7f8de9080700d195801", size = 143761, upload-time = "2026-11-04T04:58:06.05Z" },
 ]
 
 [[package]]
 name = "nab-index"
-version = "0.0.24"
+version = "0.0.25"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "nab-provider" },
@@ -1542,26 +1542,26 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d9/d8/80e03524f255fc8ec1dfa20c55066fabd815d4bd9f8abfb989e3dde124f2/nab_index-0.0.24.tar.gz", hash = "sha256:cfc141b4797de60b0b31a5aefc67a5ed144bf5d7438c43bf7e120d4c85030c91", size = 124347, upload-time = "2026-11-03T07:13:26.733Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e8/eb/5a27af36e8389c44d8575f47ae7dc1995111e5199cef2e92142b96328ea2/nab_index-0.0.25.tar.gz", hash = "sha256:3de999cf43db126687177d80bb6edff9e256d319038fe629a6667afdaa456ccd", size = 124333, upload-time = "2026-11-04T04:57:50.179Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/24/1c/19744e99de357b63c8c967c09f1dc077f3f4fa42cc90c809459101721eb0/nab_index-0.0.24-py3-none-any.whl", hash = "sha256:bf5079388af0995cddb6e9b5e79712e2e1f86f2bab6aab081dfcf02ddb3bf014", size = 92292, upload-time = "2026-11-03T07:13:25.098Z" },
+    { url = "https://files.pythonhosted.org/packages/93/46/cbdfd3377c8abde4dd791e1729ee1a07467770e2b3a5c32ae9126ce75027/nab_index-0.0.25-py3-none-any.whl", hash = "sha256:a3246278d6a7863e2ce8e67bb2b264844d1d436eea3e0511bc3447d1049f7054", size = 92293, upload-time = "2026-11-04T04:57:48.414Z" },
 ]
 
 [[package]]
 name = "nab-markersets"
-version = "0.0.24"
+version = "0.0.25"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "nab-resolver" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4d/45/6d7bd1b2a06cf9c5fc74dff829904198cd494c7f2cd7183f62c6cb87a7f9/nab_markersets-0.0.24.tar.gz", hash = "sha256:a5301025f2b4001095af266afb25f3474e017fb3bf76a4d7aa54e045f71b94b5", size = 108977, upload-time = "2026-11-03T07:12:57.469Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/89/36/13e9c5f531e2ceef31aceb68fe68f428424a86ec5e257dc958c4361f27cc/nab_markersets-0.0.25.tar.gz", hash = "sha256:7081ab03eafaa463f17b885de3401cd1e943396148074d8e648738ddb8532052", size = 108974, upload-time = "2026-11-04T04:57:33.788Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5f/bc/8d682d06d50f268d07df6530e818c8527fcc50ad47876a39af09d01c1059/nab_markersets-0.0.24-py3-none-any.whl", hash = "sha256:5c1e77257fafed1e402695de9e3022db91627ade467442c608dfaa8860f57f77", size = 44663, upload-time = "2026-11-03T07:12:55.864Z" },
+    { url = "https://files.pythonhosted.org/packages/65/62/17b9d3ab6492e9c23c9cb252143d4d3fd8b77eecee3cef906668b0af9db2/nab_markersets-0.0.25-py3-none-any.whl", hash = "sha256:93d78310df9ed6dc723b22b7ac477ee562efd01b7133071eb94a80b8a70e218e", size = 44662, upload-time = "2026-11-04T04:57:32.501Z" },
 ]
 
 [[package]]
 name = "nab-project"
-version = "0.0.24"
+version = "0.0.25"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "build" },
@@ -1576,32 +1576,32 @@ dependencies = [
     { name = "tomli-w" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ab/b0/ef7ae84d58af2000182699d13d1faafc388a40fcc0248c859d05fbd230da/nab_project-0.0.24.tar.gz", hash = "sha256:2075bc16f0523c6764046c34f186ffcaa91b88195b4aa052a2d55bddb2721753", size = 827040, upload-time = "2026-11-03T07:13:36.333Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/1a/74/33e1770074b46de3a5ea6a70b0e07302260f16615368889a3fe909ffe8ca/nab_project-0.0.25.tar.gz", hash = "sha256:c9c69da60f8780bf7211565aa665d4530c2de91364ef697960c7dd5be2f86fe3", size = 827178, upload-time = "2026-11-04T04:57:58.827Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/86/50/48776163e98ae61f9da2e2c37b1db7fc5356484f46a618d7adb65c221fdf/nab_project-0.0.24-py3-none-any.whl", hash = "sha256:549ce2f4d1f9e526bf4b0dd1f945185945af0a73aa81d1a669654d9454627ed6", size = 168585, upload-time = "2026-11-03T07:13:34.805Z" },
+    { url = "https://files.pythonhosted.org/packages/e8/e7/507e26fbe7c2d2520ec28c81cd45fa448aeea01bada526e5a0ccbdcd553b/nab_project-0.0.25-py3-none-any.whl", hash = "sha256:13fe0e2f9f8e9ce418483454b552a46278843ae2742d1c8780a897828caa3a9f", size = 168650, upload-time = "2026-11-04T04:57:57.358Z" },
 ]
 
 [[package]]
 name = "nab-provider"
-version = "0.0.24"
+version = "0.0.25"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "nab-markersets" },
     { name = "nab-resolver" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/46/d6/c54b93e9b3fd8b6cbdaef8806e19d1260c97808518659734e43e59ecef44/nab_provider-0.0.24.tar.gz", hash = "sha256:38febec6d7bea1cf33ad26f33807d81f8b5f6e1ed1798741c048971cf3cf104b", size = 442813, upload-time = "2026-11-03T07:13:16.962Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/9c/45/20616982c47d5d0d2c314769d2c924aa101b929dc1f6d74cd31303552098/nab_provider-0.0.25.tar.gz", hash = "sha256:e1bd1ce7f99987a344e558fc465b58ab7c9ba61b560419030f683be78d6dca25", size = 443970, upload-time = "2026-11-04T04:57:41.999Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/31/ce/63809fa2b688b217565f1f5c7da85127fb48d9cbaf61d32e51d9f9b15b28/nab_provider-0.0.24-py3-none-any.whl", hash = "sha256:9528a682299a721ee9eccdb6c4823e54ac712e4425167b17a6d96916dc352b97", size = 353265, upload-time = "2026-11-03T07:13:15.076Z" },
+    { url = "https://files.pythonhosted.org/packages/37/dd/4cdb28395c1d853f2525247a4464b7adc491269cfc88937824486c3d9786/nab_provider-0.0.25-py3-none-any.whl", hash = "sha256:6ad2e7581e6cb525b8212d55632c9340e8e3b5f31ae7d3b4df11b60639b49afd", size = 353396, upload-time = "2026-11-04T04:57:40.647Z" },
 ]
 
 [[package]]
 name = "nab-resolver"
-version = "0.0.24"
+version = "0.0.25"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/fb/88/e929418898a150154439fdbfe11a18711c554f86d569da425b1a42aaefbd/nab_resolver-0.0.24.tar.gz", hash = "sha256:bdaef4121b2a32bc500648b12079f22b6ca310519605e597207d9e39357ed243", size = 174366, upload-time = "2026-11-03T07:12:48.758Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/30/7c/3ea09ff7526ec2bb1f39a9ff378e1701284cf0041656e9233c20aac50a89/nab_resolver-0.0.25.tar.gz", hash = "sha256:2b6c4eeb14e8a45951411a31c8e484d58b7b96b22293be3fb13d410122dee325", size = 174354, upload-time = "2026-11-04T04:57:25.624Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/90/f1/37d873228dc3197df11db393cc1c63191346e015159a81f3a4eff80b9faf/nab_resolver-0.0.24-py3-none-any.whl", hash = "sha256:04f1c4360b7d3b36bf4cfdb4d75781ae00e44af59303a4e231b8571a46dc489e", size = 62236, upload-time = "2026-11-03T07:12:47.109Z" },
+    { url = "https://files.pythonhosted.org/packages/2b/4a/7038e1f15495cbbaadcdbd857b54a22fb123fa0b738b3984cadd6797ab6f/nab_resolver-0.0.25-py3-none-any.whl", hash = "sha256:f8c9933afc924c1d502bb6d920c35f6cf952d73f3e415a4ecb786235edf8d8e3", size = 62236, upload-time = "2026-11-04T04:57:24.072Z" },
 ]
 
 [[package]]
@@ -2626,14 +2626,14 @@ wheels = [
 
 [[package]]
 name = "typing-inspection"
-version = "0.4.4"
+version = "0.4.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a3/26/b09b8010994eccc3c09092e6b34058f36a460eea2d4c3e8b910c695975a0/typing_inspection-0.4.4.tar.gz", hash = "sha256:547274fa6b0a561ccf549cc9524b999a578e737d015d8709d021f9d0d13bea47", size = 76928, upload-time = "2026-08-12T12:37:25.997Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ff/50/0195198eb1d75bab716bb0a813abea4cc394bfa17a92a189f021a34859af/typing_inspection-0.4.5.tar.gz", hash = "sha256:7f16c411e7930dc79596d42ab44672a3fe5f60eb34b781a1647e7872363120c7", size = 81194, upload-time = "2026-11-04T14:13:23.774Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/67/81/4add07e5172b7ac40d8ed5ff580409a7801a4fe26d529bdd915401dabfbe/typing_inspection-0.4.4-py3-none-any.whl", hash = "sha256:65b8397ba37ccbce054456aaccddfc91e6e3083c92824df348d96ca832f3f147", size = 14750, upload-time = "2026-08-12T12:37:24.648Z" },
+    { url = "https://files.pythonhosted.org/packages/de/0c/ea2544850a7c135e15033a5c7a8e7211136184b7ae63e2239d557c2b3019/typing_inspection-0.4.5-py3-none-any.whl", hash = "sha256:bc210535442b39e1bf2805e0c7a17dfd6a4ace760c84c7f7d16245d23a6b1c39", size = 14874, upload-time = "2026-11-04T14:13:22.616Z" },
 ]
 
 [[package]]
