@@ -109,6 +109,83 @@ def _generated(module: str, class_name: str) -> type[Any]:
     return getattr(import_module(f"{_MODULE_PREFIX}{module}"), class_name)
 
 
+@pytest.mark.parametrize(
+    ("prefix", "mode", "field", "expected"),
+    [
+        ("330406", None, "register", 6),
+        ("3305020c2238", "whole_device_colour", "rgb", (12, 34, 56)),
+        ("33050b0c22380140", "legacy_colour", "segment_mask", 0x4001),
+        ("3305111032", "legacy_music", "mode_id", "energetic"),
+        ("3305111232010c2238", "legacy_music", "mode_id", "rolling"),
+        ("3305111332010c2238", "legacy_music", "mode_id", "spectrum"),
+        ("3305130532", "music", "mode_id", "energetic"),
+        ("330504383f02", "scene", "code", 16184),
+        ("330515010c223800000000000140", "static", "static_sub", 1),
+    ],
+)
+def test_h6117_reconstructed_wire_fields_round_trip(prefix, mode, field, expected):
+    """Reconstructed vectors, not captured H6117 commands."""
+    data = bytes.fromhex(prefix).ljust(19, b"\x00")
+    data += bytes((xor_checksum(data),))
+    root = _generated("h6117_wire_write", "H6117WireWrite").from_bytes(data)
+    root._read()
+    assert protocol_core.serialize_native_body(root) == data
+    if mode is None:
+        assert getattr(root.body, field) == expected
+    else:
+        assert root.body.sub.name == mode
+        body = root.body.sub_body.selector if mode == "music" else root.body.sub_body
+        value = getattr(body, field)
+        if field == "rgb":
+            value = (value.red, value.green, value.blue)
+        elif field == "mode_id":
+            value = value.name
+        assert value == expected
+
+
+@pytest.mark.parametrize(
+    "prefix",
+    ["330406", "330504383f02", "33050afe00", "33051305320000", "330515010c223800000000000140"],
+)
+def test_h6117_candidate_writes_preserve_nonzero_unknown_tails(prefix):
+    data = bytes.fromhex(prefix).ljust(19, b"\x87")
+    data += bytes((xor_checksum(data),))
+    root = _generated("h6117_wire_write", "H6117WireWrite").from_bytes(data)
+    root._read()
+    assert protocol_core.serialize_native_body(root) == data
+
+
+@pytest.mark.parametrize(
+    ("domain", "payload", "count", "tail"),
+    [
+        (0xA2, bytes((4, 1, 2, 3, 4, 5, 6, 7, 8, 9)) + b"\x87" * 7, 3, b"\x87" * 7),
+        (0xA5, bytes((5, 10, 1, 2, 3, 20, 4, 5, 6, 30, 7, 8, 9)) + b"\x87" * 4, 3, None),
+    ],
+)
+def test_h6117_candidate_pages_preserve_geometry_and_unused_bytes(domain, payload, count, tail):
+    """Candidate pages do not establish device readback availability."""
+    data = bytes((0xAA, domain)) + payload
+    data += bytes((xor_checksum(data),))
+    root = _generated("h6117_status_reply", "H6117StatusReply").from_bytes(data)
+    root._read()
+    assert len(root.body.segments) == count
+    assert protocol_core.serialize_native_body(root) == data
+    if tail is None:
+        assert root.body.unused == [0x87] * 4
+    else:
+        assert root.body.unknown_tail == tail
+
+
+@pytest.mark.parametrize("selector", [0x02, 0x0B, 0xFE])
+def test_h6117_unqualified_static_and_unknown_mode_details_stay_opaque(selector):
+    data = bytes((0xAA, 0x05, selector)) + b"\x87" * 16
+    data += bytes((xor_checksum(data),))
+    root = _generated("h6117_status_reply", "H6117StatusReply").from_bytes(data)
+    root._read()
+    assert root.body.mode_body == b"\x87" * 16
+    assert protocol_core.serialize_native_body(root) == data
+
+
 def test_h607c_endpoint_scene_keeps_named_v2_trailer_and_opaque_extensions():
     """Exact-SKU catalogue selector 16183, not device-verified."""
     raw = bytes.fromhex("0a01220000000400019797000014140300140201fa01ff96371000fa0000800000020001ff")

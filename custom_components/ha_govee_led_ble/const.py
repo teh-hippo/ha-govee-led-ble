@@ -22,6 +22,7 @@ from .music_semantics import (
     H6097_MUSIC_VARIANTS,
     H6099_MUSIC_VARIANTS,
     H6102_MUSIC_VARIANTS,
+    H6117_MUSIC_VARIANTS,
     H6125_MUSIC_VARIANTS,
     H7020_MUSIC_VARIANTS,
     H7025_MUSIC_VARIANTS,
@@ -1567,6 +1568,61 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         connection_idle_timeout=IDLE_TIMEOUT_STANDARD,
         scene_catalogue_sku="H6102",
     ),
+    "H6117": ModelProfile(
+        "H6117 LED Strip",
+        support_quality=SupportQuality.EXPERIMENTAL,
+        confirmation_issue=537,
+        command_grammar="H617A",
+        command_ack_grammar="H6125",
+        status_grammar="H6117",
+        profile_identity_fields=frozenset({"fw_version", "hw_version"}),
+        profile_pact_dependent=True,
+        brightness_zero_turns_off=True,
+        colour_mode_query_selector=1,
+        static_readback_kelvin=True,
+        static_readback_zero_kelvin_is_rgb=True,
+        static_readback_gradual=True,
+        effect_grammar="H617A",
+        read_domains=frozenset(
+            {ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE, ReadDomain.FIRMWARE, ReadDomain.HARDWARE}
+        ),
+        setup_required_read_domains=frozenset({ReadDomain.POWER}),
+        supports_rgb=True,
+        supports_color_temperature=True,
+        supports_segment_color_temperature=True,
+        supports_custom_effects=True,
+        supports_scenes=True,
+        supports_advanced_effects=True,
+        supports_multi_layered_effects=True,
+        music_modes=(
+            "energetic",
+            "rhythm",
+            "spectrum",
+            "rolling",
+            "separation",
+            "hopping",
+            "piano_keys",
+            "fountain",
+            "day_and_night",
+            "bloom",
+            "shiny",
+        ),
+        music_variants=H6117_MUSIC_VARIANTS,
+        supports_music_color=True,
+        physical_ic_count=50,
+        segment_count=15,
+        segment_group_size=3,
+        supports_segment_writes=True,
+        supports_segment_brightness=True,
+        effect_readback="diy_code_only",
+        advanced_diy_selector=402,
+        diy_requires_upload_ack=True,
+        music_upload_before_selector=True,
+        music_requires_upload_ack=True,
+        boolean_controls=frozenset({"gradual"}),
+        connection_idle_timeout=IDLE_TIMEOUT_STANDARD,
+        scene_catalogue_sku="H6117",
+    ),
     "H6125": ModelProfile(
         "H6125 LED Strip",
         support_quality=SupportQuality.SUPPORTED,
@@ -1951,6 +2007,88 @@ H6125_POWER_ONLY_PROFILE = ModelProfile(
     setup_required_read_domains=frozenset({ReadDomain.POWER}),
 )
 
+H6117_POWER_ONLY_PROFILE = ModelProfile(
+    "H6117 (awaiting controller identity)",
+    confirmation_issue=537,
+    command_grammar="H617A",
+    command_operations=frozenset({"power"}),
+    command_ack_grammar="H6125",
+    status_grammar="H6117",
+    profile_identity_fields=frozenset({"fw_version", "hw_version"}),
+    profile_pact_dependent=True,
+    read_domains=frozenset({ReadDomain.POWER, ReadDomain.FIRMWARE, ReadDomain.HARDWARE}),
+    setup_required_read_domains=frozenset({ReadDomain.POWER}),
+)
+
+
+def _h6117_profile(
+    pact_type: int | None, pact_code: int | None, firmware: str | None, hardware: str | None
+) -> ModelProfile:
+    """Resolve H6117 colour, brightness, music and uploads independently."""
+    from .firmware_version import FirmwareVersion
+    from .protocol_transforms import h6117_outbound_transform
+
+    fw, hw = FirmwareVersion.parse(firmware), FirmwareVersion.parse(hardware)
+    if fw is None or hw is None or pact_type is None or pact_code is None or pact_type < 1 or pact_code < 1:
+        return H6117_POWER_ONLY_PROFILE
+    family = hw.identity_number() // 10000
+    if family != fw.identity_number() // 10000 or family not in {1, 2, 3}:
+        return H6117_POWER_ONLY_PROFILE
+    modern = pact_type >= 2
+    if not modern and family != 1:
+        return H6117_POWER_ONLY_PROFILE
+    extended_rgb = hw >= FirmwareVersion((1, 0, 2)) and fw >= FirmwareVersion((1, 6))
+    extended = modern or extended_rgb
+    whole_device = hw < FirmwareVersion((1, 0, 2)) and fw < FirmwareVersion((1, 3, 18))
+    expanded_music = (
+        not modern
+        and family == 1
+        and fw >= FirmwareVersion((1, 7))
+        or hardware is not None
+        and hardware.startswith("2.01.")
+        and fw >= FirmwareVersion((2, 4))
+        or family == 3
+        and hardware is not None
+        and not hardware.startswith("3.04.")
+        and fw >= FirmwareVersion((3, 1))
+    )
+    uploaded_scenes = hw >= FirmwareVersion((1, 0, 2)) and fw >= FirmwareVersion((1, 4))
+    workflows = frozenset({"native_music", "native_scenes", "single", "multi"})
+    if uploaded_scenes:
+        workflows |= {"edited_palette_scenes", "layered_scenes", "advanced", "workshop"}
+    if extended:
+        workflows |= {"painted"}
+    profile = MODEL_PROFILES["H6117"]
+    wire_range = (6, 254) if family == 1 else None
+    return replace(
+        profile,
+        status_grammar="H6117" if modern else "H6117-legacy",
+        supports_color_temperature=extended,
+        supports_segment_color_temperature=extended and not whole_device,
+        static_readback_kelvin=extended,
+        static_readback_zero_kelvin_is_rgb=extended,
+        static_readback_gradual=extended,
+        segment_count=1 if whole_device else 15,
+        segment_group_size=3 if extended else 4,
+        supports_segment_writes=not whole_device,
+        supports_segment_brightness=extended and not whole_device,
+        effect_workflows=workflows,
+        music_modes=profile.music_modes if expanded_music else profile.music_modes[:4],
+        supports_advanced_effects=uploaded_scenes,
+        supports_multi_layered_effects=uploaded_scenes,
+        advanced_diy_selector=profile.advanced_diy_selector if uploaded_scenes else None,
+        a1_diy_selector=None if modern else 0xFE,
+        selector_only_scene_bits=None if uploaded_scenes else 16,
+        scene_codes=None if uploaded_scenes else frozenset({0, 1, 4, 5, 7, 8, 9, 10, 15, 16, 21, 22}),
+        brightness_wire_range=wire_range,
+        outbound_transform=h6117_outbound_transform(
+            wire_range,
+            legacy_colour=not extended_rgb and not whole_device,
+            whole_device=whole_device,
+            legacy_music=not modern,
+        ),
+    )
+
 
 def _h6125_profile(
     pact_type: int | None, pact_code: int | None, firmware: str | None, hardware: str | None
@@ -2248,6 +2386,8 @@ def device_profile(
                 restarting_boolean_controls=frozenset(),
             )
         return profile
+    if model == "H6117":
+        return _h6117_profile(pact_type, pact_code, firmware, hardware)
     if model == "H6125":
         return _h6125_profile(pact_type, pact_code, firmware, hardware)
     if model == "H6102":

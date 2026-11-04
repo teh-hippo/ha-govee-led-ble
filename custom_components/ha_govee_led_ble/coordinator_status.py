@@ -210,8 +210,10 @@ def parse_color_mode(generated: Any, model: str, *, profile: ModelProfile | None
 
     body = generated.body
     mode_name = getattr(body.mode, "name", None)
-    if mode_name == "legacy_static":
+    if mode_name in {"legacy_static", "legacy_colour", "whole_device_colour"}:
         mode_name = "static"
+    elif mode_name == "legacy_music":
+        mode_name = "music"
     if profile.bulk_status_grammar == "H60A" and mode_name == "music":
         return ParsedColorModeResponse(mode=ParsedMode.MUSIC)
     if mode_name == "video" and profile.video_grammar == "H66A0-video":

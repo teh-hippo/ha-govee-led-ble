@@ -759,6 +759,9 @@ H6102_MUSIC_VARIANTS = (
 # H6125 pact 1 reaches the same RGBIC music encodings as H6102 through the
 # DreamColor route; only the selector submode differs, and the transform owns that.
 H6125_MUSIC_VARIANTS = H6102_MUSIC_VARIANTS
+H6117_MUSIC_VARIANTS = tuple(
+    replace(variant, evidence="H6117 RGBIC compatibility hypothesis") for variant in H6102_MUSIC_VARIANTS
+)
 
 # H617C uses the same RGBIC music encodings through music_body so legacy
 # zero-padded H617C recovery bodies and newly authored bodies both validate.
