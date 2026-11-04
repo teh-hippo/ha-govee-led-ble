@@ -11,6 +11,7 @@ from .protocol_core import (
     _STATUS_QUERY_ROOTS,
     H60a6LegacyWrite,
     H6102WireWrite,
+    H6117WireWrite,
     H6125LegacySegmentQuery,
     H6125WireWrite,
     H6199Pact1WireWrite,
@@ -61,14 +62,26 @@ def h6199_pact1_outbound_transform(packet: bytes) -> bytes:
     return _serialize_xor(root)
 
 
-def _h6125_wire_music(selector: Any, *, legacy: bool = False, root_type: Any = H6125WireWrite) -> bytes:
+def _h6125_wire_music(
+    selector: Any,
+    *,
+    legacy: bool = False,
+    root_type: Any = H6125WireWrite,
+    selector_types: Any = None,
+    music_sub: Any = None,
+    mode_type: Any = None,
+) -> bytes:
+    types = root_type if selector_types is None else selector_types
     root = root_type()
     root.header = b"\x33"
     root.opcode = root_type.CommandOp.mode
     mode = _child(root_type.ModeBody, root)
-    mode.sub = root_type.ModeSub.legacy_music if legacy else root_type.ModeSub.music
-    wire = _child(root_type.LegacyMusicSelector if legacy else root_type.MusicSelector, mode)
-    mode_type = root_type.LegacyMusicMode if legacy else root_type.MusicMode
+    mode.sub = (
+        music_sub if music_sub is not None else root_type.ModeSub.legacy_music if legacy else root_type.ModeSub.music
+    )
+    wire = _child(types.LegacyMusicSelector if legacy else types.MusicSelector, mode)
+    if mode_type is None:
+        mode_type = types.LegacyMusicMode if legacy else types.MusicMode
     name = getattr(selector.mode_id, "name", None)
     if name not in mode_type.__members__:
         raise ValueError(f"{root_type.__name__} has no music selector for mode {selector.mode_id}")
@@ -77,7 +90,7 @@ def _h6125_wire_music(selector: Any, *, legacy: bool = False, root_type: Any = H
     if name in {"rhythm", "spectrum", "rolling"}:
         colour = selector.rgb if selector.has_fixed_colour else None
         rhythm = name == "rhythm" and not legacy
-        settings = _child(root_type.RhythmSettings if rhythm else root_type.ColourSettings, wire)
+        settings = _child(types.RhythmSettings if rhythm else types.ColourSettings, wire)
         if rhythm:
             settings.style = selector.style
         settings.has_fixed_colour = int(colour is not None)
@@ -85,7 +98,7 @@ def _h6125_wire_music(selector: Any, *, legacy: bool = False, root_type: Any = H
             settings.rgb = _rgb(settings, colour.red, colour.green, colour.blue)
         settings.padding = bytes(14 - (2 if rhythm else 1) - (3 if colour is not None else 0))
     else:
-        settings = _child(root_type.OpaqueSettings, wire)
+        settings = _child(types.OpaqueSettings, wire)
         settings.padding = bytes(14)
     wire.settings = settings
     mode.sub_body = wire
@@ -104,7 +117,7 @@ def _register_brightness(root_type: Any, percent: int, wire_range: tuple[int, in
     return _serialize_xor(root)
 
 
-def _h6125_wire_colour(static: Any, *, root_type: Any = H6125WireWrite) -> bytes:
+def _h6125_wire_colour(static: Any, *, root_type: Any = H6125WireWrite, body_type: Any = None) -> bytes:
     if static.static_sub != 1 or static.static_body.kelvin:
         raise ValueError("Legacy RGB does not support Kelvin or segment brightness")
     root = root_type()
@@ -112,7 +125,7 @@ def _h6125_wire_colour(static: Any, *, root_type: Any = H6125WireWrite) -> bytes
     root.opcode = root_type.CommandOp.mode
     mode = _child(root_type.ModeBody, root)
     mode.sub = root_type.ModeSub.legacy_colour
-    body = _child(root_type.LegacyColour, mode)
+    body = _child(root_type.LegacyColour if body_type is None else body_type, mode)
     rgb = static.static_body.rgb_direct
     body.rgb = _rgb(body, rgb.red, rgb.green, rgb.blue)
     body.segment_mask = static.static_body.mask.bits
@@ -120,6 +133,63 @@ def _h6125_wire_colour(static: Any, *, root_type: Any = H6125WireWrite) -> bytes
     mode.sub_body = body
     root.body = mode
     return _serialize_xor(root)
+
+
+@cache
+def h6117_outbound_transform(
+    wire_range: tuple[int, int] | None,
+    *,
+    legacy_colour: bool = False,
+    whole_device: bool = False,
+    legacy_music: bool = False,
+) -> Callable[[bytes], bytes]:
+    """Keep independently qualified H6117 register, RGB and music conversions separate."""
+    from .generated_protocol_adapter import parse_command_result
+
+    def transform(packet: bytes) -> bytes:
+        parsed = parse_command_result(packet, "H617A").parsed
+        if parsed is None:
+            return packet
+        if parsed.opcode.name == "brightness" and wire_range is not None:
+            return _register_brightness(H6117WireWrite, int(parsed.body.percent), wire_range)
+        if parsed.opcode.name != "multi":
+            return packet
+        if parsed.body.sub.name == "music" and legacy_music:
+            return _h6125_wire_music(
+                parsed.body.sub_body,
+                root_type=H6117WireWrite,
+                selector_types=H6125WireWrite,
+                music_sub=H6117WireWrite.ModeSub.legacy_music,
+                mode_type=H6117WireWrite.LegacyMusicMode,
+            )
+        if parsed.body.sub.name != "static":
+            return packet
+        static = parsed.body.sub_body
+        if static.static_sub != 1 or static.static_body.kelvin:
+            return packet
+        if legacy_colour:
+            return _h6125_wire_colour(
+                static,
+                root_type=H6117WireWrite,
+                body_type=H6125WireWrite.LegacyColour,
+            )
+        if whole_device:
+            if static.static_body.mask.bits != 1:
+                raise ValueError("H6117 whole-device RGB does not support partial masks")
+            root = H6117WireWrite()
+            root.header = b"\x33"
+            root.opcode = H6117WireWrite.CommandOp.mode
+            mode = _child(H6117WireWrite.ModeBody, root)
+            mode.sub = H6117WireWrite.ModeSub.whole_device_colour
+            body = _child(H6117WireWrite.WholeDeviceColour, mode)
+            rgb = static.static_body.rgb_direct
+            body.rgb = _rgb(body, rgb.red, rgb.green, rgb.blue)
+            body.unknown_tail = bytes(13)
+            mode.sub_body, root.body = body, mode
+            return _serialize_xor(root)
+        return packet
+
+    return transform
 
 
 @cache

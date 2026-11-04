@@ -160,6 +160,7 @@ async def test_bluetooth_discovery_unsupported_aborts(hass: HomeAssistant):
         ("Govee_H60A1_ABCD", "H60A1"),
         ("GVH60A6_ABCD", "H60A6"),
         ("Govee_H6102_ABCD", "H6102"),
+        ("ihoment_H6117_ABCD", "H6117"),
         ("Govee_H7025_ABCD", "H7025"),
     ],
 )

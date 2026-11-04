@@ -159,6 +159,20 @@ H6102WireWrite = cast(
     import_module("custom_components.ha_govee_led_ble.generated_protocol.h6102_wire_write").H6102WireWrite,
 )
 
+H6117WireWrite = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6117_wire_write").H6117WireWrite,
+)
+H6117StatusReply = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6117_status_reply").H6117StatusReply,
+)
+H6117LegacyStatusReply = cast(
+    Any,
+    import_module(
+        "custom_components.ha_govee_led_ble.generated_protocol.h6117_legacy_status_reply"
+    ).H6117LegacyStatusReply,
+)
 
 H66a0StatusReply = cast(
     Any,
@@ -628,6 +642,8 @@ _STATUS_ROOTS = {
     "H601C": ("h601c_status_reply", H601cStatusReply),
     "H6076": ("h6076_status_reply", H6076StatusReply),
     "H6102": ("h6102_status_reply", H6102StatusReply),
+    "H6117": ("h6117_status_reply", H6117StatusReply),
+    "H6117-legacy": ("h6117_legacy_status_reply", H6117LegacyStatusReply),
     "H6125": ("h6125_status_reply", H6125StatusReply),
     "H6125-modern": ("h6125_modern_status_reply", H6125ModernStatusReply),
     "H6125-legacy": ("h6125_legacy_status_reply", H6125LegacyStatusReply),

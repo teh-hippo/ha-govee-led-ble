@@ -164,6 +164,43 @@ def _speed_effect(config: list[dict[str, object]]) -> dict[str, object]:
     }
 
 
+def test_h6117_snapshot_retains_verified_speed_metadata(monkeypatch):
+    monkeypatch.setattr(
+        "tools.ble.refresh_scene_catalogues._parse_scene_records",
+        lambda _param: [_speed_record()],
+    )
+    effect = {
+        **_effect(30, 1),
+        **_speed_effect([{"page": 0, "moveIn": [200, 225, 250], "defaultIndex": 2}]),
+    }
+    raw = {
+        "status": 200,
+        "data": {
+            "categories": [
+                {
+                    "categoryId": 10,
+                    "categoryName": "Natural",
+                    "scenes": [
+                        {
+                            "sceneId": 20,
+                            "sceneName": "Forest",
+                            "sceneType": 2,
+                            "lightEffects": [effect],
+                        }
+                    ],
+                }
+            ]
+        },
+    }
+
+    snapshot = build_snapshot(raw, "H6117")
+
+    assert snapshot["effects"][0]["speed"] == {
+        "default_index": 2,
+        "pages": [{"page": 0, "move_in": [200, 225, 250]}],
+    }
+
+
 def test_snapshot_omits_speed_with_an_out_of_range_page(monkeypatch):
     monkeypatch.setattr(
         "tools.ble.refresh_scene_catalogues._parse_scene_records",
