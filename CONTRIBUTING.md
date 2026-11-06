@@ -9,11 +9,13 @@ Do not post Bluetooth addresses, serial numbers, account details or other unique
 
 ## Architecture
 
+- Fix the cause rather than adding timing-based workarounds.  Prefer protocol acknowledgements, explicit state transitions and completion-driven backpressure; timeouts bound failures, not normal operation.
 - `tools/ble/kaitai/**/*.ksy` is the only source of BLE wire structure and the protocol documentation.  Files under `speculative/` are unconfirmed hypotheses; the rest are evidence-backed.  `generated_protocol/` is build output and is never edited.
 - Speculative schemas must retain unqualified suffix bytes; test nonzero tails rather than assuming zero padding when reusing shared types.
 - `const.py` holds one `ModelProfile` per exact SKU, declaring its capabilities.  Compatible models may share a Kaitai adapter but never a whole profile.
 - Keep offsets, command literals and packet enums out of entity and coordinator code.
 - Every outbound frame goes through `_async_write_packet`, which waits for the previous `0x33` or `0xAA` frame's same-command reply before writing.  Never add per-feature sleeps to pace requests; `ReplyGate` learns commands that never reply on a subscription.
+- Arm reply tracking before the physical write, and accept only validated replies.  A late reply reinstates pacing for a command previously learned as silent; failed writes must not teach silence.
 - Entity setters run through `GoveeBLEEntity._async_latest`: the first request sends at once, and while it runs only the newest queued request per control is sent.  Light on, off and attribute calls share one key, with queued `turn_on` attributes merged.  Services, Effect Studio and background work bypass it.
 - A new model needs its scene catalogue: run `uv run python tools/ble/refresh_scene_catalogues.py <SKU>` before registering its profile.  A workflow keeps existing catalogues current.
 - Plans and findings for a model live in its issue or pull request, not in `docs/`.

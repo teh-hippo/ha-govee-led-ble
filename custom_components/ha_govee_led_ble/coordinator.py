@@ -1328,10 +1328,13 @@ class GoveeBLECoordinator(
         if on_write is not None:
             on_write()
         token = self._notification_token
+        self._reply_gate.arm(reply_frame)
         try:
             await client.write_gatt_char(WRITE_UUID, wire_packet, response=False)
             self._require_not_shutdown()
         except asyncio.CancelledError:
+            if self._notification_token is token:
+                self._reply_gate.abort()
             if self._encryption is not None:
                 try:
                     # The expired query timeout cannot cancel its own cleanup again.
@@ -1346,6 +1349,8 @@ class GoveeBLECoordinator(
                     pass
             raise
         except Exception as err:
+            if self._notification_token is token:
+                self._reply_gate.abort()
             stale_gatt = self._record_ble_failure(err)
             encrypted = self._encryption is not None and self._encryption.version
             if stale_gatt or encrypted or self._shutdown_requested:
@@ -1356,7 +1361,7 @@ class GoveeBLECoordinator(
                 raise GoveeCryptoError("encrypted_write_failed") from None
             raise
         if self._notification_token is token:
-            self._reply_gate.sent(reply_frame)
+            self._reply_gate.sent()
         packet_entry = self._record_packet("tx", wire_packet, outcome="sent", reason="write_succeeded")
         _LOGGER.debug("tx %s raw=%s", self.model, packet_entry["raw"])
         if arm_expected and generation != self._profile_generation:
