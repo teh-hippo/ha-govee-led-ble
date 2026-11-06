@@ -533,7 +533,6 @@ class _NotificationMixin(_CoordinatorBase):
                 return
             frame = decoded_frame
         self._last_rx_monotonic = time.monotonic()
-        self._reply_gate.observe(frame)
         if self._handle_bulk_notification(frame):
             return
         from .low_blue_light import parse_setting, setting_state
@@ -549,6 +548,7 @@ class _NotificationMixin(_CoordinatorBase):
                 return
             self.low_blue_light = setting_state(low_blue_light.parsed)
             self._mark_received(StatusDomain.LOW_BLUE_LIGHT, "low_blue_light")
+            self._reply_gate.observe(frame)
             self._record_packet(
                 "rx", frame, outcome="parsed", reason="native_setting_status", parser=low_blue_light.parser
             )
@@ -557,6 +557,7 @@ class _NotificationMixin(_CoordinatorBase):
         zone_result = parse_zone_notification(frame, self.profile)
         if zone_result.parsed is not None:
             status = zone_result.parsed
+            self._reply_gate.observe(frame)
             zone_values: dict[str, bool] = {
                 name: bool(getattr(status, name))
                 for name in NATIVE_ZONE_CONTROLS
@@ -571,17 +572,21 @@ class _NotificationMixin(_CoordinatorBase):
             self.async_set_updated_data(self.data or {})
             return
         if self._handle_dreamview_notification(frame):
+            self._reply_gate.observe(frame)
             self._record_packet(
                 "rx", frame, outcome="parsed", reason="dreamview_status_parsed", parser=dreamview_parser(self.profile)
             )
             return
         ack = parse_command_ack_result(frame, self.model, profile=self.profile)
         if ack.parsed is not None:
+            self._reply_gate.observe(frame)
             self._deliver_command_ack(ack)
             self._record_packet("rx", frame, outcome="parsed", reason="command_ack_parsed", parser=ack.parser)
             return
         if frame[:1] == _COMMAND_ECHO_PREFIX:
             command = parse_command_result(frame, self.model, profile=self.profile)
+            if command.parsed is not None:
+                self._reply_gate.observe(frame)
             reason = "command_echo_parsed"
             outcome = "parsed" if command.parsed is not None else "rejected"
             if command.rejection is not None:
@@ -681,6 +686,7 @@ class _NotificationMixin(_CoordinatorBase):
                 ):
                     self.is_on = bool(flags.master_enabled)
                     observed += ("is_on",)
+                self._reply_gate.observe(frame)
                 self._mark_received(StatusDomain.OTHER, *observed)
                 self.async_set_updated_data(self.data or {})
                 return
@@ -768,6 +774,7 @@ class _NotificationMixin(_CoordinatorBase):
                 observed = tuple(control_values)
             elif domain is StatusDomain.PHYSICAL_IC_COUNT:
                 self._apply_physical_ic_count(generated)
+            self._reply_gate.observe(frame)
             self._mark_received(domain, *observed)
             self.async_set_updated_data(self.data or {})
         except IndexError, ValueError:

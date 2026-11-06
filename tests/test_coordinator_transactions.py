@@ -18,6 +18,7 @@ from custom_components.ha_govee_led_ble.effect_deployments import (
 from custom_components.ha_govee_led_ble.effect_domain import BuiltinScene, CatalogueRef, LibraryItem, SingleEffect
 from custom_components.ha_govee_led_ble.effect_runtime import EffectDeploymentEngine
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
+    build_brightness_query,
     build_firmware_query,
     build_hardware_query,
     build_power,
@@ -162,6 +163,106 @@ async def test_writes_wait_for_previous_reply_and_learn_silent_commands(coord, v
     coord._reply_gate.reset()
     await coord._async_write_packet(client, query)
     assert await elapsed(power) == pytest.approx(0.5)
+
+
+@pytest.mark.parametrize("header", [0x33, 0xAA])
+async def test_reply_during_physical_write_keeps_later_writes_paced(coord, virtual_clock, header):
+    coord._reply_gate = ReplyGate(0.5)
+    packet = build_power(True) if header == 0x33 else build_power_query("H617A")
+    writes = 0
+
+    async def transmit(_uuid, _packet, **_kwargs):
+        nonlocal writes
+        writes += 1
+        if writes == 1:
+            coord._notify_callback(None, bytearray(reply))
+            await asyncio.sleep(0)
+
+    reply = _packet(header, 0x01, [0])
+    client = _c(write_gatt_char=AsyncMock(side_effect=transmit))
+    await coord._async_write_packet(client, packet)
+    loop = asyncio.get_running_loop()
+    start = loop.time()
+    await coord._async_write_packet(client, packet)
+    assert loop.time() - start == pytest.approx(0)
+    start = loop.time()
+    await coord._async_write_packet(client, packet)
+    assert loop.time() - start == pytest.approx(0.5)
+
+
+async def test_late_reply_reinstates_pacing_for_a_command_learned_as_silent(coord, virtual_clock):
+    coord._reply_gate = ReplyGate(0.5)
+    client = _c(write_gatt_char=AsyncMock())
+    packet = build_power(True)
+    await coord._async_write_packet(client, packet)
+    await coord._async_write_packet(client, packet)
+    coord._notify_callback(None, bytearray(_packet(0x33, 0x01, [0])))
+    await coord._async_write_packet(client, packet)
+    loop = asyncio.get_running_loop()
+    start = loop.time()
+    await coord._async_write_packet(client, packet)
+    assert loop.time() - start == pytest.approx(0.5)
+
+
+async def test_reply_timeout_starts_after_slow_physical_write_completes(coord, virtual_clock):
+    coord._reply_gate = ReplyGate(0.5)
+    loop = asyncio.get_running_loop()
+
+    async def transmit(_uuid, _packet, **_kwargs):
+        await asyncio.sleep(1)
+
+    client = _c(write_gatt_char=AsyncMock(side_effect=transmit))
+    await coord._async_write_packet(client, build_power(True))
+    timer = loop.call_later(0.1, coord._notify_callback, None, bytearray(_packet(0x33, 0x01, [0])))
+    client.write_gatt_char.side_effect = None
+    start = loop.time()
+    try:
+        await coord._async_write_packet(client, build_power_query("H617A"))
+        assert loop.time() - start == pytest.approx(0.1)
+    finally:
+        timer.cancel()
+
+
+@pytest.mark.parametrize(
+    ("outbound", "invalid", "valid"),
+    [
+        (build_power(True), b"\x33\x01", _packet(0x33, 0x01, [0])),
+        (build_power(True), _packet(0x33, 0x01, [0])[:-1] + b"\xff", _packet(0x33, 0x01, [0])),
+        (build_brightness_query("H617A"), _packet(0xAA, 0x04, [101]), _packet(0xAA, 0x04, [50])),
+    ],
+)
+async def test_malformed_reply_does_not_release_a_queued_write(coord, virtual_clock, outbound, invalid, valid):
+    coord._reply_gate = ReplyGate(0.5)
+    coord._arm_expected_values({"brightness_pct": 60})
+    client = _c(write_gatt_char=AsyncMock())
+    await coord._async_write_packet(client, outbound)
+    loop = asyncio.get_running_loop()
+    invalid_timer = loop.call_later(0.1, coord._notify_callback, None, bytearray(invalid))
+    valid_timer = loop.call_later(0.2, coord._notify_callback, None, bytearray(valid))
+    start = loop.time()
+    try:
+        await coord._async_write_packet(client, build_power_query("H617A"))
+        assert loop.time() - start == pytest.approx(0.2)
+        assert coord.packet_log[1]["outcome"] == "rejected"
+    finally:
+        invalid_timer.cancel()
+        valid_timer.cancel()
+
+
+@pytest.mark.parametrize("error", [BleakError("write failed"), asyncio.CancelledError()])
+async def test_failed_physical_write_does_not_leave_a_pending_reply(coord, virtual_clock, error):
+    coord._reply_gate = ReplyGate(0.5)
+    client = _c(write_gatt_char=AsyncMock(side_effect=[error, None]))
+    packet = build_power(True)
+    with pytest.raises(type(error)):
+        await coord._async_write_packet(client, packet)
+    loop = asyncio.get_running_loop()
+    start = loop.time()
+    await coord._async_write_packet(client, packet)
+    assert loop.time() - start == pytest.approx(0)
+    start = loop.time()
+    await coord._reply_gate.wait()
+    assert loop.time() - start == pytest.approx(0.5)
 
 
 @pytest.mark.parametrize("private", [False, True])

@@ -29,7 +29,7 @@ class ReplyGate:
         self._silent.clear()
         self._replied.set()
 
-    def sent(self, frame: bytes) -> None:
+    def arm(self, frame: bytes) -> None:
         key = frame[:2]
         if self.timeout <= 0 or len(key) < 2 or key[0] not in REPLIED_HEADERS or key in self._silent:
             self._pending = None
@@ -38,8 +38,22 @@ class ReplyGate:
         self._deadline = asyncio.get_running_loop().time() + self.timeout
         self._replied.clear()
 
+    def sent(self) -> None:
+        """Start the timeout after transport completion without replacing an early reply."""
+        if self._pending is not None:
+            self._deadline = asyncio.get_running_loop().time() + self.timeout
+
+    def abort(self) -> None:
+        """Abandon a failed write without learning it as a silent command."""
+        self._pending = None
+        self._replied.set()
+
     def observe(self, frame: bytes) -> None:
-        if self._pending is not None and frame[:2] == self._pending:
+        key = frame[:2]
+        if key in self._silent:
+            self._silent.remove(key)
+            self._answered.add(key)
+        if self._pending is not None and key == self._pending:
             self._answered.add(self._pending)
             self._pending = None
             self._replied.set()
