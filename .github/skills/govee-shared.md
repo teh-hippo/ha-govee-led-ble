@@ -1,57 +1,37 @@
-# Govee skills: shared method
+# Govee skills: shared context
 
-Used by `govee-fix`, `govee-add` and `govee-audit`.  These skills find gaps in our approach, for planning or implementation.  They are read-only: write session artifacts, not tracked files, and do not run generators or `make check`.  Invocation alone authorises neither implementation nor publication.
+Read by `govee-add`, `govee-fix`, `govee-audit` and `govee-resolve`.
 
-## Terms
+## What you have
 
-Use these exactly: **Experimental** (awaiting owner confirmation on hardware) and **Supported** (owner-confirmed).  `speculative/` Kaitai holds unconfirmed wire hypotheses and is separate from support status.
+- **Device evidence.** A private hidden directory, `.reference-material/`, sits beside the main clone (from a worktree, `git rev-parse --path-format=absolute --git-common-dir` gives the clone's `.git`).  Read its README first.  It holds evidence about what Govee devices do and how they are driven, and `map/`, starting-point notes for finding things.  Start from the notes, follow the evidence wherever it leads, and add to the notes anything useful they lacked.
+- **Our protocol spec.** `tools/ble/kaitai/` describes the wire; `const.py` profiles, `effect_catalogue.py` and `scene_catalogues/` say what each model exposes.
+- **Govee's public scene library**, the feed `tools/ble/refresh_scene_catalogues.py` reads.  Fetching it read-only is fine; it carries fields our catalogue snapshots drop, such as per-scene command versions.
+- **Public device pages.** Govee product pages and manuals for physical specs.
+- **`CONTRIBUTING.md`** for architecture and non-goals.
 
-## Ground rules
+## Rules
 
-- Resolve exact SKUs from attributable evidence; clarify conflicting identity instead of guessing.  Keep owners, revisions, environments and reported versus checkout versions separate.
-- Follow `CONTRIBUTING.md` (architecture, non-goals).  Target full in-scope support across hardware and firmware revisions: enable every defensible capability backed by exact-model evidence or speculative Kaitai, keep only disproven or unsafe paths disabled, and preserve unknowns rather than inventing facts.
-- Kaitai (`tools/ble/kaitai/`) is the protocol documentation.  Read the model's `.ksy` schemas first; a wire fix belongs there, not in handwritten offsets.
-- Treat reported causes and workarounds as hypotheses.  Do not weaken confirmation, add retries or copy another SKU's fix without evidence.
-- Ask whether a major gap belongs in the current issue/PR or a follow-up, and before materially changing the approach.  Keep deferred findings visible.
+- The evidence is the truth for how Govee drives its devices.  Where we differ, assume we are wrong unless it can be proven otherwise; recorded device traffic confirms the evidence but does not override it.  If Govee dropped something a device can still do, keep it and flag it.
+- Re-derive code and enum maps (music modes, scene types) from the evidence for each model; never copy them from a sibling model or an existing `.ksy`.
+- When the evidence shows two paths that disagree (for example two ways Govee drives the same function, sending different frames), don't pick one: report both and flag it for the operator.  The difference may be a deliberate optimisation.
+- Keep it private.  Never cite the folder, its files, or how evidence was obtained in the repository, commits, issues, PRs or release notes.  Describe behaviour in your own words and cite public sources only.  Private references belong in the folder's notes.
+- Aim for complete support of the device: every control, scene, music mode and effect it offers, except the `CONTRIBUTING.md` non-goals.
+- A value copied from a sibling model needs evidence that the two share it.  If a list is supplied by Govee's cloud rather than fixed per model (for example music modes), say so and use the closest evidenced default.
+- Report a check as done only if you did it.  For wire behaviour, "matches" means you compared the bytes our builders generate for that model and revision with the bytes the evidence shows.
+- Findings outside the task (other models, shared-runtime gaps every model has) are follow-ups: list them; don't widen the change without asking.
+- Support status is **Experimental** until an owner confirms it on hardware, then **Supported**.
 
-## The evidence folder
+## Device brief
 
-A private, hidden directory in the parent of the main clone holds evidence about what devices do.  Locate the main clone with `git rev-parse --path-format=absolute --git-common-dir`, find the folder next to it, read its README first and follow its instructions.
-- It is private.  Re-implement behaviour in your own words and never copy from it.
-- Never cite the folder, its files or how evidence was obtained in the repository, issues, PRs, commits or release notes.
-- Start from the README's starting points; they are not coverage limits, so look for what a lookup did not cover.
-- Treat the evidence as the source of truth for what devices do.  Where it is ambiguous, flag the ambiguity instead of guessing.
-- Use the LSP for symbols and references in large files and for Markdown/YAML outlines; read targeted ranges, not whole files.  Read each large file once and reuse what you learned.  Use `python3` for stdlib JSON/ZIP inspection.
+Used by `govee-add` and `govee-audit`: what the device is and everything it can do, per hardware/firmware revision.
+Identity (SKU, BLE name prefixes, Pact type and code, IC count, revisions), physical specs (length, segments, white emitters, mic, camera), and every capability it offers with its BLE contract.
 
-## Trace
+## Workflow for skills that change code
 
-Connection/subscription -> identity admission -> request construction -> framing/transformation -> physical write -> replies -> parsing -> state -> verification.
-Find the last successful stage and the first evidenced divergence; a service error does not prove a malformed command.
-Compare observed TX/RX with generated output at the same layer, keeping source/version, direction, revision, sequence and timing.  Distinguish observed, reconstructed and builder-generated frames.
-Separate wrong bytes or routing from transport failure, unanswered queries, transitional readback and wrong confirmation expectations.  Accepted writes, visible rendering, fresh observations and optimistic state are not interchangeable.
+Start in plan mode if the harness has one.  Every plan's task list includes:
 
-## Surface to audit for a model
+1. A code review in a fresh context, however the harness provides one: alignment with the project's goals and structure, no band-aids, no per-model branches unless necessary.  Fix what it finds.
+2. Commits, a passing `make check`, and a PR that follows `.github/PULL_REQUEST_TEMPLATE.md`, labelled with the SKU of every model whose behaviour changes.
 
-Map `(pact_type, pact_code, hardware, firmware, subordinate_20/21)` to capabilities independently, across `.ksy`, `const.py`, `effect_catalogue.py`, exact-SKU scene catalogues and the shared adapter, coordinator and entity paths.
-Check product IDs/remapping, BLE names, encryption, geometry, white emitters and power limits against attributable evidence.
-
-| Surface | Check |
-| --- | --- |
-| Power, brightness | Register bounds and rescaling, clamping, non-zero readback |
-| RGB, Kelvin, segments | Selectors, bounds, direct/companion RGB, mask width, whole versus partial writes, fresh geometry |
-| Scenes | Exact-SKU catalogue, selector eligibility, body routing, activation, speed defaults |
-| Music | Mode IDs, parameter bounds, companion bodies, upload ordering, ACK policy |
-| DIY, Workshop | Body allowlists, rate/palette/layer bounds, upload ACKs, slot safety, restoration |
-| Settings, video, DreamView | Control eligibility, boolean/enum semantics, query/write behaviour, group capacity |
-
-Catalogue type, body family and wire subtype are independent.  Upload ACKs are separate from status readback; query silence proves neither ACK policy nor cause.
-Flag handwritten offsets or command literals, model branches, and static profiles that bypass the effective `device_profile()`.
-For each field: named field -> observation -> sibling preservation -> recovery -> generated write -> fresh verification.  Classify it applied, preserved, decode-only or unknown.
-
-## Output
-
-Four sections, as in `.github/PULL_REQUEST_TEMPLATE.md`: request and known context; research findings; candidate support scope; model-specific changes and owner checks.
-Defer only checks needing unavailable evidence, implementation or hardware, and state the next discriminating check.  Keep planned checks distinct from performed ones.  If no correction is justified, report the competing explanations.
-Keep evidence, attributable frames, paths and decisions in `<session_folder>/files/<skill>-<model>.md`, append to it instead of re-reading it, and link it from the plan.
-Report unexamined, investigated-but-unresolved and not-hardware-qualified paths separately.  Claim alignment only when coverage is complete, and report only checks you performed.
-A release candidate can be built for hardware testing (`docs/release-candidates.md`); recommend one when a hardware result is the next discriminating check, but do not build or publish it without approval.
+A fresh checkout needs `make build` before tests or the scene-catalogue refresh tool will run.
