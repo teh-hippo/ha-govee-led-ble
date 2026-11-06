@@ -627,7 +627,7 @@ _H6076_MUSIC_PROFILE = replace(
 
 _H6072_PROFILE = ModelProfile(
     "H6072 Floor Lamp",
-    support_quality=SupportQuality.EXPERIMENTAL,
+    support_quality=SupportQuality.SUPPORTED,
     confirmation_issue=486,
     command_grammar="H6072",
     command_ack_grammar="H617A",
