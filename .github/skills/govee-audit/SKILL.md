@@ -1,15 +1,20 @@
 ---
 name: govee-audit
 description: >-
-  Audit an existing Govee BLE model for ways its support may be wrong - a model-specific review
-  with no known issue. Give it a SKU; it returns a gap list across Kaitai, profile and runtime paths.
+  Audit delivered Govee BLE support against the device evidence. Give it a SKU, an issue or a concern
+  in plain words: it builds the device brief and reports every way our support differs from what the
+  device can do and how Govee drives it.
 license: MIT
 ---
 
 # govee-audit
 
-Argument: a SKU (`/govee-audit H617A`), or several.  Read `.github/skills/govee-shared.md` first.  No issue is needed; this is for model audits, compatibility PR reviews and suspected unknown problems.
+Argument: free-form: one or more SKUs, an issue, or a concern (`/govee-audit H617A`, `/govee-audit H6199 music feels wrong`).  Read `.github/skills/govee-shared.md` first.
 
-1. **Inventory:** assemble the model's guide in one pass: `.ksy`, `ModelProfile`, catalogue, tests, evidence-folder entry points and any open issues or confirmation-thread reports.
-2. **Audit:** work through the shared surface table and field checks for every revision, comparing the profile against the evidence and the schemas.  Include the profile-versus-`device_profile()` and handwritten-literal checks.
-3. **Report:** list each gap with its evidence, the affected revisions, severity and a proposed check or fix.  Separate unexamined, investigated-but-unresolved and not-hardware-qualified paths.  Suggest a release candidate where only hardware can settle a gap.
+Goal: every difference between what we deliver and what the device can do, for every hardware/firmware revision.
+
+Build the device brief, then compare it with our Kaitai, profile, catalogues and runtime paths.  Run the delivered tests first; failures are findings.  To generate our bytes without touching the checkout, build a scratch copy.  Also list capabilities we do not implement that are not non-goals, and revisions we gate off on purpose (label those as policy).
+
+Output: the differences, one by one, ranked by user impact, each with what the evidence shows, what we do, the affected revisions, and how much it matters.  Mark items only hardware can settle and items that may be non-goals.  End with what you compared and what you did not.  Private references go in the evidence folder's notes, not in the report or anything published.
+
+Run on its own, the audit is a report: the operator decides per item whether to raise an issue or fix it now.  When `govee-add` runs it, `govee-add` fixes the findings.
