@@ -231,7 +231,7 @@ async def test_transition_during_awaited_control_does_not_reinstall_state(device
     assert not c._lock.locked() and not c._control_arbiter.locked()
 
 
-@pytest.mark.parametrize("failure", ["optional", "required", "disconnect", "value", "identity"])
+@pytest.mark.parametrize("failure", ["optional", "brightness", "required", "disconnect", "value", "identity"])
 async def test_keepalive_uses_basic_required_policy(device, monkeypatch, failure):
     c, client = device
     c._keep_alive_ticks = 2
@@ -244,9 +244,13 @@ async def test_keepalive_uses_basic_required_policy(device, monkeypatch, failure
             raise asyncio.CancelledError
 
     async def write(_uuid, packet, **kwargs):
-        if packet == build_power_query(c.model):
-            c._notify_callback(None, bytearray(frame("aa0101")))
-        bad = build_brightness_query(c.model) if failure == "required" else build_white_balance_query(c.model)
+        bad = (
+            build_power_query(c.model)
+            if failure == "required"
+            else build_brightness_query(c.model)
+            if failure == "brightness"
+            else build_white_balance_query(c.model)
+        )
         if packet == bad:
             if failure == "identity":
                 c._notify_callback(None, bytearray(frame("aa21" + b"1.00.34".hex())))
@@ -254,6 +258,8 @@ async def test_keepalive_uses_basic_required_policy(device, monkeypatch, failure
             if failure == "disconnect":
                 client.is_connected = False
             raise ValueError("unexpected failure") if failure == "value" else BleakError("query failed")
+        if packet == build_power_query(c.model):
+            c._notify_callback(None, bytearray(frame("aa0101")))
 
     monkeypatch.setattr("custom_components.ha_govee_led_ble.coordinator.asyncio.sleep", tick)
     client.write_gatt_char.side_effect = write
@@ -266,7 +272,7 @@ async def test_keepalive_uses_basic_required_policy(device, monkeypatch, failure
             assert (c._client is None) is (failure in {"required", "disconnect"})
     finally:
         monkeypatch.undo()
-    if failure in {"optional", "identity"}:
+    if failure in {"optional", "brightness", "identity"}:
         assert c._client is client and c.is_on and ticks == 2
     assert not c._lock.locked() and not c._control_arbiter.locked()
 

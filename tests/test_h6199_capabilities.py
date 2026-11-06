@@ -160,11 +160,7 @@ async def test_basic_setup_survives_optional_silence(hass, monkeypatch, revision
     await coordinator._async_update_data()
     assert coordinator.available
     assert coordinator._first_refresh_done
-    assert coordinator.profile.setup_required_read_domains == {
-        ReadDomain.POWER,
-        ReadDomain.BRIGHTNESS,
-        ReadDomain.COLOUR_MODE,
-    }
+    assert coordinator.profile.setup_required_read_domains == {ReadDomain.POWER}
     optional = {
         build_white_balance_query("H6199"),
         build_blank_screen_query("H6199"),
@@ -408,17 +404,22 @@ async def test_basic_setup_with_missing_identity_uses_real_lifecycle(lifecycle):
     assert h6199_camera_controls_state(c.model, c) is CapabilityState.EVIDENCE_GAP
 
 
-@pytest.mark.parametrize("missing_domain", [None, "power", "brightness", "colour_mode"])
-async def test_issue_293_setup_requires_only_basic_readback(lifecycle, missing_domain, virtual_clock):
+@pytest.mark.parametrize("revision", ["reported", "modern"])
+@pytest.mark.parametrize(
+    "missing_domains",
+    [(), ("power",), ("brightness",), ("colour_mode",), ("brightness", "colour_mode")],
+)
+async def test_issue_293_setup_requires_fresh_power_readback(lifecycle, revision, missing_domains, virtual_clock):
     from homeassistant.helpers.update_coordinator import UpdateFailed
 
     from tests.test_h6199_native_controls import frame
 
     c, replies, clients, packets = lifecycle
-    # Reported main versions; Wi-Fi identity and Pact were not supplied.
-    c.pact_type = c.pact_code = None
-    replies[build_hardware_query("H6199")] = frame("aa0703" + b"1.00.01".hex())
-    replies[build_firmware_query("H6199")] = frame("aa06" + b"1.07.02".hex())
+    # The newer controller's exact revision was not supplied.
+    if revision == "reported":
+        c.pact_type = c.pact_code = None
+        replies[build_hardware_query("H6199")] = frame("aa0703" + b"1.00.01".hex())
+        replies[build_firmware_query("H6199")] = frame("aa06" + b"1.07.02".hex())
     basic = {
         "power": build_power_query("H6199"),
         "brightness": build_brightness_query("H6199"),
@@ -426,22 +427,51 @@ async def test_issue_293_setup_requires_only_basic_readback(lifecycle, missing_d
     }
     allowed = {build_hardware_query("H6199"), build_firmware_query("H6199"), *basic.values()}
     for query in list(replies):
-        if query not in allowed or query == basic.get(missing_domain):
+        if query not in allowed or query in {basic[domain] for domain in missing_domains}:
             del replies[query]
 
-    if missing_domain is None:
+    if "power" not in missing_domains:
         await c._async_update_data()
-        assert c.available and c.is_on and c.brightness_pct == 50
+        assert c.available and c.is_on and c._state_read_available
+        if "brightness" not in missing_domains:
+            assert c.brightness_pct == 50
+        for domain in missing_domains:
+            assert basic[domain] in packets
+        connections = len(clients)
+        await c._async_update_data()
+        assert c.available and c._state_read_available
+        assert len(clients) > connections
     else:
+        c.is_on = True
         with pytest.raises(UpdateFailed, match="unreachable at setup"):
             await c._async_update_data()
+        assert not c._state_read_available
 
-    assert c.hw_version == "1.00.01" and c.fw_version == "1.07.02"
+    if revision == "reported":
+        assert c.hw_version == "1.00.01" and c.fw_version == "1.07.02"
     assert c.subordinate_20_version is c.subordinate_21_version is None
     states = video_control_states(c.profile, c)
     assert all(
-        states[control] is CapabilityState.UNSUPPORTED
+        states[control] is not CapabilityState.SUPPORTED
         for control in ("white_balance", "relative_brightness", "blank_screen")
     )
     assert not any(packet[0] == 0x33 or packet[1] in (0xA9, 0xAE, 0x30, 0x31, 0x32, 0xA3) for packet in packets)
     assert c._client is None and clients[-1].disconnect.await_count == 1
+
+
+@pytest.mark.parametrize("domain", ["brightness", "colour_mode"])
+async def test_optional_setup_readback_remains_required_when_requested(lifecycle, domain, virtual_clock):
+    c, replies, _, _ = lifecycle
+    queries = {
+        "brightness": build_brightness_query("H6199"),
+        "colour_mode": build_colour_mode_query("H6199"),
+    }
+    del replies[queries[domain]]
+    await c._async_update_data()
+    assert c._state_read_available
+
+    assert not await c.refresh_state(
+        refresh_all=True,
+        required_domains=frozenset({ReadDomain(domain)}),
+        query_segments=False,
+    )

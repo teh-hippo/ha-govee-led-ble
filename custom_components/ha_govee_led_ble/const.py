@@ -1829,13 +1829,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
                 ReadDomain.SEGMENTS,
             }
         ),
-        setup_required_read_domains=frozenset(
-            {
-                ReadDomain.POWER,
-                ReadDomain.BRIGHTNESS,
-                ReadDomain.COLOUR_MODE,
-            }
-        ),
+        setup_required_read_domains=frozenset({ReadDomain.POWER}),
         supports_rgb=True,
         supports_color_temperature=True,
         supports_custom_effects=True,
