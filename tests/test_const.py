@@ -129,6 +129,7 @@ def test_support_quality_has_only_supported_and_experimental_states():
         "H600A",
         "H601C",
         "H6046",
+        "H6072",
         "H607C",
         "H6076",
         "H6097",
@@ -148,7 +149,7 @@ def test_support_quality_has_only_supported_and_experimental_states():
     }
     assert {
         model for model, profile in MODEL_PROFILES.items() if profile.support_quality is SupportQuality.EXPERIMENTAL
-    } == {"H6072", "H6117", "H6179", "H7025"}
+    } == {"H6117", "H6179", "H7025"}
 
 
 @pytest.mark.parametrize("pact", [(1, 1), (2, 1), (2, 2), (None, None), (3, 7)])
