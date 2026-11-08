@@ -507,8 +507,10 @@ async def test_preview_observation_stays_read_only_when_device_is_silent(coord, 
     assert not coord._control_lock.locked()
 
 
-async def test_preview_preflight_retries_one_failed_connection_path(coord, virtual_clock):
+@pytest.mark.parametrize("connected", [False, True])
+async def test_preview_preflight_retries_one_failed_connection_path(coord, virtual_clock, connected):
     partial = _c()
+    partial.is_connected = connected
     replacement = _c()
     attempts = 0
 
