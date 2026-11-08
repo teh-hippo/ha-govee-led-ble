@@ -604,8 +604,9 @@ async def test_failed_poll_revokes_read_availability_without_erasing_advertiseme
     assert coord.available is advertised
 
 
-def test_disconnect_callback_clears_only_current_unintentional_client(coord):
+async def test_disconnect_callback_clears_only_current_unintentional_client(coord):
     client = _c()
+    client.is_connected = False
     coord._client = client
     coord._notify_started_monotonic = 1
     coord._last_rx_monotonic = 2
@@ -619,11 +620,111 @@ def test_disconnect_callback_clears_only_current_unintentional_client(coord):
     assert coord._last_rx_monotonic is None
     assert coord._expected_state == {}
     listeners.assert_called_once_with()
+    await coord.hass.async_block_till_done(wait_background_tasks=True)
+    client.disconnect.assert_awaited_once_with()
 
     replacement = _c()
     coord._client = replacement
     coord._disconnected_callback(client)
     assert coord._client is replacement
+
+
+async def test_disconnect_releases_client_with_dropped_link(coord):
+    client = _c()
+    client.is_connected = False
+    coord._client = client
+
+    await coord.disconnect()
+
+    client.disconnect.assert_awaited_once_with()
+    assert coord._client is None
+
+
+async def test_retired_client_release_does_not_clear_replacement_or_duplicate_cleanup(coord):
+    started = asyncio.Event()
+    proceed = asyncio.Event()
+    client = _c()
+    client.is_connected = False
+
+    async def release():
+        started.set()
+        await proceed.wait()
+
+    client.disconnect.side_effect = release
+    coord._client = client
+    coord._disconnected_callback(client)
+    await started.wait()
+    replacement = _c()
+    coord._client = replacement
+    coord._notification_token = token = object()
+    coord._disconnected_callback(client)
+    proceed.set()
+    await coord.hass.async_block_till_done(wait_background_tasks=True)
+
+    client.disconnect.assert_awaited_once_with()
+    assert coord._client is replacement
+    assert coord._notification_token is token
+    assert not coord._client_release_tasks
+
+
+async def test_entry_unload_drains_pending_retired_client_release(coord):
+    started = asyncio.Event()
+    proceed = asyncio.Event()
+
+    async def release():
+        started.set()
+        await proceed.wait()
+
+    client = _c(disconnect=AsyncMock(side_effect=release))
+    client.is_connected = False
+    coord._client = client
+    coord._disconnected_callback(client)
+    await started.wait()
+    release_task = next(iter(coord._client_release_tasks))
+    owned_task = coord.config_entry.async_create_background_task(coord.hass, asyncio.Event().wait(), "test entry work")
+    unload = asyncio.create_task(coord.config_entry._async_process_on_unload(coord.hass))
+    try:
+        await asyncio.sleep(0)
+        assert owned_task.cancelling()
+        assert not release_task.cancelling()
+        assert not unload.done()
+    finally:
+        proceed.set()
+        await unload
+
+    assert owned_task.cancelled()
+    assert release_task.done() and not release_task.cancelled()
+    client.disconnect.assert_awaited_once_with()
+    assert not coord._client_release_tasks
+    assert coord._client is None and coord._shutdown_requested
+
+
+@pytest.mark.parametrize("failure", [BleakError("release failed"), "timeout"])
+async def test_retired_client_release_failure_is_bounded_and_drained(coord, virtual_clock, failure):
+    disconnect = AsyncMock(side_effect=failure if isinstance(failure, Exception) else asyncio.Event().wait)
+    client = _c(disconnect=disconnect)
+    client.is_connected = False
+    coord._client = client
+    coord._disconnected_callback(client)
+    await coord.hass.async_block_till_done(wait_background_tasks=True)
+
+    disconnect.assert_awaited_once_with()
+    assert coord._client is None and not coord._client_release_tasks
+
+
+async def test_reconnect_releases_retained_disconnected_client(coord):
+    client = _c()
+    client.is_connected = False
+    coord._client = client
+    with (
+        patch(f"{M}.BLEDeviceResolver.async_resolve", return_value=None),
+        patch(f"{M}.asyncio.sleep", new_callable=AsyncMock),
+        pytest.raises(BleakError, match="not found"),
+    ):
+        await coord._ensure_connected()
+
+    client.disconnect.assert_awaited_once_with()
+    assert coord._client is None
 
 
 async def test_disconnect(coord, h6199):

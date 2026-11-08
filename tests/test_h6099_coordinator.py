@@ -326,7 +326,7 @@ async def test_ic_reset_precedes_reconnect_await(hass, monkeypatch):
     device.profile = replace(device.profile, physical_ic_count=60)
     device.subordinate_21_version = "1.00.11"
     device.installation_direction, device.camera_health = 4, "healthy"
-    device._client = MagicMock(is_connected=False)
+    device._client = client = MagicMock(is_connected=False, disconnect=AsyncMock())
 
     async def connect(*args, **kwargs):
         assert device.profile.physical_ic_count is None
@@ -338,6 +338,7 @@ async def test_ic_reset_precedes_reconnect_await(hass, monkeypatch):
     monkeypatch.setattr(f"{M}.async_establish_ble_connection", connect)
     with pytest.raises(BleakError, match="offline"):
         await device._ensure_connected()
+    client.disconnect.assert_awaited_once_with()
     assert device.control_write_attempts == 0
 
 

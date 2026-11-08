@@ -226,6 +226,7 @@ class GoveeBLECoordinator(
         self._cancel_disconnect: CALLBACK_TYPE | None = None
         self._disconnect_generation = 0
         self._intentional_disconnect_client: BleakClient | None = None
+        self._client_release_tasks: set[asyncio.Task[None]] = set()
         self.fresh_service_discovery_forced = False
         self.last_connected_at: str | None = None
         self.last_disconnected_at: str | None = None
@@ -808,6 +809,9 @@ class GoveeBLECoordinator(
                 await self.disconnect()
         except TimeoutError:
             _LOGGER.warning("Timed out cleaning up the Govee %s connection", self.model)
+        finally:
+            if self._client_release_tasks:
+                await asyncio.gather(*(asyncio.shield(task) for task in tuple(self._client_release_tasks)))
 
     async def _async_update_data(self) -> dict[str, Any]:
         first_refresh = not self._first_refresh_done
@@ -937,7 +941,9 @@ class GoveeBLECoordinator(
         if self._client and self._client.is_connected:
             await self._disconnect_locked()
         elif self._client is not None:
-            self._clear_client_state(self._client)
+            client = self._client
+            self._clear_client_state(client)
+            await asyncio.shield(self._release_retired_client(client))
         self._require_not_shutdown()
         self._require_not_dreamview_claimed()
         force_fresh_services = self.fresh_services_required
@@ -1088,8 +1094,22 @@ class GoveeBLECoordinator(
         if self._client is not client or self._intentional_disconnect_client is client:
             return
         self._clear_client_state(client)
+        self._release_retired_client(client)
         self._log_availability_transition()
         self.async_update_listeners()
+
+    def _release_retired_client(self, client: BleakClient) -> asyncio.Task[None]:
+        async def release() -> None:
+            try:
+                async with asyncio.timeout(VALIDATION_DISCONNECT_TIMEOUT):
+                    await client.disconnect()
+            except Exception as err:
+                _LOGGER.debug("Error releasing retired Govee %s client: %s", self.model, type(err).__name__)
+
+        task = self.hass.async_create_background_task(release(), f"{DOMAIN} release retired client {self.address}")
+        self._client_release_tasks.add(task)
+        task.add_done_callback(self._client_release_tasks.discard)
+        return task
 
     def _clear_client_state(self, client: BleakClient | None) -> None:
         if self._client is not client:
@@ -2644,13 +2664,6 @@ class GoveeBLECoordinator(
             raise RuntimeError("Home Assistant is stopping")
         deadline = asyncio.get_running_loop().time() + timeout
 
-        async def disconnect_failed_client(client: BleakClient) -> None:
-            try:
-                async with asyncio.timeout_at(deadline):
-                    await client.disconnect()
-            except (BleakError, TimeoutError) as err:
-                _LOGGER.debug("Disconnect of failed BLE client did not complete: %s", type(err).__name__)
-
         attempt_timeout = timeout / 2
         for attempt in range(2):
             cleanup_task: asyncio.Task[None] | None = None
@@ -2667,13 +2680,14 @@ class GoveeBLECoordinator(
                             except BleakError, TimeoutError, asyncio.CancelledError:
                                 failed_client = self._client
                                 self._clear_client_state(failed_client)
-                                if failed_client is not None and failed_client.is_connected:
-                                    cleanup_task = self.hass.async_create_task(disconnect_failed_client(failed_client))
+                                if failed_client is not None:
+                                    cleanup_task = self._release_retired_client(failed_client)
                                 raise
                 return
             except BleakError, TimeoutError:
                 if cleanup_task is not None:
-                    await asyncio.shield(cleanup_task)
+                    async with asyncio.timeout_at(deadline):
+                        await asyncio.shield(cleanup_task)
                 if attempt == 1 or asyncio.get_running_loop().time() >= deadline:
                     raise
 
@@ -3276,7 +3290,7 @@ class GoveeBLECoordinator(
                     self._clear_client_state(client)
                     await async_clear_gatt_cache(client)
             finally:
-                if client and client.is_connected:
+                if client is not None:
                     if clear_cache:
                         try:
                             async with asyncio.timeout(VALIDATION_DISCONNECT_TIMEOUT):
