@@ -2,6 +2,12 @@
 
 A release candidate (RC) is a prerelease package built from any branch for live testing on hardware.  RCs never move GitHub's latest release, and feature branches keep the stable source version.
 Agents and contributors can request one whenever testing on a device needs it; use an RC, not SSH deployment or copying files.
+Stable releases are [manually published, roughly weekly](../CONTRIBUTING.md#releases); RCs are opt-in and do not require waiting for a stable release.
+
+Invoking `govee-add` or `govee-fix` authorises building and publishing its RC with the workflow's generic candidate notes, without another approval prompt.
+Publish as soon as the reviewed final commit has passed `make check` and is pushed, without waiting for merge.
+Other RC requests still require approval.
+This does not authorise stable publishing, hardware installation or restarts, or posting issue replies; show reply drafts for approval before posting.
 
 ## Building one
 
@@ -10,6 +16,10 @@ Only `publish` is required.  Left blank, `target_sha` is the branch head, `versi
 Set `publish=true` to create the tag and prerelease, which is what HACS installs.  `publish=false` is a dry run: it uploads the package, checksum and metadata as a run artifact (`gh run download <run id>`) without releasing.
 Publish another RC for later fixes rather than reusing a tag or hotpatching an installation.
 The workflow delegates to a pinned [shared prerelease workflow](https://github.com/teh-hippo/common-repo-configs), which stamps only the artifact manifest (`7.13.1-rc.2.h6102` becomes `7.13.1rc2`).
+
+For `govee-add` and `govee-fix`, set `target_sha` to the exact reviewed and checked commit and `publish=true`.
+Wait for the workflow to succeed, then verify the GitHub prerelease points to that SHA and contains `ha_govee_led_ble.zip` and `ha_govee_led_ble.zip.sha256` before reporting the exact RC tag as available.
+An artefact-only dry run is not a published RC.
 
 ## Qualifying on hardware
 

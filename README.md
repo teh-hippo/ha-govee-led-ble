@@ -88,6 +88,9 @@ H6199 group replacement and deletion require a matching device acceptance reply 
 
 ## Installation
 
+Stable releases are [published manually, roughly weekly](CONTRIBUTING.md#releases), with urgent fixes sooner when needed.
+Opt into [release candidates](docs/release-candidates.md) to test changes before the next stable release.
+
 ### HACS (recommended)
 
 [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=teh-hippo&repository=ha-govee-led-ble&category=integration)

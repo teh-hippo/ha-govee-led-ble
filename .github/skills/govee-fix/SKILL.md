@@ -3,7 +3,7 @@ name: govee-fix
 description: >-
   Fix a user-reported Govee BLE problem. Give it an issue number: it compares how we handle the
   reported behaviour with the device evidence, fixes the difference, and hands the reporter a release
-  candidate to test.
+  candidate to test, publishing it without another approval prompt after review and passing checks.
 license: MIT
 ---
 
@@ -20,7 +20,7 @@ Task list:
 1. Report the divergence: what the evidence shows, what we do, where.
 2. Fix it, with a regression test.
 3. Review, commit, `make check`, PR (`Fixes #<issue>`).
-4. Build a release candidate (`docs/release-candidates.md`).
+4. Immediately build and publish a release candidate from the exact reviewed, checked and pushed commit (`docs/release-candidates.md`), without another approval prompt or waiting for merge.  Use `publish=true` and the generic candidate notes; verify the successful run, target SHA and prerelease ZIP/checksum before reporting it as available.
 5. Draft a short reply for the reporter and show it to the operator; post it only once they approve:
-   > Thanks for the report. Could you install `<RC tag>` and let me know whether `<the problem>` is fixed?
+   > `<the problem>` should be fixed in `<RC tag>`. Install it and confirm whether it works.
 6. Stop.  `govee-resolve` closes the issue once the reporter confirms.

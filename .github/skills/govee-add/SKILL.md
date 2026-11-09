@@ -3,7 +3,7 @@ name: govee-add
 description: >-
   Add complete Experimental support for a new Govee BLE model. Give it a SKU (and the support-request
   issue if there is one): it builds the device brief from the device evidence, implements full support,
-  audits itself, opens the PR, merges it and tells the requester.
+  audits itself, opens the PR, publishes an immediate RC for testing, merges the PR and drafts a reply.
 license: MIT
 ---
 
@@ -11,7 +11,7 @@ license: MIT
 
 Argument: a SKU (`/govee-add H6076`), optionally the support-request issue.  Read `.github/skills/govee-shared.md` first.
 
-Goal: complete Experimental support, merged and released.
+Goal: complete Experimental support, an immediate published RC for testing, and a merged PR queued for the next manual stable release.
 
 Task list:
 
@@ -20,9 +20,12 @@ Task list:
 3. Implement full support; cover every row of the checklist below or say why a row does not apply.
 4. Run `govee-audit` on the result.  Fix each finding as a fixup to the support commit, re-review, and repeat until the audit is clean.
 5. Review, commit, `make check`, PR (references the request and the confirmation issue).
-6. When the PR is green, merge it to `master`.
-7. Once the release is published, reply on the request (not the confirmation issue), then close the request:
-   > Support for `<SKU>` has been added into v`<version>` in an experimental state. @`<requester>`, let me know how it goes and pop feedback on #`<confirmation issue>` when you can.
+6. Immediately build and publish an RC from the exact reviewed, checked and pushed commit (`docs/release-candidates.md`), without another approval prompt or waiting for merge.  Use `publish=true` and the generic candidate notes; verify the successful run, target SHA and prerelease ZIP/checksum before reporting it as available.
+7. Draft a short reply on the request (not the confirmation issue) with the exact RC tag and confirmation-issue link.  Show it to the operator and post only once approved:
+   > Experimental support for `<SKU>` is available in `<RC tag>`. Install it to test, then report results on #`<confirmation issue>`.
+8. When the PR is green, merge it to `master`.  This does not publish a stable release.
+9. Leave the support request open until the next manual stable release includes it.  Once that release is published, draft a reply, show it for approval, then post and close the request:
+   > Experimental support for `<SKU>` is included in v`<version>`. Report hardware results on #`<confirmation issue>`.
 
 ## Confirmation issue
 

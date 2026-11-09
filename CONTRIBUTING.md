@@ -61,3 +61,27 @@ Decode-only Kaitai documentation of these is fine; runtime control is not.
 
 Run `make protocol` after a fresh clone, a new worktree or any `.ksy` change, and `make check` before finishing.
 Release candidates for hardware testing can be built from any branch: see [docs/release-candidates.md](docs/release-candidates.md).
+
+## Releases
+
+Reviewed changes continue to merge into `master`, but merging does not publish a stable release.
+Maintainers publish stable releases manually, roughly weekly when meaningful changes are ready; urgent fixes can ship sooner.
+There is no scheduled release or enforced interval.
+
+Run **Release** from GitHub Actions on `master`, or:
+
+```bash
+gh workflow run release.yml --ref master
+```
+
+The workflow selects the `master` commit at dispatch.
+Its latest applicable **Validate** run must have completed successfully for that exact SHA on `master`, from a push or manual dispatch, not a PR.
+If validation is missing or unfinished, run or wait for **Validate** on `master`, then dispatch **Release** again.
+If `master` advances before publishing, validate the new head and dispatch **Release** again rather than releasing the stale commit.
+Python Semantic Release determines the version and release notes from unreleased commits; without release-bearing commits, no release is published.
+Stable releases retain the verified ZIP, checksum and `latest` tag.
+
+An RC is not mandatory before every stable release.
+New-model and bug-fix skill deliveries publish an immediate RC after review, passing `make check` and pushing the final commit, without another approval prompt or waiting for merge.
+See [release candidates](docs/release-candidates.md) for publication and hardware qualification.
+Stable releases use validated `master` and normal Semantic Release versioning, not an unchanged promotion of an RC tag or archive.

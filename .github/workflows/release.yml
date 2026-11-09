@@ -1,10 +1,7 @@
 name: Release
 
 on:
-  workflow_run:
-    workflows: [Validate]
-    types: [completed]
-    branches: [master]
+  workflow_dispatch:
 
 concurrency:
   group: release
@@ -14,31 +11,57 @@ jobs:
   release:
     name: Semantic Release
     runs-on: ubuntu-latest
-    if: >-
-      github.event.workflow_run.conclusion == 'success' &&
-      !startsWith(github.event.workflow_run.head_commit.message, 'chore(release): ')
     permissions:
+      actions: read
       contents: write
       id-token: write
     steps:
+      - name: Require validated master commit
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "$GITHUB_REF" != "refs/heads/master" ]]; then
+            echo "::error::Stable releases must be dispatched from master."
+            exit 1
+          fi
+          validation_url="$(gh api --method GET \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/validate.yml/runs" \
+            -f branch=master -f head_sha="$GITHUB_SHA" -f per_page=100 \
+            --paginate --slurp |
+            jq -r '[.[].workflow_runs[] | select(.event == "push" or .event == "workflow_dispatch")] |
+              max_by(.id) |
+              if .status == "completed" and .conclusion == "success" then .html_url else empty end')"
+          if [[ -z "$validation_url" ]]; then
+            echo "::error::The latest master Validate run for $GITHUB_SHA must complete successfully. Wait for it or dispatch Validate, then retry Release."
+            exit 1
+          fi
+          echo "Validated commit: $validation_url"
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
           token: ${{ secrets.RELEASE_TOKEN }}
 
       - name: Attach validated commit to master
         env:
-          VALIDATED_SHA: ${{ github.event.workflow_run.head_sha }}
+          VALIDATED_SHA: ${{ github.sha }}
         run: git checkout -B master "$VALIDATED_SHA"
 
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
 
       - name: Python Semantic Release
         id: semantic_release
+        shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
+          remote_sha="$(git ls-remote --exit-code origin refs/heads/master | cut -f 1)"
+          if [[ "$remote_sha" != "$GITHUB_SHA" ]]; then
+            echo "::error::master has advanced since dispatch. Validate its new head and dispatch Release again."
+            exit 1
+          fi
           uvx \
             --from python-semantic-release==10.6.1 \
             --with gitpython==3.1.59 \
