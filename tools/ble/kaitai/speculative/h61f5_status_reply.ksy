@@ -11,8 +11,9 @@ doc: |
   replies with 20-byte XOR-checksummed AA frames carrying power, percentage
   brightness, active colour mode, firmware and hardware version strings,
   subordinate version strings (AA 20 / AA 21), physical IC count (AA 40),
-  gradual-change boolean register (AA A3), and up to ten logical segments across
-  three four-record AA A5 pages (4+4+2 uncut; narrowed by AA 40 on cut strips).
+  gradual-change boolean register (AA A3), and up to twenty logical segments
+  across five four-record AA A5 pages. The nominal layout is ten sections
+  (4+4+2); AA 40 supplies the installed count after cuts or supported extensions.
   Static colour replies (0x15) carry the gradual flag and big-endian Kelvin;
   scene (0x04) and DIY (0x0a) replies carry little-endian selectors; music
   replies (0x13) carry the mode ID, sensitivity, and selector settings for
@@ -43,7 +44,7 @@ seq:
         'aa_domain::subordinate_21': version_body
         'aa_domain::physical_ic_count': physical_ic_count_body
         'aa_domain::multi_effect': multi_effect_body
-        'aa_domain::segments': govee_segment_page(10, 4, false)
+        'aa_domain::segments': govee_segment_page(20, 4, false)
   - id: checksum
     type: u1
 enums:

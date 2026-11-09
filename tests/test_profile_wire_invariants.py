@@ -476,9 +476,11 @@ def test_declared_segment_paging_matches_the_grammar_it_reads_through(model: str
         body = result.parsed.body
         offset = (group - 1) * profile.segment_group_size
         meaningful = min(profile.segment_group_size, profile.segment_count - offset)
-        assert int(body.num_segments) == len(body.segments) == meaningful, (
+        capacity = profile.segment_count_capacity or profile.segment_count
+        envelope_count = min(profile.segment_group_size, capacity - offset)
+        assert int(body.num_segments) == len(body.segments) == envelope_count and meaningful <= envelope_count, (
             f"{model} ({profile.name}) page {group}: root reads {body.num_segments} records "
-            f"where the coordinator requires {meaningful}"
+            f"where the qualified envelope holds {envelope_count} and the installed layout requires {meaningful}"
         )
         if _segment_domain_byte(profile) == 0xA2:
             assert len(body.segments) * 3 + len(body.unknown_tail) == 16

@@ -572,7 +572,10 @@ class _NotificationMixin(_CoordinatorBase):
             if self._client is not None and self._client.is_connected:
                 self._physical_ic_count_confirmed = True
             updated = profile_with_physical_ic_count(
-                self.profile, count, segment_count_ceiling=get_profile(self.model).segment_count
+                self.profile,
+                count,
+                segment_count_ceiling=get_profile(self.model).segment_count_capacity
+                or get_profile(self.model).segment_count,
             )
             if updated != self.profile:
                 topology_changed = updated.segment_count != self.profile.segment_count

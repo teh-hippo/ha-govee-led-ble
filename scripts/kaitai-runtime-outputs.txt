@@ -105,6 +105,7 @@ h1a42_status_reply.py
 h61f5_music_parameters.py
 h61f5_music_write.py
 h61f5_status_reply.py
+h61f5_extended_static_write.py
 h66a0_music_parameters.py
 h66a0_video_command.py
 h66a0_video_status.py

@@ -60,7 +60,7 @@ types:
           cases:
             'multi_sub::scene': command_write::scene_activate
             'multi_sub::diy': govee_common::diy_selector
-            'multi_sub::static': command_write::static_cmd
+            'multi_sub::static': command_write::static_cmd(false)
             'multi_sub::legacy_static': legacy_colour
   legacy_colour:
     seq:

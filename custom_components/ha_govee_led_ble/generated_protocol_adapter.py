@@ -17,6 +17,7 @@ from .protocol_core import (
     _BLANK_SCREEN_SAME_TONE_SECONDS,
     _COMMAND_ACK_ROOTS,
     _COMMAND_ROOTS,
+    _EXTENDED_STATIC_ROOTS,
     _H6076_ACK_ROOTS,
     _MUSIC_WRITE_ROOTS,
     _STATUS_QUERY_ROOTS,
@@ -30,6 +31,7 @@ from .protocol_core import (
     H60a6Control,
     H60a6EffectFrame,
     H60aBulk,
+    H61f5ExtendedStaticWrite,
     H61f5MusicWrite,
     H66a0MusicWrite,
     H66a0VideoCommand,
@@ -165,7 +167,11 @@ def parse_command_result(
             if getattr(music.parsed.selector.mode_id, "name", None) is None:
                 return ProtocolParseResult(None, music.parser, ProtocolParseRejection.SEMANTIC_REJECTED)
             return music
-    result = _parse_xor_frame(frame, effective_profile.command_grammar, _COMMAND_ROOTS)
+    extended_root = _extended_static_root(effective_profile)
+    if extended_root is not None and frame.startswith(bytes(extended_root[1](None).static_prefix)):
+        result = _parse_xor_frame(frame, effective_profile.extended_static_grammar, _EXTENDED_STATIC_ROOTS)
+    else:
+        result = _parse_xor_frame(frame, effective_profile.command_grammar, _COMMAND_ROOTS)
     if result.parsed is not None and (
         _has_unknown_discriminator(result.parsed, result.parser or "")
         or (
@@ -455,7 +461,11 @@ def _check_command_packet(frame: bytes, profile: ModelProfile) -> bool:
     """Ordinary command writes."""
     from .light_commands import parse_static_write
 
-    command = _parse_xor_frame(frame, profile.command_grammar, _COMMAND_ROOTS).parsed
+    result = parse_command_result(frame, profile=profile)
+    command = result.parsed
+    extended_root = _extended_static_root(profile)
+    if command is None and extended_root is not None and result.parser == extended_root[0]:
+        raise ValueError("Invalid extended static command")
     if command is not None:
         operation = getattr(command.opcode, "name", "")
         if operation == "zone_enable" and profile.setting_grammar == "H1771":
@@ -1656,6 +1666,11 @@ def build_brightness(percent: int, model: str = "H617A", *, profile: ModelProfil
     return _serialize_xor(root)
 
 
+def _extended_static_root(profile: ModelProfile) -> tuple[str, Any] | None:
+    root = _EXTENDED_STATIC_ROOTS.get(profile.extended_static_grammar or "")
+    return root if root is not None and profile.segment_count >= root[1]().minimum_segment_count else None
+
+
 def _build_h617a_static_colour(
     mask: int,
     *,
@@ -1664,22 +1679,35 @@ def _build_h617a_static_colour(
     preview: tuple[int, int, int],
     root_type: Any = CommandWrite,
 ) -> bytes:
-    component = CommandWrite if root_type in {H6072CommandWrite, H607cCommandWrite} else root_type
+    extended = root_type is H61f5ExtendedStaticWrite
+    component = (
+        CommandWrite if root_type in {H6072CommandWrite, H607cCommandWrite, H61f5ExtendedStaticWrite} else root_type
+    )
     root = root_type()
     root.header = b"\x33"
     root.opcode = root_type.CommandOp.multi
     multi = _child(root_type.MultiCmd, root)
     multi.sub = root_type.MultiSub.static
-    static = _child(component.StaticCmd, multi)
+    static = (
+        component.StaticCmd(extended, None, multi, multi._root)
+        if component is CommandWrite
+        else _child(component.StaticCmd, multi)
+    )
     static.static_sub = 1
-    colour = _child(component.StaticColor, static)
+    colour = (
+        component.StaticColor(extended, None, static, static._root)
+        if component is CommandWrite
+        else _child(component.StaticColor, static)
+    )
     colour.rgb_direct = _rgb(colour, *direct)
     colour.kelvin = kelvin
     colour.rgb_preview = _rgb(colour, *preview)
-    segment_mask = _child(component.SegmentMask, colour)
+    segment_mask = _child(component.ExtendedSegmentMask if extended else component.SegmentMask, colour)
     segment_mask.bits = mask
     colour.mask = segment_mask
-    if root_type is H7020CommandWrite:
+    if component is CommandWrite:
+        colour.unknown_tail = bytes(colour.tail_size)
+    elif root_type is H7020CommandWrite:
         colour.unknown_tail = bytes(3)
     elif root_type is H1771CommandWrite:
         colour.unknown_tail = bytes(5)
@@ -1811,7 +1839,7 @@ def build_segment_colour(
         direct=(red, green, blue),
         kelvin=0,
         preview=(0, 0, 0),
-        root_type=_COMMAND_ROOTS[resolved][1],
+        root_type=(_extended_static_root(profile) or _COMMAND_ROOTS[resolved])[1],
     )
 
 
@@ -1864,7 +1892,7 @@ def build_colour_temperature(
         direct=KELVIN_DIRECT_RGB,
         kelvin=value,
         preview=preview,
-        root_type=_COMMAND_ROOTS[resolved][1],
+        root_type=(_extended_static_root(profile) or _COMMAND_ROOTS[resolved])[1],
     )
 
 
@@ -1876,7 +1904,8 @@ def build_segment_brightness(
     profile: ModelProfile | None = None,
 ) -> bytes:
     value = max(0, min(100, percent))
-    resolved = (profile or get_profile(model)).command_grammar
+    profile = profile or get_profile(model)
+    resolved = profile.command_grammar
     if resolved == "H6179":
         raise ValueError("H6179 has no segment-brightness operation")
     if resolved in {"H6046", "H6099", "H6199"}:
@@ -1898,21 +1927,34 @@ def build_segment_brightness(
 
     if resolved not in {"H1771", "H6072", "H607C", "H617A", "H7020"}:
         raise ValueError(f"{model} has no generated segment-brightness grammar")
-    root_type = _COMMAND_ROOTS[resolved][1]
+    root_type = (_extended_static_root(profile) or _COMMAND_ROOTS[resolved])[1]
     root = root_type()
     root.header = b"\x33"
     root.opcode = root_type.CommandOp.multi
     multi = _child(root_type.MultiCmd, root)
     multi.sub = root_type.MultiSub.static
-    component = CommandWrite if root_type in {H6072CommandWrite, H607cCommandWrite} else root_type
-    static = _child(component.StaticCmd, multi)
+    extended = root_type is H61f5ExtendedStaticWrite
+    component = (
+        CommandWrite if root_type in {H6072CommandWrite, H607cCommandWrite, H61f5ExtendedStaticWrite} else root_type
+    )
+    static = (
+        component.StaticCmd(extended, None, multi, multi._root)
+        if component is CommandWrite
+        else _child(component.StaticCmd, multi)
+    )
     static.static_sub = 2
-    brightness = _child(component.StaticBrightness, static)
+    brightness = (
+        component.StaticBrightness(extended, None, static, static._root)
+        if component is CommandWrite
+        else _child(component.StaticBrightness, static)
+    )
     brightness.percent = value
-    segment_mask = _child(component.SegmentMask, brightness)
+    segment_mask = _child(component.ExtendedSegmentMask if extended else component.SegmentMask, brightness)
     segment_mask.bits = mask
     brightness.mask = segment_mask
-    if root_type is H7020CommandWrite:
+    if component is CommandWrite:
+        brightness.unknown_tail = bytes(brightness.tail_size)
+    elif root_type is H7020CommandWrite:
         brightness.unknown_tail = bytes(10)
     elif root_type is H1771CommandWrite:
         brightness.unknown_tail = bytes(12)

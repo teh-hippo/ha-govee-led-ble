@@ -103,6 +103,7 @@ speculative/h1a42_status_reply
 speculative/h1a42_music_write
 speculative/h1a42_music_parameters
 speculative/h61f5_status_reply
+speculative/h61f5_extended_static_write
 speculative/h61f5_music_write
 speculative/h61f5_music_parameters
 h6199_command_write

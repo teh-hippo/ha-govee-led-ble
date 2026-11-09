@@ -99,6 +99,52 @@ async def test_configuration_change_invalidates_prepared_masks_at_physical_bound
     assert c.segment_state_source == "initial"
 
 
+@pytest.mark.parametrize("device", ["H61F5"], indirect=True)
+@pytest.mark.parametrize(("reported_count", "expected_count"), [(21, 5), (80, 16)])
+@pytest.mark.parametrize("overlap", [False, True])
+async def test_reported_layout_change_while_waiting_invalidates_prepared_upper_masks(
+    device, monkeypatch, reported_count, expected_count, overlap
+):
+    c, client, receive = device
+    receive(None, bytearray(_packet(0xAA, 0x40, [0, 100])))
+    client.write_gatt_char = AsyncMock()
+    queued = asyncio.Event()
+    concurrent = None
+
+    async def competing_transaction():
+        queued.set()
+        async with c.async_mask_transaction():
+            assert c._has_mask_transaction()
+            assert c.profile.segment_count == expected_count
+
+    try:
+        async with c.async_mask_transaction():
+            packet = build_segment_brightness([1, 20], 37, c.model, profile=c.profile)
+
+            async def wait():
+                nonlocal concurrent
+                if overlap:
+                    concurrent = asyncio.create_task(competing_transaction())
+                    await queued.wait()
+                    assert not concurrent.done()
+                    assert c._has_mask_transaction()
+                receive(None, bytearray(_packet(0xAA, 0x40, [0, reported_count])))
+
+            monkeypatch.setattr(c._reply_gate, "wait", AsyncMock(side_effect=wait))
+            with pytest.raises(ValueError, match="layout changed"):
+                await c._async_write_packet(client, packet, arm_expected=True)
+        if concurrent is not None:
+            await concurrent
+    finally:
+        if concurrent is not None:
+            concurrent.cancel()
+            with suppress(asyncio.CancelledError):
+                await concurrent
+    client.write_gatt_char.assert_not_awaited()
+    assert c.profile.segment_count == expected_count and c.control_write_attempts == 0
+    assert c._mask_transaction is None
+
+
 @pytest.mark.parametrize("device", ["H7020"], indirect=True)
 @pytest.mark.parametrize("strings", [1, 2])
 async def test_configured_pages_complete_only_current_geometry(device, strings):

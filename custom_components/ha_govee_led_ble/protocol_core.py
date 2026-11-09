@@ -21,6 +21,13 @@ CommandWrite = cast(
     import_module("custom_components.ha_govee_led_ble.generated_protocol.command_write").CommandWrite,
 )
 
+H61f5ExtendedStaticWrite = cast(
+    Any,
+    import_module(
+        "custom_components.ha_govee_led_ble.generated_protocol.h61f5_extended_static_write"
+    ).H61f5ExtendedStaticWrite,
+)
+
 H1771CommandWrite = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.h1771_command_write").H1771CommandWrite,
@@ -712,6 +719,11 @@ _COMMAND_ROOTS = {
 }
 
 
+_EXTENDED_STATIC_ROOTS = {
+    "H61F5": ("h61f5_extended_static_write", H61f5ExtendedStaticWrite),
+}
+
+
 _STATUS_QUERY_ROOTS = {
     "H1771": ("h1771_status_query", H1771StatusQuery),
     "H600A": ("status_query", StatusQuery),
@@ -763,6 +775,8 @@ _COMMAND_ACK_ROOTS = {
 def _has_unknown_discriminator(parsed: Any, parser: str) -> bool:
     if getattr(parsed.opcode, "name", None) is None:
         return True
+    if parser == "h61f5_extended_static_write":
+        return not parsed.is_static
     if parser in {"command_write", "h1771_command_write", "h7020_command_write", "h607c_command_write"} and (
         parsed.opcode.name == "multi"
     ):

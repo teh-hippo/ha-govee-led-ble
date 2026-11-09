@@ -11,8 +11,9 @@ doc: |
   replies with 20-byte XOR-checksummed AA frames carrying power, percentage
   brightness, active colour mode, firmware and hardware version strings,
   subordinate version strings (AA 20 / AA 21), physical IC count (AA 40),
-  gradual-change boolean register (AA A3), and five logical segments across two
-  four-record AA A5 pages (4+1).  Static colour replies (0x15) carry the gradual
+  gradual-change boolean register (AA A3), and up to five logical segments
+  across two four-record AA A5 pages (4+1 nominal; narrowed by AA 40 on cut
+  strips). Static colour replies (0x15) carry the gradual
   flag and big-endian Kelvin; scene (0x04) and DIY (0x0a) replies carry
   little-endian selectors; music replies (0x13) carry the mode ID, sensitivity,
   and selector settings for legacy modes.

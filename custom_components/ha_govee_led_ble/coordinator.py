@@ -702,7 +702,7 @@ class GoveeBLECoordinator(
                 profile = profile_with_physical_ic_count(
                     profile,
                     self._observed_physical_ic_count,
-                    segment_count_ceiling=profile.segment_count,
+                    segment_count_ceiling=declared.segment_count_capacity or declared.segment_count,
                 )
             elif (
                 profile is get_profile(self.model)
@@ -1265,7 +1265,11 @@ class GoveeBLECoordinator(
         self._validate_authorized_packet(packet, packet_validator)
         if (
             arm_expected
-            and self.profile.configured_string_counts
+            and (
+                self.profile.configured_string_counts
+                or self.profile.segment_count_ic_divisor is not None
+                and self._mask_transaction is not None
+            )
             and parse_static_write(packet, self.model, profile=self.profile) is not None
         ):
             self._require_mask_transaction()
@@ -2021,13 +2025,15 @@ class GoveeBLECoordinator(
         return self._mask_transaction == (asyncio.current_task(), self._notification_token, self._profile_generation)
 
     def _require_mask_transaction(self) -> None:
-        if not self._configured_strings_confirmed or not self._has_mask_transaction():
-            raise ValueError("Configured bulb layout changed or is unknown; refresh and retry")
+        if (
+            self.profile.configured_string_counts and not self._configured_strings_confirmed
+        ) or not self._has_mask_transaction():
+            raise ValueError("Device layout changed or is unknown; refresh and retry")
 
     @asynccontextmanager
     async def async_mask_transaction(self) -> AsyncIterator[None]:
-        """Confirm configuration once before building a mask-dependent request."""
-        if not self.profile.configured_string_counts:
+        """Bind mask-dependent requests to one installed layout and subscription."""
+        if not self.profile.configured_string_counts and self.profile.segment_count_ic_divisor is None:
             yield
             return
         if self._mask_transaction is not None and self._mask_transaction[0] is asyncio.current_task():
@@ -2037,8 +2043,12 @@ class GoveeBLECoordinator(
         intent = self._control_arbiter.current_task_intent or ControlIntent.USER
         async with async_control_intent(self, intent):
             async with self._lock:
-                client = await self._ensure_connected()
-                if not await self._read_configured_strings(client, deadline=time.monotonic() + STATE_QUERY_TIMEOUT):
+                client = self._client
+                if self.profile.configured_string_counts or client is None or not client.is_connected:
+                    client = await self._ensure_connected()
+                if self.profile.configured_string_counts and not await self._read_configured_strings(
+                    client, deadline=time.monotonic() + STATE_QUERY_TIMEOUT
+                ):
                     raise ValueError("Cannot confirm configured bulb layout; refresh and retry")
             self._mask_transaction = (asyncio.current_task(), self._notification_token, self._profile_generation)
             try:
