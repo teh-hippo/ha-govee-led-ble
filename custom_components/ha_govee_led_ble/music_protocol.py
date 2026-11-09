@@ -182,7 +182,7 @@ _MUSIC_STYLE_CODES_BY_MODEL: Final[Mapping[str, frozenset[int]]] = MappingProxyT
 _MUSIC_PARAMETER_WRITE_CODES_BY_MODEL: Final[Mapping[str, frozenset[int]]] = MappingProxyType(
     {
         "H1771": frozenset(int(mode) for mode in H1771MusicBody.MusicMode),
-        "H60B0": frozenset(int(mode) for mode in H60b0MusicBody.MusicMode if mode.name != "disabled"),
+        "H60B0": frozenset(int(mode) for mode in H60b0MusicBody.MusicMode),
         "H617A": _H617A_PARAMETER_WRITE_CODES,
         "H6099": _H6099_PARAMETER_WRITE_CODES,
         "H6097": frozenset(int(mode) for mode in H6097MusicParameters.CompanionMode),

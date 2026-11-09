@@ -89,7 +89,8 @@ def test_segment_kelvin_is_offered_only_where_the_profile_declares_it(model):
         return
     whole = build_color_temp(profile.min_color_temp_kelvin, model, profile=profile)
     require_profile_packet(whole, profile)
-    assert whole[4:7] == b"\xff" * 3
+    direct_rgb = whole[3:6] if profile.command_grammar == "H60B0" else whole[4:7]
+    assert direct_rgb == b"\xff" * 3
     if profile.supports_segment_color_temperature:
         masked = build_segment_color_temp([1], profile.min_color_temp_kelvin, model, profile=profile)
         require_profile_packet(masked, profile)

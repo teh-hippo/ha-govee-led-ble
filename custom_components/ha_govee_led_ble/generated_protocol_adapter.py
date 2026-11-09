@@ -883,7 +883,12 @@ def _build_status_query(
         if grammar == "H6179":
             raise ValueError("H6179 has no segment status-query operation")
         body = _child(
-            H6072StatusQuery.SegmentQueryBody if grammar == "H6072-legacy" else body_types.SegmentQueryBody, root
+            H6072StatusQuery.SegmentQueryBody
+            if grammar == "H6072-legacy"
+            else StatusQuery.SegmentQueryBody
+            if grammar == "H60B0"
+            else root_type.SegmentQueryBody,
+            root,
         )
         body.group = segment_group
         body.zeros = [0] * 16
