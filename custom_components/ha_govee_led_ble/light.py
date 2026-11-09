@@ -48,6 +48,7 @@ from .const import (
 )
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator import GoveeBLECoordinator
+from .coordinator_base import async_prepare_effect_profile
 from .coordinator_status import ParsedMode
 from .effect_backend import EffectBackend
 from .effect_compiler import (
@@ -1103,20 +1104,19 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         assert self._effect_backend is not None
         assert self._config_entry_id is not None
         try:
+            profile = await async_prepare_effect_profile(self.coordinator, intent=ControlIntent.USER)
             async with self._effect_backend.application.saved_effect_for_apply(
                 str(item.id),
                 model=self.coordinator.model,
                 expected_version=item.version,
-                profile=self.coordinator.profile,
+                profile=profile,
                 diy_code=diy_code,
             ) as current:
                 compiled = compile_application(
                     current,
                     self.coordinator.model,
-                    diy_code=resolve_diy_code(
-                        current, diy_code, model=self.coordinator.model, profile=self.coordinator.profile
-                    ),
-                    profile=self.coordinator.profile,
+                    diy_code=resolve_diy_code(current, diy_code, model=self.coordinator.model, profile=profile),
+                    profile=profile,
                 )
                 if isinstance(compiled, CompiledVideoProfile):
                     await async_require_video_controls(

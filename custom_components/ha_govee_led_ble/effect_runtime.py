@@ -14,6 +14,7 @@ from uuid import UUID, uuid4
 from .const import NATIVE_ZONE_CONTROLS, ModelProfile, ReadDomain, get_profile
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator import GoveeBLECoordinator
+from .coordinator_base import async_prepare_effect_profile
 from .coordinator_status import ParsedMode
 from .effect_active_workspace import (
     ActiveEffectWorkspace,
@@ -302,8 +303,9 @@ class EffectDeploymentEngine:
         operation_id: UUID | None,
         source_kind: str,
     ) -> tuple[CompiledApplication, DeploymentRecord]:
-        resolved_diy_code = resolve_diy_code(item, diy_code, model=coordinator.model, profile=coordinator.profile)
-        compiled = compile_application(item, coordinator.model, diy_code=resolved_diy_code, profile=coordinator.profile)
+        profile = await async_prepare_effect_profile(coordinator, intent=ControlIntent.APPLY)
+        resolved_diy_code = resolve_diy_code(item, diy_code, model=coordinator.model, profile=profile)
+        compiled = compile_application(item, coordinator.model, diy_code=resolved_diy_code, profile=profile)
         if isinstance(compiled, CompiledVideoProfile):
             await async_require_video_controls(
                 coordinator, requested_video_controls(compiled), intent=ControlIntent.APPLY

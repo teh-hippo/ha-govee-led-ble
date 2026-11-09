@@ -9,7 +9,7 @@ from bleak import BleakClient
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import ModelProfile, ReadDomain
-from .control_arbiter import BLEControlArbiter, ControlIntent
+from .control_arbiter import BLEControlArbiter, ControlIntent, async_control_intent
 from .coordinator_status import ParsedMode, StatusDomain
 
 if TYPE_CHECKING:
@@ -301,3 +301,12 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
 
         @property
         def scene_name_set(self) -> frozenset[str]: ...
+
+
+async def async_prepare_effect_profile(coordinator: _CoordinatorBase, *, intent: ControlIntent) -> ModelProfile:
+    if coordinator.profile.rgbic_scene_v0 is None:
+        return coordinator.profile
+    async with async_control_intent(coordinator, intent):
+        async with coordinator._lock:
+            await coordinator._ensure_connected()
+        return coordinator.effect_authorization_profile

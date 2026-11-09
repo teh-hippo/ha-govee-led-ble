@@ -20,6 +20,7 @@ from homeassistant.core import Event, HomeAssistant
 from .ble_connection import CONNECTION_SETUP_TIMEOUT
 from .const import DOMAIN, ModelProfile, ReadDomain
 from .control_arbiter import ControlIntent, PreviewAdmission, async_control_intent
+from .coordinator_base import async_prepare_effect_profile
 from .coordinator_status import ParsedMode
 from .effect_active_workspace import ActiveEffectWorkspace, ActiveEffectWorkspaceRepository
 from .effect_catalogue import (
@@ -492,8 +493,9 @@ class EffectPreviewManager:
         self.ensure_session(session_id, owner)
         coordinator = self._loaded_coordinator(config_entry_id)
         try:
-            diy_code = resolve_diy_code(item, diy_code, model=coordinator.model, profile=coordinator.profile)
-            compiled = compile_application(item, coordinator.model, diy_code=diy_code, profile=coordinator.profile)
+            profile = await async_prepare_effect_profile(coordinator, intent=ControlIntent.PREVIEW)
+            diy_code = resolve_diy_code(item, diy_code, model=coordinator.model, profile=profile)
+            compiled = compile_application(item, coordinator.model, diy_code=diy_code, profile=profile)
         except ValueError as exc:
             raise PreviewError(str(exc)) from exc
         if isinstance(compiled, CompiledVideoProfile):
