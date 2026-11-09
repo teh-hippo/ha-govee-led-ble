@@ -36,7 +36,21 @@ SNAPSHOT_DIR = Path(__file__).parents[2] / "custom_components" / "ha_govee_led_b
 DEFAULT_SKUS = tuple(sorted(path.stem for path in SNAPSHOT_DIR.glob("*.json")))
 
 _SPEED_METADATA_SKUS = frozenset(
-    {"H1771", "H6046", "H6072", "H607C", "H6097", "H60A1", "H60A6", "H60B0", "H6117", "H617A", "H619A", "H7020", "H7025"}
+    {
+        "H1771",
+        "H6046",
+        "H6072",
+        "H607C",
+        "H6097",
+        "H60A1",
+        "H60A6",
+        "H60B0",
+        "H6117",
+        "H617A",
+        "H619A",
+        "H7020",
+        "H7025",
+    }
 )
 
 # These models derive the initial speed selection from metadata and rewrite every
