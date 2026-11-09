@@ -93,9 +93,11 @@ def item_summary(item: LibraryItem) -> dict[str, Any]:
             summary["model"] = sku
     elif item.target_hint is not None and resolve_model(item.target_hint.model) is not None:
         summary["model"] = item.target_hint.model
-    elif isinstance(item.content, PaintedEffect) and item.content.addressing == "physical_ic":
-        summary["model"] = "H6099"
-    elif item.target_hint is None and kind in {"h617a_painted", "h617a_single", "h617a_multi"}:
+    elif (
+        item.target_hint is None
+        and kind in {"h617a_painted", "h617a_single", "h617a_multi"}
+        and not (isinstance(item.content, PaintedEffect) and item.content.addressing == "physical_ic")
+    ):
         summary["model"] = "H617A"
     if isinstance(item.content, BuiltinScene | PaletteScene | LayeredScene):
         summary["template"] = content["template"]

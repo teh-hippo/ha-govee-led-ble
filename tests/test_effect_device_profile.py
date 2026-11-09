@@ -88,7 +88,7 @@ def test_compilation_and_saved_eligibility_are_device_scoped(kind):
     assert compatible_saved_effects((item,), "H6099", profile=profile) == (item,)
     assert compatible_saved_effects((item,), "H6099") == ()
     assert get_profile("H6099") is registry and registry.physical_ic_count is None
-    assert item_summary(item)["model"] == "H6099"
+    assert item_summary(item).get("model") == ("H6099" if kind == "music" else None)
     if kind == "music":
         with pytest.raises(TypeError):
             compiled.parameters["key_count"] = 20

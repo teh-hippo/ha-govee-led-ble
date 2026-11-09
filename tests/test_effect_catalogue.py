@@ -216,7 +216,7 @@ def test_h617c_30_ic_music_and_diy_catalogue_contracts() -> None:
     paint = resolve_catalogue_template("H617C", "template:paint", profile=profile).content
     assert isinstance(paint, PaintedEffect) and paint.addressing == "physical_ic" and len(paint.segments) == 30
     assert item_summary(LibraryItem.new("Paint", paint, target_hint=TargetHint("H617C")))["model"] == "H617C"
-    assert item_summary(LibraryItem.new("Paint", paint))["model"] == "H6099"
+    assert "model" not in item_summary(LibraryItem.new("Paint", paint))
     meteor = resolve_catalogue_template("H617C", "template:native-diy:504", profile=profile).content
     bloom_diy = resolve_catalogue_template("H617C", "template:native-diy:506", profile=profile).content
     assert isinstance(meteor, LayeredEffect) and all(layer.selection.quantity == 6 for layer in meteor.layers)
