@@ -7,7 +7,7 @@ import pytest
 from homeassistant.components.bluetooth import FALLBACK_MAXIMUM_STALE_ADVERTISEMENT_SECONDS
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.ha_govee_led_ble.const import CONF_H6102_APP_FIRMWARE, CONF_MODEL, DOMAIN
+from custom_components.ha_govee_led_ble.const import CONF_H6102_APP_FIRMWARE, CONF_MODEL, DOMAIN, device_profile
 from custom_components.ha_govee_led_ble.coordinator import (
     PACKET_LOG_LIMIT,
     PACKET_LOG_RAW_BYTES_LIMIT,
@@ -180,6 +180,33 @@ async def test_h607c_capability_diagnostics_distinguish_sources_without_private_
     summary = json.dumps(resolution)
     for private in (entry.unique_id, "private-proxy-address", "old-scanner-address", "aa05deadbeef", "marker_hex"):
         assert private not in summary
+
+
+async def test_h60b0_diagnostics_distinguish_cached_presentation_from_live_query_authority(hass):
+    entry = MockConfigEntry(domain=DOMAIN, unique_id="11:22:33:44:55:66", data={CONF_MODEL: "H60B0"})
+    coordinator = GoveeBLECoordinator(hass, entry.unique_id, "H60B0", configuration_url=None)
+    coordinator.pact_type, coordinator.pact_code = 1, 2
+    coordinator.profile = device_profile("H60B0", 1, 2)
+    coordinator._client = MagicMock(is_connected=True)
+    coordinator._notification_token = object()
+    coordinator._notify_started_monotonic = time.monotonic()
+    coordinator._pact_query_result = "timeout"
+    cached = (await _run(coordinator, entry, hass))["coordinator"]["capability_resolution"]
+    assert cached["pact_query_result"] == "timeout"
+    assert cached["effective_supports_rgb"] is True
+    assert cached["identity_confirmed"] is False
+    assert cached["authorised_supports_rgb"] is False
+    coordinator._observe_pact(1, 2)
+    live = (await _run(coordinator, entry, hass))["coordinator"]["capability_resolution"]
+    assert live["identity_confirmed"] is True
+    assert live["authorised_supports_rgb"] is True
+    assert live["pact_source"] == "query"
+    assert live["connection_pacts"] == [[1, 2]]
+    coordinator._clear_client_state(coordinator._client)
+    disconnected = (await _run(coordinator, entry, hass))["coordinator"]["capability_resolution"]
+    assert disconnected["connection_pacts"] == []
+    assert disconnected["identity_confirmed"] is False
+    assert disconnected["authorised_supports_rgb"] is False
 
 
 @pytest.mark.parametrize(

@@ -25,6 +25,7 @@ seq:
         'query_domain::power_on_behaviour': status_query::zero_body
         'query_domain::source_info': status_query::zero_body
         'query_domain::segments': status_query::segment_query_body
+        'query_domain::pact': status_query::zero_body
   - id: checksum
     type: u1
 enums:
@@ -37,3 +38,4 @@ enums:
     0x41: power_on_behaviour
     0x42: source_info
     0xa5: segments
+    0xef: pact

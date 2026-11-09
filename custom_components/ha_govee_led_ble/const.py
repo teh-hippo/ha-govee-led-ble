@@ -91,6 +91,7 @@ class ReadDomain(StrEnum):
     MODE = "mode"
     FIRMWARE = "firmware"
     HARDWARE = "hardware"
+    PACT = "pact"
     SUBORDINATE_20 = "subordinate_20"
     SUBORDINATE_21 = "subordinate_21"
     WIRELESS_FIRMWARE = "wireless_firmware"
@@ -1042,6 +1043,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
                 ReadDomain.COLOUR_MODE,
                 ReadDomain.FIRMWARE,
                 ReadDomain.HARDWARE,
+                ReadDomain.PACT,
                 ReadDomain.SEGMENTS,
             }
         ),
@@ -2686,7 +2688,9 @@ def device_profile(
         return replace(
             profile,
             command_operations=frozenset({"power", "brightness"}),
-            read_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.FIRMWARE, ReadDomain.HARDWARE}),
+            read_domains=frozenset(
+                {ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.FIRMWARE, ReadDomain.HARDWARE, ReadDomain.PACT}
+            ),
             supports_rgb=False,
             supports_color_temperature=False,
             supports_segment_writes=False,

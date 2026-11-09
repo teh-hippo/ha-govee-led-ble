@@ -646,7 +646,9 @@ class _NotificationMixin(_CoordinatorBase):
             zone_values: dict[str, bool] = {
                 name: bool(getattr(status, name))
                 for name in NATIVE_ZONE_CONTROLS
-                if name in self.profile.boolean_controls and hasattr(status, name)
+                if name in self.profile.boolean_controls
+                and hasattr(status, name)
+                and self._accept_expected(f"boolean_{name}", bool(getattr(status, name)))
             }
             self.boolean_control_state.update(zone_values)
             self._mark_received(StatusDomain.OTHER, *(f"boolean_{name}" for name in zone_values))
@@ -853,6 +855,10 @@ class _NotificationMixin(_CoordinatorBase):
                 )
                 if self._observe_identity_field("fw_version", version):
                     observed = ("fw_version",)
+            elif domain is StatusDomain.PACT:
+                if not self._observe_pact(int(generated.body.pact_type), int(generated.body.pact_code)):
+                    return
+                observed = ("pact",)
             elif domain is StatusDomain.HARDWARE:
                 version = (
                     generated.values["version"] if isinstance(generated, ParsedH6179Status) else generated.body.text

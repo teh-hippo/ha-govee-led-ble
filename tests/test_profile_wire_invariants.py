@@ -367,6 +367,8 @@ def _status_frames_for_domain(domain: ReadDomain, model: str, profile: ModelProf
         if model == "H6199":
             return (bytes.fromhex("aa0703332e30322e30310000000000000000009e"),)
         return (bytes.fromhex("aa0703332e30312e30310000000000000000009d"),)
+    if domain is ReadDomain.PACT:
+        return (_status(0xEF, b"\x00\x01\x02"),)
     if domain is ReadDomain.SUBORDINATE_20:
         return (_status(0x20, b"1.03.00\x00"),)
     if domain is ReadDomain.SUBORDINATE_21:
@@ -553,6 +555,7 @@ def _query_builders(model: str, profile: ModelProfile) -> dict[ReadDomain, tuple
         ),
         ReadDomain.WIRELESS_FIRMWARE: (lambda: a.build_bulk_status_query(profile, domains=()),),
         ReadDomain.WIRELESS_HARDWARE: (lambda: a.build_bulk_status_query(profile, domains=()),),
+        ReadDomain.PACT: (lambda: a.build_pact_query(profile),),
         ReadDomain.SUBORDINATE_20: (lambda: a.build_subordinate_query(0x20, model, profile=profile),),
         ReadDomain.SUBORDINATE_21: (lambda: a.build_subordinate_query(0x21, model, profile=profile),),
         ReadDomain.SEGMENTS: tuple(
@@ -630,6 +633,9 @@ def test_every_claimed_read_domain_is_consumed(hass, model: str, profile: ModelP
         coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url="http://x")
         coordinator._client = MagicMock(is_connected=True)
         coordinator.profile = replace(profile, profile_identity_fields=frozenset())
+        if domain is ReadDomain.PACT:
+            coordinator._notification_token = object()
+            coordinator._notify_started_monotonic = 0.0
         if domain is ReadDomain.LOW_BLUE_LIGHT:
             coordinator._confirmed_identity_fields.add("fw_version")
         if profile.configured_string_counts:
