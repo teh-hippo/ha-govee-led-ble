@@ -244,14 +244,9 @@ def h6125_outbound_transform(
 
     def transform(packet: bytes) -> bytes:
         if legacy_colour:
-            query = _parse_xor_frame(packet, "H617A", _STATUS_QUERY_ROOTS).parsed
-            if query is not None and getattr(query.domain, "name", None) == "segments":
-                root = H6125LegacySegmentQuery()
-                root.header = b"\xaa"
-                root.domain = H6125LegacySegmentQuery.QueryDomain.segments
-                root.group = query.body.group
-                root.padding = bytes(16)
-                return _serialize_xor(root)
+            transformed = rgb_only_segment_query_transform(packet)
+            if transformed != packet:
+                return transformed
         parsed = parse_command_result(packet, "H617A").parsed
         if parsed is None:
             return packet
@@ -264,3 +259,16 @@ def h6125_outbound_transform(
         return packet
 
     return transform
+
+
+def rgb_only_segment_query_transform(packet: bytes) -> bytes:
+    """Re-encode a logical segment request through the shared RGB-only query codec."""
+    query = _parse_xor_frame(packet, "H617A", _STATUS_QUERY_ROOTS).parsed
+    if query is None or getattr(query.domain, "name", None) != "segments":
+        return packet
+    root = H6125LegacySegmentQuery()
+    root.header = b"\xaa"
+    root.domain = H6125LegacySegmentQuery.QueryDomain.segments
+    root.group = query.body.group
+    root.padding = bytes(16)
+    return _serialize_xor(root)

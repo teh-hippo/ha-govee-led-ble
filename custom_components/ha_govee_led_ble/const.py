@@ -2803,11 +2803,16 @@ def device_profile(
         )
     if model == "H619A":
         from .firmware_version import FirmwareVersion
+        from .protocol_transforms import rgb_only_segment_query_transform
 
         fw, hw = FirmwareVersion.parse(firmware), FirmwareVersion.parse(hardware)
+        legacy = fw is None or hw is None or fw < FirmwareVersion((1, 6)) or hw < FirmwareVersion((1, 0, 2))
         return replace(
             get_profile(model),
-            rgbic_scene_v0=fw is None or hw is None or fw < FirmwareVersion((1, 6)) or hw < FirmwareVersion((1, 0, 2)),
+            rgbic_scene_v0=legacy,
+            status_grammar="H619A-legacy" if legacy else "H619A",
+            segment_group_size=4 if legacy else 3,
+            outbound_transform=rgb_only_segment_query_transform if legacy else None,
         )
     if model == "H6199":
         from .firmware_version import FirmwareVersion

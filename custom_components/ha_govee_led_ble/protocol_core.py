@@ -704,10 +704,17 @@ H619aStatusReply = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.h619a_status_reply").H619aStatusReply,
 )
+H619aLegacyStatusReply = cast(
+    Any,
+    import_module(
+        "custom_components.ha_govee_led_ble.generated_protocol.h619a_legacy_status_reply"
+    ).H619aLegacyStatusReply,
+)
 
 
 _STATUS_ROOTS = {
     "H619A": ("h619a_status_reply", H619aStatusReply),
+    "H619A-legacy": ("h619a_legacy_status_reply", H619aLegacyStatusReply),
     "H60B0": ("h60b0_status_reply", H60b0StatusReply),
     "H605C": ("h605c_status_reply", H605cStatusReply),
     "H1771": ("h1771_status_reply", H1771StatusReply),

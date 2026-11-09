@@ -6,13 +6,16 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from bleak import BleakError
 
 from custom_components.ha_govee_led_ble.const import device_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator_status import StatusDomain, decode_status_frame
 from custom_components.ha_govee_led_ble.effect_catalogue import MODEL_EFFECT_CATALOGUES
 from custom_components.ha_govee_led_ble.effect_compiler import compile_application, validate_compiled_geometry
 from custom_components.ha_govee_led_ble.effect_domain import BuiltinScene, CatalogueRef, LibraryItem
 from custom_components.ha_govee_led_ble.effect_storage import LibrarySnapshot
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_segment_query
 from custom_components.ha_govee_led_ble.layered_scene import AppliedArea, Distribution, Selection
 from custom_components.ha_govee_led_ble.layered_scene_decoder import (
     decode_catalogue_layered_scene,
@@ -44,6 +47,145 @@ def test_static_writes_select_ten_logical_segments_not_twenty_physical_ics():
     assert build_segment_brightness([10], 37, "H619A") == _frame("33051502250002")
     with pytest.raises(ValueError):
         build_segment_color_temp([11], 4000, "H619A")
+
+
+@pytest.mark.parametrize(
+    ("firmware", "hardware", "legacy"),
+    [
+        (None, None, True),
+        ("2.07.01", None, True),
+        (None, "2.01.02", True),
+        ("1.05.99", "1.00.02", True),
+        ("1.06.00", "1.00.01", True),
+        ("1.06.00", "1.00.02", False),
+        ("2.07.01", "2.01.02", False),
+    ],
+)
+def test_segment_readback_revision_selects_only_its_layout(firmware, hardware, legacy):
+    profile = device_profile("H619A", 2, 1, firmware=firmware, hardware=hardware)
+    count = 3 if legacy else 4
+    for group in range(1, count + 1):
+        query = build_segment_query(group, "H619A", profile=profile)
+        wire = profile.outbound_transform(query) if profile.outbound_transform is not None else query
+        assert wire == _frame(f"aa{'a2' if legacy else 'a5'}{group:02x}")
+    with pytest.raises(ValueError, match="geometry"):
+        build_segment_query(count + 1, "H619A", profile=profile)
+    with pytest.raises(ValueError, match="geometry"):
+        build_segment_query(0, "H619A", profile=profile)
+
+    last = _segment_page(count, legacy)
+    decoded = decode_status_frame(last, "H619A", profile=profile)
+    assert decoded is not None and decoded.domain is StatusDomain.SEGMENTS
+    assert len(decoded.generated.body.segments) == (2 if legacy else 1)
+    wrong = decode_status_frame(_segment_page(1, not legacy), "H619A", profile=profile)
+    assert wrong is not None and wrong.domain is StatusDomain.OTHER
+    for group in (0, count + 1):
+        invalid = bytearray(last)
+        invalid[2] = group
+        invalid[-1] = xor_checksum(invalid[:-1])
+        assert decode_status_frame(bytes(invalid), "H619A", profile=profile) is None
+
+    for packet in (
+        build_color_rgb(17, 34, 51, "H619A", profile=profile),
+        build_segment_brightness([10], 37, "H619A", profile=profile),
+    ):
+        assert profile.outbound_transform is None or profile.outbound_transform(packet) == packet
+    assert profile.supports_segment_brightness and profile.supports_segment_color_temperature
+
+
+def _segment_page(group, legacy):
+    group_size = 4 if legacy else 3
+    indices = range((group - 1) * group_size, min(group * group_size, 10))
+    records = b"".join(
+        (b"" if legacy else bytes((50 + index,))) + bytes((index, index + 1, index + 2)) for index in indices
+    )
+    payload = (bytes((group,)) + records).ljust(17, b"\x7e")
+    return _frame((bytes((0xAA, 0xA2 if legacy else 0xA5)) + payload).hex())
+
+
+@pytest.mark.parametrize("legacy", [True, False])
+async def test_segment_refresh_observes_only_revision_supported_fields(hass, monkeypatch, legacy):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model="H619A", configuration_url=None)
+    client = MagicMock(is_connected=True, start_notify=AsyncMock(), disconnect=AsyncMock())
+    coordinator._client = client
+    await coordinator._start_notify()
+    receive = client.start_notify.call_args.args[1]
+    coordinator._observe_identity_field("fw_version", "1.05.99" if legacy else "2.07.01")
+    coordinator._observe_identity_field("hw_version", "2.01.02")
+    coordinator.segment_brightness = [37] * 10
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
+    monkeypatch.setattr(coordinator, "_renew_foreground_lease", MagicMock())
+
+    async def write(_uuid, packet, **_kwargs):
+        assert packet[1] == (0xA2 if legacy else 0xA5)
+        receive(None, bytearray(_segment_page(packet[2], legacy)))
+
+    client.write_gatt_char = AsyncMock(side_effect=write)
+    assert await coordinator.async_refresh_segments()
+    assert client.write_gatt_char.await_count == (3 if legacy else 4)
+    assert coordinator.segment_colors == [(index, index + 1, index + 2) for index in range(10)]
+    assert coordinator.segment_brightness == ([37] * 10 if legacy else list(range(50, 60)))
+    assert coordinator.segment_brightness_readable is not legacy
+    assert ("segment_brightness" in coordinator._field_revisions) is not legacy
+    await coordinator.disconnect()
+
+
+async def test_reconnect_does_not_qualify_readback_from_cached_versions(hass, monkeypatch):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model="H619A", configuration_url=None)
+    client = MagicMock(is_connected=True, disconnect=AsyncMock())
+    coordinator._client = client
+    coordinator._observe_identity_field("fw_version", "2.07.01")
+    coordinator._observe_identity_field("hw_version", "2.01.02")
+    assert coordinator.profile.status_grammar == "H619A"
+    coordinator._clear_client_state(client)
+
+    async def connect(*args, **kwargs):
+        assert coordinator.profile.status_grammar == "H619A-legacy"
+        assert (coordinator.fw_version, coordinator.hw_version) == ("2.07.01", "2.01.02")
+        raise BleakError("connection refused")
+
+    monkeypatch.setattr("custom_components.ha_govee_led_ble.coordinator.async_establish_ble_connection", connect)
+    with pytest.raises(BleakError, match="connection refused"):
+        await coordinator._ensure_connected()
+    coordinator._client = client
+    coordinator._observe_identity_field("fw_version", "2.07.01")
+    assert coordinator.profile.status_grammar == "H619A-legacy"
+    coordinator._observe_identity_field("hw_version", "2.01.02")
+    assert coordinator.profile.status_grammar == "H619A"
+    coordinator._observe_identity_field("hw_version", "invalid")
+    assert coordinator.profile.status_grammar == "H619A-legacy"
+    assert coordinator.hw_version == "2.01.02"
+    coordinator._observe_identity_field("hw_version", "2.01.02")
+    assert coordinator.profile.status_grammar == "H619A"
+    await coordinator.disconnect()
+
+
+@pytest.mark.parametrize("initial_legacy", [True, False])
+async def test_revision_change_abandons_pages_and_ignores_old_format(hass, monkeypatch, initial_legacy):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model="H619A", configuration_url=None)
+    client = MagicMock(is_connected=True, start_notify=AsyncMock(), disconnect=AsyncMock())
+    coordinator._client = client
+    await coordinator._start_notify()
+    receive = client.start_notify.call_args.args[1]
+    coordinator._observe_identity_field("fw_version", "1.05.99" if initial_legacy else "2.07.01")
+    coordinator._observe_identity_field("hw_version", "2.01.02")
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
+    monkeypatch.setattr(coordinator, "_renew_foreground_lease", MagicMock())
+
+    async def write(_uuid, packet, **_kwargs):
+        receive(None, bytearray(_segment_page(packet[2], initial_legacy)))
+        coordinator._observe_identity_field("fw_version", "2.07.01" if initial_legacy else "1.05.99")
+
+    client.write_gatt_char = AsyncMock(side_effect=write)
+    assert not await coordinator.async_refresh_segments()
+    assert client.write_gatt_char.await_count == 1
+    assert coordinator._segment_query_incomplete
+    for group in range(1, 4 if initial_legacy else 5):
+        receive(None, bytearray(_segment_page(group, initial_legacy)))
+    assert coordinator.segment_state_source != "observed"
+    assert not coordinator._segment_groups_observed
+    assert coordinator._field_revisions.get("segment_colors", 0) == 0
+    await coordinator.disconnect()
 
 
 @pytest.mark.parametrize(

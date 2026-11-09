@@ -1,5 +1,6 @@
 command_write
 speculative/h619a_status_reply
+speculative/h619a_legacy_status_reply
 speculative/h60b0_command_write
 speculative/h60b0_command_ack
 speculative/h60b0_effect_upload

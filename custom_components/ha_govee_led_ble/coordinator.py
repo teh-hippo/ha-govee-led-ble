@@ -442,9 +442,12 @@ class GoveeBLECoordinator(
                 self._confirmed_identity_fields.add(field)
             else:
                 self._confirmed_identity_fields.discard(field)
-        if confirmed != (field in self._confirmed_identity_fields):
+        confirmation_changed = confirmed != (field in self._confirmed_identity_fields)
+        if confirmation_changed:
             self._authorization_generation += 1
         if not parseable or value is None:
+            if confirmation_changed and self.profile.rgbic_scene_v0 is not None:
+                self._resolve_device_profile()
             return False
         previous = getattr(self, field)
         if field == "fw_version":
@@ -455,6 +458,8 @@ class GoveeBLECoordinator(
             setattr(self, field, value)
             if field in self._authorization_identity_fields():
                 self._authorization_generation += 1
+        if confirmation_changed and self.profile.rgbic_scene_v0 is not None:
+            self._resolve_device_profile()
         return bool(previous != value)
 
     def identity_fields_confirmed(self, fields: frozenset[str] | None = None) -> bool:
@@ -733,9 +738,13 @@ class GoveeBLECoordinator(
             profile, context_changed = self._resolve_h6102_profile()
         else:
             context_changed = False
-            profile = device_profile(
-                self.model, self.pact_type, self.pact_code, firmware=self.fw_version, hardware=self.hw_version
-            )
+            firmware, hardware = self.fw_version, self.hw_version
+            if declared.rgbic_scene_v0 is not None:
+                if not self.identity_fields_confirmed(frozenset({"fw_version"})):
+                    firmware = None
+                if not self.identity_fields_confirmed(frozenset({"hw_version"})):
+                    hardware = None
+            profile = device_profile(self.model, self.pact_type, self.pact_code, firmware=firmware, hardware=hardware)
             if self._observed_physical_ic_count is not None and profile.can_read(ReadDomain.PHYSICAL_IC_COUNT):
                 profile = profile_with_physical_ic_count(
                     profile,
@@ -986,6 +995,8 @@ class GoveeBLECoordinator(
         self._confirmed_identity_fields.clear()
         self._physical_ic_count_confirmed = False
         self._authorization_generation += 1
+        if self.profile.rgbic_scene_v0 is not None:
+            self._resolve_device_profile()
         self._music_palette = self._music_body = None
         self.video_parameters = None
         self._configured_strings_confirmed = False

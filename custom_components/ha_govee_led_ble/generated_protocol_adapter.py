@@ -1598,7 +1598,9 @@ def build_segment_query(group: int, model: str = "H617A", *, profile: ModelProfi
         raise ValueError(f"{model} has no generated segment-query grammar")
     if type(group) is not int:
         raise ValueError("segment query group must be an integer")
-    if resolved in {"H1771", "H60B0"} and not 1 <= group <= profile.segment_group_count:
+    if (resolved in {"H1771", "H60B0"} or profile.rgbic_scene_v0 is not None) and not (
+        1 <= group <= profile.segment_group_count
+    ):
         raise ValueError("segment query group is outside the selected geometry")
     try:
         return _build_status_query("segments", resolved, segment_group=group)
