@@ -15,7 +15,7 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 
 from custom_components.ha_govee_led_ble.const import DOMAIN, EFFECT_FAMILY_SCENES, get_profile
-from custom_components.ha_govee_led_ble.control_arbiter import BLEControlArbiter, ControlIntent
+from custom_components.ha_govee_led_ble.control_arbiter import BLEControlArbiter, ControlIntent, async_control_intent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.effect_active_workspace import (
     ActiveEffectWorkspaceRepository,
@@ -1974,6 +1974,47 @@ async def test_compilation_failure_is_reported_without_writing(
     assert not manager._devices
     assert manager._sessions[session_id].last_sequence == 0
     await manager.async_shutdown()
+
+
+async def test_foreground_control_invalidates_preview_waiting_for_revision_preparation(hass, monkeypatch):
+    from custom_components.ha_govee_led_ble import effect_preview
+
+    coordinator = _coordinator(model="H619A")
+    manager, _cache = await _manager(hass, monkeypatch, coordinator)
+    owner = object()
+    session_id = _open(manager, owner, [])
+    entered, finish = asyncio.Event(), asyncio.Event()
+
+    async def prepare(_coordinator, **kwargs):
+        entered.set()
+        await finish.wait()
+        return coordinator.profile
+
+    monkeypatch.setattr(effect_preview, "async_prepare_effect_profile", prepare)
+    request = asyncio.create_task(
+        manager.async_queue_snapshot(
+            session_id=session_id,
+            owner=owner,
+            config_entry_id="entry-a",
+            sequence=1,
+            updated_at="2026-08-17T00:00:00Z",
+            item=_item("Older preview"),
+            diy_code=24,
+        )
+    )
+    try:
+        await asyncio.wait_for(entered.wait(), 1)
+        async with async_control_intent(coordinator, ControlIntent.USER):
+            pass
+        finish.set()
+        with pytest.raises(PreviewError, match="superseded"):
+            await request
+        coordinator.async_preview_write.assert_not_awaited()
+        assert manager._sessions[session_id].last_sequence == 0
+    finally:
+        finish.set()
+        await asyncio.gather(request, return_exceptions=True)
+        await manager.async_shutdown()
 
 
 async def test_ineligible_preview_preserves_active_admission(hass, monkeypatch, effect_catalogue_targets):

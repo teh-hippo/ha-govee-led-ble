@@ -492,6 +492,11 @@ class EffectPreviewManager:
     ) -> PreviewAcceptance:
         self.ensure_session(session_id, owner)
         coordinator = self._loaded_coordinator(config_entry_id)
+        preparation_token = (
+            PreviewAdmission(coordinator._control_arbiter, coordinator._control_arbiter.preview_generation)
+            if coordinator.profile.rgbic_scene_v0 is not None
+            else None
+        )
         try:
             profile = await async_prepare_effect_profile(coordinator, intent=ControlIntent.PREVIEW)
             diy_code = resolve_diy_code(item, diy_code, model=coordinator.model, profile=profile)
@@ -536,7 +541,7 @@ class EffectPreviewManager:
                 else None
             ),
         )
-        return await self._async_accept(owner, request)
+        return await self._async_accept(owner, request, preparation_token=preparation_token)
 
     async def async_queue_scene(
         self,
@@ -610,12 +615,16 @@ class EffectPreviewManager:
         self,
         owner: object,
         request: _PreviewRequest,
+        *,
+        preparation_token: PreviewAdmission | None = None,
     ) -> PreviewAcceptance:
         if not 1 <= request.sequence <= MAX_PREVIEW_SEQUENCE:
             raise PreviewSequenceError(f"preview sequence must be from 1 to {MAX_PREVIEW_SEQUENCE}")
         superseded: _PreviewRequest | None = None
         async with self._lock:
             session = self._session_owner_locked(request.session_id, owner)
+            if preparation_token is not None and not preparation_token.is_current:
+                raise PreviewError("Preview was superseded during connection preparation")
             if self._stopping or self._hass.is_stopping:
                 raise PreviewShutdownError("Home Assistant is stopping")
             if request.config_entry_id in self._blocked_devices:
