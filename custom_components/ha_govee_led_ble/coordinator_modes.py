@@ -157,12 +157,19 @@ class _ActiveModeMixin(_CoordinatorBase):
     ) -> None:
         from .effect_compiler import require_native_scenes
 
+        if self.profile.rgbic_scene_v0 is not None:
+            async with self._lock:
+                await self._ensure_connected()
+        profile = self.effect_authorization_profile
         generation = self._profile_generation
 
         def qualified() -> None:
-            require_native_scenes(self.model, self.profile)
+            current = self.effect_authorization_profile
+            require_native_scenes(self.model, current)
             if generation != self._profile_generation:
                 raise ValueError("Device profile changed during scene preparation")
+            if profile.rgbic_scene_v0 != current.rgbic_scene_v0:
+                raise ValueError("RGBIC scene format changed during scene preparation")
 
         qualified()
         if scene_entry is None:
@@ -172,13 +179,13 @@ class _ActiveModeMixin(_CoordinatorBase):
             scene = scene_entry
         if scene is None:
             raise ValueError(f"unknown native scene {scene_name!r}")
-        selector = scene_selector_code(self.model, scene, profile=self.profile)
+        selector = scene_selector_code(self.model, scene, profile=profile)
         packets = build_native_scene_packets(
             self.model,
             scene,
             speed_index=speed_index,
             canonical_body=canonical_body,
-            profile=self.profile,
+            profile=profile,
         )
         upload_count = len(packets) - 1
 

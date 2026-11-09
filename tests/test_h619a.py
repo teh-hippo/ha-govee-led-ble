@@ -1,6 +1,7 @@
 """Reconstructed H619A contracts, not hardware confirmation."""
 
 from dataclasses import replace
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -164,3 +165,39 @@ def test_scene_geometry_rewrites_out_of_budget_fields_without_mutating_authored_
     assert parsed.effect.layers[0].selected_movement.distance == 18
     assert parsed.effect.layers[0].overall_movement.distance == 18
     assert authored.effect.layers[0] == layer
+
+
+@pytest.mark.parametrize("revoke_during_pacing", [False, True])
+async def test_native_scene_uses_subscription_identity_and_rechecks_after_reply_pacing(
+    hass, monkeypatch, revoke_during_pacing
+):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model="H619A", configuration_url=None)
+    coordinator.profile = device_profile("H619A", 2, 1, firmware="2.07.01", hardware="2.01.02")
+    coordinator.fw_version, coordinator.hw_version = "2.07.01", "2.01.02"
+    coordinator.is_on = True
+    if revoke_during_pacing:
+        coordinator._confirmed_identity_fields.update({"fw_version", "hw_version"})
+    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
+    coordinator._client = client
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
+    entry = next(entry for entry in SCENE_ENTRIES["H619A"] if entry.scene_type == 2)
+
+    async def sequence(packets, *, write_guard, **kwargs):
+        expected = build_native_scene_packets("H619A", entry, profile=coordinator.effect_authorization_profile)
+        assert packets == expected
+        if revoke_during_pacing:
+            monkeypatch.setattr(
+                coordinator._reply_gate, "wait", AsyncMock(side_effect=coordinator._confirmed_identity_fields.clear)
+            )
+            await coordinator._async_write_packet(client, packets[0], before_write=write_guard)
+        else:
+            write_guard()
+
+    monkeypatch.setattr(coordinator, "async_write_effect_sequence", AsyncMock(side_effect=sequence))
+    if revoke_during_pacing:
+        with pytest.raises(ValueError, match="scene format changed"):
+            await coordinator.async_apply_native_scene("Candidate", scene_entry=entry, verify=False)
+    else:
+        await coordinator.async_apply_native_scene("Candidate", scene_entry=entry, verify=False)
+        assert coordinator.effect_authorization_profile.rgbic_scene_v0 is True
+    client.write_gatt_char.assert_not_awaited()
