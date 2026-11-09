@@ -58,7 +58,6 @@ types:
           cases:
             'music_mode::hopping': hopping_parameters
             'music_mode::bloom': style_parameters
-            'music_mode::rhythm': style_parameters
             'music_mode::shiny': style_parameters
             _: opaque_parameters
   style_parameters:
@@ -103,5 +102,5 @@ enums:
     130: combined
     131: spectrum
   style:
-    0: calm
-    1: dynamic
+    0: dynamic
+    1: calm

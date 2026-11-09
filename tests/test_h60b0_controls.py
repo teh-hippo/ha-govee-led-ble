@@ -112,7 +112,15 @@ def test_revision_qualification_does_not_infer_firmware_thresholds(pact):
 
 @pytest.mark.parametrize(
     "prefix",
-    ["33300401", "33300102", "33052c0202010001", "33052c010365", "33052c030265", "33052c050101020300000100"],
+    [
+        "33300401",
+        "33300102",
+        "33052c0202010001",
+        "33052c010365",
+        "33052c030265",
+        "33052c03010fa1",
+        "33052c050101020300000100",
+    ],
 )
 def test_unqualified_sources_masks_and_levels_are_rejected(prefix):
     with pytest.raises(ValueError):
