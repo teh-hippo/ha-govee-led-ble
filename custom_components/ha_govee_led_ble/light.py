@@ -1127,7 +1127,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 def guard() -> None:
                     if native_write_guard is not None:
                         native_write_guard()
-                    validate_compiled_geometry(compiled, self.coordinator.profile)
+                    validate_compiled_geometry(compiled, self.coordinator.effect_authorization_profile)
                     validate_video_request(self.coordinator, current.content)
 
                 async with async_control_intent(

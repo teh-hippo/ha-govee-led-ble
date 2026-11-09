@@ -1974,24 +1974,37 @@ async def test_four_slot_profile_observes_every_declared_domain(
     assert client.write_gatt_char.await_args_list == [call(WRITE_UUID, query, response=False) for query in replies]
 
 
-def test_h617c_status_root_preserves_opaque_tails_and_nonzero_segment_slots() -> None:
+@pytest.mark.parametrize(
+    ("model", "group", "count", "module", "name"),
+    [
+        ("H617C", 5, 3, "h617c_status_reply", "H617cStatusReply"),
+        ("H619A", 4, 1, "h619a_status_reply", "H619aStatusReply"),
+    ],
+)
+def test_rgbic_status_root_preserves_opaque_tails_and_nonzero_segment_slots(model, group, count, module, name) -> None:
     def _frame(prefix: str) -> bytes:
         body = bytes.fromhex(prefix).ljust(19, b"\x00")
         return body + bytes((xor_checksum(body),))
 
-    segment_frame = _frame("aaa505000000006420406032aabbccdeadbeef")
-    result = generated_protocol_adapter.parse_status_result(segment_frame, "H617C")
-    assert result.rejection is None and result.parser == "h617c_status_reply"
+    segment_frame = _frame(f"aaa5{group:02x}000000006420406032aabbccdeadbeef")
+    result = generated_protocol_adapter.parse_status_result(segment_frame, model)
+    assert result.rejection is None and result.parser == module
     assert result.parsed is not None
-    assert result.parsed.body.group == 5 and len(result.parsed.body.segments) == 3
-    assert result.parsed.body.unused == [0xDE, 0xAD, 0xBE, 0xEF]
+    assert result.parsed.body.group == group and len(result.parsed.body.segments) == count
+    assert result.parsed.body.unused == list(segment_frame[3 + count * 4 : 19])
+    root = _generated(module, name).from_bytes(segment_frame)
+    root._read()
+    assert protocol_core.serialize_native_body(root) == segment_frame
     assert (
         generated_protocol_adapter.parse_status_result(segment_frame, "H617A").rejection
         is ProtocolParseRejection.SCHEMA_REJECTED
     )
-    for group in (0, 6):
-        assert generated_protocol_adapter.parse_status_result(_frame(f"aaa5{group:02x}"), "H617C").rejection is not None
-    assert generated_protocol_adapter.build_colour_mode_query("H617C") == _frame("aa0501")
+    for invalid_group in (0, group + 1):
+        assert (
+            generated_protocol_adapter.parse_status_result(_frame(f"aaa5{invalid_group:02x}"), model).rejection
+            is not None
+        )
+    assert generated_protocol_adapter.build_colour_mode_query(model) == _frame("aa0501")
     for prefix, field, expected in (
         ("aa0101dead", "is_on", 1),
         ("aa044bdead", "brightness_pct", 75),
@@ -1999,11 +2012,11 @@ def test_h617c_status_root_preserves_opaque_tails_and_nonzero_segment_slots() ->
         ("aa06332e30322e303200dead", "text", "3.02.02"),
         ("aa0703332e30312e303100dead", "text", "3.01.01"),
     ):
-        parsed = generated_protocol_adapter.parse_status_result(_frame(prefix), "H617C").parsed
+        parsed = generated_protocol_adapter.parse_status_result(_frame(prefix), model).parsed
         assert parsed is not None
         assert getattr(parsed.body, field) == expected
         assert parsed.body.unknown_tail.startswith(b"\xde\xad")
-    static = generated_protocol_adapter.parse_status_result(_frame("aa0515010fa0dead"), "H617C").parsed
+    static = generated_protocol_adapter.parse_status_result(_frame("aa0515010fa0dead"), model).parsed
     assert static is not None and static.body.mode_body.unknown_tail.startswith(b"\xde\xad")
     assert (static.body.mode_body.sub, static.body.mode_body.kelvin) == (1, 4000)
 

@@ -15,6 +15,7 @@ from .music_semantics import (
     H617A_MUSIC_VARIANTS,
     H617C_MUSIC_VARIANTS,
     H617E_MUSIC_VARIANTS,
+    H619A_MUSIC_VARIANTS,
     H1771_MUSIC_VARIANTS,
     H6046_MUSIC_VARIANTS,
     H6072_LEGACY_MUSIC_VARIANTS,
@@ -289,6 +290,7 @@ class ModelProfile:
     local_scenes: tuple[tuple[int, str], ...] = ()
     advanced_scene_carrier: tuple[int, int] | None = None
     advanced_diy_selector: int | None = None
+    rgbic_scene_v0: bool | None = None
     # When set, Type04 custom effects upload as A1 command-02 frames led by this selector and activate with it.
     a1_diy_selector: int | None = None
     diy_upload_transport: str | None = None
@@ -1882,6 +1884,66 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         boolean_controls=frozenset({"limit"}),
         restarting_boolean_controls=frozenset({"limit"}),
     ),
+    "H619A": ModelProfile(
+        "H619A RGBIC Pro Strip",
+        confirmation_issue=567,
+        command_grammar="H617A",
+        command_ack_grammar="H617A",
+        status_grammar="H619A",
+        effect_grammar="H617A",
+        colour_mode_query_selector=1,
+        profile_identity_fields=frozenset({"fw_version", "hw_version"}),
+        static_readback_kelvin=True,
+        static_readback_zero_kelvin_is_rgb=True,
+        static_readback_gradual=True,
+        read_domains=frozenset(
+            {
+                ReadDomain.POWER,
+                ReadDomain.BRIGHTNESS,
+                ReadDomain.COLOUR_MODE,
+                ReadDomain.FIRMWARE,
+                ReadDomain.HARDWARE,
+                ReadDomain.SEGMENTS,
+            }
+        ),
+        setup_required_read_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE}),
+        supports_rgb=True,
+        supports_color_temperature=True,
+        supports_custom_effects=True,
+        supports_scenes=True,
+        supports_advanced_effects=True,
+        supports_multi_layered_effects=True,
+        music_modes=(
+            "energetic",
+            "rhythm",
+            "spectrum",
+            "rolling",
+            "separation",
+            "hopping",
+            "piano_keys",
+            "fountain",
+            "day_and_night",
+            "bloom",
+            "shiny",
+        ),
+        music_variants=H619A_MUSIC_VARIANTS,
+        music_upload_before_selector=True,
+        music_requires_upload_ack=True,
+        supports_music_color=True,
+        physical_ic_count=20,
+        segment_count=10,
+        segment_group_size=3,
+        supports_segment_writes=True,
+        supports_segment_brightness=True,
+        supports_segment_color_temperature=True,
+        connection_idle_timeout=IDLE_TIMEOUT_STANDARD,
+        scene_catalogue_sku="H619A",
+        rgbic_scene_v0=False,
+        advanced_diy_selector=402,
+        diy_requires_upload_ack=True,
+        boolean_controls=frozenset({"gradual"}),
+        effect_readback="diy_code_only",
+    ),
     "H6199": ModelProfile(
         "H6199 DreamView T1",
         support_quality=SupportQuality.SUPPORTED,
@@ -2446,6 +2508,14 @@ def device_profile(
         profile = get_profile(model)
         return (
             replace(profile, color_temp_range=KELVIN_RANGE_1000_10000) if (pact_type, pact_code) == (4, 1) else profile
+        )
+    if model == "H619A":
+        from .firmware_version import FirmwareVersion
+
+        fw, hw = FirmwareVersion.parse(firmware), FirmwareVersion.parse(hardware)
+        return replace(
+            get_profile(model),
+            rgbic_scene_v0=fw is None or hw is None or fw < FirmwareVersion((1, 6)) or hw < FirmwareVersion((1, 0, 2)),
         )
     if model == "H6199":
         from .firmware_version import FirmwareVersion

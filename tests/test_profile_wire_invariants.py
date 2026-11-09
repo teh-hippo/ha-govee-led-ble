@@ -105,6 +105,7 @@ def _consume_status(coordinator: GoveeBLECoordinator, frame: bytes) -> None:
 
 # Runtime qualification contexts that produce distinct effective profiles through device_profile().
 _QUALIFIED_CONTEXTS: tuple[tuple[str, str, int | None, int | None, str | None, str | None], ...] = (
+    ("H619A-bootstrap", "H619A", None, None, None, None),
     ("H607C-bootstrap", "H607C", None, None, None, None),
     ("H6072-bootstrap", "H6072", None, None, None, None),
     ("H6072-legacy", "H6072", 1, 1, "1.00.10", None),

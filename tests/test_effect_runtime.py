@@ -66,7 +66,7 @@ from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_cata
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
 from custom_components.ha_govee_led_ble.transport import WRITE_UUID, xor_checksum
 from tests.storage_test_double import InMemoryVersionedDocumentStore
-from tests.test_effect_preview import _manager, _open
+from tests.test_effect_preview import _EffectCoordinator, _manager, _open
 from tests.test_music_commands import _music_transport
 
 
@@ -507,7 +507,7 @@ async def test_partial_observation_does_not_confirm_or_repeat_activation(hass: H
 
 
 def _coordinator(*, readable: bool = True):
-    coordinator = SimpleNamespace(
+    coordinator = _EffectCoordinator(
         _control_arbiter=(arbiter := BLEControlArbiter()),
         _control_lock=arbiter,
         address="AA:BB:CC:DD:EE:FF",

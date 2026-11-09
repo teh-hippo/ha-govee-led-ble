@@ -672,7 +672,14 @@ H6072MusicAck = cast(
     Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h6072_music_ack").H6072MusicAck
 )
 
+H619aStatusReply = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h619a_status_reply").H619aStatusReply,
+)
+
+
 _STATUS_ROOTS = {
+    "H619A": ("h619a_status_reply", H619aStatusReply),
     "H1771": ("h1771_status_reply", H1771StatusReply),
     "H600A": ("h600a_status_reply", H600aStatusReply),
     "H6072": ("h6072_status_reply", H6072StatusReply),

@@ -934,7 +934,7 @@ class EffectPreviewManager:
             await coordinator.async_preview_preflight(timeout=self._connect_timeout)
             await async_prepare_effect_control_state(coordinator, require_restorable_static=True)
             if compiled is not None:
-                validate_compiled_geometry(compiled, coordinator.profile)
+                validate_compiled_geometry(compiled, coordinator.effect_authorization_profile)
             if (
                 isinstance(compiled, CompiledEffect)
                 and compiled.selector_kind == "diy"
@@ -985,7 +985,7 @@ class EffectPreviewManager:
                         write_options.update(final_packet=final_activation, before_final=before_final)
 
                     def validate_effect_write() -> None:
-                        validate_compiled_geometry(compiled, coordinator.profile)
+                        validate_compiled_geometry(compiled, coordinator.effect_authorization_profile)
                         _validate_diy_slot_approval(coordinator, compiled)
 
                     await coordinator.async_write_effect_sequence(

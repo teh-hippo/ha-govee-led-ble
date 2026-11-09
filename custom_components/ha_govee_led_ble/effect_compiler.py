@@ -125,6 +125,7 @@ class CompiledEffect:
     upload_subtype: int | None = None
     body_template_id: int | None = None
     body_effect_code: int | None = None
+    rgbic_scene_v0: bool | None = None
 
     @property
     def packets(self) -> tuple[bytes, ...]:
@@ -198,6 +199,8 @@ CompiledApplication = CompiledEffect | CompiledMusicProfile | CompiledVideoProfi
 def validate_compiled_geometry(compiled: CompiledApplication, profile: ModelProfile) -> None:
     """Reject prepared work after incompatible permission, encoding or geometry changes."""
     if isinstance(compiled, CompiledEffect):
+        if compiled.rgbic_scene_v0 is not None and compiled.rgbic_scene_v0 != profile.rgbic_scene_v0:
+            raise ValueError("RGBIC scene format changed since compilation; refresh and retry")
         if compiled.body_template_id is not None:
             contract = native_diy_template_contract(compiled.model, compiled.body_template_id)
             supported = (
@@ -744,6 +747,7 @@ def _compile_workshop_effect(
             *((DIY_ACK_EVIDENCE,) if profile.diy_requires_upload_ack else ()),
         ),
         upload_subtype=body_kind,
+        rgbic_scene_v0=profile.rgbic_scene_v0,
     )
 
 
@@ -806,6 +810,7 @@ def compile_scene_effect(
             upload_subtype=subtype,
             body_template_id=content.native_diy if contract is not None else None,
             body_effect_code=contract.body_effect if contract is not None else None,
+            rgbic_scene_v0=profile.rgbic_scene_v0,
         )
     evidence_codes: list[str] = []
     if isinstance(content, BuiltinScene):
@@ -885,6 +890,7 @@ def compile_scene_effect(
         evidence_codes=tuple(evidence_codes),
         scene_entry=entry,
         scene_route=(profile.command_grammar, profile.effect_grammar, profile.selector_only_scene_bits),
+        rgbic_scene_v0=profile.rgbic_scene_v0,
         upload_subtype=_builtin_upload_route(entry, profile)[1] if upload else None,
         upload_transport=_builtin_upload_route(entry, profile)[0] if upload else "a3",
     )

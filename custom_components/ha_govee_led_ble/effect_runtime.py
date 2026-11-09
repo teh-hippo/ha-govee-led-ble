@@ -544,7 +544,7 @@ class EffectDeploymentEngine:
                         require_video_controls(coordinator.profile, coordinator, requested_video_controls(compiled))
                     refreshed = await self._async_prepare_prior_state(coordinator, compiled)
                     _validate_diy_slot_approval(coordinator, compiled)
-                    validate_compiled_geometry(compiled, coordinator.profile)
+                    validate_compiled_geometry(compiled, coordinator.effect_authorization_profile)
                     self._reconcile_observation(
                         coordinator,
                         config_entry_id=record.config_entry_id,
@@ -586,7 +586,9 @@ class EffectDeploymentEngine:
                         if not coordinator.is_on:
                             await coordinator.send_command(
                                 build_power(True, coordinator.model),
-                                write_guard=lambda: validate_compiled_geometry(compiled, coordinator.profile),
+                                write_guard=lambda: validate_compiled_geometry(
+                                    compiled, coordinator.effect_authorization_profile
+                                ),
                             )
                             coordinator.is_on = True
                         upload_count = len(compiled.upload_packets)
@@ -631,7 +633,7 @@ class EffectDeploymentEngine:
                             ack_options["final_packet"] = a1_activation
 
                         def validate_effect_write() -> None:
-                            validate_compiled_geometry(compiled, coordinator.profile)
+                            validate_compiled_geometry(compiled, coordinator.effect_authorization_profile)
                             _validate_diy_slot_approval(coordinator, compiled)
 
                         await coordinator.async_write_effect_sequence(
@@ -752,7 +754,7 @@ class EffectDeploymentEngine:
                 assert compiled.activation_packet is not None
                 await coordinator.send_command(
                     compiled.activation_packet,
-                    write_guard=lambda: validate_compiled_geometry(compiled, coordinator.profile),
+                    write_guard=lambda: validate_compiled_geometry(compiled, coordinator.effect_authorization_profile),
                 )
                 return
             except Exception:

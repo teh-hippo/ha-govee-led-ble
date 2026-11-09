@@ -474,6 +474,17 @@ async def test_user_step_requires_explicit_model(hass: HomeAssistant):
 _EM = [("SomeOtherDevice", None), ("Govee_H9999_ABCD", None), ("", None), ("ihoment_H617A_ABCD", "H617A")]
 _EM += [("Govee_H617A_ABCD", "H617A"), ("GBK_H617A_ABCD", "H617A"), ("GVH_H617A_ABCD", "H617A")]
 _EM += [
+    ("ihoment_H619A_ABCD", "H619A"),
+    ("Govee_H619A_ABCD", "H619A"),
+    ("Minger_H619A_ABCD", "H619A"),
+    ("GBK_H619A_ABCD", "H619A"),
+    ("GVH_H619A_ABCD", "H619A"),
+    ("GVH619A_ABCD", "H619A"),
+    ("GVH619AABCD", "H619A"),
+    ("GV619A_ABCD", "H619A"),
+    ("GV619AABCD", "H619A"),
+    ("H619A_ABCD", "H619A"),
+    ("H619A", None),
     ("ihoment_H617C_ABCD", "H617C"),
     ("Govee_H617C_ABCD", "H617C"),
     ("GBK_H617C_ABCD", "H617C"),

@@ -322,6 +322,7 @@ def _make_coord(**ov) -> MagicMock:
 
     c._enter_static_mode = MagicMock(side_effect=_enter_static_mode)
     type(c).native_presentation_profile = PropertyMock(side_effect=lambda: c.profile)
+    type(c).effect_authorization_profile = PropertyMock(side_effect=lambda: c.profile)
     type(c).device_info = PropertyMock(
         return_value=DeviceInfo(
             identifiers={(DOMAIN, d["address"])},

@@ -1,4 +1,5 @@
 command_write
+speculative/h619a_status_reply
 speculative/h1771_command_write
 speculative/h1771_status_query
 speculative/h1771_status_reply

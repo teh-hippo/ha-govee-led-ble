@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 from collections.abc import Callable
+from dataclasses import replace
 from typing import Any
 
 from .const import ModelProfile, get_profile
@@ -26,6 +27,7 @@ from .layered_scene import (
     LayeredSceneValidationError,
     Movement,
     Selection,
+    SelectionType,
 )
 from .protocol_core import (
     GoveeShared,
@@ -92,7 +94,7 @@ def decode_catalogue_layered_scene(sku: str, entry: SceneEntry) -> LayeredScene 
     )
 
 
-def encode_layered_scene(scene: LayeredScene, *, scene_type: int = 2) -> bytes:
+def encode_layered_scene(scene: LayeredScene, *, scene_type: int = 2, profile: ModelProfile | None = None) -> bytes:
     """Serialize canonical layers through the selected catalogue container."""
     if scene_type == int(H607cSceneBody.CatalogueType.layered_scene):
         root = H607cSceneBody()
@@ -104,7 +106,7 @@ def encode_layered_scene(scene: LayeredScene, *, scene_type: int = 2) -> bytes:
         record_type = SceneBody.Record
     else:
         raise ValueError(f"Unsupported layered scene type {scene_type}")
-    layers = scene.effect.layers
+    layers = _profile_layers(scene.effect, profile)
     root.num_records = len(layers)
     root.records = [_encode_record(record_type, root, layer) for layer in layers]
     root.padding = [0] * scene.trailing_padding
@@ -139,21 +141,23 @@ def encode_workshop_effect(
     profile: ModelProfile | None = None,
 ) -> bytes:
     """Serialize Workshop layers through the model-specific generated structure."""
-    grammar = (get_profile(model) if profile is None else profile).effect_grammar
+    profile = get_profile(model) if profile is None else profile
+    grammar = profile.effect_grammar
+    layers = _profile_layers(effect, profile)
     serializer: Callable[[Any], bytes]
     if grammar in {"H6046", "H617A"}:
         root = WorkshopBody()
         root.a3_type = b"\x02"
-        root.num_layers = len(effect.layers)
-        root.layers = [_encode_record(WorkshopBody.LayerRecord, root, layer) for layer in effect.layers]
+        root.num_layers = len(layers)
+        root.layers = [_encode_record(WorkshopBody.LayerRecord, root, layer) for layer in layers]
         root.padding = [0] * trailing_padding
         serializer = serialize_workshop_body_param
         value = root
     elif grammar == "H6199":
         root = H6199EffectUpload()
         content = new_child(H6199EffectUpload.SceneContent, root)
-        content.num_blocks = len(effect.layers)
-        content.blocks = [_encode_record(H6199EffectUpload.Block, content, layer) for layer in effect.layers]
+        content.num_blocks = len(layers)
+        content.blocks = [_encode_record(H6199EffectUpload.Block, content, layer) for layer in layers]
         content.padding = [0] * trailing_padding
         serializer = serialize_h6199_workshop_content
         value = content
@@ -163,6 +167,57 @@ def encode_workshop_effect(
         return serializer(value)
     except SceneParameterTooLargeError as error:
         raise LayeredSceneValidationError(str(error)) from error
+
+
+def _profile_layers(effect: LayeredEffect, profile: ModelProfile | None) -> tuple[EffectLayer, ...]:
+    if profile is None or profile.rgbic_scene_v0 is None:
+        return effect.layers
+    if profile.physical_ic_count is None:
+        raise ValueError("RGBIC scene conversion requires physical IC geometry")
+    layers = []
+    for layer in effect.layers:
+        selection = layer.selection
+        width = layer.area.width_tenths or 10
+        area_ic = profile.physical_ic_count if width == 10 else profile.physical_ic_count // 10 * width
+        if selection.type in {SelectionType.SEGMENT, SelectionType.CONTINUOUS}:
+            maximum = area_ic // 2 if selection.type == SelectionType.SEGMENT else area_ic
+            quantity = min(selection.quantity, maximum)
+            selection = replace(selection, param_1=quantity >> 8, param_2=quantity & 255)
+        elif selection.type == SelectionType.RANDOM:
+            maximum = min(area_ic, 25)
+            if selection.param_1 > maximum:
+                selection = replace(selection, param_1=maximum, param_2=min(selection.param_2, maximum))
+        elif selection.type == SelectionType.CUSTOM:
+            selection = replace(
+                selection, param_1=min(selection.param_1, area_ic), param_2=min(selection.param_2, max(0, area_ic - 2))
+            )
+        if profile.rgbic_scene_v0 and selection.type == SelectionType.CUSTOM:
+            maximum = max(1, area_ic // 2)
+            pieces = max(1, min(maximum, area_ic // selection.param_1)) if selection.param_1 else 1
+            selection = Selection(SelectionType.SEGMENT, pieces >> 8, pieces & 255)
+        distribution = layer.distribution
+        if profile.rgbic_scene_v0 and distribution.method == int(GoveeShared.ColourDistribution.gradient_groups):
+            distribution = replace(distribution, method=int(GoveeShared.ColourDistribution.groups))
+        if profile.rgbic_scene_v0:
+            distribution = replace(distribution, backwards=False)
+        distance = max(0, profile.physical_ic_count - 2)
+        layers.append(
+            replace(
+                layer,
+                selection=selection,
+                unknown_flags=layer.unknown_flags & int(GoveeShared.CompatibilityFlags.v0_brightness_mask)
+                if profile.rgbic_scene_v0
+                else layer.unknown_flags,
+                distribution=distribution,
+                selected_movement=replace(
+                    layer.selected_movement, distance=min(layer.selected_movement.distance, distance)
+                ),
+                overall_movement=replace(
+                    layer.overall_movement, distance=min(layer.overall_movement.distance, distance)
+                ),
+            )
+        )
+    return tuple(layers)
 
 
 def _encode_record(record_type: Any, parent: Any, layer: EffectLayer) -> Any:
