@@ -232,10 +232,21 @@ async def test_h7020_static_preview_rejects_ambiguous_per_bulb_white_intent(hass
         await manager.async_shutdown()
 
 
-async def test_inline_profile_preview_requires_fresh_recovery_before_writing(hass, monkeypatch):
+@pytest.mark.parametrize("fresh_mode", [False, True])
+async def test_inline_profile_preview_uses_fresh_mode_before_independent_recovery(hass, monkeypatch, fresh_mode):
     coordinator = _coordinator(model="H605C", readable=True)
     coordinator._field_revisions = {}
     coordinator.async_read_video_setting = AsyncMock(return_value=False)
+    coordinator.video_mode = "movie" if fresh_mode else "off"
+
+    async def refresh():
+        if fresh_mode:
+            coordinator._field_revisions["video_parameters"] = 1
+        return True
+
+    coordinator.refresh_state = AsyncMock(side_effect=refresh)
+    apply = AsyncMock()
+    monkeypatch.setattr("custom_components.ha_govee_led_ble.effect_preview.async_apply_compiled_profile", apply)
     monkeypatch.setattr(
         "custom_components.ha_govee_led_ble.effect_preview.async_prepare_effect_control_state",
         AsyncMock(return_value=True),
@@ -255,10 +266,16 @@ async def test_inline_profile_preview_requires_fresh_recovery_before_writing(has
             item=LibraryItem.new("Complete video", content),
         )
         await manager.async_wait_idle("entry-a")
-        coordinator.async_read_video_setting.assert_awaited_once_with("video_parameters")
+        coordinator.refresh_state.assert_awaited()
         coordinator.async_preview_write.assert_not_awaited()
-        assert events[-1].phase is PreviewPhase.FAILED
-        assert events[-1].write_disposition is PreviewWriteDisposition.NOT_STARTED
+        if fresh_mode:
+            coordinator.async_read_video_setting.assert_not_awaited()
+            apply.assert_awaited_once()
+        else:
+            coordinator.async_read_video_setting.assert_awaited_once_with("video_parameters")
+            apply.assert_not_awaited()
+            assert events[-1].phase is PreviewPhase.FAILED
+            assert events[-1].write_disposition is PreviewWriteDisposition.NOT_STARTED
     finally:
         await manager.async_shutdown()
 

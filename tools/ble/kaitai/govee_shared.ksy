@@ -3,6 +3,15 @@ meta:
   title: Shared Govee BLE wire datatypes
   endian: le
 types:
+  brightness_flags_with_algorithm:
+    params:
+      - id: original
+        type: u1
+      - id: algorithm
+        type: u1
+    instances:
+      value:
+        value: (original & 0x0f) | (algorithm << 4)
   rgb:
     seq:
       - id: red

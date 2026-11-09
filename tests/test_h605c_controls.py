@@ -35,6 +35,7 @@ from custom_components.ha_govee_led_ble.light_commands import (
     build_segment_color_temp,
 )
 from custom_components.ha_govee_led_ble.music_commands import prepare_music_request
+from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_packets
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
 from custom_components.ha_govee_led_ble.transport import reassemble_a3, xor_checksum
 
@@ -148,6 +149,12 @@ def test_workshop_uses_the_command_selector_contract_independently_of_upload(pac
     compiled = compile_effect(LibraryItem.new("Workshop", content), "H605C", profile=profile)
     assert compiled.activation_packet == frame("3305049201")
     assert reassemble_a3(compiled.upload_packets)[2] == 2
+    root = import_module("custom_components.ha_govee_led_ble.generated_protocol.h605c_effect_upload").H605cEffectUpload
+    encoded = root.from_bytes(reassemble_a3(compiled.upload_packets))
+    encoded._read()
+    assert [layer.body.layer_flags for layer in encoded.body.layers] == [0x12] * 4
+    native = build_native_scene_packets("H605C", scene, profile=profile)
+    assert reassemble_a3(native[:-1])[3:].startswith(raw)
     for packet in compiled.packets:
         require_profile_packet(packet, profile)
 

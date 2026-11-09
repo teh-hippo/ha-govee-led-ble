@@ -305,6 +305,7 @@ class ModelProfile:
     local_scenes: tuple[tuple[int, str], ...] = ()
     advanced_scene_carrier: tuple[int, int] | None = None
     workshop_scene_selector: int | None = None
+    workshop_brightness_algorithm: int | None = None
     advanced_diy_selector: int | None = None
     rgbic_scene_v0: bool | None = None
     # When set, Type04 custom effects upload as A1 command-02 frames led by this selector and activate with it.
@@ -385,6 +386,10 @@ class ModelProfile:
             type(self.workshop_scene_selector) is not int or not 0 <= self.workshop_scene_selector <= 65535
         ):
             raise ValueError("Workshop scene selector must be an unsigned 16-bit value")
+        if self.workshop_brightness_algorithm is not None and (
+            type(self.workshop_brightness_algorithm) is not int or not 0 <= self.workshop_brightness_algorithm <= 2
+        ):
+            raise ValueError("Unknown Workshop brightness algorithm")
         if self.a1_diy_selector is not None and (
             type(self.a1_diy_selector) is not int or not 0 <= self.a1_diy_selector <= 255
         ):
@@ -1274,6 +1279,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         scene_catalogue_sku="H605C",
         advanced_scene_carrier=(29884, 41599),
         workshop_scene_selector=402,
+        workshop_brightness_algorithm=1,
         diy_requires_upload_ack=True,
         effect_retry_after_upload=False,
         music_modes=("energetic", "rhythm", "spectrum", "rolling"),
