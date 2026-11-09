@@ -82,6 +82,7 @@ from .generated_protocol_adapter import (
     build_configured_strings_query,
     build_firmware_query,
     build_hardware_query,
+    build_pact_query,
     build_physical_ic_count_query,
     build_power_on_behaviour,
     build_power_query,
@@ -263,6 +264,8 @@ class GoveeBLECoordinator(
         self._h607c_advertisement_observations: dict[str, tuple[float, frozenset[tuple[int, int]]]] = {}
         self._h607c_marker_pact: tuple[int, int] | None = None
         self._h607c_last_marker_pact: tuple[int, int] | None = None
+        self._connection_pacts: set[tuple[int, int]] = set()
+        self._pact_query_result: str | None = None
         self._h607c_marker_seen = False
         self._h607c_pact_conflict = False
         self._h607c_invalid_pact_version_seen = False
@@ -585,8 +588,11 @@ class GoveeBLECoordinator(
             pacts = {(self.pact_type, self.pact_code)}
         if self._h607c_marker_pact is not None:
             pacts.add(self._h607c_marker_pact)
+        pacts.update(self._connection_pacts)
         conflict = len(pacts) > 1
-        pact = next(iter(pacts)) if len(pacts) == 1 else (None, None)
+        pact: tuple[int | None, int | None] = next(iter(pacts)) if len(pacts) == 1 else (None, None)
+        if strict and not pacts:
+            pact = self.pact_type, self.pact_code
         if pact != (self.pact_type, self.pact_code) or conflict != self._h607c_pact_conflict:
             self.pact_type, self.pact_code = pact
             self._h607c_pact_conflict = conflict
@@ -598,6 +604,7 @@ class GoveeBLECoordinator(
                 self._client is not None
                 and self._client.is_connected
                 and subscription is not None
+                and bool(pacts)
                 and not conflict
                 and pact != (None, None)
             )
@@ -608,6 +615,39 @@ class GoveeBLECoordinator(
                 self._confirmed_identity_fields.discard("pact")
             if previous != confirmed:
                 self._authorization_generation += 1
+
+    def _observe_pact(self, pact_type: int, pact_code: int) -> bool:
+        if (
+            self._client is None
+            or not self._client.is_connected
+            or self._notification_token is None
+            or self._notify_started_monotonic is None
+        ):
+            return False
+        self._connection_pacts.add((pact_type, pact_code))
+        self._resolve_h607c_pact(preserve_state=True)
+        self._pact_query_result = (
+            "conflicting" if self._h607c_pact_conflict else "confirmed" if self.profile.supports_rgb else "unsupported"
+        )
+        return True
+
+    async def _async_confirm_pact(self, client: BleakClient) -> None:
+        if not self.profile.can_read(ReadDomain.PACT) or self.identity_fields_confirmed(frozenset({"pact"})):
+            return
+        baseline = {ReadDomain.PACT: self._domain_revisions.get(ReadDomain.PACT, 0)}
+        deadline = time.monotonic() + IDENTITY_QUERY_TIMEOUT
+        self._pact_query_result = "pending"
+        try:
+            async with asyncio.timeout_at(deadline):
+                await self._async_write_packet(client, build_pact_query(self.profile), cleanup_deadline=deadline)
+                if not await self._wait_for_revisions({}, baseline, deadline):
+                    self._pact_query_result = "timeout"
+        except TimeoutError:
+            self._pact_query_result = "timeout"
+        except BleakError:
+            if self._client is not client or not client.is_connected:
+                raise
+            self._pact_query_result = "write_failed"
 
     @property
     def native_presentation_profile(self) -> ModelProfile:
@@ -932,6 +972,8 @@ class GoveeBLECoordinator(
             _LOGGER.debug("Reconnecting stale notification stream for %s", self.address)
         # Cached identity remains presentation data; only current-connection confirmation is revoked.
         self._confirmed_identity_fields.clear()
+        self._connection_pacts.clear()
+        self._pact_query_result = None
         self._physical_ic_count_confirmed = False
         self._authorization_generation += 1
         self._music_palette = self._music_body = None
@@ -996,6 +1038,9 @@ class GoveeBLECoordinator(
                 )
                 self._resolve_h607c_pact(preserve_state=same_marker)
                 self._h607c_last_marker_pact = self._h607c_marker_pact
+            await self._async_confirm_pact(client)
+            self._require_not_shutdown()
+            self._require_not_dreamview_claimed()
             if self.profile.requires_notifications:
                 identity_baselines = {
                     domain: self._domain_revisions.get(domain, 0)
@@ -1135,6 +1180,7 @@ class GoveeBLECoordinator(
             self._field_received_at.pop(field, None)
         self.video_parameters = None
         self._confirmed_identity_fields.clear()
+        self._connection_pacts.clear()
         self._authorization_generation += 1
         self._configured_strings_confirmed = False
         self._segment_query_generation = None

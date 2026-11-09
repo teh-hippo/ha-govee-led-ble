@@ -39,6 +39,7 @@ Keep real product differences without turning each product into a separate imple
   Preserve distinctions between unknown, unsupported and explicitly disabled.
 - Evaluate revision prerequisites together and fail closed when required identity is missing or a prerequisite fails.
   Where identity requires subscription qualification, cached identity is presentation-only; require current-subscription evidence before authorising dependent writes.
+  Reconcile fresh markers, current-subscription advertisements and declared protocol-identity reads; conflicting live evidence cannot authorise controls.
   Reconcile expiry at explicit operation boundaries before capturing generations; capability getters must be side-effect free.
 - `tools/ble/kaitai/**/*.ksy` is the only source of BLE wire structure and protocol documentation.
   Files under `speculative/` are unconfirmed hypotheses; the rest are evidence-backed.

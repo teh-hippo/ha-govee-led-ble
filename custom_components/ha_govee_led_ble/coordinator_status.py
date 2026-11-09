@@ -38,6 +38,7 @@ _STATUS_DOMAIN_NAMES = {
     "firmware": StatusDomain.FIRMWARE,
     "hw_version": StatusDomain.HARDWARE,
     "hardware": StatusDomain.HARDWARE,
+    "pact": StatusDomain.PACT,
     "subordinate_20": StatusDomain.SUBORDINATE_20,
     "subordinate_21": StatusDomain.SUBORDINATE_21,
     "display_setting": StatusDomain.DISPLAY_SETTING,

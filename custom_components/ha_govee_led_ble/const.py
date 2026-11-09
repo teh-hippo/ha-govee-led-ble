@@ -94,6 +94,7 @@ class ReadDomain(StrEnum):
     MODE = "mode"
     FIRMWARE = "firmware"
     HARDWARE = "hardware"
+    PACT = "pact"
     SUBORDINATE_20 = "subordinate_20"
     SUBORDINATE_21 = "subordinate_21"
     WIRELESS_FIRMWARE = "wireless_firmware"
@@ -1120,6 +1121,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
                 ReadDomain.COLOUR_MODE,
                 ReadDomain.FIRMWARE,
                 ReadDomain.HARDWARE,
+                ReadDomain.PACT,
                 ReadDomain.SEGMENTS,
             }
         ),
@@ -2817,7 +2819,7 @@ def profile_with_physical_ic_count(profile: ModelProfile, count: int, *, segment
 
 def _basic_revision_profile(profile: ModelProfile) -> ModelProfile:
     """Grant only independently qualified basic controls, never inherit capability flags."""
-    domains = frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.FIRMWARE, ReadDomain.HARDWARE})
+    domains = frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.FIRMWARE, ReadDomain.HARDWARE, ReadDomain.PACT})
     return ModelProfile(
         profile.name,
         support_quality=profile.support_quality,

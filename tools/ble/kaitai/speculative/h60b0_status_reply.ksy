@@ -11,6 +11,9 @@ doc: |
   Source flags occupy the high nibble, independently of lower unknown bits.
   The bottom Kelvin/brightness and top Kelvin/ripple speed are independent
   values. A5 records cover eight side colours and the top colour only.
+  The candidate EF identity reply carries Pact type BE16 and Pact code.
+  Captured EE30 source notifications carry an opaque prefix then the same
+  high-nibble power flags; their suffix does not confirm native attributes.
 seq:
   - id: header
     contents: [0xaa]
@@ -30,6 +33,7 @@ seq:
         'status_domain::source_info': source_info
         'status_domain::power_on_behaviour': power_on_body
         'status_domain::segments': govee_segment_page(9, 4, false)
+        'status_domain::pact': pact_body
   - id: checksum
     type: u1
 enums:
@@ -42,6 +46,7 @@ enums:
     0x41: power_on_behaviour
     0x42: source_info
     0xa5: segments
+    0xef: pact
   color_mode:
     0x04: scene
     0x0a: diy
@@ -49,6 +54,35 @@ enums:
     0x13: music
     0x2c: source_control
 types:
+  pact_body:
+    seq:
+      - id: pact_type
+        type: u2be
+      - id: pact_code
+        type: u1
+      - id: unknown_tail
+        size-eos: true
+  source_notification:
+    seq:
+      - id: header
+        contents: [0xee, 0x30]
+      - id: unknown_prefix
+        type: u1
+      - id: flags
+        type: u1
+      - id: unknown_tail
+        size: 15
+      - id: checksum
+        type: u1
+    instances:
+      is_on:
+        value: (flags & 0x80) != 0
+      top_enabled:
+        value: (flags & 0x40) != 0
+      side_enabled:
+        value: (flags & 0x20) != 0
+      bottom_enabled:
+        value: (flags & 0x10) != 0
   percent_body:
     seq:
       - id: percent
