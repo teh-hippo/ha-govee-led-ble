@@ -235,6 +235,7 @@ async def test_reconnect_revokes_cached_pact_and_qualifies_the_current_marker(ha
     coordinator._clear_client_state(old_client)
     assert coordinator.profile.native_effect_revision == 2
     assert not coordinator.identity_fields_confirmed()
+    assert coordinator.h607c_pact_readiness == "stale"
     with pytest.raises(ValueError):
         coordinator._validate_authorized_packet(source_packet)
     with pytest.raises(ValueError):
@@ -253,6 +254,7 @@ async def test_reconnect_revokes_cached_pact_and_qualifies_the_current_marker(ha
         await coordinator._ensure_connected()
         assert coordinator.profile.native_effect_revision == 3
         assert coordinator.identity_fields_confirmed()
+        assert coordinator.h607c_pact_readiness == "ready"
         coordinator._validate_authorized_packet(source_packet)
         with pytest.raises(ValueError, match="revision"):
             validate_compiled_geometry(compiled, coordinator.profile)
