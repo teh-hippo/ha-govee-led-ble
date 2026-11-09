@@ -9,9 +9,9 @@ test("combined music filters each source roster and retains independent style", 
   await expect(children.nth(1).getByLabel("Reactive effect").locator("option[value='vortex']")).toHaveCount(0);
   await expect(children.nth(0).getByLabel("Reactive effect").locator("option[value='vortex']")).toHaveCount(1);
   const original = await editor.evaluate(element => (element as GoveeMusicProfileEditor).content!);
-  await children.nth(0).getByLabel("Style", { exact: true }).selectOption("calm");
+  await children.nth(0).getByLabel("Style", { exact: true }).selectOption("dynamic");
   const changed = await editor.evaluate(element => (element as GoveeMusicProfileEditor).content!);
-  expect(changed.zones![0].calm).toBe(true);
+  expect(changed.zones![0].calm).toBe(false);
   expect(changed.zones![1]).toEqual(original.zones![1]);
 });
 

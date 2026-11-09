@@ -175,7 +175,9 @@ def test_three_source_top_kelvin_derives_the_qualified_companion():
         family=923,
         layers=(NativeDiyLayer(7, 0, (), parameter=50, direction=1, flag=100, angle=4000), off, off),
     )
-    root = H60b0DiyV3.from_bytes(encode_h60b0_diy(content))
+    payload = encode_h60b0_diy(content)
+    assert payload == bytes.fromhex("0f000a3201010764a00fffd5a101010101")
+    root = H60b0DiyV3.from_bytes(payload)
     root._read()
     assert root.body.top.body.kelvin == 4000
     assert root.body.top.body.brightness == 100
@@ -186,7 +188,10 @@ def test_three_source_top_kelvin_derives_the_qualified_companion():
 def test_music_style_palette_and_hopping_budget():
     style = next(variant for variant in H60B0_MUSIC_VARIANTS if variant.mode_code == 48)
     encoded = encode_music_parameters(style, {}, palette=[(1, 2, 3), (4, 5, 6)], calm=True)
-    assert encoded == bytes.fromhex("300201020304050600")
+    assert encoded == bytes.fromhex("300201020304050601")
+    assert encode_music_parameters(style, {}, palette=[(1, 2, 3), (4, 5, 6)], calm=False) == bytes.fromhex(
+        "300201020304050600"
+    )
     hopping = next(variant for variant in H60B0_MUSIC_VARIANTS if variant.mode_code == 51)
     with pytest.raises(ValueError, match="physical"):
         encode_music_parameters(hopping, {}, palette=None, calm=None)
@@ -211,7 +216,7 @@ def test_combined_music_has_independently_bounded_source_parameters():
         MusicZone("ripple", "spectrum", palette=((7, 8, 9),)),
     )
     encoded = encode_h60b0_music_zones(profile, zones)
-    assert encoded == bytes.fromhex("8230080201020304050600830401070809")
+    assert encoded == bytes.fromhex("8230080201020304050601830401070809")
     restored = h60b0_music_zones(encoded)
     assert restored[0].calm is True
     assert encode_h60b0_music_zones(profile, restored) == encoded

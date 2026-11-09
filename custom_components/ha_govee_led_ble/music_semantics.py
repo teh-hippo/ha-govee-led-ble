@@ -99,7 +99,8 @@ H60B0_MUSIC_VARIANTS = (
             "H60B0 exact-model onboard palette and style",
             "h60b0_music_body",
             bytes.fromhex(f"{code:02x}{_H60B0_PALETTE}" + ("01" if code in (48, 49, 114) else "")),
-            supports_style=code in (48, 49, 114),
+            supports_style=code in (48, 49),
+            calm_default=code in (48, 49),
             palette_bounds=bounds,
             supports_fixed_colour=False,
         )

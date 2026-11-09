@@ -114,9 +114,8 @@ def validate_command(root: Any, profile: ModelProfile) -> bool:
         raise ValueError("Masked colour is not qualified for this source selector")
     detail = command.detail
     if source == "bottom_enabled":
-        if (
-            action != "brightness"
-            and not profile.min_color_temp_kelvin <= detail.kelvin <= profile.max_color_temp_kelvin
+        if action != "brightness" and (
+            not profile.min_color_temp_kelvin <= detail.kelvin <= profile.max_color_temp_kelvin or detail.kelvin % 100
         ):
             raise ValueError("Bottom Kelvin is outside the profile")
     elif action == "colour":

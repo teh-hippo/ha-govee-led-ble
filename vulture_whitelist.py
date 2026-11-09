@@ -84,6 +84,9 @@ _.brightness_scope_end  # layered_scene_decoder.py
 _.brightness_scope_start  # layered_scene_decoder.py
 _.brightness_speed  # layered_scene_decoder.py
 _.data_length  # h60a6_effects.py
+_.flow_speed  # h60b0_diy.py generated native effect header
+_.colourful  # h60b0_diy.py generated native colour setting
+_.len_ripple  # h60b0_effects.py generated combined-section length
 _.direction_distribution  # layered_scene_decoder.py
 _.discriminator  # dreamview.py
 _.identity_kind  # dreamview.py

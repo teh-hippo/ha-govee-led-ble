@@ -202,7 +202,7 @@ def h60b0_music_zones(body: bytes) -> tuple[MusicZone, ...]:
             name,
             zone.mode.name,
             body=bytes((int(zone.mode),)) + serialize_native_body(zone.body),
-            calm=bool(zone.body.tail.style == H60b0MusicBody.Style.calm) if zone.mode in (48, 49, 114) else None,
+            calm=bool(zone.body.tail.style == H60b0MusicBody.Style.calm) if zone.mode in (48, 49) else None,
         )
         for name, zone in (("side", root.body.side), ("ripple", root.body.ripple))
     )
@@ -229,6 +229,8 @@ def encode_h60b0_music_zones(profile: Any, zones: tuple[MusicZone, ...]) -> byte
         variant = music_variant(profile, code)
         if variant is None:
             raise ValueError("Music zone has no qualified parameter body")
+        if zone.calm is not None and not variant.supports_style:
+            raise ValueError("Music source does not expose a style control")
         if zone.body is not None:
             parse_music_parameters(variant, zone.body)
             variant = replace(variant, template=zone.body)
