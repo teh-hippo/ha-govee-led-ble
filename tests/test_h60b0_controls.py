@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from homeassistant.components.light import ColorMode
 
-from custom_components.ha_govee_led_ble.const import device_profile
+from custom_components.ha_govee_led_ble.const import ReadDomain, device_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.effect_catalogue import MODEL_EFFECT_CATALOGUES
 from custom_components.ha_govee_led_ble.effect_compiler import compile_effect, validate_compiled_geometry
@@ -18,6 +18,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_brightness,
     build_colour_mode_query,
     build_hardware_query,
+    build_pact_query,
     build_power_on_behaviour,
     build_segment_query,
     build_source_value,
@@ -70,6 +71,7 @@ def frame(prefix: str) -> bytes:
         (build_boolean_control_query("top_enabled", "H60B0", profile=PROFILE), "aa42"),
         (build_colour_mode_query(profile=PROFILE), "aa05"),
         (build_hardware_query(profile=PROFILE), "aa0703"),
+        (build_pact_query(PROFILE), "aaef"),
         (build_segment_query(3, profile=PROFILE), "aaa503"),
     ],
 )
@@ -320,3 +322,159 @@ async def test_pact_is_rechecked_after_reply_pacing_before_the_physical_write(ha
     with pytest.raises(ValueError):
         await coordinator._async_write_packet(client, packet, arm_expected=True)
     client.write_gatt_char.assert_not_awaited()
+
+
+@pytest.fixture
+def pact_connection(hass, monkeypatch):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H60B0", configuration_url=None)
+    coordinator.pact_type, coordinator.pact_code = 1, 2
+    coordinator.profile = PROFILE
+    coordinator._h607c_advertisement_observations = {"cached": (time.monotonic() - 10, frozenset({(1, 2)}))}
+    client = MagicMock(is_connected=True, start_notify=AsyncMock(), write_gatt_char=AsyncMock(), disconnect=AsyncMock())
+    coordinator._encryption = MagicMock(
+        ready=True,
+        version=0,
+        marker_pact=None,
+        async_select=AsyncMock(),
+        async_negotiate=AsyncMock(),
+        encode=lambda packet: packet,
+        decode=lambda packet: packet,
+    )
+    monkeypatch.setattr(
+        "custom_components.ha_govee_led_ble.coordinator.async_establish_ble_connection", AsyncMock(return_value=client)
+    )
+    monkeypatch.setattr(coordinator, "_send_identity_queries", AsyncMock())
+    monkeypatch.setattr(coordinator, "_start_keep_alive", MagicMock())
+    return coordinator, client
+
+
+@pytest.mark.parametrize(("revision", "cached"), [(1, True), (2, True), (3, True), (9, True), (2, False)])
+async def test_live_pact_read_qualifies_without_marker_or_connected_advertisements(pact_connection, revision, cached):
+    coordinator, client = pact_connection
+    if not cached:
+        coordinator.pact_type = coordinator.pact_code = None
+        coordinator.profile = device_profile("H60B0", None, None)
+        coordinator._h607c_advertisement_observations.clear()
+    initial_profile = coordinator.profile
+    source = GoveeBLESourceLight(coordinator, "top")
+    packet = build_source_value("bottom", "brightness", 40, PROFILE)
+
+    async def write(_uuid, query, **kwargs):
+        assert query == frame("aaef")
+        assert source.available is cached
+        assert coordinator.profile == initial_profile
+        assert not coordinator.identity_fields_confirmed()
+        with pytest.raises(ValueError):
+            coordinator._require_writable_packet(packet, require_profile_packet, arm_expected=True)
+        receive = client.start_notify.await_args.args[1]
+        receive(None, bytearray(frame(f"aaef0001{revision:02x}" + "55" * 14)))
+
+    client.write_gatt_char.side_effect = write
+    try:
+        assert await coordinator._ensure_connected() is client
+        client.write_gatt_char.assert_awaited_once()
+        assert coordinator.identity_fields_confirmed()
+        assert coordinator._authorization_profile().supports_rgb is (revision != 9)
+        if revision != 9:
+            assert source.available
+            assert coordinator.profile.native_effect_revision == revision
+            coordinator._validate_authorized_packet(packet)
+        else:
+            assert not source.available
+            assert coordinator._pact_query_result == "unsupported"
+            with pytest.raises(ValueError):
+                await coordinator._async_write_packet(client, packet, arm_expected=True)
+            client.write_gatt_char.assert_awaited_once()
+    finally:
+        await coordinator.disconnect()
+
+
+async def test_pact_timeout_preserves_presentation_but_not_write_authority(pact_connection, virtual_clock):
+    coordinator, client = pact_connection
+    source = GoveeBLESourceLight(coordinator, "top")
+    packet = build_source_value("bottom", "brightness", 40, PROFILE)
+    try:
+        assert await coordinator._ensure_connected() is client
+        assert coordinator._pact_query_result == "timeout"
+        assert coordinator.profile == PROFILE and source.available
+        assert not coordinator.identity_fields_confirmed()
+        assert not coordinator._authorization_profile().supports_rgb
+        coordinator._validate_authorized_packet(build_brightness(50, profile=PROFILE))
+        with pytest.raises(ValueError):
+            coordinator._validate_authorized_packet(packet)
+        receive = client.start_notify.await_args.args[1]
+        malformed = bytearray(frame("aaef000102"))
+        malformed[-1] ^= 1
+        receive(None, malformed)
+        assert not coordinator.identity_fields_confirmed()
+        receive(None, bytearray(frame("aaef000102")))
+        assert coordinator.identity_fields_confirmed()
+        coordinator._clear_client_state(client)
+        assert not coordinator.identity_fields_confirmed()
+        receive(None, bytearray(frame("aaef000103")))
+        assert not coordinator._connection_pacts
+        client.write_gatt_char.side_effect = lambda *args, **kwargs: receive(None, bytearray(frame("aaef000103")))
+        assert await coordinator._ensure_connected() is client
+        assert not coordinator.identity_fields_confirmed()
+        assert coordinator._pact_query_result == "timeout"
+        assert coordinator.profile == PROFILE
+    finally:
+        await coordinator.disconnect()
+
+
+@pytest.mark.parametrize("conflict", ["query", "marker", "advertisement"])
+async def test_live_pact_conflicts_revoke_write_authority(pact_connection, conflict):
+    coordinator, client = pact_connection
+    client.write_gatt_char.side_effect = lambda *args, **kwargs: client.start_notify.await_args.args[1](
+        None, bytearray(frame("aaef000102"))
+    )
+    try:
+        await coordinator._ensure_connected()
+        assert coordinator.identity_fields_confirmed()
+        if conflict == "query":
+            client.start_notify.await_args.args[1](None, bytearray(frame("aaef000103")))
+        elif conflict == "marker":
+            coordinator._h607c_marker_pact = (1, 3)
+            coordinator._resolve_h607c_pact()
+        else:
+            coordinator._h607c_advertisement_observations["current"] = (time.monotonic(), frozenset({(1, 3)}))
+            coordinator._resolve_h607c_pact()
+        assert coordinator.h607c_pact_readiness == "conflicting"
+        assert not coordinator.identity_fields_confirmed()
+        assert not coordinator._authorization_profile().supports_rgb
+        with pytest.raises(ValueError):
+            await coordinator._async_write_packet(
+                client, build_source_value("bottom", "brightness", 40, PROFILE), arm_expected=True
+            )
+        client.write_gatt_char.assert_awaited_once()
+    finally:
+        await coordinator.disconnect()
+
+
+@pytest.mark.parametrize(
+    ("flags", "expected"),
+    [(0x30, (False, False, True, True)), (0xB0, (True, False, True, True)), (0xA0, (True, False, True, False))],
+)
+async def test_reported_source_notifications_update_only_power_fields(hass, flags, expected):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H60B0", configuration_url=None)
+    coordinator.profile = PROFILE
+    coordinator._notify_callback(None, bytearray(frame("aa42d00fa0280bb81e")))
+    native_revisions = {field: coordinator._field_revisions[field] for field in ("bottom_kelvin", "ripple_speed")}
+    notification = frame(f"ee3001{flags:02x}" + "ab" * 15)
+    coordinator._notify_callback(None, bytearray(notification))
+    controls = ("top_enabled", "side_enabled", "bottom_enabled")
+    assert (coordinator.is_on, *(coordinator.boolean_control_state[name] for name in controls)) == expected
+    assert (coordinator.bottom_kelvin, coordinator.bottom_brightness, coordinator.ripple_speed) == (4000, 40, 30)
+    assert {field: coordinator._field_revisions[field] for field in native_revisions} == native_revisions
+    assert not coordinator.identity_fields_confirmed()
+    assert ReadDomain.PACT not in coordinator._domain_revisions
+    broken = bytearray(notification)
+    broken[3] ^= 0xF0
+    coordinator._notify_callback(None, broken)
+    assert (coordinator.is_on, *(coordinator.boolean_control_state[name] for name in controls)) == expected
+    coordinator._expected_state["boolean_top_enabled"] = (True, time.monotonic() + 10)
+    coordinator.boolean_control_state["top_enabled"] = True
+    previous = coordinator._field_revisions["boolean_top_enabled"]
+    coordinator._notify_callback(None, bytearray(notification))
+    assert coordinator.boolean_control_state["top_enabled"] is True
+    assert coordinator._field_revisions["boolean_top_enabled"] == previous

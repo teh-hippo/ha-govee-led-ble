@@ -9,7 +9,7 @@ from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.core import HomeAssistant
 
 from . import GoveeBLEConfigEntry
-from .const import CONF_H6102_APP_FIRMWARE, CONF_H6102_APP_HARDWARE, CONF_H6102_PACT, get_profile
+from .const import CONF_H6102_APP_FIRMWARE, CONF_H6102_APP_HARDWARE, CONF_H6102_PACT, ReadDomain, get_profile
 from .coordinator import PACKET_LOG_LIMIT, PACKET_LOG_RAW_BYTES_LIMIT
 from .coordinator_status import decode_status_frame
 from .effect_contracts import diagnostics_release_capabilities
@@ -186,7 +186,7 @@ async def async_get_config_entry_diagnostics(
     }
     if coordinator.model == "H6102":
         coordinator_data["capability_resolution"] = _h6102_capability_resolution(entry, coordinator)
-    elif coordinator.model == "H607C":
+    elif coordinator.identity_gated_controls:
         cutoff = time.monotonic() - FALLBACK_MAXIMUM_STALE_ADVERTISEMENT_SECONDS
         fresh_pacts = {
             pact
@@ -195,7 +195,7 @@ async def async_get_config_entry_diagnostics(
             for pact in pacts
         }
         marker_pact = coordinator._h607c_marker_pact
-        coordinator_data["capability_resolution"] = {
+        resolution: dict[str, Any] = {
             "pact_readiness": coordinator.h607c_pact_readiness,
             "pact_source": "marker"
             if marker_pact is not None
@@ -220,6 +220,17 @@ async def async_get_config_entry_diagnostics(
             "last_optional_read_failure_since_reload": coordinator._h607c_last_optional_read_failure,
             "unconfirmed_state_fields": sorted(coordinator._h607c_uncertain_state_fields),
         }
+        if coordinator.profile.can_read(ReadDomain.PACT):
+            resolution["identity_sources"]["query"] = bool(coordinator._connection_pacts)
+            if coordinator._connection_pacts and marker_pact is None:
+                resolution["pact_source"] = "query"
+            resolution.update(
+                connection_pacts=[list(pact) for pact in sorted(coordinator._connection_pacts)],
+                pact_query_result=coordinator._pact_query_result,
+                identity_confirmed=coordinator.identity_fields_confirmed(),
+                authorised_supports_rgb=coordinator._authorization_profile().supports_rgb,
+            )
+        coordinator_data["capability_resolution"] = resolution
     elif coordinator.profile.profile_identity_fields:
         profile = coordinator.profile
         coordinator_data["capability_resolution"] = {

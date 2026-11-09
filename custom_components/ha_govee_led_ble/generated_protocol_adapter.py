@@ -33,6 +33,7 @@ from .protocol_core import (
     H60b0CommandAck,
     H60b0CommandWrite,
     H60b0EffectUpload,
+    H60b0StatusReply,
     H60b2Control,
     H60b2DiyBody,
     H60b2EffectUpload,
@@ -1089,6 +1090,12 @@ def build_hardware_query(model: str = "H617A", *, profile: ModelProfile | None =
     return _build_status_query("hardware", (profile or get_profile(model)).command_grammar)
 
 
+def build_pact_query(profile: ModelProfile) -> bytes:
+    if not profile.can_read(ReadDomain.PACT):
+        raise ValueError("Protocol identity readback is outside the profile")
+    return _build_status_query("pact", profile.command_grammar)
+
+
 def build_boolean_control(
     control: str,
     enabled: bool,
@@ -1421,6 +1428,10 @@ def parse_zone_notification(frame: bytes, profile: ModelProfile) -> ProtocolPars
     if profile.setting_grammar == "H60B2":
         return _parse_xor_frame(
             frame, "H60B2", {"H60B2": ("h60b2_control.zone_notification", H60b2Control.ZoneNotification)}
+        )
+    if profile.setting_grammar == "H60B0" and profile.boolean_controls:
+        return _parse_xor_frame(
+            frame, "H60B0", {"H60B0": ("h60b0_status_reply.source_notification", H60b0StatusReply.SourceNotification)}
         )
     if profile.setting_grammar == "H1771":
         result = _parse_xor_frame(
