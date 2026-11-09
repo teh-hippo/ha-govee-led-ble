@@ -2,6 +2,7 @@ meta:
   id: command_write
   title: Govee H617A "33" command-write envelope (decode-only)
   endian: le
+  bit-endian: le
   imports:
     - govee_shared
     - govee_common
@@ -113,7 +114,7 @@ types:
             'multi_sub::scene': scene_activate
             'multi_sub::diy': govee_common::diy_selector
             'multi_sub::music': govee_common::music_selector
-            'multi_sub::static': static_cmd
+            'multi_sub::static': static_cmd(false)
   scene_activate:
     seq:
       - id: code
@@ -124,7 +125,15 @@ types:
     seq:
       - id: bits
         type: u2le
+  extended_segment_mask:
+    doc: Three-byte least-significant-bit-first selection for qualified extended layouts.
+    seq:
+      - id: bits
+        type: b24
   static_cmd:
+    params:
+      - id: extended
+        type: bool
     seq:
       - id: static_sub
         type: u1
@@ -133,10 +142,13 @@ types:
         type:
           switch-on: static_sub
           cases:
-            0x01: static_color
-            0x02: static_brightness
+            0x01: static_color(extended)
+            0x02: static_brightness(extended)
             0x03: static_brightness_all
   static_color:
+    params:
+      - id: extended
+        type: bool
     seq:
       - id: rgb_direct
         type: govee_shared::rgb
@@ -145,15 +157,36 @@ types:
       - id: rgb_preview
         type: govee_shared::rgb
       - id: mask
-        type: segment_mask
+        type:
+          switch-on: extended
+          cases:
+            false: segment_mask
+            true: extended_segment_mask
+      - id: unknown_tail
+        size-eos: true
+    instances:
+      tail_size:
+        value: 'extended ? 4 : 5'
   static_brightness:
+    params:
+      - id: extended
+        type: bool
     seq:
       - id: percent
         type: u1
         valid:
           max: 100
       - id: mask
-        type: segment_mask
+        type:
+          switch-on: extended
+          cases:
+            false: segment_mask
+            true: extended_segment_mask
+      - id: unknown_tail
+        size-eos: true
+    instances:
+      tail_size:
+        value: 'extended ? 11 : 12'
   static_brightness_all:
     seq:
       - id: segment_percent

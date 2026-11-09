@@ -68,7 +68,7 @@ class _SegmentMixin(_CoordinatorBase):
             self.profile.configured_string_counts
             and (not self._configured_strings_confirmed or self._segment_query_generation != self._profile_generation)
         ) or (
-            self.profile.ic_per_segment is not None
+            self.profile.segment_count_ic_divisor is not None
             and self._segment_query_generation not in (None, self._profile_generation)
         ):
             raise ValueError("segment page has no current configured layout")
@@ -85,7 +85,8 @@ class _SegmentMixin(_CoordinatorBase):
             and isinstance(records, list)
             and len(records) == count
             and expected_count < count <= group_size
-            and self.profile.segment_count < get_profile(self.model).segment_count
+            and self.profile.segment_count
+            < (get_profile(self.model).segment_count_capacity or get_profile(self.model).segment_count)
         ):
             records = records[:expected_count]
             count = expected_count

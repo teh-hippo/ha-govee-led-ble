@@ -69,8 +69,8 @@ types:
         type:
           switch-on: static_sub
           cases:
-            1: command_write::static_color
-            2: command_write::static_brightness
+            1: command_write::static_color(false)
+            2: command_write::static_brightness(false)
             3: static_brightness_all
   static_brightness_all:
     seq:

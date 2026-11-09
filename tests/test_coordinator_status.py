@@ -248,6 +248,40 @@ async def test_h61f5_pact_changes_retain_cut_geometry_and_update_kelvin_bounds(h
         assert coordinator._profile_generation == generation + step
 
 
+@pytest.mark.parametrize(
+    "model,layouts",
+    [
+        ("H1A42", [(3, 3), (4, 4), (5, 5), (12, 5), (1, 1)]),
+        ("H61F5", [(21, 5), (50, 10), (80, 16), (81, 17), (100, 20), (101, 20), (21, 5)]),
+    ],
+)
+async def test_reported_strip_layouts_grow_shrink_and_collect_only_installed_records(hass, model, layouts):
+    from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+
+    c = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url=None)
+    for physical, sections in layouts:
+        generation, previous = c._profile_generation, c.profile.segment_count
+        c._notify_callback(None, bytearray(_h6179_status(0x40, physical.to_bytes(2, "big"))))
+        assert c.profile.segment_count == sections
+        assert c.profile.physical_ic_count == physical
+        assert c._profile_generation == generation + (previous != sections)
+        c._resolve_device_profile()
+        assert c.profile.segment_count == sections
+        assert c.profile.whole_device_mask == (1 << sections) - 1
+        c._segment_query_generation = c._profile_generation
+        for page in range(1, c.profile.segment_group_count + 1):
+            installed = min(4, sections - (page - 1) * 4)
+            records = bytes((37, 1, 2, 3)) * installed + bytes((251, 9, 8, 7)) * (4 - installed)
+            c._notify_callback(None, bytearray(_h6179_status(0xA5, bytes((page,)) + records)))
+        assert c.segment_state_source == "observed"
+        assert c.segment_colors == [(1, 2, 3)] * sections
+        assert c.segment_brightness == [37] * sections
+        revision = c._field_revisions["segment_colors"]
+        extra = bytes((c.profile.segment_group_count + 1,)) + bytes((37, 1, 2, 3)) * 4
+        c._notify_callback(None, bytearray(_h6179_status(0xA5, extra)))
+        assert c._field_revisions["segment_colors"] == revision
+
+
 def test_status_envelope_rejects_invalid_frames() -> None:
     assert decode_status_frame(b"") is None
     assert decode_status_frame(H("3301010000000000000000000000000000000033")) is None

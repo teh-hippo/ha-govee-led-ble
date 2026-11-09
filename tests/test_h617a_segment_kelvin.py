@@ -14,7 +14,14 @@ from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from custom_components.ha_govee_led_ble.const import get_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
-from custom_components.ha_govee_led_ble.generated_protocol_adapter import table_kelvin_rgb
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
+    build_colour_temperature,
+    build_segment_brightness,
+    build_segment_colour,
+    parse_command_result,
+    require_profile_packet,
+    table_kelvin_rgb,
+)
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.light_commands import (
     build_color_rgb,
@@ -25,6 +32,7 @@ from custom_components.ha_govee_led_ble.light_services import (
     _SET_SEGMENT_COLOR_TEMP_SCHEMA,
     async_register_light_services,
 )
+from custom_components.ha_govee_led_ble.protocol_core import _serialize_xor
 from custom_components.ha_govee_led_ble.transport import xor_checksum
 
 
@@ -80,6 +88,57 @@ def test_schema_and_effective_profile_validation():
     parsed = parse_static_write(build_segment_color_temp([1, 5], 3000, profile=profile))
     assert parsed is not None
     assert (parsed.segment_mask, parsed.kelvin, parsed.kelvin_companion_rgb) == (17, 3000, (255, 185, 105))
+
+
+@pytest.mark.parametrize("model,count", [("H1A42", 3), ("H61F5", 16), ("H61F5", 17), ("H61F5", 20)])
+@pytest.mark.parametrize("operation", ["rgb", "kelvin", "brightness"])
+def test_static_commands_address_the_effective_reported_layout(model, count, operation):
+    profile = replace(get_profile(model), segment_count=count)
+    mask = 1 | (1 << (count - 1))
+    builder = {
+        "rgb": lambda bits: build_segment_colour(bits, 1, 2, 3, model, profile=profile),
+        "kelvin": lambda bits: build_colour_temperature(3000, bits, model, profile=profile),
+        "brightness": lambda bits: build_segment_brightness(bits, 37, model, profile=profile),
+    }[operation]
+    packet = builder(mask)
+    require_profile_packet(packet, profile)
+    static = parse_static_write(packet, model, profile=profile)
+    assert static is not None and static.segment_mask == mask
+    if model == "H61F5" and count > 16:
+        assert parse_command_result(packet, model, profile=profile).parser == "h61f5_extended_static_write"
+        low_only = parse_static_write(builder(1), model, profile=profile)
+        assert low_only is not None and low_only.segment_mask == 1
+    if count != 16:
+        with pytest.raises(ValueError, match="outside profile geometry"):
+            require_profile_packet(builder(1 << count), profile)
+
+
+@pytest.mark.parametrize("model,count", [("H617A", 15), ("H61F5", 20)])
+def test_static_mask_roots_preserve_nonzero_opaque_suffixes(model, count):
+    profile = replace(get_profile(model), segment_count=count)
+    packet = bytearray(build_segment_colour(1, 1, 2, 3, model, profile=profile))
+    packet[-3:-1] = b"\xa5\x7e"
+    packet[-1] = xor_checksum(packet[:-1])
+    result = parse_command_result(bytes(packet), model, profile=profile)
+    assert result.parsed is not None
+    body = result.parsed.body.sub_body.static_body
+    assert body.mask.bits == 1 and body.unknown_tail.endswith(b"\xa5\x7e")
+    assert _serialize_xor(result.parsed) == bytes(packet)
+    require_profile_packet(bytes(packet), profile)
+
+
+@pytest.mark.parametrize("malformed", ["brightness_list", "brightness_percent"])
+def test_extended_static_root_does_not_fall_back_to_narrow_commands(malformed):
+    profile = replace(get_profile("H61F5"), segment_count=20)
+    packet = bytearray(build_segment_brightness(1, 37, "H61F5", profile=profile))
+    if malformed == "brightness_list":
+        packet[3] = 3
+    else:
+        packet[4] = 101
+    packet[-1] = xor_checksum(packet[:-1])
+    assert parse_command_result(bytes(packet), profile=profile).parsed is None
+    with pytest.raises(ValueError, match="Invalid extended static"):
+        require_profile_packet(bytes(packet), profile)
 
 
 def test_service_registration_uses_shared_segment_schema():
@@ -257,23 +316,29 @@ async def test_h66a0_segment_kelvin_confirms_device_rendered_rgb_and_mode_kelvin
 
 
 @pytest.mark.parametrize(
-    "model,whole,segments,requested,advertisement_at",
+    "model,whole,segments,requested,advertisement_at,physical_count",
     [
-        ("H66A0", True, None, 3000, None),
-        ("H66A0", False, [8, 9], 3000, None),
-        ("H66A0", False, list(range(1, 15)), 3000, None),
-        ("H1A42", False, [4], 3000, None),
-        ("H61F5", True, None, 3000, None),
-        ("H61F5", False, [4], 3000, None),
-        ("H61F5", True, None, 3050, None),
-        ("H1A42", True, None, 3050, None),
-        ("H61F5", True, None, 4100, "before"),
-        ("H61F5", True, None, 4100, "during"),
+        ("H66A0", True, None, 3000, None, None),
+        ("H66A0", False, [8, 9], 3000, None, None),
+        ("H66A0", False, list(range(1, 15)), 3000, None, None),
+        ("H1A42", False, [4], 3000, None, None),
+        ("H61F5", True, None, 3000, None, 21),
+        ("H61F5", False, [4], 3000, None, 21),
+        ("H61F5", True, None, 3050, None, 21),
+        ("H1A42", True, None, 3050, None, None),
+        ("H61F5", True, None, 4100, "before", 21),
+        ("H61F5", True, None, 4100, "during", 21),
+        ("H1A42", True, None, 3000, None, 3),
+        ("H1A42", False, [1, 3], 3000, None, 3),
+        ("H61F5", True, None, 3000, None, 80),
+        ("H61F5", True, None, 3000, None, 81),
+        ("H61F5", True, None, 3000, None, 100),
+        ("H61F5", False, [1, 20], 3000, None, 100),
     ],
 )
 @pytest.mark.parametrize("settling", [0, 0.35, 2.8])
 async def test_issue_429_six_operations_settle_without_replaying_kelvin(
-    hass, monkeypatch, virtual_clock, model, whole, segments, requested, advertisement_at, settling
+    hass, monkeypatch, virtual_clock, model, whole, segments, requested, advertisement_at, physical_count, settling
 ):
     c = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url=None)
     c.is_on = True
@@ -285,7 +350,9 @@ async def test_issue_429_six_operations_settle_without_replaying_kelvin(
     advertisement = SimpleNamespace(name="Govee_H61F5_ABCD", manufacturer_data={0x8801: bytes.fromhex("ec00030101")})
     if model == "H61F5":
         c._note_advertisement(advertisement)
-        reply(0x40, [0, 21])
+    if physical_count is not None:
+        reply(0x40, physical_count.to_bytes(2, "big"))
+        assert c.profile.segment_count == {3: 3, 21: 5, 80: 16, 81: 17, 100: 20}[physical_count]
     count = c.profile.segment_count
     selected = set(range(count)) if segments is None else {n - 1 for n in segments}
     colors = [(255, 255, 255)] * count
@@ -355,6 +422,7 @@ async def test_issue_429_six_operations_settle_without_replaying_kelvin(
         assert pages == {1, 2}
     await asyncio.sleep(settling)
     assert await c.async_refresh_segments()
+    assert pages == set(range(1, c.profile.segment_group_count + 1))
     assert c.segment_colors == [rendered if i in selected else (255, 255, 255) for i in range(count)]
     assert c.segment_brightness == brightness
     if whole and model == "H61F5":

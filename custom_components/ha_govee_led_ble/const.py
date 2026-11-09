@@ -254,7 +254,9 @@ class ModelProfile:
     # Physical IC count is independent of logical segment_count. None means unknown.
     # Declared product geometry: the installed count read from the device (ReadDomain.PHYSICAL_IC_COUNT) overrides it.
     physical_ic_count: int | None = None
-    ic_per_segment: int | None = None
+    segment_count_ic_divisor: int | None = None
+    segment_count_capacity: int = 0
+    extended_static_grammar: str | None = None
     music_sensitivity_min: int = 0
     music_sensitivity_max: int = 99
     supports_music_color: bool = False
@@ -1353,6 +1355,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         music_upload_before_selector=True,
         supports_music_color=True,
         physical_ic_count=12,
+        segment_count_ic_divisor=1,
         segment_count=5,
         segment_group_size=4,
         supports_segment_writes=True,
@@ -1421,7 +1424,9 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         music_upload_before_selector=True,
         supports_music_color=True,
         physical_ic_count=50,
-        ic_per_segment=5,
+        segment_count_ic_divisor=5,
+        segment_count_capacity=20,
+        extended_static_grammar="H61F5",
         segment_count=10,
         segment_group_size=4,
         supports_segment_writes=True,
@@ -2341,10 +2346,10 @@ def _h6076_profile(pact_type: int | None, pact_code: int | None, firmware: str |
 
 
 def profile_with_physical_ic_count(profile: ModelProfile, count: int, *, segment_count_ceiling: int) -> ModelProfile:
-    """Apply installed geometry using an uncut logical segment ceiling."""
+    """Apply installed geometry using the qualified product capacity."""
     segments = profile.segment_count
-    if profile.ic_per_segment is not None:
-        segments = min(segment_count_ceiling, max(1, ceil(count / profile.ic_per_segment)))
+    if profile.segment_count_ic_divisor is not None:
+        segments = min(segment_count_ceiling, max(1, ceil(count / profile.segment_count_ic_divisor)))
     return replace(profile, physical_ic_count=count, segment_count=segments)
 
 
