@@ -21,6 +21,7 @@ from custom_components.ha_govee_led_ble.layered_scene import (
     layered_scene_from_value,
     layered_scene_to_value,
 )
+from custom_components.ha_govee_led_ble.music_commands import music_body_style, prepare_music_body_writes
 from custom_components.ha_govee_led_ble.music_semantics import H60B0_MUSIC_VARIANTS, MusicZone
 from custom_components.ha_govee_led_ble.native_effect import NativeDiyLayer, NativeEffect, NativeOpaqueLayer
 from custom_components.ha_govee_led_ble.native_scenes import apply_scene_speed, build_native_scene_packets
@@ -203,6 +204,18 @@ def test_music_style_palette_and_hopping_budget():
         physical_ic_count=9,
     )
     assert encoded == bytes.fromhex("33010405060102030f6201030204")
+
+
+@pytest.mark.parametrize("mode,code", [("bloom", 48), ("shiny", 49)])
+@pytest.mark.parametrize("calm", [False, True])
+def test_retained_music_style_matches_the_encoded_enum(mode, code, calm):
+    profile = device_profile("H60B0", 1, 2)
+    variant = next(variant for variant in profile.music_variants if variant.mode_code == code)
+    body = encode_music_parameters(variant, {}, palette=None, calm=calm)
+    assert music_body_style(body, mode, profile=profile) is calm
+    states = [state for _, state in prepare_music_body_writes("H60B0", mode, 50, body, profile=profile)]
+    retained = next(state for state in states if isinstance(state.get("_music_body"), tuple))
+    assert retained["music_calm"] is calm
 
 
 def test_combined_music_has_independently_bounded_source_parameters():

@@ -458,6 +458,8 @@ class GoveeBLECoordinator(
     def identity_fields_confirmed(self, fields: frozenset[str] | None = None) -> bool:
         """Return whether required condition identity was observed on this connection."""
         required = self._authorization_identity_fields() if fields is None else fields
+        if fields is None and get_profile(self.model).requires_pact_confirmation:
+            required |= {"pact"}
         return required <= self._confirmed_identity_fields
 
     def _sync_device_configuration_url(self) -> None:
@@ -508,7 +510,7 @@ class GoveeBLECoordinator(
         """Register BLE presence tracking once, before the first refresh (HA idiom)."""
         self._present = bluetooth.async_address_present(self.hass, self.address, connectable=True)
         self._note_advertisement(bluetooth.async_last_service_info(self.hass, self.address, connectable=True))
-        if self.model == "H607C":
+        if self.identity_gated_controls:
             self._refresh_h607c_advertisements()
         unsubs = [
             bluetooth.async_register_callback(
@@ -519,7 +521,7 @@ class GoveeBLECoordinator(
             ),
             bluetooth.async_track_unavailable(self.hass, self._async_on_unavailable, self.address, connectable=True),
         ]
-        if self.model == "H607C":
+        if self.identity_gated_controls:
             register_all = getattr(bluetooth, "async_register_advertisement_callback", None)
             if register_all is not None:
                 unsubs.append(register_all(self.hass, self._async_on_h607c_advertisement, self.address))
@@ -543,7 +545,7 @@ class GoveeBLECoordinator(
         previous_pact = self.pact_type, self.pact_code
         was_present = self._present
         self._note_advertisement(_service_info)
-        if self.model == "H607C":
+        if self.identity_gated_controls:
             self._refresh_h607c_advertisements()
         self._set_present(True)
         if was_present and previous_pact != (self.pact_type, self.pact_code):
@@ -579,7 +581,7 @@ class GoveeBLECoordinator(
         if isinstance(service_info.manufacturer_data, Mapping):
             advertisement = parse_govee_advertisement(service_info.manufacturer_data)
             if advertisement is not None:
-                if self.model == "H607C":
+                if self.identity_gated_controls:
                     self._h607c_invalid_pact_version_seen |= advertisement.invalid_version_seen
                     source = service_info.source
                     timestamp = service_info.time
@@ -598,7 +600,7 @@ class GoveeBLECoordinator(
                     self._advertised_encryption = True
                     if self._encryption is not None and self._encryption.version == 0:
                         self._encryption.reset()
-                        if self.model == "H607C" and self._h607c_marker_pact is not None:
+                        if self.identity_gated_controls and self._h607c_marker_pact is not None:
                             self._h607c_marker_pact = None
                 if advertisement.supports_plaintext:
                     self._advertised_plaintext = True
@@ -624,6 +626,17 @@ class GoveeBLECoordinator(
 
     def _resolve_h607c_pact(self, *, preserve_state: bool = False) -> None:
         pacts = set(self._h607c_advertised_pacts)
+        subscription = self._notify_started_monotonic
+        strict = get_profile(self.model).requires_pact_confirmation
+        if strict and self._client is not None and self._client.is_connected:
+            pacts = {
+                pact
+                for timestamp, observed in self._h607c_advertisement_observations.values()
+                if subscription is not None and timestamp >= subscription
+                for pact in observed
+            }
+        elif strict and self.pact_type is not None and self.pact_code is not None:
+            pacts = {(self.pact_type, self.pact_code)}
         if self._h607c_marker_pact is not None:
             pacts.add(self._h607c_marker_pact)
         conflict = len(pacts) > 1
@@ -634,6 +647,21 @@ class GoveeBLECoordinator(
             self._authorization_generation += 1
             self._resolve_device_profile(preserve_state=preserve_state)
             self.async_update_listeners()
+        if strict:
+            confirmed = (
+                self._client is not None
+                and self._client.is_connected
+                and subscription is not None
+                and not conflict
+                and pact != (None, None)
+            )
+            previous = "pact" in self._confirmed_identity_fields
+            if confirmed:
+                self._confirmed_identity_fields.add("pact")
+            else:
+                self._confirmed_identity_fields.discard("pact")
+            if previous != confirmed:
+                self._authorization_generation += 1
 
     @property
     def native_presentation_profile(self) -> ModelProfile:
@@ -1002,7 +1030,7 @@ class GoveeBLECoordinator(
             self._require_not_dreamview_claimed()
             if self._client is not client or not client.is_connected:
                 raise GoveeCryptoError("disconnected_during_setup")
-            if self.model == "H607C":
+            if self.identity_gated_controls:
                 self._h607c_marker_pact = self._encryption.marker_pact
                 self._h607c_marker_seen |= self._h607c_marker_pact is not None
                 same_marker = (
@@ -1150,9 +1178,10 @@ class GoveeBLECoordinator(
         self._segment_query_generation = None
         if self._encryption is not None:
             self._encryption.reset()
-        if self.model == "H607C" and self._h607c_marker_pact is not None:
+        if self.identity_gated_controls and self._h607c_marker_pact is not None:
             self._h607c_marker_pact = None
-            self._resolve_h607c_pact(preserve_state=True)
+            if not get_profile(self.model).requires_pact_confirmation:
+                self._resolve_h607c_pact(preserve_state=True)
         if client is not None:
             self.last_disconnected_at = datetime.now().astimezone().isoformat(timespec="seconds")
         self._notify_started_monotonic = None
@@ -1309,7 +1338,7 @@ class GoveeBLECoordinator(
             # The caller owns reconnect/retry policy; never write across an abandoned query.
             query_kind = "segment" if self._segment_query_incomplete else "bulk"
             raise BleakError(f"Incomplete {query_kind} query requires a new connection")
-        if self.model == "H607C" and self._h607c_advertisement_observations:
+        if self.identity_gated_controls and self._h607c_advertisement_observations:
             self._prune_h607c_advertisements()
         self._require_writable_packet(packet, packet_validator, arm_expected=arm_expected)
         generation = self._profile_generation
@@ -1958,8 +1987,12 @@ class GoveeBLECoordinator(
         return self.profile.profile_identity_fields | frozenset(video_identity_fields(self.profile))
 
     def _authorization_profile(self) -> ModelProfile:
-        if self.model == "H607C" and self._h607c_advertisement_observations:
+        if self.identity_gated_controls and self._h607c_advertisement_observations:
             self._prune_h607c_advertisements()
+        if get_profile(self.model).requires_pact_confirmation and not self.identity_fields_confirmed(
+            frozenset({"pact"})
+        ):
+            return device_profile(self.model, None, None)
         fields = self.profile.profile_identity_fields
         if not fields or self.identity_fields_confirmed(fields):
             return self.profile

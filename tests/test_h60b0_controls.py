@@ -1,3 +1,4 @@
+import time
 from dataclasses import replace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -6,7 +7,10 @@ from homeassistant.components.light import ColorMode
 
 from custom_components.ha_govee_led_ble.const import device_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.effect_catalogue import MODEL_EFFECT_CATALOGUES
+from custom_components.ha_govee_led_ble.effect_compiler import compile_effect, validate_compiled_geometry
 from custom_components.ha_govee_led_ble.effect_deployments import PriorControlState
+from custom_components.ha_govee_led_ble.effect_domain import LibraryItem
 from custom_components.ha_govee_led_ble.effect_runtime import async_prepare_effect_control_state
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_boolean_control,
@@ -148,6 +152,7 @@ async def test_bottom_source_uses_native_attributes_without_segment_writes(mock_
     coordinator.is_on = True
     coordinator.boolean_control_state = {"top_enabled": True, "side_enabled": False, "bottom_enabled": True}
     coordinator._async_supersede_effect_preview = AsyncMock()
+    coordinator.async_prepare_identity_gated_control = AsyncMock(return_value=lambda: None)
     coordinator.refresh_state = AsyncMock(return_value=True)
     coordinator.async_set_boolean_control = AsyncMock()
     coordinator.async_set_source_value = AsyncMock()
@@ -209,3 +214,90 @@ async def test_preview_requires_complete_source_values_and_preserves_them_in_sto
     assert PriorControlState.from_dict(complete.to_dict()) == complete
     coordinator.capture_effect_control_state.return_value = complete
     assert await async_prepare_effect_control_state(coordinator, require_restorable_static=True)
+
+
+async def test_reconnect_revokes_cached_pact_and_qualifies_the_current_marker(hass, monkeypatch):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H60B0", configuration_url=None)
+    coordinator.pact_type, coordinator.pact_code = 1, 2
+    coordinator.profile = PROFILE
+    old_client = MagicMock(is_connected=True)
+    coordinator._client = old_client
+    coordinator._confirmed_identity_fields.add("pact")
+    coordinator._h607c_marker_pact = (1, 2)
+    coordinator._h607c_advertisement_observations = {"cached": (time.monotonic() - 10, frozenset({(1, 2)}))}
+    template = next(
+        template
+        for template in MODEL_EFFECT_CATALOGUES["H60B0"].templates
+        if template.id == "template:h60b0:1:single:1"
+    )
+    compiled = compile_effect(LibraryItem.new("Older native effect", template.content), "H60B0", profile=PROFILE)
+    source_packet = build_source_value("bottom", "brightness", 40, PROFILE)
+    coordinator._clear_client_state(old_client)
+    assert coordinator.profile.native_effect_revision == 2
+    assert not coordinator.identity_fields_confirmed()
+    with pytest.raises(ValueError):
+        coordinator._validate_authorized_packet(source_packet)
+    with pytest.raises(ValueError):
+        coordinator._validate_authorized_packet(compiled.upload_packets[0])
+
+    client = MagicMock(is_connected=True, start_notify=AsyncMock(), write_gatt_char=AsyncMock(), disconnect=AsyncMock())
+    coordinator._encryption = MagicMock(
+        ready=True, version=0, marker_pact=(1, 3), async_select=AsyncMock(), async_negotiate=AsyncMock()
+    )
+    monkeypatch.setattr(
+        "custom_components.ha_govee_led_ble.coordinator.async_establish_ble_connection", AsyncMock(return_value=client)
+    )
+    monkeypatch.setattr(coordinator, "_send_identity_queries", AsyncMock())
+    monkeypatch.setattr(coordinator, "_start_keep_alive", MagicMock())
+    try:
+        await coordinator._ensure_connected()
+        assert coordinator.profile.native_effect_revision == 3
+        assert coordinator.identity_fields_confirmed()
+        coordinator._validate_authorized_packet(source_packet)
+        with pytest.raises(ValueError, match="revision"):
+            validate_compiled_geometry(compiled, coordinator.profile)
+        coordinator._clear_client_state(client)
+        assert not coordinator.identity_fields_confirmed()
+        with pytest.raises(ValueError):
+            coordinator._validate_authorized_packet(source_packet)
+        assert coordinator.profile.native_effect_revision == 3
+    finally:
+        await coordinator.disconnect()
+
+
+async def test_only_current_subscription_advertisements_can_confirm_pact(hass):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H60B0", configuration_url=None)
+    coordinator._client = MagicMock(is_connected=True)
+    coordinator._notify_started_monotonic = time.monotonic()
+    coordinator._h607c_advertisement_observations = {
+        "proxy": (coordinator._notify_started_monotonic - 1, frozenset({(1, 2)}))
+    }
+    coordinator._resolve_h607c_pact()
+    assert not coordinator.identity_fields_confirmed()
+    coordinator._h607c_advertisement_observations["proxy"] = (
+        coordinator._notify_started_monotonic + 1,
+        frozenset({(1, 2)}),
+    )
+    coordinator._resolve_h607c_pact()
+    assert coordinator.identity_fields_confirmed()
+    coordinator._h607c_marker_pact = (1, 3)
+    coordinator._resolve_h607c_pact()
+    assert not coordinator.identity_fields_confirmed()
+    assert not coordinator._authorization_profile().supports_custom_effects
+
+
+async def test_pact_is_rechecked_after_reply_pacing_before_the_physical_write(hass, monkeypatch):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H60B0", configuration_url=None)
+    coordinator.profile = PROFILE
+    coordinator.pact_type, coordinator.pact_code = 1, 2
+    coordinator._client = client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
+    coordinator._confirmed_identity_fields.add("pact")
+    packet = build_source_value("bottom", "brightness", 40, PROFILE)
+
+    async def lose_confirmation():
+        coordinator._confirmed_identity_fields.discard("pact")
+
+    monkeypatch.setattr(coordinator._reply_gate, "wait", lose_confirmation)
+    with pytest.raises(ValueError):
+        await coordinator._async_write_packet(client, packet, arm_expected=True)
+    client.write_gatt_char.assert_not_awaited()
