@@ -162,6 +162,7 @@ def encode_workshop_effect(
         root.a3_type = b"\x02"
         root.num_layers = len(layers)
         root.layers = [_encode_record(WorkshopBody.LayerRecord, root, layer) for layer in layers]
+        records = root.layers
         root.padding = [0] * trailing_padding
         serializer = serialize_workshop_body_param
         value = root
@@ -170,11 +171,17 @@ def encode_workshop_effect(
         content = new_child(H6199EffectUpload.SceneContent, root)
         content.num_blocks = len(layers)
         content.blocks = [_encode_record(H6199EffectUpload.Block, content, layer) for layer in layers]
+        records = content.blocks
         content.padding = [0] * trailing_padding
         serializer = serialize_h6199_workshop_content
         value = content
     else:
         raise ValueError(f"{model} has no Workshop grammar")
+    if profile.workshop_brightness_algorithm is not None:
+        for record in records:
+            record.body.layer_flags = GoveeShared.BrightnessFlagsWithAlgorithm(
+                record.body.layer_flags, profile.workshop_brightness_algorithm
+            ).value
     try:
         return serializer(value)
     except SceneParameterTooLargeError as error:

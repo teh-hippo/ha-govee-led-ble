@@ -954,12 +954,12 @@ class EffectPreviewManager:
             )
             inline_revision = coordinator._field_revisions.get("video_parameters", 0) if inline_brightness else 0
             await async_prepare_effect_control_state(coordinator, require_restorable_static=True)
-            if (
-                inline_brightness
-                and coordinator._field_revisions.get("video_parameters", 0) <= inline_revision
-                and not await coordinator.async_read_video_setting("video_parameters")
-            ):
-                raise PreviewError("Fresh video brightness observations are required before Preview")
+            if inline_brightness and coordinator._field_revisions.get("video_parameters", 0) <= inline_revision:
+                await coordinator.refresh_state()
+                if coordinator._field_revisions.get("video_parameters", 0) <= inline_revision and (
+                    not await coordinator.async_read_video_setting("video_parameters")
+                ):
+                    raise PreviewError("Fresh video brightness observations are required before Preview")
             if compiled is not None:
                 validate_compiled_geometry(compiled, coordinator.effect_authorization_profile)
             if (

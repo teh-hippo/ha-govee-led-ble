@@ -16,6 +16,8 @@ doc: |
   Painted effects use the independent 0..100 speed range.
   RGBIC Workshop uploads use the layered body and scene selector 402.
   This selector belongs to the product contract, not the chosen upload codec.
+  Workshop authoring normalises each layer's brightness algorithm to version 1,
+  retaining the lower flag nibble. Native catalogue parameters are not rewritten.
   The common effect adapter serialises these structures. Opaque suffixes
   include transport fill; nonzero values are not invented validation errors.
 seq:
