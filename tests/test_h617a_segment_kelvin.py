@@ -2,6 +2,7 @@
 
 import asyncio
 from dataclasses import replace
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -13,6 +14,7 @@ from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from custom_components.ha_govee_led_ble.const import get_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import table_kelvin_rgb
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.light_commands import (
     build_color_rgb,
@@ -257,21 +259,23 @@ async def test_h66a0_segment_kelvin_confirms_device_rendered_rgb_and_mode_kelvin
 
 
 @pytest.mark.parametrize(
-    "model,whole,segments,requested",
+    "model,whole,segments,requested,advertisement_at",
     [
-        ("H66A0", True, None, 3000),
-        ("H66A0", False, [8, 9], 3000),
-        ("H66A0", False, list(range(1, 15)), 3000),
-        ("H1A42", False, [4], 3000),
-        ("H61F5", True, None, 3000),
-        ("H61F5", False, [4], 3000),
-        ("H61F5", True, None, 3050),
-        ("H1A42", True, None, 3050),
+        ("H66A0", True, None, 3000, None),
+        ("H66A0", False, [8, 9], 3000, None),
+        ("H66A0", False, list(range(1, 15)), 3000, None),
+        ("H1A42", False, [4], 3000, None),
+        ("H61F5", True, None, 3000, None),
+        ("H61F5", False, [4], 3000, None),
+        ("H61F5", True, None, 3050, None),
+        ("H1A42", True, None, 3050, None),
+        ("H61F5", True, None, 4100, "before"),
+        ("H61F5", True, None, 4100, "during"),
     ],
 )
 @pytest.mark.parametrize("settling", [0, 0.35, 2.8])
 async def test_issue_429_six_operations_settle_without_replaying_kelvin(
-    hass, monkeypatch, virtual_clock, model, whole, segments, requested, settling
+    hass, monkeypatch, virtual_clock, model, whole, segments, requested, advertisement_at, settling
 ):
     c = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url=None)
     c.is_on = True
@@ -280,29 +284,42 @@ async def test_issue_429_six_operations_settle_without_replaying_kelvin(
         frame = bytes([0xAA, domain, *body]).ljust(19, b"\0")
         c._notify_callback(None, bytearray(frame + bytes([xor_checksum(frame)])))
 
+    advertisement = SimpleNamespace(name="Govee_H61F5_ABCD", manufacturer_data={0x8801: bytes.fromhex("ec00030101")})
     if model == "H61F5":
+        c._note_advertisement(advertisement)
         reply(0x40, [0, 21])
     count = c.profile.segment_count
     selected = set(range(count)) if segments is None else {n - 1 for n in segments}
     colors = [(255, 255, 255)] * count
     brightness = [70 + index for index in range(count)]
     actual_kelvin = ((requested + 50) // 100) * 100
-    rendered = (255, 157, 51) if model == "H66A0" else (255, 185, 105) if actual_kelvin == 3000 else (255, 189, 111)
+    rendered = (255, 157, 51) if model == "H66A0" else table_kelvin_rgb(actual_kelvin)
     writes = []
+    pages = set()
     written_at = None
     retained_during_transition = []
+
+    def advertise_off():
+        advertisement.manufacturer_data[0x8801] = bytes.fromhex("ec00030100")
+        c._note_advertisement(advertisement)
+
+    if advertisement_at == "before":
+        advertise_off()
 
     async def transmit(_uuid, packet, **_kwargs):
         nonlocal written_at
         if packet[0] == 0x33:
             writes.append(packet)
             written_at = asyncio.get_running_loop().time()
+            if advertisement_at == "during":
+                advertise_off()
             return
         if packet[1] == 5:
             kelvin = actual_kelvin if model in {"H66A0", "H1A42"} and len(selected) == count else 0
             reply(5, [0x15, 0, *kelvin.to_bytes(2, "big")])
         elif packet[1] == 0xA5:
             page = packet[2]
+            pages.add(page)
             transient = written_at is not None and asyncio.get_running_loop().time() < written_at + settling
             if written_at is not None:
                 for index in selected:
@@ -334,6 +351,10 @@ async def test_issue_429_six_operations_settle_without_replaying_kelvin(
     static = parse_static_write(writes[0], model, profile=c.profile)
     assert static is not None and static.segment_mask == sum(1 << i for i in selected)
     assert static.kelvin == actual_kelvin
+    if advertisement_at is not None:
+        assert c.profile.segment_count == 5
+        assert static.segment_mask == 0x1F
+        assert pages == {1, 2}
     await asyncio.sleep(settling)
     assert await c.async_refresh_segments()
     assert c.segment_colors == [rendered if i in selected else (255, 255, 255) for i in range(count)]

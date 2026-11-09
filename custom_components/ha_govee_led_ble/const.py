@@ -4,6 +4,7 @@ import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from enum import StrEnum
+from math import ceil
 from typing import Any
 
 from .h6199_calibration import WHITE_BALANCE_POSITIONS
@@ -2239,6 +2240,14 @@ def _h6076_profile(pact_type: int | None, pact_code: int | None, firmware: str |
     return replace(
         base, color_temp_range=KELVIN_RANGE_2200_6500 if (pact_type, pact_code) == (1, 1) else KELVIN_RANGE_2700_6500
     )
+
+
+def profile_with_physical_ic_count(profile: ModelProfile, count: int, *, segment_count_ceiling: int) -> ModelProfile:
+    """Apply installed geometry using an uncut logical segment ceiling."""
+    segments = profile.segment_count
+    if profile.ic_per_segment is not None:
+        segments = min(segment_count_ceiling, max(1, ceil(count / profile.ic_per_segment)))
+    return replace(profile, physical_ic_count=count, segment_count=segments)
 
 
 def device_profile(

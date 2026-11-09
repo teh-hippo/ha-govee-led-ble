@@ -14,6 +14,7 @@ Do not post Bluetooth addresses, serial numbers, account details or other unique
 - `tools/ble/kaitai/**/*.ksy` is the only source of BLE wire structure and the protocol documentation.  Files under `speculative/` are unconfirmed hypotheses; the rest are evidence-backed.  `generated_protocol/` is build output and is never edited.
 - Speculative schemas must retain unqualified suffix bytes; test nonzero tails rather than assuming zero padding when reusing shared types.
 - `const.py` holds one `ModelProfile` per exact SKU, declaring its capabilities.  Compatible models may share a Kaitai adapter but never a whole profile.
+- Apply observed physical geometry and its derived logical segment count together, using the uncut profile ceiling.  Equivalent profile resolution must preserve observations and in-progress transactions.
 - Keep offsets, command literals and packet enums out of entity and coordinator code.
 - Every outbound frame goes through `_async_write_packet`, which waits for the previous `0x33` or `0xAA` frame's same-command reply before writing.  Never add per-feature sleeps to pace requests; `ReplyGate` learns commands that never reply on a subscription.
 - Arm reply tracking before the physical write, and accept only validated replies.  A late reply reinstates pacing for a command previously learned as silent; failed writes must not teach silence.

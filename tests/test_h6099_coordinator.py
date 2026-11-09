@@ -271,6 +271,7 @@ async def test_declared_product_ic_queries_installed_aa40_and_retains_cut_strip_
     ]
     notify(device, "aa400015")
     assert device.profile.physical_ic_count == 21
+    assert device.profile.segment_count == profile.segment_count
     assert device.physical_ic_count_source == "observed"
     assert device._physical_ic_count_confirmed
 
@@ -280,6 +281,7 @@ async def test_declared_product_ic_queries_installed_aa40_and_retains_cut_strip_
 
     device._resolve_device_profile()
     assert device.profile.physical_ic_count == 21
+    assert device.profile.segment_count == profile.segment_count
     device._clear_client_state(device._client)
     assert device.profile.physical_ic_count == 21
     assert device.physical_ic_count_source == "observed"
