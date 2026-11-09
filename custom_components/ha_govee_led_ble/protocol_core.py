@@ -21,6 +21,22 @@ CommandWrite = cast(
     import_module("custom_components.ha_govee_led_ble.generated_protocol.command_write").CommandWrite,
 )
 
+H60b0CommandWrite = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h60b0_command_write").H60b0CommandWrite
+)
+H60b0CommandAck = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h60b0_command_ack").H60b0CommandAck
+)
+H60b0EffectUpload = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h60b0_effect_upload").H60b0EffectUpload
+)
+H60b0StatusQuery = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h60b0_status_query").H60b0StatusQuery
+)
+H60b0StatusReply = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h60b0_status_reply").H60b0StatusReply
+)
+
 H61f5ExtendedStaticWrite = cast(
     Any,
     import_module(
@@ -680,6 +696,7 @@ H619aStatusReply = cast(
 
 _STATUS_ROOTS = {
     "H619A": ("h619a_status_reply", H619aStatusReply),
+    "H60B0": ("h60b0_status_reply", H60b0StatusReply),
     "H1771": ("h1771_status_reply", H1771StatusReply),
     "H600A": ("h600a_status_reply", H600aStatusReply),
     "H6072": ("h6072_status_reply", H6072StatusReply),
@@ -711,6 +728,7 @@ _STATUS_ROOTS = {
 
 
 _COMMAND_ROOTS = {
+    "H60B0": ("h60b0_command_write", H60b0CommandWrite),
     "H1771": ("h1771_command_write", H1771CommandWrite),
     "H600A": ("h600a_command_write", H600aCommandWrite),
     "H6072": ("h6072_command_write", H6072CommandWrite),
@@ -732,6 +750,7 @@ _EXTENDED_STATIC_ROOTS = {
 
 
 _STATUS_QUERY_ROOTS = {
+    "H60B0": ("h60b0_status_query", H60b0StatusQuery),
     "H1771": ("h1771_status_query", H1771StatusQuery),
     "H600A": ("status_query", StatusQuery),
     "H6072": ("h6072_status_query", H6072StatusQuery),
@@ -767,6 +786,7 @@ _MUSIC_WRITE_ROOTS = {
 
 
 _COMMAND_ACK_ROOTS = {
+    "H60B0": ("h60b0_command_ack", H60b0CommandAck),
     "H600A": ("h600a_command_ack", H600aCommandAck),
     "H607C": ("h607c_command_ack", H607cCommandAck),
     "H6046": ("h6046_command_ack", H6046CommandAck),
@@ -784,9 +804,13 @@ def _has_unknown_discriminator(parsed: Any, parser: str) -> bool:
         return True
     if parser == "h61f5_extended_static_write":
         return not parsed.is_static
-    if parser in {"command_write", "h1771_command_write", "h7020_command_write", "h607c_command_write"} and (
-        parsed.opcode.name == "multi"
-    ):
+    if parser in {
+        "command_write",
+        "h1771_command_write",
+        "h60b0_command_write",
+        "h7020_command_write",
+        "h607c_command_write",
+    } and (parsed.opcode.name == "multi"):
         sub = getattr(parsed.body.sub, "name", None)
         return (
             sub is None

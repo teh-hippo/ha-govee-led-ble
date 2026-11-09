@@ -111,6 +111,12 @@ class PriorControlState:
     base_enabled: bool | None = None
     source_0_enabled: bool | None = None
     source_1_enabled: bool | None = None
+    top_enabled: bool | None = None
+    side_enabled: bool | None = None
+    bottom_enabled: bool | None = None
+    bottom_kelvin: int | None = None
+    bottom_brightness: int | None = None
+    ripple_speed: int | None = None
     left_bar_kelvin: int | None = None
     right_bar_kelvin: int | None = None
     effect: str | None = None
@@ -187,6 +193,13 @@ class PriorControlState:
         for kelvin in (self.left_bar_kelvin, self.right_bar_kelvin):
             if kelvin is not None and (type(kelvin) is not int or not 0 <= kelvin <= KELVIN_RANGE_1000_10000[1]):
                 raise EffectStorageError("prior bar Kelvin must be a bounded integer or null")
+        if self.bottom_kelvin is not None and (
+            type(self.bottom_kelvin) is not int or not 0 <= self.bottom_kelvin <= 10000
+        ):
+            raise EffectStorageError("prior source Kelvin must be a bounded integer or null")
+        for value in (self.bottom_brightness, self.ripple_speed):
+            if value is not None and (type(value) is not int or not 0 <= value <= 100):
+                raise EffectStorageError("prior source level must be from 0 to 100 or null")
 
     def _validate_video_parameters(self) -> None:
         if self.video_parameters is not None:
@@ -441,6 +454,12 @@ class PriorControlState:
                     ("base_enabled", self.base_enabled),
                     ("source_0_enabled", self.source_0_enabled),
                     ("source_1_enabled", self.source_1_enabled),
+                    ("top_enabled", self.top_enabled),
+                    ("side_enabled", self.side_enabled),
+                    ("bottom_enabled", self.bottom_enabled),
+                    ("bottom_kelvin", self.bottom_kelvin),
+                    ("bottom_brightness", self.bottom_brightness),
+                    ("ripple_speed", self.ripple_speed),
                     ("left_bar_kelvin", self.left_bar_kelvin),
                     ("right_bar_kelvin", self.right_bar_kelvin),
                 )
@@ -571,6 +590,12 @@ class PriorControlState:
             base_enabled=_optional_bool(raw, "base_enabled"),
             source_0_enabled=_optional_bool(raw, "source_0_enabled"),
             source_1_enabled=_optional_bool(raw, "source_1_enabled"),
+            top_enabled=_optional_bool(raw, "top_enabled"),
+            side_enabled=_optional_bool(raw, "side_enabled"),
+            bottom_enabled=_optional_bool(raw, "bottom_enabled"),
+            bottom_kelvin=_optional_int(raw, "bottom_kelvin"),
+            bottom_brightness=_optional_int(raw, "bottom_brightness"),
+            ripple_speed=_optional_int(raw, "ripple_speed"),
             left_bar_kelvin=_optional_int(raw, "left_bar_kelvin"),
             right_bar_kelvin=_optional_int(raw, "right_bar_kelvin"),
             segment_colors=segment_colors,

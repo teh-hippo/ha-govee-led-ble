@@ -1,12 +1,44 @@
 import { expect, test } from "vitest";
-import { blankLayer, cloneAdvancedContent, layerBrightness, nativeDiyPalette, selectionQuantity, updateNativeDiy, withLayerBrightness, withSelectionQuantity } from "../../src/advanced-effect-model";
+import { blankLayer, cloneAdvancedContent, cloneLayeredSceneContent, layerBrightness, nativeDiyPalette, selectionQuantity, updateNativeDiy, withLayerBrightness, withSelectionQuantity } from "../../src/advanced-effect-model";
 import { AdvancedEffectEditorController } from "../../src/advanced-effect-editor-controller";
 import { effectContentEligible } from "../../src/effect-editor-model";
-import type { AdvancedContent, RGB } from "../../src/types";
+import type { AdvancedContent, LayeredSceneContent, MusicProfileContent, NativeEffectContent, RGB } from "../../src/types";
 import { decodeCatalogueTemplateDefaultDetail, decodeEffectContent } from "../../src/validation";
 import { decodeCustomCataloguePayload } from "../../src/catalogue-validation";
 import { buildCustomEffectEntries } from "../../src/custom-effect-list";
 import backendContracts from "../fixtures/backend-contracts.json";
+
+test("H60B0 native revisions and combined scenes retain their complete content", () => {
+  const raw = backendContracts.responses.custom_catalogue.models.H60B0;
+  for (const template of raw.templates) expect(decodeEffectContent(template.content)).toEqual(template.content);
+  const catalogue = decodeCustomCataloguePayload(backendContracts.responses.custom_catalogue, decodeEffectContent).models.H60B0;
+  const native = catalogue.templates!.find(template => template.id === "template:h60b0:3:2:3")!.content as NativeEffectContent;
+  expect(native.layers[2]).toMatchObject({ temperatures: [6500], points: [0, 100] });
+  expect(() => decodeEffectContent({ ...native, revision: 1 })).toThrow("revision");
+  const combined = catalogue.templates!.find(template => template.id === "template:h60b0:combined")!.content as NativeEffectContent;
+  const scene: LayeredSceneContent = { ...combined.combined!, kind: "scene_layered" };
+  const copy = cloneLayeredSceneContent(scene);
+  copy.ripple_layers![0].movement_speed ^= 1;
+  expect(copy.ripple_layers![0]).not.toEqual(scene.ripple_layers![0]);
+  expect(copy.effect).toEqual(scene.effect);
+});
+
+test("H60B0 advanced native items use the advanced workflow rather than music-zone topology", () => {
+  const catalogue = decodeCustomCataloguePayload(backendContracts.responses.custom_catalogue, decodeEffectContent).models.H60B0;
+  const content = catalogue.templates!.find(template => template.id === "template:h60b0:1:0:1")!.content;
+  expect(effectContentEligible(content, catalogue, "H60B0", 9)).toBe(true);
+  expect(effectContentEligible(content, { ...catalogue, workflows: catalogue.workflows.filter(workflow => workflow.id !== "advanced") }, "H60B0", 9)).toBe(false);
+});
+
+test("H60B0 combined music retains source style and rejects ineligible ripple modes", () => {
+  const catalogue = decodeCustomCataloguePayload(backendContracts.responses.custom_catalogue, decodeEffectContent).models.H60B0;
+  const content = structuredClone(catalogue.templates!.find(template => template.id === "template:music:combined")!.content) as MusicProfileContent;
+  content.zones![0].calm = true;
+  expect(decodeEffectContent(content)).toEqual(content);
+  expect(effectContentEligible(content, catalogue, "H60B0", 9)).toBe(true);
+  content.zones![1].mode = "vortex";
+  expect(effectContentEligible(content, catalogue, "H60B0", 9)).toBe(false);
+});
 
 test("H1771 native content retains independent sections and extension bytes", () => {
   const layer = {

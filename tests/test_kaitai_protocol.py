@@ -109,6 +109,27 @@ def _generated(module: str, class_name: str) -> type[Any]:
     return getattr(import_module(f"{_MODULE_PREFIX}{module}"), class_name)
 
 
+@pytest.mark.parametrize(
+    ("module", "class_name", "prefix"),
+    [
+        ("h60b0_command_write", "H60b0CommandWrite", "33300301"),
+        ("h60b0_command_write", "H60b0CommandWrite", "33052c020101020300000100"),
+        ("h60b0_status_query", "H60b0StatusQuery", "aa42"),
+        ("h60b0_status_reply", "H60b0StatusReply", "aa42d00fa0280bb81e"),
+        ("h60b0_command_ack", "H60b0CommandAck", "a35a00"),
+        ("h60b0_command_ack", "H60b0CommandAck", "a3413300"),
+    ],
+)
+def test_h60b0_candidate_roots_preserve_unqualified_suffixes(module, class_name, prefix):
+    content = bytes.fromhex(prefix)
+    padding = bytes(19 - len(content)) if module == "h60b0_status_query" else bytes(range(1, 20 - len(content)))
+    content += padding
+    data = content + bytes((xor_checksum(content),))
+    parsed = _generated(module, class_name).from_bytes(data)
+    parsed._read()
+    assert protocol_core.serialize_native_body(parsed) == data
+
+
 @pytest.mark.parametrize("selector", [0, 1])
 @pytest.mark.parametrize("enabled", [0, 1])
 def test_h1771_candidate_source_switch_preserves_unknown_tail(selector, enabled):

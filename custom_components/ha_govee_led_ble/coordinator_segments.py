@@ -13,7 +13,7 @@ from .coordinator_base import _CoordinatorBase
 from .coordinator_status import ParsedMode
 from .light_commands import (
     SegmentColorGroup,
-    build_segment_brightness,
+    build_segment_brightness_packets,
     build_segment_paint,
     kelvin_rendering_matches,
     parse_static_write,
@@ -414,7 +414,7 @@ class _SegmentMixin(_CoordinatorBase):
     ) -> None:
         segments = list(segments)
         value = max(0, min(100, brightness))
-        packet = build_segment_brightness(segments, value, self.model, profile=self.profile)
+        packets = build_segment_brightness_packets(segments, value, self.model, profile=self.profile)
         expected_brightness = {segment - 1: value for segment in segments}
         expected_colors: list[tuple[int, int, int]] | None = None
         attempted = False
@@ -435,7 +435,8 @@ class _SegmentMixin(_CoordinatorBase):
         async with async_control_intent(self, ControlIntent.USER):
             segment_revision = self._field_revisions.get("segment_colors", 0)
             try:
-                await self.send_command(packet, write_guard=before_write)
+                for packet in packets:
+                    await self.send_command(packet, write_guard=before_write)
                 if self.profile.can_read(ReadDomain.SEGMENTS) and (
                     not await self.async_refresh_segments()
                     or any(self.segment_brightness[index] != value for index, value in expected_brightness.items())

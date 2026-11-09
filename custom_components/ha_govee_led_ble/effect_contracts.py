@@ -19,7 +19,7 @@ from .effect_limits import (
 )
 
 EDITOR_API_VERSION: Final = 18
-EDITOR_ASSET_VERSION: Final = 28
+EDITOR_ASSET_VERSION: Final = 29
 EFFECT_COMPILER_VERSION: Final = 6
 RELEASE_CAPABILITY_SCHEMA_VERSION: Final = 1
 
@@ -370,6 +370,23 @@ _RELEASE_CAPABILITY_BASE: Final = (
 
 
 RELEASE_CAPABILITY_CONTRACT: Final = (
+    *(
+        _capability("H60B0", workflow, label, kind, route, strategy, _V.UNVERIFIED)
+        for workflow, label, kind, route, strategy in (
+            (_W.NATIVE_SCENES, "Scenes", "scene_builtin", _R.STUDIO_SCENE_APPLY, _S.NATIVE_EFFECT_SELECTION),
+            (
+                _W.LAYERED_SCENES,
+                "Side and ripple scenes",
+                "scene_layered",
+                _R.STUDIO_CUSTOM_APPLY,
+                _S.MODEL_SCENE_ENGINE,
+            ),
+            (_W.SINGLE, "DIY", "native_effect", _R.STUDIO_CUSTOM_APPLY, _S.A3_EFFECT_UPLOAD),
+            (_W.MULTI, "Combined DIY", "native_effect", _R.STUDIO_CUSTOM_APPLY, _S.A3_EFFECT_UPLOAD),
+            (_W.ADVANCED, "Ripple DIY", "native_effect", _R.STUDIO_CUSTOM_APPLY, _S.A3_EFFECT_UPLOAD),
+            (_W.NATIVE_MUSIC, "Music", "music_profile", _R.STUDIO_CUSTOM_APPLY, _S.COORDINATOR_WRITER),
+        )
+    ),
     *(
         _capability("H1771", workflow, label, kind, route, strategy, _V.UNVERIFIED)
         for workflow, label, kind, route, strategy in (
@@ -803,7 +820,7 @@ def profile_supports_workflow(profile: ModelProfile, workflow: CapabilityWorkflo
 def require_effect_route(
     model: str,
     workflow: CapabilityWorkflow,
-    grammars: tuple[str, ...] = ("H6046", "H617A", "H6199", "H6099", "H6179", "H60A6", "H607C", "H1771"),
+    grammars: tuple[str, ...] = ("H6046", "H617A", "H6199", "H6099", "H6179", "H60A6", "H60B0", "H607C", "H1771"),
     *,
     profile: ModelProfile | None = None,
 ) -> str:

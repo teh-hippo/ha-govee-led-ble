@@ -10,6 +10,7 @@ from typing import Any
 from .h6199_calibration import WHITE_BALANCE_POSITIONS
 from .music_semantics import (
     H1A42_MUSIC_VARIANTS,
+    H60B0_MUSIC_VARIANTS,
     H61F5_MUSIC_VARIANTS,
     H66A0_MUSIC_VARIANTS,
     H617A_MUSIC_VARIANTS,
@@ -140,6 +141,9 @@ NATIVE_ZONE_CONTROLS = (
     "base_enabled",
     "source_0_enabled",
     "source_1_enabled",
+    "top_enabled",
+    "side_enabled",
+    "bottom_enabled",
 )
 H607C_NATIVE_ZONES = (("pole", 8, 144), ("base", 5, 30))
 
@@ -173,6 +177,8 @@ class LightSource:
     control: str
     segments: tuple[int, ...]
     master_brightness: bool = False
+    color_modes: frozenset[str] | None = None
+    native_control: bool = False
 
 
 @dataclass(frozen=True)
@@ -194,6 +200,7 @@ class ModelProfile:
     colour_mode_query_selector: int = 0
     # Effect semantics require evidence independent of basic command compatibility.
     effect_grammar: str | None = None
+    native_effect_revision: int = 0
     # None permits the exact-SKU workflow ceiling; a set narrows it for this device.
     effect_workflows: frozenset[str] | None = None
     video_grammar: str | None = None
@@ -277,6 +284,7 @@ class ModelProfile:
     configured_string_counts: tuple[int, ...] = ()
     bulbs_per_string: int = 0
     supports_segment_writes: bool = False
+    partition_segment_writes: bool = False
     supports_segment_brightness: bool = False
     supports_segment_color_temperature: bool = False
     # The lamp shows its own warm white rather than the companion colour, so any warm white confirms a Kelvin write.
@@ -300,6 +308,7 @@ class ModelProfile:
     boolean_controls: frozenset[str] = frozenset()
     restarting_boolean_controls: frozenset[str] = frozenset()
     supports_power_on_behaviour: bool = False
+    supports_ripple_speed: bool = False
     default_effect_families_override: frozenset[str] | None = None
     effect_readback: str = "none"
 
@@ -316,12 +325,19 @@ class ModelProfile:
                 not source.key
                 or source.control not in NATIVE_ZONE_CONTROLS
                 or type(source.master_brightness) is not bool
+                or type(source.native_control) is not bool
+                or source.color_modes is not None
+                and (not source.color_modes or not source.color_modes <= {"onoff", "brightness", "rgb", "color_temp"})
                 or len(set(source.segments)) != len(source.segments)
                 or any(type(segment) is not int or segment < 1 for segment in source.segments)
                 for source in self.light_sources
             )
         ):
             raise ValueError("light sources require unique keys and controls and positive segment indices")
+        if self.partition_segment_writes:
+            segments = [segment for source in self.light_sources for segment in source.segments]
+            if len(segments) != self.segment_count or set(segments) != set(range(1, self.segment_count + 1)):
+                raise ValueError("partitioned sources must cover every segment exactly once")
         if self.diy_upload_transport not in {None, "a1_02", "a3"}:
             raise ValueError("unknown DIY upload transport")
         if not self.restarting_boolean_controls <= self.boolean_controls:
@@ -965,6 +981,66 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         segment_count=13,
         segment_group_size=4,
         # Pact 1/1 uses whole-device colour; 1/2+ has thirteen logical segments.
+    ),
+    "H60B0": ModelProfile(
+        "H60B0 Uplighter Floor Lamp",
+        confirmation_issue=566,
+        command_grammar="H60B0",
+        command_ack_grammar="H60B0",
+        status_grammar="H60B0",
+        setting_grammar="H60B0",
+        effect_grammar="H60B0",
+        music_grammar="H60B0",
+        profile_pact_dependent=True,
+        command_operations=frozenset(
+            {"power", "brightness", "static", "source_control", "scene", "diy", "music", "effect_upload"}
+        ),
+        read_domains=frozenset(
+            {
+                ReadDomain.POWER,
+                ReadDomain.BRIGHTNESS,
+                ReadDomain.COLOUR_MODE,
+                ReadDomain.FIRMWARE,
+                ReadDomain.HARDWARE,
+                ReadDomain.SEGMENTS,
+            }
+        ),
+        setup_required_read_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS}),
+        supports_rgb=True,
+        supports_color_temperature=True,
+        color_temp_range=KELVIN_RANGE_2700_6500,
+        supports_segment_writes=True,
+        partition_segment_writes=True,
+        supports_segment_brightness=True,
+        supports_segment_color_temperature=True,
+        segment_count=9,
+        segment_group_size=4,
+        physical_ic_count=9,
+        segment_colour_mode_ambiguous=True,
+        static_readback_echoes_color=True,
+        static_readback_kelvin=True,
+        static_readback_zero_kelvin_is_rgb=True,
+        light_sources=(
+            LightSource("top", "top_enabled", (9,)),
+            LightSource("side", "side_enabled", tuple(range(1, 9))),
+            LightSource("bottom", "bottom_enabled", (), color_modes=frozenset({"color_temp"}), native_control=True),
+        ),
+        boolean_controls=frozenset({"top_enabled", "side_enabled", "bottom_enabled"}),
+        supports_ripple_speed=True,
+        supports_power_on_behaviour=True,
+        supports_scenes=True,
+        scene_catalogue_sku="H60B0",
+        supports_custom_effects=True,
+        supports_multi_layered_effects=True,
+        supports_advanced_effects=True,
+        diy_upload_transport="a3",
+        diy_requires_upload_ack=True,
+        effect_readback="diy_code_only",
+        music_modes=("spectrum", "hopping", "flow", "firefly", "bloom", "rhythm", "shiny", "combined"),
+        music_variants=H60B0_MUSIC_VARIANTS,
+        music_upload_before_selector=True,
+        music_requires_upload_ack=True,
+        music_params_require_activation=True,
     ),
     "H601C": ModelProfile(
         "H601C Recessed Downlight",
@@ -2103,7 +2179,7 @@ UNSUPPORTED_PROFILE = ModelProfile("Unsupported Govee device")
 VIDEO_GRAMMARS = frozenset({"H6099", "H6199"})
 WHOLE_BULB_GRAMMARS = frozenset({"H600A", "H601C"})
 MODE_COMMAND_GRAMMARS = WHOLE_BULB_GRAMMARS | {"H6046", "H6099", "H6199"}
-PERCENT_BRIGHTNESS_STATUS_GRAMMARS = frozenset({"H1771", "H600A", "H6046", "H6097", "H6099", "H6199", "H66A0"})
+PERCENT_BRIGHTNESS_STATUS_GRAMMARS = frozenset({"H1771", "H60B0", "H600A", "H6046", "H6097", "H6099", "H6199", "H66A0"})
 
 
 def _h6199_pact1_wire(packet: bytes) -> bytes:
@@ -2424,6 +2500,29 @@ def device_profile(
     hardware: str | None = None,
 ) -> ModelProfile:
     """Resolve exact-product capabilities from evidenced revision context."""
+    if model == "H60B0":
+        profile = get_profile(model)
+        if pact_type == 1 and pact_code in {1, 2, 3}:
+            return replace(profile, native_effect_revision=pact_code)
+        return replace(
+            profile,
+            command_operations=frozenset({"power", "brightness"}),
+            read_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.FIRMWARE, ReadDomain.HARDWARE}),
+            supports_rgb=False,
+            supports_color_temperature=False,
+            supports_segment_writes=False,
+            supports_segment_brightness=False,
+            supports_segment_color_temperature=False,
+            supports_custom_effects=False,
+            supports_multi_layered_effects=False,
+            supports_advanced_effects=False,
+            supports_scenes=False,
+            music_modes=(),
+            music_variants=(),
+            boolean_controls=frozenset(),
+            supports_ripple_speed=False,
+            supports_power_on_behaviour=False,
+        )
     if model in {"H6046", "H607C", "H6097", "H7020"}:
         profile = get_profile(model)
         if (pact_type, pact_code) in _STANDARD_PACTS or (model == "H607C" and (pact_type, pact_code) == (2, 2)):

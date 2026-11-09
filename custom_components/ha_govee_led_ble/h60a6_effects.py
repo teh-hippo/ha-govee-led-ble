@@ -130,6 +130,10 @@ def _serialise(value: Any) -> bytes:
 
 def encode_native_body(content: NativeEffect) -> bytes:
     """Build all lengths and byte order through generated native structures."""
+    if content.model == "H60B0":
+        from .h60b0_diy import encode_h60b0_diy
+
+        return encode_h60b0_diy(content)
     if content.model == "H1771":
         from .h1771_effects import encode_h1771_diy, encode_h1771_scene
 

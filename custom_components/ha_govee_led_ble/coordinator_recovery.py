@@ -24,6 +24,7 @@ from .light_commands import (
     build_color_rgb,
     build_color_temp,
     build_segment_brightness,
+    build_segment_brightness_packets,
     build_segment_color_temp,
     build_segment_paint,
     normalize_kelvin,
@@ -110,6 +111,16 @@ class _RecoveryMixin(_CoordinatorBase):
             base_enabled=zone_flags.get("base_enabled"),
             source_0_enabled=zone_flags.get("source_0_enabled"),
             source_1_enabled=zone_flags.get("source_1_enabled"),
+            top_enabled=zone_flags.get("top_enabled"),
+            side_enabled=zone_flags.get("side_enabled"),
+            bottom_enabled=zone_flags.get("bottom_enabled"),
+            **{
+                field: getattr(self, field)
+                if self._notify_started_monotonic is not None
+                and self._field_received_at.get(field, -1) >= self._notify_started_monotonic
+                else None
+                for field in ("bottom_kelvin", "bottom_brightness", "ripple_speed")
+            },
             left_bar_kelvin=self.left_bar_kelvin
             if self._notify_started_monotonic is not None
             and self._field_received_at.get("left_bar_kelvin", -1) >= self._notify_started_monotonic
@@ -179,6 +190,20 @@ class _RecoveryMixin(_CoordinatorBase):
         *,
         overwritten_diy_code: int | None,
     ) -> bool:
+        source_values = {}
+        if self.profile.supports_ripple_speed:
+            source_values = {
+                field: getattr(state, field) for field in ("bottom_kelvin", "bottom_brightness", "ripple_speed")
+            }
+            if any(value is None for value in source_values.values()) or not source_values["bottom_kelvin"]:
+                return False
+            for source, attribute, field in (
+                ("bottom", "kelvin", "bottom_kelvin"),
+                ("bottom", "brightness", "bottom_brightness"),
+                ("top", "ripple_speed", "ripple_speed"),
+            ):
+                if getattr(self, field) != source_values[field]:
+                    await self._as_coordinator.async_set_source_value(source, attribute, source_values[field])
         restored = await self._async_restore_effect_appearance(state, overwritten_diy_code=overwritten_diy_code)
         native_zones = self.profile.boolean_controls.intersection(NATIVE_ZONE_CONTROLS)
         if not native_zones:
@@ -197,7 +222,7 @@ class _RecoveryMixin(_CoordinatorBase):
                     deadline=time.monotonic() + 4.0,
                 ):
                     return False
-            elif self.profile.setting_grammar == "H607C":
+            elif self.profile.setting_grammar in {"H607C", "H60B0"}:
                 from .generated_protocol_adapter import build_boolean_control_query
 
                 if not await self._as_coordinator._async_read_setting_fields(
@@ -218,6 +243,7 @@ class _RecoveryMixin(_CoordinatorBase):
             restored
             and set(expected) == native_zones
             and all(self.boolean_control_state.get(name) == value for name, value in expected.items())
+            and all(getattr(self, field) == value for field, value in source_values.items())
         )
 
     async def _async_restore_effect_appearance(
@@ -700,8 +726,9 @@ class _RecoveryMixin(_CoordinatorBase):
                 [(segments, rgb) for rgb, segments in colour_groups.items()], self.model, profile=self.profile
             )
         ) + [
-            build_segment_brightness(segments, brightness, self.model, profile=self.profile)
+            packet
             for brightness, segments in brightness_groups.items()
+            for packet in build_segment_brightness_packets(segments, brightness, self.model, profile=self.profile)
         ]
         if self.profile.setting_grammar == "H6046" and state.restorable_bar_white(self.profile):
             half = self.profile.segment_count // 2

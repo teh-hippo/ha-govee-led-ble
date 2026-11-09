@@ -21,8 +21,8 @@ from .h6099_controls import (
     installation_direction_value,
 )
 from .light_commands import (
-    build_segment_brightness,
-    build_segment_color_temp,
+    build_segment_brightness_packets,
+    build_segment_kelvin_packets,
     build_segment_paint,
     scale_segment_groups,
 )
@@ -240,11 +240,12 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
             )
         try:
             segments = list(segments)
-            packet = build_segment_color_temp(segments, color_temp_kelvin, c.model, profile=c.profile)
+            packets = build_segment_kelvin_packets(segments, color_temp_kelvin, c.model, profile=c.profile)
             await self._async_supersede_preview()
             async with async_control_intent(c, ControlIntent.USER):
                 try:
-                    await c.async_set_segment_kelvin(packet, requested_kelvin=color_temp_kelvin)
+                    for packet in packets:
+                        await c.async_set_segment_kelvin(packet, requested_kelvin=color_temp_kelvin)
                 finally:
                     self._notify_state_changed()
         except (TypeError, ValueError) as err:
@@ -264,7 +265,7 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
         guard = None
         if self.coordinator.identity_gated_controls:
             try:
-                build_segment_brightness(
+                build_segment_brightness_packets(
                     segments, brightness, self.coordinator.model, profile=self.coordinator.native_presentation_profile
                 )
             except (TypeError, ValueError) as err:
@@ -284,7 +285,9 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
         )
         try:
             segments = list(segments)
-            build_segment_brightness(segments, brightness, self.coordinator.model, profile=self.coordinator.profile)
+            build_segment_brightness_packets(
+                segments, brightness, self.coordinator.model, profile=self.coordinator.profile
+            )
             if write_guard is not None:
                 write_guard()
             await self._async_supersede_preview()

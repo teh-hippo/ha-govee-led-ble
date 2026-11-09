@@ -50,6 +50,7 @@ from custom_components.ha_govee_led_ble.music_commands import (
     prepare_music_request,
 )
 from custom_components.ha_govee_led_ble.music_protocol import (
+    H60b0MusicBody,
     music_code_for,
     music_mode_has_parameter_write,
 )
@@ -106,6 +107,10 @@ def _consume_status(coordinator: GoveeBLECoordinator, frame: bytes) -> None:
 # Runtime qualification contexts that produce distinct effective profiles through device_profile().
 _QUALIFIED_CONTEXTS: tuple[tuple[str, str, int | None, int | None, str | None, str | None], ...] = (
     ("H619A-bootstrap", "H619A", None, None, None, None),
+    ("H60B0-bootstrap", "H60B0", None, None, None, None),
+    ("H60B0-pact1", "H60B0", 1, 1, "1.00.12", "3.05.01"),
+    ("H60B0-pact2", "H60B0", 1, 2, "1.00.12", "3.05.01"),
+    ("H60B0-pact3", "H60B0", 1, 3, "1.00.12", "3.05.01"),
     ("H607C-bootstrap", "H607C", None, None, None, None),
     ("H6072-bootstrap", "H6072", None, None, None, None),
     ("H6072-legacy", "H6072", 1, 1, "1.00.10", None),
@@ -285,6 +290,8 @@ def _status_color_mode_enum(profile: ModelProfile):
 
 
 def _status_music_enum(profile: ModelProfile):
+    if profile.status_grammar == "H60B0":
+        return H60b0MusicBody.MusicMode
     if profile.status_grammar == "H1771":
         return protocol_core.H1771MusicBody.MusicMode
     if profile.status_grammar == "H607C":
@@ -987,7 +994,7 @@ def test_static_colour_and_kelvin_status_readback(hass, model: str, profile: Mod
     their declared Kelvin bounds on static temperature readback."""
     color_mode_enum = _status_color_mode_enum(profile)
     static_byte = int(getattr(color_mode_enum, "static", getattr(color_mode_enum, "static_colour", None)))
-    if profile.status_grammar in WHOLE_BULB_GRAMMARS | {"H6179"}:
+    if profile.status_grammar in WHOLE_BULB_GRAMMARS | {"H6179", "H60B0"}:
         rgb_body = bytes([static_byte, 10, 20, 30, 0, 0])
     else:
         rgb_body = bytes([static_byte, 0, 0, 0])
@@ -1007,7 +1014,7 @@ def test_static_colour_and_kelvin_status_readback(hass, model: str, profile: Mod
             kelvin_bytes = kelvin.to_bytes(2, "big")
             body = (
                 bytes([static_byte, 255, 255, 255]) + kelvin_bytes
-                if profile.status_grammar in WHOLE_BULB_GRAMMARS | {"H6179"}
+                if profile.status_grammar in WHOLE_BULB_GRAMMARS | {"H6179", "H60B0"}
                 else bytes([static_byte, 1]) + kelvin_bytes
             )
             if profile.status_grammar == "H6046":
@@ -1027,7 +1034,7 @@ def test_static_colour_and_kelvin_status_readback(hass, model: str, profile: Mod
             bad_bytes = out_of_range.to_bytes(2, "big")
             bad_body = (
                 bytes([static_byte, 255, 255, 255]) + bad_bytes
-                if profile.status_grammar in WHOLE_BULB_GRAMMARS | {"H6179"}
+                if profile.status_grammar in WHOLE_BULB_GRAMMARS | {"H6179", "H60B0"}
                 else bytes([static_byte, 1]) + bad_bytes
             )
             if profile.status_grammar == "H6046":
@@ -1061,6 +1068,21 @@ def test_declared_boolean_controls_round_trip(hass, model: str, profile: ModelPr
             )
             assert len(cmd) == 20 and xor_checksum(cmd) == 0
             a.require_profile_packet(cmd, profile)
+            if profile.setting_grammar == "H60B0":
+                expected = {name: True for name in profile.boolean_controls} | {control: enabled}
+                mask = 0x80 | sum(
+                    flag
+                    for name, flag in (("top_enabled", 0x40), ("side_enabled", 0x20), ("bottom_enabled", 0x10))
+                    if expected[name]
+                )
+                reply = _status(domain_byte, bytes([mask]) + bytes.fromhex("0fa0280bb81e"))
+                decoded = decode_status_frame(reply, model, profile=profile)
+                assert decoded is not None and status_is_authorized(decoded, profile)
+                assert a.parse_boolean_control(decoded.generated, model, profile=profile) == expected
+                _consume_status(coordinator, reply)
+                assert coordinator.boolean_control_state == expected
+                assert coordinator.is_on
+                continue
             if profile.setting_grammar == "H1771":
                 if control == "gradual":
                     record = bytes((0xA3, 1, int(enabled)))
@@ -1113,6 +1135,12 @@ def test_declared_boolean_controls_round_trip(hass, model: str, profile: ModelPr
             assert coordinator.boolean_control_state[control] is enabled
             assert coordinator._field_revisions[f"boolean_{control}"] > 0
 
+        if profile.setting_grammar == "H60B0":
+            bad_reply = _status(domain_byte, bytes.fromhex("f00fa0ff0bb81e"))
+            _consume_status(coordinator, bad_reply)
+            assert coordinator.packet_log[-1]["reason"] == "semantic_rejected"
+            assert coordinator.boolean_control_state[control] is True
+            continue
         if profile.setting_grammar == "H6046":
             continue
         if profile.setting_grammar == "H1771":

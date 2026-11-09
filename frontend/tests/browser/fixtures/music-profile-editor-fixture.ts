@@ -65,3 +65,10 @@ if (new URLSearchParams(location.search).has("paired")) {
   editor.catalogue = native;
   editor.content = structuredClone(template.content);
 }
+if (new URLSearchParams(location.search).has("combined")) {
+  const native = decodeCustomCataloguePayload(contracts.responses.custom_catalogue, decodeEffectContent).models.H60B0;
+  const template = native.templates!.find(candidate => candidate.id === "template:music:combined")!;
+  if (template.content.kind !== "music_profile") throw new Error("Combined music template is missing");
+  editor.catalogue = native;
+  editor.content = structuredClone(template.content);
+}

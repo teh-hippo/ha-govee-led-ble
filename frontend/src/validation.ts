@@ -522,7 +522,7 @@ export function decodeLibrarySnapshot(value: unknown): LibrarySnapshot {
         ...(model ? { model } : {}),
         ...(template ? { template } : {}),
         ...(summary.native_workflow === undefined ? {} : {
-          native_workflow: enumString(summary.native_workflow, ["single", "multi"], "native workflow"),
+          native_workflow: enumString(summary.native_workflow, ["single", "multi", "advanced"], "native workflow"),
         }),
       };
     }),
@@ -1026,6 +1026,7 @@ export function decodeEffectContent(value: unknown): EffectContent {
               parameters: boundedRecord(zone.parameters, "music zone parameters") as JsonObject,
               ...(zone.palette === undefined ? {} : { palette: paletteValue(zone.palette, "music zone palette", 8) }),
               ...(body === undefined ? {} : { body }),
+              ...(zone.calm === undefined ? {} : { calm: nullableBooleanValue(zone.calm, "music source style") }),
             };
           }),
         }),
@@ -1177,6 +1178,22 @@ export function decodeEffectContent(value: unknown): EffectContent {
         ...(trailingPadding === undefined
           ? {}
           : { trailing_padding: trailingPadding }),
+        ...(content.ripple_layers === undefined ? {} : {
+          ripple_layers: arrayValue(content.ripple_layers, "ripple layers", 255).map(value => {
+            const layer = objectValue(value, "ripple layer");
+            return {
+              effect: byteValue(layer.effect, "ripple effect"),
+              duration: integerValue(layer.duration, "ripple duration", 0, 65535),
+              movement_speed: byteValue(layer.movement_speed, "ripple movement speed"),
+              movement: byteValue(layer.movement, "ripple movement"),
+              colour_mode: byteValue(layer.colour_mode, "ripple colour mode"),
+              colour_speed: byteValue(layer.colour_speed, "ripple colour speed"),
+              retention: integerValue(layer.retention, "ripple retention", 0, 65535),
+              palette: arrayValue(layer.palette, "ripple palette", 255).map(value => rgbValue(value, "ripple colour")),
+              opaque: hexString(layer.opaque, "ripple suffix"),
+            };
+          }),
+        }),
       } satisfies LayeredSceneContent;
     }
 
@@ -1192,14 +1209,21 @@ export function decodeEffectContent(value: unknown): EffectContent {
 }
 
 function nativeEffectContent(content: Record<string, unknown>): NativeEffectContent {
-  const model = enumString(content.model, ["H60A6", "H607C", "H1771"], "native model");
-  const zoned = model === "H607C" || model === "H1771";
+  const model = enumString(content.model, ["H60A6", "H607C", "H1771", "H60B0"], "native model");
+  const zoned = model === "H607C" || model === "H1771" || model === "H60B0";
   const family = integerValue(content.family, "native family", 0, 65535);
+  const revision = model === "H60B0" ? integerValue(content.revision, "native revision", 0, 3) : undefined;
+  const combined = model === "H60B0" && family === 81;
   if ((model === "H60A6" && family !== 797 && family !== 798) ||
       (model === "H607C" && family > 255) || (model === "H1771" && family !== 957)) invalid("unsupported native family");
   const layerValues = arrayValue(content.layers, "native layers", 255);
-  if (!layerValues.length) invalid("native effects require at least one layer");
-  if (zoned && layerValues.length > 2) invalid("native zoned effects cannot add layers");
+  if (!layerValues.length && !combined) invalid("native effects require at least one layer");
+  if (zoned && layerValues.length > (model === "H60B0" ? 3 : 2)) invalid("native zoned effects cannot add layers");
+  if (model === "H60B0" && (
+    combined ? revision !== 0 || layerValues.length !== 0
+      : revision === 1 ? !((family >= 1 && family <= 10 && layerValues.length === 1) || (family === 13 && layerValues.length === 2))
+        : revision !== 3 || ![922, 923].includes(family) || layerValues.length !== 3
+  )) invalid("native family does not match its revision");
   if (model === "H1771" && layerValues.length !== 2) invalid("native dual-source effects require two sections");
   return {
     kind: "native_effect",
@@ -1222,6 +1246,10 @@ function nativeEffectContent(content: Record<string, unknown>): NativeEffectCont
           ...(zoned ? {
             enabled: booleanValue(layer.enabled ?? true, "native effect section"),
             secondary_palette: arrayValue(layer.secondary_palette ?? [], "native secondary palette", 255).map(value => rgbValue(value, "native colour")),
+            ...(model === "H60B0" ? {
+              temperatures: arrayValue(layer.temperatures ?? [], "native temperatures", 8)
+                .map(value => integerValue(value, "native temperature", 2700, 6500)),
+            } : {}),
           } : {}),
         };
       }
@@ -1247,7 +1275,17 @@ function nativeEffectContent(content: Record<string, unknown>): NativeEffectCont
     background: rgbValue(content.background, "native background"),
     background_brightness: byteValue(content.background_brightness, "native background brightness"),
     show_type: byteValue(content.show_type, "native show type"), opaque: hexString(content.opaque, "native opaque"),
-    ...(model === "H1771" ? { section_tail: hexString(content.section_tail ?? "", "native section tail") } : {}),
+    ...(model === "H1771" || model === "H60B0" ? { section_tail: hexString(content.section_tail ?? "", "native section tail") } : {}),
+    ...(revision === undefined ? {} : { revision }),
+    ...(combined ? {
+      combined: (() => {
+        const nested = objectValue(content.combined, "combined effect");
+        const decoded = decodeEffectContent({ ...nested, kind: "scene_layered" });
+        if (decoded.kind !== "scene_layered" || decoded.template.sku !== model || !decoded.ripple_layers?.length) invalid("invalid combined effect");
+        const { kind: _kind, ...body } = decoded;
+        return body;
+      })(),
+    } : {}),
     preset_id: nullableInteger(content.preset_id, "native preset", 0, 255),
     template: content.template === null ? null : catalogueRef(content.template, "native scene template"),
     speed_index: nullableInteger(content.speed_index, "native scene speed index", 0, 255),

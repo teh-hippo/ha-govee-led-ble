@@ -1,5 +1,6 @@
 import { LitElement, html, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
+import { renderRippleEditor } from "./ripple-editor";
 
 import type {
   CustomEffectBrowserCategoryRequest,
@@ -1447,6 +1448,10 @@ export class GoveeLedEffectStudio extends LitElement {
           );
         }}
       ></govee-advanced-effect-editor>
+      ${this.content.kind === "scene_layered" && this.content.ripple_layers
+        ? renderRippleEditor(this.content.ripple_layers, this.editorDisabled, (layers, interaction) =>
+          this.editor.rippleContentChanged(layers, interaction, this.currentScenePreviewRequest()))
+        : nothing}
     `;
   }
 

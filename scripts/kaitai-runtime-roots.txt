@@ -1,5 +1,10 @@
 command_write
 speculative/h619a_status_reply
+speculative/h60b0_command_write
+speculative/h60b0_command_ack
+speculative/h60b0_effect_upload
+speculative/h60b0_status_query
+speculative/h60b0_status_reply
 speculative/h1771_command_write
 speculative/h1771_status_query
 speculative/h1771_status_reply
@@ -42,6 +47,10 @@ speculative/h6072_music_write
 speculative/h6072_music_body
 speculative/h6072_music_ack
 speculative/h607c_scene_body
+speculative/h60b0_scene_body
+speculative/h60b0_music_body
+speculative/h60b0_diy_body
+speculative/h60b0_diy_v3
 speculative/h607c_command_write
 speculative/h607c_control
 speculative/h607c_status_query

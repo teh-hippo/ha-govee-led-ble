@@ -58,6 +58,11 @@ def expectations_from_packet(
     operation = getattr(generated.opcode, "name", None)
     if operation is None:
         return {}
+    if profile.command_grammar == "H60B0":
+        from .h60b0_controls import source_values
+
+        if values := source_values(generated):
+            return {"color_mode": (ParsedMode.COLOUR, None), **values}
     if operation == "power":
         return {"is_on": bool(generated.body.is_on)}
     if operation == "brightness":
@@ -127,11 +132,11 @@ def expectations_from_packet(
         if mode == "diy" and hasattr(detail, "companion"):
             expectations["diy_companion"] = int(detail.companion)
         if mode == "music":
-            mode_id = detail.mode if profile.command_grammar == "H1771" else detail.mode_id
+            mode_id = detail.mode if profile.command_grammar in {"H1771", "H60B0"} else detail.mode_id
             music_mode = music_slug_for(model, int(mode_id), profile=profile)
             expectations["music_mode"] = music_mode
             expectations["music_sensitivity"] = int(detail.sensitivity)
-            if profile.command_grammar == "H1771" or not getattr(detail, "is_legacy", True):
+            if profile.command_grammar in {"H1771", "H60B0"} or not getattr(detail, "is_legacy", True):
                 return expectations
             if music_mode == "rhythm" and hasattr(detail, "style"):
                 expectations["music_calm"] = bool(detail.style)
@@ -248,6 +253,10 @@ def _expected_color_mode(
         return ParsedMode.SCENE, None
     if mode == "legacy_static":
         return ParsedMode.COLOUR, None
+    if mode == "source_control":
+        return ParsedMode.COLOUR, None
     if mode == "static":
+        if profile.command_grammar == "H60B0":
+            return ParsedMode.COLOUR, None
         return ParsedMode.COLOUR, (int(detail.static_sub) if static_echoes_color else None)
     return None

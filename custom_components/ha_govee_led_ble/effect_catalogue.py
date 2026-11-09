@@ -262,8 +262,37 @@ class ModelEffectCatalogue:
     def to_dict(self, *, profile: ModelProfile | None = None) -> dict[str, JsonValue]:
         device_profile = profile
         profile = MODEL_PROFILES[self.sku] if profile is None else profile
+        music_profile = (
+            replace(profile, music_modes=(*profile.music_modes, "vortex", "disabled"))
+            if self.sku == "H60B0" and profile.music_modes
+            else profile
+        )
         result: dict[str, JsonValue] = {
             "sku": self.sku,
+            **(
+                {
+                    "native_zones": [
+                        {"id": "side", "label": "Side", "segment_count": 8, "physical_ic_budget": None},
+                        {"id": "ripple", "label": "Ripple", "segment_count": 1, "physical_ic_budget": None},
+                    ],
+                    "music_zone_modes": {
+                        "side": [
+                            "spectrum",
+                            "hopping",
+                            "flow",
+                            "firefly",
+                            "vortex",
+                            "bloom",
+                            "rhythm",
+                            "shiny",
+                            "disabled",
+                        ],
+                        "ripple": ["bloom", "rhythm", "shiny", "spectrum", "disabled"],
+                    },
+                }
+                if self.sku == "H60B0"
+                else {}
+            ),
             **(
                 {
                     "native_zones": [
@@ -298,9 +327,13 @@ class ModelEffectCatalogue:
             "music_modes": [mode.to_dict() for mode in self.music_modes if mode.id in profile.music_modes],
             "music_settings": {
                 mode.id: {
-                    "available": (available := music_default_available(self.sku, mode.id, profile=profile)),
+                    "available": (available := music_default_available(self.sku, mode.id, profile=music_profile)),
                     "style": bool(
-                        (variant := music_variant(profile, music_code_for(self.sku, mode.id, profile=profile)))
+                        (
+                            variant := music_variant(
+                                music_profile, music_code_for(self.sku, mode.id, profile=music_profile)
+                            )
+                        )
                         and variant.supports_style
                     ),
                     "calm_default": variant.calm_default if variant else False,
@@ -317,7 +350,7 @@ class ModelEffectCatalogue:
                                 "default": [list(rgb) for rgb in music_default_palette(variant)],
                             }
                         }
-                        if variant and variant.palette_bounds and music_parameters_available(profile, variant)
+                        if variant and variant.palette_bounds and music_parameters_available(music_profile, variant)
                         else {}
                     ),
                     "parameters": {
@@ -329,13 +362,13 @@ class ModelEffectCatalogue:
                             "options": list(spec.options),
                         }
                         for spec in music_params_for_mode(
-                            music_code_for(self.sku, mode.id, profile=profile),
-                            profile,
+                            music_code_for(self.sku, mode.id, profile=music_profile),
+                            music_profile,
                         )
                     },
                 }
                 for mode in self.music_modes
-                if mode.id in profile.music_modes
+                if mode.id in music_profile.music_modes
             },
             "video_modes": [mode.to_dict() for mode in self.video_modes],
             "video_settings": list(_video_profile_settings(profile)),
@@ -1672,7 +1705,202 @@ def _ceiling_catalogue(model: str) -> ModelEffectCatalogue:
     )
 
 
+def _h60b0_templates() -> tuple[CatalogueTemplate, ...]:
+    palette = (DEFAULT_PALETTE[0], DEFAULT_PALETTE[4])
+    disabled = NativeDiyLayer(1, 50, (), enabled=False, parameter=50, direction=1)
+    off = NativeDiyLayer(1, 0, ())
+    names = ("Fade", "Breathe", "Blink", "Stream", "Colour wall", "Flow", "Alternate", "Shimmer", "Cover", "Variety")
+    templates: list[CatalogueTemplate] = []
+    for kind, label in enumerate(names, 1):
+        layer = NativeDiyLayer(
+            kind,
+            50,
+            palette,
+            parameter=1 if kind == 9 else 0,
+            secondary_palette=((0, 0, 0),) if kind == 8 else (),
+        )
+        templates.append(
+            CatalogueTemplate(
+                id=f"template:h60b0:1:single:{kind}",
+                label=label,
+                category="single-layer",
+                content=NativeEffect(model="H60B0", revision=1, family=kind, layers=(layer,)),
+                rate_min=1,
+            )
+        )
+        templates.append(
+            CatalogueTemplate(
+                id=f"template:h60b0:1:1:{kind}",
+                label=f"Side {label}",
+                category="advanced",
+                content=NativeEffect(
+                    model="H60B0",
+                    revision=1,
+                    family=13,
+                    layers=(
+                        NativeDiyLayer(0, 0, (), enabled=False),
+                        replace(layer, parameter=0 if kind == 9 else layer.parameter),
+                    ),
+                ),
+                rate_min=1,
+            )
+        )
+    for kind, label in ((1, "Fade"), (2, "Breathe"), (4, "Stream"), (11, "Blink"), (12, "Jump")):
+        templates.append(
+            CatalogueTemplate(
+                id=f"template:h60b0:1:0:{kind}",
+                label=f"Ripple {label}",
+                category="advanced",
+                content=NativeEffect(
+                    model="H60B0",
+                    revision=1,
+                    family=13,
+                    layers=(
+                        NativeDiyLayer(kind, 50, palette, direction=1, flag=50),
+                        NativeDiyLayer(0, 0, (), enabled=False),
+                    ),
+                ),
+                rate_min=1,
+            )
+        )
+    side_names = (
+        "Fade",
+        "Breathe",
+        "Stream",
+        "Blink",
+        "Colour wall",
+        "Flow",
+        "Alternate",
+        "Shimmer",
+        "Cover",
+        "Variety",
+        "Spread",
+        "Meteor",
+    )
+    for kind, label in enumerate(side_names, 2):
+        layer = NativeDiyLayer(
+            kind,
+            50,
+            palette,
+            points=(0, 100) if kind in (3, 5) else (),
+            direction=3 if kind == 12 else 1 if kind in (7, 10) else 0,
+            secondary_palette=((0, 0, 0),) if kind == 9 else (),
+        )
+        templates.append(
+            CatalogueTemplate(
+                id=f"template:h60b0:3:1:{kind}",
+                label=f"Side {label}",
+                category="multi-layer",
+                content=NativeEffect(model="H60B0", revision=3, family=922, layers=(disabled, layer, off)),
+                rate_min=1,
+            )
+        )
+    for kind, label in ((2, "Fade"), (3, "Breathe"), (4, "Stream"), (5, "Blink"), (6, "Jump")):
+        templates.append(
+            CatalogueTemplate(
+                id=f"template:h60b0:3:0:{kind}",
+                label=f"Ripple {label}",
+                category="advanced",
+                content=NativeEffect(
+                    model="H60B0",
+                    revision=3,
+                    family=923,
+                    layers=(
+                        NativeDiyLayer(
+                            kind, 50, palette, parameter=50, direction=1, points=(0, 100) if kind in (3, 5) else ()
+                        ),
+                        off,
+                        off,
+                    ),
+                ),
+                rate_min=1,
+            )
+        )
+    for kind, label in ((2, "Fade"), (3, "Breathe")):
+        templates.append(
+            CatalogueTemplate(
+                id=f"template:h60b0:3:2:{kind}",
+                label=f"Bottom {label}",
+                category="multi-layer",
+                content=NativeEffect(
+                    model="H60B0",
+                    revision=3,
+                    family=922,
+                    layers=(
+                        disabled,
+                        off,
+                        NativeDiyLayer(
+                            kind, 50, ((255, 255, 255),), points=(0, 100) if kind == 3 else (1,), temperatures=(6500,)
+                        ),
+                    ),
+                ),
+                rate_min=1,
+            )
+        )
+    templates.append(
+        CatalogueTemplate(
+            id="template:h60b0:3:0:7",
+            label="Top temperature",
+            category="advanced",
+            content=NativeEffect(
+                model="H60B0",
+                revision=3,
+                family=923,
+                layers=(NativeDiyLayer(7, 0, (), parameter=50, direction=1, flag=100, angle=4000), off, off),
+            ),
+        )
+    )
+    from .h60b0_effects import decode_combined_scene
+    from .layered_scene import CatalogueRef
+    from .scenes import SCENE_ENTRIES
+
+    seed = next(scene for scene in SCENE_ENTRIES["H60B0"] if scene.scene_type == 6 and scene.param)
+    templates.append(
+        CatalogueTemplate(
+            id="template:h60b0:combined",
+            label="Side and ripple layers",
+            category="multi-layer",
+            content=NativeEffect(
+                model="H60B0",
+                family=81,
+                layers=(),
+                combined=decode_combined_scene(
+                    CatalogueRef("H60B0", 0, 510), base64.b64decode(seed.param, validate=True)
+                ),
+            ),
+        )
+    )
+    return tuple(templates)
+
+
 MODEL_EFFECT_CATALOGUES: Final = {
+    "H60B0": ModelEffectCatalogue(
+        sku="H60B0",
+        painted_effects=(),
+        effects=(),
+        music_modes=(
+            *_native_music_modes("H60B0"),
+            NativeModeOption("vortex", "Vortex"),
+            NativeModeOption("disabled", "Off"),
+        ),
+        video_modes=(),
+        templates=(*_h60b0_templates(), *(_music_template("H60B0", mode) for mode in _native_music_modes("H60B0"))),
+        workshop_templates=(),
+        supports=CatalogueSupport(
+            multi=workflow_capability_state("H60B0", CapabilityWorkflow.MULTI),
+            advanced=workflow_capability_state("H60B0", CapabilityWorkflow.ADVANCED),
+            workshop=CapabilityState.UNSUPPORTED,
+        ),
+        apply=ApplySupport(
+            painted=CapabilityState.UNSUPPORTED,
+            single=studio_apply_capability_state("H60B0", CapabilityWorkflow.SINGLE),
+            multi=studio_apply_capability_state("H60B0", CapabilityWorkflow.MULTI),
+            palette_diy=CapabilityState.UNSUPPORTED,
+            workshop=CapabilityState.UNSUPPORTED,
+        ),
+        advanced_create=False,
+        temporary_diy_selector=254,
+    ),
     "H1771": ModelEffectCatalogue(
         sku="H1771",
         painted_effects=(),
@@ -2445,6 +2673,11 @@ def validate_effect_eligibility(
     if catalogue is None:
         raise ValueError(f"{model} has no custom-effect catalogue")
     if isinstance(content, NativeEffect):
+        if model == "H60B0":
+            from .h60b0_diy import validate_h60b0_diy
+
+            validate_h60b0_diy(content, profile.native_effect_revision)
+            return
         if model == "H1771" and content.model == model and profile.effect_grammar == "H1771":
             if not any(isinstance(layer, NativeDiyLayer) and layer.enabled for layer in content.layers):
                 raise ValueError("select at least one native effect section")
@@ -2680,6 +2913,16 @@ def _template_available(template: CatalogueTemplate, profile: ModelProfile) -> b
     elif isinstance(content, LayeredEffect):
         workflow = CapabilityWorkflow.ADVANCED
     elif isinstance(content, NativeEffect):
+        if (
+            content.model == "H60B0"
+            and content.family != 81
+            and (
+                profile.native_effect_revision not in (1, 2)
+                if content.revision == 1
+                else profile.native_effect_revision != 3
+            )
+        ):
+            return False
         workflow = CapabilityWorkflow(content.workflow)
     elif isinstance(content, SingleEffect | H6179SingleDiyEffect):
         workflow = CapabilityWorkflow.SINGLE
@@ -2844,8 +3087,8 @@ def validate_catalogue_template_identity(
     valid = (
         isinstance(canonical, NativeEffect)
         and isinstance(content, NativeEffect)
-        and (content.model, content.family, content.preset_id, content.template)
-        == (canonical.model, canonical.family, canonical.preset_id, canonical.template)
+        and (content.model, content.family, content.preset_id, content.template, content.revision)
+        == (canonical.model, canonical.family, canonical.preset_id, canonical.template, canonical.revision)
         or isinstance(canonical, PaintedEffect)
         and isinstance(content, PaintedEffect)
         and (canonical.addressing, canonical.model) == (content.addressing, content.model)

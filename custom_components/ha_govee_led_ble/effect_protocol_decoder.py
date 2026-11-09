@@ -83,6 +83,8 @@ def decode_effect_frames(
 def decode_a3_effect(tree: Any, model: str) -> EffectContent:
     """Decode a parsed generated A3 tree without assigning unevidenced semantics."""
     grammar = get_profile(model).effect_grammar
+    if grammar == "H60B0":
+        raise UnsupportedA3EffectError("Native uploads require their qualified revision and retained source definition")
     if grammar == "H1771":
         if isinstance(tree, H1771EffectUpload) and tree.kind == H1771EffectUpload.UploadKind.native_diy:
             if tree.body.unknown_tail:

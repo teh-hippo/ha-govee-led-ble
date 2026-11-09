@@ -10,7 +10,7 @@ from typing import Any
 from kaitaistruct import KaitaiStream, KaitaiStructError
 
 from .const import WHOLE_BULB_GRAMMARS, ModelProfile, ReadDomain, get_profile
-from .music_protocol import music_slug_for
+from .music_protocol import H60b0MusicBody, music_slug_for
 from .music_semantics import music_variant
 from .protocol_core import (
     _BLANK_SCREEN_LOW_BRIGHTNESS_SECONDS,
@@ -31,6 +31,9 @@ from .protocol_core import (
     H60a6Control,
     H60a6EffectFrame,
     H60aBulk,
+    H60b0CommandAck,
+    H60b0CommandWrite,
+    H60b0EffectUpload,
     H61f5ExtendedStaticWrite,
     H61f5MusicWrite,
     H66a0MusicWrite,
@@ -209,7 +212,7 @@ def _complete_a3_upload(
 ) -> tuple[int, bytes]:
     active_profile = profile or get_profile(model)
     if (
-        active_profile.command_grammar not in {"H600A", "H6046", "H607C", "H617A", "H7020"}
+        active_profile.command_grammar not in {"H600A", "H6046", "H607C", "H60B0", "H617A", "H7020"}
         and active_profile.command_ack_grammar != "H617A"
     ):
         raise ValueError("Upload ACK semantics are not qualified for this command grammar")
@@ -248,11 +251,15 @@ def upload_ack_mode(
 ) -> int | None:
     """Return the music mode an exact-model acknowledgement must repeat, if its schema carries one."""
     grammar = (profile or get_profile(model)).music_grammar
-    if grammar not in {"H6072", "H6076", "H6046", "H607C"}:
+    if grammar not in {"H6072", "H6076", "H6046", "H607C", "H60B0"}:
         return None
     subtype, envelope = _complete_a3_upload(packets, index, model, profile)
     if subtype != 0x41:
         return None
+    if grammar == "H60B0":
+        upload = H60b0EffectUpload.from_bytes(envelope)
+        upload._read()
+        return int(upload.mode)
     body = (
         H607cMusicBody
         if grammar == "H607C"
@@ -274,6 +281,8 @@ def upload_ack_success(
         return None
     if (
         isinstance(parsed, H6076MusicAck | H6072MusicAck)
+        or isinstance(parsed, H60b0CommandAck)
+        and getattr(parsed, "mode", None) is not None
         or (isinstance(parsed, H607cCommandAck) and getattr(parsed, "mode", None) is not None)
         or (isinstance(parsed, H6046CommandAck) and getattr(parsed, "mode", None) is not None)
     ):
@@ -467,6 +476,11 @@ def _check_command_packet(frame: bytes, profile: ModelProfile) -> bool:
     if command is None and extended_root is not None and result.parser == extended_root[0]:
         raise ValueError("Invalid extended static command")
     if command is not None:
+        if profile.command_grammar == "H60B0":
+            from .h60b0_controls import validate_command
+
+            if validate_command(command, profile):
+                return True
         operation = getattr(command.opcode, "name", "")
         if operation == "zone_enable" and profile.setting_grammar == "H1771":
             control = getattr(command.body.source, "name", None)
@@ -599,7 +613,16 @@ def _check_status_query_packet(frame: bytes, profile: ModelProfile) -> bool:
     ).parsed
     if query is not None:
         domain = getattr(query.domain, "name", "")
-        if profile.command_grammar == "H1771":
+        if profile.command_grammar == "H60B0" and domain in {"source_info", "power_on_behaviour"}:
+            if (
+                domain == "source_info"
+                and profile.boolean_controls
+                or domain == "power_on_behaviour"
+                and profile.supports_power_on_behaviour
+            ):
+                return True
+            raise ValueError("Source setting query is outside the profile")
+        if profile.command_grammar in {"H1771", "H60B0"}:
             if domain == "segments" and not 1 <= query.body.group <= profile.segment_group_count:
                 raise ValueError("segment query group is outside the selected geometry")
             if domain == "colour_mode" and query.body.selector != profile.colour_mode_query_selector:
@@ -632,6 +655,16 @@ def _check_upload_packet(frame: bytes, profile: ModelProfile) -> bool:
             raise ValueError("music parameter upload is outside profile capabilities")
         return True
     if profile.command_operations is not None and "effect_upload" in profile.command_operations:
+        if upload is not None and profile.effect_grammar == "H60B0":
+            if upload.index == 0:
+                kinds = H60b0CommandAck.UploadKind
+                allowed = {
+                    int(kinds.combined_scene): profile.supports_scenes or profile.supports_custom_effects,
+                    int(kinds.native_diy): profile.supports_custom_effects,
+                }
+                if not allowed.get(upload.body.subtype, False):
+                    raise ValueError("Native upload is outside profile capabilities")
+            return True
         if upload is not None and profile.effect_grammar == "H1771":
             if upload.index == 0:
                 kinds = H1771EffectUpload.UploadKind
@@ -752,6 +785,8 @@ def parse_a3_effect_envelope(envelope: bytes, model: str, *, profile: ModelProfi
         root_type = H60a6EffectFrame.A3Envelope
     elif grammar == "H607C":
         root_type = H607cEffectUpload
+    elif grammar == "H60B0":
+        root_type = H60b0EffectUpload
     elif grammar == "H1771":
         root_type = {
             int(H1771EffectUpload.UploadKind.rgb_scene): SceneType1Body,
@@ -766,6 +801,8 @@ def parse_a3_effect_envelope(envelope: bytes, model: str, *, profile: ModelProfi
     try:
         parsed = root_type(KaitaiStream(io.BytesIO(envelope)))
         parsed._read()
+        if grammar == "H60B0" and getattr(parsed.kind, "name", None) is None:
+            raise ValueError("Unknown native upload command")
         if grammar == "H6099" and int(parsed.kind) in (3, 4):
             _ = parsed.diy
         if grammar == "H607C":
@@ -786,6 +823,8 @@ def parse_a3_effect_envelope(envelope: bytes, model: str, *, profile: ModelProfi
 
 def _command_types(model: str, profile: ModelProfile | None = None) -> tuple[Any, Any, Any]:
     resolved = (profile or get_profile(model)).command_grammar
+    if resolved == "H60B0":
+        return H60b0CommandWrite, H60b0CommandWrite.PowerCmd, H60b0CommandWrite.BrightnessCmd
     if resolved == "H1771":
         return H1771CommandWrite, H1771CommandWrite.PowerCmd, H1771CommandWrite.BrightnessCmd
     if resolved in {"H6072", "H6072-legacy", "H607C"}:
@@ -828,7 +867,7 @@ def _build_status_query(
         root.body = body
         return _serialize_xor(root)
     root_type = _STATUS_QUERY_ROOTS[grammar][1]
-    body_types = StatusQuery if grammar in {"H6072", "H6072-legacy", "H607C", "H7020"} else root_type
+    body_types = StatusQuery if grammar in {"H6072", "H6072-legacy", "H607C", "H60B0", "H7020"} else root_type
     root = root_type()
     root.header = b"\xaa"
     generated_domain = "mode" if grammar == "H6179" and domain == "colour_mode" else domain
@@ -844,7 +883,7 @@ def _build_status_query(
         if grammar == "H6179":
             raise ValueError("H6179 has no segment status-query operation")
         body = _child(
-            H6072StatusQuery.SegmentQueryBody if grammar == "H6072-legacy" else root_type.SegmentQueryBody, root
+            H6072StatusQuery.SegmentQueryBody if grammar == "H6072-legacy" else body_types.SegmentQueryBody, root
         )
         body.group = segment_group
         body.zeros = [0] * 16
@@ -868,6 +907,7 @@ def _build_status_query(
         "H6072",
         "H6072-legacy",
         "H607C",
+        "H60B0",
         "H617A",
         "H7020",
     }:
@@ -932,6 +972,16 @@ def build_boolean_control(
 ) -> bytes:
     """Build a qualified shared register write; revision gating belongs to the profile."""
     profile = profile or get_profile(model)
+    if profile.setting_grammar == "H60B0":
+        if control not in profile.boolean_controls or type(enabled) is not bool:
+            raise ValueError("Unsupported native source control")
+        root = H60b0CommandWrite()
+        root.header, root.opcode = b"\x33", H60b0CommandWrite.CommandOp.zone_enable
+        root.body = _child(H60b0CommandWrite.ZoneEnable, root)
+        root.body.source = H60b0CommandWrite.Source[control]
+        root.body.enabled = int(enabled)
+        root.body.unknown_tail = bytes(15)
+        return _serialize_xor(root)
     if profile.setting_grammar == "H1771":
         if control not in profile.boolean_controls or type(enabled) is not bool:
             raise ValueError("Unsupported native source control")
@@ -1044,6 +1094,10 @@ def build_boolean_control(
 def build_boolean_control_query(control: str, model: str, *, profile: ModelProfile | None = None) -> bytes:
     """Read a declared boolean register independently of ordinary read domains."""
     profile = profile or get_profile(model)
+    if profile.setting_grammar == "H60B0":
+        if control not in profile.boolean_controls:
+            raise ValueError("Unsupported native source control")
+        return _build_status_query("source_info", profile.command_grammar)
     if profile.setting_grammar == "H1771":
         if control not in profile.boolean_controls:
             raise ValueError("Unsupported native source control")
@@ -1083,6 +1137,34 @@ def build_boolean_control_query(control: str, model: str, *, profile: ModelProfi
     if domain is None or domain not in domain_enum.__members__:
         raise ValueError("unknown boolean control")
     return _build_status_query(domain, profile.command_grammar)
+
+
+def build_source_value(source: str, attribute: str, value: int, profile: ModelProfile) -> bytes:
+    if type(value) is not int:
+        raise ValueError("Source value must be an integer")
+    if profile.setting_grammar != "H60B0":
+        raise ValueError("No native source-value grammar")
+    from .h60b0_controls import build_source
+
+    if attribute == "ripple_speed":
+        if source != "top" or not profile.supports_ripple_speed or not 0 <= value <= 100:
+            raise ValueError("Unsupported ripple speed")
+        return build_source("top_enabled", "secondary", value=value)
+    if source == "top" and attribute == "kelvin" and "top_enabled" in profile.boolean_controls:
+        if not profile.min_color_temp_kelvin <= value <= profile.max_color_temp_kelvin or value % 100:
+            raise ValueError("Unsupported native Kelvin")
+        return build_source("top_enabled", "colour", rgb=table_kelvin_rgb(value), kelvin=value)
+    if source != "bottom" or "bottom_enabled" not in profile.boolean_controls:
+        raise ValueError("Unsupported native source")
+    if attribute == "brightness" and 0 <= value <= 100:
+        return build_source("bottom_enabled", "brightness", value=value)
+    if (
+        attribute == "kelvin"
+        and profile.min_color_temp_kelvin <= value <= profile.max_color_temp_kelvin
+        and value % 100 == 0
+    ):
+        return build_source("bottom_enabled", "colour", kelvin=value)
+    raise ValueError("Unsupported native source value")
 
 
 def build_swap_bars(profile: ModelProfile) -> bytes:
@@ -1141,6 +1223,16 @@ def build_bulk_status_query(profile: ModelProfile, *, domains: tuple[str, ...] |
 
 
 def build_power_on_behaviour(value: str, profile: ModelProfile) -> bytes:
+    if profile.setting_grammar == "H60B0":
+        if not profile.supports_power_on_behaviour or value not in H60b0CommandWrite.PowerOnState.__members__:
+            raise ValueError("Unsupported power-on behaviour")
+        root = H60b0CommandWrite()
+        root.header, root.opcode = b"\x33", H60b0CommandWrite.CommandOp.power_on_behaviour
+        root.body = _child(H60b0CommandWrite.PowerOnCmd, root)
+        root.body.selector = b"\x02"
+        root.body.state = H60b0CommandWrite.PowerOnState[value]
+        root.body.unknown_tail = bytes(15)
+        return _serialize_xor(root)
     if profile.setting_grammar == "H1771":
         if not profile.supports_power_on_behaviour or value not in H1771CommandWrite.PowerOnState.__members__:
             raise ValueError("Unsupported power-on behaviour")
@@ -1172,6 +1264,8 @@ def build_power_on_behaviour(value: str, profile: ModelProfile) -> bytes:
 def build_power_on_behaviour_query(profile: ModelProfile) -> bytes:
     if not profile.supports_power_on_behaviour:
         raise ValueError("Unsupported power-on behaviour")
+    if profile.setting_grammar == "H60B0":
+        return _build_status_query("power_on_behaviour", profile.command_grammar)
     if profile.setting_grammar in {"H1771", "H60A6"}:
         return build_bulk_status_query(profile, domains=("power_on_behaviour",))
     if profile.setting_grammar == "H607C":
@@ -1284,6 +1378,11 @@ def parse_boolean_control(generated: Any, model: str, *, profile: ModelProfile |
     profile = profile or get_profile(model)
     domain = getattr(generated, "domain", None)
     domain = domain if isinstance(domain, str) else getattr(domain, "name", "")
+    if profile.setting_grammar == "H60B0" and domain == "source_info":
+        from .h60b0_controls import source_readback
+
+        source_readback(generated.body.operation, profile)
+        return {name: bool(getattr(generated.body, name)) for name in profile.boolean_controls}
     if profile.setting_grammar == "H607C" and domain in {"zone_enable", "hw_version"}:
         flags = (
             generated.body.flags
@@ -1440,12 +1539,12 @@ def build_segment_query(group: int, model: str = "H617A", *, profile: ModelProfi
     profile = profile or get_profile(model)
     resolved = profile.command_grammar
     if resolved not in _STATUS_QUERY_ROOTS or (
-        resolved != "H6072-legacy" and not hasattr(_STATUS_QUERY_ROOTS[resolved][1], "SegmentQueryBody")
+        resolved not in {"H6072-legacy", "H60B0"} and not hasattr(_STATUS_QUERY_ROOTS[resolved][1], "SegmentQueryBody")
     ):
         raise ValueError(f"{model} has no generated segment-query grammar")
     if type(group) is not int:
         raise ValueError("segment query group must be an integer")
-    if resolved == "H1771" and not 1 <= group <= profile.segment_group_count:
+    if resolved in {"H1771", "H60B0"} and not 1 <= group <= profile.segment_group_count:
         raise ValueError("segment query group is outside the selected geometry")
     try:
         return _build_status_query("segments", resolved, segment_group=group)
@@ -1635,7 +1734,7 @@ def build_power(on: bool, model: str = "H617A", *, profile: ModelProfile | None 
     root.opcode = root_type.CommandOpcode.power if root_type is H6179CommandWrite else root_type.CommandOp.power
     body = power_type(None, root, root._root)
     body.is_on = int(on)
-    if root_type in {H1771CommandWrite, H6046CommandWrite}:
+    if root_type in {H1771CommandWrite, H6046CommandWrite, H60b0CommandWrite}:
         body.unknown_tail = bytes(16)
     if root_type is H6179CommandWrite:
         body.opaque = bytes(16)
@@ -1658,7 +1757,7 @@ def build_brightness(percent: int, model: str = "H617A", *, profile: ModelProfil
         body.opaque = bytes(16)
     else:
         body.percent = max(0, min(100, percent))
-    if root_type in {H1771CommandWrite, H6046CommandWrite}:
+    if root_type in {H1771CommandWrite, H6046CommandWrite, H60b0CommandWrite}:
         body.unknown_tail = bytes(16)
     if root_type in {H600aCommandWrite, H601cCommandWrite}:
         body.padding = bytes(16)
@@ -1799,6 +1898,10 @@ def build_segment_colour(
 ) -> bytes:
     profile = profile or get_profile(model)
     resolved = profile.command_grammar
+    if resolved == "H60B0":
+        from .h60b0_controls import build_static
+
+        return build_static(mask, rgb=(red, green, blue))
     if resolved == "H6072-legacy":
         return _build_h6072_legacy_colour(mask, (red, green, blue), 0, (0, 0, 0))
     if resolved in WHOLE_BULB_GRAMMARS:
@@ -1854,6 +1957,10 @@ def build_colour_temperature(
     value = max(profile.min_color_temp_kelvin, min(profile.max_color_temp_kelvin, kelvin))
     preview = table_kelvin_rgb(value)
     resolved = profile.command_grammar
+    if resolved == "H60B0":
+        from .h60b0_controls import build_static
+
+        return build_static(mask, rgb=preview, kelvin=value)
     if resolved == "H6072-legacy":
         return _build_h6072_legacy_colour(mask, KELVIN_DIRECT_RGB, value, preview)
     if resolved in WHOLE_BULB_GRAMMARS:
@@ -1906,6 +2013,10 @@ def build_segment_brightness(
     value = max(0, min(100, percent))
     profile = profile or get_profile(model)
     resolved = profile.command_grammar
+    if resolved == "H60B0":
+        from .h60b0_controls import build_level
+
+        return build_level(mask, value)
     if resolved == "H6179":
         raise ValueError("H6179 has no segment-brightness operation")
     if resolved in {"H6046", "H6099", "H6199"}:
@@ -1974,15 +2085,16 @@ def build_scene_activation(
 ) -> bytes:
     """Encode a scene selector using only the target's evidenced command grammar."""
     grammar = (profile or get_profile(model)).command_grammar
-    if grammar == "H1771":
+    if grammar in {"H1771", "H60B0"}:
         if type(scene_code) is not int or not 0 <= scene_code <= 0xFFFF or music_code:
-            raise ValueError("Invalid H1771 scene selector")
-        root = H1771CommandWrite()
+            raise ValueError("Invalid native scene selector")
+        root_type = H1771CommandWrite if grammar == "H1771" else H60b0CommandWrite
+        root = root_type()
         root.header = b"\x33"
-        root.opcode = H1771CommandWrite.CommandOp.multi
-        root.body = _child(H1771CommandWrite.MultiCmd, root)
-        root.body.sub = H1771CommandWrite.MultiSub.scene
-        root.body.sub_body = _child(H1771CommandWrite.Selector, root.body)
+        root.opcode = root_type.CommandOp.multi
+        root.body = _child(root_type.MultiCmd, root)
+        root.body.sub = root_type.MultiSub.scene
+        root.body.sub_body = _child(root_type.Selector, root.body)
         root.body.sub_body.code = scene_code
         root.body.sub_body.unknown_tail = bytes(14)
         return _serialize_xor(root)
@@ -2063,13 +2175,14 @@ def build_diy_activation(
         return _serialize_xor(root)
     if companion is not None:
         raise ValueError("this DIY selector has no companion word")
-    if grammar == "H1771":
-        root = H1771CommandWrite()
+    if grammar in {"H1771", "H60B0"}:
+        root_type = _COMMAND_ROOTS[grammar][1]
+        root = root_type()
         root.header = b"\x33"
-        root.opcode = H1771CommandWrite.CommandOp.multi
-        root.body = _child(H1771CommandWrite.MultiCmd, root)
-        root.body.sub = H1771CommandWrite.MultiSub.diy
-        root.body.sub_body = _child(H1771CommandWrite.Selector, root.body)
+        root.opcode = root_type.CommandOp.multi
+        root.body = _child(root_type.MultiCmd, root)
+        root.body.sub = root_type.MultiSub.diy
+        root.body.sub_body = _child(root_type.Selector, root.body)
         root.body.sub_body.code = diy_code
         root.body.sub_body.unknown_tail = bytes(14)
         return _serialize_xor(root)
@@ -2366,16 +2479,17 @@ def build_music_mode(
         raise ValueError("fixed music colour is unsupported or invalid")
     resolved = profile.music_grammar or profile.command_grammar
     selector_parameters = selector_parameters or {}
-    if resolved == "H1771":
+    if resolved in {"H1771", "H60B0"}:
         if colour is not None or selector_parameters:
             raise ValueError("Native music selectors carry only mode and sensitivity")
-        root = H1771CommandWrite()
+        root_type = _COMMAND_ROOTS[resolved][1]
+        root = root_type()
         root.header = b"\x33"
-        root.opcode = H1771CommandWrite.CommandOp.multi
-        root.body = _child(H1771CommandWrite.MultiCmd, root)
-        root.body.sub = H1771CommandWrite.MultiSub.music
-        root.body.sub_body = _child(H1771CommandWrite.MusicSelector, root.body)
-        root.body.sub_body.mode = H1771MusicBody.MusicMode(mode_id)
+        root.opcode = root_type.CommandOp.multi
+        root.body = _child(root_type.MultiCmd, root)
+        root.body.sub = root_type.MultiSub.music
+        root.body.sub_body = _child(root_type.MusicSelector, root.body)
+        root.body.sub_body.mode = (H1771MusicBody if resolved == "H1771" else H60b0MusicBody).MusicMode(mode_id)
         root.body.sub_body.sensitivity = sensitivity
         root.body.sub_body.unknown_tail = bytes(14)
         return _serialize_xor(root)

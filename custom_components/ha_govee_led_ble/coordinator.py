@@ -269,6 +269,10 @@ class GoveeBLECoordinator(
         self._h607c_uncertain_state_fields: set[str] = set()
         self._h607c_failed_color_write = False
         self.boolean_control_state: dict[str, bool] = {}
+        self.bottom_brightness: int | None = None
+        self.bottom_kelvin: int | None = None
+        self.top_kelvin: int | None = None
+        self.ripple_speed: int | None = None
         self.low_blue_light: LowBlueLightState | None = None
         self.power_on_behaviour: str | None = None
         self.power_on_open_flag: int | None = None
@@ -1410,6 +1414,10 @@ class GoveeBLECoordinator(
                         ],
                     )
                 self._enter_static_mode()
+            elif requested.get("color_mode", (None,))[0] is ParsedMode.COLOUR:
+                self._static_rgb_known = False
+                self.mark_segment_state_optimistic()
+                self._enter_static_mode()
 
         def invalidate_failed_static() -> None:
             for key in affected_colour_sources:
@@ -2109,6 +2117,52 @@ class GoveeBLECoordinator(
 
     async def async_set_power_on_behaviour(self, value: str) -> None:
         await self._async_set_verified_setting("power_on_behaviour", value)
+
+    async def async_set_source_value(self, source: str, attribute: str, value: int) -> None:
+        from .generated_protocol_adapter import build_boolean_control_query, build_source_value
+
+        profile = self.profile
+        packet = build_source_value(source, attribute, value, profile)
+        field = "ripple_speed" if attribute == "ripple_speed" else f"{source}_{attribute}"
+        async with async_control_intent(self, ControlIntent.USER):
+            await self._async_supersede_effect_preview()
+            async with self._lock:
+                client = await self._ensure_connected()
+                token = self._notification_token
+            baseline = {field: self._field_revisions.get(field, 0)}
+            invalidated = False
+
+            def guard() -> None:
+                nonlocal invalidated
+                if (
+                    self.profile != profile
+                    or self._client is not client
+                    or self._notification_token is not token
+                    or not client.is_connected
+                ):
+                    raise ValueError("Source profile or subscription changed")
+                if not invalidated:
+                    self._field_received_at.pop(field, None)
+                    invalidated = True
+
+            await self.send_command(packet, write_guard=guard, state_values={field: value})
+            async with self._lock:
+                guard()
+                query = build_boolean_control_query(f"{source}_enabled", self.model, profile=profile)
+                if not await self._async_read_setting_fields(
+                    client, query, (field,), deadline=time.monotonic() + 4.0, write_guard=guard
+                ):
+                    raise ValueError("Device did not provide source readback")
+                if self._field_revisions.get(field, 0) <= baseline[field] or getattr(self, field) != value:
+                    raise ValueError("Device did not confirm the source value")
+                if not await self._async_read_setting_fields(
+                    client,
+                    build_colour_mode_query(self.model, profile=profile),
+                    ("color_mode",),
+                    deadline=time.monotonic() + 4.0,
+                    write_guard=guard,
+                ):
+                    raise ValueError("Device did not provide source mode readback")
 
     async def _async_set_verified_setting(
         self, control: str, value: bool | str, *, write_guard: Callable[[], None] | None = None

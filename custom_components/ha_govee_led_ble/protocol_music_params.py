@@ -32,7 +32,7 @@ def music_default_palette(variant: MusicVariant | None) -> tuple[tuple[int, int,
     if variant is None or not variant.template:
         raise ValueError("music palette layout is unqualified")
     root = parse_music_parameters(variant, variant.template)
-    fields = root.body if variant.layout == "h607c_music_body" else root
+    fields = root.body if variant.layout in {"h607c_music_body", "h60b0_music_body"} else root
     if not hasattr(fields, "palette"):
         return ()
     return tuple((int(rgb.red), int(rgb.green), int(rgb.blue)) for rgb in fields.palette)
@@ -72,6 +72,14 @@ def parse_music_parameters(variant: MusicVariant, body: bytes) -> Any:
     """Validate a complete retained body with the selected KSY, independent of authoring bounds."""
     if not isinstance(body, bytes) or not body or len(body) > 255 * 17 - 3:
         raise ValueError("invalid music body length")
+    if variant.layout == "h60b0_music_body":
+        from .music_protocol import H60b0MusicBody
+
+        root = H60b0MusicBody.from_bytes(body)
+        root._read()
+        if int(root.mode) != variant.mode_code or not root._io.is_eof():
+            raise ValueError("music body does not match qualified layout")
+        return root
     if variant.layout == "h1771_music_body":
         root = H1771MusicBody.from_bytes(body)
         root._read()
@@ -151,6 +159,12 @@ def encode_music_parameters(
     preserve_companions: bool = False,
 ) -> bytes:
     """Edit named Kaitai fields; palette length never becomes an absolute tail offset."""
+    if variant.layout == "h60b0_music_body":
+        from .h60b0_effects import encode_h60b0_music_parameters
+
+        return encode_h60b0_music_parameters(
+            variant, parameters, palette, calm, physical_ic_count, preserve_companions=preserve_companions
+        )
     if variant.layout == "h1771_music_body":
         root = parse_music_parameters(variant, variant.template)
         if parameters:

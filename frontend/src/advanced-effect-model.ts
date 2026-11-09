@@ -51,6 +51,7 @@ export function cloneLayeredSceneContent(
         layers: content.effect.layers,
       }).layers,
     },
+    ...(content.ripple_layers === undefined ? {} : { ripple_layers: structuredClone(content.ripple_layers) }),
   };
 }
 

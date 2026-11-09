@@ -181,6 +181,10 @@ def resolve_music_profile(
 
 def default_music_zones(profile: ModelProfile, mode: str) -> tuple[MusicZone, ...] | None:
     variant = music_variant(profile, music_codebook(profile).get(mode, -1))
+    if profile.music_grammar == "H60B0" and variant is not None and variant.mode_code == 130:
+        from .h60b0_effects import h60b0_music_zones
+
+        return h60b0_music_zones(variant.template)
     if profile.music_grammar != "H607C" or variant is None or variant.mode_code != H607cMusicWrite.MusicMode.paired:
         return None
     root = parse_music_parameters(variant, variant.template)
@@ -192,6 +196,10 @@ def default_music_zones(profile: ModelProfile, mode: str) -> tuple[MusicZone, ..
 
 
 def build_zoned_music_body(profile: ModelProfile, mode: str, zones: tuple[MusicZone, ...]) -> bytes:
+    if profile.music_grammar == "H60B0" and mode == "combined":
+        from .h60b0_effects import encode_h60b0_music_zones
+
+        return encode_h60b0_music_zones(profile, zones)
     variant = music_variant(profile, music_codebook(profile).get(mode, -1))
     if (
         profile.music_grammar != "H607C"
@@ -364,6 +372,11 @@ def validate_music_body(body: bytes, mode: str, *, profile: ModelProfile) -> Any
                 int(zone.mode) not in admitted or not zone.len_parameters for zone in (root.body.pole, root.body.base)
             ):
                 raise ValueError("music zone mode is unqualified")
+        if variant.layout == "h60b0_music_body" and variant.mode_code == 130:
+            if int(root.body.side.mode) not in {0, 48, 49, 51, 80, 81, 83, 114, 131} or int(
+                root.body.ripple.mode
+            ) not in {0, 48, 49, 114, 131}:
+                raise ValueError("music source mode is unqualified")
         return root
     except (KaitaiStructError, EOFError) as error:
         raise ValueError("invalid original music body") from error
@@ -413,10 +426,11 @@ def music_body_parameters(body: bytes, mode: str, *, profile: ModelProfile) -> d
     root = validate_music_body(body, mode, profile=profile)
     variant = music_variant(profile, music_codebook(profile)[mode])
     assert variant is not None
+    fields = root.body if variant.layout == "h60b0_music_body" else root
     result: dict[str, int | bool | str] = {}
     # Decoding known fields does not require permission to author geometry-dependent values.
     for spec in variant.parameters:
-        value = getattr(root.tail, spec.wire_field)
+        value = getattr(fields.tail, spec.wire_field)
         if spec.wire_field == "background":
             result[spec.profile_key] = (int(value.red) << 16) | (int(value.green) << 8) | int(value.blue)
         elif spec.kind == "switch":
@@ -433,7 +447,7 @@ def music_body_parameters(body: bytes, mode: str, *, profile: ModelProfile) -> d
                 else (("clockwise", 0), ("counterclockwise", 2), ("two_way", 1))
             )
             for name, start in directions:
-                if root.tail.start_point == start and name in spec.options:
+                if fields.tail.start_point == start and name in spec.options:
                     result[spec.profile_key] = name
         else:
             result[spec.profile_key] = int(value)
@@ -446,6 +460,8 @@ def music_body_style(body: bytes, mode: str, *, profile: ModelProfile) -> bool |
     variant = music_variant(profile, music_codebook(profile)[mode])
     if variant is None or not variant.supports_style:
         return None
+    if variant.layout == "h60b0_music_body":
+        return {0: True, 1: False}.get(root.body.tail.style)
     if variant.layout == "h1771_music_body":
         return {0: True, 1: False}.get(root.tail.style)
     if hasattr(root.tail, "rhythm_speed") and root.tail.no_rhythm_speed == 10:
