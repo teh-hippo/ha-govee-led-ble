@@ -215,6 +215,7 @@ class ModelProfile:
     profile_pact_dependent: bool = False
     # Colour and Kelvin controls are presented before identity resolves, but writes need fresh qualified Pact.
     requires_qualified_identity: bool = False
+    requires_pact_confirmation: bool = False
     # Exact-product revision policy, independent of compatible wire grammars.
     video_revision_policy: str | None = None
     read_domains: frozenset[ReadDomain] = frozenset()
@@ -317,6 +318,8 @@ class ModelProfile:
         return self.whole_device_mask_override or (1 << self.segment_count) - 1
 
     def __post_init__(self) -> None:
+        if self.requires_pact_confirmation and not (self.requires_qualified_identity and self.profile_pact_dependent):
+            raise ValueError("Pact confirmation requires identity-qualified, Pact-dependent controls")
         if (
             len({source.key for source in self.light_sources}) != len(self.light_sources)
             or len({source.control for source in self.light_sources}) != len(self.light_sources)
@@ -992,6 +995,8 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         effect_grammar="H60B0",
         music_grammar="H60B0",
         profile_pact_dependent=True,
+        requires_qualified_identity=True,
+        requires_pact_confirmation=True,
         command_operations=frozenset(
             {"power", "brightness", "static", "source_control", "scene", "diy", "music", "effect_upload"}
         ),
