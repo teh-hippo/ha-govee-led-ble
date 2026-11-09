@@ -6,6 +6,14 @@ h60b0_command_ack.py
 h60b0_effect_upload.py
 h60b0_status_query.py
 h60b0_status_reply.py
+h605c_static_write.py
+h605c_effect_upload.py
+h605c_dreamview.py
+h605c_gradual.py
+h605c_music_write.py
+h605c_video_command.py
+h605c_video_settings.py
+h605c_status_reply.py
 h1771_command_write.py
 h1771_status_query.py
 h1771_status_reply.py

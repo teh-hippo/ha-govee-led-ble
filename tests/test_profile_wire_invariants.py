@@ -111,6 +111,8 @@ _QUALIFIED_CONTEXTS: tuple[tuple[str, str, int | None, int | None, str | None, s
     ("H60B0-pact1", "H60B0", 1, 1, "1.00.12", "3.05.01"),
     ("H60B0-pact2", "H60B0", 1, 2, "1.00.12", "3.05.01"),
     ("H60B0-pact3", "H60B0", 1, 3, "1.00.12", "3.05.01"),
+    ("H605C-bootstrap", "H605C", None, None, None, None),
+    ("H605C-group-v2", "H605C", 1, 2, "1.01.00", "3.02.01"),
     ("H607C-bootstrap", "H607C", None, None, None, None),
     ("H6072-bootstrap", "H6072", None, None, None, None),
     ("H6072-legacy", "H6072", 1, 1, "1.00.10", None),
@@ -711,6 +713,8 @@ def test_every_declared_video_mode_can_be_built(hass, model: str, profile: Model
     values = (
         {"picture_preset": next(iter(protocol_core.H66a0VideoCommand.PicturePreset.__members__)), "opaque": 0}
         if profile.video_grammar == "H66A0-video"
+        else {"left_percent": 10, "top_percent": 20, "right_percent": 30, "bottom_percent": 40}
+        if profile.video_grammar == "H605C-video"
         else {}
     )
     saturation = max(50, profile.video_saturation_min)
@@ -733,12 +737,18 @@ def test_every_declared_video_mode_can_be_built(hass, model: str, profile: Model
                 body = bytes([video_byte, source_code, preset_code, saturation, 1, int(values["opaque"]), 50])
             else:
                 assert profile.command_grammar is not None
-                video_root = protocol_core._COMMAND_ROOTS[profile.command_grammar][1]
+                video_root = (
+                    protocol_core.H605cVideoCommand
+                    if profile.video_grammar == "H605C-video"
+                    else protocol_core._COMMAND_ROOTS[profile.command_grammar][1]
+                )
                 source_code = int(video_root.VideoSource[mode])
                 region_code = int(video_root.VideoRegion.all)
                 body = (
                     bytes([video_byte, source_code, region_code, saturation, 1, 2, 50])
                     if profile.video_grammar == "H6099"
+                    else bytes([video_byte, region_code, source_code, saturation, 1, 50, 0, 10, 20, 30, 40, 0])
+                    if profile.video_grammar == "H605C-video"
                     else bytes([video_byte, region_code, source_code, saturation, 1, 50])
                 )
             reply = _status(0x05, body)

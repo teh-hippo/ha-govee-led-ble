@@ -60,6 +60,7 @@ test("canonical backend responses decode through the production validators", () 
   const devices = decodeDevices(responses.devices);
   expect(devices.map((device) => device.model)).toEqual([
     "H60B0",
+    "H605C",
     "H1771",
     "H6046",
     "H60A1",

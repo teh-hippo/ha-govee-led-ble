@@ -78,6 +78,7 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     white_balance_default_red: int | None
     white_balance_default_blue: int | None
     relative_brightness: int | None
+    whole_relative_brightness: int | None
     relative_brightness_left: int | None
     relative_brightness_top: int | None
     relative_brightness_right: int | None

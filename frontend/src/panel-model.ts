@@ -593,12 +593,18 @@ export class PanelModel {
             this.content.saturation < (this.modelCatalogue?.video_controls?.saturation_min ?? 0)) {
           return "unsupported";
         }
+        if (this.content.sound_effects_softness !== null &&
+            (this.content.sound_effects_softness < (this.modelCatalogue?.video_controls?.softness_min ?? 1) ||
+             this.content.sound_effects_softness > (this.modelCatalogue?.video_controls?.softness_max ?? 100))) {
+          return "unsupported";
+        }
         for (const [control, requested] of Object.entries({
           capture_region: this.content.full_screen !== null,
           saturation: this.content.saturation !== null,
           sound_effects: this.content.sound_effects !== null || this.content.sound_effects_softness !== null,
           white_balance: this.content.white_balance_position !== null || this.content.white_balance_value !== undefined,
           relative_brightness: this.content.relative_brightness !== null,
+          whole_relative_brightness: this.content.whole_relative_brightness !== undefined,
           blank_screen: this.content.blank_screen !== null,
           black_border: this.content.black_border !== undefined,
         })) {

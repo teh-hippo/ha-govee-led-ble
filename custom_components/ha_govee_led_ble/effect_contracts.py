@@ -757,6 +757,27 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
     *(replace(capability, model="H617E") for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H617A"),
     *(capability for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H6179"),
     *(replace(capability, model="H617F") for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H617A"),
+    *(
+        _capability("H605C", workflow, label, kind, route, strategy, _V.UNVERIFIED)
+        for workflow, label, kind, route, strategy in (
+            (_W.NATIVE_SCENES, "Scenes", "scene_builtin", _R.STUDIO_SCENE_APPLY, _S.NATIVE_EFFECT_SELECTION),
+            (
+                _W.EDITED_PALETTE_SCENES,
+                "Edited palette scenes",
+                "scene_palette",
+                _R.HOME_ASSISTANT_CONTROL,
+                _S.MODEL_SCENE_ENGINE,
+            ),
+            (_W.LAYERED_SCENES, "Layered scenes", "scene_layered", _R.HOME_ASSISTANT_CONTROL, _S.MODEL_SCENE_ENGINE),
+            (_W.PAINTED, "Paint", "h617a_painted", _R.HOME_ASSISTANT_CONTROL, _S.H617A_CUSTOM_ENGINE),
+            (_W.SINGLE, "Basic DIY", "h617a_single", _R.HOME_ASSISTANT_CONTROL, _S.H617A_CUSTOM_ENGINE),
+            (_W.MULTI, "Mixed DIY", "h617a_multi", _R.HOME_ASSISTANT_CONTROL, _S.H617A_CUSTOM_ENGINE),
+            (_W.NATIVE_MUSIC, "Music", "music_profile", _R.HOME_ASSISTANT_CONTROL, _S.COORDINATOR_WRITER),
+            (_W.VIDEO, "Video", "video_profile", _R.HOME_ASSISTANT_CONTROL, _S.COORDINATOR_WRITER),
+            (_W.ADVANCED, "Advanced", "advanced", _R.HOME_ASSISTANT_CONTROL, _S.MODEL_SCENE_ENGINE),
+            (_W.WORKSHOP, "Workshop", "workshop", _R.HOME_ASSISTANT_CONTROL, _S.MODEL_SCENE_ENGINE),
+        )
+    ),
     *(capability for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H6199"),
     *(
         _capability("H7020", workflow, label, kind, route, strategy, _V.SELECTION_ONLY)

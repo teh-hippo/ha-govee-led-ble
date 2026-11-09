@@ -277,6 +277,8 @@ export interface RelativeBrightness {
 
 export interface VideoControls {
   saturation_min: number;
+  softness_min?: number;
+  softness_max?: number;
   white_balance: {
     representation: "position" | "scalar";
     minimum: number;
@@ -297,6 +299,7 @@ export interface VideoProfileContent {
   white_balance_position: number | null;
   white_balance_value?: number;
   relative_brightness: RelativeBrightness | null;
+  whole_relative_brightness?: number;
   blank_screen: boolean | null;
   black_border?: boolean;
   blank_screen_detection?: number;
@@ -310,6 +313,7 @@ export type VideoProfileSetting =
   | "sound_effects"
   | "white_balance"
   | "relative_brightness"
+  | "whole_relative_brightness"
   | "blank_screen"
   | "black_border";
 

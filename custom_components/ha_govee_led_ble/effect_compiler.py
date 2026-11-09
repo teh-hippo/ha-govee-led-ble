@@ -180,6 +180,7 @@ class CompiledVideoProfile:
     white_balance_wire: tuple[int, ...] | None = None
     black_border: bool | None = None
     blank_screen_policy: tuple[int, int, int] | None = None
+    whole_relative_brightness: int | None = None
     compiler_version: int = EFFECT_COMPILER_VERSION
     content_kind: str = "video_profile"
     diy_code: None = None
@@ -190,6 +191,7 @@ class CompiledVideoProfile:
             (
                 self.white_balance_wire is not None,
                 self.relative_brightness is not None,
+                self.whole_relative_brightness is not None,
                 self.blank_screen is not None,
                 self.black_border is not None,
             )
@@ -1303,6 +1305,11 @@ def compile_video_profile(
         "white_balance_wire": white_balance_wire,
         **({"white_balance_value": content.white_balance_value} if content.white_balance_value is not None else {}),
         "relative_brightness": relative_brightness,
+        **(
+            {"whole_relative_brightness": content.whole_relative_brightness}
+            if content.whole_relative_brightness is not None
+            else {}
+        ),
         "blank_screen": content.blank_screen,
         **({"black_border": content.black_border} if content.black_border is not None else {}),
     }
@@ -1330,6 +1337,7 @@ def compile_video_profile(
         white_balance_position=content.white_balance_position,
         white_balance_wire=white_balance_wire,
         relative_brightness=relative_brightness,
+        whole_relative_brightness=content.whole_relative_brightness,
         blank_screen=content.blank_screen,
         black_border=content.black_border,
         blank_screen_policy=policy,

@@ -161,6 +161,7 @@ class VideoFirmwareCondition:
             "sound_effects",
             "white_balance",
             "relative_brightness",
+            "whole_relative_brightness",
             "blank_screen",
             "black_border",
         }:
@@ -210,6 +211,7 @@ class ModelProfile:
     dreamview_max_sub_devices: int = 0
     dreamview_requires_group_ack: bool = False
     video_firmware_conditions: tuple[VideoFirmwareCondition, ...] = ()
+    video_control_exclusions: tuple[tuple[str, str], ...] = ()
     profile_identity_fields: frozenset[str] = frozenset()
     # Set when Pact alone changes capabilities, so the profile also resolves before hardware/firmware replies arrive.
     profile_pact_dependent: bool = False
@@ -236,6 +238,8 @@ class ModelProfile:
     supports_video_saturation: bool = False
     video_saturation_min: int = 0
     supports_video_sound_effects: bool = False
+    video_softness_min: int = 1
+    video_softness_max: int = 100
     supports_advanced_effects: bool = False
     supports_multi_layered_effects: bool = False
     supports_white_balance: bool = False
@@ -247,6 +251,7 @@ class ModelProfile:
     video_white_balance_calibration: tuple[tuple[int, ...], ...] = ()
     video_brightness_zones: tuple[str, ...] = ()
     supports_relative_brightness: bool = False
+    supports_whole_relative_brightness: bool = False
     # HA brightness 0 means off on devices whose brightness register has no zero.
     brightness_zero_turns_off: bool = False
     supports_blank_screen: bool = False
@@ -394,12 +399,29 @@ class ModelProfile:
             raise ValueError("unknown video revision policy")
         if type(self.video_saturation_min) is not int or not 0 <= self.video_saturation_min <= 100:
             raise ValueError("video saturation minimum must be from 0 to 100")
+        if not 0 <= self.video_softness_min <= self.video_softness_max <= 100:
+            raise ValueError("invalid video softness range")
         if not self.setup_required_read_domains <= self.read_domains:
             raise ValueError("setup-required read domains must also be readable")
-        if len({condition.control for condition in self.video_firmware_conditions}) != len(
+        if len({(condition.control, condition.identity_field) for condition in self.video_firmware_conditions}) != len(
             self.video_firmware_conditions
         ):
-            raise ValueError("only one firmware condition per video control is supported")
+            raise ValueError("duplicate identity condition for a video control")
+        controls = {
+            "capture_region",
+            "saturation",
+            "sound_effects",
+            "white_balance",
+            "relative_brightness",
+            "whole_relative_brightness",
+            "blank_screen",
+            "black_border",
+        }
+        if any(
+            source not in controls or target not in controls or source == target
+            for source, target in self.video_control_exclusions
+        ):
+            raise ValueError("invalid video control exclusion")
         if self.read_domains and self.status_grammar is None:
             raise ValueError("read domains require a status grammar")
         if (
@@ -430,6 +452,7 @@ class ModelProfile:
             or self.supports_video_sound_effects
             or self.supports_white_balance
             or self.supports_relative_brightness
+            or self.supports_whole_relative_brightness
             or self.supports_blank_screen
             or self.supports_black_border
         ) and not self.supports_video_mode:
@@ -1171,6 +1194,142 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         scene_catalogue_sku="H6097",
         supports_custom_effects=True,
         supports_multi_layered_effects=True,
+        default_effect_families_override=frozenset({EFFECT_FAMILY_VIDEO}),
+        effect_readback="diy_code_only",
+    ),
+    "H605C": ModelProfile(
+        "H605C Envisual TV Backlight T2",
+        confirmation_issue=571,
+        command_grammar="H6099",
+        status_grammar="H605C",
+        setting_grammar="H607C",
+        effect_grammar="H617A",
+        music_grammar="H6199",
+        video_grammar="H605C-video",
+        dreamview_grammar="H6199",
+        dreamview_operations=frozenset(
+            {
+                "replace_group",
+                "delete_group",
+                "switch_group",
+                "member_brightness",
+                "same_brightness",
+                "member_connect",
+                "saturation",
+                "video_settings",
+                "sound",
+            }
+        ),
+        dreamview_reads=frozenset(
+            {
+                "switch_group",
+                "member_brightness",
+                "same_brightness",
+                "member_connect",
+                "saturation",
+                "video_settings",
+                "sound",
+            }
+        ),
+        dreamview_max_sub_devices=5,
+        dreamview_requires_group_ack=True,
+        profile_pact_dependent=True,
+        read_domains=frozenset(
+            {
+                ReadDomain.POWER,
+                ReadDomain.BRIGHTNESS,
+                ReadDomain.COLOUR_MODE,
+                ReadDomain.FIRMWARE,
+                ReadDomain.HARDWARE,
+                ReadDomain.SUBORDINATE_20,
+                ReadDomain.SUBORDINATE_21,
+                ReadDomain.DISPLAY_SETTING,
+                ReadDomain.RELATIVE_BRIGHTNESS,
+                ReadDomain.PHYSICAL_IC_COUNT,
+                ReadDomain.SEGMENTS,
+                ReadDomain.INSTALLATION_DIRECTION,
+                ReadDomain.CAMERA_HEALTH,
+            }
+        ),
+        setup_required_read_domains=frozenset({ReadDomain.POWER}),
+        supports_rgb=True,
+        supports_installation_direction=True,
+        supports_color_temperature=True,
+        supports_segment_writes=True,
+        supports_segment_brightness=True,
+        supports_segment_color_temperature=True,
+        segment_count=14,
+        segment_group_size=4,
+        supports_custom_effects=True,
+        supports_multi_layered_effects=True,
+        supports_advanced_effects=True,
+        supports_scenes=True,
+        scene_catalogue_sku="H605C",
+        advanced_scene_carrier=(29884, 41599),
+        diy_requires_upload_ack=True,
+        effect_retry_after_upload=False,
+        music_modes=("energetic", "rhythm", "spectrum", "rolling"),
+        music_variants=(
+            MusicVariant(0x05, "Energetic short selector", supports_fixed_colour=False),
+            MusicVariant(0x03, "Rhythm selector with style and colour", supports_style=True),
+            MusicVariant(0x04, "Spectrum selector with colour"),
+            MusicVariant(0x06, "Rolling selector with colour"),
+        ),
+        music_sensitivity_max=99,
+        supports_music_color=True,
+        supports_video_mode=True,
+        video_modes=("movie", "game"),
+        supports_video_capture_region=True,
+        supports_video_saturation=True,
+        video_saturation_min=1,
+        supports_video_sound_effects=True,
+        video_softness_min=0,
+        video_softness_max=99,
+        supports_white_balance=True,
+        supports_white_balance_readback=True,
+        video_white_balance_default=13,
+        video_white_balance_max=25,
+        video_white_balance_calibration=(
+            (5, 21),
+            (5, 18),
+            (6, 18),
+            (6, 15),
+            (7, 13),
+            (7, 10),
+            (8, 8),
+            (9, 5),
+            (10, 8),
+            (10, 6),
+            (11, 6),
+            (12, 7),
+            (12, 6),
+            (13, 5),
+            (13, 3),
+            (14, 5),
+            (14, 3),
+            (15, 4),
+            (15, 3),
+            (16, 5),
+            (16, 4),
+            (16, 3),
+            (18, 6),
+            (18, 4),
+            (21, 5),
+        ),
+        video_brightness_zones=("left", "top", "right", "bottom"),
+        supports_relative_brightness=True,
+        supports_whole_relative_brightness=True,
+        video_control_exclusions=(("whole_relative_brightness", "relative_brightness"),),
+        video_firmware_conditions=(
+            VideoFirmwareCondition("relative_brightness", "fw_version", "1.00.12"),
+            VideoFirmwareCondition("relative_brightness", "subordinate_21_version", "1.00.08"),
+            VideoFirmwareCondition("whole_relative_brightness", "fw_version", "1.00.09"),
+            VideoFirmwareCondition("whole_relative_brightness", "subordinate_21_version", "1.00.04"),
+            VideoFirmwareCondition("whole_relative_brightness", "subordinate_20_version", "1.03.30"),
+            VideoFirmwareCondition("blank_screen", "subordinate_21_version", "1.00.08"),
+        ),
+        supports_blank_screen=True,
+        boolean_controls=frozenset({"gradual"}),
         default_effect_families_override=frozenset({EFFECT_FAMILY_VIDEO}),
         effect_readback="diy_code_only",
     ),
@@ -2528,6 +2687,20 @@ def device_profile(
             supports_ripple_speed=False,
             supports_power_on_behaviour=False,
         )
+    if model == "H605C":
+        profile = get_profile(model)
+        if (pact_type, pact_code) == (1, 2):
+            return replace(
+                profile,
+                dreamview_grammar="H6099",
+                dreamview_operations=profile.dreamview_operations | {"same_brightness"},
+                dreamview_reads=profile.dreamview_reads | {"same_brightness"},
+                dreamview_max_sub_devices=7,
+                dreamview_requires_group_ack=False,
+            )
+        if (pact_type, pact_code) != (1, 1):
+            return replace(profile, dreamview_operations=frozenset(), dreamview_reads=frozenset())
+        return profile
     if model in {"H6046", "H607C", "H6097", "H7020"}:
         profile = get_profile(model)
         if (pact_type, pact_code) in _STANDARD_PACTS or (model == "H607C" and (pact_type, pact_code) == (2, 2)):

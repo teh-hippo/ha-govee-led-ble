@@ -127,6 +127,7 @@ _.piece_length_max  # h607c_effects.py
 _.positions  # effect_commands.py
 _.relative_brightness_percent  # generated_protocol_adapter.py
 _.reserved  # protocol_h6199.py
+_.reserved_end  # H605C generated video serializer field
 _.rhythm_response  # generated_protocol_adapter.py
 _.right_percent  # generated_protocol_adapter.py
 _.sound_type  # generated_protocol_adapter.py

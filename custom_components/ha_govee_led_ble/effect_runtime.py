@@ -58,6 +58,7 @@ from .generated_protocol_adapter import (
     build_power,
     build_relative_brightness,
     build_white_balance,
+    build_whole_relative_brightness,
 )
 from .music_commands import prepare_music_profile_writes
 from .music_protocol import music_code_for
@@ -70,8 +71,9 @@ from .native_profile_controls import (
     apply_blank_screen,
     apply_relative_brightness,
     apply_white_balance,
+    apply_whole_relative_brightness,
+    async_prepare_video_mode,
     async_require_video_controls,
-    prepare_video_mode,
 )
 from .scenes import canonical_scene_key, resolve_scene_identity, scene_code_is_ambiguous
 from .video_applicability import requested_video_controls, require_video_controls, require_video_mode
@@ -191,7 +193,12 @@ async def async_apply_compiled_profile(
         for field in ("full_screen", "saturation", "sound_effects", "sound_effects_softness")
         if getattr(compiled, field) is not None
     }
-    prepare_video_mode(coordinator, mode=compiled.mode, requested_values=mode_values)
+    await async_prepare_video_mode(
+        coordinator,
+        mode=compiled.mode,
+        requested_values=mode_values,
+        relative_brightness=compiled.relative_brightness,
+    )
     if compiled.white_balance_wire is not None:
         build_white_balance(
             compiled.white_balance_wire[0],
@@ -224,10 +231,13 @@ async def async_apply_compiled_profile(
         build_blank_screen(compiled.blank_screen, coordinator.model, detection, low_duration, same_duration)
     if compiled.black_border is not None:
         build_black_border(compiled.black_border, coordinator.model)
+    if compiled.whole_relative_brightness is not None:
+        build_whole_relative_brightness(compiled.whole_relative_brightness, coordinator.model, profile=profile)
     await apply_active_video_mode(
         coordinator,
         mode=compiled.mode,
         requested_values=mode_values,
+        relative_brightness=compiled.relative_brightness,
         writer=writer,
         verify=verify,
         on_write=on_write,
@@ -244,6 +254,14 @@ async def async_apply_compiled_profile(
 
     if compiled.relative_brightness is not None:
         await apply_relative_brightness(coordinator, compiled.relative_brightness, writer=writer, verify=verify)
+        completed += 1
+        if progress is not None:
+            await progress(completed)
+
+    if compiled.whole_relative_brightness is not None:
+        await apply_whole_relative_brightness(
+            coordinator, compiled.whole_relative_brightness, writer=writer, verify=verify
+        )
         completed += 1
         if progress is not None:
             await progress(completed)
@@ -1046,6 +1064,10 @@ class EffectDeploymentEngine:
             )
             if requested
         )
+        if compiled.whole_relative_brightness is not None and not await coordinator.async_read_video_setting(
+            "whole_relative_brightness"
+        ):
+            raise RuntimeError("Could not read the current whole-video brightness before applying the profile")
         refresh_relative_brightness = compiled.relative_brightness is not None
         if not refresh_display_settings and not refresh_relative_brightness:
             return refreshed
@@ -1163,6 +1185,7 @@ class EffectDeploymentEngine:
             white_balance_default_blue=getattr(coordinator, "white_balance_default_blue", None),
             white_balance_scalar=getattr(coordinator, "white_balance_scalar", None),
             relative_brightness=getattr(coordinator, "relative_brightness", None),
+            whole_relative_brightness=getattr(coordinator, "whole_relative_brightness", None),
             relative_brightness_left=getattr(coordinator, "relative_brightness_left", None),
             relative_brightness_top=getattr(coordinator, "relative_brightness_top", None),
             relative_brightness_right=getattr(coordinator, "relative_brightness_right", None),
@@ -1659,7 +1682,7 @@ def compiled_observation(
             return expectations, ObservationConfidence.MODE_MATCH
     else:
         expectations["video_mode"] = compiled.mode
-        if profile.video_grammar not in {"H6099", "H6199", "H66A0-video"}:
+        if profile.video_grammar not in {"H6099", "H6199", "H66A0-video", "H605C-video"}:
             return None, ObservationConfidence.UNKNOWN
         complete = True
         for field in ("full_screen", "saturation", "sound_effects", "sound_effects_softness"):
@@ -1708,6 +1731,11 @@ def compiled_observation(
                 expectations["relative_brightness"] = (
                     compiled.relative_brightness[0] if len(set(compiled.relative_brightness)) == 1 else None
                 )
+            else:
+                complete = False
+        if compiled.whole_relative_brightness is not None:
+            if profile.can_read(ReadDomain.DISPLAY_SETTING):
+                expectations["whole_relative_brightness"] = compiled.whole_relative_brightness
             else:
                 complete = False
         if not complete:

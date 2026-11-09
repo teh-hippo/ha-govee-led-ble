@@ -94,6 +94,18 @@ H6099StatusReply = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.h6099_status_reply").H6099StatusReply,
 )
+H605cStatusReply = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h605c_status_reply").H605cStatusReply,
+)
+H605cVideoCommand = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h605c_video_command").H605cVideoCommand,
+)
+H605cVideoSettings = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h605c_video_settings").H605cVideoSettings,
+)
 H6097StatusReply = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.h6097_status_reply").H6097StatusReply,
@@ -697,6 +709,7 @@ H619aStatusReply = cast(
 _STATUS_ROOTS = {
     "H619A": ("h619a_status_reply", H619aStatusReply),
     "H60B0": ("h60b0_status_reply", H60b0StatusReply),
+    "H605C": ("h605c_status_reply", H605cStatusReply),
     "H1771": ("h1771_status_reply", H1771StatusReply),
     "H600A": ("h600a_status_reply", H600aStatusReply),
     "H6072": ("h6072_status_reply", H6072StatusReply),

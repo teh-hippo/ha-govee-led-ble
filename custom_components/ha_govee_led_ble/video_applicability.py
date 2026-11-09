@@ -21,6 +21,13 @@ def video_identity_fields(profile: ModelProfile, controls: Iterable[str] | None 
         for condition in profile.video_firmware_conditions
         if requested is None or condition.control in requested
     )
+    for source, target in profile.video_control_exclusions:
+        if requested is None or source in requested:
+            fields |= frozenset(
+                condition.identity_field
+                for condition in profile.video_firmware_conditions
+                if condition.control == target
+            )
     if profile.video_revision_policy == "H6199" and (requested is None or requested):
         fields |= {"fw_version", "hw_version", "subordinate_20_version", "subordinate_21_version"}
     return fields
@@ -94,6 +101,7 @@ def video_control_states(profile: ModelProfile, identity: object) -> dict[str, C
             ("sound_effects", profile.supports_video_sound_effects),
             ("white_balance", profile.supports_white_balance),
             ("relative_brightness", profile.supports_relative_brightness),
+            ("whole_relative_brightness", profile.supports_whole_relative_brightness),
             ("blank_screen", profile.supports_blank_screen),
             ("black_border", profile.supports_black_border),
         )
@@ -117,14 +125,37 @@ def _apply_video_conditions(
         for control, state in _h6199_video_states(identity).items():
             if states.get(control) is CapabilityState.SUPPORTED:
                 states[control] = state
-    for condition in profile.video_firmware_conditions:
-        if states.get(condition.control) is not CapabilityState.SUPPORTED:
+    for control, initial in tuple(states.items()):
+        if initial is CapabilityState.UNSUPPORTED:
             continue
-        version = identity_version(getattr(identity, condition.identity_field, None))
-        if version is None:
-            states[condition.control] = CapabilityState.EVIDENCE_GAP
-        elif version < int(condition.minimum.replace(".", "")):
-            states[condition.control] = CapabilityState.UNSUPPORTED
+        checks: list[CapabilityState] = [initial]
+        for condition in profile.video_firmware_conditions:
+            if condition.control != control:
+                continue
+            version = identity_version(getattr(identity, condition.identity_field, None))
+            checks.append(
+                CapabilityState.EVIDENCE_GAP
+                if version is None
+                else CapabilityState.UNSUPPORTED
+                if version < int(condition.minimum.replace(".", ""))
+                else CapabilityState.SUPPORTED
+            )
+        states[control] = (
+            CapabilityState.UNSUPPORTED
+            if CapabilityState.UNSUPPORTED in checks
+            else CapabilityState.EVIDENCE_GAP
+            if CapabilityState.EVIDENCE_GAP in checks
+            else CapabilityState.SUPPORTED
+        )
+    prerequisites = dict(states)
+    for source, target in profile.video_control_exclusions:
+        if states.get(source) is CapabilityState.UNSUPPORTED:
+            continue
+        excluded = prerequisites.get(target, CapabilityState.UNSUPPORTED)
+        if excluded is CapabilityState.SUPPORTED:
+            states[source] = CapabilityState.UNSUPPORTED
+        elif excluded is CapabilityState.EVIDENCE_GAP:
+            states[source] = CapabilityState.EVIDENCE_GAP
     return states
 
 
@@ -142,6 +173,7 @@ def requested_video_controls(content: Any) -> frozenset[str]:
                 else content.white_balance_wire is not None,
             ),
             ("relative_brightness", content.relative_brightness is not None),
+            ("whole_relative_brightness", getattr(content, "whole_relative_brightness", None) is not None),
             ("blank_screen", content.blank_screen is not None),
             ("black_border", content.black_border is not None),
         )

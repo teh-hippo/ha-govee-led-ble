@@ -42,6 +42,7 @@ from .native_profile_controls import (
     apply_blank_screen,
     apply_relative_brightness,
     apply_white_balance,
+    apply_whole_relative_brightness,
 )
 from .scenes import (
     MODEL_SCENES,
@@ -148,6 +149,7 @@ class _RecoveryMixin(_CoordinatorBase):
             music_body=self.music_body,
             video_mode=self.video_mode,
             video_parameters=dict(self.video_parameters) if self.video_parameters is not None else None,
+            whole_relative_brightness=self.whole_relative_brightness,
             music_sensitivity=self.music_sensitivity,
             music_calm=self.music_calm,
             music_color=self.music_color,
@@ -418,6 +420,7 @@ class _RecoveryMixin(_CoordinatorBase):
                     else ("blank_screen",),
                 ),
                 ("black_border", ("black_border",)),
+                ("whole_relative_brightness", ("whole_relative_brightness",)),
             )
             if (state.video_restore_controls is None or control in state.video_restore_controls)
             and any(
@@ -495,6 +498,8 @@ class _RecoveryMixin(_CoordinatorBase):
                 self._as_coordinator,
                 tuple(getattr(state, f"relative_brightness_{zone}") for zone in self.profile.video_brightness_zones),
             )
+        if "whole_relative_brightness" in permitted & needed and state.whole_relative_brightness is not None:
+            await apply_whole_relative_brightness(self._as_coordinator, state.whole_relative_brightness)
         if "blank_screen" in permitted & needed and state.blank_screen is not None:
             if not restore_policy:
                 await apply_blank_screen(self._as_coordinator, state.blank_screen)

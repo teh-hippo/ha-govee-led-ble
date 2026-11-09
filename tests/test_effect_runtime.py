@@ -597,6 +597,11 @@ def _profile_coordinator(model: str):
 
     coordinator = _coordinator()
     coordinator._control_arbiter = coordinator._control_lock = BLEControlArbiter()
+    coordinator._client = MagicMock(is_connected=True)
+    coordinator._notification_token = object()
+    coordinator._authorization_generation = 0
+    coordinator._notify_started_monotonic = None
+    coordinator._field_received_at = {}
     coordinator.model = model
     coordinator.profile = get_profile(model)
     if model == "H6199":
@@ -2694,6 +2699,7 @@ async def test_h6199_video_profile_uses_native_writers_in_profile_order(
                 "sound_effects": True,
                 "sound_effects_softness": 27,
             },
+            relative_brightness=(20, 30, 40, 50),
             writer=ANY,
             verify=True,
             on_write=ANY,

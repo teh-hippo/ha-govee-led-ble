@@ -39,6 +39,7 @@ _SPEED_METADATA_SKUS = frozenset(
     {
         "H1771",
         "H6046",
+        "H605C",
         "H6072",
         "H607C",
         "H6097",

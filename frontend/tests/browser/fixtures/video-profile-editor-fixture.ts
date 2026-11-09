@@ -51,3 +51,16 @@ if (new URLSearchParams(location.search).has("h6099")) {
     editor.content = (event as CustomEvent).detail.content;
   });
 }
+if (new URLSearchParams(location.search).has("whole")) {
+  editor.settings = ["sound_effects", "whole_relative_brightness"];
+  editor.controls = {
+    saturation_min: 1, softness_min: 0, softness_max: 99,
+    white_balance: {representation: "position", minimum: 1, maximum: 25, default: 13},
+    brightness_zones: ["left", "top", "right", "bottom"],
+  };
+  editor.content = {...editor.content, sound_effects: true, sound_effects_softness: 0,
+    whole_relative_brightness: 47, saturation: null};
+  editor.addEventListener("content-changed", event => {
+    editor.content = (event as CustomEvent).detail.content;
+  });
+}

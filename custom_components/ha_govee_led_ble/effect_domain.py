@@ -305,6 +305,7 @@ class VideoProfile:
     blank_screen_detection: int | None = None
     blank_screen_low_brightness_duration_seconds: int | None = None
     blank_screen_same_tone_duration_seconds: int | None = None
+    whole_relative_brightness: int | None = None
 
     def __post_init__(self) -> None:
         _validate_identifier(self.model, "model")
@@ -322,6 +323,7 @@ class VideoProfile:
             (self.white_balance_position, "white_balance_position", profile.supports_white_balance),
             (self.white_balance_value, "white_balance_value", profile.supports_white_balance),
             (self.relative_brightness, "relative_brightness", profile.supports_relative_brightness),
+            (self.whole_relative_brightness, "whole_relative_brightness", profile.supports_whole_relative_brightness),
             (self.blank_screen, "blank_screen", profile.supports_blank_screen),
             (self.black_border, "black_border", profile.supports_black_border),
         ):
@@ -333,7 +335,14 @@ class VideoProfile:
         if self.sound_effects is not None:
             _validate_bool(self.sound_effects, "sound_effects")
         if self.sound_effects_softness is not None:
-            _validate_range(self.sound_effects_softness, "sound_effects_softness", minimum=1, maximum=100)
+            _validate_range(
+                self.sound_effects_softness,
+                "sound_effects_softness",
+                minimum=profile.video_softness_min,
+                maximum=profile.video_softness_max,
+            )
+        if self.whole_relative_brightness is not None:
+            _validate_range(self.whole_relative_brightness, "whole_relative_brightness", minimum=0, maximum=100)
         if self.white_balance_position is not None:
             if profile.video_white_balance_representation != "position":
                 raise EffectValidationError("white_balance_position requires position calibration")
@@ -891,6 +900,11 @@ def _content_to_dict(content: EffectContent) -> dict[str, JsonValue]:
                 else _relative_brightness_to_dict(content.relative_brightness)
             ),
             "blank_screen": content.blank_screen,
+            **(
+                {"whole_relative_brightness": content.whole_relative_brightness}
+                if content.whole_relative_brightness is not None
+                else {}
+            ),
             **({"black_border": content.black_border} if content.black_border is not None else {}),
             **(
                 {
@@ -1037,6 +1051,7 @@ def _content_from_dict(raw: Mapping[str, Any]) -> EffectContent:
             white_balance_position=_optional_int(raw, "white_balance_position"),
             white_balance_value=_optional_int(raw, "white_balance_value"),
             relative_brightness=_optional_relative_brightness(raw, "relative_brightness"),
+            whole_relative_brightness=_optional_int(raw, "whole_relative_brightness"),
             blank_screen=_optional_bool(raw, "blank_screen"),
             black_border=_optional_bool(raw, "black_border"),
             blank_screen_detection=_optional_int(raw, "blank_screen_detection"),

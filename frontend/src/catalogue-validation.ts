@@ -65,6 +65,8 @@ function decodeVideoControls(value: unknown): VideoControls {
   const white = objectValue(controls.white_balance, "white balance control");
   return {
     saturation_min: integerValue(controls.saturation_min, "video saturation minimum", 0, 100),
+    ...(controls.softness_min === undefined ? {} : {softness_min: integerValue(controls.softness_min, "video softness minimum", 0, 100)}),
+    ...(controls.softness_max === undefined ? {} : {softness_max: integerValue(controls.softness_max, "video softness maximum", 0, 100)}),
     white_balance: {
       representation: enumString(white.representation, ["position", "scalar"] as const, "white balance representation"),
       minimum: integerValue(white.minimum, "white balance minimum", 0, 255),
@@ -82,6 +84,7 @@ const VIDEO_PROFILE_SETTINGS = [
   "sound_effects",
   "white_balance",
   "relative_brightness",
+  "whole_relative_brightness",
   "blank_screen",
   "black_border",
 ] as const;

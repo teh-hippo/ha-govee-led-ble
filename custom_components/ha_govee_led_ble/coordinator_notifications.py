@@ -34,6 +34,7 @@ from .generated_protocol_adapter import (
     parse_zone_notification,
     table_kelvin_rgb,
     upload_ack_success,
+    video_parameters_from_brightness,
 )
 from .h6099_controls import h6099_control_status
 from .music_semantics import (
@@ -515,6 +516,14 @@ class _NotificationMixin(_CoordinatorBase):
 
     def _apply_display_setting(self, generated: Any, observed: tuple[str, ...]) -> tuple[str, ...]:
         """Apply a display-setting reply; ``observed`` is returned unchanged when it sets nothing."""
+        if (
+            getattr(generated.body.setting, "name", None) == "whole_relative_brightness"
+            and self.profile.supports_whole_relative_brightness
+        ):
+            value = int(generated.body.payload.value)
+            if self._accept_expected("whole_relative_brightness", value):
+                self.whole_relative_brightness = value
+                observed = ("whole_relative_brightness",)
         if generated.body.setting == 6 and self.profile.video_white_balance_representation == "scalar":
             scalar_value = int(generated.body.payload.value)
             if self._accept_expected("white_balance_scalar", scalar_value):
@@ -797,7 +806,7 @@ class _NotificationMixin(_CoordinatorBase):
                     int(generated.values["brightness_pct"])
                     if isinstance(generated, ParsedH6179Status)
                     else int(generated.body.percent)
-                    if self.profile.status_grammar in PERCENT_BRIGHTNESS_STATUS_GRAMMARS
+                    if self.profile.status_grammar in PERCENT_BRIGHTNESS_STATUS_GRAMMARS | {"H605C"}
                     else int(generated.body.register)
                     if hasattr(generated.body, "register")
                     else int(generated.body.brightness_pct)
@@ -827,6 +836,9 @@ class _NotificationMixin(_CoordinatorBase):
                     "relative_brightness": aggregate,
                     **{f"relative_brightness_{zone}": value for zone, value in zip(zones, edges, strict=True)},
                 }
+                inline = video_parameters_from_brightness(self.profile.video_grammar, edges)
+                if inline is not None:
+                    edge_values["video_parameters"] = inline
                 if self._accept_expected_values(edge_values):
                     for field, value in edge_values.items():
                         setattr(self, field, value)
