@@ -225,15 +225,20 @@ class MusicProfile:
             error_type=EffectValidationError,
         )
         if self.zones is not None:
-            if (
-                not isinstance(self.zones, tuple)
-                or not profile.native_zones
-                or len(self.zones) != len(profile.native_zones)
-            ):
+            zone_geometry = (
+                (("side", 8, 0), ("ripple", 1, 0))
+                if self.model == "H60B0" and self.mode == "combined"
+                else profile.native_zones
+            )
+            if not isinstance(self.zones, tuple) or not zone_geometry or len(self.zones) != len(zone_geometry):
                 raise EffectValidationError("music zones must match the model's native geometry")
-            for zone, (name, _, _) in zip(self.zones, profile.native_zones, strict=True):
+            for zone, (name, _, _) in zip(self.zones, zone_geometry, strict=True):
                 if not isinstance(zone, MusicZone) or zone.id != name:
                     raise EffectValidationError("music zone identity or order is invalid")
+                if zone.calm is not None and type(zone.calm) is not bool:
+                    raise EffectValidationError("music zone style must be a boolean")
+                if zone.calm is not None and self.model != "H60B0":
+                    raise EffectValidationError("music source style is not qualified for this model")
                 _validate_identifier(zone.mode, "music zone mode")
                 if not isinstance(zone.parameters, Mapping):
                     raise EffectValidationError("music zone parameters must be a mapping")
@@ -858,6 +863,7 @@ def _content_to_dict(content: EffectContent) -> dict[str, JsonValue]:
                             "id": zone.id,
                             "mode": zone.mode,
                             "parameters": dict(zone.parameters),
+                            **({"calm": zone.calm} if zone.calm is not None else {}),
                             **({"palette": [list(rgb) for rgb in zone.palette]} if zone.palette is not None else {}),
                             **({"body": zone.body.hex()} if zone.body is not None else {}),
                         }
@@ -1013,6 +1019,7 @@ def _content_from_dict(raw: Mapping[str, Any]) -> EffectContent:
                     parameters=dict(_required_mapping(zone, "parameters")),
                     palette=_palette_from_value(zone["palette"]) if "palette" in zone else None,
                     body=_hex_bytes(zone["body"], "music zone body") if "body" in zone else None,
+                    calm=_required_optional_bool(zone, "calm") if "calm" in zone else None,
                 )
                 for zone in (_as_mapping(value, "music zone") for value in _required_sequence(raw, "zones"))
             )

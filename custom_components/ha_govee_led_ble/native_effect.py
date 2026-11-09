@@ -8,6 +8,7 @@ from typing import Any
 
 from .layered_scene import (
     CatalogueRef,
+    LayeredScene,
     LayeredSceneValidationError,
     _as_mapping,
     _catalogue_ref_from_value,
@@ -17,6 +18,8 @@ from .layered_scene import (
     _required_int,
     _required_sequence,
     _required_str,
+    layered_scene_from_value,
+    layered_scene_to_value,
 )
 
 type RGB = tuple[int, int, int]
@@ -48,6 +51,7 @@ class NativeDiyLayer:
     opaque: bytes = b""
     enabled: bool = True
     secondary_palette: tuple[RGB, ...] = ()
+    temperatures: tuple[int, ...] = ()
 
     def __post_init__(self) -> None:
         _number(self.kind, 255, "layer kind")
@@ -63,6 +67,10 @@ class NativeDiyLayer:
             raise LayeredSceneValidationError("invalid native zone state or secondary palette")
         for colour in self.secondary_palette:
             _rgb(colour)
+        if not isinstance(self.temperatures, tuple) or len(self.temperatures) > 255:
+            raise LayeredSceneValidationError("native temperature records exceed their count field")
+        for kelvin in self.temperatures:
+            _number(kelvin, 10000, "native temperature")
         for point in self.points:
             _number(point, 255, "point")
         if not isinstance(self.parameters, bytes) or not isinstance(self.opaque, bytes):
@@ -135,9 +143,47 @@ class NativeEffect:
     template: CatalogueRef | None = None
     speed_index: int | None = None
     model: str = "H60A6"
+    revision: int = 0
+    combined: LayeredScene | None = None
 
     def __post_init__(self) -> None:
-        if self.model == "H607C":
+        _number(self.family, 65535, "native family")
+        _number(self.revision, 3, "native revision")
+        if self.model != "H60B0" and (
+            self.revision
+            or self.combined is not None
+            or any(isinstance(layer, NativeDiyLayer) and layer.temperatures for layer in self.layers)
+        ):
+            raise LayeredSceneValidationError("native revision and temperature records require the exact model")
+        if self.model == "H60B0":
+            expected_count = 0 if self.family == 81 else 3 if self.revision == 3 else 2 if self.family == 13 else 1
+            if (
+                (self.revision != 0 if self.family == 81 else self.revision not in (1, 3))
+                or (self.family not in (922, 923) if self.revision == 3 else self.family not in (*range(1, 14), 81))
+                or len(self.layers) != expected_count
+                or self.template is not None
+                or self.backgrounds
+                or self.background_flag
+                or self.background != (0, 0, 0)
+                or self.background_brightness != 100
+                or self.show_type != 1
+                or self.preset_id is not None
+                or self.speed_index is not None
+            ):
+                raise LayeredSceneValidationError("invalid revision-qualified native DIY")
+            if self.family == 81:
+                if (
+                    not isinstance(self.combined, LayeredScene)
+                    or self.combined.template.sku != "H60B0"
+                    or not self.combined.ripple_layers
+                    or self.combined.speed_index is not None
+                    or self.opaque
+                    or self.section_tail
+                ):
+                    raise LayeredSceneValidationError("native combination requires side and ripple content")
+            elif self.combined is not None:
+                raise LayeredSceneValidationError("combined content does not match the native family")
+        elif self.model == "H607C":
             from .protocol_core import H607cDiyBody
 
             families = H607cDiyBody.Family
@@ -179,9 +225,11 @@ class NativeEffect:
                 raise LayeredSceneValidationError("invalid native dual-source DIY structure")
         elif self.model != "H60A6" or self.family not in (797, 798):
             raise LayeredSceneValidationError("unsupported native effect model or family")
-        if not 1 <= len(self.layers) <= 255 or len(self.backgrounds) > 255:
+        if not (0 if self.combined is not None else 1) <= len(self.layers) <= 255 or len(self.backgrounds) > 255:
             raise LayeredSceneValidationError("native effect exceeds its layer or background count field")
-        expected = NativeDiyLayer if self.family == 797 or self.model in {"H607C", "H1771"} else NativePaintLayer
+        expected = (
+            NativeDiyLayer if self.family == 797 or self.model in {"H607C", "H1771", "H60B0"} else NativePaintLayer
+        )
         if any(not isinstance(layer, expected | NativeOpaqueLayer) for layer in self.layers):
             raise LayeredSceneValidationError("native layer does not match its effect family")
         if self.model == "H60A6" and any(
@@ -195,7 +243,7 @@ class NativeEffect:
             _rgb(colour)
         if not isinstance(self.opaque, bytes) or not isinstance(self.section_tail, bytes):
             raise LayeredSceneValidationError("native extension field must be bytes")
-        if self.model != "H1771" and self.section_tail:
+        if self.model not in {"H1771", "H60B0"} and self.section_tail:
             raise LayeredSceneValidationError("native section extension does not match the model")
         if self.preset_id is not None:
             _number(self.preset_id, 255, "native preset")
@@ -210,6 +258,14 @@ class NativeEffect:
             return "layered_scenes"
         if self.model == "H1771":
             return "multi"
+        if self.model == "H60B0":
+            return (
+                "advanced"
+                if self.family in (13, 923)
+                else "multi"
+                if self.family == 81 or self.revision == 3
+                else "single"
+            )
         if self.model == "H607C":
             from .protocol_core import H607cDiyBody
 
@@ -239,9 +295,10 @@ def native_effect_to_value(content: NativeEffect) -> dict[str, Any]:
                             "enabled": layer.enabled,
                             "secondary_palette": [list(colour) for colour in layer.secondary_palette],
                         }
-                        if content.model in {"H607C", "H1771"}
+                        if content.model in {"H607C", "H1771", "H60B0"}
                         else {}
                     ),
+                    **({"temperatures": list(layer.temperatures)} if content.model == "H60B0" else {}),
                 }
             )
         elif isinstance(layer, NativePaintLayer):
@@ -274,7 +331,9 @@ def native_effect_to_value(content: NativeEffect) -> dict[str, Any]:
         "background_brightness": content.background_brightness,
         "show_type": content.show_type,
         "opaque": content.opaque.hex(),
-        **({"section_tail": content.section_tail.hex()} if content.model == "H1771" else {}),
+        **({"section_tail": content.section_tail.hex()} if content.model in {"H1771", "H60B0"} else {}),
+        **({"revision": content.revision} if content.model == "H60B0" else {}),
+        **({"combined": layered_scene_to_value(content.combined)} if content.combined is not None else {}),
         "preset_id": content.preset_id,
         "template": None if content.template is None else _catalogue_ref_to_value(content.template),
         "speed_index": content.speed_index,
@@ -301,6 +360,7 @@ def native_effect_from_value(raw: Mapping[str, Any]) -> NativeEffect:
                     opaque=_hex_bytes(layer.get("opaque", ""), "native layer opaque"),
                     enabled=layer.get("enabled", True),
                     secondary_palette=tuple(_colour(value) for value in layer.get("secondary_palette", ())),
+                    temperatures=tuple(layer.get("temperatures", ())),
                 )
             )
         elif layer_type == "paint":
@@ -335,6 +395,10 @@ def native_effect_from_value(raw: Mapping[str, Any]) -> NativeEffect:
             raise LayeredSceneValidationError("unsupported native layer type")
     return NativeEffect(
         model=_required_str(raw, "model"),
+        revision=_optional_int(raw, "revision") or 0,
+        combined=layered_scene_from_value(_as_mapping(raw["combined"], "native combined content"))
+        if "combined" in raw
+        else None,
         family=_required_int(raw, "family"),
         layers=tuple(layers),
         backgrounds=tuple(_colour(value) for value in _required_sequence(raw, "backgrounds")),

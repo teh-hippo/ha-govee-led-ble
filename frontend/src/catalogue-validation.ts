@@ -213,8 +213,15 @@ export function decodeModelEffectCatalogue(
           id: boundedString(zone.id, "native zone ID", MAX_IDENTIFIER_LENGTH),
           label: boundedString(zone.label, "native zone label", MAX_EFFECT_NAME_LENGTH),
           segment_count: integerValue(zone.segment_count, "native logical segments", 1, 255),
-          physical_ic_budget: integerValue(zone.physical_ic_budget, "native physical budget", 1, 65535),
+          physical_ic_budget: zone.physical_ic_budget === null ? null : integerValue(zone.physical_ic_budget, "native physical budget", 1, 65535),
         };
+      }),
+      ...(catalogue.music_zone_modes === undefined ? {} : {
+        music_zone_modes: Object.fromEntries(Object.entries(objectValue(catalogue.music_zone_modes, "music source modes"))
+          .map(([id, modes]) => [
+            boundedString(id, "music source identity", MAX_IDENTIFIER_LENGTH),
+            arrayValue(modes, "music source choices", 255).map(mode => boundedString(mode, "music source mode", MAX_IDENTIFIER_LENGTH)),
+          ])),
       }),
     }),
     diy_slot_policy: enumString(

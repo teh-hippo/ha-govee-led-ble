@@ -1493,6 +1493,12 @@ async def async_prepare_effect_control_state(
     prior = capture() if require_restorable_static and capture is not None else None
     prior_mode = prior.mode if isinstance(prior, PriorControlState) else _coordinator_mode(coordinator)
     if require_restorable_static:
+        if profile.supports_ripple_speed and (
+            not isinstance(prior, PriorControlState)
+            or any(getattr(prior, field) is None for field in ("bottom_kelvin", "bottom_brightness", "ripple_speed"))
+            or not prior.bottom_kelvin
+        ):
+            raise RuntimeError("Could not read restorable source values before preview")
         if any(
             name in profile.boolean_controls and getattr(prior, name, None) is None for name in NATIVE_ZONE_CONTROLS
         ):

@@ -17,12 +17,13 @@ from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator import GoveeBLECoordinator
 from .coordinator_status import ParsedMode
 from .entity import GoveeBLEEntity
-from .generated_protocol_adapter import build_brightness, build_power, require_profile_packet
+from .generated_protocol_adapter import build_brightness, build_power, build_source_value, require_profile_packet
 from .light_commands import (
     build_segment_brightness,
     build_segment_color_temp,
     build_segment_paint,
     kelvin_rendering_matches,
+    normalize_kelvin,
 )
 
 
@@ -72,6 +73,11 @@ class GoveeBLESourceLight(GoveeBLEEntity, LightEntity):
     @property
     def assumed_state(self) -> bool:
         source = self._source(self.coordinator.profile)
+        if source is not None and source.native_control:
+            return not all(
+                self._fresh(field)
+                for field in ("is_on", f"boolean_{source.control}", f"{source.key}_brightness", f"{source.key}_kelvin")
+            )
         return (
             "is_on" in self.coordinator._h607c_uncertain_state_fields
             or bool(self.coordinator._h607c_uncertain_state_fields & {"color", "color_mode"})
@@ -92,6 +98,8 @@ class GoveeBLESourceLight(GoveeBLEEntity, LightEntity):
     def supported_color_modes(self) -> set[ColorMode]:
         profile = self.coordinator.native_presentation_profile
         source = self._source(profile)
+        if source is not None and source.color_modes is not None:
+            return {ColorMode(mode) for mode in source.color_modes}
         if (
             source is not None
             and source.master_brightness
@@ -124,6 +132,9 @@ class GoveeBLESourceLight(GoveeBLEEntity, LightEntity):
     @property
     def brightness(self) -> int | None:
         source = self._source(self.coordinator.profile)
+        if source is not None and source.native_control:
+            value = getattr(self.coordinator, f"{source.key}_brightness", None)
+            return round(value * 255 / 100) if value is not None else None
         if (
             source is not None
             and source.master_brightness
@@ -140,6 +151,11 @@ class GoveeBLESourceLight(GoveeBLEEntity, LightEntity):
     @property
     def color_mode(self) -> ColorMode | None:
         modes = self.supported_color_modes
+        source = self._source(self.coordinator.profile)
+        if source is not None and source.native_control:
+            return (
+                ColorMode.COLOR_TEMP if getattr(self.coordinator, f"{source.key}_kelvin", None) else ColorMode.UNKNOWN
+            )
         if "color_mode" in self.coordinator._h607c_uncertain_state_fields and modes & {
             ColorMode.RGB,
             ColorMode.COLOR_TEMP,
@@ -177,6 +193,9 @@ class GoveeBLESourceLight(GoveeBLEEntity, LightEntity):
 
     @property
     def color_temp_kelvin(self) -> int | None:
+        source = self._source(self.coordinator.profile)
+        if source is not None and source.native_control:
+            return getattr(self.coordinator, f"{source.key}_kelvin", None) or None
         intent = self.coordinator.source_static_intents.get(self._key)
         return intent if type(intent) is int and self.color_mode is ColorMode.COLOR_TEMP else None
 
@@ -212,7 +231,9 @@ class GoveeBLESourceLight(GoveeBLEEntity, LightEntity):
             if brightness is not None:
                 if modes == {ColorMode.ONOFF}:
                     raise ValueError("This source does not support brightness")
-                if source.master_brightness:
+                if source.native_control:
+                    build_source_value(source.key, "brightness", brightness, profile)
+                elif source.master_brightness:
                     brightness_packet = build_brightness(brightness, coordinator.model, profile=profile)
                     require_profile_packet(brightness_packet, profile)
                 else:
@@ -223,13 +244,22 @@ class GoveeBLESourceLight(GoveeBLEEntity, LightEntity):
                     raise ValueError("This source does not support RGB")
                 build_segment_paint([(segments, tuple(colour))], coordinator.model, profile=profile)
             kelvin = kwargs.get(ATTR_COLOR_TEMP_KELVIN)
+            if kelvin is not None and source.native_control:
+                if (
+                    type(kelvin) is not int
+                    or not profile.min_color_temp_kelvin <= kelvin <= profile.max_color_temp_kelvin
+                ):
+                    raise ValueError("Source Kelvin is outside the profile")
+                kelvin = normalize_kelvin(kelvin, profile)
             if kelvin is not None and ColorMode.COLOR_TEMP not in modes:
                 raise ValueError("This source does not support colour temperature")
-            packet = (
-                build_segment_color_temp(segments, kelvin, coordinator.model, profile=profile)
-                if kelvin is not None
-                else None
-            )
+            packet = None
+            if kelvin is not None:
+                packet = (
+                    build_source_value(source.key, "kelvin", kelvin, profile)
+                    if source.native_control
+                    else build_segment_color_temp(segments, kelvin, coordinator.model, profile=profile)
+                )
             if colour is not None and kelvin is not None:
                 raise ValueError("A source cannot select RGB and colour temperature together")
             guard = (
@@ -299,7 +329,9 @@ class GoveeBLESourceLight(GoveeBLEEntity, LightEntity):
                     await self._set_source_control(source.control, True)
                 async with coordinator.async_mask_transaction():
                     if brightness is not None:
-                        if brightness_packet is not None:
+                        if source.native_control:
+                            await coordinator.async_set_source_value(source.key, "brightness", brightness)
+                        elif brightness_packet is not None:
                             brightness_attempts = coordinator.control_write_attempts
                             brightness_revision = coordinator._field_revisions.get("brightness_pct", 0)
                             try:
@@ -323,9 +355,12 @@ class GoveeBLESourceLight(GoveeBLEEntity, LightEntity):
                         )
                     if packet is not None:
                         assert kelvin is not None
-                        await coordinator.async_set_segment_kelvin(
-                            packet, requested_kelvin=kelvin, **({"write_guard": guard} if guard is not None else {})
-                        )
+                        if source.native_control:
+                            await coordinator.async_set_source_value(source.key, "kelvin", kelvin)
+                        else:
+                            await coordinator.async_set_segment_kelvin(
+                                packet, requested_kelvin=kelvin, **({"write_guard": guard} if guard is not None else {})
+                            )
             coordinator.async_set_updated_data(coordinator.data or {})
         except Exception as error:
             partial = coordinator.control_write_attempts != attempts

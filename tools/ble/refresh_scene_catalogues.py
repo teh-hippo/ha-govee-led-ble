@@ -36,12 +36,12 @@ SNAPSHOT_DIR = Path(__file__).parents[2] / "custom_components" / "ha_govee_led_b
 DEFAULT_SKUS = tuple(sorted(path.stem for path in SNAPSHOT_DIR.glob("*.json")))
 
 _SPEED_METADATA_SKUS = frozenset(
-    {"H1771", "H6046", "H6072", "H607C", "H6097", "H60A1", "H60A6", "H6117", "H617A", "H619A", "H7020", "H7025"}
+    {"H1771", "H6046", "H6072", "H607C", "H6097", "H60A1", "H60A6", "H60B0", "H6117", "H617A", "H619A", "H7020", "H7025"}
 )
 
 # These models derive the initial speed selection from metadata and rewrite every
 # configured field before upload, so embedded field values are not the default-speed invariant.
-_METADATA_DEFAULT_SPEED_SKUS = frozenset({"H1771", "H607C", "H60A1", "H7020", "H7025"})
+_METADATA_DEFAULT_SPEED_SKUS = frozenset({"H1771", "H607C", "H60A1", "H60B0", "H7020", "H7025"})
 
 # Glacier's application path rewrites its stale stored movement fields.
 _VERIFIED_SPEED_DEFAULT_REWRITES = frozenset({("H617A", 1026, 1088)})
@@ -113,8 +113,13 @@ def _parse_scene_v2_records(param: str) -> list[Any]:
     from custom_components.ha_govee_led_ble.generated_protocol_adapter import parse_scene_body
     from custom_components.ha_govee_led_ble.protocol_core import H607cSceneBody
 
+    payload = base64.b64decode(param, validate=True)
+    if payload[:1] == b"\x51":
+        from custom_components.ha_govee_led_ble.h60b0_effects import parse_combined_scene
+
+        return cast(list[Any], parse_combined_scene(payload).rgbic.records)
     parsed, _padding = parse_scene_body(
-        base64.b64decode(param, validate=True),
+        payload,
         scene_type=int(H607cSceneBody.CatalogueType.layered_scene),
     )
     return cast(list[Any], parsed.records)
@@ -149,6 +154,7 @@ def _snapshot_speed(
     label: str,
     *,
     metadata_default_applied: bool = False,
+    model: str | None = None,
 ) -> dict[str, Any] | None:
     if not effect.get("speedInfo", {}).get("supSpeed"):
         return None
@@ -163,7 +169,13 @@ def _snapshot_speed(
     if not isinstance(config, list):
         raise ValueError(f"{label}: layered Speed config must be a page list")
 
-    entries = [entry for entry in config if any(key in entry for key in ("moveIn", "moveAll", "color", "bright"))]
+    combined = model == "H60B0"
+    keys = (
+        ("moveIn", "moveAll", "color", "bright", "shuiBoWenColorSpeed", "shuiBoWenLiudongSpeed")
+        if combined
+        else ("moveIn", "moveAll", "color", "bright")
+    )
+    entries = [entry for entry in config if any(key in entry for key in keys)]
     if not entries:
         return None
 
@@ -177,7 +189,8 @@ def _snapshot_speed(
 
     for entry in entries:
         page = int(entry["page"])
-        if not 0 <= page < len(records):
+        rgbic_fields = any(entry.get(key) for key in ("moveIn", "moveAll", "color", "bright"))
+        if rgbic_fields and not 0 <= page < len(records):
             warnings.warn(
                 f"{label}: Speed page {page} outside {len(records)} records; omitting Speed",
                 stacklevel=2,
@@ -195,6 +208,8 @@ def _snapshot_speed(
             entry.get("moveIn", []),
             entry.get("moveAll", []),
             entry.get("color", []),
+            entry.get("shuiBoWenColorSpeed", []) if combined else [],
+            entry.get("shuiBoWenLiudongSpeed", []) if combined else [],
             *(item["values"] for item in brightness),
         ]
         for values in option_lists:
@@ -204,7 +219,7 @@ def _snapshot_speed(
             if not 0 <= default_index < len(values):
                 raise ValueError(f"{label}: default Speed position outside option list")
 
-        num_blocks = cast(int, records[page].body.num_brightness_blocks)
+        num_blocks = cast(int, records[page].body.num_brightness_blocks) if rgbic_fields else 0
         if any(not 0 <= cast(int, item["block"]) < num_blocks for item in brightness):
             raise ValueError(f"{label}: brightness block outside parsed record")
 
@@ -213,6 +228,14 @@ def _snapshot_speed(
             ("moveIn", "move_in"),
             ("moveAll", "move_all"),
             ("color", "colour_speed"),
+            *(
+                (
+                    ("shuiBoWenColorSpeed", "ripple_colour_speed"),
+                    ("shuiBoWenLiudongSpeed", "ripple_movement_speed"),
+                )
+                if combined
+                else ()
+            ),
         ):
             if values := entry.get(source):
                 page_data[target] = [int(value) for value in values]
@@ -225,6 +248,8 @@ def _snapshot_speed(
 
     mismatches: list[str] = []
     for page_spec in pages:
+        if not any(key in page_spec for key in ("move_in", "move_all", "colour_speed", "brightness")):
+            continue
         body = records[page_spec["page"]].body
         for field, actual in (
             ("move_in", body.selected_area_movement.speed),
@@ -298,6 +323,7 @@ def build_snapshot(raw: dict[str, Any], sku: str) -> dict[str, Any]:
                     speed := _snapshot_speed(
                         effect,
                         f"{name}-{variant}" if variant else name,
+                        model=sku,
                         metadata_default_applied=sku in _METADATA_DEFAULT_SPEED_SKUS
                         or (sku, scene_id, effect_id) in _VERIFIED_SPEED_DEFAULT_REWRITES,
                     )

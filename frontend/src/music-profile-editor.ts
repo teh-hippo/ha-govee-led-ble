@@ -253,16 +253,19 @@ export class GoveeMusicProfileEditor extends LitElement {
     const content = this.content;
     const catalogue = this.catalogue;
     if (!content?.zones || !catalogue?.native_zones) return nothing;
-    const childCatalogue = {
-      ...catalogue,
-      music_modes: catalogue.music_modes.filter(mode => mode.id !== content.mode),
-    };
-    return html`${content.zones.map((zone, index) => html`
+    return html`${content.zones.map((zone, index) => {
+      const childCatalogue = {
+        ...catalogue,
+        music_modes: catalogue.music_zone_modes?.[zone.id]?.map(id =>
+          catalogue.music_modes.find(mode => mode.id === id) ?? { id, label: id === "disabled" ? "Off" : id })
+          ?? catalogue.music_modes.filter(mode => mode.id !== content.mode),
+      };
+      return html`
       <section class="card">
         <h3>${catalogue.native_zones![index]?.label ?? zone.id}</h3>
         <govee-music-profile-editor .content=${{
           kind: "music_profile", model: content.model, mode: zone.mode, sensitivity: content.sensitivity,
-          colour: null, calm: null, parameters: zone.parameters,
+          colour: null, calm: zone.calm ?? null, parameters: zone.parameters,
           ...(zone.palette === undefined ? {} : { palette: zone.palette }),
         } satisfies MusicProfileContent}
           .catalogue=${childCatalogue} .disabled=${this.disabled} .modeSelectionEnabled=${true} .showSensitivity=${false}
@@ -275,13 +278,13 @@ export class GoveeMusicProfileEditor extends LitElement {
             event.stopPropagation();
             const changed = event.detail.content;
             this.updateZone(index, zone.mode, {
-              ...zone, parameters: changed.parameters,
+              ...zone, parameters: changed.parameters, calm: changed.calm,
               ...(changed.palette === undefined ? {} : { palette: changed.palette }),
             }, event.detail.interaction, changed.palette === undefined);
           }}
         ></govee-music-profile-editor>
       </section>
-    `)}`;
+    `; })}`;
   }
 
   private updateZone(index: number, mode: string, zone: MusicZone,
@@ -289,7 +292,7 @@ export class GoveeMusicProfileEditor extends LitElement {
     if (this.content?.zones?.[index]?.mode !== mode) return;
     this.updateContent(content => {
       const current = content.zones![index];
-      if (zone.mode === mode) zone = { ...current, parameters: { ...current.parameters, ...zone.parameters },
+      if (zone.mode === mode) zone = { ...current, ...zone, parameters: { ...current.parameters, ...zone.parameters },
         ...(zone.palette === undefined ? {} : { palette: zone.palette }) };
       if (removePalette) delete zone.palette;
       content.zones![index] = zone;

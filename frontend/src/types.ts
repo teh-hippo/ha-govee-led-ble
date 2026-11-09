@@ -202,6 +202,7 @@ export interface NativeDiyLayer {
   opaque: string;
   enabled?: boolean;
   secondary_palette?: RGB[];
+  temperatures?: number[];
 }
 
 export interface NativePaintLayer {
@@ -238,6 +239,8 @@ export interface NativeEffectContent {
   preset_id: number | null;
   template: CatalogueRef | null;
   speed_index: number | null;
+  revision?: number;
+  combined?: Omit<LayeredSceneContent, "kind">;
 }
 
 export type NativeSceneContent = NativeEffectContent & { template: CatalogueRef };
@@ -248,6 +251,7 @@ export interface MusicZone {
   parameters: JsonObject;
   palette?: RGB[];
   body?: string;
+  calm?: boolean | null;
 }
 
 export interface MusicProfileContent {
@@ -493,7 +497,8 @@ export interface RetainedMusicEdit {
 }
 
 export interface ModelEffectCatalogue {
-  native_zones?: { id: string; label: string; segment_count: number; physical_ic_budget: number }[];
+  native_zones?: { id: string; label: string; segment_count: number; physical_ic_budget: number | null }[];
+  music_zone_modes?: Record<string, string[]>;
   native_actions?: EffectStudioModeOption[];
   painted_addressing?: "segments" | "physical_ic";
   painted_background?: RGB;
@@ -586,6 +591,19 @@ export interface LayeredSceneContent {
   speed_index: number | null;
   raw_param: string;
   trailing_padding?: number;
+  ripple_layers?: RippleLayer[];
+}
+
+export interface RippleLayer {
+  effect: number;
+  duration: number;
+  movement_speed: number;
+  movement: number;
+  colour_mode: number;
+  colour_speed: number;
+  retention: number;
+  palette: RGB[];
+  opaque: string;
 }
 
 export type KnownEffectContent =
@@ -639,7 +657,7 @@ export interface LibrarySummary {
   origin: LibraryOrigin;
   model?: ModelSku;
   template?: CatalogueRef;
-  native_workflow?: "single" | "multi";
+  native_workflow?: "single" | "multi" | "advanced";
 }
 
 export interface LibrarySnapshot {

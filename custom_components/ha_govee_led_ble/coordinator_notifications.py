@@ -181,7 +181,7 @@ class _NotificationMixin(_CoordinatorBase):
         if parsed.mode is ParsedMode.COLOUR:
             for source in self.profile.light_sources:
                 field = f"{source.control.removesuffix('_enabled')}_kelvin"
-                reported = getattr(parsed, field, None)
+                reported = (parsed.source_values or {}).get(field, getattr(parsed, field, None))
                 if type(reported) is not int or not self._accept_expected(f"source_kelvin_{source.key}", reported):
                     continue
                 if reported == 0:
@@ -195,6 +195,10 @@ class _NotificationMixin(_CoordinatorBase):
         # None because HA rejects one outside effect_list.
         unknown_scene_code = parsed.scene_code if scene_effect is None else None
         observed: list[str] = ["color_mode"]
+        if parsed.source_values is not None and self._accept_expected_values(parsed.source_values):
+            for source_field, source_value in parsed.source_values.items():
+                setattr(self, source_field, source_value)
+            observed.extend(parsed.source_values)
         accept_parameters = True
         # Readback mirror of _enter_static_mode: committing one mode clears the others.
         if parsed.mode is ParsedMode.MUSIC:
@@ -742,7 +746,19 @@ class _NotificationMixin(_CoordinatorBase):
                 for field, value in values.items():
                     setattr(self, field, value)
                 observed = tuple(values)
-            if getattr(generated.domain, "name", None) == "power_on_behaviour":
+            if getattr(generated.domain, "name", None) == "source_info":
+                from .h60b0_controls import source_readback
+
+                body = generated.body
+                native_values = source_readback(body.operation, self.profile)
+                if self._accept_expected_values(native_values):
+                    for field, value in native_values.items():
+                        setattr(self, field, value)
+                    observed += tuple(native_values)
+                if self._accept_expected("is_on", bool(body.master_enabled)):
+                    self.is_on = bool(body.master_enabled)
+                    observed += ("is_on",)
+            elif getattr(generated.domain, "name", None) == "power_on_behaviour":
                 value = getattr(generated.body.state, "name", None)
                 if (hasattr(generated.body, "availability") and not generated.body.availability) or value is None:
                     raise ValueError("Power-on behaviour is unavailable or unknown")

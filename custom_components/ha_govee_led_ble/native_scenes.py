@@ -29,6 +29,10 @@ from .transport import fragment_a3, fragment_a4
 
 def apply_scene_speed(payload: bytes, speed: SceneSpeed, index: int, *, scene_type: int = 2) -> bytes:
     """Apply one speed option through the generated layered-scene fields."""
+    if payload[:1] == b"\x51" and scene_type == 6:
+        from .h60b0_effects import apply_combined_speed
+
+        return apply_combined_speed(payload, speed, index)
     if speed.layer_speeds:
         if not 0 <= index < speed.option_count:
             raise ValueError("Scene speed index is outside its documented options")
@@ -115,6 +119,12 @@ def native_scene_upload_route(scene: SceneEntry, profile: ModelProfile) -> tuple
         raise ValueError("Native scene has no documented upload family")
     if scene.scene_type == 5:
         raise ValueError("Device profile does not support this native scene body")
+    if profile.effect_grammar == "H60B0":
+        from .h60b0_effects import H60b0SceneBody
+
+        if scene.scene_type != 6:
+            raise ValueError("Device profile does not support this combined scene body")
+        return "a3", int(H60b0SceneBody.UploadSubtype.combined)
     if profile.effect_grammar == "H607C" or scene.scene_type == int(H607cSceneBody.CatalogueType.layered_scene):
         if profile.effect_grammar != "H607C" or scene.scene_type != int(H607cSceneBody.CatalogueType.layered_scene):
             raise ValueError("Device profile does not support this layered scene body")
@@ -166,8 +176,13 @@ def build_native_scene_packets(
         if profile.effect_grammar == "H1771":
             payload = serialize_native_body(native.body)
     if payload and scene.scene_type == int(H607cSceneBody.CatalogueType.layered_scene):
-        parsed, _padding = parse_scene_body(payload, scene_type=scene.scene_type)
-        payload = payload[len(parsed.marker) :]
+        if profile.effect_grammar == "H60B0":
+            from .h60b0_effects import combined_upload_body
+
+            payload = combined_upload_body(payload)
+        else:
+            parsed, _padding = parse_scene_body(payload, scene_type=scene.scene_type)
+            payload = payload[len(parsed.marker) :]
     upload = (
         (fragment_a4 if route[0] == "a4" else fragment_a3)(route[1], payload) if payload and route is not None else []
     )
@@ -191,7 +206,12 @@ def resolve_native_scene_body(
                 raise ValueError("Native scene has no documented body family")
             _parse_native_scene_body(canonical_body, scene.diy_effect_codes[0])
         elif scene.scene_type == int(H607cSceneBody.CatalogueType.layered_scene):
-            parse_scene_body(canonical_body, scene_type=scene.scene_type)
+            if canonical_body[:1] == b"\x51":
+                from .h60b0_effects import parse_combined_scene
+
+                parse_combined_scene(canonical_body)
+            else:
+                parse_scene_body(canonical_body, scene_type=scene.scene_type)
         return canonical_body, speed_index
 
     payload = base64.b64decode(scene.param, validate=True) if scene.param else b""
@@ -227,7 +247,9 @@ def encode_authored_scene_body(
         if content.speed_index is not None:
             raise ValueError("this scene does not expose a documented Speed control")
         return body, None
-    if isinstance(content, NativeEffect) and content.speed_index is None:
+    if (
+        isinstance(content, NativeEffect) or isinstance(content, LayeredScene) and content.template.sku == "H60B0"
+    ) and content.speed_index is None:
         return body, None
     resolved_speed = scene.speed.default_index if content.speed_index is None else content.speed_index
     if not 0 <= resolved_speed < scene.speed.option_count:

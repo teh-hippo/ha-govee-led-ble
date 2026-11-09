@@ -239,16 +239,44 @@ class CatalogueRef:
 
 
 @dataclass(frozen=True, slots=True)
+class RippleLayer:
+    effect: int
+    duration: int
+    movement_speed: int
+    movement: int
+    colour_mode: int
+    colour_speed: int
+    retention: int
+    palette: tuple[RGB, ...]
+    opaque: bytes = b""
+
+    def __post_init__(self) -> None:
+        for name in ("effect", "movement_speed", "movement", "colour_mode", "colour_speed"):
+            _validate_byte(getattr(self, name), f"ripple {name}")
+        for name in ("duration", "retention"):
+            value = getattr(self, name)
+            if not _is_int(value) or not 0 <= value <= 65535:
+                raise LayeredSceneValidationError(f"ripple {name} must fit its unsigned field")
+        _validate_palette(self.palette)
+        if not isinstance(self.opaque, bytes):
+            raise LayeredSceneValidationError("ripple extension must be bytes")
+
+
+@dataclass(frozen=True, slots=True)
 class LayeredScene:
     template: CatalogueRef
     effect: LayeredEffect
     speed_index: int | None = None
     raw_param: bytes = b""
     trailing_padding: int = 0
+    ripple_layers: tuple[RippleLayer, ...] = ()
 
     def __post_init__(self) -> None:
         _validate_instance(self.template, CatalogueRef, "scene template")
         _validate_instance(self.effect, LayeredEffect, "scene effect")
+        _validate_items(self.ripple_layers, RippleLayer, "ripple layers")
+        if self.ripple_layers and self.template.sku != "H60B0":
+            raise LayeredSceneValidationError("ripple layers require the combined scene grammar")
         if self.speed_index is not None:
             _validate_byte(self.speed_index, "scene speed index")
         if not isinstance(self.raw_param, bytes):
@@ -288,6 +316,26 @@ def layered_scene_to_value(scene: LayeredScene) -> dict[str, JsonValue]:
         "speed_index": scene.speed_index,
         "raw_param": scene.raw_param.hex(),
         "trailing_padding": scene.trailing_padding,
+        **(
+            {
+                "ripple_layers": [
+                    {
+                        "effect": layer.effect,
+                        "duration": layer.duration,
+                        "movement_speed": layer.movement_speed,
+                        "movement": layer.movement,
+                        "colour_mode": layer.colour_mode,
+                        "colour_speed": layer.colour_speed,
+                        "retention": layer.retention,
+                        "palette": [list(colour) for colour in layer.palette],
+                        "opaque": layer.opaque.hex(),
+                    }
+                    for layer in scene.ripple_layers
+                ]
+            }
+            if scene.template.sku == "H60B0"
+            else {}
+        ),
     }
 
 
@@ -300,6 +348,26 @@ def layered_scene_from_value(raw: Mapping[str, Any]) -> LayeredScene:
         speed_index=_optional_int(value, "speed_index"),
         raw_param=_hex_bytes(value.get("raw_param", ""), "scene raw parameter"),
         trailing_padding=_optional_int(value, "trailing_padding") or 0,
+        ripple_layers=tuple(
+            RippleLayer(
+                **{
+                    name: _required_int(layer, name)
+                    for name in (
+                        "effect",
+                        "duration",
+                        "movement_speed",
+                        "movement",
+                        "colour_mode",
+                        "colour_speed",
+                        "retention",
+                    )
+                },
+                palette=tuple(tuple(colour) for colour in _required_sequence(layer, "palette")),
+                opaque=_hex_bytes(layer.get("opaque", ""), "ripple extension"),
+            )
+            for item in value.get("ripple_layers", [])
+            for layer in (_as_mapping(item, "ripple layer"),)
+        ),
     )
 
 

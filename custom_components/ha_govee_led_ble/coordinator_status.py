@@ -100,6 +100,8 @@ def status_is_authorized(decoded: ParsedStatusEnvelope, profile: ModelProfile) -
         return profile.setting_grammar == "H607C" and bool(profile.boolean_controls)
     if domain_name == "bar_enable":
         return profile.setting_grammar == "H6046" and bool(profile.boolean_controls)
+    if domain_name == "source_info":
+        return profile.setting_grammar == "H60B0" and bool(profile.boolean_controls)
     if domain_name == "power_off_memory" and profile.setting_grammar == "H6046":
         return False
     if domain_name == "power_on_behaviour":
@@ -153,6 +155,7 @@ class ParsedColorModeResponse:
     left_bar_kelvin: int | None = None
     right_bar_kelvin: int | None = None
     raw_mode: int | None = None
+    source_values: dict[str, int] | None = None
 
 
 def _readback_kelvin(reported: int, profile: ModelProfile) -> int:
@@ -210,6 +213,32 @@ def parse_color_mode(generated: Any, model: str, *, profile: ModelProfile | None
 
     body = generated.body
     mode_name = getattr(body.mode, "name", None)
+    if profile.status_grammar == "H60B0":
+        if mode_name == "source_control":
+            from .h60b0_controls import source_readback
+
+            return ParsedColorModeResponse(mode=ParsedMode.COLOUR, source_values=source_readback(body.detail, profile))
+        if mode_name == "music":
+            from .music_protocol import music_slug_for
+
+            detail = body.detail
+            mode = music_slug_for("H60B0", int(detail.mode), profile=profile)
+            if mode not in profile.music_modes or not 0 <= detail.sensitivity <= 100:
+                raise ValueError("Invalid native music status")
+            return ParsedColorModeResponse(
+                mode=ParsedMode.MUSIC,
+                music_mode=mode,
+                music_sensitivity=int(detail.sensitivity),
+                music_color_present=False,
+            )
+        if mode_name == "static":
+            detail = body.detail
+            kelvin = int(detail.kelvin)
+            return ParsedColorModeResponse(
+                mode=ParsedMode.COLOUR,
+                rgb_color=None if kelvin else (detail.rgb.red, detail.rgb.green, detail.rgb.blue),
+                color_temp_kelvin=_readback_kelvin(kelvin, profile) if kelvin else None,
+            )
     if mode_name in {"legacy_static", "legacy_colour", "whole_device_colour"}:
         mode_name = "static"
     elif mode_name == "legacy_music":

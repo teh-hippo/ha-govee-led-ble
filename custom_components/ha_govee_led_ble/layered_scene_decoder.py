@@ -67,6 +67,12 @@ def decode_layered_scene(
     scene_type: int = 2,
 ) -> LayeredScene:
     """Decode layered fields while preserving source-only bytes and V2 trailers."""
+    if template.sku == "H60B0":
+        from .h60b0_effects import decode_combined_scene
+
+        if scene_type != 6:
+            raise ValueError("Combined scenes require the exact catalogue type")
+        return decode_combined_scene(template, raw_param, speed_index=speed_index)
     parsed, trailing_padding = parse_scene_body(raw_param, scene_type=scene_type)
     return LayeredScene(
         template=template,
@@ -96,6 +102,12 @@ def decode_catalogue_layered_scene(sku: str, entry: SceneEntry) -> LayeredScene 
 
 def encode_layered_scene(scene: LayeredScene, *, scene_type: int = 2, profile: ModelProfile | None = None) -> bytes:
     """Serialize canonical layers through the selected catalogue container."""
+    if scene.template.sku == "H60B0":
+        from .h60b0_effects import encode_combined_scene
+
+        if scene_type != 6:
+            raise ValueError("Combined scenes require the exact catalogue type")
+        return encode_combined_scene(scene)
     if scene_type == int(H607cSceneBody.CatalogueType.layered_scene):
         root = H607cSceneBody()
         root.marker = bytes((int(H607cSceneBody.UploadSubtype.layered_scene),))

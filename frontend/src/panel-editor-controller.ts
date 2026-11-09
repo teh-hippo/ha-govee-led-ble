@@ -556,6 +556,11 @@ export class PanelEditorController {
     this.installEditedContent(updateAdvancedEditorContent(this.model.content, content), interaction, scene);
   }
 
+  public rippleContentChanged(ripple_layers: import("./types").RippleLayer[], interaction?: LivePreviewInteraction, scene?: ScenePreviewRequest): void {
+    if (this.model.content.kind !== "scene_layered") return;
+    this.installEditedContent(cloneEditableEffect({ ...this.model.content, ripple_layers: structuredClone(ripple_layers), speed_index: null }), interaction, scene);
+  }
+
   public customContentChanged(
     content: CustomEffectContent | PaletteDiyEffectContent,
     interaction?: LivePreviewInteraction,

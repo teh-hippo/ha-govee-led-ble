@@ -27,6 +27,8 @@ Do not post Bluetooth addresses, serial numbers, account details or other unique
 - Entity setters run through `GoveeBLEEntity._async_latest`: the first request sends at once, and while it runs only the newest queued request per control is sent.  Light on, off and attribute calls share one key, with queued `turn_on` attributes merged.  Services, Effect Studio and background work bypass it.
 - Declare source lights only for independently addressable power controls.
   Attach segment masks or master brightness only when they leave siblings unchanged; keep uncertain mappings neutral and state unconfirmed until observed.
+  Declare source-specific colour modes and native attributes explicitly.
+  Partitioned segment writes must cover each position exactly once and keep separately addressed sources out of segment masks.
 - A new model needs its scene catalogue: run `uv run python tools/ble/refresh_scene_catalogues.py <SKU>` before registering its profile.  A workflow keeps existing catalogues current.
 - Plans and findings for a model live in its issue or pull request, not in `docs/`.
 

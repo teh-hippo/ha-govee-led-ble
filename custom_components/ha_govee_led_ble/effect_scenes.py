@@ -78,7 +78,7 @@ def scene_default_for(
     speed_index = value.speed_index
     if entry.speed is None:
         speed_index = None
-    elif (speed_index is None and entry.scene_type != 5) or (
+    elif (speed_index is None and entry.scene_type != 5 and model != "H60B0") or (
         speed_index is not None and not 0 <= speed_index < entry.speed.option_count
     ):
         speed_index = entry.speed.default_index
@@ -413,7 +413,9 @@ def resolve_scene_application_body(
             raise ValueError("this scene does not expose a documented Speed control")
         return scene_default.canonical_body, None
     resolved_speed = scene_default.speed_index if speed_index is None else speed_index
-    if scene.scene_type == 5 and resolved_speed is None:
+    if resolved_speed is None and (
+        scene.scene_type == 5 or scene.scene_type == 6 and scene_default.canonical_body[:1] == b"\x51"
+    ):
         return scene_default.canonical_body, None
     if resolved_speed is None:
         resolved_speed = speed.default_index

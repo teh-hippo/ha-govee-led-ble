@@ -101,6 +101,10 @@ MusicBody = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.music_body").MusicBody,
 )
+H60b0MusicBody = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h60b0_music_body").H60b0MusicBody,
+)
 
 _H617A_MODE_CODES: Final[Mapping[str, int]] = MappingProxyType({mode.name: int(mode) for mode in GoveeCommon.MusicMode})
 _H6099_MODE_CODES: Final[Mapping[str, int]] = MappingProxyType(
@@ -132,6 +136,7 @@ _H7020_MODE_CODES: Final[Mapping[str, int]] = MappingProxyType(
 MUSIC_MODE_CODES_BY_MODEL: Final[Mapping[str, Mapping[str, int]]] = MappingProxyType(
     {
         "H1771": MappingProxyType({mode.name: int(mode) for mode in H1771MusicBody.MusicMode}),
+        "H60B0": MappingProxyType({mode.name: int(mode) for mode in H60b0MusicBody.MusicMode}),
         "H617A": _H617A_MODE_CODES,
         "H6099": _H6099_MODE_CODES,
         "H6097": MappingProxyType({mode.name: int(mode) for mode in H6097MusicWrite.MusicMode}),
@@ -158,6 +163,7 @@ _MUSIC_MODE_SLUGS_BY_MODEL: Final[Mapping[str, Mapping[int, str]]] = MappingProx
 _MUSIC_STYLE_CODES_BY_MODEL: Final[Mapping[str, frozenset[int]]] = MappingProxyType(
     {
         "H617A": _H617A_STYLE_CODES,
+        "H60B0": frozenset(),
         "H6099": _H617A_STYLE_CODES,
         "H6097": _H617A_STYLE_CODES,
         "H66A0": frozenset({int(H66a0MusicWrite.MusicMode.rhythm), int(H66a0MusicWrite.MusicMode.bloom)}),
@@ -176,6 +182,7 @@ _MUSIC_STYLE_CODES_BY_MODEL: Final[Mapping[str, frozenset[int]]] = MappingProxyT
 _MUSIC_PARAMETER_WRITE_CODES_BY_MODEL: Final[Mapping[str, frozenset[int]]] = MappingProxyType(
     {
         "H1771": frozenset(int(mode) for mode in H1771MusicBody.MusicMode),
+        "H60B0": frozenset(int(mode) for mode in H60b0MusicBody.MusicMode if mode.name != "disabled"),
         "H617A": _H617A_PARAMETER_WRITE_CODES,
         "H6099": _H6099_PARAMETER_WRITE_CODES,
         "H6097": frozenset(int(mode) for mode in H6097MusicParameters.CompanionMode),

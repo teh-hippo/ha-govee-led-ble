@@ -29,6 +29,10 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     """
 
     brightness_pct: int
+    bottom_brightness: int | None
+    bottom_kelvin: int | None
+    top_kelvin: int | None
+    ripple_speed: int | None
     profile: ModelProfile
     address: str
     model: str

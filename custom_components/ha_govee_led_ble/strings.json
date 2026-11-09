@@ -1,6 +1,9 @@
 {
   "entity": {
     "light": {
+      "top": {"name": "Top"},
+      "side": {"name": "Side"},
+      "bottom": {"name": "Bottom"},
       "source_0": {"name": "Light source 1"},
       "source_1": {"name": "Light source 2"},
       "left_bar": {"name": "Left light bar"},
@@ -11,6 +14,9 @@
       "ring": {"name": "Ring"}
     },
     "switch": {
+      "top_enabled": {"name": "Top enabled"},
+      "side_enabled": {"name": "Side enabled"},
+      "bottom_enabled": {"name": "Bottom enabled"},
       "low_blue_light": {"name": "Low-blue-light"},
       "gradual": {"name": "Gradual"},
       "limit": {"name": "Limit"},
@@ -25,6 +31,7 @@
       "source_1_enabled": {"name": "Light source 2 enabled"}
     },
     "number": {
+      "ripple_speed": {"name": "Ripple speed"},
       "low_blue_light_level": {"name": "Low-blue-light level"}
     },
     "select": {

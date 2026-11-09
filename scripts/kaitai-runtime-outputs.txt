@@ -1,6 +1,11 @@
 __init__.py
 command_write.py
 h619a_status_reply.py
+h60b0_command_write.py
+h60b0_command_ack.py
+h60b0_effect_upload.py
+h60b0_status_query.py
+h60b0_status_reply.py
 h1771_command_write.py
 h1771_status_query.py
 h1771_status_reply.py
@@ -46,6 +51,10 @@ h6072_music_write.py
 h6072_music_body.py
 h6072_music_ack.py
 h607c_scene_body.py
+h60b0_scene_body.py
+h60b0_music_body.py
+h60b0_diy_body.py
+h60b0_diy_v3.py
 h607c_command_write.py
 h607c_control.py
 h607c_status_query.py

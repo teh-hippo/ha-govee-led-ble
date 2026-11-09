@@ -108,7 +108,7 @@ export function buildCustomEffectEntries(
           kind: "saved",
           key: `saved:${item.id}`,
           label: item.name,
-          category: item.native_workflow === "multi" ? "multi-layer" : customEffectCategoryForKind(item.kind),
+          category: item.native_workflow === "advanced" ? "advanced" : item.native_workflow === "multi" ? "multi-layer" : customEffectCategoryForKind(item.kind),
           item,
         }),
       ),

@@ -59,6 +59,7 @@ from .effect_domain import (
 )
 from .generated_protocol_adapter import build_diy_activation, build_scene_activation
 from .h60a6_effects import encode_native_body
+from .h60b0_effects import H60b0SceneBody
 from .layered_scene import CatalogueRef
 from .layered_scene_decoder import encode_layered_scene, encode_workshop_effect
 from .music_commands import build_zoned_music_body, resolve_music_profile
@@ -73,6 +74,7 @@ from .native_scenes import (
 )
 from .protocol_core import (
     H60a6EffectFrame,
+    H60b0CommandAck,
     H607cDiyBody,
     H607cPaintBody,
     H607cSceneBody,
@@ -126,6 +128,7 @@ class CompiledEffect:
     body_template_id: int | None = None
     body_effect_code: int | None = None
     rgbic_scene_v0: bool | None = None
+    native_effect_revision: int = 0
 
     @property
     def packets(self) -> tuple[bytes, ...]:
@@ -228,6 +231,8 @@ def validate_compiled_geometry(compiled: CompiledApplication, profile: ModelProf
             and profile.effect_grammar != get_profile(compiled.model).effect_grammar
         ):
             raise ValueError("Device native effect grammar changed since compilation")
+        if compiled.native_effect_revision and compiled.native_effect_revision != profile.native_effect_revision:
+            raise ValueError("Device native effect revision changed since compilation")
         if compiled.scene_entry is not None:
             entry = scene_for_profile(compiled.scene_entry, profile)
             if compiled.scene_route != (
@@ -260,6 +265,11 @@ def validate_compiled_geometry(compiled: CompiledApplication, profile: ModelProf
                 "h6179_mixed_diy": CapabilityWorkflow.MULTI,
                 "native_effect": CapabilityWorkflow.LAYERED_SCENES
                 if compiled.scene_entry is not None
+                else CapabilityWorkflow.ADVANCED
+                if profile.effect_grammar == "H60B0" and compiled.body_effect_code in (13, 923)
+                else CapabilityWorkflow.MULTI
+                if profile.effect_grammar == "H60B0"
+                and (compiled.body_effect_code == 81 or compiled.native_effect_revision == 3)
                 else CapabilityWorkflow.MULTI
                 if profile.effect_grammar == "H607C" and compiled.body_effect_code == H607cDiyBody.Family.paired
                 else CapabilityWorkflow.PAINTED
@@ -374,6 +384,12 @@ def compatibility(item: LibraryItem, model: str, *, profile: ModelProfile | None
         return CompatibilityResult(CompatibilityState.COMPATIBLE)
     if isinstance(content, NativeEffect):
         try:
+            if profile.effect_grammar == "H60B0":
+                require_effect_route(model, CapabilityWorkflow(content.workflow), ("H60B0",), profile=profile)
+                validate_effect_eligibility(content, model, profile=profile)
+                resolve_diy_code(item, model=model, profile=profile)
+                encode_native_body(content)
+                return CompatibilityResult(CompatibilityState.COMPATIBLE)
             if profile.effect_grammar == "H1771":
                 workflow = (
                     CapabilityWorkflow.LAYERED_SCENES if content.template is not None else CapabilityWorkflow.MULTI
@@ -497,7 +513,7 @@ def compatibility(item: LibraryItem, model: str, *, profile: ModelProfile | None
                 expected_scene_type=1
                 if isinstance(content, PaletteScene)
                 else int(H607cSceneBody.CatalogueType.layered_scene)
-                if profile.effect_grammar == "H607C"
+                if profile.effect_grammar in {"H607C", "H60B0"}
                 else 2,
             )
             if isinstance(content, PaletteScene) and content.speed_index is not None:
@@ -596,6 +612,10 @@ def resolve_diy_code(
         model = content.model if model is None else model
         if model != content.model:
             raise ValueError("native content targets another model")
+        if content.model == "H60B0" and content.family == 81:
+            if requested is not None and requested != 510:
+                raise ValueError("Native combination requires its temporary scene selector")
+            return int(H60b0SceneBody.ActivationSelector.temporary)
         from .effect_catalogue import MODEL_EFFECT_CATALOGUES
 
         catalogue = MODEL_EFFECT_CATALOGUES.get(model)
@@ -836,7 +856,7 @@ def compile_scene_effect(
             expected_scene_type=1
             if isinstance(content, PaletteScene)
             else int(H607cSceneBody.CatalogueType.layered_scene)
-            if profile.effect_grammar == "H607C"
+            if profile.effect_grammar in {"H607C", "H60B0"}
             else 2,
         )
         payload, speed = encode_authored_scene_body(content, entry)
@@ -923,7 +943,11 @@ def compile_native_effect(
         raise ValueError("; ".join(result.reasons))
     route = "a4" if content.family == 798 and profile.effect_grammar == "H60A6" else "a3"
     subtype = (
-        int(H607cDiyBody.UploadSubtype.native_diy)
+        int(H60b0SceneBody.UploadSubtype.combined)
+        if profile.effect_grammar == "H60B0" and content.family == 81
+        else int(H60b0CommandAck.UploadKind.native_diy)
+        if profile.effect_grammar == "H60B0"
+        else int(H607cDiyBody.UploadSubtype.native_diy)
         if profile.effect_grammar == "H607C"
         else int(H1771EffectUpload.UploadKind.native_diy)
         if profile.effect_grammar == "H1771"
@@ -952,7 +976,11 @@ def compile_native_effect(
         custom_selector = resolve_diy_code(item, diy_code, model=model, profile=profile)
         assert custom_selector is not None
         selector = custom_selector
-        activation = build_diy_activation(selector, model, profile=profile)
+        activation = (
+            build_scene_activation(model, selector, profile=profile)
+            if content.model == "H60B0" and content.family == 81
+            else build_diy_activation(selector, model, profile=profile)
+        )
     upload = tuple((fragment_a4 if route == "a4" else fragment_a3)(subtype, body)) if body else ()
     return CompiledEffect(
         item_id=str(item.id),
@@ -960,8 +988,10 @@ def compile_native_effect(
         model=model,
         content_kind="native_effect",
         diy_code=selector,
-        activation_mode=ActivationMode.SCENE if entry is not None else ActivationMode.CUSTOM,
-        selector_kind="scene" if entry is not None else "diy",
+        activation_mode=ActivationMode.SCENE
+        if entry is not None or content.model == "H60B0" and content.family == 81
+        else ActivationMode.CUSTOM,
+        selector_kind="scene" if entry is not None or content.model == "H60B0" and content.family == 81 else "diy",
         expected_effect=scene_key,
         upload_packets=upload,
         activation_packet=activation,
@@ -973,9 +1003,10 @@ def compile_native_effect(
         ),
         upload_transport=route,
         upload_subtype=subtype if upload else None,
-        body_effect_code=content.family if profile.effect_grammar == "H607C" else None,
+        body_effect_code=content.family if profile.effect_grammar in {"H607C", "H60B0"} else None,
         physical_ic_count=profile.physical_ic_count if content.family == 798 else None,
         scene_entry=entry,
+        native_effect_revision=profile.native_effect_revision if profile.effect_grammar == "H60B0" else 0,
         scene_route=(profile.command_grammar, profile.effect_grammar, profile.selector_only_scene_bits)
         if entry is not None
         else None,

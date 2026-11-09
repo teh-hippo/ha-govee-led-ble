@@ -26,6 +26,8 @@ class ScenePage:
     move_all: tuple[int, ...] = ()
     colour_speed: tuple[int, ...] = ()
     brightness_speeds: tuple[SceneBrightnessSpeed, ...] = ()
+    ripple_colour_speed: tuple[int, ...] = ()
+    ripple_movement_speed: tuple[int, ...] = ()
 
     @property
     def option_lists(self) -> tuple[tuple[int, ...], ...]:
@@ -33,6 +35,8 @@ class ScenePage:
             self.move_in,
             self.move_all,
             self.colour_speed,
+            self.ripple_colour_speed,
+            self.ripple_movement_speed,
             *(brightness.values for brightness in self.brightness_speeds),
         )
 
@@ -99,6 +103,8 @@ def _load_speed(data: dict[str, Any] | None) -> SceneSpeed | None:
             move_in=tuple(page.get("move_in", [])),
             move_all=tuple(page.get("move_all", [])),
             colour_speed=tuple(page.get("colour_speed", [])),
+            ripple_colour_speed=tuple(page.get("ripple_colour_speed", [])),
+            ripple_movement_speed=tuple(page.get("ripple_movement_speed", [])),
             brightness_speeds=tuple(
                 SceneBrightnessSpeed(
                     block=int(brightness["block"]),

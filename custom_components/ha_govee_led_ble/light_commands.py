@@ -23,6 +23,36 @@ ALL_SEGMENTS_MASK = 0x7FFF
 type SegmentColorGroup = tuple[Iterable[int], tuple[int, int, int]]
 
 
+def segment_write_groups(segments: Iterable[int], profile: ModelProfile) -> list[list[int]]:
+    selected = tuple(segments)
+    segments_to_mask(selected, profile)
+    if not profile.partition_segment_writes:
+        return [list(selected)]
+    return [
+        [segment for segment in selected if segment in source.segments]
+        for source in profile.light_sources
+        if any(segment in source.segments for segment in selected)
+    ]
+
+
+def build_segment_brightness_packets(
+    segments: Iterable[int], percent: int, model: str, *, profile: ModelProfile
+) -> list[bytes]:
+    return [
+        build_segment_brightness(group, percent, model, profile=profile)
+        for group in segment_write_groups(segments, profile)
+    ]
+
+
+def build_segment_kelvin_packets(
+    segments: Iterable[int], kelvin: int, model: str, *, profile: ModelProfile
+) -> list[bytes]:
+    return [
+        build_segment_color_temp(group, kelvin, model, profile=profile)
+        for group in segment_write_groups(segments, profile)
+    ]
+
+
 def scale_segment_groups(groups: Iterable[SegmentColorGroup], rgb_scale: int = 100) -> list[SegmentColorGroup]:
     """Freeze an explicit palette and scale it once, without reading previous output."""
     if type(rgb_scale) is not int or not 0 <= rgb_scale <= 100:
@@ -99,9 +129,11 @@ def build_segment_paint(
     profile: ModelProfile | None = None,
 ) -> list[bytes]:
     """Build one packet for each group because distinct colours require distinct writes."""
+    profile = profile or get_profile(model)
     packets = [
-        build_segment_color(segments, red, green, blue, model, profile=profile)
+        build_segment_color(group, red, green, blue, model, profile=profile)
         for segments, (red, green, blue) in groups
+        for group in segment_write_groups(segments, profile)
     ]
     if not packets:
         raise ValueError("at least one non-empty segment group is required")
@@ -224,6 +256,47 @@ def parse_static_write(
     if generated is None or not hasattr(generated.opcode, "name"):
         return None
     whole_device_mask = profile.whole_device_mask
+    if profile.command_grammar == "H60B0":
+        if generated.opcode.name != "multi":
+            return None
+        sub = generated.body.sub.name
+        detail = generated.body.sub_body
+        if sub == "static":
+            kelvin = int(detail.kelvin)
+            return ParsedStaticWrite(
+                operation=1,
+                segment_mask=whole_device_mask,
+                whole_device_mask=whole_device_mask,
+                rgb=None if kelvin else (detail.rgb.red, detail.rgb.green, detail.rgb.blue),
+                kelvin=kelvin or None,
+                kelvin_companion_rgb=(detail.companion_rgb.red, detail.companion_rgb.green, detail.companion_rgb.blue)
+                if kelvin
+                else None,
+            )
+        if sub != "source_control":
+            return None
+        source, operation, body = detail.source.name, detail.operation.name, detail.detail
+        if source == "bottom_enabled" or operation == "secondary":
+            return None
+        mask = 1 << 8 if source == "top_enabled" else body.mask if hasattr(body, "mask") else whole_device_mask
+        if operation == "colour":
+            colour = body.colour
+            kelvin = int(colour.kelvin)
+            rgb = int(colour.rgb.red), int(colour.rgb.green), int(colour.rgb.blue)
+            return ParsedStaticWrite(
+                operation=1,
+                segment_mask=mask,
+                whole_device_mask=whole_device_mask,
+                rgb=None if kelvin else rgb,
+                kelvin=kelvin or None,
+                kelvin_companion_rgb=rgb if kelvin else None,
+            )
+        levels = body.levels if source in {"all", "colour_sources"} else (body.value,)
+        if len(set(levels)) == 1:
+            return ParsedStaticWrite(
+                operation=2, segment_mask=mask, whole_device_mask=whole_device_mask, brightness_pct=int(levels[0])
+            )
+        return None
     if profile.command_grammar in {"H6072", "H6072-legacy"} and generated.is_static:
         legacy = generated.body.sub.name == "legacy_static"
         if legacy != (profile.command_grammar == "H6072-legacy"):

@@ -19,6 +19,7 @@ class MusicZone:
     parameters: Mapping[str, Any] = field(default_factory=dict)
     palette: tuple[tuple[int, int, int], ...] | None = None
     body: bytes | None = None
+    calm: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -71,7 +72,62 @@ COMPANION_MUSIC_LAYOUTS = frozenset(
         "h7025_music_body",
         "h6046_music_body",
         "h1771_music_body",
+        "h60b0_music_body",
     }
+)
+
+_H60B0_PALETTE = "07ff0000ff7f00ffff0000ff000000ff00ffff8b00ff"
+H60B0_MUSIC_VARIANTS = (
+    MusicVariant(
+        0,
+        "H60B0 disabled custom source",
+        "h60b0_music_body",
+        bytes.fromhex(f"00{_H60B0_PALETTE}"),
+        supports_fixed_colour=False,
+    ),
+    MusicVariant(
+        80,
+        "H60B0 custom side palette",
+        "h60b0_music_body",
+        bytes.fromhex(f"50{_H60B0_PALETTE}"),
+        palette_bounds=(1, 8),
+        supports_fixed_colour=False,
+    ),
+    *(
+        MusicVariant(
+            code,
+            "H60B0 exact-model onboard palette and style",
+            "h60b0_music_body",
+            bytes.fromhex(f"{code:02x}{_H60B0_PALETTE}" + ("01" if code in (48, 49, 114) else "")),
+            supports_style=code in (48, 49, 114),
+            palette_bounds=bounds,
+            supports_fixed_colour=False,
+        )
+        for code, bounds in ((131, (1, 8)), (83, (2, 8)), (81, (4, 8)), (48, (2, 8)), (114, (1, 8)), (49, (1, 8)))
+    ),
+    MusicVariant(
+        51,
+        "H60B0 physical-IC-qualified Hopping companion",
+        "h60b0_music_body",
+        bytes.fromhex(f"33{_H60B0_PALETTE}000000196201030614"),
+        (
+            MusicParamSpec("music_hopping_background", "background", "background", "number", 0, 0, 0xFFFFFF),
+            MusicParamSpec(
+                "music_hopping_brightness", "relative_brightness", "relative_brightness", "number", 25, 0, 50
+            ),
+        ),
+        requires_physical_ic_count=True,
+        physical_defaults="h60b0_hopping",
+        palette_bounds=(1, 8),
+        supports_fixed_colour=False,
+    ),
+    MusicVariant(
+        130,
+        "H60B0 independent side and ripple music",
+        "h60b0_music_body",
+        bytes.fromhex(f"823017{_H60B0_PALETTE}018316{_H60B0_PALETTE}"),
+        supports_fixed_colour=False,
+    ),
 )
 
 _H6046_BAR_COLOURS = (

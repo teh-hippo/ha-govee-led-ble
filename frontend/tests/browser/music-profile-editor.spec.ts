@@ -1,6 +1,20 @@
 import { expect, test } from "@playwright/test";
 import type { GoveeMusicProfileEditor } from "../../src/music-profile-editor";
 
+test("combined music filters each source roster and retains independent style", async ({ page }) => {
+  await page.goto("/tests/browser/fixtures/music-profile-editor.html?combined");
+  const editor = page.locator("body > govee-music-profile-editor");
+  const children = editor.locator("govee-music-profile-editor");
+  await expect(children).toHaveCount(2);
+  await expect(children.nth(1).getByLabel("Reactive effect").locator("option[value='vortex']")).toHaveCount(0);
+  await expect(children.nth(0).getByLabel("Reactive effect").locator("option[value='vortex']")).toHaveCount(1);
+  const original = await editor.evaluate(element => (element as GoveeMusicProfileEditor).content!);
+  await children.nth(0).getByLabel("Style", { exact: true }).selectOption("calm");
+  const changed = await editor.evaluate(element => (element as GoveeMusicProfileEditor).content!);
+  expect(changed.zones![0].calm).toBe(true);
+  expect(changed.zones![1]).toEqual(original.zones![1]);
+});
+
 test("paired music edits isolate zones and do not bubble child mode changes to the parent", async ({ page }) => {
   await page.goto("/tests/browser/fixtures/music-profile-editor.html?paired");
   const editor = page.locator("body > govee-music-profile-editor");
