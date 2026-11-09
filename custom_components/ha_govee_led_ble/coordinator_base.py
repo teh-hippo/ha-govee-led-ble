@@ -160,6 +160,9 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
 
     if TYPE_CHECKING:
 
+        @property
+        def effect_authorization_profile(self) -> ModelProfile: ...
+
         def _renew_foreground_lease(self) -> None: ...
 
         async def _disconnect_locked(self, *, clear_cache: bool = False) -> None: ...
