@@ -151,9 +151,7 @@ def test_profile_gates_and_grammar_direction(monkeypatch) -> None:
 
 
 def test_light_service_registration(hass) -> None:
-    with patch(
-        "custom_components.ha_govee_led_ble.light_services.service.async_register_platform_entity_service"
-    ) as register:
+    with patch("custom_components.ha_govee_led_ble.light_services.register_device_light_service") as register:
         async_register_light_services(hass)
     calls = {call.args[2]: call.kwargs for call in register.call_args_list}
     write = calls["set_installation_direction"]

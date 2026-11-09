@@ -109,6 +109,145 @@ def _generated(module: str, class_name: str) -> type[Any]:
     return getattr(import_module(f"{_MODULE_PREFIX}{module}"), class_name)
 
 
+@pytest.mark.parametrize("selector", [0, 1])
+@pytest.mark.parametrize("enabled", [0, 1])
+def test_h1771_candidate_source_switch_preserves_unknown_tail(selector, enabled):
+    tail = bytes(range(1, 16))
+    payload = bytes((0x33, 0x36, selector, enabled)) + tail
+    data = payload + bytes((xor_checksum(payload),))
+    root = _generated("h1771_command_write", "H1771CommandWrite").from_bytes(data)
+    root._read()
+    assert int(root.body.source) == selector
+    assert root.body.enabled == enabled
+    assert root.body.unknown_tail == tail
+    assert protocol_core.serialize_native_body(root) == data
+
+
+@pytest.mark.parametrize(
+    ("prefix", "sub", "field", "expected"),
+    [
+        ("3305150101020300000000000f00", "static", "mask", 15),
+        ("33051502050300", "static", "mask", 3),
+        ("33051503010a141e28", "static", "segment_percent", [10, 20, 30, 40]),
+        ("330513ae63", "music", "mode", 174),
+        ("33050afe00", "diy", "code", 254),
+    ],
+)
+def test_h1771_candidate_command_fields_and_unknown_tail(prefix, sub, field, expected):
+    content = bytes.fromhex(prefix)
+    data = content + bytes(range(1, 20 - len(content)))
+    data += bytes((xor_checksum(data),))
+    root = _generated("h1771_command_write", "H1771CommandWrite").from_bytes(data)
+    root._read()
+    assert root.body.sub.name == sub
+    detail = root.body.sub_body.static_body if sub == "static" else root.body.sub_body
+    value = getattr(detail, field)
+    assert (value.bits if field == "mask" else value) == expected
+    assert detail.unknown_tail and detail.unknown_tail[-1] != 0
+    assert protocol_core.serialize_native_body(root) == data
+
+
+def test_h1771_candidate_bulk_source_flags_preserve_unknown_bits():
+    raw = bytes.fromhex("360185dead")
+    root = _generated("h1771_bulk", "H1771Bulk")()
+    payload = root.Payload(KaitaiStream(io.BytesIO(raw)), _root=root)
+    with pytest.raises(EOFError):
+        payload._read()
+    record = root.Record(KaitaiStream(io.BytesIO(raw)), _root=root)
+    record._read()
+    assert record.body.master_enabled and not record.body.source_0_enabled and record.body.source_1_enabled
+    assert record.body.unknown_mask == 0x80
+
+
+@pytest.mark.parametrize(("prefix", "field"), [("aa0501", "selector"), ("aaa501", "group")])
+def test_h1771_candidate_query_preserves_unknown_tail(prefix, field):
+    content = bytes.fromhex(prefix)
+    data = content + bytes(range(1, 20 - len(content)))
+    data += bytes((xor_checksum(data),))
+    parsed = _generated("h1771_status_query", "H1771StatusQuery").from_bytes(data)
+    parsed._read()
+    assert getattr(parsed.body, field) == 1
+    assert parsed.body.unknown_tail[-1] != 0
+    assert protocol_core.serialize_native_body(parsed) == data
+
+
+def test_h1771_candidate_mode_and_segment_readback():
+    mode = bytes.fromhex("aa050d010fa0").ljust(19, b"\x7f")
+    mode += bytes((xor_checksum(mode),))
+    parsed = _generated("h1771_status_reply", "H1771StatusReply").from_bytes(mode)
+    parsed._read()
+    assert parsed.body.detail.kelvin == 4000
+    assert parsed.body.detail.unknown_tail == bytes([0x7F]) * 13
+    assert protocol_core.serialize_native_body(parsed) == mode
+
+    segments = bytes.fromhex("aaa50164010203500405063c070809280a0b0c")
+    segments += bytes((xor_checksum(segments),))
+    parsed = _generated("h1771_status_reply", "H1771StatusReply").from_bytes(segments)
+    parsed._read()
+    assert [segment.brightness for segment in parsed.body.segments] == [100, 80, 60, 40]
+    assert protocol_core.serialize_native_body(parsed) == segments
+
+
+def test_h1771_candidate_diy_sections_and_scene_wrapper_round_trip():
+    body = bytes.fromhex("1300060001013264a4060900010b31ff0001010203")
+    root = _generated("h1771_diy_body", "H1771DiyBody").from_bytes(body + b"\xde\xad")
+    root._read()
+    assert root.body.first.body.kelvin == 1700
+    assert root.body.first.body.brightness == 100
+    assert root.body.second.body.parameter_1 == 255
+    assert root.body.second.body.palette.colours[0].red == 1
+    assert root.unknown_tail == b"\xde\xad"
+    assert protocol_core.serialize_native_body(root) == body + b"\xde\xad"
+    scene = _generated("h1771_diy_body", "H1771DiyBody").Scene(KaitaiStream(io.BytesIO(b"\x50" + body)), _root=root)
+    scene._read()
+    assert protocol_core.serialize_native_body(scene) == b"\x50" + body
+
+
+def test_h1771_candidate_diy_preserves_unknown_section_types():
+    body = bytes.fromhex("0a000300017faa030000dead")
+    root = _generated("h1771_diy_body", "H1771DiyBody").from_bytes(body)
+    root._read()
+    assert root.body.first.body == b"\xaa"
+    assert root.body.second.unknown_tail == b"\xde\xad"
+    assert protocol_core.serialize_native_body(root) == body
+
+
+@pytest.mark.parametrize(
+    ("body", "background"),
+    [
+        ("0d0000000900010720010201010203", None),
+        ("0e0000000a0001082009080701010203", (9, 8, 7)),
+    ],
+)
+def test_h1771_candidate_diy_additional_palette_layouts(body, background):
+    data = bytes.fromhex(body)
+    root = _generated("h1771_diy_body", "H1771DiyBody").from_bytes(data)
+    root._read()
+    effect = root.body.second.body
+    if background is not None:
+        assert (effect.background.red, effect.background.green, effect.background.blue) == background
+    assert (effect.palette.colours[0].red, effect.palette.colours[0].green, effect.palette.colours[0].blue) == (1, 2, 3)
+    assert protocol_core.serialize_native_body(root) == data
+
+
+@pytest.mark.parametrize(
+    ("body", "mode", "style", "tail"),
+    [
+        ("040201020304050601dead", "rhythm", 1, bytes.fromhex("dead")),
+        ("ae01010203beef", "expansion", None, bytes.fromhex("beef")),
+    ],
+)
+def test_h1771_candidate_music_palette_preserves_suffix(body, mode, style, tail):
+    data = bytes.fromhex(body)
+    root = _generated("h1771_music_body", "H1771MusicBody").from_bytes(data)
+    root._read()
+    assert root.mode.name == mode
+    assert (root.palette[0].red, root.palette[0].green, root.palette[0].blue) == (1, 2, 3)
+    assert getattr(root.tail, "style", None) == style
+    assert root.tail.unknown_tail == tail
+    assert protocol_core.serialize_native_body(root) == data
+
+
 @pytest.mark.parametrize(
     ("prefix", "mode", "field", "expected"),
     [

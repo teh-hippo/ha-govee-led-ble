@@ -109,6 +109,8 @@ class PriorControlState:
     right_bar_enabled: bool | None = None
     pole_enabled: bool | None = None
     base_enabled: bool | None = None
+    source_0_enabled: bool | None = None
+    source_1_enabled: bool | None = None
     left_bar_kelvin: int | None = None
     right_bar_kelvin: int | None = None
     effect: str | None = None
@@ -437,6 +439,8 @@ class PriorControlState:
                     ("right_bar_enabled", self.right_bar_enabled),
                     ("pole_enabled", self.pole_enabled),
                     ("base_enabled", self.base_enabled),
+                    ("source_0_enabled", self.source_0_enabled),
+                    ("source_1_enabled", self.source_1_enabled),
                     ("left_bar_kelvin", self.left_bar_kelvin),
                     ("right_bar_kelvin", self.right_bar_kelvin),
                 )
@@ -565,6 +569,8 @@ class PriorControlState:
             right_bar_enabled=_optional_bool(raw, "right_bar_enabled"),
             pole_enabled=_optional_bool(raw, "pole_enabled"),
             base_enabled=_optional_bool(raw, "base_enabled"),
+            source_0_enabled=_optional_bool(raw, "source_0_enabled"),
+            source_1_enabled=_optional_bool(raw, "source_1_enabled"),
             left_bar_kelvin=_optional_int(raw, "left_bar_kelvin"),
             right_bar_kelvin=_optional_int(raw, "right_bar_kelvin"),
             segment_colors=segment_colors,

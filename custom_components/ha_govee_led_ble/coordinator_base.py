@@ -39,6 +39,8 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     is_on: bool
     effect: str | None
     fw_version: str | None
+    wireless_firmware_version: str | None
+    wireless_hardware_version: str | None
     hw_version: str | None
     rgb_color: tuple[int, int, int]
     color_temp_kelvin: int | None
@@ -86,6 +88,14 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     diy_companion: int | None
     power_on_open_flag: int | None
     color_mode: ParsedMode | None
+    _observed_color_mode: ParsedMode | None
+    _mode_write_generation: int
+    _observed_mode_write_generation: int
+    _observed_mode_profile_generation: int
+    _power_write_generation: int
+    _observed_power_write_generation: int
+    _observed_power_profile_generation: int
+    _source_power_observation_generation: dict[str, tuple[int, int]]
     _control_lock: BLEControlArbiter
     _lock: asyncio.Lock
     segment_state_source: str
@@ -94,6 +104,7 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     _confirmed_identity_fields: set[str]
     control_write_attempts: int
     _static_write_attempts: int
+    source_static_intents: dict[str, int | tuple[int, int, int]]
     _profile_generation: int
     _authorization_generation: int
     _pre_mode_snapshot: PreModeSnapshot

@@ -70,6 +70,7 @@ COMPANION_MUSIC_LAYOUTS = frozenset(
         "h61f5_music_parameters",
         "h7025_music_body",
         "h6046_music_body",
+        "h1771_music_body",
     }
 )
 
@@ -81,6 +82,19 @@ _H6046_BAR_COLOURS = (
         )
         for bar in ("left", "right")
     ),
+)
+H1771_MUSIC_VARIANTS = tuple(
+    MusicVariant(
+        code,
+        "H1771 candidate onboard music palette",
+        "h1771_music_body",
+        bytes.fromhex(f"{code:02x}07ff0000ff7f00ffff0000ff000000ff00ffff8b00ff" + ("00" if code == 4 else "")),
+        supports_style=code == 4,
+        calm_default=code == 4,
+        palette_bounds=bounds,
+        supports_fixed_colour=False,
+    )
+    for code, bounds in ((4, (1, 8)), (174, (1, 8)), (52, (2, 8)), (72, (1, 8)), (81, (2, 8)), (73, (1, 8)))
 )
 H6046_MUSIC_VARIANTS = (
     *(

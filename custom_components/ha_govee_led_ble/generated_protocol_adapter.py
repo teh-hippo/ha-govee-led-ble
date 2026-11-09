@@ -42,6 +42,11 @@ from .protocol_core import (
     H607cMusicBody,
     H607cMusicWrite,
     H607cSceneBody,
+    H1771Bulk,
+    H1771CommandWrite,
+    H1771EffectUpload,
+    H1771MusicBody,
+    H1771StatusQuery,
     H6046CommandAck,
     H6046CommandWrite,
     H6046EffectUpload,
@@ -188,7 +193,7 @@ def parse_command_ack_result(frame: bytes, model: str, *, profile: ModelProfile 
             return video
     if profile.music_grammar in _H6076_ACK_ROOTS:
         music = _parse_xor_frame(frame, profile.music_grammar, _H6076_ACK_ROOTS)
-        if music.parsed is not None:
+        if music.parsed is not None and (profile.music_grammar != "H1771" or music.parsed.is_upload):
             return music
     return _parse_xor_frame(frame, profile.command_ack_grammar or profile.command_grammar, _COMMAND_ACK_ROOTS)
 
@@ -282,7 +287,12 @@ def parse_command(frame: bytes, model: str = "H617A", *, profile: ModelProfile |
 
 def boolean_control_name(operation: str) -> str | None:
     """Map named shared register semantics, never byte offsets or SKU identity."""
-    return {"multi_effect": "gradual", "limit": "limit", "power_off_memory": "power_off_memory"}.get(operation)
+    return {
+        "multi_effect": "gradual",
+        "gradual": "gradual",
+        "limit": "limit",
+        "power_off_memory": "power_off_memory",
+    }.get(operation)
 
 
 def boolean_control_is_authorized(control: str, profile: ModelProfile) -> bool:
@@ -349,9 +359,10 @@ def _check_h607c_setting_packet(frame: bytes, profile: ModelProfile) -> bool:
 
 
 def _check_bulk_query_packet(frame: bytes, profile: ModelProfile) -> bool:
-    """H60A bulk status queries."""
-    if profile.bulk_status_grammar == "H60A":
-        query = _parse_xor_frame(frame, "bulk", {"bulk": ("h60a_bulk.query", H60aBulk.Query)}).parsed
+    """Qualified bulk status queries."""
+    roots = {"H60A": ("h60a_bulk.query", H60aBulk.Query), "H1771": ("h1771_bulk.query", H1771Bulk.Query)}
+    if profile.bulk_status_grammar in roots:
+        query = _parse_xor_frame(frame, profile.bulk_status_grammar, roots).parsed
         if query is not None:
             bulk_allowed = bulk_status_domains(profile)
             if all(getattr(domain, "name", None) in bulk_allowed for domain in query.domains):
@@ -447,6 +458,19 @@ def _check_command_packet(frame: bytes, profile: ModelProfile) -> bool:
     command = _parse_xor_frame(frame, profile.command_grammar, _COMMAND_ROOTS).parsed
     if command is not None:
         operation = getattr(command.opcode, "name", "")
+        if operation == "zone_enable" and profile.setting_grammar == "H1771":
+            control = getattr(command.body.source, "name", None)
+            if control in profile.boolean_controls and command.body.enabled in (0, 1):
+                return True
+            raise ValueError("Source control is outside profile capabilities")
+        if operation == "power_on_behaviour" and profile.setting_grammar == "H1771":
+            if (
+                profile.supports_power_on_behaviour
+                and getattr(command.body.selector, "name", None) == "state"
+                and getattr(command.body.state, "name", None) is not None
+            ):
+                return True
+            raise ValueError("Power-on behaviour is outside profile capabilities")
         if operation in {"bar_enable", "swap_bars"}:
             if profile.setting_grammar == "H6046" and profile.boolean_controls == {
                 "left_bar_enabled",
@@ -483,6 +507,8 @@ def _check_command_packet(frame: bytes, profile: ModelProfile) -> bool:
         control = boolean_control_name(operation)
         if control is not None:
             if boolean_control_is_authorized(control, profile):
+                if profile.command_grammar == "H1771" and command.body.flag not in (0, 1):
+                    raise ValueError("Invalid boolean control value")
                 return True
             raise ValueError(f"{profile.name} does not support boolean control {control}")
         if operation == "scene" and profile.scene_codes is not None:
@@ -500,7 +526,7 @@ def _check_command_packet(frame: bytes, profile: ModelProfile) -> bool:
             if (
                 static is None
                 and getattr(command, "is_static", False)
-                and profile.command_grammar in {"H617A", "H607C"}
+                and profile.command_grammar in {"H1771", "H617A", "H607C"}
             ):
                 levels = getattr(command.body.sub_body.static_body, "segment_percent", None)
                 if levels is not None:
@@ -508,6 +534,10 @@ def _check_command_packet(frame: bytes, profile: ModelProfile) -> bool:
                         raise ValueError(f"{profile.name} does not support segment brightness")
                     if len(levels) != profile.segment_count or ((1 << len(levels)) - 1) & ~profile.whole_device_mask:
                         raise ValueError("segment brightness outside profile geometry")
+                    if profile.command_grammar == "H1771" and (
+                        command.body.sub_body.static_body.page != 1 or any(level > 100 for level in levels)
+                    ):
+                        raise ValueError("invalid H1771 brightness page")
             if static is not None:
                 if profile.command_grammar in WHOLE_BULB_GRAMMARS:
                     detail = command.body.detail
@@ -559,6 +589,11 @@ def _check_status_query_packet(frame: bytes, profile: ModelProfile) -> bool:
     ).parsed
     if query is not None:
         domain = getattr(query.domain, "name", "")
+        if profile.command_grammar == "H1771":
+            if domain == "segments" and not 1 <= query.body.group <= profile.segment_group_count:
+                raise ValueError("segment query group is outside the selected geometry")
+            if domain == "colour_mode" and query.body.selector != profile.colour_mode_query_selector:
+                raise ValueError("colour mode query selector is outside the profile")
         if domain == "bar_enable":
             if profile.setting_grammar == "H6046" and profile.boolean_controls:
                 return True
@@ -587,6 +622,18 @@ def _check_upload_packet(frame: bytes, profile: ModelProfile) -> bool:
             raise ValueError("music parameter upload is outside profile capabilities")
         return True
     if profile.command_operations is not None and "effect_upload" in profile.command_operations:
+        if upload is not None and profile.effect_grammar == "H1771":
+            if upload.index == 0:
+                kinds = H1771EffectUpload.UploadKind
+                allowed = {
+                    int(kinds.rgb_scene): profile.supports_scenes,
+                    int(kinds.layered_scene): profile.supports_scenes,
+                    int(kinds.music): "music" in profile.command_operations and bool(profile.music_variants),
+                    int(kinds.native_diy): profile.supports_custom_effects or profile.supports_scenes,
+                }
+                if not allowed.get(upload.body.subtype, False):
+                    raise ValueError("Native upload command is outside profile capabilities")
+            return True
         if upload is not None and profile.effect_grammar == "H607C":
             if upload.index == 0:
                 kinds = H607cEffectUpload.Kind
@@ -695,6 +742,14 @@ def parse_a3_effect_envelope(envelope: bytes, model: str, *, profile: ModelProfi
         root_type = H60a6EffectFrame.A3Envelope
     elif grammar == "H607C":
         root_type = H607cEffectUpload
+    elif grammar == "H1771":
+        root_type = {
+            int(H1771EffectUpload.UploadKind.rgb_scene): SceneType1Body,
+            int(H1771EffectUpload.UploadKind.layered_scene): SceneBody,
+            int(H1771EffectUpload.UploadKind.native_diy): H1771EffectUpload,
+        }.get(envelope[2])
+        if root_type is None:
+            raise ValueError("H1771 A3 body type is not supported")
     else:
         raise ValueError(f"{model} has no generated A3 effect grammar")
 
@@ -721,6 +776,8 @@ def parse_a3_effect_envelope(envelope: bytes, model: str, *, profile: ModelProfi
 
 def _command_types(model: str, profile: ModelProfile | None = None) -> tuple[Any, Any, Any]:
     resolved = (profile or get_profile(model)).command_grammar
+    if resolved == "H1771":
+        return H1771CommandWrite, H1771CommandWrite.PowerCmd, H1771CommandWrite.BrightnessCmd
     if resolved in {"H6072", "H6072-legacy", "H607C"}:
         return _COMMAND_ROOTS[resolved][1], CommandWrite.PowerCmd, CommandWrite.BrightnessCmd
     if resolved == "H7020":
@@ -743,6 +800,23 @@ def _build_status_query(
 ) -> bytes:
     if grammar not in _STATUS_QUERY_ROOTS:
         raise ValueError(f"{grammar} has no generated status-query grammar")
+    if grammar == "H1771":
+        root = H1771StatusQuery()
+        root.header = b"\xaa"
+        root.domain = getattr(H1771StatusQuery.QueryDomain, domain)
+        if domain == "colour_mode":
+            body = _child(H1771StatusQuery.ModeQuery, root)
+            body.selector = colour_mode_selector
+            body.unknown_tail = bytes(16)
+        elif domain == "segments":
+            body = _child(H1771StatusQuery.SegmentQueryBody, root)
+            body.group = segment_group
+            body.unknown_tail = bytes(16)
+        else:
+            body = _child(H1771StatusQuery.Opaque, root)
+            body.unknown_tail = bytes(17)
+        root.body = body
+        return _serialize_xor(root)
     root_type = _STATUS_QUERY_ROOTS[grammar][1]
     body_types = StatusQuery if grammar in {"H6072", "H6072-legacy", "H607C", "H7020"} else root_type
     root = root_type()
@@ -848,6 +922,25 @@ def build_boolean_control(
 ) -> bytes:
     """Build a qualified shared register write; revision gating belongs to the profile."""
     profile = profile or get_profile(model)
+    if profile.setting_grammar == "H1771":
+        if control not in profile.boolean_controls or type(enabled) is not bool:
+            raise ValueError("Unsupported native source control")
+        root = H1771CommandWrite()
+        root.header = b"\x33"
+        if control == "gradual":
+            root.opcode = H1771CommandWrite.CommandOp.gradual
+            root.body = _child(H1771CommandWrite.GradualCmd, root)
+            root.body.flag = int(enabled)
+            root.body.unknown_tail = bytes(16)
+        elif control in H1771CommandWrite.Source.__members__:
+            root.opcode = H1771CommandWrite.CommandOp.zone_enable
+            root.body = _child(H1771CommandWrite.ZoneEnable, root)
+            root.body.source = H1771CommandWrite.Source[control]
+            root.body.enabled = int(enabled)
+            root.body.unknown_tail = bytes(15)
+        else:
+            raise ValueError("Unsupported native source control")
+        return _serialize_xor(root)
     if profile.setting_grammar == "H607C":
         if (
             control not in profile.boolean_controls
@@ -941,6 +1034,13 @@ def build_boolean_control(
 def build_boolean_control_query(control: str, model: str, *, profile: ModelProfile | None = None) -> bytes:
     """Read a declared boolean register independently of ordinary read domains."""
     profile = profile or get_profile(model)
+    if profile.setting_grammar == "H1771":
+        if control not in profile.boolean_controls:
+            raise ValueError("Unsupported native source control")
+        bulk_domain = "gradual" if control == "gradual" else "zone_enable"
+        if bulk_domain == "zone_enable" and control not in H1771CommandWrite.Source.__members__:
+            raise ValueError("Unsupported native source control")
+        return build_bulk_status_query(profile, domains=(bulk_domain,))
     if profile.setting_grammar == "H607C":
         if control == "gradual" and control in profile.boolean_controls:
             root = H607cControl.GradualQuery()
@@ -988,6 +1088,13 @@ def build_swap_bars(profile: ModelProfile) -> bytes:
 
 def bulk_status_domains(profile: ModelProfile) -> frozenset[str]:
     domains: set[str] = set()
+    if profile.bulk_status_grammar == "H1771":
+        if profile.boolean_controls & H1771CommandWrite.Source.__members__.keys():
+            domains.add("zone_enable")
+        if "gradual" in profile.boolean_controls:
+            domains.add("gradual")
+        if profile.can_read(ReadDomain.SEGMENTS) and profile.supports_segments:
+            domains.add("segments")
     if profile.boolean_controls & H60a6Control.Zone.__members__.keys():
         domains.add("zone_enable")
     if profile.supports_power_on_behaviour:
@@ -997,12 +1104,24 @@ def bulk_status_domains(profile: ModelProfile) -> frozenset[str]:
 
 def build_bulk_status_query(profile: ModelProfile, *, domains: tuple[str, ...] | None = None) -> bytes:
     """Request independently admitted extension records alongside the base observations."""
-    if profile.bulk_status_grammar != "H60A":
+    if profile.bulk_status_grammar not in {"H1771", "H60A"}:
         raise ValueError("Device profile does not support bulk observations")
     allowed = bulk_status_domains(profile)
-    domains = tuple(sorted(allowed)) if domains is None else domains
+    if domains is None:
+        domains = (
+            tuple(name for name in ("power_on_behaviour", "zone_enable", "gradual", "segments") if name in allowed)
+            if profile.bulk_status_grammar == "H1771"
+            else tuple(sorted(allowed))
+        )
     if not set(domains) <= allowed:
         raise ValueError("Bulk query domains are outside profile capabilities")
+    if profile.bulk_status_grammar == "H1771":
+        root = H1771Bulk.Query()
+        root.header = b"\xac\x03"
+        root.num_domains = len(domains)
+        root.domains = [H1771Bulk.Domain[name] for name in domains]
+        root.unknown_tail = bytes(16 - root.num_domains)
+        return _serialize_xor(root)
     root = H60aBulk.Query()
     root.header = b"\xac\x03"
     root.domain_count = len(domains)
@@ -1012,6 +1131,17 @@ def build_bulk_status_query(profile: ModelProfile, *, domains: tuple[str, ...] |
 
 
 def build_power_on_behaviour(value: str, profile: ModelProfile) -> bytes:
+    if profile.setting_grammar == "H1771":
+        if not profile.supports_power_on_behaviour or value not in H1771CommandWrite.PowerOnState.__members__:
+            raise ValueError("Unsupported power-on behaviour")
+        root = H1771CommandWrite()
+        root.header = b"\x33"
+        root.opcode = H1771CommandWrite.CommandOp.power_on_behaviour
+        root.body = _child(H1771CommandWrite.PowerOnCmd, root)
+        root.body.selector = H1771CommandWrite.PowerOnSelector.state
+        root.body.state = H1771CommandWrite.PowerOnState[value]
+        root.body.unknown_tail = bytes(15)
+        return _serialize_xor(root)
     if (
         profile.setting_grammar not in {"H60A6", "H6097", "H607C"}
         or not profile.supports_power_on_behaviour
@@ -1032,7 +1162,7 @@ def build_power_on_behaviour(value: str, profile: ModelProfile) -> bytes:
 def build_power_on_behaviour_query(profile: ModelProfile) -> bytes:
     if not profile.supports_power_on_behaviour:
         raise ValueError("Unsupported power-on behaviour")
-    if profile.setting_grammar == "H60A6":
+    if profile.setting_grammar in {"H1771", "H60A6"}:
         return build_bulk_status_query(profile, domains=("power_on_behaviour",))
     if profile.setting_grammar == "H607C":
         root = H607cControl.PowerOnQuery()
@@ -1048,6 +1178,13 @@ def build_power_on_behaviour_query(profile: ModelProfile) -> bytes:
 
 
 def parse_zone_notification(frame: bytes, profile: ModelProfile) -> ProtocolParseResult:
+    if profile.setting_grammar == "H1771":
+        result = _parse_xor_frame(
+            frame, "H1771", {"H1771": ("h1771_bulk.source_notification", H1771Bulk.SourceNotification)}
+        )
+        if result.parsed is not None and result.parsed.kind != 1:
+            return ProtocolParseResult(None, result.parser, ProtocolParseRejection.SEMANTIC_REJECTED)
+        return result
     if profile.setting_grammar == "H607C":
         if not profile.boolean_controls.intersection(H607cControl.Zone.__members__):
             return ProtocolParseResult(
@@ -1063,13 +1200,18 @@ def parse_zone_notification(frame: bytes, profile: ModelProfile) -> ProtocolPars
 
 
 def is_bulk_status_frame(frame: bytes, profile: ModelProfile) -> bool:
-    return profile.bulk_status_grammar == "H60A" and frame[:1] == b"\xac"
+    return profile.bulk_status_grammar in {"H1771", "H60A"} and frame[:1] == b"\xac"
 
 
 class BulkStatusCollector:
     """Collect one bounded subscription-local response before interpreting any records."""
 
-    def __init__(self) -> None:
+    def __init__(self, grammar: str = "H60A") -> None:
+        roots = {"H60A": ("h60a_bulk", H60aBulk), "H1771": ("h1771_bulk", H1771Bulk)}
+        if grammar not in roots:
+            raise ValueError("Unknown bulk status grammar")
+        self._grammar = grammar
+        self._parser, self._root = roots[grammar]
         self._count: int | None = None
         self._final_size = 0
         self._position = 0
@@ -1079,8 +1221,8 @@ class BulkStatusCollector:
 
     def feed(self, frame: bytes) -> ProtocolParseResult:
         if self.failed:
-            return ProtocolParseResult(None, "h60a_bulk", ProtocolParseRejection.SCHEMA_REJECTED)
-        result = _parse_xor_frame(frame, "H60A", {"H60A": ("h60a_bulk", H60aBulk)})
+            return ProtocolParseResult(None, self._parser, ProtocolParseRejection.SCHEMA_REJECTED)
+        result = _parse_xor_frame(frame, self._grammar, {self._grammar: (self._parser, self._root)})
         if result.parsed is None:
             self.failed = True
             return result
@@ -1107,14 +1249,22 @@ class BulkStatusCollector:
             self._position += 1
             if self._position != self._count:
                 return ProtocolParseResult(None, result.parser, None)
-            payload = H60aBulk.Payload.from_bytes(bytes(self._payload))
+            payload = self._root.Payload.from_bytes(bytes(self._payload))
             payload._read()
-            domains = [int(record.domain) for record in payload.records]
-            if len(domains) != len(set(domains)):
+            records = [
+                (
+                    int(record.domain),
+                    int(record.body.selector)
+                    if self._grammar == "H1771" and record.domain == H1771Bulk.Domain.identity
+                    else None,
+                )
+                for record in payload.records
+            ]
+            if len(records) != len(set(records)):
                 raise ValueError("Bulk response has duplicate domains")
             self.complete = True
-            return ProtocolParseResult(payload, "h60a_bulk.payload", None)
-        except KaitaiStructError, ValueError:
+            return ProtocolParseResult(payload, f"{self._parser}.payload", None)
+        except KaitaiStructError, ValueError, EOFError:
             self.failed = True
             return ProtocolParseResult(None, result.parser, ProtocolParseRejection.SCHEMA_REJECTED)
 
@@ -1285,6 +1435,8 @@ def build_segment_query(group: int, model: str = "H617A", *, profile: ModelProfi
         raise ValueError(f"{model} has no generated segment-query grammar")
     if type(group) is not int:
         raise ValueError("segment query group must be an integer")
+    if resolved == "H1771" and not 1 <= group <= profile.segment_group_count:
+        raise ValueError("segment query group is outside the selected geometry")
     try:
         return _build_status_query("segments", resolved, segment_group=group)
     except KaitaiStructError as error:
@@ -1473,7 +1625,7 @@ def build_power(on: bool, model: str = "H617A", *, profile: ModelProfile | None 
     root.opcode = root_type.CommandOpcode.power if root_type is H6179CommandWrite else root_type.CommandOp.power
     body = power_type(None, root, root._root)
     body.is_on = int(on)
-    if root_type is H6046CommandWrite:
+    if root_type in {H1771CommandWrite, H6046CommandWrite}:
         body.unknown_tail = bytes(16)
     if root_type is H6179CommandWrite:
         body.opaque = bytes(16)
@@ -1496,7 +1648,7 @@ def build_brightness(percent: int, model: str = "H617A", *, profile: ModelProfil
         body.opaque = bytes(16)
     else:
         body.percent = max(0, min(100, percent))
-    if root_type is H6046CommandWrite:
+    if root_type in {H1771CommandWrite, H6046CommandWrite}:
         body.unknown_tail = bytes(16)
     if root_type in {H600aCommandWrite, H601cCommandWrite}:
         body.padding = bytes(16)
@@ -1529,6 +1681,8 @@ def _build_h617a_static_colour(
     colour.mask = segment_mask
     if root_type is H7020CommandWrite:
         colour.unknown_tail = bytes(3)
+    elif root_type is H1771CommandWrite:
+        colour.unknown_tail = bytes(5)
     static.static_body = colour
     multi.sub_body = static
     root.body = multi
@@ -1650,7 +1804,7 @@ def build_segment_colour(
         root.body = mode
         return _serialize_xor(root)
 
-    if resolved not in {"H6072", "H607C", "H617A", "H7020"}:
+    if resolved not in {"H1771", "H6072", "H607C", "H617A", "H7020"}:
         raise ValueError(f"{model} has no generated static-colour grammar")
     return _build_h617a_static_colour(
         mask,
@@ -1703,7 +1857,7 @@ def build_colour_temperature(
         root.body = mode
         return _serialize_xor(root)
 
-    if resolved not in {"H6072", "H607C", "H617A", "H7020"}:
+    if resolved not in {"H1771", "H6072", "H607C", "H617A", "H7020"}:
         raise ValueError(f"{model} has no generated colour-temperature grammar")
     return _build_h617a_static_colour(
         mask,
@@ -1742,7 +1896,7 @@ def build_segment_brightness(
         root.body = mode
         return _serialize_xor(root)
 
-    if resolved not in {"H6072", "H607C", "H617A", "H7020"}:
+    if resolved not in {"H1771", "H6072", "H607C", "H617A", "H7020"}:
         raise ValueError(f"{model} has no generated segment-brightness grammar")
     root_type = _COMMAND_ROOTS[resolved][1]
     root = root_type()
@@ -1760,6 +1914,8 @@ def build_segment_brightness(
     brightness.mask = segment_mask
     if root_type is H7020CommandWrite:
         brightness.unknown_tail = bytes(10)
+    elif root_type is H1771CommandWrite:
+        brightness.unknown_tail = bytes(12)
     static.static_body = brightness
     multi.sub_body = static
     root.body = multi
@@ -1776,6 +1932,18 @@ def build_scene_activation(
 ) -> bytes:
     """Encode a scene selector using only the target's evidenced command grammar."""
     grammar = (profile or get_profile(model)).command_grammar
+    if grammar == "H1771":
+        if type(scene_code) is not int or not 0 <= scene_code <= 0xFFFF or music_code:
+            raise ValueError("Invalid H1771 scene selector")
+        root = H1771CommandWrite()
+        root.header = b"\x33"
+        root.opcode = H1771CommandWrite.CommandOp.multi
+        root.body = _child(H1771CommandWrite.MultiCmd, root)
+        root.body.sub = H1771CommandWrite.MultiSub.scene
+        root.body.sub_body = _child(H1771CommandWrite.Selector, root.body)
+        root.body.sub_body.code = scene_code
+        root.body.sub_body.unknown_tail = bytes(14)
+        return _serialize_xor(root)
     if grammar in {"H6072", "H6072-legacy", "H607C", "H617A", "H7020"}:
         return build_h617a_scene(scene_code, scene_type=scene_type, root_type=_COMMAND_ROOTS[grammar][1])
     if grammar == "H6179":
@@ -1853,6 +2021,16 @@ def build_diy_activation(
         return _serialize_xor(root)
     if companion is not None:
         raise ValueError("this DIY selector has no companion word")
+    if grammar == "H1771":
+        root = H1771CommandWrite()
+        root.header = b"\x33"
+        root.opcode = H1771CommandWrite.CommandOp.multi
+        root.body = _child(H1771CommandWrite.MultiCmd, root)
+        root.body.sub = H1771CommandWrite.MultiSub.diy
+        root.body.sub_body = _child(H1771CommandWrite.Selector, root.body)
+        root.body.sub_body.code = diy_code
+        root.body.sub_body.unknown_tail = bytes(14)
+        return _serialize_xor(root)
     if grammar in {"H6072", "H6072-legacy", "H617A", "H7020"}:
         return build_h617a_diy_activation(diy_code, root_type=_COMMAND_ROOTS[grammar][1])
     if grammar in WHOLE_BULB_GRAMMARS | {"H6046"}:
@@ -2146,6 +2324,19 @@ def build_music_mode(
         raise ValueError("fixed music colour is unsupported or invalid")
     resolved = profile.music_grammar or profile.command_grammar
     selector_parameters = selector_parameters or {}
+    if resolved == "H1771":
+        if colour is not None or selector_parameters:
+            raise ValueError("Native music selectors carry only mode and sensitivity")
+        root = H1771CommandWrite()
+        root.header = b"\x33"
+        root.opcode = H1771CommandWrite.CommandOp.multi
+        root.body = _child(H1771CommandWrite.MultiCmd, root)
+        root.body.sub = H1771CommandWrite.MultiSub.music
+        root.body.sub_body = _child(H1771CommandWrite.MusicSelector, root.body)
+        root.body.sub_body.mode = H1771MusicBody.MusicMode(mode_id)
+        root.body.sub_body.sensitivity = sensitivity
+        root.body.sub_body.unknown_tail = bytes(14)
+        return _serialize_xor(root)
     if resolved == "H607C":
         if colour is not None or selector_parameters:
             raise ValueError("Native music selectors carry only mode and sensitivity")

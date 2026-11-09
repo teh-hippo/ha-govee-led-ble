@@ -234,6 +234,7 @@ export interface NativeEffectContent {
   background_brightness: number;
   show_type: number;
   opaque: string;
+  section_tail?: string;
   preset_id: number | null;
   template: CatalogueRef | null;
   speed_index: number | null;
@@ -454,6 +455,7 @@ export interface CatalogueTemplate {
   label: string;
   category: "single-layer" | "multi-layer" | "music" | "video" | "advanced";
   content: CatalogueTemplateContent;
+  rate_min?: number;
 }
 
 export interface ReleaseWorkflowCapability {

@@ -1,5 +1,13 @@
 __init__.py
 command_write.py
+h1771_command_write.py
+h1771_status_query.py
+h1771_status_reply.py
+h1771_bulk.py
+h1771_diy_body.py
+h1771_music_body.py
+h1771_music_ack.py
+h1771_effect_upload.py
 h6046_command_write.py
 h6046_status_query.py
 h6046_status_reply.py

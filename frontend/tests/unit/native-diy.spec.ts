@@ -8,6 +8,21 @@ import { decodeCustomCataloguePayload } from "../../src/catalogue-validation";
 import { buildCustomEffectEntries } from "../../src/custom-effect-list";
 import backendContracts from "../fixtures/backend-contracts.json";
 
+test("H1771 native content retains independent sections and extension bytes", () => {
+  const layer = {
+    type: "diy", kind: 1, speed: 10, palette: [], parameters: "", parameter: 20,
+    flag: 0, points: [], direction: 0, angle: 2700, opaque: "ab", enabled: true, secondary_palette: [],
+  };
+  const content = {
+    kind: "native_effect", model: "H1771", family: 957,
+    layers: [layer, { type: "opaque", kind: 99, data: "0163abcd" }],
+    backgrounds: [], background_flag: 0, background: [0, 0, 0], background_brightness: 100,
+    show_type: 1, opaque: "ef", section_tail: "cd", preset_id: null, template: null, speed_index: null,
+  };
+  expect(decodeEffectContent(content)).toEqual(content);
+  expect(() => decodeEffectContent({ ...content, layers: [layer] })).toThrow();
+});
+
 test("Native Meteor Shower 3/1/1 seed preserves every original slot on same-length edits", () => {
   const template = backendContracts.responses.custom_catalogue.models.H617A.templates.find(
     (template) => template.id === "template:native-diy:504",

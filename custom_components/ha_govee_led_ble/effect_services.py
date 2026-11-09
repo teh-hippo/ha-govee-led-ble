@@ -5,10 +5,10 @@ from __future__ import annotations
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, SupportsResponse
 from homeassistant.helpers import config_validation as cv
-from homeassistant.helpers import service
 from homeassistant.helpers.typing import VolDictType
 
 from .const import DOMAIN
+from .light_service_dispatch import register_device_light_service
 from .schema_compat import vol
 
 SERVICE_APPLY_CUSTOM_EFFECT = "apply_custom_effect"
@@ -31,7 +31,7 @@ APPLY_CUSTOM_EFFECT_SCHEMA: VolDictType = {
 
 
 def async_register_effect_services(hass: HomeAssistant) -> None:
-    service.async_register_platform_entity_service(
+    register_device_light_service(
         hass,
         DOMAIN,
         SERVICE_APPLY_CUSTOM_EFFECT,

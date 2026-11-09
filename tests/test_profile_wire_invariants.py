@@ -82,7 +82,7 @@ def _status(domain: int, body: bytes = b"", *, profile: ModelProfile | None = No
 
 def _parse_status(frame: bytes, model: str, profile: ModelProfile):
     if a.is_bulk_status_frame(frame, profile):
-        result = a.BulkStatusCollector().feed(frame)
+        result = a.BulkStatusCollector(profile.bulk_status_grammar).feed(frame)
         assert result.rejection is None and result.parsed is not None
         assert len(result.parsed.records) == 1
         return protocol_core.ProtocolParseResult(result.parsed.records[0], result.parser, None)
@@ -97,8 +97,8 @@ def decode_status_frame(frame: bytes, model: str, *, profile: ModelProfile):
 
 
 def _consume_status(coordinator: GoveeBLECoordinator, frame: bytes) -> None:
-    if a.is_bulk_status_frame(frame, coordinator.profile):
-        coordinator._bulk_collector = a.BulkStatusCollector()
+    if a.is_bulk_status_frame(frame, coordinator.profile) and coordinator._bulk_collector is None:
+        coordinator._bulk_collector = a.BulkStatusCollector(coordinator.profile.bulk_status_grammar)
         coordinator._bulk_query_incomplete = True
     coordinator._notify_callback(None, bytearray(frame))
 
@@ -269,6 +269,8 @@ def _status_root_type(profile: ModelProfile):
 def _status_color_mode_enum(profile: ModelProfile):
     if profile.status_grammar == "H6046":
         return protocol_core.H6046CommandWrite.ModeSel
+    if profile.bulk_status_grammar == "H1771":
+        return protocol_core.H1771StatusReply.ModeCode
     if profile.bulk_status_grammar:
         return protocol_core.H60aBulk.Mode
     if profile.status_grammar == "H6097":
@@ -282,6 +284,8 @@ def _status_color_mode_enum(profile: ModelProfile):
 
 
 def _status_music_enum(profile: ModelProfile):
+    if profile.status_grammar == "H1771":
+        return protocol_core.H1771MusicBody.MusicMode
     if profile.status_grammar == "H607C":
         return protocol_core.H607cMusicWrite.MusicMode
     if profile.status_grammar == "H6046":
@@ -327,6 +331,18 @@ def _segment_pages(profile: ModelProfile) -> list[bytes]:
 
 
 def _status_frames_for_domain(domain: ReadDomain, model: str, profile: ModelProfile) -> tuple[bytes, ...]:
+    if profile.bulk_status_grammar == "H1771" and domain in {
+        ReadDomain.FIRMWARE,
+        ReadDomain.HARDWARE,
+        ReadDomain.WIRELESS_FIRMWARE,
+        ReadDomain.WIRELESS_HARDWARE,
+    }:
+        main = domain in {ReadDomain.FIRMWARE, ReadDomain.HARDWARE}
+        record = bytes.fromhex("07111001020304050607080302180301010000" if main else "070d11010203040506010009010204")
+        return (
+            _xor(bytes.fromhex(f"ac000200{len(record) - 12:02x}0300") + record[:12]),
+            _xor(bytes.fromhex("acff") + record[12:].ljust(17, b"\x00")),
+        )
     if domain is ReadDomain.POWER:
         return (_status(0x01, b"\x01"),)
     if domain is ReadDomain.BRIGHTNESS:
@@ -401,12 +417,29 @@ def test_every_claimed_read_domain_has_a_typed_body(model: str, profile: ModelPr
     for domain in sorted(profile.read_domains, key=lambda d: d.value):
         frames = _status_frames_for_domain(domain, model, profile)
         assert frames, f"{model} claims {domain.value} but has no representative status frames"
+        if profile.bulk_status_grammar == "H1771" and domain in {
+            ReadDomain.FIRMWARE,
+            ReadDomain.HARDWARE,
+            ReadDomain.WIRELESS_FIRMWARE,
+            ReadDomain.WIRELESS_HARDWARE,
+        }:
+            collector = a.BulkStatusCollector("H1771")
+            for frame in frames:
+                raw = collector.feed(frame)
+            assert raw.parsed is not None and raw.rejection is None
+            assert raw.parsed.records[0].domain.name == "identity"
+            assert not isinstance(raw.parsed.records[0].body.detail, bytes)
+            continue
         for frame in frames:
             raw = _parse_status(frame, model, profile)
             assert raw.rejection is None and raw.parsed is not None, (
                 f"{model} ({profile.name}) rejected {domain.value} frame: {raw.rejection}"
             )
-            parser = "h60a_bulk.payload" if a.is_bulk_status_frame(frame, profile) else expected_parser
+            parser = (
+                f"{(profile.bulk_status_grammar or '').lower()}_bulk.payload"
+                if a.is_bulk_status_frame(frame, profile)
+                else expected_parser
+            )
             if domain is ReadDomain.LOW_BLUE_LIGHT:
                 parser = "h6072_low_blue_light"
             assert raw.parser == parser
@@ -496,8 +529,18 @@ def _query_builders(model: str, profile: ModelProfile) -> dict[ReadDomain, tuple
         ReadDomain.BRIGHTNESS: (lambda: a.build_brightness_query(model, profile=profile),),
         ReadDomain.COLOUR_MODE: (lambda: a.build_colour_mode_query(model, profile=profile),),
         ReadDomain.MODE: (lambda: a.build_colour_mode_query(model, profile=profile),),
-        ReadDomain.FIRMWARE: (lambda: a.build_firmware_query(model, profile=profile),),
-        ReadDomain.HARDWARE: (lambda: a.build_hardware_query(model, profile=profile),),
+        ReadDomain.FIRMWARE: (
+            (lambda: a.build_bulk_status_query(profile, domains=()))
+            if profile.bulk_status_grammar == "H1771"
+            else (lambda: a.build_firmware_query(model, profile=profile)),
+        ),
+        ReadDomain.HARDWARE: (
+            (lambda: a.build_bulk_status_query(profile, domains=()))
+            if profile.bulk_status_grammar == "H1771"
+            else (lambda: a.build_hardware_query(model, profile=profile)),
+        ),
+        ReadDomain.WIRELESS_FIRMWARE: (lambda: a.build_bulk_status_query(profile, domains=()),),
+        ReadDomain.WIRELESS_HARDWARE: (lambda: a.build_bulk_status_query(profile, domains=()),),
         ReadDomain.SUBORDINATE_20: (lambda: a.build_subordinate_query(0x20, model, profile=profile),),
         ReadDomain.SUBORDINATE_21: (lambda: a.build_subordinate_query(0x21, model, profile=profile),),
         ReadDomain.SEGMENTS: tuple(
@@ -532,8 +575,21 @@ def test_every_claimed_read_domain_can_actually_be_asked_for(model: str, profile
                 assert parsed_setting.parsed.opcode.name == domain.value
                 continue
             if a.is_bulk_status_frame(query, profile):
-                bulk_query = protocol_core.H60aBulk.Query.from_bytes(query)
+                root = protocol_core.H1771Bulk if profile.bulk_status_grammar == "H1771" else protocol_core.H60aBulk
+                bulk_query = root.Query.from_bytes(query)
                 bulk_query._read()
+                if profile.bulk_status_grammar == "H1771":
+                    if domain is ReadDomain.COLOUR_MODE:
+                        assert {item.name for item in bulk_query.domains} == a.bulk_status_domains(profile)
+                    else:
+                        assert domain in {
+                            ReadDomain.FIRMWARE,
+                            ReadDomain.HARDWARE,
+                            ReadDomain.WIRELESS_FIRMWARE,
+                            ReadDomain.WIRELESS_HARDWARE,
+                        }
+                        assert not bulk_query.domains
+                    continue
                 assert domain in {ReadDomain.COLOUR_MODE, ReadDomain.MODE}
                 assert {item.name for item in bulk_query.domains} == a.bulk_status_domains(profile)
                 continue
@@ -1002,6 +1058,17 @@ def test_declared_boolean_controls_round_trip(hass, model: str, profile: ModelPr
             )
             assert len(cmd) == 20 and xor_checksum(cmd) == 0
             a.require_profile_packet(cmd, profile)
+            if profile.setting_grammar == "H1771":
+                if control == "gradual":
+                    record = bytes((0xA3, 1, int(enabled)))
+                else:
+                    flag = 2 if control == "source_0_enabled" else 4
+                    record = bytes((0x36, 1, 1 | (flag if enabled else 0)))
+                reply = _xor(bytes.fromhex("ac000100030300") + record.ljust(12, b"\x00"))
+                _consume_status(coordinator, reply)
+                assert coordinator.boolean_control_state[control] is enabled
+                assert coordinator._field_revisions[f"boolean_{control}"] > 0
+                continue
             if profile.setting_grammar == "H60A6":
                 reply = _xor(b"\xee\x30\x01\x00" + bytes([int(enabled), int(enabled)]) + bytes(13))
                 result = a.parse_zone_notification(reply, profile)
@@ -1044,6 +1111,16 @@ def test_declared_boolean_controls_round_trip(hass, model: str, profile: ModelPr
             assert coordinator._field_revisions[f"boolean_{control}"] > 0
 
         if profile.setting_grammar == "H6046":
+            continue
+        if profile.setting_grammar == "H1771":
+            record = bytes.fromhex("a30102") if control == "gradual" else bytes.fromhex("360101")
+            bad_reply = _xor(bytes.fromhex("ac000100030300") + record.ljust(12, b"\x00"))
+            if control != "gradual":
+                bad_reply = bad_reply[:-1] + bytes((bad_reply[-1] ^ 1,))
+            _consume_status(coordinator, bad_reply)
+            assert coordinator.packet_log[-1]["reason"] in {"semantic_rejected", "invalid_checksum"}
+            assert coordinator.boolean_control_state[control] is True
+            coordinator._bulk_collector = None
             continue
         if profile.setting_grammar == "H607C" and control != "gradual":
             bad_reply = _status(domain_byte, bytes((8, 37, 0x80)))

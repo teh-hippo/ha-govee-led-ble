@@ -19,6 +19,7 @@ from .effect_domain import (
 from .generated_protocol_adapter import parse_a3_effect_envelope
 from .h60a6_effects import decode_native_body
 from .h607c_effects import decode_zoned_diy
+from .h1771_effects import decode_h1771_diy
 from .h6179_effect_codec import decode_h6179_effect
 from .layered_scene_decoder import decode_workshop_effect
 from .protocol_core import (
@@ -27,6 +28,7 @@ from .protocol_core import (
     H60a6DiyBody,
     H60a6EffectFrame,
     H607cEffectUpload,
+    H1771EffectUpload,
     H6046EffectUpload,
     H6199EffectUpload,
     SceneBody,
@@ -81,6 +83,12 @@ def decode_effect_frames(
 def decode_a3_effect(tree: Any, model: str) -> EffectContent:
     """Decode a parsed generated A3 tree without assigning unevidenced semantics."""
     grammar = get_profile(model).effect_grammar
+    if grammar == "H1771":
+        if isinstance(tree, H1771EffectUpload) and tree.kind == H1771EffectUpload.UploadKind.native_diy:
+            if tree.body.unknown_tail:
+                raise UnsupportedA3EffectError("Native upload cannot distinguish extensions from transport fill")
+            return decode_h1771_diy(serialize_native_body(tree.body))
+        raise UnsupportedA3EffectError("Native scene upload requires catalogue identity")
     if grammar == "H607C":
         if tree.kind == H607cEffectUpload.Kind.native_diy:
             return decode_zoned_diy(serialize_native_body(tree.content))

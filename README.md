@@ -12,6 +12,7 @@
 | Model | Status |
 | --- | --- |
 | **H1A42** | ✅ Supported |
+| **H1771** | [🚧 Experimental](https://github.com/teh-hippo/ha-govee-led-ble/issues/558) |
 | **H600A** | ✅ Supported |
 | **H601C** | ✅ Supported |
 | **H6046** | ✅ Supported |
@@ -39,6 +40,10 @@
 To request another model or suggest a device-specific fix, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 H607C exposes candidate RGB, colour-temperature and Gradual controls.  If its Bluetooth protocol identity is unavailable or conflicting, colour and Gradual writes require a compatible identity before they can proceed.
+
+H6046 and H607C expose separate source lights on compatible revisions.
+H60A6 exposes panel and ring lights; [ring brightness is not independently supported](https://github.com/teh-hippo/ha-govee-led-ble/issues/402).
+H1771 source switches are numbered until their physical mapping is confirmed.
 
 On qualified H6199 revisions, Camera status shows the last report received from the camera and starts unknown until a report arrives.
 Missing replies or brief Bluetooth reconnects do not change that report; this diagnostic is not a real-time connection monitor.

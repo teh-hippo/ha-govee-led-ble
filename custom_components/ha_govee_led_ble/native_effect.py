@@ -130,6 +130,7 @@ class NativeEffect:
     background_brightness: int = 100
     show_type: int = 1
     opaque: bytes = b""
+    section_tail: bytes = b""
     preset_id: int | None = None
     template: CatalogueRef | None = None
     speed_index: int | None = None
@@ -164,11 +165,23 @@ class NativeEffect:
                 or self.show_type != 1
             ):
                 raise LayeredSceneValidationError("unrepresented native zone background fields")
+        elif self.model == "H1771":
+            if (
+                self.family != 957
+                or len(self.layers) != 2
+                or self.backgrounds
+                or self.background_flag
+                or self.background != (0, 0, 0)
+                or self.background_brightness != 100
+                or self.show_type != 1
+                or self.preset_id is not None
+            ):
+                raise LayeredSceneValidationError("invalid native dual-source DIY structure")
         elif self.model != "H60A6" or self.family not in (797, 798):
             raise LayeredSceneValidationError("unsupported native effect model or family")
         if not 1 <= len(self.layers) <= 255 or len(self.backgrounds) > 255:
             raise LayeredSceneValidationError("native effect exceeds its layer or background count field")
-        expected = NativeDiyLayer if self.family == 797 or self.model == "H607C" else NativePaintLayer
+        expected = NativeDiyLayer if self.family == 797 or self.model in {"H607C", "H1771"} else NativePaintLayer
         if any(not isinstance(layer, expected | NativeOpaqueLayer) for layer in self.layers):
             raise LayeredSceneValidationError("native layer does not match its effect family")
         if self.model == "H60A6" and any(
@@ -180,8 +193,10 @@ class NativeEffect:
             _number(getattr(self, name), 255, name)
         for colour in (*self.backgrounds, self.background):
             _rgb(colour)
-        if not isinstance(self.opaque, bytes):
+        if not isinstance(self.opaque, bytes) or not isinstance(self.section_tail, bytes):
             raise LayeredSceneValidationError("native extension field must be bytes")
+        if self.model != "H1771" and self.section_tail:
+            raise LayeredSceneValidationError("native section extension does not match the model")
         if self.preset_id is not None:
             _number(self.preset_id, 255, "native preset")
         if self.template is not None and self.template.sku != self.model:
@@ -193,6 +208,8 @@ class NativeEffect:
     def workflow(self) -> str:
         if self.template is not None:
             return "layered_scenes"
+        if self.model == "H1771":
+            return "multi"
         if self.model == "H607C":
             from .protocol_core import H607cDiyBody
 
@@ -222,7 +239,7 @@ def native_effect_to_value(content: NativeEffect) -> dict[str, Any]:
                             "enabled": layer.enabled,
                             "secondary_palette": [list(colour) for colour in layer.secondary_palette],
                         }
-                        if content.model == "H607C"
+                        if content.model in {"H607C", "H1771"}
                         else {}
                     ),
                 }
@@ -257,6 +274,7 @@ def native_effect_to_value(content: NativeEffect) -> dict[str, Any]:
         "background_brightness": content.background_brightness,
         "show_type": content.show_type,
         "opaque": content.opaque.hex(),
+        **({"section_tail": content.section_tail.hex()} if content.model == "H1771" else {}),
         "preset_id": content.preset_id,
         "template": None if content.template is None else _catalogue_ref_to_value(content.template),
         "speed_index": content.speed_index,
@@ -325,6 +343,7 @@ def native_effect_from_value(raw: Mapping[str, Any]) -> NativeEffect:
         background_brightness=_required_int(raw, "background_brightness"),
         show_type=_required_int(raw, "show_type"),
         opaque=_hex_bytes(raw.get("opaque", ""), "native opaque"),
+        section_tail=_hex_bytes(raw.get("section_tail", ""), "native section tail"),
         preset_id=_optional_int(raw, "preset_id"),
         template=None
         if raw.get("template") is None

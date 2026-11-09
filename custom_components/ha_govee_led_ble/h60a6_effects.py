@@ -26,6 +26,13 @@ def _rgb(value: Any) -> tuple[int, int, int]:
 
 def decode_native_scene(scene_ref: CatalogueRef, payload: bytes, *, family: int) -> NativeEffect:
     """Decode catalogue bytes without discarding their scene activation identity."""
+    if scene_ref.sku == "H1771":
+        from .h1771_effects import decode_h1771_scene
+        from .protocol_core import H1771DiyBody
+
+        if family != H1771DiyBody.CatalogueFamily.native_scene:
+            raise ValueError("unknown native effect family")
+        return replace(decode_h1771_scene(payload), template=scene_ref)
     return replace(decode_native_body(payload, family=family), template=scene_ref)
 
 
@@ -123,6 +130,10 @@ def _serialise(value: Any) -> bytes:
 
 def encode_native_body(content: NativeEffect) -> bytes:
     """Build all lengths and byte order through generated native structures."""
+    if content.model == "H1771":
+        from .h1771_effects import encode_h1771_diy, encode_h1771_scene
+
+        return encode_h1771_scene(content) if content.template is not None else encode_h1771_diy(content)
     if content.model == "H607C":
         from .h607c_effects import encode_zoned_diy
 

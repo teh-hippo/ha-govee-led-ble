@@ -15,6 +15,7 @@ from .music_semantics import (
     H617A_MUSIC_VARIANTS,
     H617C_MUSIC_VARIANTS,
     H617E_MUSIC_VARIANTS,
+    H1771_MUSIC_VARIANTS,
     H6046_MUSIC_VARIANTS,
     H6072_LEGACY_MUSIC_VARIANTS,
     H6072_MUSIC_VARIANTS,
@@ -90,6 +91,8 @@ class ReadDomain(StrEnum):
     HARDWARE = "hardware"
     SUBORDINATE_20 = "subordinate_20"
     SUBORDINATE_21 = "subordinate_21"
+    WIRELESS_FIRMWARE = "wireless_firmware"
+    WIRELESS_HARDWARE = "wireless_hardware"
     DISPLAY_SETTING = "display_setting"
     RELATIVE_BRIGHTNESS = "relative_brightness"
     SEGMENTS = "segments"
@@ -107,6 +110,8 @@ _IDENTITY_READ_DOMAINS = frozenset(
         ReadDomain.HARDWARE,
         ReadDomain.SUBORDINATE_20,
         ReadDomain.SUBORDINATE_21,
+        ReadDomain.WIRELESS_FIRMWARE,
+        ReadDomain.WIRELESS_HARDWARE,
         ReadDomain.PHYSICAL_IC_COUNT,
     }
 )
@@ -132,6 +137,8 @@ NATIVE_ZONE_CONTROLS = (
     "right_bar_enabled",
     "pole_enabled",
     "base_enabled",
+    "source_0_enabled",
+    "source_1_enabled",
 )
 H607C_NATIVE_ZONES = (("pole", 8, 144), ("base", 5, 30))
 
@@ -157,6 +164,14 @@ class VideoFirmwareCondition:
             raise ValueError("unknown firmware identity field")
         if re.fullmatch(r"[0-9]{1,3}\.[0-9]{2}\.[0-9]{2}", self.minimum) is None:
             raise ValueError("firmware minimum must use major.xx.xx notation")
+
+
+@dataclass(frozen=True)
+class LightSource:
+    key: str
+    control: str
+    segments: tuple[int, ...]
+    master_brightness: bool = False
 
 
 @dataclass(frozen=True)
@@ -253,6 +268,7 @@ class ModelProfile:
     whole_device_mask_override: int = 0
     segment_count: int = 0
     native_zones: tuple[tuple[str, int, int], ...] = ()
+    light_sources: tuple[LightSource, ...] = ()
     segment_group_size: int = 0
     segment_colour_mode_ambiguous: bool = False
     configured_string_counts: tuple[int, ...] = ()
@@ -288,6 +304,20 @@ class ModelProfile:
         return self.whole_device_mask_override or (1 << self.segment_count) - 1
 
     def __post_init__(self) -> None:
+        if (
+            len({source.key for source in self.light_sources}) != len(self.light_sources)
+            or len({source.control for source in self.light_sources}) != len(self.light_sources)
+            or sum(bool(source.master_brightness) for source in self.light_sources) > 1
+            or any(
+                not source.key
+                or source.control not in NATIVE_ZONE_CONTROLS
+                or type(source.master_brightness) is not bool
+                or len(set(source.segments)) != len(source.segments)
+                or any(type(segment) is not int or segment < 1 for segment in source.segments)
+                for source in self.light_sources
+            )
+        ):
+            raise ValueError("light sources require unique keys and controls and positive segment indices")
         if self.diy_upload_transport not in {None, "a1_02", "a3"}:
             raise ValueError("unknown DIY upload transport")
         if not self.restarting_boolean_controls <= self.boolean_controls:
@@ -753,6 +783,62 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         music_modes=(),
         effect_retry_after_upload=False,
     ),
+    "H1771": ModelProfile(
+        "H1771 Wallwash Table Lamp",
+        confirmation_issue=558,
+        command_grammar="H1771",
+        command_ack_grammar="H617A",
+        status_grammar="H1771",
+        setting_grammar="H1771",
+        bulk_status_grammar="H1771",
+        effect_grammar="H1771",
+        music_grammar="H1771",
+        effect_workflows=frozenset({"native_scenes", "layered_scenes", "native_music", "single", "multi", "advanced"}),
+        command_operations=frozenset({"power", "brightness", "static", "scene", "diy", "music", "effect_upload"}),
+        read_domains=frozenset(
+            {
+                ReadDomain.POWER,
+                ReadDomain.BRIGHTNESS,
+                ReadDomain.COLOUR_MODE,
+                ReadDomain.FIRMWARE,
+                ReadDomain.HARDWARE,
+                ReadDomain.WIRELESS_FIRMWARE,
+                ReadDomain.WIRELESS_HARDWARE,
+                ReadDomain.SEGMENTS,
+            }
+        ),
+        setup_required_read_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS}),
+        colour_mode_query_selector=1,
+        supports_rgb=True,
+        supports_color_temperature=True,
+        color_temp_range=KELVIN_RANGE_1000_10000,
+        static_readback_kelvin=True,
+        segment_colour_mode_ambiguous=True,
+        segment_count=4,
+        segment_group_size=4,
+        physical_ic_count=4,
+        supports_segment_writes=True,
+        supports_segment_brightness=True,
+        supports_segment_color_temperature=True,
+        light_sources=(
+            LightSource("source_0", "source_0_enabled", ()),
+            LightSource("source_1", "source_1_enabled", ()),
+        ),
+        boolean_controls=frozenset({"source_0_enabled", "source_1_enabled", "gradual"}),
+        supports_power_on_behaviour=True,
+        supports_scenes=True,
+        scene_catalogue_sku="H1771",
+        supports_custom_effects=True,
+        supports_multi_layered_effects=True,
+        supports_advanced_effects=True,
+        diy_upload_transport="a3",
+        diy_requires_upload_ack=True,
+        effect_readback="diy_code_only",
+        music_modes=("rhythm", "expansion", "piano", "pulse", "flowing", "rolling"),
+        music_variants=H1771_MUSIC_VARIANTS,
+        music_upload_before_selector=True,
+        music_requires_upload_ack=True,
+    ),
     "H6046": ModelProfile(
         "H6046 TV Light Bars",
         support_quality=SupportQuality.SUPPORTED,
@@ -802,6 +888,10 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         effect_retry_after_upload=False,
         effect_readback="diy_code_only",
         boolean_controls=frozenset({"left_bar_enabled", "right_bar_enabled"}),
+        light_sources=(
+            LightSource("left_bar", "left_bar_enabled", (1, 2, 3, 4, 5)),
+            LightSource("right_bar", "right_bar_enabled", (6, 7, 8, 9, 10)),
+        ),
         music_modes=("energetic", "rhythm", "impact", "spray", "beat", "torch", "rainbow_ring", "glitter"),
         music_variants=H6046_MUSIC_VARIANTS,
         music_sensitivity_min=0,
@@ -859,6 +949,10 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         effect_readback="diy_code_only",
         physical_ic_count=133,
         boolean_controls=frozenset({"panel_enabled", "ring_enabled"}),
+        light_sources=(
+            LightSource("panel", "panel_enabled", (13,), master_brightness=True),
+            LightSource("ring", "ring_enabled", tuple(range(1, 13))),
+        ),
         supports_power_on_behaviour=True,
         segment_colour_mode_ambiguous=True,
         profile_identity_fields=frozenset({"fw_version", "hw_version"}),
@@ -1494,6 +1588,10 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         music_retry_after_upload=False,
         music_params_require_activation=True,
         boolean_controls=frozenset({"pole_enabled", "base_enabled", "gradual"}),
+        light_sources=(
+            LightSource("pole", "pole_enabled", tuple(range(1, 9))),
+            LightSource("base", "base_enabled", tuple(range(9, 14))),
+        ),
         supports_power_on_behaviour=True,
         dreamview_grammar="H607C",
         dreamview_operations=frozenset(
@@ -1938,7 +2036,7 @@ UNSUPPORTED_PROFILE = ModelProfile("Unsupported Govee device")
 VIDEO_GRAMMARS = frozenset({"H6099", "H6199"})
 WHOLE_BULB_GRAMMARS = frozenset({"H600A", "H601C"})
 MODE_COMMAND_GRAMMARS = WHOLE_BULB_GRAMMARS | {"H6046", "H6099", "H6199"}
-PERCENT_BRIGHTNESS_STATUS_GRAMMARS = frozenset({"H600A", "H6046", "H6097", "H6099", "H6199", "H66A0"})
+PERCENT_BRIGHTNESS_STATUS_GRAMMARS = frozenset({"H1771", "H600A", "H6046", "H6097", "H6099", "H6199", "H66A0"})
 
 
 def _h6199_pact1_wire(packet: bytes) -> bytes:

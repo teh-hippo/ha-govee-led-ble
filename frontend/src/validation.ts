@@ -1192,13 +1192,15 @@ export function decodeEffectContent(value: unknown): EffectContent {
 }
 
 function nativeEffectContent(content: Record<string, unknown>): NativeEffectContent {
-  const model = enumString(content.model, ["H60A6", "H607C"], "native model");
-  const zoned = model === "H607C";
+  const model = enumString(content.model, ["H60A6", "H607C", "H1771"], "native model");
+  const zoned = model === "H607C" || model === "H1771";
   const family = integerValue(content.family, "native family", 0, 65535);
-  if ((!zoned && family !== 797 && family !== 798) || (zoned && family > 255)) invalid("unsupported native family");
+  if ((model === "H60A6" && family !== 797 && family !== 798) ||
+      (model === "H607C" && family > 255) || (model === "H1771" && family !== 957)) invalid("unsupported native family");
   const layerValues = arrayValue(content.layers, "native layers", 255);
   if (!layerValues.length) invalid("native effects require at least one layer");
   if (zoned && layerValues.length > 2) invalid("native zoned effects cannot add layers");
+  if (model === "H1771" && layerValues.length !== 2) invalid("native dual-source effects require two sections");
   return {
     kind: "native_effect",
     model,
@@ -1245,6 +1247,7 @@ function nativeEffectContent(content: Record<string, unknown>): NativeEffectCont
     background: rgbValue(content.background, "native background"),
     background_brightness: byteValue(content.background_brightness, "native background brightness"),
     show_type: byteValue(content.show_type, "native show type"), opaque: hexString(content.opaque, "native opaque"),
+    ...(model === "H1771" ? { section_tail: hexString(content.section_tail ?? "", "native section tail") } : {}),
     preset_id: nullableInteger(content.preset_id, "native preset", 0, 255),
     template: content.template === null ? null : catalogueRef(content.template, "native scene template"),
     speed_index: nullableInteger(content.speed_index, "native scene speed index", 0, 255),

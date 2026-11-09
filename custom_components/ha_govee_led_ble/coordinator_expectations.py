@@ -127,10 +127,11 @@ def expectations_from_packet(
         if mode == "diy" and hasattr(detail, "companion"):
             expectations["diy_companion"] = int(detail.companion)
         if mode == "music":
-            music_mode = music_slug_for(model, int(detail.mode_id), profile=profile)
+            mode_id = detail.mode if profile.command_grammar == "H1771" else detail.mode_id
+            music_mode = music_slug_for(model, int(mode_id), profile=profile)
             expectations["music_mode"] = music_mode
             expectations["music_sensitivity"] = int(detail.sensitivity)
-            if not getattr(detail, "is_legacy", True):
+            if profile.command_grammar == "H1771" or not getattr(detail, "is_legacy", True):
                 return expectations
             if music_mode == "rhythm" and hasattr(detail, "style"):
                 expectations["music_calm"] = bool(detail.style)

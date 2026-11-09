@@ -14,6 +14,7 @@ from .protocol_core import (
     H607cMusicBody,
     H607cMusicWrite,
     H617aControlPayload,
+    H1771MusicBody,
     H6072MusicBody,
     H6076MusicBody,
     H7025MusicBody,
@@ -71,6 +72,16 @@ def parse_music_parameters(variant: MusicVariant, body: bytes) -> Any:
     """Validate a complete retained body with the selected KSY, independent of authoring bounds."""
     if not isinstance(body, bytes) or not body or len(body) > 255 * 17 - 3:
         raise ValueError("invalid music body length")
+    if variant.layout == "h1771_music_body":
+        root = H1771MusicBody.from_bytes(body)
+        root._read()
+        if (
+            int(root.mode) != variant.mode_code
+            or not root._io.is_eof()
+            or (variant.supports_style and getattr(root.tail, "style", None) is None)
+        ):
+            raise ValueError("music body does not match qualified layout")
+        return root
     if variant.layout == "h6046_music_body":
         from .protocol_core import H6046MusicBody
 
@@ -140,6 +151,24 @@ def encode_music_parameters(
     preserve_companions: bool = False,
 ) -> bytes:
     """Edit named Kaitai fields; palette length never becomes an absolute tail offset."""
+    if variant.layout == "h1771_music_body":
+        root = parse_music_parameters(variant, variant.template)
+        if parameters:
+            raise ValueError("unsupported H1771 music parameters")
+        if palette is not None:
+            if (
+                variant.palette_bounds is None
+                or not variant.palette_bounds[0] <= len(palette) <= variant.palette_bounds[1]
+                or any(len(rgb) != 3 or any(type(c) is not int or not 0 <= c <= 255 for c in rgb) for rgb in palette)
+            ):
+                raise ValueError("invalid music palette")
+            root.num_palette = len(palette)
+            root.palette = [_rgb(root, *rgb) for rgb in palette]
+        if variant.supports_style and calm is not None:
+            root.tail.style = int(not calm)
+        elif calm:
+            raise ValueError("music style is unsupported")
+        return serialize_native_body(root)
     if variant.layout == "h6046_music_body":
         root = parse_music_parameters(variant, variant.template)
         length = len(variant.template) + 3

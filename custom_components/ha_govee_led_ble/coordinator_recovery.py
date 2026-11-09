@@ -108,6 +108,8 @@ class _RecoveryMixin(_CoordinatorBase):
             right_bar_enabled=zone_flags.get("right_bar_enabled"),
             pole_enabled=zone_flags.get("pole_enabled"),
             base_enabled=zone_flags.get("base_enabled"),
+            source_0_enabled=zone_flags.get("source_0_enabled"),
+            source_1_enabled=zone_flags.get("source_1_enabled"),
             left_bar_kelvin=self.left_bar_kelvin
             if self._notify_started_monotonic is not None
             and self._field_received_at.get("left_bar_kelvin", -1) >= self._notify_started_monotonic

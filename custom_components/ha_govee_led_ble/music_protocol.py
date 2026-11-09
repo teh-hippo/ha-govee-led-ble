@@ -7,6 +7,10 @@ from typing import Any, Final, cast
 
 from .const import ModelProfile, get_profile
 
+H1771MusicBody = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h1771_music_body").H1771MusicBody,
+)
 GoveeCommon = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.govee_common").GoveeCommon,
@@ -127,6 +131,7 @@ _H7020_MODE_CODES: Final[Mapping[str, int]] = MappingProxyType(
 
 MUSIC_MODE_CODES_BY_MODEL: Final[Mapping[str, Mapping[str, int]]] = MappingProxyType(
     {
+        "H1771": MappingProxyType({mode.name: int(mode) for mode in H1771MusicBody.MusicMode}),
         "H617A": _H617A_MODE_CODES,
         "H6099": _H6099_MODE_CODES,
         "H6097": MappingProxyType({mode.name: int(mode) for mode in H6097MusicWrite.MusicMode}),
@@ -170,6 +175,7 @@ _MUSIC_STYLE_CODES_BY_MODEL: Final[Mapping[str, frozenset[int]]] = MappingProxyT
 )
 _MUSIC_PARAMETER_WRITE_CODES_BY_MODEL: Final[Mapping[str, frozenset[int]]] = MappingProxyType(
     {
+        "H1771": frozenset(int(mode) for mode in H1771MusicBody.MusicMode),
         "H617A": _H617A_PARAMETER_WRITE_CODES,
         "H6099": _H6099_PARAMETER_WRITE_CODES,
         "H6097": frozenset(int(mode) for mode in H6097MusicParameters.CompanionMode),

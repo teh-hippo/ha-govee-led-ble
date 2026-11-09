@@ -65,8 +65,21 @@ from .music_commands import build_zoned_music_body, resolve_music_profile
 from .music_protocol import music_code_for
 from .music_semantics import music_parameters_depend_on_ic, music_variant
 from .native_effect import NativeDiyLayer
-from .native_scenes import apply_scene_speed, build_native_scene_packets, encode_authored_scene_body
-from .protocol_core import H60a6EffectFrame, H607cDiyBody, H607cPaintBody, H607cSceneBody, H6199EffectUpload, SceneBody
+from .native_scenes import (
+    apply_scene_speed,
+    build_native_scene_packets,
+    encode_authored_scene_body,
+    native_scene_prefers_selector,
+)
+from .protocol_core import (
+    H60a6EffectFrame,
+    H607cDiyBody,
+    H607cPaintBody,
+    H607cSceneBody,
+    H1771EffectUpload,
+    H6199EffectUpload,
+    SceneBody,
+)
 from .scenes import MODEL_SCENES, SceneEntry, resolve_scene_identity, scene_for_profile, scene_selector_code
 from .transport import fragment_a3
 
@@ -358,6 +371,19 @@ def compatibility(item: LibraryItem, model: str, *, profile: ModelProfile | None
         return CompatibilityResult(CompatibilityState.COMPATIBLE)
     if isinstance(content, NativeEffect):
         try:
+            if profile.effect_grammar == "H1771":
+                workflow = (
+                    CapabilityWorkflow.LAYERED_SCENES if content.template is not None else CapabilityWorkflow.MULTI
+                )
+                require_effect_route(model, workflow, ("H1771",), profile=profile)
+                validate_effect_eligibility(content, model, profile=profile)
+                if content.template is not None:
+                    _key, entry = _resolve_scene(model, content.template, expected_scene_type=5)
+                    if entry.diy_effect_codes != (content.family,):
+                        raise ValueError("native scene family does not match its catalogue")
+                resolve_diy_code(item, model=model, profile=profile)
+                encode_native_body(content)
+                return CompatibilityResult(CompatibilityState.COMPATIBLE)
             if profile.effect_grammar == "H607C":
                 require_effect_route(model, CapabilityWorkflow(content.workflow), ("H607C",), profile=profile)
                 validate_effect_eligibility(content, model, profile=profile)
@@ -893,6 +919,8 @@ def compile_native_effect(
     subtype = (
         int(H607cDiyBody.UploadSubtype.native_diy)
         if profile.effect_grammar == "H607C"
+        else int(H1771EffectUpload.UploadKind.native_diy)
+        if profile.effect_grammar == "H1771"
         else int(H60a6EffectFrame.Subtype.native_effect)
     )
     body = encode_native_body(content)
@@ -905,6 +933,13 @@ def compile_native_effect(
         if content.speed_index is not None:
             assert entry.speed is not None
             body = apply_scene_speed(body, entry.speed, content.speed_index)
+        if native_scene_prefers_selector(entry, body, profile):
+            body = b""
+        elif profile.effect_grammar == "H1771":
+            from .native_scenes import _parse_native_scene_body
+            from .protocol_core import serialize_native_body
+
+            body = serialize_native_body(_parse_native_scene_body(body, content.family).body)
         selector = scene_selector_code(model, entry, profile=profile)
         activation = build_scene_activation(model, selector, entry.music_code, profile=profile)
     else:
@@ -912,7 +947,7 @@ def compile_native_effect(
         assert custom_selector is not None
         selector = custom_selector
         activation = build_diy_activation(selector, model, profile=profile)
-    upload = tuple((fragment_a4 if route == "a4" else fragment_a3)(subtype, body))
+    upload = tuple((fragment_a4 if route == "a4" else fragment_a3)(subtype, body)) if body else ()
     return CompiledEffect(
         item_id=str(item.id),
         item_version=item.version,
@@ -927,11 +962,11 @@ def compile_native_effect(
         artifact_sha256=sha256(b"".join((*upload, activation))).hexdigest(),
         evidence_codes=(
             (DIY_ACK_EVIDENCE, "effect_content_readback_unavailable")
-            if profile.diy_requires_upload_ack
+            if upload and profile.diy_requires_upload_ack
             else ("effect_content_readback_unavailable",)
         ),
         upload_transport=route,
-        upload_subtype=subtype,
+        upload_subtype=subtype if upload else None,
         body_effect_code=content.family if profile.effect_grammar == "H607C" else None,
         physical_ic_count=profile.physical_ic_count if content.family == 798 else None,
         scene_entry=entry,
