@@ -147,6 +147,7 @@ async def test_authenticated_users_can_read_contracts(
         "H617A",
         "H617C",
         "H617E",
+        "H619A",
         "H6199",
         "H61F5",
         "H66A0",

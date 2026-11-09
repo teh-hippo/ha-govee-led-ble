@@ -1,5 +1,6 @@
 __init__.py
 command_write.py
+h619a_status_reply.py
 h1771_command_write.py
 h1771_status_query.py
 h1771_status_reply.py

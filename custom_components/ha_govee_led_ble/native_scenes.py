@@ -155,6 +155,9 @@ def build_native_scene_packets(
         speed_index=speed_index,
         canonical_body=canonical_body,
     )
+    if payload and scene.scene_type == 2 and profile.rgbic_scene_v0 is not None:
+        decoded = decode_layered_scene(CatalogueRef(model, scene.scene_id, scene.effect_id), payload)
+        payload = encode_layered_scene(decoded, profile=profile)
     if native_scene_prefers_selector(scene, payload, profile):
         return [build_scene_activation(model, scene.code, scene.music_code, profile=profile)]
     route = native_scene_upload_route(scene, profile)

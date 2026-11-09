@@ -777,31 +777,46 @@ H6117_MUSIC_VARIANTS = tuple(
     replace(variant, evidence="H6117 RGBIC compatibility hypothesis") for variant in H6102_MUSIC_VARIANTS
 )
 
+
 # H617C uses the same RGBIC music encodings through music_body so legacy
 # zero-padded H617C recovery bodies and newly authored bodies both validate.
-H617C_MUSIC_VARIANTS = tuple(
+def _dreamcolor_music_variants(model: str) -> tuple[MusicVariant, ...]:
+    return tuple(
+        replace(
+            variant,
+            evidence=f"{model} RGBIC palette and physical-IC parameter contract",
+            layout="music_body" if variant.layout == "h6099_music_parameters" else variant.layout,
+            style_companions=(0x50, 0x14)
+            if variant.mode_code == 0x30
+            else (0x0564, 0x1446)
+            if variant.mode_code == 0x31
+            else variant.style_companions,
+            gradient_companions=(99, 98) if variant.mode_code == 0x32 else variant.gradient_companions,
+            piano_derived_half=True if variant.mode_code == 0x34 else variant.piano_derived_half,
+            direction_values=(("clockwise", 0, 5), ("counterclockwise", 2, 5), ("two_way", 1, 3))
+            if variant.mode_code == 0x35
+            else variant.direction_values,
+            parameters=tuple(
+                replace(spec, wire_field="piece_num")
+                if variant.mode_code == 0x35 and spec.profile_key == "direction"
+                else spec
+                for spec in variant.parameters
+            ),
+        )
+        for variant in H6102_MUSIC_VARIANTS
+    )
+
+
+H617C_MUSIC_VARIANTS = _dreamcolor_music_variants("H617C")
+H619A_MUSIC_VARIANTS = tuple(
     replace(
         variant,
-        evidence="H617C RGBIC music mode over music_body",
-        layout="music_body" if variant.layout == "h6099_music_parameters" else variant.layout,
-        style_companions=(0x50, 0x14)
-        if variant.mode_code == 0x30
-        else (0x0564, 0x1446)
-        if variant.mode_code == 0x31
-        else variant.style_companions,
-        gradient_companions=(99, 98) if variant.mode_code == 0x32 else variant.gradient_companions,
-        piano_derived_half=True if variant.mode_code == 0x34 else variant.piano_derived_half,
-        direction_values=(("clockwise", 0, 5), ("counterclockwise", 2, 5), ("two_way", 1, 3))
-        if variant.mode_code == 0x35
-        else variant.direction_values,
         parameters=tuple(
-            replace(spec, wire_field="piece_num")
-            if variant.mode_code == 0x35 and spec.profile_key == "direction"
-            else spec
+            replace(spec, default=10) if variant.mode_code == 0x37 and spec.profile_key == "speed" else spec
             for spec in variant.parameters
         ),
     )
-    for variant in H6102_MUSIC_VARIANTS
+    for variant in _dreamcolor_music_variants("H619A")
 )
 
 _H6076_MODE = import_module(

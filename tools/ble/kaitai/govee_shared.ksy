@@ -198,6 +198,13 @@ types:
         type: u2
         if: _parent.colour_stride == 5
 enums:
+  compatibility_flags:
+    0x0f: v0_brightness_mask
+  colour_distribution:
+    0: all
+    1: individual
+    2: groups
+    3: gradient_groups
   brightness_order:
     0: brightest_darkest
     1: brightest_darkest_brightest

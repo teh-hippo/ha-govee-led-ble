@@ -1965,6 +1965,10 @@ class GoveeBLECoordinator(
             hardware=self.hw_version if self.identity_fields_confirmed(frozenset({"hw_version"})) else None,
         )
 
+    @property
+    def effect_authorization_profile(self) -> ModelProfile:
+        return self._authorization_profile() if self.profile.rgbic_scene_v0 is not None else self.profile
+
     def _validate_authorized_packet(
         self, packet: bytes, validator: Callable[[bytes, ModelProfile], None] = require_profile_packet
     ) -> None:

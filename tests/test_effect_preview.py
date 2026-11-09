@@ -90,8 +90,14 @@ def _h6179_item(name: str = "H6179 DIY") -> LibraryItem:
     )
 
 
+class _EffectCoordinator(SimpleNamespace):
+    @property
+    def effect_authorization_profile(self):
+        return self.profile
+
+
 def _coordinator(*, model: str = "H617A", readable: bool = False) -> SimpleNamespace:
-    coordinator = SimpleNamespace(
+    coordinator = _EffectCoordinator(
         model=model,
         profile=get_profile(model)
         if readable
