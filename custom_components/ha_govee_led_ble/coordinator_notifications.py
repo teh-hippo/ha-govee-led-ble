@@ -2,8 +2,6 @@
 
 import logging
 import time
-from dataclasses import replace
-from math import ceil
 from typing import Any
 
 from bleak import BleakClient
@@ -14,6 +12,7 @@ from .const import (
     WHOLE_BULB_GRAMMARS,
     ReadDomain,
     get_profile,
+    profile_with_physical_ic_count,
 )
 from .coordinator_base import _CoordinatorBase
 from .coordinator_expectations import expectations_from_packet
@@ -495,30 +494,23 @@ class _NotificationMixin(_CoordinatorBase):
             self._observed_physical_ic_count = count
             if self._client is not None and self._client.is_connected:
                 self._physical_ic_count_confirmed = True
-            if self.profile.physical_ic_count != count:
-                if self.profile.ic_per_segment is not None:
-                    segments = min(
-                        get_profile(self.model).segment_count,
-                        max(1, ceil(count / self.profile.ic_per_segment)),
-                    )
-                    self.profile = replace(
-                        self.profile,
-                        physical_ic_count=count,
-                        segment_count=segments,
-                    )
-                    if len(self.segment_colors) != segments:
-                        self._profile_generation += 1
-                        self._segment_query_generation = None
-                        self._expected_state.clear()
-                        self.segment_colors = [(255, 255, 255)] * segments
-                        self.segment_brightness = [100] * segments
-                        self.segment_state_source = "initial"
-                        self.segment_state_observed_at = None
-                        self.segment_brightness_readable = False
-                        self._segment_groups_observed.clear()
-                        self._segment_query_colors = self._segment_query_brightness = None
-                else:
-                    self.profile = replace(self.profile, physical_ic_count=count)
+            updated = profile_with_physical_ic_count(
+                self.profile, count, segment_count_ceiling=get_profile(self.model).segment_count
+            )
+            if updated != self.profile:
+                topology_changed = updated.segment_count != self.profile.segment_count
+                self.profile = updated
+                if topology_changed:
+                    self._profile_generation += 1
+                    self._segment_query_generation = None
+                    self._expected_state.clear()
+                    self.segment_colors = [(255, 255, 255)] * updated.segment_count
+                    self.segment_brightness = [100] * updated.segment_count
+                    self.segment_state_source = "initial"
+                    self.segment_state_observed_at = None
+                    self.segment_brightness_readable = False
+                    self._segment_groups_observed.clear()
+                    self._segment_query_colors = self._segment_query_brightness = None
             for variant in self.profile.music_variants:
                 for spec in music_body_params_for_mode(variant.mode_code, self.profile):
                     if spec.key not in self._initialized_music_parameters:

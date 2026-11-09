@@ -1,6 +1,8 @@
 """Coordinator status parsing tests."""
 
 from dataclasses import replace
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -125,10 +127,14 @@ def test_h1a42_exact_status_root_covers_declared_reads_and_wide_kelvin():
     assert build_color_temp(10000, "H1A42")[7:9] == (10000).to_bytes(2, "big")
 
 
-async def test_h61f5_cut_strip_narrows_segments_from_aa40(hass):
+@pytest.mark.parametrize("update", ["advertisement", "resolution", "same-cohort-count", "disconnect-advertisement"])
+async def test_h61f5_cut_strip_narrows_segments_from_aa40(hass, update):
     from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H61F5", configuration_url=None)
+    advertisement = SimpleNamespace(name="Govee_H61F5_ABCD", manufacturer_data={0x8801: H("ec00030101")})
+    coordinator._note_advertisement(advertisement)
+    coordinator._client = MagicMock(is_connected=True)
     assert coordinator.profile.physical_ic_count == 50
     assert coordinator.profile.segment_count == 10
     assert coordinator.profile.whole_device_mask == 0x03FF
@@ -154,6 +160,92 @@ async def test_h61f5_cut_strip_narrows_segments_from_aa40(hass):
     coordinator._notify_callback(None, bytearray(_h6179_status(0x40, b"\x00\x15")))
     assert coordinator.segment_state_source == "observed"
     assert coordinator.segment_colors[-1] == (0x80, 0x80, 0x80)
+    coordinator._arm_expected_values({"brightness_pct": 45})
+    coordinator._segment_query_generation = coordinator._profile_generation
+    coordinator._notify_callback(None, bytearray(_h6179_status(0xA5, H("01640102036404050664070809640a0b0c"))))
+    if update == "disconnect-advertisement":
+        assert coordinator._physical_ic_count_confirmed
+        coordinator._clear_client_state(coordinator._client)
+        assert not coordinator._physical_ic_count_confirmed
+    before = (
+        coordinator._profile_generation,
+        dict(coordinator._expected_state),
+        coordinator.segment_colors,
+        coordinator.segment_brightness,
+        coordinator.segment_state_observed_at,
+        coordinator._segment_query_generation,
+        coordinator._segment_query_colors,
+        coordinator._segment_query_brightness,
+        set(coordinator._segment_groups_observed),
+    )
+    if update in {"advertisement", "disconnect-advertisement"}:
+        advertisement.manufacturer_data[0x8801] = H("ec00030100")
+        coordinator._note_advertisement(advertisement)
+    elif update == "resolution":
+        coordinator._resolve_device_profile()
+    else:
+        coordinator._notify_callback(None, bytearray(_h6179_status(0x40, b"\x00\x16")))
+    assert coordinator.profile.physical_ic_count == (22 if update == "same-cohort-count" else 21)
+    assert coordinator.profile.segment_count == 5
+    assert coordinator.profile.whole_device_mask == 0x1F
+    assert coordinator.segment_state_source == "observed"
+    assert (
+        coordinator._profile_generation,
+        coordinator._expected_state,
+        coordinator.segment_colors,
+        coordinator.segment_brightness,
+        coordinator.segment_state_observed_at,
+        coordinator._segment_query_generation,
+        coordinator._segment_query_colors,
+        coordinator._segment_query_brightness,
+        coordinator._segment_groups_observed,
+    ) == before
+    if update == "disconnect-advertisement":
+        assert not coordinator._physical_ic_count_confirmed
+        coordinator._client = MagicMock(is_connected=True)
+        coordinator._notify_callback(None, bytearray(_h6179_status(0x40, b"\x00\x15")))
+        assert coordinator._physical_ic_count_confirmed
+        assert coordinator._profile_generation == before[0]
+
+
+@pytest.mark.parametrize("array_count", [5, 10])
+async def test_h61f5_repeated_ic_count_repairs_topology_before_expanding(hass, array_count):
+    from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H61F5", configuration_url=None)
+    coordinator.profile = replace(coordinator.profile, physical_ic_count=21)
+    coordinator.segment_colors = [(1, 2, 3)] * array_count
+    coordinator.segment_brightness = [40] * array_count
+    coordinator.segment_state_source = "observed"
+    coordinator._arm_expected_values({"brightness_pct": 45})
+    generation = coordinator._profile_generation
+    for step, (count, segments) in enumerate(((21, 5), (26, 6), (50, 10)), 1):
+        coordinator._notify_callback(None, bytearray(_h6179_status(0x40, count.to_bytes(2, "big"))))
+        assert coordinator.profile.physical_ic_count == count
+        assert coordinator.profile.segment_count == segments
+        assert len(coordinator.segment_colors) == len(coordinator.segment_brightness) == segments
+        assert coordinator._profile_generation == generation + step
+        assert coordinator._expected_state == {}
+        assert coordinator.segment_state_source == "initial"
+        coordinator._resolve_device_profile()
+        assert coordinator.profile.segment_count == segments
+        assert coordinator._profile_generation == generation + step
+
+
+async def test_h61f5_pact_changes_retain_cut_geometry_and_update_kelvin_bounds(hass):
+    from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H61F5", configuration_url=None)
+    coordinator._notify_callback(None, bytearray(_h6179_status(0x40, b"\x00\x15")))
+    generation = coordinator._profile_generation
+    for step, (pact, kelvin_range) in enumerate(((4, (1000, 10000)), (3, (2700, 6500))), 1):
+        coordinator._note_advertisement(
+            SimpleNamespace(name="Govee_H61F5_ABCD", manufacturer_data={0x8801: bytes((0xEC, 0, pact, 1, 0))})
+        )
+        assert coordinator.profile.physical_ic_count == 21
+        assert coordinator.profile.segment_count == 5
+        assert coordinator.profile.color_temp_range == kelvin_range
+        assert coordinator._profile_generation == generation + step
 
 
 def test_status_envelope_rejects_invalid_frames() -> None:

@@ -46,6 +46,7 @@ from .const import (
     device_profile,
     get_profile,
     model_from_ble_name,
+    profile_with_physical_ic_count,
     supported_effect_categories,
 )
 from .control_arbiter import BLEControlArbiter, ControlIntent, LatestRequests, PreviewAdmission, async_control_intent
@@ -683,12 +684,12 @@ class GoveeBLECoordinator(
             profile = device_profile(
                 self.model, self.pact_type, self.pact_code, firmware=self.fw_version, hardware=self.hw_version
             )
-            if (
-                self._observed_physical_ic_count is not None
-                and profile.can_read(ReadDomain.PHYSICAL_IC_COUNT)
-                and profile.physical_ic_count != self._observed_physical_ic_count
-            ):
-                profile = replace(profile, physical_ic_count=self._observed_physical_ic_count)
+            if self._observed_physical_ic_count is not None and profile.can_read(ReadDomain.PHYSICAL_IC_COUNT):
+                profile = profile_with_physical_ic_count(
+                    profile,
+                    self._observed_physical_ic_count,
+                    segment_count_ceiling=profile.segment_count,
+                )
             elif (
                 profile is get_profile(self.model)
                 and profile.physical_ic_count is None
