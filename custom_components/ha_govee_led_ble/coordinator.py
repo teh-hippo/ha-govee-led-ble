@@ -678,6 +678,10 @@ class GoveeBLECoordinator(
     def h607c_pact_readiness(self) -> str:
         if self._h607c_pact_conflict:
             return "conflicting"
+        if get_profile(self.model).requires_pact_confirmation and not self.identity_fields_confirmed(
+            frozenset({"pact"})
+        ):
+            return "stale" if self.pact_type is not None else "missing"
         if self.pact_type is None or self.pact_code is None:
             return "stale" if self._h607c_marker_seen else "missing"
         return "ready" if self.profile.supports_rgb else "unsupported"
