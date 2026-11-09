@@ -18,9 +18,11 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     MultiEffect,
     PaintedEffect,
     SingleEffect,
+    TargetHint,
     WorkshopEffect,
 )
 from custom_components.ha_govee_led_ble.effect_protocol_decoder import decode_effect_frames
+from custom_components.ha_govee_led_ble.effect_websocket_payloads import item_summary
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_boolean_control,
     build_boolean_control_query,
@@ -112,7 +114,10 @@ def test_painted_effect_uses_observed_physical_geometry_not_static_segments():
     content = PaintedEffect(
         "clockwise", 50, 100, ((255, 0, 0),) * 72, background=(255, 255, 255), addressing="physical_ic"
     )
-    compiled = compile_effect(LibraryItem.new("Paint", content), "H605C", diy_code=4096, profile=profile)
+    item = LibraryItem.new("Paint", content, target_hint=TargetHint("H605C"))
+    assert item_summary(item)["model"] == "H605C"
+    assert "model" not in item_summary(LibraryItem.new("Untargeted paint", content))
+    compiled = compile_effect(item, "H605C", diy_code=4096, profile=profile)
     assert compiled.physical_ic_count == 72
     root = import_module("custom_components.ha_govee_led_ble.generated_protocol.h605c_effect_upload").H605cEffectUpload
     parsed = root.from_bytes(reassemble_a3(compiled.upload_packets))
