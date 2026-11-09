@@ -14,6 +14,8 @@ doc: |
   Palette families and variations are exact-model product data. Music-family
   DIY uses sensitivity; other flat and mixed effects use speed 1..100.
   Painted effects use the independent 0..100 speed range.
+  RGBIC Workshop uploads use the layered body and scene selector 402.
+  This selector belongs to the product contract, not the chosen upload codec.
   The common effect adapter serialises these structures. Opaque suffixes
   include transport fill; nonzero values are not invented validation errors.
 seq:

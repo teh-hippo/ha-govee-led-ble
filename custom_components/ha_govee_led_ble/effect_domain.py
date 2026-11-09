@@ -322,7 +322,11 @@ class VideoProfile:
             (self.sound_effects_softness, "sound_effects_softness", profile.supports_video_sound_effects),
             (self.white_balance_position, "white_balance_position", profile.supports_white_balance),
             (self.white_balance_value, "white_balance_value", profile.supports_white_balance),
-            (self.relative_brightness, "relative_brightness", profile.supports_relative_brightness),
+            (
+                self.relative_brightness,
+                "relative_brightness",
+                profile.supports_relative_brightness or profile.video_embeds_relative_brightness,
+            ),
             (self.whole_relative_brightness, "whole_relative_brightness", profile.supports_whole_relative_brightness),
             (self.blank_screen, "blank_screen", profile.supports_blank_screen),
             (self.black_border, "black_border", profile.supports_black_border),

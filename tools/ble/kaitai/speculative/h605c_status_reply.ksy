@@ -11,8 +11,8 @@ doc: |
   use the long video layout independently of protocol revision. Static mode
   establishes only its selector; grouped colour reads carry actual colours.
   Unknown suffix bytes remain opaque. No calibration runtime is implemented.
-  Music status retains style and colour fields for all four selectors;
-  Energetic's short write does not imply a short status response.
+  Energetic identifies mode and sensitivity only; its remaining bytes are
+  retained without interpreting them as style or colour observations.
 seq:
   - id: header
     contents: [0xaa]
@@ -129,19 +129,22 @@ types:
           max: 99
       - id: is_calm
         type: u1
+        if: mode != music_mode::energetic
         valid:
           any-of: [0, 1]
       - id: has_fixed_colour
         type: u1
+        if: mode != music_mode::energetic
         valid:
           any-of: [0, 1]
       - id: fixed_colour
         type: govee_shared::rgb
+        if: mode != music_mode::energetic
       - id: unknown_tail
         size-eos: true
     instances:
       is_legacy:
-        value: true
+        value: mode != music_mode::energetic
   scene_state:
     seq:
       - id: scene_id

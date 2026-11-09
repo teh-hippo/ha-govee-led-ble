@@ -135,7 +135,7 @@ from .music_commands import music_body_style
 from .music_protocol import music_code_for
 from .native_profile_controls import async_require_video_controls
 from .schema_compat import vol
-from .video_applicability import requested_video_controls, video_control_states
+from .video_applicability import requested_video_controls, video_profile_control_states
 
 BACKEND_DATA_KEY = "effect_backend"
 PREVIEW_SESSION_NOT_FOUND_CODE = "preview_session_not_found"
@@ -235,7 +235,7 @@ def _device_payload(
     device.update(device_catalogue_settings(coordinator.model, profile=coordinator.profile))
     device["retained_music_edit"] = retained_music_edit(coordinator)
     device["video_control_states"] = {
-        key: value.value for key, value in video_control_states(coordinator.profile, coordinator).items()
+        key: value.value for key, value in video_profile_control_states(coordinator.profile, coordinator).items()
     }
     workspace = backend.active_workspaces.get(entry.entry_id)
     device["active_workspace"] = (

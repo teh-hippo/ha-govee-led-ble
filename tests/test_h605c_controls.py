@@ -1,5 +1,6 @@
 """Exact-model controls and revision contracts, without claiming hardware qualification."""
 
+import base64
 from dataclasses import replace
 from importlib import import_module
 
@@ -17,6 +18,7 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     MultiEffect,
     PaintedEffect,
     SingleEffect,
+    WorkshopEffect,
 )
 from custom_components.ha_govee_led_ble.effect_protocol_decoder import decode_effect_frames
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
@@ -24,6 +26,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_boolean_control_query,
     require_profile_packet,
 )
+from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_workshop_effect
 from custom_components.ha_govee_led_ble.light_commands import (
     build_color_rgb,
     build_color_temp,
@@ -32,6 +35,7 @@ from custom_components.ha_govee_led_ble.light_commands import (
     build_segment_color_temp,
 )
 from custom_components.ha_govee_led_ble.music_commands import prepare_music_request
+from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
 from custom_components.ha_govee_led_ble.transport import reassemble_a3, xor_checksum
 
 
@@ -132,3 +136,29 @@ def test_onboard_music_uses_exact_selectors_without_parameter_upload(mode, prefi
     parsed = root.from_bytes(packets[-1])
     parsed._read()
     assert parsed.body.mode.name == mode
+
+
+@pytest.mark.parametrize("pact_code", [1, 2])
+def test_workshop_uses_the_command_selector_contract_independently_of_upload(pact_code):
+    profile = device_profile("H605C", 1, pact_code)
+    scene = next(entry for entry in SCENE_ENTRIES["H605C"] if entry.scene_id == 29884)
+    raw = base64.b64decode(scene.param)
+    effect, padding = decode_workshop_effect("H605C", raw)
+    content = WorkshopEffect("H605C", "candidate", effect, raw_param=raw, trailing_padding=padding)
+    compiled = compile_effect(LibraryItem.new("Workshop", content), "H605C", profile=profile)
+    assert compiled.activation_packet == frame("3305049201")
+    assert reassemble_a3(compiled.upload_packets)[2] == 2
+    for packet in compiled.packets:
+        require_profile_packet(packet, profile)
+
+
+def test_energetic_readback_does_not_interpret_opaque_colour_or_style_bytes():
+    from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode, decode_status_frame, parse_color_mode
+
+    decoded = decode_status_frame(frame("aa051305637e8011223344"), "H605C")
+    assert decoded is not None
+    assert decoded.generated.body.detail.unknown_tail.startswith(bytes.fromhex("7e8011223344"))
+    state = parse_color_mode(decoded.generated, "H605C")
+    assert state.mode is ParsedMode.MUSIC and state.music_mode == "energetic"
+    assert state.music_sensitivity == 99 and not state.music_color_present
+    assert state.music_calm is None and state.music_color is None

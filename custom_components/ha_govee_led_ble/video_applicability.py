@@ -3,7 +3,7 @@
 from collections.abc import Iterable
 from typing import Any
 
-from .const import ModelProfile, ReadDomain
+from .const import ModelProfile, ReadDomain, get_profile
 from .effect_contracts import CapabilityState
 from .effect_domain import VideoProfile
 from .firmware_version import FirmwareVersion
@@ -101,10 +101,12 @@ def video_control_states(profile: ModelProfile, identity: object) -> dict[str, C
             ("sound_effects", profile.supports_video_sound_effects),
             ("white_balance", profile.supports_white_balance),
             ("relative_brightness", profile.supports_relative_brightness),
+            ("inline_relative_brightness", profile.video_embeds_relative_brightness),
             ("whole_relative_brightness", profile.supports_whole_relative_brightness),
             ("blank_screen", profile.supports_blank_screen),
             ("black_border", profile.supports_black_border),
         )
+        if control != "inline_relative_brightness" or profile.video_embeds_relative_brightness
     }
     return _apply_video_conditions(profile, identity, states)
 
@@ -159,7 +161,17 @@ def _apply_video_conditions(
     return states
 
 
+def video_profile_control_states(profile: ModelProfile, identity: object) -> dict[str, CapabilityState]:
+    """Profile brightness follows its mode transport, not independent register admission."""
+    states = video_control_states(profile, identity)
+    inline = states.pop("inline_relative_brightness", CapabilityState.UNSUPPORTED)
+    if profile.video_embeds_relative_brightness:
+        states["relative_brightness"] = inline
+    return states
+
+
 def requested_video_controls(content: Any) -> frozenset[str]:
+    inline = getattr(content, "relative_brightness_inline", get_profile(content.model).video_embeds_relative_brightness)
     return frozenset(
         control
         for control, requested in (
@@ -172,7 +184,10 @@ def requested_video_controls(content: Any) -> frozenset[str]:
                 if isinstance(content, VideoProfile)
                 else content.white_balance_wire is not None,
             ),
-            ("relative_brightness", content.relative_brightness is not None),
+            (
+                "inline_relative_brightness" if inline else "relative_brightness",
+                content.relative_brightness is not None,
+            ),
             ("whole_relative_brightness", getattr(content, "whole_relative_brightness", None) is not None),
             ("blank_screen", content.blank_screen is not None),
             ("black_border", content.black_border is not None),
@@ -199,8 +214,9 @@ def require_video_controls(
     requested = frozenset(controls)
     states = video_control_states(profile, identity)
     for control in requested:
-        if states[control] is not CapabilityState.SUPPORTED:
-            raise ValueError(f"video setting {control} is {states[control].value} for this device")
+        state = states.get(control, CapabilityState.UNSUPPORTED)
+        if state is not CapabilityState.SUPPORTED:
+            raise ValueError(f"video setting {control} is {state.value} for this device")
     identity_fields = video_identity_fields(profile, requested)
     confirmation = getattr(identity, "identity_fields_confirmed", None)
     if require_confirmation and identity_fields and callable(confirmation) and not confirmation(identity_fields):

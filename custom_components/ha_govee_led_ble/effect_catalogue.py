@@ -1091,7 +1091,7 @@ def _video_profile_settings(profile: ModelProfile) -> tuple[str, ...]:
             ("saturation", profile.supports_video_saturation),
             ("sound_effects", profile.supports_video_sound_effects),
             ("white_balance", profile.supports_white_balance),
-            ("relative_brightness", profile.supports_relative_brightness),
+            ("relative_brightness", profile.supports_relative_brightness or profile.video_embeds_relative_brightness),
             ("whole_relative_brightness", profile.supports_whole_relative_brightness),
             ("blank_screen", profile.supports_blank_screen),
             ("black_border", profile.supports_black_border),
@@ -1189,7 +1189,7 @@ def _video_template(model: str, mode: NativeModeOption, *, saturation: int = 50)
             ),
             relative_brightness=(
                 RelativeBrightness(**dict.fromkeys(profile.video_brightness_zones, 100))
-                if profile.supports_relative_brightness
+                if profile.supports_relative_brightness or profile.video_embeds_relative_brightness
                 else None
             ),
             blank_screen=False if profile.supports_blank_screen else None,

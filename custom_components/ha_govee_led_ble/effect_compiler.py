@@ -181,6 +181,7 @@ class CompiledVideoProfile:
     black_border: bool | None = None
     blank_screen_policy: tuple[int, int, int] | None = None
     whole_relative_brightness: int | None = None
+    relative_brightness_inline: bool = False
     compiler_version: int = EFFECT_COMPILER_VERSION
     content_kind: str = "video_profile"
     diy_code: None = None
@@ -190,7 +191,7 @@ class CompiledVideoProfile:
         return 1 + sum(
             (
                 self.white_balance_wire is not None,
-                self.relative_brightness is not None,
+                self.relative_brightness is not None and not self.relative_brightness_inline,
                 self.whole_relative_brightness is not None,
                 self.blank_screen is not None,
                 self.black_border is not None,
@@ -283,6 +284,10 @@ def validate_compiled_geometry(compiled: CompiledApplication, profile: ModelProf
     if isinstance(compiled, CompiledVideoProfile):
         if compiled.mode not in profile.video_modes:
             raise ValueError("Device profile no longer supports the compiled video mode")
+        if compiled.relative_brightness is not None and (
+            compiled.relative_brightness_inline != profile.video_embeds_relative_brightness
+        ):
+            raise ValueError("Video brightness transport changed since compilation; refresh and retry")
         return
     dependent = compiled.physical_ic_count is not None
     if isinstance(compiled, CompiledMusicProfile):
@@ -593,7 +598,10 @@ def _has_fixed_diy_slot(model: str, *, profile: ModelProfile | None = None) -> b
 
 def workshop_apply_code(model: str, *, profile: ModelProfile | None = None) -> int:
     """Require Workshop authorization and an evidenced grammar/activation pair."""
+    profile = get_profile(model) if profile is None else profile
     grammar = require_effect_route(model, CapabilityWorkflow.WORKSHOP, profile=profile)
+    if profile.workshop_scene_selector is not None:
+        return profile.workshop_scene_selector
     return H617A_WORKSHOP_APPLY_CODE if grammar in {"H6046", "H617A"} else H6199_WORKSHOP_APPLY_CODE
 
 
@@ -749,7 +757,13 @@ def _compile_workshop_effect(
         raise ValueError("content is not an upload-only effect")
 
     activation = build_scene_activation(
-        model, diy_code, H6199_WORKSHOP_APPLY_MUSIC_CODE, scene_type=H617A_WORKSHOP_SCENE_TYPE, profile=profile
+        model,
+        diy_code,
+        H6199_WORKSHOP_APPLY_MUSIC_CODE,
+        scene_type=H617A_WORKSHOP_SCENE_TYPE
+        if profile.command_grammar in {"H6072", "H6072-legacy", "H607C", "H617A", "H7020"}
+        else 0,
+        profile=profile,
     )
     packets = (*upload, activation)
     return CompiledEffect(
@@ -1305,6 +1319,7 @@ def compile_video_profile(
         "white_balance_wire": white_balance_wire,
         **({"white_balance_value": content.white_balance_value} if content.white_balance_value is not None else {}),
         "relative_brightness": relative_brightness,
+        **({"relative_brightness_inline": True} if profile.video_embeds_relative_brightness else {}),
         **(
             {"whole_relative_brightness": content.whole_relative_brightness}
             if content.whole_relative_brightness is not None
@@ -1337,6 +1352,7 @@ def compile_video_profile(
         white_balance_position=content.white_balance_position,
         white_balance_wire=white_balance_wire,
         relative_brightness=relative_brightness,
+        relative_brightness_inline=profile.video_embeds_relative_brightness,
         whole_relative_brightness=content.whole_relative_brightness,
         blank_screen=content.blank_screen,
         black_border=content.black_border,
