@@ -1,6 +1,8 @@
 """Reconstructed H619A contracts, not hardware confirmation."""
 
+from contextlib import asynccontextmanager
 from dataclasses import replace
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -10,12 +12,14 @@ from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.effect_catalogue import MODEL_EFFECT_CATALOGUES
 from custom_components.ha_govee_led_ble.effect_compiler import compile_application, validate_compiled_geometry
 from custom_components.ha_govee_led_ble.effect_domain import BuiltinScene, CatalogueRef, LibraryItem
+from custom_components.ha_govee_led_ble.effect_storage import LibrarySnapshot
 from custom_components.ha_govee_led_ble.layered_scene import AppliedArea, Distribution, Selection
 from custom_components.ha_govee_led_ble.layered_scene_decoder import (
     decode_catalogue_layered_scene,
     decode_layered_scene,
     encode_layered_scene,
 )
+from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.light_commands import (
     build_color_rgb,
     build_color_temp,
@@ -201,3 +205,40 @@ async def test_native_scene_uses_subscription_identity_and_rechecks_after_reply_
         await coordinator.async_apply_native_scene("Candidate", scene_entry=entry, verify=False)
         assert coordinator.effect_authorization_profile.rgbic_scene_v0 is True
     client.write_gatt_char.assert_not_awaited()
+
+
+@pytest.mark.parametrize("fresh_identity", [False, True])
+async def test_saved_scene_reconnects_before_compilation_after_idle_disconnect(hass, monkeypatch, fresh_identity):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model="H619A", configuration_url=None)
+    coordinator.profile = device_profile("H619A", 2, 1, firmware="1.06.00", hardware="1.00.02")
+    coordinator.fw_version, coordinator.hw_version = "1.06.00", "1.00.02"
+    coordinator.is_on = True
+    entry = next(entry for entry in SCENE_ENTRIES["H619A"] if entry.scene_type == 2)
+    item = LibraryItem.new("Saved", BuiltinScene(CatalogueRef("H619A", entry.scene_id, entry.effect_id)))
+
+    async def connect():
+        if fresh_identity:
+            coordinator._confirmed_identity_fields.update({"fw_version", "hw_version"})
+        return MagicMock(is_connected=True)
+
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(side_effect=connect))
+    policies = []
+
+    @asynccontextmanager
+    async def saved_effect_for_apply(*args, profile, **kwargs):
+        policies.append(profile.rgbic_scene_v0)
+        yield item
+
+    engine = SimpleNamespace(async_apply_saved=AsyncMock())
+    backend = SimpleNamespace(
+        application=SimpleNamespace(
+            saved_effect_for_apply=saved_effect_for_apply, library_snapshot=lambda: LibrarySnapshot((item,))
+        ),
+        engine=engine,
+    )
+    entity = GoveeBLELight(coordinator, config_entry_id="entry", effect_backend=backend)
+    monkeypatch.setattr(entity, "_async_supersede_preview", AsyncMock())
+    await entity._async_apply_saved_item(item)
+    coordinator._ensure_connected.assert_awaited_once()
+    engine.async_apply_saved.assert_awaited_once()
+    assert policies == [not fresh_identity]

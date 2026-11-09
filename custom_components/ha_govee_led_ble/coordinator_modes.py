@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from .control_arbiter import ControlIntent, async_control_intent
-from .coordinator_base import _CoordinatorBase
+from .coordinator_base import _CoordinatorBase, async_prepare_effect_profile
 from .coordinator_status import ParsedMode
 from .generated_protocol_adapter import build_power
 from .light_commands import (
@@ -157,10 +157,7 @@ class _ActiveModeMixin(_CoordinatorBase):
     ) -> None:
         from .effect_compiler import require_native_scenes
 
-        if self.profile.rgbic_scene_v0 is not None:
-            async with self._lock:
-                await self._ensure_connected()
-        profile = self.effect_authorization_profile
+        profile = await async_prepare_effect_profile(self, intent=intent)
         generation = self._profile_generation
 
         def qualified() -> None:
