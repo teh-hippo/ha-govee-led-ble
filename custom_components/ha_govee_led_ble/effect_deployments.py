@@ -61,6 +61,7 @@ _VIDEO_RESTORE_CONTROLS: Final = frozenset(
         "sound_effects",
         "white_balance",
         "relative_brightness",
+        "inline_relative_brightness",
         "whole_relative_brightness",
         "blank_screen",
         "blank_screen_policy",

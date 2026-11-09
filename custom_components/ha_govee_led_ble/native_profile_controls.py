@@ -103,7 +103,9 @@ def prepare_video_mode(
     if relative_brightness is not None:
         inline = video_parameters_from_brightness(profile.video_grammar, relative_brightness)
         if inline is not None:
-            controls |= {"relative_brightness"}
+            controls |= {
+                "inline_relative_brightness" if profile.video_embeds_relative_brightness else "relative_brightness"
+            }
             parameters = dict(parameters or {}) | inline
     observed_parameters = getattr(coordinator, "video_parameters", None)
     retained_parameters = dict(
@@ -193,12 +195,14 @@ async def async_prepare_video_mode(
         coordinator.profile.validate_video_saturation(requested_values["saturation"])
     controls = video_mode_controls(coordinator.profile)
     if relative_brightness is not None:
-        controls |= {"relative_brightness"}
+        controls |= {
+            "inline_relative_brightness"
+            if coordinator.profile.video_embeds_relative_brightness
+            else "relative_brightness"
+        }
     await async_require_video_controls(coordinator, controls)
     client = coordinator._client
-    if video_parameter_read_domain(coordinator.profile.video_grammar) is not None and (
-        client is None or not client.is_connected
-    ):
+    if client is None or not client.is_connected:
         current_intent = coordinator._control_arbiter.current_task_intent
         async with async_control_intent(coordinator, current_intent or ControlIntent.USER):
             async with coordinator._lock:
@@ -349,6 +353,11 @@ async def _send_video_setting(
 ) -> None:
     profile = coordinator.profile
     await async_require_video_controls(coordinator, controls)
+    if coordinator._client is None or not coordinator._client.is_connected:
+        current_intent = coordinator._control_arbiter.current_task_intent
+        async with async_control_intent(coordinator, current_intent or ControlIntent.USER):
+            async with coordinator._lock:
+                await coordinator._ensure_connected()
     client, token = coordinator._client, coordinator._notification_token
     generation = coordinator._authorization_generation
 

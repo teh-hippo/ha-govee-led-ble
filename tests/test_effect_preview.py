@@ -232,6 +232,37 @@ async def test_h7020_static_preview_rejects_ambiguous_per_bulb_white_intent(hass
         await manager.async_shutdown()
 
 
+async def test_inline_profile_preview_requires_fresh_recovery_before_writing(hass, monkeypatch):
+    coordinator = _coordinator(model="H605C", readable=True)
+    coordinator._field_revisions = {}
+    coordinator.async_read_video_setting = AsyncMock(return_value=False)
+    monkeypatch.setattr(
+        "custom_components.ha_govee_led_ble.effect_preview.async_prepare_effect_control_state",
+        AsyncMock(return_value=True),
+    )
+    manager, _cache = await _manager(hass, monkeypatch, coordinator)
+    events: list[PreviewStatus] = []
+    owner = object()
+    session = _open(manager, owner, events)
+    content = VideoProfile("H605C", "movie", True, 50, False, 50, None, RelativeBrightness(27, 48, 69, 80), None)
+    try:
+        await manager.async_queue_snapshot(
+            session_id=session,
+            owner=owner,
+            config_entry_id="entry-a",
+            sequence=1,
+            updated_at="2026-11-09T00:00:00Z",
+            item=LibraryItem.new("Complete video", content),
+        )
+        await manager.async_wait_idle("entry-a")
+        coordinator.async_read_video_setting.assert_awaited_once_with("video_parameters")
+        coordinator.async_preview_write.assert_not_awaited()
+        assert events[-1].phase is PreviewPhase.FAILED
+        assert events[-1].write_disposition is PreviewWriteDisposition.NOT_STARTED
+    finally:
+        await manager.async_shutdown()
+
+
 @pytest.mark.parametrize(
     ("model", "name", "code"),
     [("H7020", "Twilight", 2070), ("H6179", "Sunrise", 0)],

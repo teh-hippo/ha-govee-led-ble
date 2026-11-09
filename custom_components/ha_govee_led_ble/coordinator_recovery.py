@@ -408,6 +408,7 @@ class _RecoveryMixin(_CoordinatorBase):
                     "relative_brightness",
                     tuple(f"relative_brightness_{zone}" for zone in self.profile.video_brightness_zones),
                 ),
+                ("inline_relative_brightness", ("video_parameters",)),
                 (
                     "blank_screen",
                     (
@@ -422,12 +423,28 @@ class _RecoveryMixin(_CoordinatorBase):
                 ("black_border", ("black_border",)),
                 ("whole_relative_brightness", ("whole_relative_brightness",)),
             )
-            if (state.video_restore_controls is None or control in state.video_restore_controls)
+            if (control != "inline_relative_brightness" or self.profile.video_embeds_relative_brightness)
+            and (state.video_restore_controls is None or control in state.video_restore_controls)
             and any(
                 getattr(state, field) is not None and getattr(self, field) != getattr(state, field) for field in fields
             )
         }
         complete = not (needed - permitted)
+        if self.profile.video_embeds_relative_brightness and (
+            state.video_restore_controls is None or "inline_relative_brightness" in state.video_restore_controls
+        ):
+            if state.video_parameters is None:
+                complete = False
+            elif "inline_relative_brightness" in needed and state.mode != "video":
+                if self.video_mode not in self.profile.video_modes:
+                    complete = False
+                else:
+                    await apply_active_video_mode(
+                        self._as_coordinator,
+                        mode=self.video_mode,
+                        requested_values={},
+                        parameters=state.video_parameters,
+                    )
         restore_white_balance = self.profile.supports_white_balance and (
             state.video_restore_controls is None or "white_balance" in state.video_restore_controls
         )

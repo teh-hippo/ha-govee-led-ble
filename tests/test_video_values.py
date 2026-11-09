@@ -15,7 +15,11 @@ from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, VideoP
 from custom_components.ha_govee_led_ble.effect_runtime import async_apply_compiled_profile
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_video_mode
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
-from custom_components.ha_govee_led_ble.native_profile_controls import apply_active_video_mode, prepare_video_mode
+from custom_components.ha_govee_led_ble.native_profile_controls import (
+    apply_active_video_mode,
+    apply_white_balance,
+    prepare_video_mode,
+)
 from custom_components.ha_govee_led_ble.protocol_core import _STATUS_ROOTS
 from tests.test_h6099 import frame
 
@@ -186,3 +190,37 @@ async def test_extra_values_require_fresh_matching_readback(device, monkeypatch,
     assert await device.refresh_state(
         expected_video_parameters={"picture_preset": "delicate", "opaque": 0xA5}, timeout=0.001
     )
+
+
+@pytest.mark.parametrize("operation", ["mode", "white_balance"])
+async def test_cold_connection_precedes_subscription_guard_capture(hass, monkeypatch, operation):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6099", configuration_url="test")
+    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
+
+    async def connect():
+        coordinator._client = client
+        if coordinator._notification_token is None:
+            coordinator._notification_token = object()
+        return client
+
+    connector = AsyncMock(side_effect=connect)
+    monkeypatch.setattr(coordinator, "_ensure_connected", connector)
+    monkeypatch.setattr(coordinator, "_renew_foreground_lease", lambda: None)
+    assert coordinator._client is None
+    if operation == "mode":
+        await apply_active_video_mode(
+            coordinator,
+            mode="movie",
+            requested_values={
+                "full_screen": True,
+                "saturation": 50,
+                "sound_effects": False,
+                "sound_effects_softness": 50,
+            },
+            verify=False,
+        )
+        assert client.write_gatt_char.await_args.args[1].startswith(bytes.fromhex("330500"))
+    else:
+        await apply_white_balance(coordinator, (55,), verify=False)
+        assert client.write_gatt_char.await_args.args[1] == frame("33a9060137")
+    connector.assert_awaited()

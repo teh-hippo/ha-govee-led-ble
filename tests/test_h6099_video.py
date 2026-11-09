@@ -3,7 +3,7 @@
 import asyncio
 from dataclasses import replace
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from bleak.exc import BleakError
@@ -312,6 +312,7 @@ async def test_saturation_range_at_every_write_entry(hass, monkeypatch, model, m
     profile = get_profile(model)
     assert profile.video_saturation_min == minimum
     device = GoveeBLECoordinator(hass, "11:22:33:44:55:66", model, configuration_url="test")
+    device._client = MagicMock(is_connected=True)
     if model == "H6199":
         from tests.test_h6199_capabilities import set_qualified_identity
 

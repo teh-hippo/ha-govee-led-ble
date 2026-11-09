@@ -30,6 +30,7 @@ MANUAL = bytes.fromhex("aaa9000601100301150500000000000000000006")
 @pytest.fixture
 def coordinator(hass):
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url="test")
+    coordinator._client = MagicMock(is_connected=True)
     set_qualified_identity(coordinator)
     return coordinator
 

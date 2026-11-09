@@ -59,6 +59,7 @@ from .generated_protocol_adapter import (
     build_relative_brightness,
     build_white_balance,
     build_whole_relative_brightness,
+    video_parameters_from_brightness,
 )
 from .music_commands import prepare_music_profile_writes
 from .music_protocol import music_code_for
@@ -205,7 +206,7 @@ async def async_apply_compiled_profile(
             compiled.white_balance_wire[1] if len(compiled.white_balance_wire) == 2 else None,
             coordinator.model,
         )
-    if compiled.relative_brightness is not None:
+    if compiled.relative_brightness is not None and not compiled.relative_brightness_inline:
         values = compiled.relative_brightness
         build_relative_brightness(
             values[0],
@@ -252,7 +253,7 @@ async def async_apply_compiled_profile(
         if progress is not None:
             await progress(completed)
 
-    if compiled.relative_brightness is not None:
+    if compiled.relative_brightness is not None and not compiled.relative_brightness_inline:
         await apply_relative_brightness(coordinator, compiled.relative_brightness, writer=writer, verify=verify)
         completed += 1
         if progress is not None:
@@ -1068,7 +1069,9 @@ class EffectDeploymentEngine:
             "whole_relative_brightness"
         ):
             raise RuntimeError("Could not read the current whole-video brightness before applying the profile")
-        refresh_relative_brightness = compiled.relative_brightness is not None
+        refresh_relative_brightness = (
+            compiled.relative_brightness is not None and not compiled.relative_brightness_inline
+        )
         if not refresh_display_settings and not refresh_relative_brightness:
             return refreshed
         if not refreshed or not await coordinator.refresh_state(
@@ -1092,7 +1095,7 @@ class EffectDeploymentEngine:
                     coordinator.white_balance_default_blue,
                 )
             )
-        if compiled.relative_brightness is not None:
+        if compiled.relative_brightness is not None and not compiled.relative_brightness_inline:
             required.extend(
                 getattr(coordinator, f"relative_brightness_{zone}") for zone in profile.video_brightness_zones
             )
@@ -1668,7 +1671,7 @@ def compiled_observation(
         # H617A settings are not confirmed by the shipped readback evidence.
         if profile.status_grammar == "H6097":
             expectations["music_sensitivity"] = compiled.sensitivity
-        elif profile.status_grammar in {"H6099", "H6199", "H66A0"}:
+        elif profile.status_grammar in {"H605C", "H6099", "H6199", "H66A0"}:
             expectations["music_sensitivity"] = compiled.sensitivity
             variant = music_variant(
                 profile,
@@ -1723,7 +1726,11 @@ def compiled_observation(
             else:
                 complete = False
         if compiled.relative_brightness is not None:
-            if profile.can_read(ReadDomain.RELATIVE_BRIGHTNESS):
+            if compiled.relative_brightness_inline:
+                expectations["video_parameters"] = video_parameters_from_brightness(
+                    profile.video_grammar, compiled.relative_brightness
+                )
+            elif profile.can_read(ReadDomain.RELATIVE_BRIGHTNESS):
                 expectations.update(
                     (f"relative_brightness_{zone}", value)
                     for zone, value in zip(profile.video_brightness_zones, compiled.relative_brightness, strict=True)

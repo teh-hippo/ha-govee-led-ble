@@ -251,6 +251,7 @@ class ModelProfile:
     video_white_balance_calibration: tuple[tuple[int, ...], ...] = ()
     video_brightness_zones: tuple[str, ...] = ()
     supports_relative_brightness: bool = False
+    video_embeds_relative_brightness: bool = False
     supports_whole_relative_brightness: bool = False
     # HA brightness 0 means off on devices whose brightness register has no zero.
     brightness_zero_turns_off: bool = False
@@ -303,6 +304,7 @@ class ModelProfile:
     scene_codes: frozenset[int] | None = None
     local_scenes: tuple[tuple[int, str], ...] = ()
     advanced_scene_carrier: tuple[int, int] | None = None
+    workshop_scene_selector: int | None = None
     advanced_diy_selector: int | None = None
     rgbic_scene_v0: bool | None = None
     # When set, Type04 custom effects upload as A1 command-02 frames led by this selector and activate with it.
@@ -379,6 +381,10 @@ class ModelProfile:
             type(self.advanced_diy_selector) is not int or not 0 <= self.advanced_diy_selector <= 65535
         ):
             raise ValueError("Advanced DIY selector must be an unsigned 16-bit value")
+        if self.workshop_scene_selector is not None and (
+            type(self.workshop_scene_selector) is not int or not 0 <= self.workshop_scene_selector <= 65535
+        ):
+            raise ValueError("Workshop scene selector must be an unsigned 16-bit value")
         if self.a1_diy_selector is not None and (
             type(self.a1_diy_selector) is not int or not 0 <= self.a1_diy_selector <= 255
         ):
@@ -452,6 +458,7 @@ class ModelProfile:
             or self.supports_video_sound_effects
             or self.supports_white_balance
             or self.supports_relative_brightness
+            or self.video_embeds_relative_brightness
             or self.supports_whole_relative_brightness
             or self.supports_blank_screen
             or self.supports_black_border
@@ -1266,6 +1273,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_scenes=True,
         scene_catalogue_sku="H605C",
         advanced_scene_carrier=(29884, 41599),
+        workshop_scene_selector=402,
         diy_requires_upload_ack=True,
         effect_retry_after_upload=False,
         music_modes=("energetic", "rhythm", "spectrum", "rolling"),
@@ -1318,6 +1326,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         ),
         video_brightness_zones=("left", "top", "right", "bottom"),
         supports_relative_brightness=True,
+        video_embeds_relative_brightness=True,
         supports_whole_relative_brightness=True,
         video_control_exclusions=(("whole_relative_brightness", "relative_brightness"),),
         video_firmware_conditions=(

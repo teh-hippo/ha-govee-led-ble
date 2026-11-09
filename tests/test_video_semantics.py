@@ -166,6 +166,7 @@ async def test_legacy_calibration_hash_and_omitted_registers(hass: HomeAssistant
         key.startswith(("white_balance", "relative_brightness", "blank_screen")) for key in expected
     )
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url="test")
+    coordinator._client = MagicMock(is_connected=True)
     set_qualified_identity(coordinator)
     coordinator.is_on = True
     writer = AsyncMock()

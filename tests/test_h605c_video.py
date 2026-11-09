@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ReadDomain, VideoFirmwareCondition
+from custom_components.ha_govee_led_ble.const import ReadDomain
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_expectations import expectations_from_packet
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode, decode_status_frame, parse_color_mode
@@ -19,7 +19,7 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     effect_content_from_dict,
     effect_content_to_dict,
 )
-from custom_components.ha_govee_led_ble.effect_runtime import async_apply_compiled_profile
+from custom_components.ha_govee_led_ble.effect_runtime import async_apply_compiled_profile, compiled_observation
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_blank_screen,
     build_relative_brightness_query,
@@ -33,10 +33,11 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.native_profile_controls import (
     apply_active_video_mode,
+    apply_relative_brightness,
     apply_whole_relative_brightness,
     prepare_video_mode,
 )
-from custom_components.ha_govee_led_ble.video_applicability import video_control_states
+from custom_components.ha_govee_led_ble.video_applicability import video_control_states, video_profile_control_states
 from tests.test_h6099 import frame
 
 EDGES = {"left_percent": 27, "top_percent": 48, "right_percent": 69, "bottom_percent": 80}
@@ -45,22 +46,6 @@ SETTINGS = {"full_screen": True, "saturation": 50, "sound_effects": False, "soun
 
 @pytest.fixture
 def device(hass, monkeypatch):
-    profile = replace(
-        MODEL_PROFILES["H605C"],
-        supports_whole_relative_brightness=True,
-        video_softness_min=0,
-        video_softness_max=99,
-        video_firmware_conditions=(
-            VideoFirmwareCondition("relative_brightness", "fw_version", "1.00.12"),
-            VideoFirmwareCondition("relative_brightness", "subordinate_21_version", "1.00.08"),
-            VideoFirmwareCondition("whole_relative_brightness", "fw_version", "1.00.09"),
-            VideoFirmwareCondition("whole_relative_brightness", "subordinate_21_version", "1.00.04"),
-            VideoFirmwareCondition("whole_relative_brightness", "subordinate_20_version", "1.03.30"),
-            VideoFirmwareCondition("blank_screen", "subordinate_21_version", "1.00.08"),
-        ),
-        video_control_exclusions=(("whole_relative_brightness", "relative_brightness"),),
-    )
-    monkeypatch.setitem(MODEL_PROFILES, "H605C", profile)
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H605C", configuration_url="test")
     coordinator._client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
     coordinator._notification_token = object()
@@ -158,13 +143,13 @@ def test_camera_health_and_direction_use_independent_domains(device, value, stat
 @pytest.mark.parametrize(
     "payload,mode,calm,colour",
     [
-        ("05630101112233", "energetic", None, (17, 34, 51)),
+        ("05630101112233", "energetic", None, None),
         ("03320101112233", "rhythm", True, (17, 34, 51)),
         ("04320000112233", "spectrum", None, None),
         ("06320001112233", "rolling", None, (17, 34, 51)),
     ],
 )
-def test_exact_music_status_flags_include_short_writer_selector(device, payload, mode, calm, colour):
+def test_music_status_limits_observations_to_the_selector_semantics(device, payload, mode, calm, colour):
     decoded = decode_status_frame(frame("aa0513" + payload), "H605C")
     assert decoded is not None
     parsed = parse_color_mode(decoded.generated, "H605C")
@@ -328,3 +313,60 @@ async def test_scalar_semantics_persist_compile_write_and_snapshot(device, monke
     )
     assert complete and permitted == {"whole_relative_brightness"}
     assert device.whole_relative_brightness == 47 and device._field_revisions["whole_relative_brightness"] == 1
+
+
+async def test_older_complete_profile_embeds_edges_without_requiring_the_newer_register(device, monkeypatch):
+    device.fw_version, device.subordinate_21_version = "1.00.09", "1.00.04"
+    device.video_parameters = None
+    reader = AsyncMock(side_effect=AssertionError("complete inline values do not require a register read"))
+    monkeypatch.setattr(device, "async_read_video_setting", reader)
+    content = VideoProfile(
+        "H605C",
+        "movie",
+        True,
+        50,
+        False,
+        50,
+        None,
+        RelativeBrightness(27, 48, 69, 80),
+        None,
+        whole_relative_brightness=47,
+    )
+    compiled = compile_video_profile(LibraryItem.new("Older video", content), "H605C")
+    assert compiled.relative_brightness_inline and compiled.progress_total == 2
+    assert effect_content_from_dict(effect_content_to_dict(content)) == content
+    native = video_control_states(device.profile, device)
+    editor = video_profile_control_states(device.profile, device)
+    assert native["relative_brightness"] == "unsupported" and native["whole_relative_brightness"] == "supported"
+    assert editor["relative_brightness"] == "supported" and "inline_relative_brightness" not in editor
+    await async_apply_compiled_profile(device, compiled, verify=False)
+    assert [call.args[1] for call in device._client.write_gatt_char.await_args_list] == [
+        build_video_mode("movie", True, 50, False, 50, "H605C", values=EDGES),
+        frame("33a902012f"),
+    ]
+    reader.assert_not_awaited()
+    expected, _confidence = compiled_observation(compiled)
+    assert expected is not None and expected["video_parameters"] == EDGES
+    assert not any(key.startswith("relative_brightness") for key in expected)
+    with pytest.raises(ValueError, match="relative_brightness is unsupported"):
+        await apply_relative_brightness(device, (27, 48, 69, 80), verify=False)
+
+
+async def test_inline_recovery_restores_mode_values_without_the_independent_register(device, monkeypatch):
+    device.fw_version, device.subordinate_21_version = "1.00.09", "1.00.04"
+    device._notify_callback(None, bytearray(frame("aa05000100320032001b30455000")))
+    snapshot = replace(
+        device.capture_effect_control_state(),
+        video_restore_controls=("capture_region", "saturation", "sound_effects", "inline_relative_brightness"),
+    )
+    device.video_parameters = dict.fromkeys(EDGES, 100)
+    reader = AsyncMock(side_effect=AssertionError("inline recovery must not require the independent register"))
+    monkeypatch.setattr(device, "async_read_video_setting", reader)
+    monkeypatch.setattr(device, "send_command", AsyncMock())
+    permitted, complete = await device._restore_video_controls(snapshot)
+    assert complete and "inline_relative_brightness" in permitted and "relative_brightness" not in permitted
+    assert await device._restore_video_mode(snapshot, permitted, complete)
+    assert device._client.write_gatt_char.await_args.args[1] == build_video_mode(
+        "movie", True, 50, False, 50, "H605C", values=EDGES
+    )
+    reader.assert_not_awaited()
