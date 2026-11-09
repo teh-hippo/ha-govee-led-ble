@@ -2017,6 +2017,54 @@ async def test_foreground_control_invalidates_preview_waiting_for_revision_prepa
         await manager.async_shutdown()
 
 
+async def test_overlapping_revision_preparations_keep_the_newest_preview(hass, monkeypatch):
+    from custom_components.ha_govee_led_ble import effect_preview
+
+    coordinator = _coordinator(model="H619A")
+    manager, _cache = await _manager(hass, monkeypatch, coordinator)
+    owner = object()
+    session_id = _open(manager, owner, [])
+    entered = [asyncio.Event(), asyncio.Event()]
+    finish = [asyncio.Event(), asyncio.Event()]
+    count = 0
+
+    async def prepare(_coordinator, **kwargs):
+        nonlocal count
+        index = count
+        count += 1
+        entered[index].set()
+        await finish[index].wait()
+        return coordinator.profile
+
+    monkeypatch.setattr(effect_preview, "async_prepare_effect_profile", prepare)
+    requests = []
+    try:
+        for index in range(2):
+            requests.append(
+                asyncio.create_task(
+                    manager.async_queue_snapshot(
+                        session_id=session_id,
+                        owner=owner,
+                        config_entry_id="entry-a",
+                        sequence=index + 1,
+                        updated_at="2026-08-17T00:00:00Z",
+                        item=_item(f"Preview {index + 1}"),
+                        diy_code=24,
+                    )
+                )
+            )
+            await asyncio.wait_for(entered[index].wait(), 1)
+        for index in range(2):
+            finish[index].set()
+            await requests[index]
+        assert manager._sessions[session_id].last_sequence == 2
+    finally:
+        for event in finish:
+            event.set()
+        await asyncio.gather(*requests, return_exceptions=True)
+        await manager.async_shutdown()
+
+
 async def test_ineligible_preview_preserves_active_admission(hass, monkeypatch, effect_catalogue_targets):
     _broad, narrow = effect_catalogue_targets
     coordinator = _coordinator(model=narrow)
