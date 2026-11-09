@@ -80,6 +80,7 @@ from .generated_protocol_adapter import (
     build_segment_query,
     build_subordinate_query,
     build_white_balance_query,
+    is_bulk_status_frame,
     parse_command_result,
     require_profile_packet,
     upload_ack_mode,
@@ -93,6 +94,7 @@ from .h6102_capabilities import (
     resolve_h6102_capabilities,
 )
 from .light_commands import (
+    ParsedStaticWrite,
     parse_static_write,
 )
 from .low_blue_light import LowBlueLightState
@@ -252,6 +254,8 @@ class GoveeBLECoordinator(
         self.hw_version: str | None = None
         self.subordinate_20_version: str | None = None
         self.subordinate_21_version: str | None = None
+        self.wireless_firmware_version: str | None = None
+        self.wireless_hardware_version: str | None = None
         self.pact_type: int | None = None
         self.pact_code: int | None = None
         self._h607c_advertised_pacts: set[tuple[int, int]] = set()
@@ -286,6 +290,14 @@ class GoveeBLECoordinator(
         self.diy_code: int | None = None
         self.diy_companion: int | None = None
         self.color_mode: ParsedMode | None = None
+        self._observed_color_mode: ParsedMode | None = None
+        self._mode_write_generation = 0
+        self._observed_mode_write_generation = -1
+        self._observed_mode_profile_generation = -1
+        self._power_write_generation = 0
+        self._observed_power_write_generation = -1
+        self._observed_power_profile_generation = -1
+        self._source_power_observation_generation: dict[str, tuple[int, int]] = {}
         self._scene_code: int | None = None
         self._pre_mode_snapshot = PreModeSnapshot(kind="rgb", rgb=(255, 255, 255))
         self.segment_colors: list[tuple[int, int, int]] = [self.rgb_color] * profile.segment_count
@@ -310,6 +322,7 @@ class GoveeBLECoordinator(
         self.white_balance_red: int | None = None
         self.control_write_attempts = 0
         self._static_write_attempts = 0
+        self.source_static_intents: dict[str, int | tuple[int, int, int]] = {}
         self.white_balance_blue: int | None = None
         self.white_balance_flag: int | None = None
         self.white_balance_default_flag: int | None = None
@@ -704,6 +717,7 @@ class GoveeBLECoordinator(
             if context_changed:
                 self._profile_generation += 1
                 self._expected_state.clear()
+                self.source_static_intents.clear()
             return
         preserve_brightness = (
             self.model == "H607C"
@@ -730,6 +744,7 @@ class GoveeBLECoordinator(
             self.low_blue_light = None
         self._profile_generation += 1
         self._expected_state.clear()
+        self.source_static_intents.clear()
         self._sync_device_configuration_url()
         if preserve_state:
             return
@@ -999,6 +1014,8 @@ class GoveeBLECoordinator(
                         (ReadDomain.HARDWARE, "hw_version"),
                         (ReadDomain.SUBORDINATE_20, "subordinate_20_version"),
                         (ReadDomain.SUBORDINATE_21, "subordinate_21_version"),
+                        (ReadDomain.WIRELESS_FIRMWARE, "wireless_firmware_version"),
+                        (ReadDomain.WIRELESS_HARDWARE, "wireless_hardware_version"),
                     )
                     if field in self._authorization_identity_fields() and self.profile.can_read(domain)
                 }
@@ -1193,6 +1210,14 @@ class GoveeBLECoordinator(
             self._field_revisions[field] = self._field_revisions.get(field, 0) + 1
             self._field_received_at[field] = received_at
             self._h607c_uncertain_state_fields.discard(field)
+            if field == "is_on":
+                self._observed_power_write_generation = self._power_write_generation
+                self._observed_power_profile_generation = self._profile_generation
+            elif field.startswith("boolean_"):
+                self._source_power_observation_generation[field] = (
+                    self._power_write_generation,
+                    self._profile_generation,
+                )
         if ("rgb_color" in fields and self.rgb_color_source == "observed") or (
             "color_temp_kelvin" in fields and self.color_temp_kelvin_source == "observed"
         ):
@@ -1307,6 +1332,22 @@ class GoveeBLECoordinator(
         requested = expectations_from_packet(packet, self.model, profile=self.profile)
         if (music_mode := requested.get("music_mode")) is not None and music_mode not in self.profile.music_modes:
             raise ValueError("Device profile does not support the requested music mode")
+        previous_mode = self.color_mode
+        mode_revision = self._field_revisions.get("color_mode", 0)
+        observed_mode_at = self._field_received_at.get("color_mode")
+        mode_confirmed_static = (
+            previous_mode is ParsedMode.COLOUR
+            and self._observed_color_mode is ParsedMode.COLOUR
+            and self._observed_mode_write_generation == self._mode_write_generation
+            and self._observed_mode_profile_generation == self._profile_generation
+            and self._notify_started_monotonic is not None
+            and observed_mode_at is not None
+            and observed_mode_at >= self._notify_started_monotonic
+        )
+        if arm_expected and "color_mode" in requested:
+            self._mode_write_generation += 1
+        if arm_expected and "is_on" in requested:
+            self._power_write_generation += 1
         if arm_expected:
             for field in ("is_on", "brightness_pct"):
                 if field in requested:
@@ -1319,11 +1360,30 @@ class GoveeBLECoordinator(
         if expected_values is not None:
             self._arm_expected_values(dict(expected_values))
         rgb_intent: tuple[int, int, int] | None = None
+        static: ParsedStaticWrite | None = None
+        affected_sources: set[str] = set()
+        affected_colour_sources: set[str] = set()
         if arm_expected:
             self.control_write_attempts += 1
             static = parse_static_write(packet, self.model, profile=self.profile)
             if static is not None:
                 self._static_write_attempts += 1
+                mask = static.segment_mask if static.segment_mask is not None else self.profile.whole_device_mask
+                for source in self.profile.light_sources:
+                    source_mask = sum(1 << (segment - 1) for segment in source.segments)
+                    if source_mask & mask:
+                        affected_sources.add(source.key)
+                        if static.rgb is not None or static.kelvin is not None:
+                            affected_colour_sources.add(source.key)
+                            self._arm_expected_values(
+                                {f"source_kelvin_{source.key}": static.kelvin if static.kelvin is not None else 0}
+                            )
+                            if source_mask & mask == source_mask:
+                                value = static.kelvin if static.kelvin is not None else static.rgb
+                                if value is not None:
+                                    self.source_static_intents[source.key] = value
+                            else:
+                                self.source_static_intents.pop(source.key, None)
                 if static.kelvin is not None:
                     self._static_rgb_known = False
                 elif static.rgb is not None and static.whole_strip:
@@ -1346,6 +1406,22 @@ class GoveeBLECoordinator(
                         ],
                     )
                 self._enter_static_mode()
+
+        def invalidate_failed_static() -> None:
+            for key in affected_colour_sources:
+                self.source_static_intents.pop(key, None)
+                self._expected_state.pop(f"source_kelvin_{key}", None)
+            if (
+                affected_sources
+                and not mode_confirmed_static
+                and self._field_revisions.get("color_mode", 0) <= mode_revision
+            ):
+                self.color_mode = None
+                self._h607c_uncertain_state_fields.add("color_mode")
+                for field in ("color_mode", "rgb_color", "color_temp_kelvin"):
+                    self._expected_state.pop(field, None)
+                self.async_set_updated_data(self.data or {})
+
         if on_write is not None:
             on_write()
         token = self._notification_token
@@ -1354,6 +1430,8 @@ class GoveeBLECoordinator(
             await client.write_gatt_char(WRITE_UUID, wire_packet, response=False)
             self._require_not_shutdown()
         except asyncio.CancelledError:
+            if static is not None:
+                invalidate_failed_static()
             if self._notification_token is token:
                 self._reply_gate.abort()
             if self._encryption is not None:
@@ -1370,6 +1448,8 @@ class GoveeBLECoordinator(
                     pass
             raise
         except Exception as err:
+            if static is not None:
+                invalidate_failed_static()
             if self._notification_token is token:
                 self._reply_gate.abort()
             stale_gatt = self._record_ble_failure(err)
@@ -1389,6 +1469,16 @@ class GoveeBLECoordinator(
             raise ValueError("Device profile changed during control write; refresh and retry")
         if arm_expected and authorization_generation != self._authorization_generation:
             raise ValueError("Device identity changed during control write; refresh and retry")
+        if arm_expected and "brightness_pct" in requested and not self.profile.can_read(ReadDomain.BRIGHTNESS):
+            self._h607c_uncertain_state_fields.discard("brightness_pct")
+        if (
+            arm_expected
+            and static is not None
+            and affected_sources
+            and "color_mode" in self._h607c_uncertain_state_fields
+        ):
+            self._h607c_uncertain_state_fields.discard("color_mode")
+            self._h607c_uncertain_state_fields.add("color")
         if (
             rgb_intent is not None
             and self._client is client
@@ -1398,10 +1488,20 @@ class GoveeBLECoordinator(
             self._static_rgb_known = self.segment_colors == [rgb_intent] * self.profile.segment_count
 
     def _setting_queries(self, profile: ModelProfile) -> list[tuple[bytes, tuple[str, ...]]]:
-        from .generated_protocol_adapter import build_boolean_control_query, build_power_on_behaviour_query
+        from .generated_protocol_adapter import (
+            build_boolean_control_query,
+            build_bulk_status_query,
+            build_power_on_behaviour_query,
+        )
 
         queries: dict[bytes, tuple[str, ...]] = {}
-        if profile.setting_grammar != "H60A6":
+        if profile.bulk_status_grammar == "H1771":
+            fields = tuple(f"boolean_{control}" for control in sorted(profile.boolean_controls))
+            if profile.supports_power_on_behaviour:
+                fields += ("power_on_behaviour",)
+            if fields:
+                return [(build_bulk_status_query(profile), fields)]
+        if profile.bulk_status_grammar is None:
             for control in sorted(profile.boolean_controls):
                 query = build_boolean_control_query(control, self.model, profile=profile)
                 queries[query] = (*queries.get(query, ()), f"boolean_{control}")
@@ -1660,7 +1760,13 @@ class GoveeBLECoordinator(
                     if not await self._async_read_bar_flags(client, query, deadline=deadline):
                         return domain not in required and all(d not in required for _, d, _ in queries[index + 1 :])
                     continue
-                if domain is ReadDomain.COLOUR_MODE and profile.bulk_status_grammar is not None:
+                if (
+                    domain is ReadDomain.COLOUR_MODE
+                    and profile.bulk_status_grammar == "H60A"
+                    or domain is ReadDomain.OTHER
+                    and profile.bulk_status_grammar == "H1771"
+                    and is_bulk_status_frame(query, profile)
+                ):
                     if optional_baselines is not None and domain not in required:
                         for field, revision in baselines.items():
                             optional_baselines.setdefault(field, revision)
@@ -1789,6 +1895,20 @@ class GoveeBLECoordinator(
         if client is None or not client.is_connected:
             return
         try:
+            if self.profile.bulk_status_grammar == "H1771":
+                fields = (
+                    (ReadDomain.FIRMWARE, "fw_version"),
+                    (ReadDomain.HARDWARE, "hw_version"),
+                    (ReadDomain.WIRELESS_FIRMWARE, "wireless_firmware_version"),
+                    (ReadDomain.WIRELESS_HARDWARE, "wireless_hardware_version"),
+                )
+                if any(
+                    self.profile.can_read(domain) and self._identity_field_incomplete(field) for domain, field in fields
+                ):
+                    await self._async_read_bulk_status(
+                        client, deadline=time.monotonic() + STATE_QUERY_TIMEOUT, domains=()
+                    )
+                return
             for _ in range(2):
                 generation = self._profile_generation
                 candidates: list[tuple[bytes, str]] = []
@@ -2038,9 +2158,15 @@ class GoveeBLECoordinator(
                 if generation != self._profile_generation:
                     raise ValueError("Device profile changed during setting write")
                 deadline = time.monotonic() + 4.0
-                if self.profile.setting_grammar == "H60A6":
+                if self.profile.setting_grammar in {"H1771", "H60A6"}:
                     if self._field_revisions.get(field, 0) <= baseline[field]:
-                        domain = "power_on_behaviour" if control == "power_on_behaviour" else "zone_enable"
+                        domain = (
+                            "power_on_behaviour"
+                            if control == "power_on_behaviour"
+                            else "gradual"
+                            if self.profile.setting_grammar == "H1771" and control == "gradual"
+                            else "zone_enable"
+                        )
                         if not await self._async_read_bulk_status(client, deadline=deadline, domains=(domain,)):
                             raise ValueError("Device did not provide complete setting readback")
                 elif self.profile.setting_grammar == "H607C":
@@ -2227,6 +2353,8 @@ class GoveeBLECoordinator(
                 (ReadDomain.HARDWARE, "hw_version"),
                 (ReadDomain.SUBORDINATE_20, "subordinate_20_version"),
                 (ReadDomain.SUBORDINATE_21, "subordinate_21_version"),
+                (ReadDomain.WIRELESS_FIRMWARE, "wireless_firmware_version"),
+                (ReadDomain.WIRELESS_HARDWARE, "wireless_hardware_version"),
             )
             if self.profile.can_read(domain)
         )
@@ -3243,6 +3371,7 @@ class GoveeBLECoordinator(
             return {}
         header = data[0]
         action = data[1] if len(data) > 1 else None
+        redacted = self._dreamview_private_write or (direction == "rx" and is_bulk_status_frame(data, self.profile))
         entry = {
             "ts": datetime.now().isoformat(),
             "dir": direction,
@@ -3252,8 +3381,8 @@ class GoveeBLECoordinator(
             "outcome": outcome,
             "reason": reason,
             "parser": parser,
-            "raw": "" if self._dreamview_private_write else data[:PACKET_LOG_RAW_BYTES_LIMIT].hex(),
-            "redacted": self._dreamview_private_write,
+            "raw": "" if redacted else data[:PACKET_LOG_RAW_BYTES_LIMIT].hex(),
+            "redacted": redacted,
             "truncated": len(data) > PACKET_LOG_RAW_BYTES_LIMIT,
         }
         self.packet_log.append(entry)

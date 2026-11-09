@@ -32,9 +32,7 @@ from custom_components.ha_govee_led_ble.light import GoveeBLELight
 def test_service_registration_uses_home_assistant_entity_targeting(
     hass: HomeAssistant,
 ) -> None:
-    with patch(
-        "custom_components.ha_govee_led_ble.effect_services.service.async_register_platform_entity_service"
-    ) as register:
+    with patch("custom_components.ha_govee_led_ble.effect_services.register_device_light_service") as register:
         async_register_effect_services(hass)
 
     register.assert_called_once()

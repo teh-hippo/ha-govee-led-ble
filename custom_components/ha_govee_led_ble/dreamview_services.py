@@ -20,6 +20,7 @@ from .dreamview import (
     build_dreamview_group,
     integer,
 )
+from .light_service_dispatch import register_device_light_service
 from .schema_compat import vol
 
 _LOGGER = logging.getLogger(__name__)
@@ -152,7 +153,7 @@ async def _async_dreamview_service(entity: Any, call: ServiceCall, *, name: str)
 
 def async_register_dreamview_services(hass: HomeAssistant) -> None:
     for name, (setting, schema) in DREAMVIEW_SERVICES.items():
-        service.async_register_platform_entity_service(
+        register_device_light_service(
             hass,
             DOMAIN,
             name,

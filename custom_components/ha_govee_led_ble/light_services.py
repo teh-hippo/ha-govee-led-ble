@@ -9,7 +9,6 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
-from homeassistant.helpers import service
 from homeassistant.helpers.typing import VolDictType
 
 from .const import DOMAIN
@@ -27,6 +26,7 @@ from .light_commands import (
     build_segment_paint,
     scale_segment_groups,
 )
+from .light_service_dispatch import register_device_light_service
 from .native_profile_controls import apply_active_video_mode
 from .schema_compat import vol
 
@@ -88,7 +88,7 @@ _SET_SEGMENT_COLOR_TEMP_SCHEMA: VolDictType = {
 
 def async_register_light_services(hass: HomeAssistant) -> None:
     """Register light entity services before config entries are loaded."""
-    service.async_register_platform_entity_service(
+    register_device_light_service(
         hass,
         DOMAIN,
         "set_installation_direction",
@@ -96,7 +96,7 @@ def async_register_light_services(hass: HomeAssistant) -> None:
         func=async_set_installation_direction,
         schema={vol.Required("value"): installation_direction_value},
     )
-    service.async_register_platform_entity_service(
+    register_device_light_service(
         hass,
         DOMAIN,
         "read_installation_controls",
@@ -117,7 +117,7 @@ def async_register_light_services(hass: HomeAssistant) -> None:
             "async_set_segment_brightness",
         ),
     ):
-        service.async_register_platform_entity_service(
+        register_device_light_service(
             hass,
             DOMAIN,
             name,

@@ -115,6 +115,8 @@ async def async_get_config_entry_diagnostics(
         "hw_version": coordinator.hw_version,
         "subordinate_20_version": coordinator.subordinate_20_version,
         "subordinate_21_version": coordinator.subordinate_21_version,
+        "wireless_firmware_version": coordinator.wireless_firmware_version,
+        "wireless_hardware_version": coordinator.wireless_hardware_version,
         "pact_type": coordinator.pact_type,
         "pact_code": coordinator.pact_code,
         "lock_locked": lock.locked(),

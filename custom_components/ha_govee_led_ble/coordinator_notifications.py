@@ -81,6 +81,11 @@ _COLOR_EXPECTATION_FIELDS = frozenset(
 _OPTIONAL_CONTROL_DOMAINS = frozenset({ReadDomain.INSTALLATION_DIRECTION, ReadDomain.CAMERA_HEALTH})
 
 
+def _bulk_version(version: Any) -> str | None:
+    parts = (int(version.major), int(version.minor), int(version.patch))
+    return f"{parts[0]}.{parts[1]:02d}.{parts[2]:02d}" if any(parts) else None
+
+
 class _NotificationMixin(_CoordinatorBase):
     """Decodes status notifications and reconciles them with recently written values."""
 
@@ -95,6 +100,9 @@ class _NotificationMixin(_CoordinatorBase):
             if self.profile.setting_grammar == "H607C":
                 self._field_received_at.pop("diy_companion", None)
             if expectations["color_mode"][0] is not ParsedMode.COLOUR:
+                self.source_static_intents.clear()
+                for source in self.profile.light_sources:
+                    self._expected_state.pop(f"source_kelvin_{source.key}", None)
                 if self.rgb_color_source == "observed":
                     self.rgb_color_source = "retained"
                 if self.color_temp_kelvin_source == "observed":
@@ -155,7 +163,14 @@ class _NotificationMixin(_CoordinatorBase):
             mode_values["diy_companion"] = parsed.diy_companion
         if not self._accept_expected_values(mode_values):
             return ()
+        self._observed_color_mode = parsed.mode
+        self._observed_mode_write_generation = self._mode_write_generation
+        self._observed_mode_profile_generation = self._profile_generation
         if parsed.mode is not ParsedMode.COLOUR or self.color_mode is not ParsedMode.COLOUR:
+            if parsed.mode is not ParsedMode.COLOUR:
+                self.source_static_intents.clear()
+                for source in self.profile.light_sources:
+                    self._expected_state.pop(f"source_kelvin_{source.key}", None)
             self._static_rgb_known = False
             # Direct authority belongs to one uninterrupted static-mode interval.
             # Keep the values as last-known knowledge, not current readback evidence.
@@ -163,6 +178,16 @@ class _NotificationMixin(_CoordinatorBase):
                 self.rgb_color_source = "retained"
             if self.color_temp_kelvin_source == "observed":
                 self.color_temp_kelvin_source = "retained"
+        if parsed.mode is ParsedMode.COLOUR:
+            for source in self.profile.light_sources:
+                field = f"{source.control.removesuffix('_enabled')}_kelvin"
+                reported = getattr(parsed, field, None)
+                if type(reported) is not int or not self._accept_expected(f"source_kelvin_{source.key}", reported):
+                    continue
+                if reported == 0:
+                    self.source_static_intents.pop(source.key, None)
+                else:
+                    self.source_static_intents[source.key] = reported
         self.color_mode = parsed.mode
         # Track the device's scene independently from Home Assistant's configured effect-list projection.
         scene_effect = parsed.effect if parsed.effect in self.scene_name_set else None
@@ -307,11 +332,23 @@ class _NotificationMixin(_CoordinatorBase):
             return False
         collector = self._bulk_collector
         if collector is None:
-            self._record_packet("rx", frame, outcome="rejected", reason="unsolicited_bulk_status", parser="h60a_bulk")
+            self._record_packet(
+                "rx",
+                frame,
+                outcome="rejected",
+                reason="unsolicited_bulk_status",
+                parser=f"{(self.profile.bulk_status_grammar or '').lower()}_bulk",
+            )
             return True
         if self._bulk_query_deadline is not None and time.monotonic() >= self._bulk_query_deadline:
             self._bulk_collector = None
-            self._record_packet("rx", frame, outcome="rejected", reason="expired_bulk_status", parser="h60a_bulk")
+            self._record_packet(
+                "rx",
+                frame,
+                outcome="rejected",
+                reason="expired_bulk_status",
+                parser=f"{(self.profile.bulk_status_grammar or '').lower()}_bulk",
+            )
             return True
         result = collector.feed(frame)
         entry = self._record_packet(
@@ -325,6 +362,13 @@ class _NotificationMixin(_CoordinatorBase):
             return True
         try:
             records = result.parsed.records
+            if self.profile.bulk_status_grammar == "H1771":
+                power = next((record for record in records if getattr(record.domain, "name", None) == "power"), None)
+                zones = next(
+                    (record for record in records if getattr(record.domain, "name", None) == "zone_enable"), None
+                )
+                if power is not None and zones is not None and bool(power.body.is_on) != zones.body.master_enabled:
+                    raise ValueError("Bulk master power observations disagree")
             for record in records:
                 domain = getattr(record.domain, "name", None)
                 if domain == "colour_mode":
@@ -333,6 +377,8 @@ class _NotificationMixin(_CoordinatorBase):
                     raise ValueError("Bulk power flag is invalid")
                 elif domain == "brightness" and not 0 <= record.body.percent <= 100:
                     raise ValueError("Bulk brightness is outside percentage bounds")
+                elif domain == "gradual" and record.body.flag not in (0, 1):
+                    raise ValueError("Bulk gradual flag is invalid")
                 elif domain == "power_on_behaviour" and getattr(record.body.state, "name", None) is None:
                     raise ValueError("Bulk power-on behaviour is unknown")
             for record in records:
@@ -349,14 +395,45 @@ class _NotificationMixin(_CoordinatorBase):
                     if self._accept_expected("brightness_pct", percent):
                         self.brightness_pct = percent
                         self._mark_received(StatusDomain.BRIGHTNESS, "brightness_pct")
+                elif domain == "identity" and self.profile.bulk_status_grammar == "H1771":
+                    identity = record.body
+                    selector = getattr(identity.selector, "name", None)
+                    fields = (
+                        (
+                            (ReadDomain.FIRMWARE, "fw_version", identity.detail.firmware),
+                            (ReadDomain.HARDWARE, "hw_version", identity.detail.hardware),
+                        )
+                        if selector == "main"
+                        else (
+                            (ReadDomain.WIRELESS_FIRMWARE, "wireless_firmware_version", identity.detail.firmware),
+                            (ReadDomain.WIRELESS_HARDWARE, "wireless_hardware_version", identity.detail.hardware),
+                        )
+                        if selector == "wireless"
+                        else ()
+                    )
+                    for read_domain, field, version in fields:
+                        if self.profile.can_read(read_domain):
+                            observed = (field,) if self._observe_identity_field(field, _bulk_version(version)) else ()
+                            self._mark_received(read_domain, *observed)
                 elif domain == "zone_enable":
                     zone_values: dict[str, bool] = {
                         name: bool(getattr(record.body, name))
-                        for name in ("panel_enabled", "ring_enabled")
-                        if name in self.profile.boolean_controls
+                        for name in NATIVE_ZONE_CONTROLS
+                        if name in self.profile.boolean_controls and hasattr(record.body, name)
                     }
                     self.boolean_control_state.update(zone_values)
                     self._mark_received(StatusDomain.OTHER, *(f"boolean_{name}" for name in zone_values))
+                    if self.profile.bulk_status_grammar == "H1771":
+                        value = bool(record.body.master_enabled)
+                        if self.profile.can_read(ReadDomain.POWER) and self._accept_expected("is_on", value):
+                            self.is_on = value
+                            self._mark_received(StatusDomain.POWER, "is_on")
+                elif domain == "gradual" and "gradual" in self.profile.boolean_controls:
+                    self.boolean_control_state["gradual"] = bool(record.body.flag)
+                    self.static_gradual = bool(record.body.flag)
+                    self._mark_received(StatusDomain.OTHER, "boolean_gradual")
+                elif domain == "segments" and self.profile.can_read(ReadDomain.SEGMENTS):
+                    self._mark_received(StatusDomain.SEGMENTS, *self._apply_segment_group(record))
                 elif domain == "power_on_behaviour" and self.profile.supports_power_on_behaviour:
                     self.power_on_behaviour = record.body.state.name
                     self._mark_received(StatusDomain.OTHER, "power_on_behaviour")
@@ -383,7 +460,7 @@ class _NotificationMixin(_CoordinatorBase):
         def before_write() -> None:
             nonlocal attempted
             attempted = True
-            self._bulk_collector = BulkStatusCollector()
+            self._bulk_collector = BulkStatusCollector(self.profile.bulk_status_grammar or "H60A")
             self._bulk_query_deadline = deadline
             self._bulk_query_incomplete = True
 

@@ -686,6 +686,38 @@ async def test_scene_snapshot_does_not_require_disposable_diy_slot(model: str, n
     assert coordinator.send_command.await_count == len(compiled.packets)
 
 
+@pytest.mark.parametrize("edited", [False, True])
+async def test_h1771_native_scene_deployment_requires_ack_only_for_uploaded_edits(edited):
+    from custom_components.ha_govee_led_ble.effect_scenes import _scene_content
+    from custom_components.ha_govee_led_ble.native_effect import NativeDiyLayer, NativeEffect
+
+    coordinator = _profile_coordinator("H1771")
+    coordinator.effect = "existing"
+    coordinator.diy_code = None
+    coordinator.async_observe_effect = AsyncMock(return_value=True)
+    entry = next(scene for scene in SCENE_ENTRIES["H1771"] if scene.name == "Dreamland")
+    content = _scene_content(entry, CatalogueRef("H1771", entry.scene_id, entry.effect_id), None, None)
+    assert isinstance(content, NativeEffect)
+    if edited:
+        first = content.layers[0]
+        assert isinstance(first, NativeDiyLayer)
+        content = replace(content, layers=(replace(first, speed=(first.speed + 1) % 101), content.layers[1]))
+    item = LibraryItem.new("Dreamland", content)
+    repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
+    await repository.async_load()
+
+    result = await EffectDeploymentEngine(repository).async_apply_snapshot(
+        coordinator, item, config_entry_id="entry-a", updated_at="2026-10-21T00:00:00Z"
+    )
+    assert result.phase is DeploymentPhase.CONFIRMED
+    options = coordinator.async_write_effect_sequence.await_args.kwargs
+    assert options.get("require_upload_ack", False) is edited
+    if edited:
+        assert options["upload_ack_index"] >= 0
+    else:
+        assert "upload_ack_index" not in options
+
+
 @pytest.mark.parametrize("template_id", [17, 18, 19])
 async def test_h7020_native_template_snapshot_uses_custom_capability(template_id: int) -> None:
     coordinator = _profile_coordinator("H7020")

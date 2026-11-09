@@ -18,7 +18,12 @@ Do not post Bluetooth addresses, serial numbers, account details or other unique
 - Keep offsets, command literals and packet enums out of entity and coordinator code.
 - Every outbound frame goes through `_async_write_packet`, which waits for the previous `0x33` or `0xAA` frame's same-command reply before writing.  Never add per-feature sleeps to pace requests; `ReplyGate` learns commands that never reply on a subscription.
 - Arm reply tracking before the physical write, and accept only validated replies.  A late reply reinstates pacing for a command previously learned as silent; failed writes must not teach silence.
+- Qualify observed colour mode against the latest mode-write generation, effective profile and current subscription.
+  An expired optimistic expectation does not confirm a mode.
+- Qualify source power observations against the latest master-power write, effective profile and current subscription before using them to preserve siblings.
 - Entity setters run through `GoveeBLEEntity._async_latest`: the first request sends at once, and while it runs only the newest queued request per control is sent.  Light on, off and attribute calls share one key, with queued `turn_on` attributes merged.  Services, Effect Studio and background work bypass it.
+- Declare source lights only for independently addressable power controls.
+  Attach segment masks or master brightness only when they leave siblings unchanged; keep uncertain mappings neutral and state unconfirmed until observed.
 - A new model needs its scene catalogue: run `uv run python tools/ble/refresh_scene_catalogues.py <SKU>` before registering its profile.  A workflow keeps existing catalogues current.
 - Plans and findings for a model live in its issue or pull request, not in `docs/`.
 

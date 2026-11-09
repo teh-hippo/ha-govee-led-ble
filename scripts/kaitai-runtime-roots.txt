@@ -1,4 +1,12 @@
 command_write
+speculative/h1771_command_write
+speculative/h1771_status_query
+speculative/h1771_status_reply
+speculative/h1771_bulk
+speculative/h1771_diy_body
+speculative/h1771_music_body
+speculative/h1771_music_ack
+speculative/h1771_effect_upload
 speculative/h6046_command_write
 speculative/h6046_status_query
 speculative/h6046_status_reply

@@ -461,6 +461,7 @@ function decodeCatalogueTemplates(
           `${name}[${index}] category`,
         ) as CatalogueTemplate["category"],
         content,
+        ...(template.rate_min === undefined ? {} : { rate_min: integerValue(template.rate_min, "template minimum rate", 0, 100) }),
       };
     },
   );

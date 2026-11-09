@@ -446,6 +446,8 @@ def music_body_style(body: bytes, mode: str, *, profile: ModelProfile) -> bool |
     variant = music_variant(profile, music_codebook(profile)[mode])
     if variant is None or not variant.supports_style:
         return None
+    if variant.layout == "h1771_music_body":
+        return {0: True, 1: False}.get(root.tail.style)
     if hasattr(root.tail, "rhythm_speed") and root.tail.no_rhythm_speed == 10:
         return {80: False, 20: True}.get(root.tail.rhythm_speed)
     if hasattr(root.tail, "minimum_brightness"):

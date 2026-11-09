@@ -473,7 +473,7 @@ async def test_named_video_settings_and_readback(hass, model, apply_area, conten
 
 
 async def test_registration_and_valid_service_dispatch(hass) -> None:
-    with patch("homeassistant.helpers.service.async_register_platform_entity_service") as register:
+    with patch("homeassistant.helpers.service.async_register_batched_platform_entity_service") as register:
         async_register_light_services(hass)
     calls = {call.args[2]: call.kwargs for call in register.call_args_list}
     assert set(DREAMVIEW_SERVICES) <= calls.keys()

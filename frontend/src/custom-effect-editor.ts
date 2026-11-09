@@ -1,7 +1,7 @@
 import { LitElement, css, html, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
 import { paintNativeLayerPoint } from "./effect-editor-model";
-import { renderNativeZoneEditor } from "./native-zone-editor";
+import { renderH1771SectionEditor, renderNativeZoneEditor } from "./native-zone-editor";
 
 import type { LivePreviewInteraction } from "./live-preview-controller";
 import "./palette-editor";
@@ -185,8 +185,8 @@ export class GoveeCustomEffectEditor extends LitElement {
 
   protected render() {
     if (this.nativeContent && this.catalogue) {
-      if (this.catalogue.native_zones?.length) {
-        return renderNativeZoneEditor(
+      if (this.catalogue.native_zones?.length || this.nativeContent.model === "H1771") {
+        return (this.nativeContent.model === "H1771" ? renderH1771SectionEditor : renderNativeZoneEditor)(
           this.nativeContent, this.catalogue, this.disabled,
           (index, update, family, kind, interaction) => {
             const current = this.nativeContent;

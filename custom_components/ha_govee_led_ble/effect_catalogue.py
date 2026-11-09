@@ -41,7 +41,7 @@ from .music_commands import default_music_zones, music_default_available
 from .music_protocol import music_code_for, music_codebook
 from .music_semantics import music_parameters_available, music_params_for_mode, music_variant
 from .native_effect import NativeDiyLayer, NativeOpaqueLayer
-from .protocol_core import H60a6PaintBody, H607cDiyBody, H607cPaintBody
+from .protocol_core import H60a6PaintBody, H607cDiyBody, H607cPaintBody, H1771DiyBody
 from .protocol_music_params import music_default_palette
 
 EFFECT_STUDIO_CATALOGUE_SCHEMA_VERSION: Final = 12
@@ -159,6 +159,7 @@ class CatalogueTemplate:
     label: str
     category: str
     content: EffectContent
+    rate_min: int | None = None
 
     def to_dict(self) -> dict[str, JsonValue]:
         return {
@@ -166,6 +167,7 @@ class CatalogueTemplate:
             "label": self.label,
             "category": self.category,
             "content": effect_content_to_dict(self.content),
+            **({"rate_min": self.rate_min} if self.rate_min is not None else {}),
         }
 
 
@@ -1426,6 +1428,77 @@ H607C_NATIVE_MUSIC_MODES: Final = tuple(
     NativeModeOption(slug, _mode_label(slug)) for slug in MODEL_PROFILES["H607C"].music_modes
 )
 
+_H1771_FIRST = H1771DiyBody.FirstEffect
+_H1771_SECOND = H1771DiyBody.SecondEffect
+_H1771_DISABLED = NativeDiyLayer(0, 0, (), enabled=False, opaque=b"\x00")
+_H1771_PALETTE = (DEFAULT_PALETTE[0], DEFAULT_PALETTE[3])
+_H1771_SECTIONS = (
+    (
+        ("Temperature", NativeDiyLayer(_H1771_FIRST.temperature, 50, (), parameter=100, angle=1700)),
+        ("Fade", NativeDiyLayer(_H1771_FIRST.palette_4, 50, _H1771_PALETTE)),
+        ("Breathe", NativeDiyLayer(_H1771_FIRST.palette_2, 50, _H1771_PALETTE)),
+        ("Blink", NativeDiyLayer(_H1771_FIRST.palette_3, 50, _H1771_PALETTE)),
+    ),
+    (
+        ("Temperature", NativeDiyLayer(_H1771_SECOND.temperature, 50, (), parameter=100, angle=1700)),
+        ("Fade 1", NativeDiyLayer(_H1771_SECOND.common_1, 50, _H1771_PALETTE, parameter=1)),
+        ("Fade 2", NativeDiyLayer(_H1771_SECOND.common_1, 50, _H1771_PALETTE, parameter=2)),
+        ("Jump 1", NativeDiyLayer(_H1771_SECOND.common_2, 50, _H1771_PALETTE, parameter=1)),
+        ("Jump 2", NativeDiyLayer(_H1771_SECOND.common_2, 50, _H1771_PALETTE, parameter=2)),
+        ("Breathe 1", NativeDiyLayer(_H1771_SECOND.breathe, 50, _H1771_PALETTE, parameter=255)),
+        ("Breathe 2", NativeDiyLayer(_H1771_SECOND.breathe, 50, _H1771_PALETTE, parameter=3, flag=1)),
+        ("Chase", NativeDiyLayer(_H1771_SECOND.common_3, 50, _H1771_PALETTE, parameter=1)),
+        ("Flow", NativeDiyLayer(_H1771_SECOND.common_5, 50, _H1771_PALETTE, parameter=1)),
+        ("Stream", NativeDiyLayer(_H1771_SECOND.common_4, 50, _H1771_PALETTE, parameter=2)),
+        ("Swing", NativeDiyLayer(_H1771_SECOND.palette_6, 50, _H1771_PALETTE)),
+        ("Streamer", NativeDiyLayer(_H1771_SECOND.streamer, 50, _H1771_PALETTE, parameter=1, flag=1)),
+        ("Background", NativeDiyLayer(_H1771_SECOND.background, 50, _H1771_PALETTE, secondary_palette=((0, 0, 0),))),
+        ("Stack 1", NativeDiyLayer(_H1771_SECOND.stack, 50, _H1771_PALETTE, parameter=2)),
+        ("Stack 2", NativeDiyLayer(_H1771_SECOND.stack, 50, _H1771_PALETTE, parameter=2, flag=1)),
+        ("Refresh", NativeDiyLayer(_H1771_SECOND.palette_14, 50, _H1771_PALETTE)),
+    ),
+)
+
+
+def _h1771_rate_min(index: int, kind: int) -> int:
+    if index == 0:
+        return 0 if kind == _H1771_FIRST.temperature else 1
+    return (
+        0
+        if kind in (_H1771_SECOND.temperature, _H1771_SECOND.common_1, _H1771_SECOND.common_2, _H1771_SECOND.breathe)
+        else 1
+    )
+
+
+def _h1771_templates() -> tuple[CatalogueTemplate, ...]:
+    return tuple(
+        CatalogueTemplate(
+            id=f"template:h1771:{index}:{number}",
+            label=f"Section {index + 1} {label}",
+            category="single-layer",
+            content=NativeEffect(
+                model="H1771",
+                family=int(H1771DiyBody.CatalogueFamily.native_scene),
+                layers=(
+                    (layer, _H1771_DISABLED)
+                    if index == 0
+                    else (
+                        NativeDiyLayer(
+                            _H1771_FIRST.temperature, layer.speed, (), parameter=layer.parameter, angle=layer.angle
+                        )
+                        if layer.kind == _H1771_SECOND.temperature
+                        else NativeDiyLayer(_H1771_FIRST.palette_4, layer.speed, layer.palette),
+                        layer,
+                    )
+                ),
+            ),
+            rate_min=_h1771_rate_min(index, layer.kind),
+        )
+        for index, choices in enumerate(_H1771_SECTIONS)
+        for number, (label, layer) in enumerate(choices)
+    )
+
+
 H607C_DIY_FAMILIES: Final = tuple(
     DiyEffectFamily(
         id=kind.name,
@@ -1595,6 +1668,29 @@ def _ceiling_catalogue(model: str) -> ModelEffectCatalogue:
 
 
 MODEL_EFFECT_CATALOGUES: Final = {
+    "H1771": ModelEffectCatalogue(
+        sku="H1771",
+        painted_effects=(),
+        effects=(),
+        music_modes=_native_music_modes("H1771"),
+        video_modes=(),
+        templates=(*_h1771_templates(), *(_music_template("H1771", mode) for mode in _native_music_modes("H1771"))),
+        workshop_templates=(),
+        supports=CatalogueSupport(
+            multi=workflow_capability_state("H1771", CapabilityWorkflow.MULTI),
+            advanced=workflow_capability_state("H1771", CapabilityWorkflow.ADVANCED),
+            workshop=workflow_capability_state("H1771", CapabilityWorkflow.WORKSHOP),
+        ),
+        apply=ApplySupport(
+            painted=CapabilityState.UNSUPPORTED,
+            single=studio_apply_capability_state("H1771", CapabilityWorkflow.SINGLE),
+            multi=studio_apply_capability_state("H1771", CapabilityWorkflow.MULTI),
+            palette_diy=CapabilityState.UNSUPPORTED,
+            workshop=CapabilityState.UNSUPPORTED,
+        ),
+        temporary_diy_selector=254,
+        advanced_create=False,
+    ),
     "H6046": ModelEffectCatalogue(
         sku="H6046",
         painted_effects=(),
@@ -2298,6 +2394,34 @@ def validate_effect_eligibility(
     if catalogue is None:
         raise ValueError(f"{model} has no custom-effect catalogue")
     if isinstance(content, NativeEffect):
+        if model == "H1771" and content.model == model and profile.effect_grammar == "H1771":
+            if not any(isinstance(layer, NativeDiyLayer) and layer.enabled for layer in content.layers):
+                raise ValueError("select at least one native effect section")
+            for index, layer in enumerate(content.layers):
+                if isinstance(layer, NativeOpaqueLayer):
+                    if content.template is None:
+                        raise ValueError("unqualified native section cannot be authored")
+                    continue
+                if not isinstance(layer, NativeDiyLayer):
+                    raise ValueError("unsupported native effect section")
+                if not layer.enabled:
+                    continue
+                matches = [seed for _label, seed in _H1771_SECTIONS[index] if seed.kind == layer.kind]
+                if not matches:
+                    raise ValueError("native effect is not available in this section")
+                temperature = not matches[0].palette
+                if temperature:
+                    if not 1000 <= layer.angle <= 10000 or not 0 <= layer.parameter <= 100:
+                        raise ValueError("native colour temperature or brightness is outside the supported range")
+                elif not 1 <= len(layer.palette) <= 8 or not any(
+                    (layer.parameter, layer.flag) == (seed.parameter, seed.flag) for seed in matches
+                ):
+                    if content.template is None:
+                        raise ValueError("native effect palette or variation is unsupported")
+                if layer.speed < _h1771_rate_min(index, layer.kind):
+                    if content.template is None:
+                        raise ValueError("native effect speed must be at least one")
+            return
         if content.model != model or profile.effect_grammar != "H607C":
             raise ValueError("native zone content does not match the effective profile")
         if not any(isinstance(layer, NativeDiyLayer) and layer.enabled for layer in content.layers):

@@ -164,7 +164,8 @@ def _speed_effect(config: list[dict[str, object]]) -> dict[str, object]:
     }
 
 
-def test_h6117_snapshot_retains_verified_speed_metadata(monkeypatch):
+@pytest.mark.parametrize("sku", ["H1771", "H6117"])
+def test_snapshot_retains_verified_speed_metadata(monkeypatch, sku):
     monkeypatch.setattr(
         "tools.ble.refresh_scene_catalogues._parse_scene_records",
         lambda _param: [_speed_record()],
@@ -193,7 +194,7 @@ def test_h6117_snapshot_retains_verified_speed_metadata(monkeypatch):
         },
     }
 
-    snapshot = build_snapshot(raw, "H6117")
+    snapshot = build_snapshot(raw, sku)
 
     assert snapshot["effects"][0]["speed"] == {
         "default_index": 2,
@@ -241,7 +242,7 @@ def test_snapshot_omits_an_unverified_default_rewrite(monkeypatch):
     }
 
 
-@pytest.mark.parametrize("sku", ["H60A1", "H7020", "H7025"])
+@pytest.mark.parametrize("sku", ["H1771", "H60A1", "H7020", "H7025"])
 def test_snapshot_uses_metadata_defaults_without_enabling_other_skus(monkeypatch, sku):
     monkeypatch.setattr(
         "tools.ble.refresh_scene_catalogues._parse_scene_records",

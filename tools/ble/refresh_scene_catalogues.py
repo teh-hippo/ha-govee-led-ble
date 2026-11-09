@@ -36,12 +36,12 @@ SNAPSHOT_DIR = Path(__file__).parents[2] / "custom_components" / "ha_govee_led_b
 DEFAULT_SKUS = tuple(sorted(path.stem for path in SNAPSHOT_DIR.glob("*.json")))
 
 _SPEED_METADATA_SKUS = frozenset(
-    {"H6046", "H6072", "H607C", "H6097", "H60A1", "H60A6", "H6117", "H617A", "H7020", "H7025"}
+    {"H1771", "H6046", "H6072", "H607C", "H6097", "H60A1", "H60A6", "H6117", "H617A", "H7020", "H7025"}
 )
 
 # These models derive the initial speed selection from metadata and rewrite every
 # configured field before upload, so embedded field values are not the default-speed invariant.
-_METADATA_DEFAULT_SPEED_SKUS = frozenset({"H607C", "H60A1", "H7020", "H7025"})
+_METADATA_DEFAULT_SPEED_SKUS = frozenset({"H1771", "H607C", "H60A1", "H7020", "H7025"})
 
 # Glacier's application path rewrites its stale stored movement fields.
 _VERIFIED_SPEED_DEFAULT_REWRITES = frozenset({("H617A", 1026, 1088)})

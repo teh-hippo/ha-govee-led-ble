@@ -407,7 +407,7 @@ async def test_h607c_transport_failure_does_not_replay_colour_write(h607c_light,
     assert error.value.translation_key == "partial_command"
     first.write_gatt_char.assert_awaited_once()
     second.write_gatt_char.assert_not_awaited()
-    assert coordinator._h607c_uncertain_state_fields == {"color"}
+    assert coordinator._h607c_uncertain_state_fields == {"color", "color_mode"}
 
 
 @pytest.mark.parametrize("kwargs", [{"rgb_color": (12, 34, 56)}, {"color_temp_kelvin": 3200}])
@@ -424,7 +424,7 @@ async def test_h607c_interrupted_colour_is_not_reported_as_confirmed(h607c_light
     assert coordinator.control_write_attempts == 1 and device.write_gatt_char.await_count == 1
     assert light.color_mode is ColorMode.UNKNOWN and light.rgb_color is None and light.color_temp_kelvin is None
     assert light.state_attributes["color_mode"] is ColorMode.UNKNOWN
-    assert light.extra_state_attributes["unconfirmed_state_fields"] == ["color"]
+    assert light.extra_state_attributes["unconfirmed_state_fields"] == ["color", "color_mode"]
     assert light.extra_state_attributes["segment_colors"] is None
     assert light.assumed_state and "color_mode" not in coordinator._expected_state
     assert caplog.text.count("may have partially changed") == 1
@@ -574,7 +574,8 @@ async def test_h607c_registered_light_exposes_colour_uncertainty_and_assumed_ret
     await hass.async_block_till_done()
     state = hass.states.get(registered.entity_id)
     assert state.state == "on" and state.attributes["color_mode"] == "unknown"
-    assert state.attributes["unconfirmed_state_fields"] == ["color"] and state.attributes["rgb_color"] is None
+    assert state.attributes["unconfirmed_state_fields"] == ["color", "color_mode"]
+    assert state.attributes["rgb_color"] is None
 
     device.write_gatt_char.side_effect = None
     await light.async_turn_on(rgb_color=(40, 50, 60))

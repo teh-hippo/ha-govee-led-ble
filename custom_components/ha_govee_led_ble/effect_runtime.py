@@ -44,6 +44,7 @@ from .effect_domain import (
     LayeredEffect,
     LayeredScene,
     LibraryItem,
+    NativeEffect,
     PaletteDiyEffect,
     PaletteScene,
     WorkshopEffect,
@@ -1384,6 +1385,8 @@ def _active_workspace_content(
         return source
     if isinstance(source, LayeredEffect) and isinstance(decoded, LayeredEffect):
         return replace(decoded, native_diy=source.native_diy)
+    if isinstance(source, NativeEffect) and isinstance(decoded, NativeEffect):
+        return replace(decoded, template=source.template, speed_index=source.speed_index, preset_id=source.preset_id)
     return decoded if type(decoded) is type(source) else source
 
 

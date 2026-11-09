@@ -83,9 +83,7 @@ def test_schema_and_effective_profile_validation():
 
 
 def test_service_registration_uses_shared_segment_schema():
-    with patch(
-        "custom_components.ha_govee_led_ble.light_services.service.async_register_platform_entity_service"
-    ) as register:
+    with patch("custom_components.ha_govee_led_ble.light_services.register_device_light_service") as register:
         async_register_light_services(MagicMock())
     calls = [item for item in register.call_args_list if item.args[2] == "set_segment_color_temp"]
     assert len(calls) == 1

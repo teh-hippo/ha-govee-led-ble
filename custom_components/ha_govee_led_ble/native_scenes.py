@@ -1,10 +1,11 @@
 """Native-scene payload patching and application packet encoding."""
 
 import base64
+import io
 from dataclasses import replace
 from typing import Any
 
-from kaitaistruct import KaitaiStructError
+from kaitaistruct import KaitaiStream, KaitaiStructError
 
 from .const import ModelProfile, get_profile
 from .effect_domain import LayeredScene, NativeEffect, PaletteScene
@@ -13,7 +14,15 @@ from .h60a6_effects import encode_native_body
 from .layered_scene import CatalogueRef, LayeredEffect
 from .layered_scene_decoder import decode_layered_scene, encode_layered_scene
 from .palette_scene_decoder import encode_palette_scene
-from .protocol_core import H60a6DiyBody, H60a6EffectFrame, H60a6PaintBody, H607cSceneBody, serialize_native_body
+from .protocol_core import (
+    H60a6DiyBody,
+    H60a6EffectFrame,
+    H60a6PaintBody,
+    H607cSceneBody,
+    H1771DiyBody,
+    H1771EffectUpload,
+    serialize_native_body,
+)
 from .scenes import SceneEntry, SceneSpeed, scene_for_profile, scene_selector_code
 from .transport import fragment_a3, fragment_a4
 
@@ -23,7 +32,7 @@ def apply_scene_speed(payload: bytes, speed: SceneSpeed, index: int, *, scene_ty
     if speed.layer_speeds:
         if not 0 <= index < speed.option_count:
             raise ValueError("Scene speed index is outside its documented options")
-        root = _parse_ceiling_scene_body(payload, 797)
+        root = _parse_native_scene_body(payload, 797)
         speed.validate_layer_count(root.payload.layer_count)
         for layer, value in zip(root.payload.layers, speed.layer_speeds[index], strict=True):
             if not hasattr(layer.body, "speed"):
@@ -65,7 +74,16 @@ def _speed_value(options: tuple[int, ...], index: int) -> int:
     return options[max(0, min(len(options) - 1, index))]
 
 
-def _parse_ceiling_scene_body(payload: bytes, family: int) -> Any:
+def _parse_native_scene_body(payload: bytes, family: int) -> Any:
+    if family == int(H1771DiyBody.CatalogueFamily.native_scene):
+        try:
+            root = H1771DiyBody.Scene(KaitaiStream(io.BytesIO(payload)), _root=H1771DiyBody())
+            root._read()
+            if not root._io.is_eof():
+                raise ValueError("Native scene body contains trailing data")
+            return root
+        except (KaitaiStructError, EOFError) as error:
+            raise ValueError("Invalid native scene body") from error
     root_type = {797: H60a6DiyBody, 798: H60a6PaintBody}.get(family)
     if root_type is None:
         raise ValueError("Native scene has no documented body family")
@@ -85,6 +103,10 @@ def native_scene_upload_route(scene: SceneEntry, profile: ModelProfile) -> tuple
         return None
     if profile.command_grammar == "H6179" or profile.selector_only_scene_bits is not None:
         return None
+    if profile.effect_grammar == "H1771" and scene.scene_type == 5:
+        if scene.diy_effect_codes == (int(H1771DiyBody.CatalogueFamily.native_scene),):
+            return "a3", int(H1771EffectUpload.UploadKind.native_diy)
+        raise ValueError("Native scene has no documented upload family")
     if profile.effect_grammar == "H60A6" and scene.scene_type == 5:
         if scene.diy_effect_codes == (797,):
             return "a3", int(H60a6EffectFrame.Subtype.native_effect)
@@ -98,6 +120,15 @@ def native_scene_upload_route(scene: SceneEntry, profile: ModelProfile) -> tuple
             raise ValueError("Device profile does not support this layered scene body")
         return "a3", int(H607cSceneBody.UploadSubtype.layered_scene)
     return "a3", scene.scene_type
+
+
+def native_scene_prefers_selector(scene: SceneEntry, payload: bytes, profile: ModelProfile) -> bool:
+    return bool(
+        profile.effect_grammar == "H1771"
+        and scene.scene_type == 5
+        and scene.param
+        and payload == base64.b64decode(scene.param, validate=True)
+    )
 
 
 def build_native_scene_packets(
@@ -124,9 +155,13 @@ def build_native_scene_packets(
         speed_index=speed_index,
         canonical_body=canonical_body,
     )
+    if native_scene_prefers_selector(scene, payload, profile):
+        return [build_scene_activation(model, scene.code, scene.music_code, profile=profile)]
     route = native_scene_upload_route(scene, profile)
     if payload and scene.scene_type == 5:
-        _parse_ceiling_scene_body(payload, scene.diy_effect_codes[0])
+        native = _parse_native_scene_body(payload, scene.diy_effect_codes[0])
+        if profile.effect_grammar == "H1771":
+            payload = serialize_native_body(native.body)
     if payload and scene.scene_type == int(H607cSceneBody.CatalogueType.layered_scene):
         parsed, _padding = parse_scene_body(payload, scene_type=scene.scene_type)
         payload = payload[len(parsed.marker) :]
@@ -151,7 +186,7 @@ def resolve_native_scene_body(
         if scene.scene_type == 5:
             if len(scene.diy_effect_codes) != 1:
                 raise ValueError("Native scene has no documented body family")
-            _parse_ceiling_scene_body(canonical_body, scene.diy_effect_codes[0])
+            _parse_native_scene_body(canonical_body, scene.diy_effect_codes[0])
         elif scene.scene_type == int(H607cSceneBody.CatalogueType.layered_scene):
             parse_scene_body(canonical_body, scene_type=scene.scene_type)
         return canonical_body, speed_index

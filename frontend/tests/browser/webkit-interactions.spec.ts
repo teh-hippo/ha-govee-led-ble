@@ -215,6 +215,34 @@ test("native pole/base recipes retain siblings, fixed rates and independent pale
   await expect(editor.getByRole("button", {name: "Move later", exact: true})).toHaveCount(0);
 });
 
+test("H1771 DIY sections can be edited without changing their sibling", async ({ page }) => {
+  await page.evaluate(async () => {
+    const modulePath = "/src/custom-effect-editor.ts";
+    await import(modulePath);
+    const contracts = await fetch("/tests/fixtures/backend-contracts.json").then(response => response.json());
+    const catalogue = contracts.responses.custom_catalogue.models.H1771;
+    const editor = document.createElement("govee-custom-effect-editor") as GoveeCustomEffectEditor;
+    editor.nativeContent = structuredClone(catalogue.templates.find(
+      (template: {id: string}) => template.id === "template:h1771:0:0",
+    ).content);
+    editor.catalogue = catalogue;
+    editor.addEventListener("native-content-changed", event => {
+      editor.nativeContent = (event as CustomEvent<{content: NativeEffectContent}>).detail.content;
+    });
+    document.body.replaceChildren(editor);
+    await editor.updateComplete;
+  });
+  const editor = page.locator("govee-custom-effect-editor");
+  const before = await editor.evaluate(element => (element as GoveeCustomEffectEditor).nativeContent!);
+  await expect(editor.getByRole("combobox").first()).toHaveValue("template:h1771:0:0");
+  await editor.getByRole("combobox").nth(1).selectOption("template:h1771:1:1");
+  const after = await editor.evaluate(element => (element as GoveeCustomEffectEditor).nativeContent!);
+  expect(after.layers[0]).toEqual(before.layers[0]);
+  expect(after.layers[1]).toMatchObject({ type: "diy", kind: 1, parameter: 1, enabled: true });
+  await expect(editor.getByText("Colour temperature", { exact: true })).toBeVisible();
+  await expect(editor.locator("govee-palette-editor")).toHaveCount(1);
+});
+
 test("painted segment taps finish with a committed interaction", async ({
   page,
 }) => {

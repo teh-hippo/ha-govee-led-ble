@@ -26,6 +26,7 @@ from homeassistant.components.light import (  # type: ignore[attr-defined]
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
+from homeassistant.helpers.entity import EntityPlatformState
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import ExtraStoredData, RestoreEntity
 from homeassistant.util import dt as dt_util
@@ -85,6 +86,7 @@ from .light_commands import build_color_rgb, build_color_temp, kelvin_rendering_
 from .light_services import (
     _GoveeLightServicesMixin,
 )
+from .light_source import GoveeBLESourceLight
 from .music_commands import prepare_music_request
 from .music_protocol import music_code_for
 from .music_semantics import music_variant
@@ -211,15 +213,25 @@ async def async_setup_entry(
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    async_add_entities(
-        [
-            GoveeBLELight(
-                config_entry.runtime_data,
-                config_entry_id=config_entry.entry_id,
-                effect_backend=get_effect_backend(hass),
-            )
-        ]
+    coordinator = config_entry.runtime_data
+    main_light = GoveeBLELight(
+        coordinator,
+        config_entry_id=config_entry.entry_id,
+        effect_backend=get_effect_backend(hass),
     )
+    async_add_entities([main_light])
+    added: set[str] = set()
+
+    def add_sources() -> None:
+        sources = [
+            source for source in coordinator.native_presentation_profile.light_sources if source.key not in added
+        ]
+        if sources:
+            added.update(source.key for source in sources)
+            async_add_entities([GoveeBLESourceLight(coordinator, source.key, main_light) for source in sources])
+
+    add_sources()
+    config_entry.async_on_unload(coordinator.async_add_listener(add_sources))
 
 
 class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, LightEntity):
@@ -339,6 +351,8 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
     @property
     def color_mode(self) -> ColorMode | None:
         coordinator = self.coordinator
+        if "color_mode" in coordinator._h607c_uncertain_state_fields:
+            return ColorMode.UNKNOWN
         if self.supported_color_modes == {ColorMode.ONOFF}:
             return ColorMode.ONOFF
         if self.supported_color_modes == {ColorMode.BRIGHTNESS}:
@@ -378,6 +392,8 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
 
     @property
     def effect(self) -> str | None:
+        if "color_mode" in self.coordinator._h607c_uncertain_state_fields:
+            return None
         active_workspace = self._matching_active_workspace()
         if active_workspace is not None:
             return "Custom"
@@ -449,7 +465,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
 
     @property
     def extra_restore_state_data(self) -> ExtraStoredData | None:
-        if "color" in self.coordinator._h607c_uncertain_state_fields:
+        if self.coordinator._h607c_uncertain_state_fields & {"color", "color_mode"}:
             return None
         if self.color_mode is ColorMode.COLOR_TEMP and self.coordinator.color_temp_kelvin is not None:
             return _StaticColorRestoreData(
@@ -610,7 +626,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             and coordinator.diy_code is None
             and coordinator.music_mode == "off"
             and coordinator.video_mode == "off"
-            and "color" not in coordinator._h607c_uncertain_state_fields
+            and not coordinator._h607c_uncertain_state_fields.intersection({"color", "color_mode"})
             and coordinator.segment_state_source != "optimistic"
             and coordinator.rgb_color_source not in {"observed", "optimistic"}
             and coordinator.color_temp_kelvin_source not in {"observed", "optimistic"}
@@ -631,7 +647,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             or last_state.attributes.get(ATTR_EFFECT) not in (None, EFFECT_OFF)
             or (
                 isinstance(unconfirmed := last_state.attributes.get("unconfirmed_state_fields"), list | tuple)
-                and "color" in unconfirmed
+                and any(field in ("color", "color_mode") for field in unconfirmed)
             )
         ):
             return
@@ -744,7 +760,8 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             raise RuntimeError(f"Failed to confirm state for {self.coordinator.model}")
 
     def _notify_state_changed(self) -> None:
-        self.async_write_ha_state()
+        if self._platform_state is not EntityPlatformState.REMOVED:
+            self.async_write_ha_state()
         self.coordinator.async_set_updated_data(self.coordinator.data or {})
 
     def _mark_interrupted_request(self, attempted_fields: Mapping[str, int], phase: str) -> None:
@@ -1159,6 +1176,8 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         effect_id: str | None = None,
         diy_code: int | None = None,
     ) -> dict[str, Any]:
+        if self._platform_state is EntityPlatformState.REMOVED and self._effect_backend is not None:
+            self._library_snapshot = self._effect_backend.application.library_snapshot()
         self._require_support(
             "apply_custom_effect",
             supported=self.coordinator.profile.supports_custom_effects,
