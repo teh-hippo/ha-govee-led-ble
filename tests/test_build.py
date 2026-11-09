@@ -11,6 +11,7 @@ from pathlib import Path
 from zipfile import ZipFile
 
 import pytest
+from homeassistant.util.yaml import load_yaml
 
 from scripts.package import verify_archive
 
@@ -51,6 +52,120 @@ def test_project_and_manifest_versions_match() -> None:
     manifest = json.loads((_REPO / "custom_components/ha_govee_led_ble/manifest.json").read_text(encoding="utf-8"))
 
     assert manifest["version"] == project["project"]["version"]
+
+
+@pytest.fixture
+def release_workflow(tmp_path: Path) -> tuple[Path, dict[str, str], str]:
+    workflow = load_yaml(str(_REPO / ".github/workflows/release.yml"))
+    assert isinstance(workflow, dict)
+    steps = workflow["jobs"]["release"]["steps"]
+    version_index = next(index for index, step in enumerate(steps) if step.get("id") == "semantic_release")
+    script = "\n".join(step["run"] for step in steps[version_index:] if "run" in step)
+    bin_dir = tmp_path / "bin"
+    for command in ("git", "uvx", "uv", "make", "sha256sum", "gh"):
+        _executable(
+            bin_dir / command,
+            """#!/usr/bin/env python3
+import json
+import os
+import sys
+from pathlib import Path
+
+command = Path(sys.argv[0]).name
+arguments = sys.argv[1:]
+with Path(os.environ["COMMAND_LOG"]).open("a") as log:
+    log.write(json.dumps([command, *arguments]) + "\\n")
+    if command == "uvx" and "--no-vcs-release" not in arguments:
+        log.write(json.dumps(["early-publication"]) + "\\n")
+stage = "verify" if command == "uv" and "--verify-archive" in arguments else command
+if os.environ.get("FAIL_STAGE") == stage:
+    raise SystemExit(1)
+if command == "make":
+    Path("dist").mkdir()
+    Path("dist/ha_govee_led_ble.zip").write_bytes(b"package")
+    Path("dist/ha_govee_led_ble.zip.sha256").write_text("checksum")
+if command == "git" and arguments[0] == "rev-list":
+    print("a" * 40)
+""",
+        )
+    _write(tmp_path / "uv.lock", "lockfile\n")
+    env = {
+        "PATH": f"{bin_dir}:{os.environ['PATH']}",
+        "COMMAND_LOG": str(tmp_path / "commands.jsonl"),
+        "RELEASE_TAG": "v1.2.3",
+        "RELEASE_NOTES": 'Notes with "quotes".\n$(touch injected)\nMore notes.',
+        "IS_PRERELEASE": "false",
+    }
+    return tmp_path, env, script
+
+
+def test_release_publishes_verified_assets_with_semantic_notes(
+    release_workflow: tuple[Path, dict[str, str], str],
+) -> None:
+    root, env, script = release_workflow
+    result = subprocess.run(  # noqa: S603
+        ["/usr/bin/bash", "-euo", "pipefail", "-c", script],
+        cwd=root,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    commands = [json.loads(line) for line in (root / "commands.jsonl").read_text().splitlines()]
+    assert not any(command[0] == "early-publication" for command in commands)
+    assert [command[0] for command in commands] == [
+        "uvx",
+        "git",
+        "git",
+        "uv",
+        "make",
+        "uv",
+        "sha256sum",
+        "gh",
+        "git",
+        "git",
+        "git",
+        "git",
+    ]
+    publication = next(command for command in commands if command[0] == "gh")
+    assert publication == [
+        "gh",
+        "release",
+        "create",
+        env["RELEASE_TAG"],
+        "--verify-tag",
+        "--title",
+        env["RELEASE_TAG"],
+        "--notes",
+        env["RELEASE_NOTES"],
+        "--prerelease=false",
+        "dist/ha_govee_led_ble.zip",
+        "dist/ha_govee_led_ble.zip.sha256",
+        "uv.lock",
+    ]
+    assert not (root / "injected").exists()
+    assert commands[-1] == ["git", "push", "--force", "origin", "refs/tags/latest"]
+
+
+@pytest.mark.parametrize("failure", ["make", "verify", "sha256sum", "gh"])
+def test_release_failure_prevents_publication_or_latest_advancement(
+    release_workflow: tuple[Path, dict[str, str], str], failure: str
+) -> None:
+    root, env, script = release_workflow
+    result = subprocess.run(  # noqa: S603
+        ["/usr/bin/bash", "-euo", "pipefail", "-c", script],
+        cwd=root,
+        env={**env, "FAIL_STAGE": failure},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode != 0
+    commands = [json.loads(line) for line in (root / "commands.jsonl").read_text().splitlines()]
+    assert not any(command[0] == "early-publication" for command in commands)
+    assert not any(command[:2] == ["git", "tag"] or command[:2] == ["git", "push"] for command in commands)
+    assert any(command[0] == "gh" for command in commands) == (failure == "gh")
 
 
 def _executable(path: Path, content: str) -> None:

@@ -42,7 +42,7 @@ jobs:
           uvx \
             --from python-semantic-release==10.6.1 \
             --with gitpython==3.1.59 \
-            semantic-release version --no-changelog
+            semantic-release version --no-changelog --no-vcs-release
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         if: ${{ steps.semantic_release.outputs.released == 'true' }}
@@ -56,11 +56,13 @@ jobs:
         with:
           install_args: github:kaitai-io/kaitai_struct_compiler
 
-      - name: Attach deterministic package
+      - name: Build and publish deterministic package
         if: ${{ steps.semantic_release.outputs.released == 'true' }}
         env:
           GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
           RELEASE_TAG: ${{ steps.semantic_release.outputs.tag }}
+          RELEASE_NOTES: ${{ steps.semantic_release.outputs.release_notes }}
+          IS_PRERELEASE: ${{ steps.semantic_release.outputs.is_prerelease }}
         run: |
           git fetch --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
           git checkout --detach "$RELEASE_TAG"
@@ -70,9 +72,14 @@ jobs:
             --source custom_components/ha_govee_led_ble \
             --verify-archive dist/ha_govee_led_ble.zip
           (cd dist && sha256sum --check ha_govee_led_ble.zip.sha256)
-          gh release upload "$RELEASE_TAG" \
+          gh release create "$RELEASE_TAG" \
+            --verify-tag \
+            --title "$RELEASE_TAG" \
+            --notes "$RELEASE_NOTES" \
+            --prerelease="$IS_PRERELEASE" \
             dist/ha_govee_led_ble.zip \
-            dist/ha_govee_led_ble.zip.sha256
+            dist/ha_govee_led_ble.zip.sha256 \
+            uv.lock
 
       - name: Move latest tag to current release
         if: ${{ steps.semantic_release.outputs.released == 'true' && steps.semantic_release.outputs.is_prerelease == 'false' }}
