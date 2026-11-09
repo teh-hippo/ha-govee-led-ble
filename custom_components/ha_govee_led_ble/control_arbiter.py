@@ -50,6 +50,7 @@ class BLEControlArbiter:
         self._waiters: list[_Waiter] = []
         self._sequence = 0
         self._preview_generation = 0
+        self._foreground_generation = 0
 
     @property
     def current_task_intent(self) -> ControlIntent | None:
@@ -63,6 +64,10 @@ class BLEControlArbiter:
     def preview_generation(self) -> int:
         return self._preview_generation
 
+    @property
+    def foreground_generation(self) -> int:
+        return self._foreground_generation
+
     def locked(self) -> bool:
         return self._owner is not None
 
@@ -72,6 +77,7 @@ class BLEControlArbiter:
 
     def invalidate_previews(self) -> None:
         self._preview_generation += 1
+        self._foreground_generation += 1
 
     @asynccontextmanager
     async def hold(self, intent: ControlIntent, *, wait: bool = True) -> AsyncIterator[bool]:

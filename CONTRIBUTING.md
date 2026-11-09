@@ -21,6 +21,8 @@ Do not post Bluetooth addresses, serial numbers, account details or other unique
 - Arm reply tracking before the physical write, and accept only validated replies.  A late reply reinstates pacing for a command previously learned as silent; failed writes must not teach silence.
 - Qualify observed colour mode against the latest mode-write generation, effective profile and current subscription.
   An expired optimistic expectation does not confirm a mode.
+- Qualify revision-dependent effects before compilation and bind prepared packets to their encoding policy.
+  Preview connection preparation must preserve foreground invalidation without allowing an older preview admission to invalidate a newer preparation.
 - Qualify source power observations against the latest master-power write, effective profile and current subscription before using them to preserve siblings.
 - Entity setters run through `GoveeBLEEntity._async_latest`: the first request sends at once, and while it runs only the newest queued request per control is sent.  Light on, off and attribute calls share one key, with queued `turn_on` attributes merged.  Services, Effect Studio and background work bypass it.
 - Declare source lights only for independently addressable power controls.
