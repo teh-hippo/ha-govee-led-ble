@@ -61,6 +61,7 @@ _VIDEO_RESTORE_CONTROLS: Final = frozenset(
         "sound_effects",
         "white_balance",
         "relative_brightness",
+        "whole_relative_brightness",
         "blank_screen",
         "blank_screen_policy",
         "black_border",
@@ -154,6 +155,7 @@ class PriorControlState:
     white_balance_default_blue: int | None = None
     white_balance_scalar: int | None = None
     relative_brightness: int | None = None
+    whole_relative_brightness: int | None = None
     relative_brightness_left: int | None = None
     relative_brightness_top: int | None = None
     relative_brightness_right: int | None = None
@@ -382,6 +384,7 @@ class PriorControlState:
             (self.relative_brightness_strip_left, "prior strip-left brightness", 0, 100),
             (self.relative_brightness_strip_right, "prior strip-right brightness", 0, 100),
             (self.relative_brightness, "prior relative brightness", 0, 100),
+            (self.whole_relative_brightness, "prior whole-video relative brightness", 0, 100),
             (self.relative_brightness_left, "prior left relative brightness", 0, 100),
             (self.relative_brightness_top, "prior top relative brightness", 0, 100),
             (self.relative_brightness_right, "prior right relative brightness", 0, 100),
@@ -519,6 +522,11 @@ class PriorControlState:
                 else {}
             ),
             "relative_brightness": self.relative_brightness,
+            **(
+                {"whole_relative_brightness": self.whole_relative_brightness}
+                if self.whole_relative_brightness is not None
+                else {}
+            ),
             "relative_brightness_left": self.relative_brightness_left,
             "relative_brightness_top": self.relative_brightness_top,
             "relative_brightness_right": self.relative_brightness_right,
@@ -652,6 +660,7 @@ class PriorControlState:
             relative_brightness_strip_left=_optional_int(raw, "relative_brightness_strip_left"),
             relative_brightness_strip_right=_optional_int(raw, "relative_brightness_strip_right"),
             relative_brightness=_optional_int(raw, "relative_brightness"),
+            whole_relative_brightness=_optional_int(raw, "whole_relative_brightness"),
             relative_brightness_left=_optional_int(raw, "relative_brightness_left"),
             relative_brightness_top=_optional_int(raw, "relative_brightness_top"),
             relative_brightness_right=_optional_int(raw, "relative_brightness_right"),

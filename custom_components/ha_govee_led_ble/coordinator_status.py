@@ -291,6 +291,8 @@ def parse_color_mode(generated: Any, model: str, *, profile: ModelProfile | None
                 **music_values,
             )
     if mode_name in {"static", "static_colour"}:
+        if profile.status_grammar == "H605C":
+            return ParsedColorModeResponse(mode=ParsedMode.COLOUR)
         detail = getattr(body, "mode_body", getattr(body, "detail", None))
         if detail is None:
             raise ValueError("Static status has no details")
@@ -315,11 +317,11 @@ def parse_color_mode(generated: Any, model: str, *, profile: ModelProfile | None
             color_temp_kelvin=raw_kelvin,
             multi_effect_flag=getattr(detail, "sub", None),
         )
-    if profile.status_grammar in PERCENT_BRIGHTNESS_STATUS_GRAMMARS or (
-        mode_name == "video" and profile.video_grammar in VIDEO_GRAMMARS
+    if profile.status_grammar in PERCENT_BRIGHTNESS_STATUS_GRAMMARS | {"H605C"} or (
+        mode_name == "video" and profile.video_grammar in VIDEO_GRAMMARS | {"H605C-video"}
     ):
         if mode_name == "video":
-            if profile.video_grammar not in VIDEO_GRAMMARS:
+            if profile.video_grammar not in VIDEO_GRAMMARS | {"H605C-video"}:
                 return ParsedColorModeResponse()
             detail = body.detail
             source_name = getattr(detail.source, "name", None)
@@ -329,6 +331,7 @@ def parse_color_mode(generated: Any, model: str, *, profile: ModelProfile | None
             return ParsedColorModeResponse(
                 mode=ParsedMode.VIDEO,
                 video_mode=source_name,
+                video_parameters=video_parameters_from_detail(detail, profile.video_grammar),
                 video_full_screen=region_name == "all" if profile.supports_video_capture_region else None,
                 # Keep sibling video observations when firmware reports an unqualified saturation.
                 video_saturation=(

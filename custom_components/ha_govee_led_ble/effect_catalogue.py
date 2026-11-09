@@ -374,6 +374,8 @@ class ModelEffectCatalogue:
             "video_settings": list(_video_profile_settings(profile)),
             "video_controls": {
                 "saturation_min": profile.video_saturation_min,
+                "softness_min": profile.video_softness_min,
+                "softness_max": profile.video_softness_max,
                 "white_balance": {
                     "representation": profile.video_white_balance_representation,
                     "minimum": profile.video_white_balance_min,
@@ -594,6 +596,31 @@ H6046_DIY_FAMILIES: Final = tuple(
         ("chase", "Chase", 10),
         ("snow", "Snow", 11),
         ("aurora", "Aurora", 13),
+    )
+)
+
+H605C_DIY_FAMILIES: Final = tuple(
+    DiyEffectFamily(
+        name,
+        label,
+        family,
+        tuple(DiyEffectVariation(str(variant), variation, variant) for variant, variation in variants),
+        mixed,
+        rate="sensitivity" if family == 4 else "speed",
+        rate_min=1,
+        palette_max=3 if family == 10 else 8,
+        multi_rate_min=1,
+        source_reference="tools/ble/kaitai/speculative/h605c_effect_upload.ksy",
+    )
+    for name, label, family, mixed, variants in (
+        ("fade", "Fade", 0, True, ((0, "Whole strip"), (1, "Sections"), (2, "Cycle"))),
+        ("jumping", "Jumping", 1, True, ((0, "Whole strip"), (2, "Cycle"))),
+        ("blinking", "Blinking", 2, True, ((0, "Whole strip"), (1, "Sections"), (2, "Cycle"))),
+        ("marquee", "Marquee", 3, True, ((3, "Together"), (4, "Gather"), (5, "Disperse"))),
+        ("music", "Music", 4, False, ((8, "Rhythm"), (6, "Spectrum"), (7, "Rolling"))),
+        ("stream", "Stream", 8, True, ((9, "Clockwise"), (10, "Counterclockwise"))),
+        ("flow", "Flow", 9, True, ((9, "Clockwise"), (10, "Counterclockwise"))),
+        ("chase", "Chase", 10, False, ((0, "Default"),)),
     )
 )
 
@@ -1065,6 +1092,7 @@ def _video_profile_settings(profile: ModelProfile) -> tuple[str, ...]:
             ("sound_effects", profile.supports_video_sound_effects),
             ("white_balance", profile.supports_white_balance),
             ("relative_brightness", profile.supports_relative_brightness),
+            ("whole_relative_brightness", profile.supports_whole_relative_brightness),
             ("blank_screen", profile.supports_blank_screen),
             ("black_border", profile.supports_black_border),
         )
@@ -1900,6 +1928,43 @@ MODEL_EFFECT_CATALOGUES: Final = {
         ),
         advanced_create=False,
         temporary_diy_selector=254,
+    ),
+    "H605C": ModelEffectCatalogue(
+        sku="H605C",
+        painted_addressing="physical_ic",
+        painted_background=(255, 255, 255),
+        painted_effects=tuple(
+            {"id": name, "label": name.replace("_", " ").capitalize()}
+            for name in ("clockwise", "counter_clockwise", "cycle", "gradient", "twinkle", "breathe")
+        ),
+        effects=H605C_DIY_FAMILIES,
+        music_modes=_native_music_modes("H605C"),
+        video_modes=_native_video_modes("H605C"),
+        templates=(
+            CatalogueTemplate(
+                "template:paint",
+                "Paint",
+                "single-layer",
+                PaintedEffect("clockwise", 50, 100, (None,), background=(255, 255, 255), addressing="physical_ic"),
+            ),
+            *(_single_template("H605C", family) for family in H605C_DIY_FAMILIES),
+            *(_music_template("H605C", mode) for mode in _native_music_modes("H605C")),
+            *(_video_template("H605C", mode) for mode in _native_video_modes("H605C")),
+        ),
+        workshop_templates=(),
+        supports=CatalogueSupport(
+            multi=workflow_capability_state("H605C", CapabilityWorkflow.MULTI),
+            advanced=workflow_capability_state("H605C", CapabilityWorkflow.ADVANCED),
+            workshop=workflow_capability_state("H605C", CapabilityWorkflow.WORKSHOP),
+        ),
+        apply=ApplySupport(
+            painted=studio_apply_capability_state("H605C", CapabilityWorkflow.PAINTED),
+            single=studio_apply_capability_state("H605C", CapabilityWorkflow.SINGLE),
+            multi=studio_apply_capability_state("H605C", CapabilityWorkflow.MULTI),
+            palette_diy=CapabilityState.UNSUPPORTED,
+            workshop=studio_apply_capability_state("H605C", CapabilityWorkflow.WORKSHOP),
+        ),
+        diy_slot_policy="approved_observed",
     ),
     "H1771": ModelEffectCatalogue(
         sku="H1771",

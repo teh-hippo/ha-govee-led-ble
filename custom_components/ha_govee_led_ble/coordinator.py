@@ -80,6 +80,7 @@ from .generated_protocol_adapter import (
     build_segment_query,
     build_subordinate_query,
     build_white_balance_query,
+    build_whole_relative_brightness,
     is_bulk_status_frame,
     parse_command_result,
     require_profile_packet,
@@ -334,6 +335,7 @@ class GoveeBLECoordinator(
         self.white_balance_default_blue: int | None = None
         self.white_balance_scalar: int | None = None
         self.relative_brightness: int | None = None
+        self.whole_relative_brightness: int | None = None
         self.relative_brightness_left: int | None = None
         self.relative_brightness_top: int | None = None
         self.relative_brightness_right: int | None = None
@@ -1559,6 +1561,53 @@ class GoveeBLECoordinator(
             queries[build_power_on_behaviour_query(profile)] = fields
         return list(queries.items())
 
+    async def async_read_video_setting(self, control: str) -> bool:
+        """Recover independent video registers with current-subscription evidence."""
+        from .video_applicability import require_video_controls
+
+        current_intent = self._control_arbiter.current_task_intent
+        async with async_control_intent(self, current_intent or ControlIntent.USER):
+            async with self._lock:
+                await self._ensure_connected()
+                profile, token = self.profile, self._notification_token
+
+                def check() -> None:
+                    if self.profile != profile or self._notification_token is not token:
+                        raise ValueError("Video read profile or subscription changed")
+                    if control != "video_parameters":
+                        require_video_controls(self.profile, self, (control,))
+
+                check()
+                fields: tuple[str, ...]
+                if not self.profile.can_read(
+                    ReadDomain.DISPLAY_SETTING
+                    if control == "whole_relative_brightness"
+                    else ReadDomain.RELATIVE_BRIGHTNESS
+                ):
+                    return False
+                if control == "whole_relative_brightness":
+                    query = build_whole_relative_brightness(None, self.model, profile=self.profile)
+                    fields = ("whole_relative_brightness",)
+                elif control in {"relative_brightness", "video_parameters"}:
+                    query = build_relative_brightness_query(self.model, profile=self.profile)
+                    fields = (
+                        ("video_parameters",)
+                        if control == "video_parameters"
+                        else tuple(f"relative_brightness_{zone}" for zone in self.profile.video_brightness_zones)
+                    )
+                else:
+                    raise ValueError("unknown independent video setting")
+                client = self._client
+                if client is None:
+                    return False
+                return await self._async_read_setting_fields(
+                    client,
+                    query,
+                    fields,
+                    deadline=time.monotonic() + STATE_QUERY_TIMEOUT,
+                    write_guard=check,
+                )
+
     def _build_state_queries(
         self,
         profile: ModelProfile,
@@ -1574,6 +1623,7 @@ class GoveeBLECoordinator(
         query_relative_brightness: bool | None,
         query_segments: bool | None,
         query_native_settings: bool,
+        query_whole_relative_brightness: bool | None = None,
     ) -> tuple[list[tuple[bytes, ReadDomain, tuple[str, ...]]], dict[str, int]]:
         """Queries to send, each with the domain it reads and the fields it should refresh."""
         segment_baseline: dict[str, int] = {}
@@ -1653,6 +1703,19 @@ class GoveeBLECoordinator(
                 )
             )
         if (
+            "whole_relative_brightness" in confirmed_controls
+            and profile.can_read(ReadDomain.DISPLAY_SETTING)
+            and states["whole_relative_brightness"] is CapabilityState.SUPPORTED
+            and (query_whole_relative_brightness if query_whole_relative_brightness is not None else full_query)
+        ):
+            queries.append(
+                (
+                    build_whole_relative_brightness(None, self.model, profile=profile),
+                    ReadDomain.DISPLAY_SETTING,
+                    ("whole_relative_brightness",),
+                )
+            )
+        if (
             profile.can_read(ReadDomain.SEGMENTS)
             and profile.supports_segments
             and (not self.profile.configured_string_counts or self._configured_strings_confirmed)
@@ -1722,6 +1785,7 @@ class GoveeBLECoordinator(
         query_blank_screen: bool | None = None,
         query_black_border: bool | None = None,
         query_relative_brightness: bool | None = None,
+        query_whole_relative_brightness: bool | None = None,
         query_segments: bool | None = None,
         required_domains: frozenset[ReadDomain] | None = None,
         optional_baselines: dict[str, int] | None = None,
@@ -1757,6 +1821,7 @@ class GoveeBLECoordinator(
                 query_blank_screen=query_blank_screen,
                 query_black_border=query_black_border,
                 query_relative_brightness=query_relative_brightness,
+                query_whole_relative_brightness=query_whole_relative_brightness,
                 query_segments=query_segments,
                 query_native_settings=query_native_settings,
             )
@@ -3259,6 +3324,7 @@ class GoveeBLECoordinator(
         query_white_balance = any(field.startswith("white_balance_") for field in expectations)
         query_blank_screen = any(field.startswith("blank_screen") for field in expectations)
         query_black_border = "black_border" in expectations
+        query_whole_relative_brightness = "whole_relative_brightness" in expectations
         query_relative_brightness = bool(
             set(expectations).intersection(
                 {
@@ -3289,6 +3355,7 @@ class GoveeBLECoordinator(
                     query_blank_screen=query_blank_screen,
                     query_black_border=query_black_border,
                     query_relative_brightness=query_relative_brightness,
+                    query_whole_relative_brightness=query_whole_relative_brightness,
                     deadline=deadline,
                 )
         if not ok or self._client is not client:

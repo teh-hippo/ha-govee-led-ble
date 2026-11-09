@@ -1068,7 +1068,7 @@ export function decodeEffectContent(value: unknown): EffectContent {
         sound_effects_softness: nullableInteger(
           content.sound_effects_softness,
           "video profile sound-effects softness",
-          1,
+          0,
           100,
         ),
         white_balance_position: nullableInteger(
@@ -1084,6 +1084,9 @@ export function decodeEffectContent(value: unknown): EffectContent {
           content.relative_brightness,
           "video profile relative brightness",
         ),
+        ...(content.whole_relative_brightness === undefined ? {} : {
+          whole_relative_brightness: integerValue(content.whole_relative_brightness, "whole-video brightness", 0, 100),
+        }),
         blank_screen: nullableBooleanValue(
           content.blank_screen,
           "video profile blank-screen flag",

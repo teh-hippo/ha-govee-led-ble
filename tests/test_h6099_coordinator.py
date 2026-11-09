@@ -773,7 +773,7 @@ async def test_toggle_guard_rejects_filtered_reply_or_reconnect(device, monkeypa
             return packet
 
         device.profile = replace(device.profile, outbound_transform=transform)
-    with pytest.raises(ValueError, match="policy changed before write"):
+    with pytest.raises(ValueError, match="policy changed before write|subscription changed before write"):
         await apply_blank_screen(device, True)
     assert device.control_write_attempts == (1 if change == "filtered" else 0)
     assert device._field_revisions["blank_screen_detection"] == 1

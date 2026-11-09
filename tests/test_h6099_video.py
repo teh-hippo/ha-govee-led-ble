@@ -76,6 +76,9 @@ def coordinator(version: str | None = None) -> SimpleNamespace:
         blank_screen_low_brightness_duration_seconds=10,
         blank_screen_same_tone_duration_seconds=120,
         _field_revisions={},
+        _field_received_at={},
+        _notify_started_monotonic=None,
+        _authorization_generation=0,
         _blank_screen_notification_revision=0,
         _client=None,
         _notification_token=None,
@@ -150,7 +153,11 @@ async def test_border_only_gate_and_physical_recheck(version, state) -> None:
     device = coordinator(version)
     states = video_control_states(device.profile, device)
     assert states["black_border"] == state
-    assert all(value == "supported" for key, value in states.items() if key != "black_border")
+    assert all(
+        value == "supported"
+        for key, value in states.items()
+        if key not in {"black_border", "whole_relative_brightness"}
+    )
     validate_video_request(device, content())
     compiled = compile_video_profile(LibraryItem.new("Video only", content()), "H6099")
     writer = AsyncMock()

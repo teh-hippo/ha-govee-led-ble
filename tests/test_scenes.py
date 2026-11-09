@@ -351,7 +351,7 @@ def test_generated_scene_body_parser_round_trips_type_2_catalogues():
     scene_counts: Counter[str] = Counter()
     record_count = 0
 
-    for sku in ("H6076", "H6125", "H617A", "H617C", "H617E", "H617F", "H6199"):
+    for sku in ("H605C", "H6076", "H6125", "H617A", "H617C", "H617E", "H617F", "H6199"):
         entries = SCENE_ENTRIES[sku]
         for entry in entries:
             if entry.scene_type != int(SceneBody.SceneType.scene_v2):
@@ -373,6 +373,7 @@ def test_generated_scene_body_parser_round_trips_type_2_catalogues():
             record_count += len(parsed.records)
 
     assert scene_counts == {
+        "H605C": 226,
         "H6076": 101,
         "H6125": 226,
         "H617A": 72,
@@ -381,7 +382,7 @@ def test_generated_scene_body_parser_round_trips_type_2_catalogues():
         "H617F": 226,
         "H6199": 226,
     }
-    assert record_count == 3815
+    assert record_count == 4492
 
 
 @pytest.mark.parametrize("raw_param", [bytearray(b"\x00"), memoryview(b"\x00"), "\x00"])

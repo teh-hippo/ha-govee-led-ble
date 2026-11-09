@@ -32,6 +32,8 @@ def expectations_from_packet(
         }
         if profile.supports_video_saturation:
             expectations["video_saturation"] = int(detail.saturation)
+        if profile.supports_video_capture_region:
+            expectations["video_full_screen"] = detail.region.name == "all"
         if profile.supports_video_sound_effects:
             expectations["video_sound_effects"] = bool(detail.sound_effects)
             expectations["video_sound_effects_softness"] = int(detail.softness)

@@ -40,6 +40,8 @@ from .protocol_core import (
     H66a0VideoCommand,
     H600aCommandWrite,
     H601cCommandWrite,
+    H605cVideoCommand,
+    H605cVideoSettings,
     H607cCommandAck,
     H607cCommandWrite,
     H607cControl,
@@ -145,21 +147,30 @@ def parse_command_result(
                 return ProtocolParseResult(None, setting.parser, ProtocolParseRejection.SEMANTIC_REJECTED)
             return setting
     if (
-        effective_profile.video_grammar == "H66A0-video"
+        effective_profile.video_grammar in {"H66A0-video", "H605C-video"}
         and effective_profile.supports_video_mode
         and frame[:3] == b"\x33\x05\x00"
     ):
-        video = _parse_xor_frame(frame, "H66A0-video", {"H66A0-video": ("h66a0_video_command", H66a0VideoCommand)})
+        video = _parse_xor_frame(
+            frame,
+            effective_profile.video_grammar,
+            {
+                "H66A0-video": ("h66a0_video_command", H66a0VideoCommand),
+                "H605C-video": ("h605c_video_command", H605cVideoCommand),
+            },
+        )
         if video.parsed is not None:
             if (
                 getattr(video.parsed.detail.source, "name", None) not in effective_profile.video_modes
-                or getattr(video.parsed.detail.picture_preset, "name", None) is None
                 or video.parsed.detail.sound_effects not in (0, 1)
-                or not 0 <= video.parsed.detail.softness <= 100
+                or not effective_profile.video_softness_min
+                <= video.parsed.detail.softness
+                <= effective_profile.video_softness_max
             ):
                 return ProtocolParseResult(None, video.parser, ProtocolParseRejection.SEMANTIC_REJECTED)
             try:
                 effective_profile.validate_video_saturation(int(video.parsed.detail.saturation))
+                video_parameters_from_detail(video.parsed.detail, effective_profile.video_grammar)
             except ValueError:
                 return ProtocolParseResult(None, video.parser, ProtocolParseRejection.SEMANTIC_REJECTED)
             return video
@@ -445,22 +456,41 @@ def _check_music_write_packet(frame: bytes, profile: ModelProfile) -> bool:
 
 def _check_video_write_packet(frame: bytes, profile: ModelProfile) -> bool:
     """Video mode writes."""
-    if profile.video_grammar == "H66A0-video" and profile.supports_video_mode:
+    if profile.video_grammar == "H605C-video":
+        scalar = _parse_xor_frame(frame, "scalar", {"scalar": ("h605c_video_settings", H605cVideoSettings)}).parsed
+        if scalar is not None and scalar.header in {scalar.FrameHeader.write, scalar.FrameHeader.query}:
+            if not profile.supports_whole_relative_brightness:
+                raise ValueError("whole-video brightness is outside profile capabilities")
+            return True
+        for grammar, roots in (("H6199", _COMMAND_ROOTS), ("H6199", _STATUS_QUERY_ROOTS)):
+            parsed = _parse_xor_frame(frame, grammar, roots).parsed
+            if parsed is None:
+                continue
+            operation = getattr(getattr(parsed, "opcode", getattr(parsed, "domain", None)), "name", None)
+            if operation == "display_setting":
+                setting = getattr(parsed.body.setting, "name", None)
+                if setting in {
+                    name
+                    for name, supported in (
+                        ("white_balance", profile.supports_white_balance),
+                        ("blank_screen", profile.supports_blank_screen),
+                    )
+                    if supported
+                }:
+                    return True
+    if profile.video_grammar in {"H66A0-video", "H605C-video"} and profile.supports_video_mode:
         video = parse_video_command(frame, "", profile=profile)
         if video is not None:
             if profile.command_operations is not None and "video" not in profile.command_operations:
                 raise ValueError(f"{profile.name} does not support video")
             if getattr(video.detail.source, "name", None) not in profile.video_modes:
                 raise ValueError("video mode source is outside profile capabilities")
-            validate_video_parameters(
-                profile.video_grammar,
-                {
-                    "picture_preset": getattr(video.detail.picture_preset, "name", None),
-                    "opaque": int(video.detail.opaque),
-                },
-            )
+            video_parameters_from_detail(video.detail, profile.video_grammar)
             profile.validate_video_saturation(int(video.detail.saturation))
-            if video.detail.sound_effects not in (0, 1) or not 0 <= video.detail.softness <= 100:
+            if (
+                video.detail.sound_effects not in (0, 1)
+                or not profile.video_softness_min <= video.detail.softness <= profile.video_softness_max
+            ):
                 raise ValueError("invalid video sound effects or softness")
             return True
     return False
@@ -1487,6 +1517,8 @@ def _video_grammar(model: str, profile: ModelProfile | None = None) -> str:
 def _video_command_grammar(model: str, profile: ModelProfile | None = None) -> str:
     profile = profile or get_profile(model)
     grammar = _video_grammar(model, profile)
+    if grammar == "H605C-video":
+        return "H6199"
     if grammar == "H66A0-video" and profile.command_grammar in {"H6099", "H6199"}:
         return profile.command_grammar
     return grammar
@@ -1496,9 +1528,10 @@ def build_white_balance_query(model: str, *, profile: ModelProfile | None = None
     profile = profile or get_profile(model)
     if not profile.supports_white_balance_readback or not profile.can_read(ReadDomain.DISPLAY_SETTING):
         raise ValueError(f"{model} does not support white-balance readback")
-    if (grammar := profile.command_grammar) in {"H6099", "H6199"} or (
-        grammar == "H617A" and profile.video_white_balance_representation == "scalar"
-    ):
+    grammar = (
+        _video_command_grammar(model, profile) if profile.video_grammar == "H605C-video" else profile.command_grammar
+    )
+    if grammar in {"H6099", "H6199"} or (grammar == "H617A" and profile.video_white_balance_representation == "scalar"):
         setting = "scalar_white_balance" if profile.video_white_balance_representation == "scalar" else "white_balance"
         return _build_status_query("display_setting", grammar, display_setting=setting)
     raise ValueError(f"{model} has no generated white-balance query grammar")
@@ -1520,6 +1553,22 @@ def build_relative_brightness_query(model: str, *, profile: ModelProfile | None 
     if (grammar := _video_command_grammar(model, profile)) in {"H6099", "H6199"}:
         return _build_status_query("relative_brightness", grammar)
     raise ValueError(f"{model} has no generated relative-brightness query grammar")
+
+
+def build_whole_relative_brightness(value: int | None, model: str, *, profile: ModelProfile | None = None) -> bytes:
+    """Build the independent scalar register or its query, not synthetic edges."""
+    profile = profile or get_profile(model)
+    if not profile.supports_whole_relative_brightness or profile.video_grammar != "H605C-video":
+        raise ValueError(f"{model} has no qualified whole-video brightness grammar")
+    if value is not None and (type(value) is not int or not 0 <= value <= 100):
+        raise ValueError("whole-video brightness must be from 0 to 100")
+    root = H605cVideoSettings()
+    root.header = root.FrameHeader.query if value is None else root.FrameHeader.write
+    root.opcode, root.setting = b"\xa9", b"\x02"
+    if value is not None:
+        root.length, root.value = 1, value
+    root.unknown_tail = bytes(16 if value is None else 14)
+    return _serialize_xor(root)
 
 
 def build_subordinate_query(domain: int, model: str, *, profile: ModelProfile | None = None) -> bytes:
@@ -2249,6 +2298,22 @@ def build_video_mode(
     profile.validate_video_saturation(saturation)
     grammar = profile.video_grammar
     parameters = validate_video_parameters(grammar, values or {})
+    if grammar == "H605C-video":
+        if type(full_screen) is not bool or type(sound_effects) is not bool:
+            raise ValueError("video region and sound effects require booleans")
+        if type(softness) is not int or not profile.video_softness_min <= softness <= profile.video_softness_max:
+            raise ValueError("video softness is outside model limits")
+        root = H605cVideoCommand()
+        root.header, root.opcode, root.mode = b"\x33", b"\x05", b"\x00"
+        detail = _child(H605cVideoCommand.VideoBody, root)
+        detail.region = root.VideoRegion.all if full_screen else root.VideoRegion.part
+        detail.source = root.VideoSource[video_mode]
+        detail.saturation, detail.sound_effects, detail.softness = saturation, int(sound_effects), softness
+        detail.reserved, detail.reserved_end, detail.unknown_tail = 0, 0, bytes(5)
+        for field, value in parameters.items():
+            setattr(detail, field, value)
+        root.detail = detail
+        return _serialize_xor(root)
     if grammar == "H66A0-video":
         if video_mode not in H66a0VideoCommand.VideoSource.__members__:
             raise ValueError("invalid video source")
@@ -2291,7 +2356,13 @@ def build_video_mode(
 
 def validate_video_parameters(grammar: str | None, values: Mapping[str, Any]) -> dict[str, Any]:
     """Validate complete grammar-specific values; unknown bytes have no defaults."""
-    if grammar == "H66A0-video":
+    if grammar == "H605C-video":
+        fields = {"left_percent", "top_percent", "right_percent", "bottom_percent"}
+        if set(values) != fields:
+            raise ValueError("video requires complete edge brightness values; refresh the device first")
+        if any(type(value) is not int or not 0 <= value <= 100 for value in values.values()):
+            raise ValueError("video edge brightness must be from 0 to 100")
+    elif grammar == "H66A0-video":
         if set(values) != {"picture_preset", "opaque"}:
             raise ValueError("video requires picture_preset and opaque values; refresh the device first")
         if (
@@ -2306,7 +2377,24 @@ def validate_video_parameters(grammar: str | None, values: Mapping[str, Any]) ->
     return dict(values)
 
 
+def video_parameter_read_domain(grammar: str | None) -> ReadDomain | None:
+    """The independent register that can recover mandatory inline values."""
+    return ReadDomain.RELATIVE_BRIGHTNESS if grammar == "H605C-video" else None
+
+
+def video_parameters_from_brightness(grammar: str | None, values: tuple[int, ...]) -> dict[str, Any] | None:
+    if video_parameter_read_domain(grammar) is not ReadDomain.RELATIVE_BRIGHTNESS:
+        return None
+    fields = ("left_percent", "top_percent", "right_percent", "bottom_percent")
+    return validate_video_parameters(grammar, dict(zip(fields, values, strict=True)))
+
+
 def video_parameters_from_detail(detail: Any, grammar: str | None) -> dict[str, Any] | None:
+    if grammar == "H605C-video":
+        return validate_video_parameters(
+            grammar,
+            {f"{zone}_percent": int(getattr(detail, f"{zone}_percent")) for zone in ("left", "top", "right", "bottom")},
+        )
     if grammar != "H66A0-video":
         return None
     return validate_video_parameters(
@@ -2318,7 +2406,10 @@ def parse_video_command(frame: bytes, model: str, *, profile: ModelProfile | Non
     return _parse_xor_frame(
         frame,
         (profile or get_profile(model)).video_grammar,
-        {"H66A0-video": ("h66a0_video_command", H66a0VideoCommand)},
+        {
+            "H66A0-video": ("h66a0_video_command", H66a0VideoCommand),
+            "H605C-video": ("h605c_video_command", H605cVideoCommand),
+        },
     ).parsed
 
 

@@ -123,6 +123,8 @@ export class GoveeVideoProfileEditor extends LitElement {
     const relativeBrightness =
       this.settings.includes("relative_brightness") &&
       this.content.relative_brightness !== null;
+    const wholeBrightness = this.settings.includes("whole_relative_brightness") &&
+      this.content.whole_relative_brightness !== undefined;
     const brightness = this.content.relative_brightness ?? {
       left: 100,
       top: 100,
@@ -147,6 +149,7 @@ export class GoveeVideoProfileEditor extends LitElement {
             setting === "white_balance" ? whiteBalance : setting === "relative_brightness" ? relativeBrightness
               : setting === "blank_screen" ? blankScreen : setting === "capture_region" ? captureRegion
               : setting === "black_border" ? blackBorder
+              : setting === "whole_relative_brightness" ? wholeBrightness
               : setting === "saturation" ? saturation : soundEffects,
             checked => this.updateContent(content => {
               switch (setting) {
@@ -182,13 +185,17 @@ export class GoveeVideoProfileEditor extends LitElement {
                     left: 100, top: 100, right: 100, bottom: 100,
                     ...(this.controls?.brightness_zones.length === 6 ? {strip_left: 100, strip_right: 100} : {}),
                   } : null;
+                  break;
+                case "whole_relative_brightness":
+                  if (checked) content.whole_relative_brightness = 50;
+                  else delete content.whole_relative_brightness;
               }
             }),
           ))}
         </section>
         <section
           class="card"
-          ?hidden=${!captureRegion && !soundEffects && !blankScreen && !blackBorder}
+          ?hidden=${!captureRegion && !soundEffects && !blankScreen && !blackBorder && !wholeBrightness}
         >
           <div class="parameter-stack">
             <label class="field" ?hidden=${!captureRegion}>
@@ -236,18 +243,24 @@ export class GoveeVideoProfileEditor extends LitElement {
               ? this.renderRangeField(
                   "Softness",
                   this.content.sound_effects_softness ?? 50,
-                  1,
-                  100,
+                  this.controls?.softness_min ?? 1,
+                  this.controls?.softness_max ?? 100,
                   (value) =>
                     this.updateContent((content) => {
                       content.sound_effects_softness = clampInteger(
                         value,
-                        1,
-                        100,
+                        this.controls?.softness_min ?? 1,
+                        this.controls?.softness_max ?? 100,
                       );
                     }),
                 )
               : nothing}
+            ${wholeBrightness ? this.renderRangeField(
+              "Whole-video brightness", this.content.whole_relative_brightness ?? 50, 0, 100,
+              value => this.updateContent(content => {
+                content.whole_relative_brightness = clampInteger(value, 0, 100);
+              }),
+            ) : nothing}
             ${blankScreen
               ? this.renderCheckboxField(
                   "Blank screen",

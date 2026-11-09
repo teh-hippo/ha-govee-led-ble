@@ -5,6 +5,14 @@ speculative/h60b0_command_ack
 speculative/h60b0_effect_upload
 speculative/h60b0_status_query
 speculative/h60b0_status_reply
+speculative/h605c_static_write
+speculative/h605c_effect_upload
+speculative/h605c_dreamview
+speculative/h605c_gradual
+speculative/h605c_music_write
+speculative/h605c_video_command
+speculative/h605c_video_settings
+speculative/h605c_status_reply
 speculative/h1771_command_write
 speculative/h1771_status_query
 speculative/h1771_status_reply

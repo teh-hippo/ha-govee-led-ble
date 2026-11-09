@@ -15,6 +15,7 @@ Do not post Bluetooth addresses, serial numbers, account details or other unique
 - Speculative schemas must retain unqualified suffix bytes; test nonzero tails rather than assuming zero padding when reusing shared types.
 - `const.py` holds one `ModelProfile` per exact SKU, declaring its capabilities.  Compatible models may share a Kaitai adapter but never a whole profile.
   Products requiring subscription-qualified Pact must revoke confirmation on disconnect, retain cached identity only for presentation, and reconcile a fresh marker or current-subscription advertisement before writes.
+- Aim for complete in-scope support on every evidenced revision, not discovery or capability flags alone.  Keep exact-model BLE documentation in Kaitai and product facts in profiles/catalogues; implement execution, editing and recovery through shared capability-driven paths, without per-model UI or manual packet workarounds.
 - Apply observed physical geometry and its derived logical segment count together, using the declared product capacity rather than the current or original installed length.  Equivalent profile resolution must preserve observations and in-progress transactions.
 - Bind prepared segment masks to their layout generation and BLE subscription.  Qualify wider masks per product without reinterpreting other models' opaque bytes.
 - Keep offsets, command literals and packet enums out of entity and coordinator code.
@@ -25,6 +26,9 @@ Do not post Bluetooth addresses, serial numbers, account details or other unique
 - Qualify revision-dependent effects before compilation and bind prepared packets to their encoding policy.
   Preview connection preparation must preserve foreground invalidation without allowing an older preview admission to invalidate a newer preparation.
 - Qualify source power observations against the latest master-power write, effective profile and current subscription before using them to preserve siblings.
+- Compile inline video settings from complete typed requests before the first mode write.
+  Recover omitted mandatory values through qualified independent reads; retained cache values and successful writes are not fresh observations.
+- Evaluate compound revision requirements together: a known failed prerequisite wins over missing identity, and missing identity never grants a control.
 - Entity setters run through `GoveeBLEEntity._async_latest`: the first request sends at once, and while it runs only the newest queued request per control is sent.  Light on, off and attribute calls share one key, with queued `turn_on` attributes merged.  Services, Effect Studio and background work bypass it.
 - Declare source lights only for independently addressable power controls.
   Attach segment masks or master brightness only when they leave siblings unchanged; keep uncertain mappings neutral and state unconfirmed until observed.

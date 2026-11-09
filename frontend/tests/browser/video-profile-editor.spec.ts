@@ -63,3 +63,17 @@ test("H6099 border is optional and blank-screen policy editing is explicit", asy
   await page.getByLabel("Edit blank-screen policy", {exact: true}).uncheck();
   await expect(page.getByLabel("Blank-screen detection", {exact: true})).toHaveCount(0);
 });
+
+test("whole-video brightness is an independent scalar and softness uses declared limits", async ({ page }) => {
+  await page.goto("/tests/browser/fixtures/video-profile-editor.html?whole");
+  const whole = page.getByLabel("Whole-video brightness", {exact: true});
+  await expect(whole).toHaveValue("47");
+  await expect(page.getByLabel("Uniform brightness", {exact: true})).toBeHidden();
+  await expect(page.getByLabel("Softness", {exact: true})).toHaveAttribute("min", "0");
+  await expect(page.getByLabel("Softness", {exact: true})).toHaveAttribute("max", "99");
+  await whole.fill("36");
+  await expect(whole).toHaveValue("36");
+  await page.getByLabel("Include whole relative brightness", {exact: true}).uncheck();
+  await expect(whole).toHaveCount(0);
+  await expect(page.getByLabel("Softness", {exact: true})).toHaveValue("0");
+});

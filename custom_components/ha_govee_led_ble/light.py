@@ -91,7 +91,7 @@ from .light_source import GoveeBLESourceLight
 from .music_commands import prepare_music_request
 from .music_protocol import music_code_for
 from .music_semantics import music_variant
-from .native_profile_controls import _send_video_setting, async_require_video_controls, prepare_video_mode
+from .native_profile_controls import _send_video_setting, async_prepare_video_mode, async_require_video_controls
 from .native_profile_controls import apply_active_video_mode as apply_active_video_mode
 from .native_scenes import build_native_scene_packets
 from .scenes import MODEL_SCENES
@@ -906,7 +906,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             if compiled is not None:
                 if isinstance(compiled, CompiledVideoProfile):
                     controls = requested_video_controls(compiled)
-                    _, _, _, retained_guard = prepare_video_mode(
+                    _, _, _, retained_guard = await async_prepare_video_mode(
                         coordinator,
                         mode=compiled.mode,
                         requested_values={
@@ -914,6 +914,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                             for field in ("full_screen", "saturation", "sound_effects", "sound_effects_softness")
                             if getattr(compiled, field) is not None
                         },
+                        relative_brightness=compiled.relative_brightness,
                     )
 
                     def check_default() -> None:
@@ -928,7 +929,9 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                     compiled,
                     on_write=self._clear_active_effect_origin,
                 )
-            _, _, _, check_retained = prepare_video_mode(coordinator, mode=selected.value, requested_values={})
+            _, _, _, check_retained = await async_prepare_video_mode(
+                coordinator, mode=selected.value, requested_values={}
+            )
             if video_guards is not None:
                 video_guards.append(check_retained)
 

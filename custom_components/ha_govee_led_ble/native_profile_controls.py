@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable, Iterable, Mapping
 from typing import TYPE_CHECKING, Any, Protocol
 
+from .const import ReadDomain
 from .control_arbiter import ControlIntent, async_control_intent
 from .generated_protocol_adapter import (
     build_black_border,
@@ -13,6 +14,9 @@ from .generated_protocol_adapter import (
     build_relative_brightness,
     build_video_mode,
     build_white_balance,
+    build_whole_relative_brightness,
+    video_parameter_read_domain,
+    video_parameters_from_brightness,
 )
 from .video_applicability import (
     require_video_controls,
@@ -66,6 +70,7 @@ def prepare_video_mode(
     mode: str,
     requested_values: Mapping[str, Any],
     parameters: Mapping[str, Any] | None = None,
+    relative_brightness: tuple[int, ...] | None = None,
 ) -> tuple[bytes, dict[str, Any], frozenset[str], Callable[[], None]]:
     """Compile the complete mode before any control side effect, then guard retention."""
     require_video_mode(coordinator.profile, coordinator)
@@ -95,6 +100,11 @@ def prepare_video_mode(
     }
     controls |= frozenset(control_by_field[field] for field in retained)
     profile = coordinator.profile
+    if relative_brightness is not None:
+        inline = video_parameters_from_brightness(profile.video_grammar, relative_brightness)
+        if inline is not None:
+            controls |= {"relative_brightness"}
+            parameters = dict(parameters or {}) | inline
     observed_parameters = getattr(coordinator, "video_parameters", None)
     retained_parameters = dict(
         observed_parameters
@@ -104,12 +114,25 @@ def prepare_video_mode(
     resolved_parameters = retained_parameters | dict(parameters or {})
     client = getattr(coordinator, "_client", None)
     token = getattr(coordinator, "_notification_token", None)
+    retained_revisions = {f"video_{field}": coordinator._field_revisions.get(f"video_{field}", 0) for field in retained}
+    if retained_parameters.keys() - (parameters or {}).keys():
+        retained_revisions["video_parameters"] = coordinator._field_revisions.get("video_parameters", 0)
 
     def check_retained() -> None:
         require_video_mode(coordinator.profile, coordinator)
         require_video_controls(coordinator.profile, coordinator, controls)
         if coordinator.profile != profile:
             raise ValueError("Video profile changed before write; refresh and retry")
+        if (
+            getattr(coordinator, "_client", None) is not client
+            or getattr(coordinator, "_notification_token", None) is not token
+            or any(
+                coordinator._field_revisions.get(field, 0) != revision for field, revision in retained_revisions.items()
+            )
+        ):
+            raise ValueError(
+                "Retained video settings changed: observations or connection changed before write; refresh and retry"
+            )
         coordinator.profile.validate_video_saturation(values["saturation"])
         if any(getattr(coordinator, f"video_{field}") != value for field, value in retained.items()):
             raise ValueError("Retained video settings changed before write; refresh and retry")
@@ -157,12 +180,78 @@ def prepare_video_mode(
     return packet, values, controls, check_retained
 
 
+async def async_prepare_video_mode(
+    coordinator: GoveeBLECoordinator,
+    *,
+    mode: str,
+    requested_values: Mapping[str, Any],
+    parameters: Mapping[str, Any] | None = None,
+    relative_brightness: tuple[int, ...] | None = None,
+) -> tuple[bytes, dict[str, Any], frozenset[str], Callable[[], None]]:
+    """Recover independently readable inline settings before compiling the first write."""
+    if "saturation" in requested_values:
+        coordinator.profile.validate_video_saturation(requested_values["saturation"])
+    controls = video_mode_controls(coordinator.profile)
+    if relative_brightness is not None:
+        controls |= {"relative_brightness"}
+    await async_require_video_controls(coordinator, controls)
+    client = coordinator._client
+    if video_parameter_read_domain(coordinator.profile.video_grammar) is not None and (
+        client is None or not client.is_connected
+    ):
+        current_intent = coordinator._control_arbiter.current_task_intent
+        async with async_control_intent(coordinator, current_intent or ControlIntent.USER):
+            async with coordinator._lock:
+                await coordinator._ensure_connected()
+        require_video_controls(coordinator.profile, coordinator, controls)
+    started = coordinator._notify_started_monotonic
+
+    def observed_on_subscription(field: str) -> bool:
+        received = coordinator._field_received_at.get(field)
+        return received is not None and (started is None or received >= started)
+
+    omitted = tuple(
+        f"video_{field}"
+        for field, supported in (
+            ("full_screen", coordinator.profile.supports_video_capture_region),
+            ("saturation", coordinator.profile.supports_video_saturation),
+            ("sound_effects", coordinator.profile.supports_video_sound_effects),
+            ("sound_effects_softness", coordinator.profile.supports_video_sound_effects),
+        )
+        if supported and field not in requested_values
+    )
+    if video_parameter_read_domain(coordinator.profile.video_grammar) is not None and any(
+        not observed_on_subscription(field) for field in omitted
+    ):
+        baselines = {field: coordinator._field_revisions.get(field, 0) for field in omitted}
+        if not await coordinator.refresh_state() or any(
+            coordinator._field_revisions.get(field, 0) <= revision for field, revision in baselines.items()
+        ):
+            raise ValueError("Cannot preserve omitted video settings; use a complete typed video profile")
+    if (
+        video_parameter_read_domain(coordinator.profile.video_grammar) is ReadDomain.RELATIVE_BRIGHTNESS
+        and relative_brightness is None
+        and parameters is None
+        and (getattr(coordinator, "video_parameters", None) is None or not observed_on_subscription("video_parameters"))
+    ):
+        if not await coordinator.async_read_video_setting("video_parameters"):
+            raise ValueError("Cannot preserve video edge brightness without readback or a complete typed request")
+    return prepare_video_mode(
+        coordinator,
+        mode=mode,
+        requested_values=requested_values,
+        parameters=parameters,
+        relative_brightness=relative_brightness,
+    )
+
+
 async def apply_active_video_mode(
     coordinator: GoveeBLECoordinator,
     *,
     mode: str,
     requested_values: Mapping[str, Any],
     parameters: Mapping[str, Any] | None = None,
+    relative_brightness: tuple[int, ...] | None = None,
     writer: ProfileWriter | None = None,
     verify: bool = True,
     on_write: Callable[[], None] | None = None,
@@ -170,8 +259,12 @@ async def apply_active_video_mode(
     if mode not in ("movie", "game"):
         return False
     await async_require_video_controls(coordinator, video_mode_controls(coordinator.profile))
-    packet, values, controls, check_retained = prepare_video_mode(
-        coordinator, mode=mode, requested_values=requested_values, parameters=parameters
+    packet, values, controls, check_retained = await async_prepare_video_mode(
+        coordinator,
+        mode=mode,
+        requested_values=requested_values,
+        parameters=parameters,
+        relative_brightness=relative_brightness,
     )
     state_values = {f"video_{field}": value for field, value in values.items()}
     state_values.update(video_mode=mode, effect=None, music_mode="off", diy_code=None)
@@ -219,6 +312,30 @@ async def apply_active_video_mode(
     raise RuntimeError("Video-mode write was not confirmed by the device")
 
 
+async def apply_whole_relative_brightness(
+    coordinator: GoveeBLECoordinator,
+    value: int,
+    *,
+    writer: ProfileWriter | None = None,
+    verify: bool = True,
+) -> bool:
+    packet = build_whole_relative_brightness(value, coordinator.model, profile=coordinator.profile)
+    await _send_video_setting(
+        coordinator,
+        packet,
+        frozenset({"whole_relative_brightness"}),
+        writer=writer,
+        state_values={"whole_relative_brightness": value},
+        expected_values={"whole_relative_brightness": value} if verify else None,
+    )
+    if not verify or (
+        await coordinator.async_read_video_setting("whole_relative_brightness")
+        and coordinator.whole_relative_brightness == value
+    ):
+        return True
+    raise RuntimeError("Whole-video brightness was not confirmed by the device")
+
+
 async def _send_video_setting(
     coordinator: GoveeBLECoordinator,
     packet: bytes,
@@ -230,14 +347,24 @@ async def _send_video_setting(
     expected_values: Mapping[str, Any] | None = None,
     on_write: Callable[[], None] | None = None,
 ) -> None:
+    profile = coordinator.profile
+    await async_require_video_controls(coordinator, controls)
+    client, token = coordinator._client, coordinator._notification_token
+    generation = coordinator._authorization_generation
+
     def check() -> None:
         require_video_controls(coordinator.profile, coordinator, controls)
+        if (
+            coordinator.profile != profile
+            or coordinator._client is not client
+            or coordinator._notification_token is not token
+            or coordinator._authorization_generation != generation
+        ):
+            raise ValueError("Video profile, identity or subscription changed before write; refresh and retry")
         if write_guard is not None:
             write_guard()
 
-    await async_require_video_controls(coordinator, controls)
-    if write_guard is not None:
-        write_guard()
+    check()
 
     if writer is None:
 

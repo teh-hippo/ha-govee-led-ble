@@ -1503,6 +1503,26 @@ async def test_static_direct_verification_is_not_enabled_for_existing_models(has
 
 REPRESENTATIVE_ROOTS = (
     pytest.param(
+        _generated("h605c_static_write", "H605cStaticWrite"),
+        bytes.fromhex("33051501ffffff0bb8ffb969ff7f0000000000c1"),
+        id="H605C public nominal 3000K wider-mask observation",
+    ),
+    pytest.param(
+        _generated("h605c_effect_upload", "H605cEffectUpload"),
+        TYPE03_PAINTED,
+        id="H605C candidate shared physical paint structure",
+    ),
+    pytest.param(
+        _generated("h605c_effect_upload", "H605cEffectUpload"),
+        TYPE04_COMBO,
+        id="H605C candidate mixed palette structure",
+    ),
+    pytest.param(
+        _generated("h605c_music_write", "H605cMusicWrite"),
+        bytes.fromhex("330513032a00011122330000000000000000000d"),
+        id="H605C candidate Rhythm selector",
+    ),
+    pytest.param(
         H7025MusicWrite,
         bytes.fromhex("330513032a01011122330000000000000000000c"),
         id="H7025 synthetic explicit Rhythm",
@@ -1577,6 +1597,37 @@ def test_representative_roots_round_trip_and_consume_input(root_type: type[Any],
     parsed._write(output)
 
     assert output.to_byte_array() == data
+
+
+@pytest.mark.parametrize("modern,prefix", [(False, "aa520100aabb"), (True, "aa600a0100aabb")])
+def test_h605c_dreamview_revision_wrappers_retain_unknown_reply_fields(modern, prefix):
+    payload = bytes.fromhex(prefix).ljust(19, b"\0")
+    packet = payload + bytes((xor_checksum(payload),))
+    root = _generated("h605c_dreamview", "H605cDreamview")
+    parsed = root(modern, False, KaitaiStream(io.BytesIO(packet)))
+    parsed._read()
+    selected = parsed.current if modern else parsed.legacy
+    assert selected.body.unknown.startswith(bytes.fromhex("aabb"))
+    parsed._fetch_instances()
+    parsed._check()
+    output = KaitaiStream(io.BytesIO(bytes(20)))
+    parsed._write(output)
+    assert output.to_byte_array() == packet
+
+
+@pytest.mark.parametrize("query,prefix", [(True, "aaa3"), (False, "aaa301aabb")])
+def test_h605c_gradual_query_and_nonzero_reply_suffix_round_trip(query, prefix):
+    payload = bytes.fromhex(prefix).ljust(19, b"\0")
+    packet = payload + bytes((xor_checksum(payload),))
+    root = _generated("h605c_gradual", "H605cGradual")
+    parsed = root(query, KaitaiStream(io.BytesIO(packet)))
+    parsed._read()
+    if not query:
+        assert parsed.flag == 1 and parsed.unknown_tail.startswith(bytes.fromhex("aabb"))
+    parsed._check()
+    output = KaitaiStream(io.BytesIO(bytes(20)))
+    parsed._write(output)
+    assert output.to_byte_array() == packet
 
 
 @pytest.mark.parametrize(
