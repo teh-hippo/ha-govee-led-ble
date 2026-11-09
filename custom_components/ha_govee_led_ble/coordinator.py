@@ -934,15 +934,22 @@ class GoveeBLECoordinator(
             raise
         if self._connection_initializing:
             raise GoveeCryptoError("connection_setup_in_progress")
-        if self._client and self._client.is_connected:
+        if (client := self._client) is not None and client.is_connected:
             if (
                 (self._encryption is None or self._encryption.ready)
                 and not self._receive_is_stale()
                 and not self._segment_query_incomplete
                 and not self._bulk_query_incomplete
             ):
+                if self.profile.profile_identity_fields and not self.identity_fields_confirmed(
+                    self.profile.profile_identity_fields
+                ):
+                    token = self._notification_token
+                    await self._async_read_identity()
+                    if self._client is not client or not client.is_connected or self._notification_token is not token:
+                        raise BleakError("Device disconnected while confirming controller identity")
                 self._renew_foreground_lease()
-                return self._client
+                return client
             _LOGGER.debug("Reconnecting stale notification stream for %s", self.address)
         # Cached identity remains presentation data; only current-connection confirmation is revoked.
         self._confirmed_identity_fields.clear()
@@ -1007,24 +1014,7 @@ class GoveeBLECoordinator(
                 self._resolve_h607c_pact(preserve_state=same_marker)
                 self._h607c_last_marker_pact = self._h607c_marker_pact
             if self.profile.requires_notifications:
-                identity_baselines = {
-                    domain: self._domain_revisions.get(domain, 0)
-                    for domain, field in (
-                        (ReadDomain.FIRMWARE, "fw_version"),
-                        (ReadDomain.HARDWARE, "hw_version"),
-                        (ReadDomain.SUBORDINATE_20, "subordinate_20_version"),
-                        (ReadDomain.SUBORDINATE_21, "subordinate_21_version"),
-                        (ReadDomain.WIRELESS_FIRMWARE, "wireless_firmware_version"),
-                        (ReadDomain.WIRELESS_HARDWARE, "wireless_hardware_version"),
-                    )
-                    if field in self._authorization_identity_fields() and self.profile.can_read(domain)
-                }
-                await self._send_identity_queries()
-                self._require_not_shutdown()
-                self._require_not_dreamview_claimed()
-                # Reconnect invalidates authorization. Let real notifications requalify
-                # guards before returning, but missing identity must not fail basic setup.
-                await self._wait_for_revisions({}, identity_baselines, time.monotonic() + IDENTITY_QUERY_TIMEOUT)
+                await self._async_read_identity()
                 self._require_not_shutdown()
                 self._require_not_dreamview_claimed()
                 if self.profile.configured_string_counts:
@@ -1889,6 +1879,27 @@ class GoveeBLECoordinator(
                 if not fresh or getattr(self, observation, None) != value:
                     raise ValueError("Device did not confirm the requested H6199 control")
 
+    async def _async_read_identity(self) -> None:
+        """Refresh missing identity without making basic setup depend on its replies."""
+        identity_baselines = {
+            domain: self._domain_revisions.get(domain, 0)
+            for domain, field in (
+                (ReadDomain.FIRMWARE, "fw_version"),
+                (ReadDomain.HARDWARE, "hw_version"),
+                (ReadDomain.SUBORDINATE_20, "subordinate_20_version"),
+                (ReadDomain.SUBORDINATE_21, "subordinate_21_version"),
+                (ReadDomain.WIRELESS_FIRMWARE, "wireless_firmware_version"),
+                (ReadDomain.WIRELESS_HARDWARE, "wireless_hardware_version"),
+            )
+            if field in self._authorization_identity_fields()
+            and self.profile.can_read(domain)
+            and self._identity_field_incomplete(field)
+        }
+        await self._send_identity_queries()
+        self._require_not_shutdown()
+        self._require_not_dreamview_claimed()
+        await self._wait_for_revisions({}, identity_baselines, time.monotonic() + IDENTITY_QUERY_TIMEOUT)
+
     async def _send_identity_queries(self) -> None:
         """Query missing identity and invalid condition-bearing versions.
 
@@ -1977,7 +1988,10 @@ class GoveeBLECoordinator(
             return
         profile = self._authorization_profile()
         if profile != self.profile:
-            validator(packet, profile)
+            try:
+                validator(packet, profile)
+            except ValueError as err:
+                raise HomeAssistantError(translation_domain=DOMAIN, translation_key="identity_not_ready") from err
 
     def _apply_configured_strings(self, count: int) -> None:
         if count not in self.profile.configured_string_counts:

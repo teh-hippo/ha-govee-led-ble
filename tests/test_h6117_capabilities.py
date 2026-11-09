@@ -1,18 +1,28 @@
 """Reconstructed H6117 revision, transform and runtime regressions, not hardware confirmation."""
 
+import asyncio
 from dataclasses import replace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from bleak import BleakError
+from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.ha_govee_led_ble.const import ReadDomain, device_profile
+from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
+from custom_components.ha_govee_led_ble.effect_catalogue import H617A_TYPE04_APPLY_CODE, H6117_NATIVE_DIY_TEMPLATES
 from custom_components.ha_govee_led_ble.effect_compiler import compile_application
 from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, SingleEffect
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
+    build_boolean_control,
+    build_boolean_control_query,
     build_brightness,
+    build_firmware_query,
+    build_hardware_query,
     build_music_mode,
+    build_power,
     require_profile_packet,
 )
 from custom_components.ha_govee_led_ble.light_commands import (
@@ -21,7 +31,9 @@ from custom_components.ha_govee_led_ble.light_commands import (
     build_segment_brightness,
     build_segment_color,
 )
+from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_packets
 from custom_components.ha_govee_led_ble.protocol_core import H6117WireWrite
+from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES
 from custom_components.ha_govee_led_ble.transport import reassemble_a1_02, xor_checksum
 
 
@@ -233,6 +245,160 @@ async def test_cached_identity_does_not_authorise_reconnect_writes(hass, monkeyp
     monkeypatch.setattr("custom_components.ha_govee_led_ble.coordinator.async_establish_ble_connection", establish)
     with pytest.raises(RuntimeError, match="stop before connecting"):
         await coordinator._ensure_connected()
+
+
+@pytest.fixture(params=[(1, 1), (2, 1)])
+async def reconnect_identity(hass, monkeypatch, virtual_clock, request):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6117", configuration_url="test")
+    coordinator.pact_type, coordinator.pact_code = request.param
+    coordinator.fw_version, coordinator.hw_version = "1.08.06", "1.00.02"
+    coordinator._resolve_device_profile()
+    coordinator.is_on = True
+    replies = {
+        build_hardware_query("H6117"): b"\xaa\x07\x03" + b"1.00.02",
+    }
+    packets = []
+    timers = []
+    client = MagicMock(is_connected=True, services=[])
+
+    def receive(prefix):
+        body = prefix.ljust(19, b"\x00")
+        client.start_notify.call_args.args[1](None, body + bytes((xor_checksum(body),)))
+
+    async def transmit(_uuid, packet, **kwargs):
+        packets.append(packet)
+        reply = replies.get(packet)
+        if reply is None and coordinator._upload_ack is not None:
+            _, _, _, subtype, _, protocol, _ = coordinator._upload_ack
+            reply = bytes((protocol, subtype, 0))
+        if reply is not None:
+            timers.append(asyncio.get_running_loop().call_later(0.01, receive, reply))
+
+    async def disconnect():
+        client.is_connected = False
+        coordinator._disconnected_callback(client)
+
+    client.start_notify = AsyncMock()
+    client.write_gatt_char = AsyncMock(side_effect=transmit)
+    client.disconnect = AsyncMock(side_effect=disconnect)
+    monkeypatch.setattr(
+        "custom_components.ha_govee_led_ble.coordinator.async_establish_ble_connection",
+        AsyncMock(return_value=client),
+    )
+    monkeypatch.setattr("custom_components.ha_govee_led_ble.coordinator.IDENTITY_QUERY_TIMEOUT", 0.08)
+    monkeypatch.setattr(coordinator, "_start_keep_alive", MagicMock())
+    try:
+        await coordinator._ensure_connected()
+        assert coordinator.profile.supports_custom_effects
+        assert coordinator._confirmed_identity_fields == {"hw_version"}
+        packets.clear()
+        yield coordinator, replies, packets
+    finally:
+        await coordinator.disconnect()
+        for timer in timers:
+            timer.cancel()
+
+
+@pytest.mark.parametrize("route", ["scenes", "diy", "advanced", "brightness", "gradual", "recovery"])
+async def test_foreground_requalifies_missing_reconnect_identity(reconnect_identity, monkeypatch, route):
+    coordinator, replies, packets = reconnect_identity
+    replies[build_firmware_query("H6117")] = b"\xaa\x06" + b"1.08.06"
+    expected = []
+    if route == "scenes":
+        for name in ("action-a", "action-b"):
+            expected.extend(
+                build_native_scene_packets("H6117", MODEL_SCENES["H6117"][name], profile=coordinator.profile)
+            )
+            await coordinator.async_apply_native_scene(name, verify=False, intent=ControlIntent.APPLY)
+    elif route in {"diy", "advanced"}:
+        content = SingleEffect(0, 0, 50, ((255, 0, 0),)) if route == "diy" else H6117_NATIVE_DIY_TEMPLATES[0].content
+        compiled = compile_application(
+            LibraryItem.new("Reconnect", content),
+            "H6117",
+            diy_code=H617A_TYPE04_APPLY_CODE
+            if route == "diy" and coordinator.profile.a1_diy_selector is None
+            else None,
+            profile=coordinator.profile,
+        )
+        expected.extend(compiled.packets)
+        await coordinator.async_write_effect_sequence(
+            compiled.packets,
+            intent=ControlIntent.APPLY,
+            require_upload_ack=True,
+            upload_ack_index=len(compiled.upload_packets) - 1,
+        )
+    elif route == "gradual":
+        query = build_boolean_control_query("gradual", "H6117", profile=coordinator.profile)
+        replies[query] = b"\xaa\xa3\x01"
+        expected.extend((build_boolean_control("gradual", True, "H6117", profile=coordinator.profile), query))
+        await coordinator.async_set_boolean_control("gradual", True)
+        assert coordinator.boolean_control_state["gradual"] is True
+        assert coordinator.is_on is True
+    elif route == "recovery":
+        prior = replace(
+            coordinator.capture_effect_control_state(),
+            is_on=True,
+            mode="scene",
+            effect="action-a",
+            scene_code=None,
+            brightness_pct=50,
+        )
+        monkeypatch.setattr(coordinator, "refresh_state", AsyncMock(return_value=True))
+        expected.extend(
+            (
+                build_power(True, "H6117"),
+                coordinator.profile.outbound_transform(build_brightness(50, profile=coordinator.profile)),
+                build_native_scene_packets("H6117", MODEL_SCENES["H6117"]["action-a"], profile=coordinator.profile)[-1],
+            )
+        )
+        assert not await coordinator.async_restore_effect_control_state(prior, overwritten_diy_code=None)
+    else:
+        packet = build_brightness(50, profile=coordinator.profile)
+        expected.append(coordinator.profile.outbound_transform(packet))
+        await coordinator.send_command(packet)
+    assert coordinator.identity_fields_confirmed()
+    assert packets[0] == build_firmware_query("H6117")
+    assert packets[1:] == expected
+
+
+@pytest.mark.parametrize("reply", [None, b"\xaa\x06invalid"])
+async def test_missing_reconnect_identity_is_not_reported_as_unsupported(reconnect_identity, reply):
+    coordinator, replies, packets = reconnect_identity
+    if reply is not None:
+        replies[build_firmware_query("H6117")] = reply
+    with pytest.raises(HomeAssistantError) as error:
+        await coordinator.send_command(build_brightness(50, profile=coordinator.profile))
+    assert error.value.translation_key == "identity_not_ready"
+    assert not any(packet[0] != 0xAA for packet in packets)
+    assert coordinator.control_write_attempts == 0
+    await coordinator.send_command(build_power(False, "H6117"))
+    assert packets[-1] == build_power(False, "H6117")
+
+
+async def test_identity_refresh_cancellation_does_not_authorise_writes(reconnect_identity):
+    coordinator, _, packets = reconnect_identity
+    request = asyncio.create_task(coordinator.send_command(build_brightness(50, profile=coordinator.profile)))
+    await asyncio.sleep(0)
+    request.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await request
+    assert not coordinator.identity_fields_confirmed()
+    assert not any(packet[0] != 0xAA for packet in packets)
+
+
+async def test_identity_refresh_rejects_replaced_subscription(reconnect_identity):
+    coordinator, replies, packets = reconnect_identity
+    replies[build_firmware_query("H6117")] = b"\xaa\x06" + b"1.08.06"
+    original_write = coordinator._client.write_gatt_char.side_effect
+
+    async def replace_subscription(*args, **kwargs):
+        await original_write(*args, **kwargs)
+        coordinator._notification_token = object()
+
+    coordinator._client.write_gatt_char.side_effect = replace_subscription
+    with pytest.raises(BleakError, match="confirming controller identity"):
+        await coordinator._ensure_connected()
+    assert not any(packet[0] != 0xAA for packet in packets)
 
 
 async def test_write_only_segment_paint_preserves_siblings_without_querying(hass, monkeypatch, virtual_clock):

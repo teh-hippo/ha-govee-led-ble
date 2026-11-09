@@ -19,6 +19,7 @@ Do not post Bluetooth addresses, serial numbers, account details or other unique
 - Keep offsets, command literals and packet enums out of entity and coordinator code.
 - Every outbound frame goes through `_async_write_packet`, which waits for the previous `0x33` or `0xAA` frame's same-command reply before writing.  Never add per-feature sleeps to pace requests; `ReplyGate` learns commands that never reply on a subscription.
 - Arm reply tracking before the physical write, and accept only validated replies.  A late reply reinstates pacing for a command previously learned as silent; failed writes must not teach silence.
+- A connected client is not necessarily identity-qualified.  Re-query missing profile identity before reusing it for controls; retain final-write authorisation and keep safe bootstrap operations available.
 - Qualify observed colour mode against the latest mode-write generation, effective profile and current subscription.
   An expired optimistic expectation does not confirm a mode.
 - Qualify source power observations against the latest master-power write, effective profile and current subscription before using them to preserve siblings.
