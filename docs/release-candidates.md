@@ -107,7 +107,7 @@ Do not rerun Semantic Release versioning or remove a published release to repair
 ## Qualifying on hardware
 
 1. Capture the installed release and each test device's restorable state, including hidden mode and settings when a light is off.
-2. Refresh the integration's Marketplace `update` entity with `homeassistant.update_entity`, call `update.install` with the exact RC tag as `version`, then restart Home Assistant.
+2. Refresh the integration's repository in Marketplace, call `update.install` on its `update` entity with the exact RC tag as `version`, then restart Home Assistant.
 3. Confirm the installed tag in Marketplace and the manifest version in diagnostics after the restart match the RC; download metadata alone does not prove restarted runtime code.
 4. Exercise the affected workflows and require fresh BLE readback, not optimistic state.
 5. Restore every device even when a test fails, and verify it by fresh readback.  Keep diagnostics private and report the exact RC, observed results and anything unverified.
