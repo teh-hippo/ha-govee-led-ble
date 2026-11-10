@@ -5,9 +5,10 @@ The [release policy](../CONTRIBUTING.md#releases) defines automatic master candi
 RCs never move GitHub's latest stable release.
 Use an RC, not SSH deployment or copying files.
 
-## Selecting a candidate in HACS
+## Selecting a candidate in Marketplace
 
-Candidates are available in the HACS download/redownload dialog's version selector.
+Open **Settings > Marketplace**.
+Candidates are available in the integration's download/redownload dialog's version selector.
 Select the exact published tag; there is no need to enable prerelease updates just to install one candidate.
 With prerelease updates disabled, normal update prompts remain stable-only.
 Enabling prerelease updates instead opts into the shared feed of master and PR candidates.
@@ -34,7 +35,7 @@ Candidate numbers advance from existing tags for that PR, without a separate sto
 Retrying the latest candidate's exact commit reuses its version; an explicit version must identify the selected PR.
 This preview identifier is not a prediction of the eventual stable version.
 An explicit `version` cannot be a stable version.
-Set `publish=true` to create the `v<version>` tag and prerelease, which is what HACS installs.
+Set `publish=true` to create the `v<version>` tag and prerelease, which is what Marketplace installs.
 Set `publish=false` for a build-only run: it uploads the package, checksum and metadata as a run artefact (`gh run download <run id>`) without releasing.
 Publish another RC for later fixes rather than reusing a tag or hotpatching an installation.
 The workflow delegates packaging to a pinned [shared prerelease workflow](https://github.com/teh-hippo/common-repo-configs), which checks that the exact SHA belongs to the branch and stamps only the build's manifest.
@@ -104,7 +105,7 @@ Do not rerun Semantic Release versioning or remove a published release to repair
 ## Qualifying on hardware
 
 1. Capture the installed release and each test device's restorable state, including hidden mode and settings when a light is off.
-2. Refresh the integration's HACS `update` entity with `homeassistant.update_entity`, call `update.install` with the exact RC tag as `version`, then restart Home Assistant.
-3. Confirm the running manifest version in diagnostics matches the RC; HACS metadata alone proves only downloaded files.
+2. Refresh the integration's Marketplace `update` entity with `homeassistant.update_entity`, call `update.install` with the exact RC tag as `version`, then restart Home Assistant.
+3. Confirm the installed tag in Marketplace and the manifest version in diagnostics after the restart match the RC; download metadata alone does not prove restarted runtime code.
 4. Exercise the affected workflows and require fresh BLE readback, not optimistic state.
 5. Restore every device even when a test fails, and verify it by fresh readback.  Keep diagnostics private and report the exact RC, observed results and anything unverified.

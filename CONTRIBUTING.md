@@ -87,7 +87,8 @@ Previous candidate tags and releases remain immutable history, with the newest m
 Only stable publication moves GitHub's latest stable release.
 No moving `latest` Git tag is required or maintained.
 
-HACS users can select a candidate explicitly from the download/redownload dialog's version list without enabling prerelease updates.
+Marketplace users can select a candidate explicitly from the download/redownload dialog's version list without enabling prerelease updates.
+Open Marketplace under **Settings > Marketplace** and use the integration's existing `update` entity for exact-version installation.
 Keep prerelease updates disabled for stable-only update prompts; enabling them opts into both master and PR candidates.
 Publishing a candidate does not opt users into that channel or install it automatically.
 
