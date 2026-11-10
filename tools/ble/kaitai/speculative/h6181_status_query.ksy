@@ -28,8 +28,6 @@ enums:
     0x05: colour_mode
     0x06: firmware
     0x07: hardware
-    0x0e: limit
-    0x41: power_off_memory
 types:
   zero_body:
     seq:

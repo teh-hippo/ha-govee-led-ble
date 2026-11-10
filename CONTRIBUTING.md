@@ -23,6 +23,10 @@ Do not post Bluetooth addresses, serial numbers, account details or other unique
 - Arm reply tracking before the physical write, and accept only validated replies.  A late reply reinstates pacing for a command previously learned as silent; failed writes must not teach silence.
 - Qualify observed colour mode against the latest mode-write generation, effective profile and current subscription.
   An expired optimistic expectation does not confirm a mode.
+- Where selector readback is ambiguous, complete successful applications as `APPLIED` with `WRITE_COMPLETED` confidence, not confirmed or failed.
+  Keep locally delivered editing context on the current subscription only; missing verification alone must not trigger rollback or retransmission.
+- Plaintext marker compatibility is exact-model policy over a generated wire shape, never a generic malformed-marker fallback.
+  Advertised or previously established encryption requirements always take precedence.
 - Qualify revision-dependent effects before compilation and bind prepared packets to their encoding policy.
   Preview connection preparation must preserve foreground invalidation without allowing an older preview admission to invalidate a newer preparation.
 - Qualify source power observations against the latest master-power write, effective profile and current subscription before using them to preserve siblings.

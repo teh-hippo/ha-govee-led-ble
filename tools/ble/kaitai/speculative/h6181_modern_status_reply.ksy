@@ -27,7 +27,6 @@ seq:
         'aa_domain::colour_mode': colour_mode_body
         'aa_domain::firmware': h6181_status_reply::version_body
         'aa_domain::hardware': h6181_status_reply::hardware_body
-        'aa_domain::power_off_memory': h6181_status_reply::boolean_body
   - id: checksum
     type: u1
 enums:
@@ -37,7 +36,6 @@ enums:
     0x05: colour_mode
     0x06: firmware
     0x07: hardware
-    0x41: power_off_memory
   color_mode:
     0x04: scene
     0x0a: diy

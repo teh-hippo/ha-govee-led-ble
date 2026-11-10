@@ -189,6 +189,7 @@ class ModelProfile:
     support_quality: SupportQuality = SupportQuality.EXPERIMENTAL
     confirmation_issue: int | None = None
     allows_legacy_plaintext_marker: bool = False
+    reconciles_marker_pact: bool = False
     command_grammar: str | None = None
     command_ack_grammar: str | None = None
     # None retains the grammar's shipped operations; a set restricts physical writes.
@@ -2112,10 +2113,13 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         "H6181 RGB TV Backlight",
         confirmation_issue=580,
         allows_legacy_plaintext_marker=True,
+        reconciles_marker_pact=True,
         command_grammar="H6181",
         status_grammar="H6181-modern",
         command_ack_grammar="H6181",
+        command_operations=frozenset({"power", "brightness", "static", "scene", "diy", "music", "effect_upload"}),
         effect_grammar="H6181",
+        effect_workflows=frozenset({"native_scenes", "edited_palette_scenes", "single", "multi", "native_music"}),
         colour_mode_query_selector=1,
         profile_identity_fields=frozenset({"fw_version", "hw_version"}),
         profile_pact_dependent=True,
@@ -2149,7 +2153,6 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         music_readback_ambiguous=True,
         music_sensitivity_max=99,
         supports_music_color=True,
-        boolean_controls=frozenset({"power_off_memory"}),
         effect_readback="diy_code_only",
         diy_upload_transport="a3",
         diy_requires_upload_ack=True,
@@ -2759,12 +2762,11 @@ def device_profile(
         hw = FirmwareVersion.parse(hardware)
         percentage = (pact_type, pact_code) in {(10, 1), (10, 2)}
         uploaded_scenes = pact_code != 1 or fw is not None and fw >= FirmwareVersion((1, 3))
-        palette_music = (
-            hw is not None
-            and hw.identity_number() // 10000 in (2, 3)
-            and fw is not None
-            and fw >= FirmwareVersion((2, 4))
+        hardware_number = hw.identity_number() if hw is not None else 0
+        palette_hardware = 20100 <= hardware_number < 20200 or (
+            30000 <= hardware_number < 40000 and not 30400 <= hardware_number < 30500
         )
+        palette_music = palette_hardware and fw is not None and fw >= FirmwareVersion((2, 4))
         modes = profile.music_modes if palette_music else ("dynamic", "soft")
         return replace(
             profile,

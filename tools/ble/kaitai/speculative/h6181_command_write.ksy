@@ -27,8 +27,6 @@ seq:
         'command_op::power': power_body
         'command_op::brightness': brightness_body
         'command_op::mode': mode_body
-        'command_op::limit': boolean_body
-        'command_op::power_off_memory': multi_effect_cmd
   - id: checksum
     type: u1
 instances:
@@ -39,8 +37,6 @@ enums:
     0x01: power
     0x04: brightness
     0x05: mode
-    0x0e: limit
-    0x41: power_off_memory
   mode_sel:
     0x02: colour_effect
     0x04: scene
@@ -67,24 +63,6 @@ types:
         type: u1
       - id: padding
         size-eos: true
-  boolean_body:
-    seq:
-      - id: flag
-        type: u1
-        valid:
-          any-of: [0, 1]
-      - id: unknown_tail
-        size-eos: true
-  multi_effect_cmd:
-    seq:
-      - id: flag
-        type: u1
-        valid:
-          any-of: [0, 1]
-      - id: padding
-        type: u1
-        repeat: expr
-        repeat-expr: 16
   mode_body:
     seq:
       - id: sub_mode

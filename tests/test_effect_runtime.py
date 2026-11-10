@@ -2188,6 +2188,52 @@ async def test_unobservable_effect_is_uncertain_without_rollback(
     coordinator.async_restore_effect_control_state.assert_not_awaited()
 
 
+@pytest.mark.parametrize("source", ["saved", "snapshot"])
+@pytest.mark.parametrize("mode", ["dynamic", "bloom"])
+async def test_h6181_music_is_applied_without_claiming_unavailable_selector_verification(
+    hass, monkeypatch, source, mode
+):
+    from custom_components.ha_govee_led_ble.coordinator_status import decode_status_frame
+
+    repository, cache = await _repositories(hass)
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6181", configuration_url=None)
+    coordinator.profile = replace(
+        device_profile("H6181", 10, 2, firmware="2.04.00", hardware="2.01.01"),
+        profile_identity_fields=frozenset(),
+    )
+    coordinator.async_observe_effect = AsyncMock(return_value=False)
+    coordinator.async_restore_effect_control_state = AsyncMock(return_value=True)
+    workspaces = ActiveEffectWorkspaceRepository(InMemoryVersionedDocumentStore())
+    await workspaces.async_load()
+    engine = EffectDeploymentEngine(repository, cache, workspaces)
+    monkeypatch.setattr(engine, "_async_prepare_prior_state", AsyncMock(return_value=True))
+    item = LibraryItem.new("Music", MusicProfile("H6181", mode, 73))
+    apply = engine.async_apply_saved if source == "saved" else engine.async_apply_snapshot
+    with _music_transport(coordinator) as physical:
+        result = await apply(coordinator, item, config_entry_id="entry-a", updated_at="2026-11-10T00:00:00Z")
+        assert result.phase is DeploymentPhase.APPLIED
+        assert result.error_code is None and result.verification_confidence is ObservationConfidence.WRITE_COMPLETED
+        assert cache.get("entry-a").confidence is ObservationConfidence.WRITE_COMPLETED
+        if source == "snapshot":
+            assert workspaces.get("entry-a").confidence is ObservationConfidence.WRITE_COMPLETED
+        assert physical.await_count == len(compile_application(item, "H6181", profile=coordinator.profile).packets)
+        coordinator.async_observe_effect.assert_not_awaited()
+        coordinator.async_restore_effect_control_state.assert_not_awaited()
+        retained = coordinator._music_body, coordinator._music_palette
+        raw = bytes.fromhex("aa051300320101ff0000").ljust(19, b"\0")
+        decoded = decode_status_frame(raw + bytes([xor_checksum(raw)]), "H6181", profile=coordinator.profile)
+        assert decoded is not None
+        observed = coordinator._apply_color_mode_payload(decoded.generated)
+        assert coordinator.music_mode == mode and "music_mode" not in observed
+        assert (coordinator._music_body, coordinator._music_palette) == retained
+        reconciled = engine.reconcile_current(
+            coordinator, config_entry_id="entry-a", observed_at="2026-11-10T00:00:01Z", refreshed=True
+        )
+        assert reconciled.confidence in {ObservationConfidence.UNKNOWN, ObservationConfidence.WRITE_COMPLETED}
+        coordinator._clear_client_state(coordinator._client)
+        assert coordinator.music_mode == "off" and coordinator._music_body is None
+
+
 async def test_write_only_h601c_deployment_installs_optimistic_state_without_rollback_writes(
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,

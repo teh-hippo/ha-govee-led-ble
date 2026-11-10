@@ -232,6 +232,39 @@ async def test_h7020_static_preview_rejects_ambiguous_per_bulb_white_intent(hass
         await manager.async_shutdown()
 
 
+async def test_h6181_music_preview_is_written_without_attempting_selector_verification(hass, monkeypatch):
+    from custom_components.ha_govee_led_ble.effect_domain import MusicProfile
+
+    coordinator = _coordinator(model="H6181", readable=True)
+    coordinator.async_observe_effect = AsyncMock(return_value=False)
+    apply = AsyncMock()
+    monkeypatch.setattr("custom_components.ha_govee_led_ble.effect_preview.async_apply_compiled_profile", apply)
+    monkeypatch.setattr(
+        "custom_components.ha_govee_led_ble.effect_preview.async_prepare_effect_control_state",
+        AsyncMock(return_value=True),
+    )
+    manager, _cache = await _manager(hass, monkeypatch, coordinator)
+    events: list[PreviewStatus] = []
+    owner = object()
+    session = _open(manager, owner, events)
+    try:
+        await manager.async_queue_snapshot(
+            session_id=session,
+            owner=owner,
+            config_entry_id="entry-a",
+            sequence=1,
+            updated_at="2026-11-10T00:00:00Z",
+            item=LibraryItem.new("Music", MusicProfile("H6181", "bloom", 73)),
+        )
+        await manager.async_wait_idle("entry-a")
+        assert events[-1].phase is PreviewPhase.WRITTEN
+        assert events[-1].write_disposition is PreviewWriteDisposition.COMPLETED
+        apply.assert_awaited_once()
+        coordinator.async_observe_effect.assert_not_awaited()
+    finally:
+        await manager.async_shutdown()
+
+
 @pytest.mark.parametrize("fresh_mode", [False, True])
 async def test_inline_profile_preview_uses_fresh_mode_before_independent_recovery(hass, monkeypatch, fresh_mode):
     coordinator = _coordinator(model="H605C", readable=True)
