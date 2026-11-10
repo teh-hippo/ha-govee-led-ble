@@ -28,6 +28,7 @@ from .music_semantics import (
     H6102_MUSIC_VARIANTS,
     H6117_MUSIC_VARIANTS,
     H6125_MUSIC_VARIANTS,
+    H6181_MUSIC_VARIANTS,
     H7020_MUSIC_VARIANTS,
     H7025_MUSIC_VARIANTS,
     MusicVariant,
@@ -187,6 +188,7 @@ class ModelProfile:
     name: str
     support_quality: SupportQuality = SupportQuality.EXPERIMENTAL
     confirmation_issue: int | None = None
+    allows_legacy_plaintext_marker: bool = False
     command_grammar: str | None = None
     command_ack_grammar: str | None = None
     # None retains the grammar's shipped operations; a set restricts physical writes.
@@ -261,6 +263,7 @@ class ModelProfile:
     music_grammar: str | None = None
     music_modes: tuple[str, ...] = ()
     readback_music_modes: tuple[str, ...] = ()
+    music_readback_ambiguous: bool = False
     music_variants: tuple[MusicVariant, ...] = ()
     music_upload_before_selector: bool = False
     music_requires_upload_ack: bool = False
@@ -809,6 +812,13 @@ _H6072_PROFILE = ModelProfile(
     boolean_controls=frozenset({"gradual"}),
     connection_idle_timeout=IDLE_TIMEOUT_STANDARD,
 )
+
+
+def _h6181_wire(packet: bytes) -> bytes:
+    from .protocol_transforms import h6181_outbound_transform
+
+    return h6181_outbound_transform(packet)
+
 
 MODEL_PROFILES: dict[str, ModelProfile] = {
     "H600A": ModelProfile(
@@ -2098,6 +2108,53 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_music_color=True,
         connection_idle_timeout=IDLE_TIMEOUT_STANDARD,
     ),
+    "H6181": ModelProfile(
+        "H6181 RGB TV Backlight",
+        confirmation_issue=580,
+        allows_legacy_plaintext_marker=True,
+        command_grammar="H6181",
+        status_grammar="H6181-modern",
+        command_ack_grammar="H6181",
+        effect_grammar="H6181",
+        colour_mode_query_selector=1,
+        profile_identity_fields=frozenset({"fw_version", "hw_version"}),
+        profile_pact_dependent=True,
+        read_domains=frozenset(
+            {ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE, ReadDomain.FIRMWARE, ReadDomain.HARDWARE}
+        ),
+        setup_required_read_domains=frozenset({ReadDomain.POWER}),
+        supports_rgb=True,
+        supports_color_temperature=True,
+        supports_custom_effects=True,
+        supports_multi_layered_effects=True,
+        supports_scenes=True,
+        static_readback_echoes_color=True,
+        static_readback_kelvin=True,
+        static_readback_zero_kelvin_is_rgb=True,
+        scene_catalogue_sku="H6181",
+        local_scenes=(
+            (0, "Sunrise"),
+            (1, "Sunset"),
+            (4, "Movie"),
+            (5, "Date"),
+            (7, "Romantic"),
+            (8, "Blink"),
+            (9, "Candle"),
+        ),
+        music_modes=("dynamic", "soft", "bloom", "radiant"),
+        music_variants=H6181_MUSIC_VARIANTS,
+        music_upload_before_selector=True,
+        music_requires_upload_ack=True,
+        music_retry_after_upload=False,
+        music_readback_ambiguous=True,
+        music_sensitivity_max=99,
+        supports_music_color=True,
+        boolean_controls=frozenset({"power_off_memory"}),
+        effect_readback="diy_code_only",
+        diy_upload_transport="a3",
+        diy_requires_upload_ack=True,
+        effect_retry_after_upload=False,
+    ),
     "H6179": ModelProfile(
         "H6179 RGB TV Backlight",
         support_quality=SupportQuality.EXPERIMENTAL,
@@ -2356,9 +2413,11 @@ UNSUPPORTED_PROFILE = ModelProfile("Unsupported Govee device")
 
 # Grammar families shared by several SKUs; shared code tests membership here, not literal sets.
 VIDEO_GRAMMARS = frozenset({"H6099", "H6199"})
-WHOLE_BULB_GRAMMARS = frozenset({"H600A", "H601C"})
+WHOLE_BULB_GRAMMARS = frozenset({"H600A", "H601C", "H6181"})
 MODE_COMMAND_GRAMMARS = WHOLE_BULB_GRAMMARS | {"H6046", "H6099", "H6199"}
-PERCENT_BRIGHTNESS_STATUS_GRAMMARS = frozenset({"H1771", "H60B0", "H600A", "H6046", "H6097", "H6099", "H6199", "H66A0"})
+PERCENT_BRIGHTNESS_STATUS_GRAMMARS = frozenset(
+    {"H1771", "H60B0", "H600A", "H6046", "H6097", "H6099", "H6181", "H6181-modern", "H6199", "H66A0"}
+)
 
 
 def _h6199_pact1_wire(packet: bytes) -> bytes:
@@ -2679,6 +2738,47 @@ def device_profile(
     hardware: str | None = None,
 ) -> ModelProfile:
     """Resolve exact-product capabilities from evidenced revision context."""
+    if model == "H6181":
+        from .firmware_version import FirmwareVersion
+
+        profile = get_profile(model)
+        later = pact_type is not None and pact_code is not None and pact_type >= 10 and pact_code >= 1
+        if not later:
+            return replace(
+                profile,
+                status_grammar="H6181",
+                brightness_wire_range=(20, 254),
+                outbound_transform=_h6181_wire,
+                diy_upload_transport="a1_02",
+                music_modes=(),
+                music_variants=(),
+                scene_codes=frozenset({0, 1, 4, 5, 7, 8, 9}),
+                selector_only_scene_bits=8,
+            )
+        fw = FirmwareVersion.parse(firmware)
+        hw = FirmwareVersion.parse(hardware)
+        percentage = (pact_type, pact_code) in {(10, 1), (10, 2)}
+        uploaded_scenes = pact_code != 1 or fw is not None and fw >= FirmwareVersion((1, 3))
+        palette_music = (
+            hw is not None
+            and hw.identity_number() // 10000 in (2, 3)
+            and fw is not None
+            and fw >= FirmwareVersion((2, 4))
+        )
+        modes = profile.music_modes if palette_music else ("dynamic", "soft")
+        return replace(
+            profile,
+            brightness_wire_range=None if percentage else (20, 254),
+            outbound_transform=None if percentage else _h6181_wire,
+            music_modes=modes if percentage else (),
+            music_variants=tuple(
+                variant
+                for variant in profile.music_variants
+                if percentage and (palette_music or variant.mode_code in (0, 1))
+            ),
+            selector_only_scene_bits=None if uploaded_scenes else 16,
+            scene_codes=None if uploaded_scenes else frozenset({0, 1, 4, 5, 7, 8, 9, 10, 16}),
+        )
     if model == "H60B0":
         profile = get_profile(model)
         if pact_type == 1 and pact_code in {1, 2, 3}:

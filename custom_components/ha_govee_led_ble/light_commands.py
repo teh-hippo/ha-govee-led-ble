@@ -330,7 +330,7 @@ def parse_static_write(
             raise ValueError(f"{profile.command_grammar} Kelvin requires direct white RGB")
         return ParsedStaticWrite(
             operation=int(generated.body.sub_mode),
-            segment_mask=whole_device_mask,
+            segment_mask=whole_device_mask or None,
             whole_device_mask=whole_device_mask,
             rgb=None if kelvin else rgb,
             kelvin=kelvin or None,

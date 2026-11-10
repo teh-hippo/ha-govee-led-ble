@@ -769,6 +769,59 @@ async def test_plaintext_advertisement_never_overrides_encryption_evidence(marke
     assert not previously_encrypted.ready
 
 
+async def test_profile_plaintext_marker_recovers_without_advertisement():
+    session, device = GoveeEncryptionSession(), client(b"\0")
+    with pytest.raises(GoveeCryptoError):
+        await session.async_select(device, advertised=False)
+    await session.async_select(device, advertised=False, allows_legacy_plaintext_marker=True)
+    assert session.ready and session.version == 0
+    assert session.last_result == "plaintext_profile_marker"
+    await session.async_negotiate(device)
+    assert session.encode(build_power(True)) == build_power(True)
+    device.write_gatt_char.assert_not_awaited()
+
+
+@pytest.mark.parametrize("version", [0, 1, 2])
+async def test_profile_marker_never_overrides_encryption(version):
+    session = GoveeEncryptionSession()
+    if version:
+        await session.async_select(client(bytes((1, version))), advertised=False)
+    with pytest.raises(GoveeCryptoError):
+        await session.async_select(client(b"\0"), advertised=not version, allows_legacy_plaintext_marker=True)
+    assert not session.ready and session.required_version == (version or 1)
+
+
+@pytest.mark.parametrize("marker", [b"", b"\0\0", b"\0\1", b"\1", b"\2", "not bytes", RuntimeError("read failed")])
+async def test_profile_marker_requires_exact_successful_read(marker):
+    device = client(b"\0")
+    if isinstance(marker, Exception):
+        device.read_gatt_char.side_effect = marker
+    else:
+        device.read_gatt_char.return_value = marker
+    session = GoveeEncryptionSession()
+    with pytest.raises(GoveeCryptoError):
+        await session.async_select(device, advertised=False, allows_legacy_plaintext_marker=True)
+    assert not session.ready
+    device.write_gatt_char.assert_not_awaited()
+
+
+@pytest.mark.parametrize("reset", [False, True])
+async def test_profile_marker_does_not_confirm_a_retired_subscription(reset):
+    session, device = GoveeEncryptionSession(), client(b"\0")
+
+    async def read(_uuid):
+        if reset:
+            session.reset()
+        else:
+            device.is_connected = False
+        return b"\0"
+
+    device.read_gatt_char.side_effect = read
+    with pytest.raises(GoveeCryptoError):
+        await session.async_select(device, advertised=False, allows_legacy_plaintext_marker=True)
+    assert not session.ready
+
+
 async def test_read_failure_has_no_raw_error_or_fallback():
     session, device = GoveeEncryptionSession(), client(b"\x01\x02")
     device.read_gatt_char.side_effect = RuntimeError("secret address/key payload")
@@ -892,20 +945,24 @@ def test_h6097_runtime_profile_tracks_pact_without_version_queries(hass):
         generation = coordinator._profile_generation
 
 
-async def test_coordinator_uses_plaintext_advertisement_for_unreadable_marker(hass):
-    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6076", configuration_url=None)
+@pytest.mark.parametrize("model", ["H6076", "H6181"])
+async def test_coordinator_uses_qualified_plaintext_marker_policy(hass, model):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", model, configuration_url=None)
     coordinator.profile = replace(
         coordinator.profile,
         read_domains=frozenset(),
         setup_required_read_domains=frozenset(),
     )
-    device = client(b"\x01\x01")
-    device.read_gatt_char.side_effect = BleakError("Not permitted")
-    coordinator._note_advertisement(SimpleNamespace(manufacturer_data={0x8801: bytes.fromhex("ec000101")}))
+    device = client(b"\0" if model == "H6181" else b"\x01\x01")
+    if model == "H6076":
+        device.read_gatt_char.side_effect = BleakError("Not permitted")
+        coordinator._note_advertisement(SimpleNamespace(manufacturer_data={0x8801: bytes.fromhex("ec000101")}))
     with patch(f"{M}.async_establish_ble_connection", return_value=device):
-        await coordinator.send_command(build_power(True, "H6076"))
-    assert coordinator._encryption.last_result == "plaintext_unrecognised_marker"
-    device.write_gatt_char.assert_awaited_with(WRITE_UUID, build_power(True, "H6076"), response=False)
+        await coordinator.send_command(build_power(True, model))
+    assert coordinator._encryption.last_result == (
+        "plaintext_profile_marker" if model == "H6181" else "plaintext_unrecognised_marker"
+    )
+    device.write_gatt_char.assert_awaited_with(WRITE_UUID, build_power(True, model), response=False)
 
 
 async def test_v1_confirmation_is_mandatory_and_opcode_specific(monkeypatch):

@@ -112,6 +112,13 @@ h6179_command_write.py
 h6179_diy_body.py
 h6179_status_query.py
 h6179_status_reply.py
+h6181_command_write.py
+h6181_command_ack.py
+h6181_music_body.py
+h6181_status_query.py
+h6181_status_reply.py
+h6181_modern_status_reply.py
+h6181_diy_body.py
 h7020_command_write.py
 h7020_status_query.py
 h7020_status_reply.py

@@ -17,6 +17,7 @@ from .generated_protocol_adapter import (
     boolean_control_is_authorized,
     boolean_control_name,
     parse_status_result,
+    table_kelvin_rgb,
     video_parameters_from_detail,
 )
 from .light_commands import normalize_kelvin
@@ -264,6 +265,8 @@ def parse_color_mode(generated: Any, model: str, *, profile: ModelProfile | None
             video_sound_effects_softness=int(detail.softness) if profile.supports_video_sound_effects else None,
         )
     music_mode = None
+    if profile.music_readback_ambiguous and mode_name == "music":
+        return ParsedColorModeResponse(mode=ParsedMode.MUSIC)
     if mode_name == "music":
         detail = getattr(body, "detail", getattr(body, "mode_body", None))
         if detail is None:
@@ -308,11 +311,33 @@ def parse_color_mode(generated: Any, model: str, *, profile: ModelProfile | None
                 right_bar_kelvin=right,
             )
         rgb = getattr(detail, "rgb", None)
+        if profile.status_grammar == "H6181":
+            if detail.temperature_flag not in (0, 1):
+                raise ValueError("Invalid legacy colour-temperature flag")
+            if detail.temperature_flag:
+                companion = detail.companion_rgb
+                colour = (int(companion.red), int(companion.green), int(companion.blue))
+                matched_kelvin = next(
+                    (
+                        value
+                        for value in range(profile.min_color_temp_kelvin, profile.max_color_temp_kelvin + 1, 100)
+                        if table_kelvin_rgb(value) == colour
+                    ),
+                    None,
+                )
+                if matched_kelvin is None:
+                    raise ValueError("Unrecognised legacy colour-temperature companion")
+                return ParsedColorModeResponse(mode=ParsedMode.COLOUR, color_temp_kelvin=matched_kelvin)
+            return ParsedColorModeResponse(
+                mode=ParsedMode.COLOUR,
+                rgb_color=(int(detail.rgb.red), int(detail.rgb.green), int(detail.rgb.blue)),
+            )
         raw_kelvin = _readback_kelvin(int(reported), profile) if (reported := getattr(detail, "kelvin", None)) else None
         return ParsedColorModeResponse(
             mode=ParsedMode.COLOUR,
             rgb_color=(int(rgb.red), int(rgb.green), int(rgb.blue))
-            if rgb is not None and not (profile.status_grammar in WHOLE_BULB_GRAMMARS and raw_kelvin is not None)
+            if rgb is not None
+            and not (profile.status_grammar in WHOLE_BULB_GRAMMARS | {"H6181-modern"} and raw_kelvin is not None)
             else None,
             color_temp_kelvin=raw_kelvin,
             multi_effect_flag=getattr(detail, "sub", None),

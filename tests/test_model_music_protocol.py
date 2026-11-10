@@ -27,6 +27,7 @@ from custom_components.ha_govee_led_ble.music_protocol import (
     H6099CommandWrite,
     H6099MusicParameters,
     H6179CommandWrite,
+    H6181CommandWrite,
     H6199CommandWrite,
     H7020CommandWrite,
     H7025MusicBody,
@@ -38,6 +39,7 @@ from custom_components.ha_govee_led_ble.music_protocol import (
     music_mode_supports_style,
     music_slug_for,
 )
+from custom_components.ha_govee_led_ble.protocol_core import H6181MusicBody
 
 _H617A_CODES = {
     "energetic": 0x05,
@@ -183,6 +185,7 @@ def test_codebooks_match_generated_kaitai_enums_and_gate_on_effective_profile() 
         "H6072": H6076MusicWrite.MusicMode,
         "H607C": H607cMusicWrite.MusicMode,
         "H6179": H6179CommandWrite.MusicEffect,
+        "H6181": H6181CommandWrite.MusicMode,
         "H6199": H6199CommandWrite.MusicMode,
         "H7020": H7020CommandWrite.MusicMode,
         "H7025": H7025MusicWrite.MusicMode,
@@ -192,6 +195,7 @@ def test_codebooks_match_generated_kaitai_enums_and_gate_on_effective_profile() 
         assert MUSIC_MODE_CODES_BY_MODEL[grammar] == {mode.name: int(mode) for mode in enum_type}
 
     expected_parameter_enums = {
+        "H6181": H6181MusicBody.MusicMode,
         "H60B0": H60b0MusicBody.MusicMode,
         "H1771": H1771MusicBody.MusicMode,
         "H6046": H6046MusicBody.MusicMode,

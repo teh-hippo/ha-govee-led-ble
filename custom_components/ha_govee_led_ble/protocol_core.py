@@ -167,6 +167,37 @@ H6179DiyBody = cast(
     import_module("custom_components.ha_govee_led_ble.generated_protocol.h6179_diy_body").H6179DiyBody,
 )
 
+H6181CommandWrite = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6181_command_write").H6181CommandWrite,
+)
+H6181CommandAck = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6181_command_ack").H6181CommandAck,
+)
+H6181MusicBody = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6181_music_body").H6181MusicBody,
+)
+H6181StatusQuery = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6181_status_query").H6181StatusQuery,
+)
+H6181StatusReply = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6181_status_reply").H6181StatusReply,
+)
+H6181DiyBody = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6181_diy_body").H6181DiyBody,
+)
+H6181ModernStatusReply = cast(
+    Any,
+    import_module(
+        "custom_components.ha_govee_led_ble.generated_protocol.h6181_modern_status_reply"
+    ).H6181ModernStatusReply,
+)
+
 
 H6199CommandAck = cast(
     Any,
@@ -707,6 +738,8 @@ H619aStatusReply = cast(
 
 
 _STATUS_ROOTS = {
+    "H6181": ("h6181_status_reply", H6181StatusReply),
+    "H6181-modern": ("h6181_modern_status_reply", H6181ModernStatusReply),
     "H619A": ("h619a_status_reply", H619aStatusReply),
     "H60B0": ("h60b0_status_reply", H60b0StatusReply),
     "H605C": ("h605c_status_reply", H605cStatusReply),
@@ -741,6 +774,7 @@ _STATUS_ROOTS = {
 
 
 _COMMAND_ROOTS = {
+    "H6181": ("h6181_command_write", H6181CommandWrite),
     "H60B0": ("h60b0_command_write", H60b0CommandWrite),
     "H1771": ("h1771_command_write", H1771CommandWrite),
     "H600A": ("h600a_command_write", H600aCommandWrite),
@@ -763,6 +797,7 @@ _EXTENDED_STATIC_ROOTS = {
 
 
 _STATUS_QUERY_ROOTS = {
+    "H6181": ("h6181_status_query", H6181StatusQuery),
     "H60B0": ("h60b0_status_query", H60b0StatusQuery),
     "H1771": ("h1771_status_query", H1771StatusQuery),
     "H600A": ("status_query", StatusQuery),
@@ -799,6 +834,7 @@ _MUSIC_WRITE_ROOTS = {
 
 
 _COMMAND_ACK_ROOTS = {
+    "H6181": ("h6181_command_ack", H6181CommandAck),
     "H60B0": ("h60b0_command_ack", H60b0CommandAck),
     "H600A": ("h600a_command_ack", H600aCommandAck),
     "H607C": ("h607c_command_ack", H607cCommandAck),

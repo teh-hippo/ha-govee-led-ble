@@ -13,6 +13,15 @@ doc: |
   evidence.
 seq: []
 types:
+  legacy_plaintext_marker:
+    doc: |
+      SPECULATIVE H6181 compatibility: a successful single-byte zero read
+      permits plaintext only under an exact-product policy and without
+      advertised or previously established encryption requirements.
+      Empty values, suffixes and failed reads do not match this variant.
+    seq:
+      - id: value
+        contents: [0x00]
   advertisement:
     seq:
       - id: flags

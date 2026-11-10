@@ -245,9 +245,9 @@ def validate_compiled_geometry(compiled: CompiledApplication, profile: ModelProf
             ) or compiled.diy_code != scene_selector_code(compiled.model, entry, profile=profile):
                 raise ValueError("Device scene route changed since compilation; refresh and retry")
         if compiled.content_kind in {"h617a_single", "h617a_multi"}:
-            transport = "a1_02" if profile.a1_diy_selector is not None else "a3"
+            transport = profile.diy_upload_transport or ("a1_02" if profile.a1_diy_selector is not None else "a3")
             if compiled.upload_transport != transport or (
-                transport == "a1_02" and compiled.diy_code != profile.a1_diy_selector
+                profile.a1_diy_selector is not None and compiled.diy_code != profile.a1_diy_selector
             ):
                 raise ValueError("Device upload transport or selector changed since compilation")
         if compiled.content_kind in {"h6179_single_diy", "h6179_mixed_diy"}:
@@ -486,7 +486,7 @@ def compatibility(item: LibraryItem, model: str, *, profile: ModelProfile | None
                     else CapabilityWorkflow.SINGLE
                     if isinstance(content, SingleEffect)
                     else CapabilityWorkflow.MULTI,
-                    ("H6046", "H617A", "H6099"),
+                    ("H6046", "H617A", "H6099", "H6181"),
                     profile=profile,
                 )
             else:
@@ -690,7 +690,10 @@ def resolve_diy_code(
         )
         profile = get_profile("H617A" if model is None else model) if profile is None else profile
         grammar = require_effect_route(
-            "H617A" if model is None else model, workflow, ("H6046", "H617A", "H6099", "H607C"), profile=profile
+            "H617A" if model is None else model,
+            workflow,
+            ("H6046", "H617A", "H6099", "H607C", "H6181"),
+            profile=profile,
         )
         if grammar == "H607C":
             if not isinstance(content, PaintedEffect):
@@ -1042,7 +1045,12 @@ def compile_h617a(
         raise ValueError("; ".join(result.reasons))
 
     content = item.content
-    if isinstance(content, PaintedEffect):
+    if profile.effect_grammar == "H6181" and isinstance(content, SingleEffect | MultiEffect):
+        from .h6181_effects import build_diy
+
+        content_kind = "h617a_single" if isinstance(content, SingleEffect) else "h617a_multi"
+        upload = build_diy(content, diy_code, profile)
+    elif isinstance(content, PaintedEffect):
         content_kind = "h617a_painted"
         upload = (build_h607c_diy_painted if profile.effect_grammar == "H607C" else build_h617a_diy_painted)(
             content.effect,
@@ -1091,10 +1099,19 @@ def compile_h617a(
         physical_ic_count=profile.physical_ic_count
         if isinstance(content, PaintedEffect) and content.addressing == "physical_ic"
         else None,
-        upload_transport="a1_02"
-        if profile.a1_diy_selector is not None and isinstance(content, SingleEffect | MultiEffect)
-        else "a3",
-        upload_subtype=(3 if isinstance(content, PaintedEffect) else 4 if profile.a1_diy_selector is None else None),
+        upload_transport=profile.diy_upload_transport
+        or (
+            "a1_02" if profile.a1_diy_selector is not None and isinstance(content, SingleEffect | MultiEffect) else "a3"
+        ),
+        upload_subtype=(
+            None
+            if profile.diy_upload_transport == "a1_02"
+            else 3
+            if isinstance(content, PaintedEffect)
+            else 4
+            if profile.a1_diy_selector is None
+            else None
+        ),
     )
 
 
