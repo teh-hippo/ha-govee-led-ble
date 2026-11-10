@@ -35,3 +35,5 @@ Start in plan mode if the harness has one.  Every plan's task list includes:
 2. Commits, a passing `make check`, and a PR that follows `.github/PULL_REQUEST_TEMPLATE.md`, labelled with the SKU of every model whose behaviour changes.
 
 A fresh checkout needs `make build` before tests or the scene-catalogue refresh tool will run.
+Follow `CONTRIBUTING.md` for release policy.
+Merged release-bearing work publishes a master prerelease automatically; stable publication is the operator's manual decision.

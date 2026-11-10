@@ -60,4 +60,41 @@ Decode-only Kaitai documentation of these is fine; runtime control is not.
 ## Development
 
 Run `make protocol` after a fresh clone, a new worktree or any `.ksy` change, and `make check` before finishing.
-Release candidates for hardware testing can be built from any branch: see [docs/release-candidates.md](docs/release-candidates.md).
+
+## Releases
+
+Keep `master` release-quality.
+There are three publication paths:
+
+- **Master candidates:** after a release-bearing change merges and `Validate` succeeds on current `master`, `Release` automatically publishes the upcoming version as `v<version>-rc.<number>`.
+  Python Semantic Release calculates versions and release notes from Conventional Commits; `feat`, `fix`, `perf`, `build` and breaking changes drive releases.
+  Documentation or maintenance alone does not force a candidate.
+- **Optional PR candidates:** request a reviewed, exact-SHA build when hardware testing is needed before merge.
+  `Prerelease Package` publishes `v<version>-pr-<PR number>.<candidate number>` tags, for example `v7.40.1-pr-145.1`.
+  The master release checkout excludes these preview tags locally so they cannot affect master numbering or release notes; remote tags remain untouched.
+  See [release candidates](docs/release-candidates.md) for publication and testing.
+- **Stable releases:** the operator decides when current validated `master` is ready.
+  Manually run `Release` on `master` (`gh workflow run release.yml --ref master`).
+  Python Semantic Release creates the stable version, release commit, tag and notes; do not promote by editing a prerelease checkbox or choosing a version by hand.
+
+Each PR branch and each master publication type has its own concurrency group.
+New requests replace older waiting requests only within the same group; active publication finishes.
+Master RC and stable requests cannot cancel each other, but share a serial publication lock because both update master versions and tags.
+Both require successful validation of the exact current master commit.
+If master advances or its validation is incomplete, publication fails safely; wait for its checks and retry the manual action if needed.
+Release commits do not recursively publish candidates.
+Previous candidate tags and releases remain immutable history, with the newest master candidate available for testing.
+Only stable publication moves GitHub's latest stable release.
+No moving `latest` Git tag is required or maintained.
+
+HACS users can select a candidate explicitly from the download/redownload dialog's version list without enabling prerelease updates.
+Keep prerelease updates disabled for stable-only update prompts; enabling them opts into both master and PR candidates.
+Publishing a candidate does not opt users into that channel or install it automatically.
+
+Every release carries the verified integration ZIP and SHA-256 checksum.
+Semantic Release owns master versions, release commits, tags and notes but defers GitHub release creation.
+After packaging and verification, GitHub CLI stages a draft while uploading assets and publishes only once those uploads succeed.
+Failed publication may leave a tag or draft, not a deliberately published assetless release.
+Retry only against the same exact commit; never move an existing tag or overwrite a published release.
+See [release recovery](docs/release-candidates.md#recovering-a-failed-publication) for exact-tag recovery without creating another version.
+Merging a model does not imply hardware confirmation or promote it from Experimental.
