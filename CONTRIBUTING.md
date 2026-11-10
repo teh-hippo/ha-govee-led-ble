@@ -76,6 +76,8 @@ There are three publication paths:
 - **Stable releases:** the operator decides when current validated `master` is ready.
   Manually run `Release` on `master` (`gh workflow run release.yml --ref master`).
   Python Semantic Release creates the stable version, release commit, tag and notes; do not promote by editing a prerelease checkbox or choosing a version by hand.
+  The stable checkout also excludes master-candidate tag refs locally, so its normal generated notes cover changes since the previous stable release.
+  Automatic candidates retain those refs for native RC numbering; all remote tags remain untouched.
 
 Each PR branch and each master publication type has its own concurrency group.
 New requests replace older waiting requests only within the same group; active publication finishes.

@@ -120,24 +120,38 @@ def test_pr_candidate_revision_reuses_exact_sha_or_advances(tmp_path: Path, new_
     assert f"version=1.2.3-pr-145.{2 if new_commit else 1}\n" in output.read_text()
 
 
-def test_master_release_excludes_only_local_pr_preview_tags(tmp_path: Path) -> None:
+@pytest.mark.parametrize("event", ["workflow_run", "workflow_dispatch"])
+def test_release_history_keeps_rc_tags_only_for_candidates(tmp_path: Path, event: str) -> None:
     setup = _run(
         "git init -b master; git config user.name Fixture; git config user.email fixture@example.invalid; "
         "git config tag.gpgsign false; git config core.hooksPath /dev/null; "
         "git -c commit.gpgsign=false commit --allow-empty -m 'fix: preview'; "
-        "git tag v1.2.2; git tag v1.2.3-rc.1; git tag v1.2.3-pr-145.1",
+        "git tag v1.2.2; git tag v1.2.3-rc.1; git tag v1.2.3-rc.2; git tag v1.2.3-pr-145.1; "
+        "git tag unrelated; git init --bare remote.git; git remote add origin remote.git; git push --tags origin",
         tmp_path,
         dict(os.environ),
     )
     assert setup.returncode == 0, setup.stderr
 
     result = _run(
-        _step_script("release.yml", "Exclude PR previews from master release history"), tmp_path, dict(os.environ)
+        _step_script("release.yml", "Select release history"), tmp_path, {**os.environ, "RELEASE_EVENT": event}
     )
 
     assert result.returncode == 0, result.stderr
     tags = _run("git tag --list", tmp_path, dict(os.environ))
-    assert set(tags.stdout.splitlines()) == {"v1.2.2", "v1.2.3-rc.1"}
+    expected = {"v1.2.2", "unrelated"}
+    if event == "workflow_run":
+        expected |= {"v1.2.3-rc.1", "v1.2.3-rc.2"}
+    assert set(tags.stdout.splitlines()) == expected
+    remote_tags = _run("git --git-dir=remote.git tag --list", tmp_path, dict(os.environ))
+    assert remote_tags.returncode == 0, remote_tags.stderr
+    assert set(remote_tags.stdout.splitlines()) == {
+        "v1.2.2",
+        "v1.2.3-rc.1",
+        "v1.2.3-rc.2",
+        "v1.2.3-pr-145.1",
+        "unrelated",
+    }
 
 
 @pytest.mark.parametrize(
