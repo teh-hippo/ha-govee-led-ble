@@ -14,6 +14,7 @@ from .protocol_core import (
     H6117WireWrite,
     H6125LegacySegmentQuery,
     H6125WireWrite,
+    H6181CommandWrite,
     H6199Pact1WireWrite,
     _child,
     _parse_xor_frame,
@@ -21,6 +22,14 @@ from .protocol_core import (
     _serialize_xor,
     encode_wire_brightness,
 )
+
+
+def h6181_outbound_transform(packet: bytes) -> bytes:
+    parsed = _parse_xor_frame(packet, "H6181", {"H6181": ("h6181_command_write", H6181CommandWrite)}).parsed
+    if parsed is None or getattr(parsed.opcode, "name", None) != "brightness":
+        return packet
+    parsed.body.percent = encode_wire_brightness(int(parsed.body.percent), (20, 254))
+    return _serialize_xor(parsed)
 
 
 def h6199_pact1_outbound_transform(packet: bytes) -> bytes:

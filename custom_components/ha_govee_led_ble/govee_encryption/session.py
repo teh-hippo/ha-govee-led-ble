@@ -64,7 +64,14 @@ class GoveeEncryptionSession:
         self._counter, self._received_counter = 2, 0
         self._mtu = 0
 
-    async def async_select(self, client: Any, *, advertised: bool, plaintext_evidence: bool = False) -> None:
+    async def async_select(
+        self,
+        client: Any,
+        *,
+        advertised: bool,
+        plaintext_evidence: bool = False,
+        allows_legacy_plaintext_marker: bool = False,
+    ) -> None:
         self.reset()
         generation = self._generation
         self.version = 0
@@ -81,6 +88,7 @@ class GoveeEncryptionSession:
                     raise GoveeCryptoError("previous_selection_failed")
                 self.version = self.required_version or (1 if advertised else 0)
             else:
+                raw_marker: bytes | None = None
                 try:
                     data = await client.read_gatt_char(ENCRYPTION_UUID)
                     if not isinstance(data, (bytes, bytearray)):
@@ -99,13 +107,23 @@ class GoveeEncryptionSession:
                         self.marker_hex,
                         self.marker_error,
                     )
-                    if not plaintext_evidence or advertised or self.required_version:
+                    profile_plaintext = False
+                    if allows_legacy_plaintext_marker and raw_marker is not None:
+                        try:
+                            parse_wire("LegacyPlaintextMarker", raw_marker)
+                        except GoveeCryptoError:
+                            pass
+                        else:
+                            profile_plaintext = True
+                    if not (plaintext_evidence or profile_plaintext) or advertised or self.required_version:
                         raise
                     if generation != self._generation or not client.is_connected:
                         raise GoveeCryptoError("session_reset") from None
                     self._selection_failed = False
                     self.ready = True
-                    self.last_result = "plaintext_unrecognised_marker"
+                    self.last_result = (
+                        "plaintext_profile_marker" if profile_plaintext else "plaintext_unrecognised_marker"
+                    )
                     return
                 # Version zero permits plaintext only without positive encryption evidence.
                 self.version = marker.version or self.required_version

@@ -109,6 +109,13 @@ speculative/h6179_command_write
 speculative/h6179_diy_body
 speculative/h6179_status_query
 speculative/h6179_status_reply
+speculative/h6181_command_write
+speculative/h6181_command_ack
+speculative/h6181_music_body
+speculative/h6181_status_query
+speculative/h6181_status_reply
+speculative/h6181_modern_status_reply
+speculative/h6181_diy_body
 speculative/h7020_command_write
 speculative/h7020_status_query
 speculative/h7020_status_reply

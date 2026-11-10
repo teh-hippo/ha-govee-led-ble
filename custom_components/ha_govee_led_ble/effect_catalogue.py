@@ -972,6 +972,33 @@ H6199_PALETTE_DIY_APPLY_MUSIC_CODE: Final = 2
 H6199_WORKSHOP_APPLY_CODE: Final = 402
 H6199_WORKSHOP_APPLY_MUSIC_CODE: Final = 0
 
+H6181_DIY_FAMILIES: Final = (
+    DiyEffectFamily(
+        "fade",
+        "Fade",
+        0,
+        (DiyEffectVariation("default", "Default", 0),),
+        True,
+        source_reference="tools/ble/kaitai/speculative/h6181_diy_body.ksy",
+    ),
+    DiyEffectFamily(
+        "jumping",
+        "Jumping",
+        1,
+        (DiyEffectVariation("default", "Default", 0),),
+        True,
+        source_reference="tools/ble/kaitai/speculative/h6181_diy_body.ksy",
+    ),
+    DiyEffectFamily(
+        "twinkle",
+        "Twinkle",
+        2,
+        (DiyEffectVariation("default", "Default", 0),),
+        True,
+        source_reference="tools/ble/kaitai/speculative/h6181_diy_body.ksy",
+    ),
+)
+
 H6179_DIY_FAMILIES: Final = (
     DiyEffectFamily(
         "fade",
@@ -1112,7 +1139,7 @@ def _single_template(
     variation = family.variations[0]
     content: EffectContent
     grammar = get_profile(model).effect_grammar if grammar is None else grammar
-    if grammar in {"H6046", "H617A", "H6099"}:
+    if grammar in {"H6046", "H617A", "H6099", "H6181"}:
         content = SingleEffect(
             family=family.family,
             variant=variation.variant,
@@ -2423,6 +2450,34 @@ MODEL_EFFECT_CATALOGUES: Final = {
             multi=studio_apply_capability_state("H617E", CapabilityWorkflow.MULTI),
             palette_diy=studio_apply_capability_state("H617E", CapabilityWorkflow.PALETTE_DIY),
             workshop=studio_apply_capability_state("H617E", CapabilityWorkflow.WORKSHOP),
+        ),
+    ),
+    "H6181": ModelEffectCatalogue(
+        sku="H6181",
+        painted_effects=(),
+        effects=H6181_DIY_FAMILIES,
+        music_modes=tuple(NativeModeOption(mode, mode.title()) for mode in ("dynamic", "soft", "bloom", "radiant")),
+        video_modes=(),
+        templates=(
+            *(_single_template("H6181", family) for family in H6181_DIY_FAMILIES),
+            *(
+                _music_template("H6181", NativeModeOption(mode, mode.title()))
+                for mode in ("dynamic", "soft", "bloom", "radiant")
+            ),
+        ),
+        workshop_templates=(),
+        diy_slot_policy="approved_observed",
+        supports=CatalogueSupport(
+            multi=workflow_capability_state("H6181", CapabilityWorkflow.MULTI),
+            advanced=workflow_capability_state("H6181", CapabilityWorkflow.ADVANCED),
+            workshop=workflow_capability_state("H6181", CapabilityWorkflow.WORKSHOP),
+        ),
+        apply=ApplySupport(
+            painted=studio_apply_capability_state("H6181", CapabilityWorkflow.PAINTED),
+            single=studio_apply_capability_state("H6181", CapabilityWorkflow.SINGLE),
+            multi=studio_apply_capability_state("H6181", CapabilityWorkflow.MULTI),
+            palette_diy=studio_apply_capability_state("H6181", CapabilityWorkflow.PALETTE_DIY),
+            workshop=studio_apply_capability_state("H6181", CapabilityWorkflow.WORKSHOP),
         ),
     ),
     "H6179": ModelEffectCatalogue(

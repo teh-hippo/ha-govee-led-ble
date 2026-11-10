@@ -17,6 +17,7 @@ from .protocol_core import (
     H1771MusicBody,
     H6072MusicBody,
     H6076MusicBody,
+    H6181MusicBody,
     H7025MusicBody,
     MusicBody,
     _check_tree,
@@ -139,6 +140,7 @@ def parse_music_parameters(variant: MusicVariant, body: bytes) -> Any:
             "h6076_music_body": H6076MusicBody,
             "h6072_music_body": H6072MusicBody,
             "h7025_music_body": H7025MusicBody,
+            "h6181_music_body": H6181MusicBody,
         }[variant.layout]
         root = root_type.from_bytes(b"\x01\x02\x41" + body)
     else:

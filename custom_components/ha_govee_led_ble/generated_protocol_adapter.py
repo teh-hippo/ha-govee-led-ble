@@ -70,6 +70,8 @@ from .protocol_core import (
     H6099CommandWrite,
     H6099EffectUpload,
     H6179CommandWrite,
+    H6181CommandWrite,
+    H6181DiyBody,
     H6199EffectUpload,
     H7020CommandWrite,
     H7025MusicWrite,
@@ -223,7 +225,7 @@ def _complete_a3_upload(
 ) -> tuple[int, bytes]:
     active_profile = profile or get_profile(model)
     if (
-        active_profile.command_grammar not in {"H600A", "H6046", "H607C", "H60B0", "H617A", "H7020"}
+        active_profile.command_grammar not in {"H600A", "H6046", "H607C", "H60B0", "H617A", "H6181", "H7020"}
         and active_profile.command_ack_grammar != "H617A"
     ):
         raise ValueError("Upload ACK semantics are not qualified for this command grammar")
@@ -248,6 +250,11 @@ def upload_ack_subtype(packets: Sequence[bytes], index: int, model: str, *, prof
             raise ValueError("A4 upload subtype is outside profile capabilities")
         return subtype
     if packets[index][0] == A1_02_PREFIX:
+        if profile.effect_grammar == "H6181" and profile.diy_upload_transport == "a1_02":
+            body = reassemble_a1_02_upload(packets, index)
+            parsed = H6181DiyBody.from_bytes(body)
+            parsed._read()
+            return A1_02_COMMAND
         if profile.a1_diy_selector is None or profile.command_ack_grammar not in _COMMAND_ACK_ROOTS:
             raise ValueError("A1 upload acknowledgement is not qualified for this profile")
         body = reassemble_a1_02_upload(packets, index)
@@ -726,7 +733,7 @@ def _check_upload_packet(frame: bytes, profile: ModelProfile) -> bool:
             if upload.index == 0 and upload.body.subtype != H60a6EffectFrame.Subtype.native_effect:
                 raise ValueError("Native effect subtype is outside profile capabilities")
             return True
-        if upload is not None and profile.effect_grammar in {"H6046", "H617A"}:
+        if upload is not None and profile.effect_grammar in {"H6046", "H617A", "H6181"}:
             if upload.index == 0:
                 from .scenes import SCENE_ENTRIES, scene_supported
 
@@ -796,7 +803,7 @@ def parse_a3_effect_envelope(envelope: bytes, model: str, *, profile: ModelProfi
         if envelope[2] != 0x04:
             raise ValueError("H6179 A3 uploads require a type-04 DIY body")
         root_type = DiyType04
-    elif grammar == "H617A":
+    elif grammar in {"H617A", "H6181"}:
         root_type = {
             0x01: SceneType1Body,
             0x02: SceneBody,
@@ -1079,6 +1086,7 @@ def build_boolean_control(
         "H6072-legacy",
         "H617A",
         "H6179",
+        "H6181",
         "H7020",
     }:
         raise ValueError(f"{model} does not support boolean control {control}")
@@ -1161,6 +1169,7 @@ def build_boolean_control_query(control: str, model: str, *, profile: ModelProfi
         "H6072-legacy",
         "H617A",
         "H6179",
+        "H6181",
         "H7020",
     }:
         raise ValueError(f"{model} does not support boolean control {control}")
@@ -1792,13 +1801,14 @@ def build_power(on: bool, model: str = "H617A", *, profile: ModelProfile | None 
         body.unknown_tail = bytes(16)
     if root_type is H6179CommandWrite:
         body.opaque = bytes(16)
-    elif root_type in {H600aCommandWrite, H601cCommandWrite}:
+    elif root_type in {H600aCommandWrite, H601cCommandWrite, H6181CommandWrite}:
         body.padding = bytes(16)
     root.body = body
     return _serialize_xor(root)
 
 
 def build_brightness(percent: int, model: str = "H617A", *, profile: ModelProfile | None = None) -> bytes:
+    profile = profile or get_profile(model)
     root_type, _, brightness_type = _command_types(model, profile)
     root = root_type()
     root.header = b"\x33"
@@ -1813,7 +1823,7 @@ def build_brightness(percent: int, model: str = "H617A", *, profile: ModelProfil
         body.percent = max(0, min(100, percent))
     if root_type in {H1771CommandWrite, H6046CommandWrite, H60b0CommandWrite}:
         body.unknown_tail = bytes(16)
-    if root_type in {H600aCommandWrite, H601cCommandWrite}:
+    if root_type in {H600aCommandWrite, H601cCommandWrite, H6181CommandWrite}:
         body.padding = bytes(16)
     root.body = body
     return _serialize_xor(root)
@@ -1921,7 +1931,7 @@ def _build_h6072_legacy_colour(
 def _build_whole_bulb_static_colour(
     mask: int, direct: tuple[int, int, int], kelvin: int, profile: ModelProfile
 ) -> bytes:
-    if mask != profile.whole_device_mask or not mask:
+    if mask != profile.whole_device_mask:
         raise ValueError(f"{profile.command_grammar} supports whole-device colour only")
     if kelvin and kelvin not in _TABLE_KELVIN_RGB:
         raise ValueError(f"{profile.command_grammar} Kelvin must use the 100 K grid")
@@ -2575,6 +2585,25 @@ def build_music_mode(
         raise ValueError("fixed music colour is unsupported or invalid")
     resolved = profile.music_grammar or profile.command_grammar
     selector_parameters = selector_parameters or {}
+    if resolved == "H6181":
+        if selector_parameters:
+            raise ValueError("Unsupported music selector parameter")
+        root = H6181CommandWrite()
+        root.header = b"\x33"
+        root.opcode = H6181CommandWrite.CommandOp.mode
+        root.body = _child(H6181CommandWrite.ModeBody, root)
+        root.body.sub_mode = H6181CommandWrite.ModeSel.music
+        detail = _child(H6181CommandWrite.MusicBody, root.body)
+        detail.mode = H6181CommandWrite.MusicMode(mode_id)
+        detail.sensitivity = sensitivity
+        if mode_id in (0, 1):
+            detail.reserved = 0
+            detail.has_fixed_colour = int(colour is not None)
+            if colour is not None:
+                detail.fixed_colour = _rgb(detail, *colour)
+        detail.padding = bytes(14 if mode_id in (48, 49) else 9 if colour is not None else 12)
+        root.body.detail = detail
+        return _serialize_xor(root)
     if resolved in {"H1771", "H60B0"}:
         if colour is not None or selector_parameters:
             raise ValueError("Native music selectors carry only mode and sensitivity")

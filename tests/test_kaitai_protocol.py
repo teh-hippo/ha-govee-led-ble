@@ -47,6 +47,30 @@ _MODULE_PREFIX = "" if _GENERATED_DIR else "custom_components.ha_govee_led_ble.g
 
 
 @pytest.mark.parametrize(
+    "module,class_name,payload,envelope",
+    [
+        ("h6181_command_write", "H6181CommandWrite", "33050d01020300000000007f", True),
+        ("h6181_status_query", "H6181StatusQuery", "aa05017f", True),
+        ("h6181_status_reply", "H6181StatusReply", "aa050d010203000405067f", True),
+        ("h6181_modern_status_reply", "H6181ModernStatusReply", "aa050dffffff0a8cffae547f", True),
+        ("h6181_command_ack", "H6181CommandAck", "a102007f", True),
+        ("h6181_diy_body", "H6181DiyBody", "2a00003203ff0000007f", False),
+        ("h6181_music_body", "H6181MusicBody", "0102413001ff00000a507f", False),
+    ],
+)
+def test_h6181_exact_model_roots_preserve_unqualified_suffixes(module, class_name, payload, envelope):
+    raw = bytes.fromhex(payload)
+    if envelope:
+        raw = raw.ljust(19, b"\0")
+        raw += bytes([xor_checksum(raw)])
+    root = getattr(import_module(f"{_MODULE_PREFIX}{module}"), class_name).from_bytes(raw)
+    root._read()
+    assert root._io.is_eof()
+    protocol_core._check_tree(root)
+    assert protocol_core._write(root, len(raw)) == raw
+
+
+@pytest.mark.parametrize(
     "enabled,command,reply",
     [
         (False, "330e00000000000000000000000000000000003d", "aa0e0000000000000000000000000000000000a4"),

@@ -67,6 +67,10 @@ def decode_effect_frames(
     if transport == "a3":
         return decode_a3_effect_frames(frames, model)
     if transport == "a1_02":
+        if get_profile(model).effect_grammar == "H6181":
+            from .h6181_effects import decode_diy
+
+            return decode_diy(reassemble_a1_02(frames))
         if get_profile(model).effect_grammar != "H6179":
             raise ValueError(f"{model} cannot decode A1 02 effect frames")
         return decode_h6179_effect(reassemble_a1_02(frames))
@@ -133,7 +137,7 @@ def decode_a3_effect(tree: Any, model: str) -> EffectContent:
         # The upload omits total IC count; retain the already validated source
         # rather than infer topology from the highest painted index.
         raise UnsupportedA3EffectError("H6099 upload requires source topology or catalogue identity")
-    if grammar == "H617A":
+    if grammar in {"H617A", "H6181"}:
         if isinstance(tree, DiyType03):
             from .effect_catalogue import MODEL_EFFECT_CATALOGUES
 

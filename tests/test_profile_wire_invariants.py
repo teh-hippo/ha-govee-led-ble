@@ -170,6 +170,10 @@ _QUALIFIED_CONTEXTS: tuple[tuple[str, str, int | None, int | None, str | None, s
     ("H6199-pact1", "H6199", 1, 1, None, None),
     ("H6179-unqualified", "H6179", None, None, None, None),
     ("H6179-newer", "H6179", 10, 1, None, None),
+    ("H6181-legacy", "H6181", None, None, "1.03.00", "1.00.03"),
+    ("H6181-later-static-scenes", "H6181", 10, 1, "1.02.99", "1.00.03"),
+    ("H6181-later-rgb-scenes", "H6181", 10, 1, "1.03.00", "1.00.03"),
+    ("H6181-later-raw-register", "H6181", 10, 3, "1.03.00", "1.00.03"),
     ("H6199-pact1-new-group", "H6199", 1, 1, "1.09.00", "3.02.01"),
     ("H6199-pact2-baseline-group", "H6199", 2, 1, None, None),
     ("H6199-unqualified-group", "H6199", None, None, None, None),
@@ -239,7 +243,10 @@ _MUSIC_PROFILES = tuple(
 _MUSIC_READBACK_PROFILES = tuple(
     pytest.param(model, profile, id=case_id)
     for case_id, model, profile in _EFFECTIVE_PROFILES
-    if profile.music_modes and profile.supports_color_mode_readback and profile is not MODEL_PROFILES["H6125"]
+    if profile.music_modes
+    and profile.supports_color_mode_readback
+    and not profile.music_readback_ambiguous
+    and profile is not MODEL_PROFILES["H6125"]
 )
 
 _SCENE_PROFILES = tuple(
@@ -1004,7 +1011,7 @@ def test_static_colour_and_kelvin_status_readback(hass, model: str, profile: Mod
     their declared Kelvin bounds on static temperature readback."""
     color_mode_enum = _status_color_mode_enum(profile)
     static_byte = int(getattr(color_mode_enum, "static", getattr(color_mode_enum, "static_colour", None)))
-    if profile.status_grammar in WHOLE_BULB_GRAMMARS | {"H6179", "H60B0"}:
+    if profile.status_grammar in WHOLE_BULB_GRAMMARS | {"H6179", "H60B0", "H6181-modern"}:
         rgb_body = bytes([static_byte, 10, 20, 30, 0, 0])
     else:
         rgb_body = bytes([static_byte, 0, 0, 0])
@@ -1024,11 +1031,13 @@ def test_static_colour_and_kelvin_status_readback(hass, model: str, profile: Mod
             kelvin_bytes = kelvin.to_bytes(2, "big")
             body = (
                 bytes([static_byte, 255, 255, 255]) + kelvin_bytes
-                if profile.status_grammar in WHOLE_BULB_GRAMMARS | {"H6179", "H60B0"}
+                if profile.status_grammar in WHOLE_BULB_GRAMMARS | {"H6179", "H60B0", "H6181-modern"}
                 else bytes([static_byte, 1]) + kelvin_bytes
             )
             if profile.status_grammar == "H6046":
                 body += kelvin_bytes
+            if profile.status_grammar == "H6181":
+                body = bytes([static_byte, 255, 255, 255, 1, *a.table_kelvin_rgb(kelvin)])
             reply = _status(0x05, body)
             decoded = decode_status_frame(reply, model, profile=profile)
             assert decoded is not None
@@ -1037,6 +1046,8 @@ def test_static_colour_and_kelvin_status_readback(hass, model: str, profile: Mod
             coordinator._notify_callback(None, bytearray(reply))
             assert coordinator.color_mode is ParsedMode.COLOUR and coordinator.color_temp_kelvin == kelvin
 
+        if profile.status_grammar == "H6181":
+            return
         for out_of_range, clamped in (
             (min_kelvin - 1, min_kelvin),
             (profile.max_color_temp_kelvin + 1, profile.max_color_temp_kelvin),
@@ -1044,7 +1055,7 @@ def test_static_colour_and_kelvin_status_readback(hass, model: str, profile: Mod
             bad_bytes = out_of_range.to_bytes(2, "big")
             bad_body = (
                 bytes([static_byte, 255, 255, 255]) + bad_bytes
-                if profile.status_grammar in WHOLE_BULB_GRAMMARS | {"H6179", "H60B0"}
+                if profile.status_grammar in WHOLE_BULB_GRAMMARS | {"H6179", "H60B0", "H6181-modern"}
                 else bytes([static_byte, 1]) + bad_bytes
             )
             if profile.status_grammar == "H6046":

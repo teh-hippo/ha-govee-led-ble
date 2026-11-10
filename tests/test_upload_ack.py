@@ -126,6 +126,41 @@ async def test_h600a_scene_and_diy_ack_barrier(connected, kind, response):
     assert c._ensure_connected.await_count == 1
 
 
+@pytest.mark.parametrize("connected", ["H6181"], indirect=True)
+@pytest.mark.parametrize("kind,pact", [("diy", (None, None)), ("diy", (10, 2)), ("scene", (10, 2))])
+@pytest.mark.parametrize("response", ["accepted", "rejected", "missing"])
+async def test_h6181_revision_uploads_require_matching_success_before_activation(connected, kind, pact, response):
+    c, client = connected
+    c.profile = replace(device_profile(c.model, *pact), profile_identity_fields=frozenset())
+    if kind == "scene":
+        scene = next(scene for scene in SCENE_ENTRIES[c.model] if scene.scene_type == 1)
+        content = BuiltinScene(CatalogueRef(c.model, scene.scene_id, scene.effect_id))
+    else:
+        content = SingleEffect(0, 0, 50, ((1, 2, 3),))
+    compiled = compile_effect(LibraryItem.new("Palette", content), c.model, diy_code=42, profile=c.profile)
+    last_upload = len(compiled.upload_packets) - 1
+    subtype = upload_ack_subtype(compiled.upload_packets, last_upload, c.model, profile=c.profile)
+    protocol = compiled.upload_packets[-1][0]
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet == compiled.upload_packets[-1] and response != "missing":
+            receive(client, frame(f"{protocol:02x}{subtype:02x}{'00' if response == 'accepted' else '01'}"))
+
+    client.write_gatt_char.side_effect = write
+    if response == "accepted":
+        await c.async_write_effect_sequence(
+            compiled.packets, intent=ControlIntent.APPLY, require_upload_ack=True, upload_ack_index=last_upload
+        )
+    else:
+        with pytest.raises((RuntimeError, TimeoutError)):
+            await c.async_write_effect_sequence(
+                compiled.packets, intent=ControlIntent.APPLY, require_upload_ack=True, upload_ack_index=last_upload
+            )
+    sent = [call.args[1] for call in client.write_gatt_char.await_args_list]
+    assert sent == list(compiled.packets if response == "accepted" else compiled.upload_packets)
+    assert c._upload_ack is None
+
+
 @pytest.mark.parametrize("connected", ["H6097", "H600A"], indirect=True)
 @pytest.mark.parametrize("fault", ["missing", "rejected", "write_timeout", "disconnect"])
 async def test_diy_upload_requires_result_without_uncertain_replay(connected, fault):
