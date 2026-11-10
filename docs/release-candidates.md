@@ -43,6 +43,8 @@ That shared interface accepts RC versions, so `7.40.1-pr-145.2` uses the interna
 The build metadata records that packaging input and the exact source SHA; the public tag identifies the PR and candidate.
 It does not commit preview versions to the feature branch.
 The master release checkout removes PR preview tags locally before running Semantic Release, preserving normal master numbering and release notes without changing remote tags.
+For stable publication, that checkout also removes master-candidate tag refs locally so generated stable notes include the changes delivered through RCs.
+Automatic master candidates retain their RC refs for native numbering.
 The build checks package integrity; it does not replace the required prior review and `make check`.
 
 ## Recovering a failed publication

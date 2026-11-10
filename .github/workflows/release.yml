@@ -59,10 +59,13 @@ jobs:
 
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
 
-      - name: Exclude PR previews from master release history
+      - name: Select release history
+        env:
+          RELEASE_EVENT: ${{ github.event_name }}
         run: |
           while IFS= read -r tag; do
-            if [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-pr-[0-9]+\.[0-9]+$ ]]; then
+            if [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-pr-[0-9]+\.[0-9]+$ ]] ||
+               [[ "$RELEASE_EVENT" == workflow_dispatch && "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]]; then
               git tag --delete "$tag"
             fi
           done < <(git tag --list)
