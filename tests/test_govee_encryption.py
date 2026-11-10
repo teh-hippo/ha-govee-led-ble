@@ -965,6 +965,55 @@ async def test_coordinator_uses_qualified_plaintext_marker_policy(hass, model):
     device.write_gatt_char.assert_awaited_with(WRITE_UUID, build_power(True, model), response=False)
 
 
+async def test_h6181_marker_pact_is_reconciled_again_on_reconnect(hass, monkeypatch):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6181", configuration_url=None)
+    device = client(bytes((2, 0, 0, 0, 10, 2)))
+    monkeypatch.setattr(coordinator, "_send_identity_queries", AsyncMock())
+    monkeypatch.setattr(coordinator, "_wait_for_revisions", AsyncMock(return_value=False))
+    monkeypatch.setattr(coordinator, "_start_keep_alive", lambda: None)
+    monkeypatch.setattr(coordinator, "_refresh_h607c_advertisements", lambda: None)
+    monkeypatch.setattr(f"{M}.async_establish_ble_connection", AsyncMock(return_value=device))
+    await coordinator.send_command(build_power(True, "H6181"))
+    assert (coordinator.pact_type, coordinator.pact_code) == (10, 2)
+    assert coordinator.profile.brightness_wire_range is None
+    assert coordinator.profile.diy_upload_transport == "a3"
+    coordinator._clear_client_state(device)
+    assert coordinator._h607c_marker_pact is None
+    assert (coordinator.pact_type, coordinator.pact_code) == (10, 2)
+    device.read_gatt_char.return_value = b"\0"
+    await coordinator.send_command(build_power(True, "H6181"))
+    assert (coordinator.pact_type, coordinator.pact_code) == (None, None)
+    assert coordinator.profile.brightness_wire_range == (20, 254)
+    assert coordinator._encryption.last_result == "plaintext_profile_marker"
+    coordinator._clear_client_state(device)
+
+
+@pytest.mark.parametrize("fresh", [False, True])
+async def test_h6181_marker_only_conflicts_with_current_subscription_advertisements(hass, fresh):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6181", configuration_url=None)
+    coordinator._client = client()
+    now = time.monotonic()
+    coordinator._notify_started_monotonic = now
+    coordinator._h607c_marker_pact = (10, 2)
+    coordinator._note_advertisement(
+        SimpleNamespace(
+            name="Govee_H6181",
+            source="scanner-a",
+            time=now + 1 if fresh else now - 1,
+            manufacturer_data={0x8801: bytes.fromhex("ec000101")},
+        )
+    )
+    coordinator._prune_h607c_advertisements()
+    assert coordinator._h607c_pact_conflict is fresh
+    if fresh:
+        with pytest.raises(ValueError):
+            coordinator._validate_authorized_packet(build_power(True, "H6181"))
+    else:
+        assert (coordinator.pact_type, coordinator.pact_code) == (10, 2)
+        coordinator._validate_authorized_packet(build_power(True, "H6181"))
+    coordinator._clear_client_state(coordinator._client)
+
+
 async def test_v1_confirmation_is_mandatory_and_opcode_specific(monkeypatch):
     assert session_module.HANDSHAKE_TIMEOUT == 6
     monkeypatch.setattr(session_module, "HANDSHAKE_TIMEOUT", 0.01)

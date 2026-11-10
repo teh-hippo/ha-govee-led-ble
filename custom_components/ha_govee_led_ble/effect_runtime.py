@@ -365,7 +365,7 @@ class EffectDeploymentEngine:
             and result.phase is DeploymentPhase.UNCERTAIN
             and result.error_code == "device_state_unconfirmed"
         )
-        if result.phase is DeploymentPhase.CONFIRMED or write_only_completed:
+        if result.phase in {DeploymentPhase.CONFIRMED, DeploymentPhase.APPLIED} or write_only_completed:
             if self._active_workspaces is not None:
                 self._active_workspaces.clear(config_entry_id)
             if write_only_completed:
@@ -402,6 +402,10 @@ class EffectDeploymentEngine:
             not coordinator.profile.supports_color_mode_readback
             and result.phase is DeploymentPhase.UNCERTAIN
             and result.error_code == "device_state_unconfirmed"
+        )
+        write_only_completed |= (
+            result.phase is DeploymentPhase.APPLIED
+            and result.verification_confidence is ObservationConfidence.WRITE_COMPLETED
         )
         if result.phase is DeploymentPhase.CONFIRMED or write_only_completed:
             if self._active_workspaces is not None:
@@ -680,6 +684,22 @@ class EffectDeploymentEngine:
                     else:
                         current = await self._async_apply_profile(coordinator, compiled, current)
 
+                    if isinstance(compiled, CompiledMusicProfile) and coordinator.profile.music_readback_ambiguous:
+                        completed = replace(
+                            current,
+                            phase=DeploymentPhase.APPLIED,
+                            error_code=None,
+                            verification_confidence=ObservationConfidence.WRITE_COMPLETED,
+                        )
+                        await self._deployments.async_put(completed, expected_version=None)
+                        self._reconcile_observation(
+                            coordinator,
+                            config_entry_id=record.config_entry_id,
+                            observed_at=record.updated_at,
+                            refreshed=False,
+                            matched_record=completed,
+                        )
+                        return completed
                     next_record = replace(current, phase=DeploymentPhase.VERIFYING)
                     await self._deployments.async_put(next_record, expected_version=None)
                     current = next_record
@@ -1296,7 +1316,11 @@ class EffectDeploymentEngine:
                 if mode in {"music", "video"} and workspace.confidence is ObservationConfidence.SETTINGS_MATCH
                 else workspace.confidence
             )
-        elif matched_record is not None and matched_record.phase is DeploymentPhase.UNCERTAIN:
+        elif matched_record is not None and (
+            matched_record.phase is DeploymentPhase.UNCERTAIN
+            or matched_record.phase is DeploymentPhase.APPLIED
+            and matched_record.verification_confidence is ObservationConfidence.WRITE_COMPLETED
+        ):
             confidence = ObservationConfidence.WRITE_COMPLETED
         elif profile_match and matched_record is not None:
             confidence = matched_record.verification_confidence if verified_now else ObservationConfidence.MODE_MATCH
@@ -1644,6 +1668,8 @@ def compiled_observation(
             expectations["effect"] = canonical_scene_key(compiled.model, compiled.expected_effect)
         return expectations, ObservationConfidence.ACTIVATION_MATCH
     if isinstance(compiled, CompiledMusicProfile):
+        if profile.music_readback_ambiguous:
+            return None, ObservationConfidence.UNKNOWN
         expectations["music_mode"] = compiled.mode
         if profile.music_grammar == "H6046":
             variant = music_variant(profile, music_code_for(compiled.model, compiled.mode, profile=profile))

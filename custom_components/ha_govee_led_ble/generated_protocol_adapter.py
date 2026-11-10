@@ -684,6 +684,16 @@ def _check_status_query_packet(frame: bytes, profile: ModelProfile) -> bool:
 
 def _check_upload_packet(frame: bytes, profile: ModelProfile) -> bool:
     """A3 music-parameter and effect uploads."""
+    if profile.effect_grammar == "H6181" and profile.diy_upload_transport == "a1_02":
+        legacy = _parse_xor_frame(frame, "H6181", {"H6181": ("h6181_diy_body.frame", H6181DiyBody.Frame)}).parsed
+        if legacy is not None:
+            if (
+                profile.supports_custom_effects
+                and profile.command_operations is not None
+                and "effect_upload" in profile.command_operations
+            ):
+                return True
+            raise ValueError("Palette DIY upload is outside profile capabilities")
     upload = _parse_xor_frame(frame, "A3", {"A3": ("command_write.upload_frame", CommandWrite.UploadFrame)}).parsed
     if upload is not None and upload.index == 0 and upload.body.subtype == 0x41:
         if (profile.command_operations is not None and "music" not in profile.command_operations) or not any(
@@ -752,7 +762,8 @@ def _check_upload_packet(frame: bytes, profile: ModelProfile) -> bool:
                     3: profile.supports_custom_effects
                     and profile.effect_workflows is not None
                     and "painted" in profile.effect_workflows,
-                    4: profile.supports_custom_effects,
+                    4: profile.supports_custom_effects
+                    and (profile.effect_grammar != "H6181" or profile.diy_upload_transport == "a3"),
                 }
                 if not allowed.get(upload.body.subtype, False):
                     raise ValueError("effect upload subtype is outside profile capabilities")

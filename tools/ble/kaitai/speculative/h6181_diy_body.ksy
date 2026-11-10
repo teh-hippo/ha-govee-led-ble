@@ -42,6 +42,16 @@ enums:
     2: twinkle
     255: mixed
 types:
+  frame:
+    seq:
+      - id: header
+        contents: [0xa1, 0x02]
+      - id: index
+        type: u1
+      - id: data
+        size: 16
+      - id: checksum
+        type: u1
   palette:
     seq:
       - id: colours

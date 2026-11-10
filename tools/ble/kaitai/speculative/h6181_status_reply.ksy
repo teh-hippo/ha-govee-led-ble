@@ -26,8 +26,6 @@ seq:
         'aa_domain::colour_mode': colour_mode_body
         'aa_domain::firmware': version_body
         'aa_domain::hardware': hardware_body
-        'aa_domain::limit': boolean_body
-        'aa_domain::power_off_memory': boolean_body
   - id: checksum
     type: u1
 enums:
@@ -37,8 +35,6 @@ enums:
     0x05: colour_mode
     0x06: firmware
     0x07: hardware
-    0x0e: limit
-    0x41: power_off_memory
   color_mode:
     0x02: legacy_colour
     0x04: scene
@@ -54,12 +50,6 @@ types:
   brightness_body:
     seq:
       - id: percent
-        type: u1
-      - id: unknown_tail
-        size-eos: true
-  boolean_body:
-    seq:
-      - id: flag
         type: u1
       - id: unknown_tail
         size-eos: true

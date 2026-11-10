@@ -7,7 +7,11 @@ from custom_components.ha_govee_led_ble.coordinator_status import decode_status_
 from custom_components.ha_govee_led_ble.effect_compiler import compile_effect, validate_compiled_geometry
 from custom_components.ha_govee_led_ble.effect_domain import EffectPair, LibraryItem, MultiEffect, SingleEffect
 from custom_components.ha_govee_led_ble.effect_protocol_decoder import decode_effect_frames
-from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_brightness, table_kelvin_rgb
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
+    build_brightness,
+    require_profile_packet,
+    table_kelvin_rgb,
+)
 from custom_components.ha_govee_led_ble.light_commands import build_color_rgb, build_color_temp
 from custom_components.ha_govee_led_ble.music_commands import resolve_music_profile
 from custom_components.ha_govee_led_ble.music_semantics import music_variant
@@ -15,7 +19,7 @@ from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_
 from custom_components.ha_govee_led_ble.protocol_core import H6181DiyBody
 from custom_components.ha_govee_led_ble.protocol_music_params import parse_music_parameters
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES, scene_supported
-from custom_components.ha_govee_led_ble.transport import reassemble_a1_02, xor_checksum
+from custom_components.ha_govee_led_ble.transport import fragment_a3, reassemble_a1_02, xor_checksum
 
 
 def frame(payload: bytes) -> bytes:
@@ -86,6 +90,10 @@ def test_diy_application_requires_owner_approval_of_a_disposable_slot():
         ((10, 3), "1.03.00", "1.00.03", (20, 254), (), True),
         ((10, 2), "2.03.99", "2.01.01", None, ("dynamic", "soft"), True),
         ((10, 2), "2.04.00", "2.01.01", None, ("dynamic", "soft", "bloom", "radiant"), True),
+        ((10, 2), "2.04.00", "2.00.05", None, ("dynamic", "soft"), True),
+        ((10, 2), "2.04.00", "2.02.01", None, ("dynamic", "soft"), True),
+        ((10, 2), "2.04.00", "3.04.01", None, ("dynamic", "soft"), True),
+        ((10, 2), "2.04.00", "3.05.01", None, ("dynamic", "soft", "bloom", "radiant"), True),
     ],
 )
 def test_revision_boundaries_resolve_independently(pact, firmware, hardware, brightness, modes, uploads):
@@ -134,3 +142,16 @@ def test_music_status_does_not_invent_a_selector_from_conflicting_readback_field
     assert decoded is not None
     parsed = parse_color_mode(decoded.generated, "H6181", profile=profile)
     assert parsed.music_mode is None and parsed.music_sensitivity is None
+
+
+@pytest.mark.parametrize("payload", ["3305047b", "3399", "334101"])
+def test_legacy_packet_authorisation_rejects_unqualified_operations(payload):
+    with pytest.raises(ValueError):
+        require_profile_packet(frame(bytes.fromhex(payload)), device_profile("H6181", None, None))
+
+
+@pytest.mark.parametrize("subtype", [1, 3, 4])
+def test_legacy_profile_does_not_admit_later_or_painted_uploads(subtype):
+    profile = device_profile("H6181", None, None)
+    with pytest.raises(ValueError):
+        require_profile_packet(fragment_a3(subtype, b"\0")[0], profile)

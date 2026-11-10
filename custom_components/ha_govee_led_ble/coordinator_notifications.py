@@ -205,7 +205,8 @@ class _NotificationMixin(_CoordinatorBase):
         if parsed.mode is ParsedMode.MUSIC:
             self._scene_code = None
             if parsed.music_mode is None:
-                self.music_mode = "off"
+                if not self.profile.music_readback_ambiguous:
+                    self.music_mode = "off"
                 self.effect = self.diy_code = None
                 self.video_mode = "off"
                 observed.extend(("effect", "diy_code"))
