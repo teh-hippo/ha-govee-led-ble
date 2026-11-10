@@ -1,48 +1,107 @@
 name: Release
 
 on:
+  workflow_dispatch:
   workflow_run:
     workflows: [Validate]
     types: [completed]
     branches: [master]
 
 concurrency:
-  group: release
+  group: release-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && 'stable' || 'rc' }}
   cancel-in-progress: false
 
 jobs:
   release:
     name: Semantic Release
     runs-on: ubuntu-latest
+    # Each workflow lane admits one run, so only one RC and one stable run can reach this lock.
+    concurrency:
+      group: release-master-publication
+      cancel-in-progress: false
     if: >-
-      github.event.workflow_run.conclusion == 'success' &&
-      !startsWith(github.event.workflow_run.head_commit.message, 'chore(release): ')
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master') ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'master' &&
+       github.event.workflow_run.head_repository.full_name == github.repository &&
+       (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch') &&
+       !startsWith(github.event.workflow_run.head_commit.message, 'chore(release): '))
     permissions:
+      actions: read
       contents: write
-      id-token: write
+    env:
+      SOURCE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ env.SOURCE_SHA }}
           fetch-depth: 0
           token: ${{ secrets.RELEASE_TOKEN }}
 
-      - name: Attach validated commit to master
+      - name: Require current, validated master
         env:
-          VALIDATED_SHA: ${{ github.event.workflow_run.head_sha }}
-        run: git checkout -B master "$VALIDATED_SHA"
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          master_sha="$(git ls-remote origin refs/heads/master | cut -f1)"
+          if [[ "$SOURCE_SHA" != "$master_sha" ]]; then
+            echo "::error::Master has advanced; release only its current validated commit."
+            exit 1
+          fi
+          conclusion="$(gh run list --repo "$GITHUB_REPOSITORY" \
+            --workflow validate.yml --branch master --commit "$SOURCE_SHA" --limit 20 \
+            --json event,conclusion \
+            --jq '[.[] | select(.event == "push" or .event == "workflow_dispatch")][0].conclusion // ""')"
+          if [[ "$conclusion" != "success" ]]; then
+            echo "::error::Current master needs a successful Validate run before publication."
+            exit 1
+          fi
+          git checkout -B master "$SOURCE_SHA"
 
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+
+      - name: Exclude PR previews from master release history
+        run: |
+          while IFS= read -r tag; do
+            if [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-pr-[0-9]+\.[0-9]+$ ]]; then
+              git tag --delete "$tag"
+            fi
+          done < <(git tag --list)
 
       - name: Python Semantic Release
         id: semantic_release
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          RELEASE_EVENT: ${{ github.event_name }}
         run: |
+          args=(version --no-changelog --no-vcs-release)
+          if [[ "$RELEASE_EVENT" == "workflow_run" ]]; then
+            args+=(--as-prerelease --prerelease-token rc)
+          fi
           uvx \
             --from python-semantic-release==10.6.1 \
             --with gitpython==3.1.59 \
-            semantic-release version --no-changelog
+            semantic-release "${args[@]}"
+
+      - name: Save release identity and generated notes
+        if: ${{ steps.semantic_release.outputs.released == 'true' }}
+        env:
+          RELEASE_NOTES: ${{ steps.semantic_release.outputs.release_notes }}
+          RELEASE_TAG: ${{ steps.semantic_release.outputs.tag }}
+          RELEASE_SHA: ${{ steps.semantic_release.outputs.commit_sha }}
+          IS_PRERELEASE: ${{ steps.semantic_release.outputs.is_prerelease }}
+        run: |
+          mkdir -p release-metadata
+          printf '%s\n' "$RELEASE_NOTES" > release-metadata/release-notes.md
+          printf '%s\n' "$RELEASE_TAG" > release-metadata/tag
+          printf '%s\n' "$RELEASE_SHA" > release-metadata/commit
+          printf '%s\n' "$IS_PRERELEASE" > release-metadata/prerelease
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: ${{ steps.semantic_release.outputs.released == 'true' }}
+        with:
+          name: release-${{ steps.semantic_release.outputs.tag }}
+          path: release-metadata/
+          if-no-files-found: error
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         if: ${{ steps.semantic_release.outputs.released == 'true' }}
@@ -56,30 +115,28 @@ jobs:
         with:
           install_args: github:kaitai-io/kaitai_struct_compiler
 
-      - name: Attach deterministic package
+      - name: Build and verify deterministic package
         if: ${{ steps.semantic_release.outputs.released == 'true' }}
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
           RELEASE_TAG: ${{ steps.semantic_release.outputs.tag }}
         run: |
           git fetch --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
-          git checkout --detach "$RELEASE_TAG"
+          git checkout -B master "$RELEASE_TAG"
           uv sync --locked
           make clean package
           uv run --no-sync python scripts/package.py \
             --source custom_components/ha_govee_led_ble \
             --verify-archive dist/ha_govee_led_ble.zip
           (cd dist && sha256sum --check ha_govee_led_ble.zip.sha256)
-          gh release upload "$RELEASE_TAG" \
-            dist/ha_govee_led_ble.zip \
-            dist/ha_govee_led_ble.zip.sha256
 
-      - name: Move latest tag to current release
-        if: ${{ steps.semantic_release.outputs.released == 'true' && steps.semantic_release.outputs.is_prerelease == 'false' }}
+      - name: Publish verified release
+        if: ${{ steps.semantic_release.outputs.released == 'true' }}
         env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
           RELEASE_TAG: ${{ steps.semantic_release.outputs.tag }}
+          RELEASE_SHA: ${{ steps.semantic_release.outputs.commit_sha }}
+          IS_PRERELEASE: ${{ steps.semantic_release.outputs.is_prerelease }}
         run: |
-          git fetch --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
-          release_commit="$(git rev-list -n 1 "$RELEASE_TAG")"
-          git tag --force latest "$release_commit"
-          git push --force origin refs/tags/latest
+          bash scripts/publish-release.sh "$RELEASE_TAG" "$RELEASE_SHA" "$IS_PRERELEASE" \
+            release-metadata/release-notes.md \
+            dist/ha_govee_led_ble.zip dist/ha_govee_led_ble.zip.sha256 uv.lock

@@ -9,7 +9,7 @@ on:
         default: ""
         type: string
       version:
-        description: Prerelease version, for example 7.2.0-rc.4.foundation (default - next patch, run number, branch)
+        description: PR version, for example 7.40.1-pr-145.1 (default - next patch, PR number, next candidate)
         required: false
         default: ""
         type: string
@@ -33,32 +33,66 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      pull-requests: read
     outputs:
       target_sha: ${{ steps.defaults.outputs.target_sha }}
       version: ${{ steps.defaults.outputs.version }}
+      package_version: ${{ steps.defaults.outputs.package_version }}
       release_notes: ${{ steps.defaults.outputs.release_notes }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.target_sha || github.sha }}
+          fetch-depth: 0
+      - name: Identify selected PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          gh pr view "$BRANCH" --repo "$GITHUB_REPOSITORY" \
+            --json number,headRefName,baseRefName,isCrossRepository,state > selected-pr.json
       - id: defaults
         env:
           INPUT_SHA: ${{ inputs.target_sha }}
           INPUT_VERSION: ${{ inputs.version }}
           INPUT_NOTES: ${{ inputs.release_notes }}
           BRANCH: ${{ github.ref_name }}
-          RUN_NUMBER: ${{ github.run_number }}
         run: |
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
           import json, os, re, subprocess
+
+          pr = json.load(open("selected-pr.json"))
+          if (pr["headRefName"] != os.environ["BRANCH"] or pr["baseRefName"] != "master"
+                  or pr["isCrossRepository"] or pr["state"] != "OPEN"):
+              raise SystemExit("Select an open PR branch in this repository targeting master")
+          pr_number = pr["number"]
           sha = os.environ["INPUT_SHA"] or subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
           version = os.environ["INPUT_VERSION"]
+          number = r"(?:0|[1-9][0-9]*)"
+          pattern = rf"({number}\.{number}\.{number})-pr-{pr_number}\.([1-9][0-9]*)"
           if not version:
               current = json.load(open("custom_components/ha_govee_led_ble/manifest.json"))["version"]
               major, minor, patch = (int(part) for part in re.match(r"(\d+)\.(\d+)\.(\d+)", current).groups())
-              suffix = re.sub(r"[^0-9A-Za-z]+", "-", os.environ["BRANCH"]).strip("-")[:24]
-              version = f"{major}.{minor}.{patch + 1}-rc.{os.environ['RUN_NUMBER']}.{suffix}"
+              base = f"{major}.{minor}.{patch + 1}"
+              tags = subprocess.check_output(["git", "tag", "--list"], text=True).splitlines()
+              candidates = [(int(match[2]), tag) for tag in tags if (match := re.fullmatch("v" + pattern, tag))]
+              revision, previous = max(candidates, default=(0, ""))
+              if previous and previous.startswith(f"v{base}-"):
+                  previous_sha = subprocess.check_output(["git", "rev-list", "-n", "1", previous], text=True).strip()
+                  if previous_sha == sha:
+                      version = previous[1:]
+              if not version:
+                  version = f"{base}-pr-{pr_number}.{revision + 1}"
+          match = re.fullmatch(pattern, version)
+          if not match:
+              raise SystemExit("PR candidates must use <version>-pr-<selected PR>.<candidate>; publish stable through the Release workflow")
+          hacs = json.load(open("hacs.json"))
+          if hacs.get("zip_release") is not True or hacs.get("filename") != "ha_govee_led_ble.zip":
+              raise SystemExit("Published candidates require matching HACS ZIP release configuration")
           notes = os.environ["INPUT_NOTES"] or f"Release candidate for testing from {os.environ['BRANCH']} at {sha[:12]}."
           print(f"target_sha={sha}")
           print(f"version={version}")
+          print(f"package_version={match[1]}-rc.{match[2]}.pr-{pr_number}")
           print("release_notes<<EOF_NOTES")
           print(notes)
           print("EOF_NOTES")
@@ -72,9 +106,38 @@ jobs:
     with:
       integration: ha_govee_led_ble
       target_sha: ${{ needs.prepare.outputs.target_sha }}
-      version: ${{ needs.prepare.outputs.version }}
-      publish: ${{ inputs.publish }}
+      version: ${{ needs.prepare.outputs.package_version }}
+      publish: false
       release_notes: ${{ needs.prepare.outputs.release_notes }}
       make_target: package
       node_version_file: .node-version
       mise_install_args: github:kaitai-io/kaitai_struct_compiler
+
+  publish:
+    if: ${{ inputs.publish }}
+    needs: [prepare, package]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: ${{ needs.package.outputs.artifact_name }}
+          path: dist
+      - name: Publish verified PR candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ needs.prepare.outputs.target_sha }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          RELEASE_NOTES: ${{ needs.prepare.outputs.release_notes }}
+        run: |
+          (cd dist && sha256sum --check ha_govee_led_ble.zip.sha256)
+          printf '%s\n' "$RELEASE_NOTES" > release-notes.txt
+          bash scripts/publish-release.sh "v$VERSION" "$TARGET_SHA" true release-notes.txt \
+            dist/ha_govee_led_ble.zip \
+            dist/ha_govee_led_ble.zip.sha256 \
+            dist/ha_govee_led_ble.build.json

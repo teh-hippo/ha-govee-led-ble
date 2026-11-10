@@ -11,7 +11,7 @@ license: MIT
 
 Argument: a SKU (`/govee-add H6076`), optionally the support-request issue.  Read `.github/skills/govee-shared.md` first.
 
-Goal: complete Experimental support, merged and released.
+Goal: complete Experimental support, merged and available in a master release candidate.
 
 Task list:
 
@@ -21,8 +21,9 @@ Task list:
 4. Run `govee-audit` on the result.  Fix each finding as a fixup to the support commit, re-review, and repeat until the audit is clean.
 5. Review, commit, `make check`, PR (references the request and the confirmation issue).
 6. When the PR is green, merge it to `master`.
-7. Once the release is published, reply on the request (not the confirmation issue), then close the request:
-   > Support for `<SKU>` has been added into v`<version>` in an experimental state. @`<requester>`, let me know how it goes and pop feedback on #`<confirmation issue>` when you can.
+7. Follow `CONTRIBUTING.md` release policy: wait for the automatic master candidate containing the merge and verify its workflow and assets.  Do not dispatch another master RC or publish stable.
+8. Show the requester reply draft to the operator; after approval, post it on the request (not the confirmation issue), then close the request:
+   > Experimental support for `<SKU>` is available in `<master RC tag>`. @`<requester>`, install it through HACS, restart Home Assistant and report feedback on #`<confirmation issue>`.
 
 ## Confirmation issue
 

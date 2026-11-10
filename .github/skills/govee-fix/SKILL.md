@@ -19,8 +19,8 @@ Task list:
 
 1. Report the divergence: what the evidence shows, what we do, where.
 2. Fix it, with a regression test.
-3. Review, commit, `make check`, PR (`Fixes #<issue>`).
-4. Build a release candidate (`docs/release-candidates.md`).
+3. Review, commit, `make check`, PR (references the issue without an automatic closing keyword).
+4. Follow `CONTRIBUTING.md` release policy.  If reporter testing is needed before merge, obtain approval for an optional PR candidate (`docs/release-candidates.md`).  Otherwise, merge the green PR and use its automatic master candidate.  Verify the published workflow and assets; do not publish stable.
 5. Draft a short reply for the reporter and show it to the operator; post it only once they approve:
-   > Thanks for the report. Could you install `<RC tag>` and let me know whether `<the problem>` is fixed?
+   > This should fix `<the problem>`. Install `<RC tag>` through HACS, restart Home Assistant and confirm whether it works.
 6. Stop.  `govee-resolve` closes the issue once the reporter confirms.

@@ -27,4 +27,6 @@ Read and follow [`CONTRIBUTING.md`](../CONTRIBUTING.md) before planning or imple
 - Run focused existing checks while iterating and `make check` before declaring the final tree complete.
 - Run `make package` only when a distributable archive is requested.
 - For local rebases, keep recovery refs outside `refs/heads/` and use `--no-update-refs` from the first invocation.  Do not remove `update-ref` commands by hand from an active rebase.
-- A release candidate can be built from any branch for hardware testing; see `docs/release-candidates.md`.  Building and publishing one needs the user's approval.
+- Follow `CONTRIBUTING.md` for release policy and `docs/release-candidates.md` for hardware testing.
+  Master candidates publish automatically after validated release-bearing merges; stable publication is the operator's manual decision.
+  Optional PR candidate builds/publication and public notes need approval.
