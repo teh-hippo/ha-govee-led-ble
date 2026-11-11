@@ -32,6 +32,7 @@ from homeassistant.helpers.restore_state import ExtraStoredData, RestoreEntity
 from homeassistant.util import dt as dt_util
 from homeassistant.util.color import brightness_to_value
 
+from . import effect_contracts
 from .const import (
     DOMAIN,
     EFFECT_CATEGORIES,
@@ -41,9 +42,11 @@ from .const import (
     EFFECT_FAMILY_MUSIC,
     EFFECT_FAMILY_SCENES,
     EFFECT_FAMILY_VIDEO,
+    MODEL_PROFILES,
     ModelProfile,
     ReadDomain,
     effect_category_for_content_kind,
+    resolve_model,
     supported_effect_categories,
 )
 from .control_arbiter import ControlIntent, async_control_intent
@@ -51,6 +54,7 @@ from .coordinator import GoveeBLECoordinator
 from .coordinator_base import async_prepare_effect_profile
 from .coordinator_status import ParsedMode
 from .effect_backend import EffectBackend
+from .effect_catalogue import MODEL_EFFECT_CATALOGUES
 from .effect_compiler import (
     CompiledMusicProfile,
     CompiledVideoProfile,
@@ -94,7 +98,7 @@ from .music_semantics import music_variant
 from .native_profile_controls import _send_video_setting, async_prepare_video_mode, async_require_video_controls
 from .native_profile_controls import apply_active_video_mode as apply_active_video_mode
 from .native_scenes import build_native_scene_packets
-from .scenes import MODEL_SCENES
+from .scenes import MODEL_SCENE_ALIASES, MODEL_SCENE_LABELS, MODEL_SCENES
 from .video_applicability import (
     CameraUnavailableError,
     requested_video_controls,
@@ -254,6 +258,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         self._library_snapshot = (
             effect_backend.application.library_snapshot() if effect_backend is not None else LibrarySnapshot(())
         )
+        self._selector_cache: tuple[tuple[tuple[Any, ...], tuple[EffectSelectorEntry, ...]], ...] = ()
 
     @contextmanager
     def _rollback(self) -> Generator[None]:
@@ -569,17 +574,57 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 or stored.model != self.coordinator.model
                 or available(stored.content)
             )
-        return effect_selector_entries(
-            self.coordinator.model,
-            self._effect_categories,
-            (item for item in self._library_snapshot.items if available(item.content)),
-            prefix_effect_names=getattr(self.coordinator, "prefix_effect_names", False) is True,
-            always_include_custom_effects=getattr(self.coordinator, "always_include_custom_effects", False) is True,
+        model = self.coordinator.model
+        canonical_model = resolve_model(model) or model
+        registered_profile = MODEL_PROFILES.get(canonical_model)
+        legacy_model = registered_profile.legacy_scene_catalogue_sku if registered_profile is not None else None
+        categories = self._effect_categories
+        available_items = tuple(item for item in self._library_snapshot.items if available(item.content))
+        prefix_effect_names = getattr(self.coordinator, "prefix_effect_names", False) is True
+        always_include_custom_effects = getattr(self.coordinator, "always_include_custom_effects", False) is True
+        native_categories = self._native_selector_categories
+        profile = self.coordinator.profile
+        key = (
+            model,
+            categories,
+            available_items,
+            prefix_effect_names,
+            always_include_custom_effects,
+            active_custom,
+            native_categories,
+            profile,
+            video_modes,
+            registered_profile,
+            MODEL_EFFECT_CATALOGUES.get(canonical_model),
+            effect_contracts.RELEASE_CAPABILITY_CONTRACT,
+            tuple(MODEL_SCENES.get(canonical_model, {}).items()),
+            tuple(MODEL_SCENE_LABELS.get(canonical_model, {}).items()),
+            tuple(MODEL_SCENE_ALIASES.get(canonical_model, {}).items()),
+            (
+                tuple(MODEL_SCENES.get(legacy_model, {}).items()),
+                tuple(MODEL_SCENE_LABELS.get(legacy_model, {}).items()),
+            )
+            if legacy_model is not None
+            else None,
+        )
+        for index, (cached_key, cached_entries) in enumerate(self._selector_cache):
+            if cached_key == key:
+                if index:
+                    self._selector_cache = ((cached_key, cached_entries), self._selector_cache[0])
+                return cached_entries
+        entries = effect_selector_entries(
+            model,
+            categories,
+            available_items,
+            prefix_effect_names=prefix_effect_names,
+            always_include_custom_effects=always_include_custom_effects,
             active_custom=active_custom,
-            native_categories=self._native_selector_categories,
-            profile=self.coordinator.profile,
+            native_categories=native_categories,
+            profile=profile,
             video_modes=video_modes,
         )
+        self._selector_cache = ((key, entries), *self._selector_cache[:1])
+        return entries
 
     def _matching_active_workspace(self) -> Any | None:
         if not supported_effect_categories(self.coordinator.model, profile=self.coordinator.profile):

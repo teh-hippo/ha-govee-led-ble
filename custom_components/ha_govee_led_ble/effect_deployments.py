@@ -8,7 +8,8 @@ import logging
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from enum import StrEnum
-from typing import Any, Final, cast
+from types import MappingProxyType
+from typing import Any, Final, Self, cast
 from uuid import UUID
 
 from homeassistant.core import HomeAssistant
@@ -204,21 +205,25 @@ class PriorControlState:
             if value is not None and (type(value) is not int or not 0 <= value <= 100):
                 raise EffectStorageError("prior source level must be from 0 to 100 or null")
 
+    def __deepcopy__(self, _memo: object) -> Self:
+        return self
+
     def _validate_video_parameters(self) -> None:
         if self.video_parameters is not None:
             if not isinstance(self.video_parameters, Mapping):
                 raise EffectStorageError("prior video parameters must be a mapping")
+            parameters = dict(self.video_parameters)
             validate_json_document(
-                dict(self.video_parameters),
+                parameters,
                 "prior video parameters",
                 maximum_bytes=MAX_EFFECT_DOCUMENT_BYTES,
                 error_type=EffectStorageError,
             )
             if any(
-                not isinstance(key, str) or type(value) not in (int, bool, str)
-                for key, value in self.video_parameters.items()
+                not isinstance(key, str) or type(value) not in (int, bool, str) for key, value in parameters.items()
             ):
                 raise EffectStorageError("invalid prior video parameter")
+            object.__setattr__(self, "video_parameters", MappingProxyType(parameters))
 
     def _validate_music_body(self) -> None:
         if self.music_body is not None:
@@ -256,18 +261,20 @@ class PriorControlState:
         if self.music_parameters is not None:
             if not isinstance(self.music_parameters, Mapping):
                 raise EffectStorageError("prior music parameters must be a mapping")
+            parameters = dict(self.music_parameters)
             validate_json_document(
-                dict(self.music_parameters),
+                parameters,
                 "prior music parameters",
                 maximum_bytes=MAX_EFFECT_DOCUMENT_BYTES,
                 error_type=EffectStorageError,
             )
-            for key, parameter_value in self.music_parameters.items():
+            for key, parameter_value in parameters.items():
                 validate_bounded_string(
                     key, "prior music parameter", maximum=MAX_IDENTIFIER_LENGTH, error_type=EffectStorageError
                 )
                 if type(parameter_value) not in (int, bool, str):
                     raise EffectStorageError("prior music parameter must be an integer, boolean or string")
+            object.__setattr__(self, "music_parameters", MappingProxyType(parameters))
 
     def _validate_video_restore_controls(self) -> None:
         if self.video_restore_controls is not None and (
@@ -934,6 +941,7 @@ class EffectDeploymentRepository:
         self._store = _deployment_store(hass) if isinstance(hass, HomeAssistant) else hass
         self._lock = asyncio.Lock()
         self._data: dict[str, Any] | None = None
+        self._snapshot: tuple[dict[str, Any], DeploymentSnapshot, dict[UUID, DeploymentRecord]] | None = None
         self._listeners: set[Callable[[DeploymentSnapshot], None]] = set()
 
     async def async_load(self) -> DeploymentSnapshot:
@@ -968,11 +976,11 @@ class EffectDeploymentRepository:
                 await self._store.async_save(data)
             elif stored is not None and data != stored:
                 await self._store.async_save(data)
-            self._data = copy.deepcopy(data)
+            self._install_data(copy.deepcopy(data), snapshot)
             return snapshot
 
     def snapshot(self) -> DeploymentSnapshot:
-        return _validate_deployments(self._require_loaded())
+        return self._cached()[0]
 
     def subscribe(
         self,
@@ -982,11 +990,10 @@ class EffectDeploymentRepository:
         return lambda: self._listeners.discard(listener)
 
     def get(self, operation_id: UUID) -> DeploymentRecord:
-        records = cast(dict[str, Any], self._require_loaded()["records"])
-        raw = records.get(str(operation_id))
-        if not isinstance(raw, Mapping):
+        record = self._cached()[1].get(operation_id)
+        if record is None:
             raise EffectNotFoundError(f"deployment {operation_id} does not exist")
-        return DeploymentRecord.from_dict(cast(Mapping[str, Any], raw))
+        return record
 
     def get_optional(self, operation_id: UUID) -> DeploymentRecord | None:
         try:
@@ -997,25 +1004,24 @@ class EffectDeploymentRepository:
     async def async_detach_item(self, item_id: UUID) -> DeploymentDetachment:
         async with self._lock:
             current = self._require_loaded()
+            current_snapshot = self._cached()[0]
+            matching = tuple(record for record in current_snapshot.records if record.item_id == item_id)
+            if not matching:
+                return DeploymentDetachment(current_snapshot, ())
             candidate = copy.deepcopy(current)
             operation_ids: list[UUID] = []
-            for key, raw in candidate["records"].items():
-                record = DeploymentRecord.from_dict(_as_mapping(raw, f"deployment {key}"))
-                if record.item_id != item_id:
-                    continue
-                candidate["records"][key] = replace(
+            for record in matching:
+                candidate["records"][str(record.operation_id)] = replace(
                     record,
                     source_kind="deleted_effect",
                     item_id=None,
                     item_version=None,
                 ).to_dict()
                 operation_ids.append(record.operation_id)
-            if not operation_ids:
-                return DeploymentDetachment(_validate_deployments(current), ())
             candidate["version"] += 1
             snapshot = _validate_deployments(candidate)
             await self._store.async_save(candidate)
-            self._data = candidate
+            self._install_data(candidate, snapshot)
             for listener in tuple(self._listeners):
                 try:
                     listener(snapshot)
@@ -1026,20 +1032,21 @@ class EffectDeploymentRepository:
     async def async_delete_device(self, config_entry_id: str) -> DeploymentSnapshot:
         async with self._lock:
             current = self._require_loaded()
-            candidate = copy.deepcopy(current)
+            current_snapshot = self._cached()[0]
             removed = [
-                key
-                for key, raw in candidate["records"].items()
-                if DeploymentRecord.from_dict(_as_mapping(raw, f"deployment {key}")).config_entry_id == config_entry_id
+                str(record.operation_id)
+                for record in current_snapshot.records
+                if record.config_entry_id == config_entry_id
             ]
             if not removed:
-                return _validate_deployments(current)
+                return current_snapshot
+            candidate = copy.deepcopy(current)
             for key in removed:
                 candidate["records"].pop(key)
             candidate["version"] += 1
             snapshot = _validate_deployments(candidate)
             await self._store.async_save(candidate)
-            self._data = candidate
+            self._install_data(candidate, snapshot)
             for listener in tuple(self._listeners):
                 try:
                     listener(snapshot)
@@ -1076,7 +1083,7 @@ class EffectDeploymentRepository:
             candidate["version"] += 1
             snapshot = _validate_deployments(candidate)
             await self._store.async_save(candidate)
-            self._data = candidate
+            self._install_data(candidate, snapshot)
             for listener in tuple(self._listeners):
                 try:
                     listener(snapshot)
@@ -1105,9 +1112,9 @@ class EffectDeploymentRepository:
             snapshot = _validate_deployments(candidate)
             if durable:
                 await self._store.async_save(candidate)
-                self._data = candidate
+                self._install_data(candidate, snapshot)
             else:
-                self._data = candidate
+                self._install_data(candidate, snapshot)
                 self._store.async_delay_save(
                     lambda: copy.deepcopy(self._require_loaded()),
                     delay=5,
@@ -1122,23 +1129,37 @@ class EffectDeploymentRepository:
     async def async_reconcile_library_hashes(self, items: tuple[LibraryItem, ...]) -> None:
         hashes = {(item.id, item.version): item.content_hash for item in items}
         async with self._lock:
-            candidate = copy.deepcopy(self._require_loaded())
-            changed = False
-            for key, raw in candidate["records"].items():
-                record = DeploymentRecord.from_dict(_as_mapping(raw, f"deployment {key}"))
-                if record.source_kind != "saved_effect" or record.item_id is None or record.item_version is None:
-                    continue
-                content_hash = hashes.get((record.item_id, record.item_version))
-                if content_hash is None or content_hash == record.source_content_hash:
-                    continue
-                candidate["records"][key] = replace(record, source_content_hash=content_hash).to_dict()
-                changed = True
-            if not changed:
+            current = self._require_loaded()
+            current_snapshot = self._cached()[0]
+            updates = [
+                (str(record.operation_id), replace(record, source_content_hash=content_hash).to_dict())
+                for record in current_snapshot.records
+                if record.source_kind == "saved_effect"
+                and record.item_id is not None
+                and record.item_version is not None
+                and (content_hash := hashes.get((record.item_id, record.item_version))) is not None
+                and content_hash != record.source_content_hash
+            ]
+            if not updates:
                 return
+            candidate = copy.deepcopy(current)
+            for key, updated_raw in updates:
+                candidate["records"][key] = updated_raw
             candidate["version"] += 1
-            _validate_deployments(candidate)
+            snapshot = _validate_deployments(candidate)
             await self._store.async_save(candidate)
-            self._data = candidate
+            self._install_data(candidate, snapshot)
+
+    def _install_data(self, data: dict[str, Any], snapshot: DeploymentSnapshot) -> None:
+        self._data = data
+        self._snapshot = (data, snapshot, {record.operation_id: record for record in snapshot.records})
+
+    def _cached(self) -> tuple[DeploymentSnapshot, dict[UUID, DeploymentRecord]]:
+        data = self._require_loaded()
+        if self._snapshot is None or self._snapshot[0] is not data:
+            snapshot = _validate_deployments(data)
+            self._snapshot = (data, snapshot, {record.operation_id: record for record in snapshot.records})
+        return self._snapshot[1], self._snapshot[2]
 
     def _require_loaded(self) -> dict[str, Any]:
         if self._data is None:

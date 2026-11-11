@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import copy
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from enum import StrEnum
 from hashlib import sha256
-from typing import Any, cast
+from types import MappingProxyType
+from typing import Any, Self, cast
 from uuid import UUID, uuid4
 
 from .const import MODEL_PROFILES
@@ -218,12 +220,14 @@ class MusicProfile:
             raise EffectValidationError("calm must be a boolean or null")
         if not isinstance(self.parameters, Mapping):
             raise EffectValidationError("parameters must be a mapping")
+        parameters = copy.deepcopy(dict(self.parameters))
         validate_json_document(
-            dict(self.parameters),
+            parameters,
             "parameters",
             maximum_bytes=MAX_EFFECT_DOCUMENT_BYTES,
             error_type=EffectValidationError,
         )
+        object.__setattr__(self, "parameters", MappingProxyType(parameters))
         if self.zones is not None:
             zone_geometry = (
                 (("side", 8, 0), ("ripple", 1, 0))
@@ -257,6 +261,13 @@ class MusicProfile:
                     maximum_bytes=MAX_EFFECT_DOCUMENT_BYTES,
                     error_type=EffectValidationError,
                 )
+
+    def __deepcopy__(self, memo: dict[int, Any]) -> Self:
+        return replace(
+            self,
+            parameters=copy.deepcopy(dict(self.parameters), memo),
+            zones=None if self.zones is None else copy.deepcopy(self.zones, memo),
+        )
 
 
 def _validate_supported_model(value: str, feature: str) -> None:
