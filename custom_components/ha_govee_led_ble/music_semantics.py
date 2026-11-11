@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import copy
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from importlib import import_module
 from math import ceil
-from typing import TYPE_CHECKING, Any, Literal
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Any, Literal, Self
 
 if TYPE_CHECKING:
     from .const import ModelProfile
@@ -20,6 +22,13 @@ class MusicZone:
     palette: tuple[tuple[int, int, int], ...] | None = None
     body: bytes | None = None
     calm: bool | None = None
+
+    def __post_init__(self) -> None:
+        if isinstance(self.parameters, Mapping):
+            object.__setattr__(self, "parameters", MappingProxyType(copy.deepcopy(dict(self.parameters))))
+
+    def __deepcopy__(self, memo: dict[int, Any]) -> Self:
+        return replace(self, parameters=copy.deepcopy(dict(self.parameters), memo))
 
 
 @dataclass(frozen=True)

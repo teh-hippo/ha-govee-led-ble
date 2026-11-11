@@ -10,7 +10,7 @@ from typing import Any, Final, cast
 from homeassistant.core import HomeAssistant
 
 from .const import DOMAIN, MODEL_PROFILES
-from .effect_catalogue import validate_catalogue_template_identity
+from .effect_catalogue import MODEL_EFFECT_CATALOGUES, validate_catalogue_template_identity
 from .effect_domain import (
     EffectContent,
     EffectValidationError,
@@ -108,11 +108,31 @@ class CatalogueTemplateDefaultRepository(DeviceDefaultsRepository[CatalogueTempl
             _validate_store,
             "template-default",
         )
+        self._entry_cache: (
+            tuple[
+                dict[str, Any],
+                dict[tuple[str, str], tuple[Mapping[str, Any], object, CatalogueTemplateDefault]],
+            ]
+            | None
+        ) = None
 
     def get(self, config_entry_id: str, template_id: str) -> CatalogueTemplateDefault | None:
-        records = cast(dict[str, Any], self._require_loaded()["devices"].get(config_entry_id, {}))
+        data = self._require_loaded()
+        records = cast(dict[str, Any], data["devices"].get(config_entry_id, {}))
         raw = records.get(template_id)
-        return None if not isinstance(raw, Mapping) else CatalogueTemplateDefault.from_dict(raw)
+        if not isinstance(raw, Mapping):
+            return None
+        model = raw.get("model")
+        context = (MODEL_PROFILES.get(model), MODEL_EFFECT_CATALOGUES.get(model)) if isinstance(model, str) else None
+        if self._entry_cache is None or self._entry_cache[0] is not data:
+            self._entry_cache = (data, {})
+        key = (config_entry_id, template_id)
+        cached = self._entry_cache[1].get(key)
+        if cached is not None and cached[0] is raw and cached[1] == context:
+            return cached[2]
+        parsed = CatalogueTemplateDefault.from_dict(raw)
+        self._entry_cache[1][key] = (raw, context, parsed)
+        return parsed
 
     async def async_set(self, value: CatalogueTemplateDefault) -> None:
         async with self._lock:

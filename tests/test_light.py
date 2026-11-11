@@ -45,6 +45,7 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     LibraryItem,
     MusicProfile,
     Origin,
+    PaletteDiyEffect,
     RelativeBrightness,
     SingleEffect,
     SourceKind,
@@ -2257,6 +2258,147 @@ async def test_set_segment_brightness_sends_packet(light, mock_coordinator):
     await light.async_set_segment_brightness(segments=iter([2, 4]), brightness=60)
     mock_coordinator.async_set_segment_brightness.assert_awaited_once_with([2, 4], 60)
     light.async_write_ha_state.assert_called_once_with()
+
+
+async def test_selector_cache_reuses_entries_and_invalidates_across_all_inputs(
+    hass, mock_h6199_coordinator, monkeypatch
+):
+    from tests.test_h6199_capabilities import set_qualified_identity
+
+    set_qualified_identity(mock_h6199_coordinator)
+    backend = await EffectBackend.async_create(hass)
+    await backend.template_defaults.async_set(
+        CatalogueTemplateDefault(
+            config_entry_id="entry-a",
+            model="H6199",
+            template_id="template:video:movie",
+            updated_at="2026-08-27T00:00:00Z",
+            content=VideoProfile("H6199", "movie", True, 70, False, 50, 10, None, None),
+        )
+    )
+    entity = GoveeBLELight(mock_h6199_coordinator, config_entry_id="entry-a", effect_backend=backend)
+    entity.hass = hass
+    entity.async_write_ha_state = MagicMock()
+    mock_h6199_coordinator.is_on = True
+    mock_h6199_coordinator.effect = None
+    mock_h6199_coordinator.scene_code = None
+    mock_h6199_coordinator.effect_categories = frozenset({"video", "effects"})
+    mock_h6199_coordinator.color_mode = ParsedMode.VIDEO
+    mock_h6199_coordinator.video_mode = "movie"
+
+    with (
+        patch(
+            "custom_components.ha_govee_led_ble.light.effect_selector_entries",
+            wraps=effect_selector_entries,
+        ) as build_selector,
+        patch.object(
+            CatalogueTemplateDefault,
+            "from_dict",
+            wraps=CatalogueTemplateDefault.from_dict,
+        ) as parse_template,
+    ):
+        for _ in range(4):
+            _ = entity.supported_features
+            _ = entity.capability_attributes
+            _ = entity.state_attributes
+            assert entity.effect == "Movie"
+        assert build_selector.call_count == 1
+        assert parse_template.call_count == 1
+
+        workspace = ActiveEffectWorkspace(
+            config_entry_id="entry-a",
+            model="H6199",
+            selector_label="Unsaved",
+            content=VideoProfile("H6199", "movie", True, 80, False, 50, None, None, None),
+            origin=Origin(),
+            observable_signature="video:movie",
+            updated_at="2026-08-27T00:01:00Z",
+            generation=1,
+        )
+        backend.active_workspaces.set(workspace)
+        assert entity.effect_list[:2] == ["off", "Custom"]
+        assert build_selector.call_count == 2
+        for _ in range(3):
+            assert entity._selector_entries(active_custom=False)
+            assert entity._selector_entries(active_custom=True)
+        assert build_selector.call_count == 2
+        backend.active_workspaces.clear("entry-a")
+
+        family = MODEL_EFFECT_CATALOGUES["H6199"].effects[0]
+        saved = LibraryItem.new(
+            "Custom Pulse",
+            PaletteDiyEffect("H6199", family.family, family.variations[0].variant, 50, ((255, 0, 0), (0, 255, 0))),
+        )
+        snapshot = await backend.library.async_create(saved)
+        entity._library_updated(snapshot)
+        assert "Custom Pulse" in entity.effect_list
+        assert build_selector.call_count == 3
+
+        mock_h6199_coordinator.prefix_effect_names = True
+        assert any(label.startswith("Video: ") for label in entity.effect_list)
+        assert build_selector.call_count == 4
+
+        mock_h6199_coordinator.effect_categories = frozenset({"video"})
+        mock_h6199_coordinator.always_include_custom_effects = False
+        assert "Custom Pulse" not in entity.effect_list
+        mock_h6199_coordinator.always_include_custom_effects = True
+        assert "Effect: Custom Pulse" in entity.effect_list
+        assert build_selector.call_count == 6
+
+        mock_h6199_coordinator.fw_version = "1.07.02"
+        assert "Video: Movie" not in entity.effect_list
+        assert "Video: Game" in entity.effect_list
+        assert build_selector.call_count == 7
+
+        set_qualified_identity(mock_h6199_coordinator)
+        assert "Video: Movie" in entity.effect_list
+        mock_h6199_coordinator.camera_status = "absent"
+        assert "Video: Game" not in entity.effect_list
+        mock_h6199_coordinator.camera_status = "normal"
+        assert "Video: Movie" in entity.effect_list
+        assert build_selector.call_count == 8
+
+        mock_h6199_coordinator.effect_families = frozenset({"scenes"})
+        assert "Video: Movie" not in entity.effect_list
+        mock_h6199_coordinator.effect_families = frozenset({"video", "scenes"})
+        assert "Video: Movie" in entity.effect_list
+        assert build_selector.call_count >= 9
+
+        before_scene = build_selector.call_count
+        mock_h6199_coordinator.effect_categories = frozenset({"video", "scenes", "effects"})
+        assert entity.effect_list
+        after_categories = build_selector.call_count
+        assert after_categories == before_scene + 1
+        synthetic_scene = next(iter(MODEL_SCENES["H6199"].values()))
+        monkeypatch.setitem(MODEL_SCENES["H6199"], "synthetic_test_scene", synthetic_scene)
+        monkeypatch.setitem(MODEL_SCENE_LABELS["H6199"], "synthetic_test_scene", "Synthetic Test Scene")
+        assert "Scene: Synthetic Test Scene" in entity.effect_list
+        assert build_selector.call_count == after_categories + 1
+
+        mock_h6199_coordinator.profile = replace(mock_h6199_coordinator.profile, video_modes=("movie",))
+        assert "Video: Game" not in entity.effect_list
+        assert build_selector.call_count == after_categories + 2
+
+        catalogue = MODEL_EFFECT_CATALOGUES["H6199"]
+        monkeypatch.setitem(MODEL_EFFECT_CATALOGUES, "H6199", replace(catalogue, palette_min=3))
+        assert "Effect: Custom Pulse" not in entity.effect_list
+        monkeypatch.setitem(MODEL_EFFECT_CATALOGUES, "H6199", catalogue)
+        assert "Effect: Custom Pulse" in entity.effect_list
+
+        from custom_components.ha_govee_led_ble import effect_contracts
+        from custom_components.ha_govee_led_ble.effect_contracts import ApplicationRoute, CapabilityWorkflow
+
+        monkeypatch.setattr(
+            effect_contracts,
+            "RELEASE_CAPABILITY_CONTRACT",
+            tuple(
+                replace(cap, application_route=ApplicationRoute.NONE)
+                if cap.model == "H6199" and cap.workflow is CapabilityWorkflow.PALETTE_DIY
+                else cap
+                for cap in effect_contracts.RELEASE_CAPABILITY_CONTRACT
+            ),
+        )
+        assert "Effect: Custom Pulse" not in entity.effect_list
 
 
 async def test_segment_services_reject_unsupported(mock_coordinator):

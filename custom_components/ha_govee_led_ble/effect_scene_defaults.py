@@ -101,11 +101,25 @@ class NativeSceneDefaultRepository(DeviceDefaultsRepository[NativeSceneDefault])
             _validate_store,
             "scene-default",
         )
+        self._entry_cache: (
+            tuple[dict[str, Any], dict[tuple[str, int, int], tuple[Mapping[str, Any], NativeSceneDefault]]] | None
+        ) = None
 
     def get(self, config_entry_id: str, scene_id: int, effect_id: int) -> NativeSceneDefault | None:
-        records = cast(dict[str, Any], self._require_loaded()["devices"].get(config_entry_id, {}))
+        data = self._require_loaded()
+        records = cast(dict[str, Any], data["devices"].get(config_entry_id, {}))
         raw = records.get(_scene_key(scene_id, effect_id))
-        return None if not isinstance(raw, Mapping) else NativeSceneDefault.from_dict(raw)
+        if not isinstance(raw, Mapping):
+            return None
+        if self._entry_cache is None or self._entry_cache[0] is not data:
+            self._entry_cache = (data, {})
+        key = (config_entry_id, scene_id, effect_id)
+        cached = self._entry_cache[1].get(key)
+        if cached is not None and cached[0] is raw:
+            return cached[1]
+        parsed = NativeSceneDefault.from_dict(raw)
+        self._entry_cache[1][key] = (raw, parsed)
+        return parsed
 
     async def async_set(self, value: NativeSceneDefault) -> None:
         await self.async_replace_identities(

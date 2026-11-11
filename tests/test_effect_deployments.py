@@ -929,3 +929,161 @@ async def test_deployment_history_discards_oldest_terminal_record(
     assert len(updated.records) == MAX_DEPLOYMENT_RECORDS
     assert all(str(record.operation_id) != oldest_id for record in updated.records)
     assert repository.get(next_record.operation_id) == next_record
+
+
+async def test_deployment_snapshot_and_lookup_cache_follow_document_mutations() -> None:
+    import copy
+    from unittest.mock import patch
+
+    from custom_components.ha_govee_led_ble.effect_deployments import _validate_deployments
+
+    item = _item()
+    prior_state = PriorControlState(
+        mode="video",
+        is_on=True,
+        brightness_pct=65,
+        rgb_color=(10, 20, 30),
+        music_model="H617A",
+        music_mode="rhythm",
+        music_parameters={"sensitivity": 50},
+        video_mode="movie",
+        video_parameters={"picture_preset": "vivid"},
+    )
+    initial = replace(
+        _deployment(DeploymentPhase.CONFIRMED),
+        item_id=item.id,
+        item_version=item.version,
+        prior_state=prior_state,
+    )
+    store = InMemoryVersionedDocumentStore({"version": 1, "records": {str(initial.operation_id): initial.to_dict()}})
+    repository = EffectDeploymentRepository(store)
+    loaded = await repository.async_load()
+    assert copy.deepcopy(loaded) == loaded
+    cached_prior = repository.get(initial.operation_id).prior_state
+    assert cached_prior is not None and cached_prior.video_parameters is not None
+    with pytest.raises(TypeError):
+        cached_prior.video_parameters["picture_preset"] = "other"  # type: ignore[index]
+
+    with patch(
+        "custom_components.ha_govee_led_ble.effect_deployments._validate_deployments",
+        wraps=_validate_deployments,
+    ) as validate:
+        assert repository.snapshot() is loaded
+        assert repository.get(initial.operation_id) == initial
+        assert (await repository.async_detach_item(uuid4())).operation_ids == ()
+        assert await repository.async_delete_device("other-entry") is loaded
+        await repository.async_reconcile_library_hashes((item,))
+        assert validate.call_count == 0
+
+        second = replace(_deployment(DeploymentPhase.APPLIED), config_entry_id="entry-b")
+        with patch.object(store, "async_save", side_effect=OSError("save failed")), pytest.raises(OSError):
+            await repository.async_put(second, expected_version=loaded.version, durable=True)
+        assert repository.snapshot() is loaded
+        assert repository.get_optional(second.operation_id) is None
+
+        after_put = await repository.async_put(second, expected_version=loaded.version, durable=False)
+        assert validate.call_count == 2
+        assert repository.snapshot() is after_put
+        assert repository.get(second.operation_id) == second
+        assert validate.call_count == 2
+
+        detachment = await repository.async_detach_item(item.id)
+        assert detachment.operation_ids == (initial.operation_id,)
+        assert repository.get(initial.operation_id).source_kind == "deleted_effect"
+        assert validate.call_count == 3
+
+        reattached = await repository.async_reattach_item(detachment, item_id=item.id, item_version=item.version)
+        assert repository.snapshot() is reattached
+        assert repository.get(initial.operation_id).source_kind == "saved_effect"
+        assert validate.call_count == 4
+
+        updated_item = replace(item, content=SingleEffect(0, 0, 75, ((0, 255, 0),)), content_hash="")
+        stale = replace(repository.get(initial.operation_id), source_content_hash="0" * 64)
+        await repository.async_put(stale, expected_version=reattached.version)
+        await repository.async_reconcile_library_hashes((updated_item,))
+        assert repository.get(initial.operation_id).source_content_hash == updated_item.content_hash
+        assert validate.call_count == 6
+
+        after_delete = await repository.async_delete_device("entry-a")
+        assert repository.snapshot() is after_delete
+        assert repository.get_optional(initial.operation_id) is None
+        assert repository.get(second.operation_id) == second
+        assert validate.call_count == 7
+
+
+async def test_device_default_repositories_cache_lookups_across_mutations(monkeypatch) -> None:
+    import copy
+    from unittest.mock import patch
+
+    from custom_components.ha_govee_led_ble.const import MODEL_PROFILES
+    from custom_components.ha_govee_led_ble.effect_domain import MusicProfile
+    from custom_components.ha_govee_led_ble.effect_scene_defaults import (
+        NativeSceneDefault,
+        NativeSceneDefaultRepository,
+    )
+    from custom_components.ha_govee_led_ble.effect_template_defaults import (
+        CatalogueTemplateDefault,
+        CatalogueTemplateDefaultRepository,
+    )
+
+    templates = CatalogueTemplateDefaultRepository(InMemoryVersionedDocumentStore())
+    scenes = NativeSceneDefaultRepository(InMemoryVersionedDocumentStore())
+    await templates.async_load()
+    await scenes.async_load()
+
+    template_value = CatalogueTemplateDefault(
+        config_entry_id="entry-a",
+        model="H617A",
+        template_id="template:music:rhythm",
+        updated_at="2026-08-11T00:00:00Z",
+        content=MusicProfile("H617A", "rhythm", 60),
+    )
+    other_template = replace(template_value, config_entry_id="entry-b")
+    scene_value = NativeSceneDefault(
+        config_entry_id="entry-a",
+        scene_id=1,
+        effect_id=2,
+        updated_at="2026-08-11T00:00:00Z",
+        canonical_body=b"\x01\x02",
+    )
+    await templates.async_set(template_value)
+    await templates.async_set(other_template)
+    await scenes.async_set(scene_value)
+    assert templates.get("entry-a", "template:music:rhythm") == template_value
+    assert scenes.get("entry-a", 1, 2) == scene_value
+    assert copy.deepcopy(template_value) == template_value
+    cached_music = templates.get("entry-a", "template:music:rhythm")
+    assert cached_music is not None and isinstance(cached_music.content, MusicProfile)
+    with pytest.raises(TypeError):
+        cached_music.content.parameters["bad"] = 1  # type: ignore[index]
+
+    with (
+        patch.object(CatalogueTemplateDefault, "from_dict", wraps=CatalogueTemplateDefault.from_dict) as parse_template,
+        patch.object(NativeSceneDefault, "from_dict", wraps=NativeSceneDefault.from_dict) as parse_scene,
+    ):
+        for _ in range(5):
+            assert templates.get("entry-a", "template:music:rhythm") == template_value
+            assert templates.get("entry-a", "template:music:missing") is None
+            assert scenes.get("entry-a", 1, 2) == scene_value
+            assert scenes.get("entry-a", 1, 3) is None
+        assert parse_template.call_count == 0
+        assert parse_scene.call_count == 0
+
+    with patch.object(templates._store, "async_save", side_effect=OSError("disk full")), pytest.raises(OSError):
+        await templates.async_delete("entry-a", "template:music:rhythm")
+    assert templates.get("entry-a", "template:music:rhythm") == template_value
+
+    replacement = replace(scene_value, scene_id=3, effect_id=4)
+    await scenes.async_replace_identities("entry-a", ((1, 2),), replacement)
+    assert scenes.get("entry-a", 1, 2) is None
+    assert scenes.get("entry-a", 3, 4) == replacement
+    await scenes.async_delete("entry-a", 3, 4)
+    assert scenes.get("entry-a", 3, 4) is None
+
+    monkeypatch.setitem(MODEL_PROFILES, "H617A", replace(MODEL_PROFILES["H617A"], music_sensitivity_min=80))
+    with pytest.raises(EffectStorageError):
+        templates.get("entry-a", "template:music:rhythm")
+    await templates.async_delete("entry-b", "template:music:rhythm")
+    assert templates.get("entry-b", "template:music:rhythm") is None
+    await templates.async_delete_device("entry-a")
+    assert templates.get("entry-a", "template:music:rhythm") is None
