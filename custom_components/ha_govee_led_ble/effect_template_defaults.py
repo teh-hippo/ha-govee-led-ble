@@ -148,7 +148,7 @@ class CatalogueTemplateDefaultRepository(DeviceDefaultsRepository[CatalogueTempl
             records[value.template_id] = value.to_dict()
             _validate_store(candidate)
             await self._store.async_save(candidate)
-            self._data = candidate
+            self._replace_data(candidate)
 
     async def async_delete(self, config_entry_id: str, template_id: str) -> None:
         async with self._lock:
@@ -159,7 +159,7 @@ class CatalogueTemplateDefaultRepository(DeviceDefaultsRepository[CatalogueTempl
             if not records:
                 candidate["devices"].pop(config_entry_id)
             await self._store.async_save(candidate)
-            self._data = candidate
+            self._replace_data(candidate)
 
 
 def _template_default_store(hass: HomeAssistant) -> VersionedDocumentStore:

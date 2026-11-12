@@ -40,14 +40,23 @@ class DeviceDefaultsRepository[T]:
         self._validate = validate
         self._name = name
         self._data: EffectDocument | None = None
+        self._generation = 0
         self._lock = asyncio.Lock()
+
+    @property
+    def generation(self) -> int:
+        return self._generation
+
+    def _replace_data(self, data: EffectDocument) -> None:
+        self._data = data
+        self._generation += 1
 
     async def async_load(self) -> tuple[T, ...]:
         async with self._lock:
             stored = await self._store.async_load()
             data = {"devices": {}} if stored is None else stored
             values = self._validate(data)
-            self._data = copy.deepcopy(data)
+            self._replace_data(copy.deepcopy(data))
             return values
 
     async def async_delete_device(self, config_entry_id: str) -> None:
@@ -56,7 +65,7 @@ class DeviceDefaultsRepository[T]:
             if candidate["devices"].pop(config_entry_id, None) is None:
                 return
             await self._store.async_save(candidate)
-            self._data = candidate
+            self._replace_data(candidate)
 
     def _require_loaded(self) -> EffectDocument:
         if self._data is None:

@@ -168,7 +168,7 @@ class NativeSceneDefaultRepository(DeviceDefaultsRepository[NativeSceneDefault])
                 return
             _validate_store(candidate)
             await self._store.async_save(candidate)
-            self._data = candidate
+            self._replace_data(candidate)
 
 
 def _scene_default_store(hass: HomeAssistant) -> VersionedDocumentStore:
