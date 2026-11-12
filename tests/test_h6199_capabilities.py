@@ -9,6 +9,7 @@ import pytest
 
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ReadDomain
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
 from custom_components.ha_govee_led_ble.effect_catalogue import MODEL_EFFECT_CATALOGUES
 from custom_components.ha_govee_led_ble.effect_contracts import CapabilityState
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
@@ -471,7 +472,5 @@ async def test_optional_setup_readback_remains_required_when_requested(lifecycle
     assert c._state_read_available
 
     assert not await c.refresh_state(
-        refresh_all=True,
-        required_domains=frozenset({ReadDomain(domain)}),
-        query_segments=False,
+        RefreshRequest(refresh_all=True, required_domains=frozenset({ReadDomain(domain)}), query_segments=False),
     )

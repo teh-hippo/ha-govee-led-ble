@@ -10,6 +10,7 @@ from homeassistant.exceptions import ServiceValidationError
 
 from custom_components.ha_govee_led_ble.const import ReadDomain, device_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.effect_deployments import PriorControlState
 from custom_components.ha_govee_led_ble.effect_runtime import async_prepare_effect_control_state
@@ -415,7 +416,7 @@ async def test_coordinator_real_pages_panel_brightness_and_no_false_verification
     for packet in (frame("aa0401"), frame("aa051501"), build_brightness(50, model)):
         c._notify_callback(None, bytearray(packet))
     assert c.capture_effect_control_state() == before
-    assert not await c.refresh_state(expected_brightness=50, timeout=0.01)
+    assert not await c.refresh_state(RefreshRequest(brightness=50, timeout=0.01))
     calls = client.write_gatt_char.await_count
     for packet in (
         build_segment_brightness(c.profile.whole_device_mask, 20, model),

@@ -22,6 +22,7 @@ from custom_components.ha_govee_led_ble.const import (
     device_profile,
 )
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.effect_active_workspace import (
     ActiveEffectWorkspace,
@@ -431,8 +432,8 @@ async def test_mixed_confirmation_keeps_readable_expectation_strict(light, mock_
         with pytest.raises(RuntimeError, match="Failed to confirm state"):
             await light._refresh_with_retry(**kwargs)
 
-    expected = {"expected_on": False} if domain is ReadDomain.POWER else {"expected_brightness": 50}
-    assert [call.kwargs for call in mock_coordinator.refresh_state.await_args_list] == [expected] * len(replies)
+    expected = RefreshRequest(on=False) if domain is ReadDomain.POWER else RefreshRequest(brightness=50)
+    assert [call.args[0] for call in mock_coordinator.refresh_state.await_args_list] == [expected] * len(replies)
     assert retry.await_count == len(replies) - 1
 
 
@@ -444,17 +445,17 @@ async def test_readable_control_confirmation_failure_retries_and_rolls_back(ligh
 
     with pytest.raises(HomeAssistantError) as exc:
         if operation == "brightness":
-            expected = {"expected_brightness": 50}
+            expected = RefreshRequest(brightness=50)
             await light.async_turn_on(brightness=128)
         else:
             on = operation == "power_on"
-            expected = {"expected_on": on}
+            expected = RefreshRequest(on=on)
             await (light.async_turn_on() if on else light.async_turn_off())
 
     assert exc.value.translation_key == "device_command_failed"
     assert (mock_coordinator.is_on, mock_coordinator.brightness_pct) == before
     assert mock_coordinator.send_command.await_count == 2
-    assert [call.kwargs for call in mock_coordinator.refresh_state.await_args_list] == [expected, expected]
+    assert [call.args[0] for call in mock_coordinator.refresh_state.await_args_list] == [expected, expected]
     light.async_write_ha_state.assert_not_called()
 
 
@@ -498,7 +499,7 @@ async def test_turn_on_variants(light, mock_coordinator):
     await light.async_turn_on(brightness=128)
     assert co.send_command.call_count == 1
     assert co.send_command.call_args_list[0].args[0] == build_brightness(50)
-    assert co.refresh_state.await_args.kwargs["expected_brightness"] == 50
+    assert co.refresh_state.await_args.args[0].brightness == 50
     c = await _on(rgb_color=(255, 0, 128))
     assert len(c) == 2 and c[1].args[0] == build_color_rgb(255, 0, 128) and co.rgb_color == (255, 0, 128)
     c = await _on(color_temp_kelvin=4000)
@@ -615,8 +616,8 @@ async def test_failed_colour_after_brightness_preserves_latest_observation(
     await entity._async_restore_static_color()
     rgb = table_kelvin_rgb(4200) if observed_kelvin else (10, 20, 30)
 
-    async def refresh(**kwargs):
-        assert kwargs["expected_brightness"] == 39
+    async def refresh(request):
+        assert request.brightness == 39
         if mode_reply:
             coord._notify_callback(None, static_reply)
         for group in range(1, 6):
@@ -1755,11 +1756,11 @@ async def test_turn_on_video_effect_is_first_class(h6199_light, mock_h6199_coord
         packet,
     ]
     for call in co.refresh_state.await_args_list:
-        assert call.kwargs["expected_video_mode"] == mode
-        assert call.kwargs["expected_video_full_screen"] is False
-        assert call.kwargs["expected_video_saturation"] == 63
-        assert call.kwargs["expected_video_sound_effects"] is True
-        assert call.kwargs["expected_video_sound_effects_softness"] == 27
+        assert call.args[0].video_mode == mode
+        assert call.args[0].video_full_screen is False
+        assert call.args[0].video_saturation == 63
+        assert call.args[0].video_sound_effects is True
+        assert call.args[0].video_sound_effects_softness == 27
     assert co.video_mode == mode and co.effect is None
 
 
@@ -1839,8 +1840,8 @@ async def saved_video_light(hass, monkeypatch, request):
     monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
     monkeypatch.setattr(coordinator, "_renew_foreground_lease", lambda: None)
 
-    async def refresh(**kwargs):
-        if kwargs.get("refresh_all"):
+    async def refresh(request):
+        if request.refresh_all:
             for field in ("is_on", "brightness_pct", "color_mode"):
                 coordinator._field_revisions[field] = coordinator._field_revisions.get(field, 0) + 1
         return True

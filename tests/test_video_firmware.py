@@ -10,6 +10,7 @@ from homeassistant.core import HomeAssistant
 
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ReadDomain, VideoFirmwareCondition
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator_refresh import DEFAULT_REFRESH_REQUEST, RefreshRequest
 from custom_components.ha_govee_led_ble.effect_compiler import compile_video_profile
 from custom_components.ha_govee_led_ble.effect_contracts import CapabilityState
 from custom_components.ha_govee_led_ble.effect_deployments import (
@@ -478,7 +479,11 @@ async def test_display_refresh_cannot_reuse_stale_sibling_fields(
 
     monkeypatch.setattr(coordinator, "_send_state_queries", only_white)
     assert not await coordinator.refresh_state(
-        refresh_display_settings=True, timeout=0.001, required_domains=frozenset()
+        RefreshRequest(
+            display_settings=frozenset({"white_balance", "blank_screen"}),
+            timeout=0.001,
+            required_domains=frozenset(),
+        )
     )
 
 
@@ -527,7 +532,7 @@ async def test_mode_applicability_rechecked_before_each_write(hass, monkeypatch,
             coordinator.subordinate_21_version = "9.08.06"
         return client
 
-    async def verify(**kwargs):
+    async def verify(request=DEFAULT_REFRESH_REQUEST):
         coordinator.subordinate_21_version = "9.08.06"
         return False
 
@@ -794,7 +799,7 @@ async def test_rejected_register_does_not_arm_expectations(hass, monkeypatch, se
     before = coordinator.capture_effect_control_state()
     requested = {"white_balance": (25, 6), "relative_brightness": (70, 70, 70, 70), "blank_screen": False}[setting]
 
-    async def fresh_policy(**kwargs):
+    async def fresh_policy(_request):
         coordinator._notify_callback(None, reply(build_blank_screen(True, "H6199", 2, 10, 120)))
         return True
 
@@ -1084,11 +1089,11 @@ async def test_blank_screen_never_replays_superseded_policy(hass, monkeypatch, e
             observe_policy()
         return client
 
-    async def verify(**kwargs):
-        if kwargs == {"refresh_display_settings": frozenset({"blank_screen"})}:
+    async def verify(request=DEFAULT_REFRESH_REQUEST):
+        if request == RefreshRequest(display_settings=frozenset({"blank_screen"})):
             coordinator._notify_callback(None, reply(build_blank_screen(not enabled, "H6199", 2, 10, 120)))
             return True
-        assert kwargs == {"expected_blank_screen": enabled}
+        assert request == RefreshRequest(blank_screen=enabled)
         if change_at == "verify":
             observe_policy()
             return False
@@ -1158,9 +1163,9 @@ async def test_video_retry_keeps_request_and_does_not_install_rejected_companion
             coordinator._expected_state.clear()
             coordinator._notify_callback(None, reply(build_video_mode("game", True, 25, False, 50, "H6199")))
 
-    async def verify(**kwargs):
-        assert kwargs["expected_video_mode"] == "movie"
-        assert kwargs["expected_video_saturation"] == 50
+    async def verify(request):
+        assert request.video_mode == "movie"
+        assert request.video_saturation == 50
         return len(writes) == 2
 
     monkeypatch.setattr(coordinator, "refresh_state", verify)

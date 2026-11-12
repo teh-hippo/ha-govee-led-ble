@@ -13,6 +13,7 @@ from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ModelProfile, ReadDomain
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
 from custom_components.ha_govee_led_ble.coordinator_status import (
     ParsedMode,
     decode_status_frame_result,
@@ -67,7 +68,7 @@ async def test_static_reply_completes_setup_refresh(connected, virtual_clock, ke
 
     client.write_gatt_char.side_effect = respond
     refreshed = await c.refresh_state(
-        refresh_all=True, required_domains=c.profile.setup_required_read_domains, timeout=0.1
+        RefreshRequest(refresh_all=True, required_domains=c.profile.setup_required_read_domains, timeout=0.1)
     )
     assert c.is_on and c.brightness_pct == 42
     assert {frame("aa01"), frame("aa04"), frame("aa05")} <= {
@@ -133,7 +134,7 @@ async def test_white_balance_read_is_independent_of_write_support(
     if not writable:
         with pytest.raises(ValueError, match="does not support white balance"):
             build_white_balance(50, None, c.model)
-    refreshed = await c.refresh_state(refresh_display_settings=frozenset({"white_balance"}), timeout=0.1)
+    refreshed = await c.refresh_state(RefreshRequest(display_settings=frozenset({"white_balance"}), timeout=0.1))
     assert refreshed, f"write support={writable}, query writes={c._client.write_gatt_char.await_count}"
     assert c._field_revisions["white_balance_scalar"] == 2
 
@@ -181,7 +182,7 @@ def test_read_only_white_balance_preserves_firmware_gate(camera_device, qualifie
 async def test_white_balance_refresh_requires_fresh_register(connected, scalar_model, virtual_clock):
     c = connected("H9903")
     c._notify_callback(None, bytearray(frame("aaa9060132")))
-    assert not await c.refresh_state(refresh_display_settings=frozenset({"white_balance"}), timeout=0.01)
+    assert not await c.refresh_state(RefreshRequest(display_settings=frozenset({"white_balance"}), timeout=0.01))
     assert c._field_revisions["white_balance_scalar"] == 1
 
 

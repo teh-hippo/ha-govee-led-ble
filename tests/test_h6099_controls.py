@@ -15,6 +15,7 @@ from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from custom_components.ha_govee_led_ble.const import DOMAIN, MODEL_PROFILES, ReadDomain, get_profile
 from custom_components.ha_govee_led_ble.control_arbiter import BLEControlArbiter, ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator_refresh import DEFAULT_REFRESH_REQUEST, RefreshRequest
 from custom_components.ha_govee_led_ble.coordinator_status import decode_status_frame
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_camera_health_query,
@@ -195,11 +196,11 @@ async def test_services_preflight_freshness_and_no_optimistic_state(hass, mock_c
     assert coordinator.installation_direction == 3
     coordinator.async_write_effect_sequence.assert_awaited_once_with((frame("333004"),), intent=ControlIntent.USER)
 
-    async def refresh(**kwargs):
-        assert kwargs == {
-            "refresh_all": True,
-            "required_domains": frozenset({ReadDomain.INSTALLATION_DIRECTION, ReadDomain.CAMERA_HEALTH}),
-        }
+    async def refresh(request=DEFAULT_REFRESH_REQUEST):
+        assert request == RefreshRequest(
+            refresh_all=True,
+            required_domains=frozenset({ReadDomain.INSTALLATION_DIRECTION, ReadDomain.CAMERA_HEALTH}),
+        )
         for prefix in ("aa3004", "aa3200"):
             decoded = decode_status_frame(frame(prefix), "H6099")
             for key, value in h6099_control_status(decoded, coordinator.profile).items():
@@ -216,7 +217,7 @@ async def test_services_preflight_freshness_and_no_optimistic_state(hass, mock_c
         "camera_health": "unknown",
     }
 
-    async def direction_only(**kwargs):
+    async def direction_only(_request):
         coordinator._domain_revisions[ReadDomain.INSTALLATION_DIRECTION] += 1
         return False
 
@@ -249,8 +250,8 @@ async def test_concrete_controls_optional_refresh_and_independent_freshness(hass
     monkeypatch.setattr(c, "_ensure_connected", AsyncMock(return_value=client))
     refresh = c.refresh_state
 
-    async def immediate_refresh(**kwargs):
-        return await refresh(**kwargs, timeout=0.1)
+    async def immediate_refresh(request=DEFAULT_REFRESH_REQUEST):
+        return await refresh(replace(request, timeout=0.1))
 
     monkeypatch.setattr(c, "refresh_state", immediate_refresh)
     for prefix in ("aa3002", "aa3201"):
@@ -264,7 +265,9 @@ async def test_concrete_controls_optional_refresh_and_independent_freshness(hass
             c._notify_callback(None, bytearray(frame(packet[:3].hex() + "64010203" * count)))
 
     client.write_gatt_char.side_effect = respond
-    assert await c.refresh_state(refresh_all=True, required_domains=c.profile.setup_required_read_domains)
+    assert await c.refresh_state(
+        RefreshRequest(refresh_all=True, required_domains=c.profile.setup_required_read_domains)
+    )
     packets = [call.args[1] for call in client.write_gatt_char.await_args_list]
     assert frame("aa30") in packets and frame("aa32") in packets
     assert await async_read_h6099_controls(c) == {
@@ -292,8 +295,8 @@ async def test_concrete_direction_write_requires_fresh_readback(hass, monkeypatc
     monkeypatch.setattr(c, "_renew_foreground_lease", lambda: None)
     refresh = c.refresh_state
 
-    async def immediate_refresh(**kwargs):
-        return await refresh(**kwargs, timeout=0.01)
+    async def immediate_refresh(request=DEFAULT_REFRESH_REQUEST):
+        return await refresh(replace(request, timeout=0.01))
 
     monkeypatch.setattr(c, "refresh_state", immediate_refresh)
 
@@ -326,8 +329,8 @@ async def test_queued_read_does_not_claim_external_replies(hass, monkeypatch, vi
     monkeypatch.setattr(c, "_ensure_connected", AsyncMock(return_value=client))
     refresh = c.refresh_state
 
-    async def immediate_refresh(**kwargs):
-        return await refresh(**kwargs, timeout=0.01)
+    async def immediate_refresh(request=DEFAULT_REFRESH_REQUEST):
+        return await refresh(replace(request, timeout=0.01))
 
     monkeypatch.setattr(c, "refresh_state", immediate_refresh)
     async with c._control_arbiter.hold(ControlIntent.USER):

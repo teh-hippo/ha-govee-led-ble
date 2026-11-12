@@ -15,6 +15,7 @@ from .const import NATIVE_ZONE_CONTROLS, ModelProfile, ReadDomain, get_profile
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator import GoveeBLECoordinator
 from .coordinator_base import async_prepare_effect_profile
+from .coordinator_refresh import RefreshRequest
 from .coordinator_status import ParsedMode
 from .effect_active_workspace import (
     ActiveEffectWorkspace,
@@ -226,7 +227,7 @@ async def async_apply_compiled_profile(
         }
         # Preparation must fail before even the mode/power write. The shared
         # toggle writer refreshes again and guards its own physical boundary.
-        if not await coordinator.refresh_state(refresh_display_settings=frozenset({"blank_screen"})) or any(
+        if not await coordinator.refresh_state(RefreshRequest(display_settings=frozenset({"blank_screen"}))) or any(
             coordinator._field_revisions.get(field, 0) <= revision for field, revision in baselines.items()
         ):
             raise ValueError("Blank-screen policy state has not been read freshly; refresh the device first")
@@ -1084,8 +1085,9 @@ class EffectDeploymentEngine:
         if not refresh_display_settings and not refresh_relative_brightness:
             return refreshed
         if not refreshed or not await coordinator.refresh_state(
-            refresh_display_settings=refresh_display_settings,
-            refresh_relative_brightness=refresh_relative_brightness,
+            RefreshRequest(
+                display_settings=refresh_display_settings, refresh_relative_brightness=refresh_relative_brightness
+            ),
         ):
             raise RuntimeError("Could not read the current video settings before applying the profile")
         required: list[object | None] = []
@@ -1613,10 +1615,12 @@ async def async_prepare_effect_control_state(
     }
     refreshed = (
         await coordinator.refresh_state(
-            refresh_all=True,
-            query_segments=False if profile.segment_colour_mode_ambiguous else None,
-            required_domains=profile.read_domains
-            & {ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE, ReadDomain.MODE},
+            RefreshRequest(
+                refresh_all=True,
+                query_segments=False if profile.segment_colour_mode_ambiguous else None,
+                required_domains=profile.read_domains
+                & {ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE, ReadDomain.MODE},
+            ),
         )
         is True
     )

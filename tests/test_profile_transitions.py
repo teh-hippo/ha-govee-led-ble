@@ -10,6 +10,7 @@ from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from custom_components.ha_govee_led_ble.const import device_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_brightness_query,
     build_firmware_query,
@@ -294,7 +295,7 @@ async def test_identity_change_during_control_invalidates_completion_without_pro
 async def test_targeted_register_remains_strict(device):
     c, client = device
     client.write_gatt_char.side_effect = BleakError("white balance failed")
-    assert not await c.refresh_state(refresh_display_settings=frozenset({"white_balance"}))
+    assert not await c.refresh_state(RefreshRequest(display_settings=frozenset({"white_balance"})))
     assert client.write_gatt_char.await_count == 1 and c._client is None
 
 
@@ -311,5 +312,5 @@ async def test_refresh_transition_never_confirms_old_expectation(device, transit
             c._notify_callback(None, bytearray(frame("aa21" + b"1.00.34".hex())))
 
     client.write_gatt_char.side_effect = write
-    assert not await c.refresh_state(expected_brightness=50)
+    assert not await c.refresh_state(RefreshRequest(brightness=50))
     assert c.brightness_pct == (100 if transition == "profile" else 50) and c._client is client

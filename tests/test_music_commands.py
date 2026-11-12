@@ -215,7 +215,7 @@ async def test_h6046_recovery_requires_fresh_both_bar_colours(hass, readback):
     assert prepared is not None
     variant, writes = prepared
 
-    async def observe(**_kwargs):
+    async def observe(_request):
         if readback != "stale":
             for key, value in parameters.items():
                 field = f"music_{key}"

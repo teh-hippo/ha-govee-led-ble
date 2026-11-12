@@ -10,6 +10,7 @@ from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.ha_govee_led_ble.const import DOMAIN, MODEL_PROFILES, LightSource, device_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_brightness,
@@ -340,7 +341,7 @@ async def test_source_enables_master_before_source_without_switching_sibling(sou
     source = GoveeBLESourceLight(coordinator, "left_bar")
     await source.async_turn_on()
     coordinator.send_command.assert_awaited_once()
-    coordinator.refresh_state.assert_awaited_once_with(expected_on=True)
+    coordinator.refresh_state.assert_awaited_once_with(RefreshRequest(on=True))
     assert coordinator.async_set_boolean_control.await_args_list == [
         call("right_bar_enabled", False),
         call("left_bar_enabled", True),
@@ -391,7 +392,7 @@ async def test_stale_master_state_is_refreshed_before_preserving_siblings(source
     coordinator.boolean_control_state["left_bar_enabled"] = False
     coordinator._field_received_at.pop("is_on")
 
-    async def refresh(**_kwargs):
+    async def refresh(_request):
         coordinator.is_on = True
         coordinator._field_received_at["is_on"] = 2.0
         coordinator._field_revisions["is_on"] += 1
@@ -411,8 +412,8 @@ async def test_optimistic_master_write_does_not_make_an_older_power_reply_fresh(
     coordinator._power_write_generation += 1
     coordinator.boolean_control_state["left_bar_enabled"] = False
 
-    async def refresh(**kwargs):
-        coordinator.is_on = not kwargs.get("refresh_all", False)
+    async def refresh(request):
+        coordinator.is_on = not request.refresh_all
         coordinator._field_revisions["is_on"] += 1
         coordinator._field_received_at["is_on"] = 2.0
         coordinator._observed_power_write_generation = coordinator._power_write_generation
@@ -427,7 +428,7 @@ async def test_optimistic_master_write_does_not_make_an_older_power_reply_fresh(
     coordinator.refresh_state = AsyncMock(side_effect=refresh)
     coordinator.send_command = AsyncMock(side_effect=send)
     await GoveeBLESourceLight(coordinator, "left_bar").async_turn_on()
-    assert coordinator.refresh_state.await_args_list[0].kwargs["refresh_all"] is True
+    assert coordinator.refresh_state.await_args_list[0].args[0].refresh_all is True
     assert coordinator.async_set_boolean_control.await_args_list == [
         call("right_bar_enabled", False),
         call("left_bar_enabled", True),
@@ -443,8 +444,8 @@ async def test_failed_master_confirmation_does_not_suppress_a_retry(source_coord
         coordinator.is_on = True
         coordinator.control_write_attempts += 1
 
-    async def refresh(**kwargs):
-        if kwargs.get("refresh_all"):
+    async def refresh(request):
+        if request.refresh_all:
             coordinator.is_on = False
             coordinator._field_revisions["is_on"] += 1
             coordinator._h607c_uncertain_state_fields.discard("is_on")

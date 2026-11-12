@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, cast
 from .const import NATIVE_ZONE_CONTROLS
 from .control_arbiter import ControlIntent
 from .coordinator_base import _CoordinatorBase
+from .coordinator_refresh import RefreshRequest
 from .coordinator_status import (
     ParsedMode,
 )
@@ -314,7 +315,7 @@ class _RecoveryMixin(_CoordinatorBase):
                     _LOGGER.debug("Power-off cleanup failed during effect recovery", exc_info=True)
             raise
         await self.send_command(build_power(False, self.model), state_values={"is_on": False})
-        return await self.refresh_state(expected_on=False) and appearance_restored
+        return await self.refresh_state(RefreshRequest(on=False)) and appearance_restored
 
     def _prepare_music_restore(self, state: PriorControlState) -> tuple[Any, MusicWriteSequence] | None:
         """Return (variant, writes) for a music snapshot, or None when it cannot be recovered."""
@@ -556,7 +557,7 @@ class _RecoveryMixin(_CoordinatorBase):
         await self.send_command(activation, state_values={"diy_code": state.diy_code})
         return (
             await self.async_observe_effect(expected) is True
-            and await self.refresh_state(expected_on=True, expected_brightness=state.brightness_pct) is True
+            and await self.refresh_state(RefreshRequest(on=True, brightness=state.brightness_pct)) is True
             and complete
         )
 
@@ -582,7 +583,7 @@ class _RecoveryMixin(_CoordinatorBase):
             await self.send_command(build_brightness(state.brightness_pct, self.model))
             await self.send_command(build_scene_activation(self.model, state.scene_code, profile=self.profile))
             await self.refresh_state(
-                expected_on=True, expected_brightness=state.brightness_pct, expected_scene_code=state.scene_code
+                RefreshRequest(on=True, brightness=state.brightness_pct, scene_code=state.scene_code)
             )
             # Selection is restored, but no supported read proves resident body equality.
             return False
@@ -614,9 +615,7 @@ class _RecoveryMixin(_CoordinatorBase):
         # A catalogue body/default speed is not the original authored resident body.
         await self.send_command(build_scene_activation(self.model, selector, scene.music_code))
         return (
-            await self.refresh_state(
-                expected_on=True, expected_brightness=state.brightness_pct, expected_scene_code=selector
-            )
+            await self.refresh_state(RefreshRequest(on=True, brightness=state.brightness_pct, scene_code=selector))
             is True
             and not scene.param
             and complete
@@ -630,22 +629,16 @@ class _RecoveryMixin(_CoordinatorBase):
         physical_ic_count: int | None,
         complete: bool,
     ) -> bool:
-        music_expectations: dict[str, Any] = {}
+        observes_color = (variant is None or variant.layout is None) and self.profile.music_grammar != "H6046"
+        observes_style = bool(variant and variant.supports_style) and (
+            observes_color or self.profile.music_grammar == "H6046"
+        )
         selector_expectations = {
             spec.key: (state.music_parameters or {})[spec.profile_key]
             for spec in (() if variant is None else variant.selector_parameters)
             if self.profile.music_grammar == "H6046" and spec.profile_key in (state.music_parameters or {})
         }
         selector_baselines = {field: self._field_revisions.get(field, 0) for field in selector_expectations}
-        if (variant is None or variant.layout is None) and self.profile.music_grammar != "H6046":
-            music_expectations = {
-                "expected_music_color": state.music_color,
-                "expected_music_auto_color": state.music_color is None,
-            }
-            if variant and variant.supports_style:
-                music_expectations["expected_music_calm"] = state.music_calm
-        if self.profile.music_grammar == "H6046" and variant and variant.supports_style:
-            music_expectations["expected_music_calm"] = state.music_calm
 
         def guard_music_recovery() -> None:
             self._reconcile_authorization()
@@ -670,11 +663,15 @@ class _RecoveryMixin(_CoordinatorBase):
         restored = (
             self.profile.state_readable
             and await self.refresh_state(
-                expected_on=True,
-                expected_brightness=state.brightness_pct,
-                expected_music_mode=state.music_mode,
-                expected_music_sensitivity=state.music_sensitivity,
-                **music_expectations,
+                RefreshRequest(
+                    on=True,
+                    brightness=state.brightness_pct,
+                    music_mode=state.music_mode,
+                    music_sensitivity=state.music_sensitivity,
+                    music_color=state.music_color if observes_color else None,
+                    music_auto_color=observes_color and state.music_color is None,
+                    music_calm=state.music_calm if observes_style else None,
+                ),
             )
             is True
             and complete
@@ -702,7 +699,7 @@ class _RecoveryMixin(_CoordinatorBase):
                 requested_values={name: getattr(state, attr) for name, attr in restored},
                 parameters=state.video_parameters,
             )
-            and await self.refresh_state(expected_on=True, expected_brightness=state.brightness_pct) is True
+            and await self.refresh_state(RefreshRequest(on=True, brightness=state.brightness_pct)) is True
             and complete
         )
 
@@ -767,18 +764,20 @@ class _RecoveryMixin(_CoordinatorBase):
                 await self.async_set_boolean_control("gradual", state.static_gradual)
         mode_revision = self._field_revisions.get("color_mode", 0)
         basic_matches = await self.refresh_state(
-            expected_on=True,
-            expected_brightness=state.brightness_pct,
-            refresh_all=True,
-            expected_color_temp_kelvin=(
-                normalize_kelvin(state.color_temp_kelvin, self.profile)
-                if kelvin_restore and state.color_temp_kelvin is not None
-                else None
-            ),
-            expected_zero_kelvin=(
-                self.profile.static_readback_zero_kelvin_is_rgb
-                and not kelvin_restore
-                and not state.restorable_bar_white(self.profile)
+            RefreshRequest(
+                on=True,
+                brightness=state.brightness_pct,
+                refresh_all=True,
+                color_temp_kelvin=(
+                    normalize_kelvin(state.color_temp_kelvin, self.profile)
+                    if kelvin_restore and state.color_temp_kelvin is not None
+                    else None
+                ),
+                zero_kelvin=(
+                    self.profile.static_readback_zero_kelvin_is_rgb
+                    and not kelvin_restore
+                    and not state.restorable_bar_white(self.profile)
+                ),
             ),
         )
         segments_match = await self.async_refresh_segments()
@@ -810,20 +809,22 @@ class _RecoveryMixin(_CoordinatorBase):
             await self.send_command(build_color_temp(state.color_temp_kelvin, self.model, profile=self.profile))
         else:
             await self.send_command(build_color_rgb(*state.rgb_color, self.model, profile=self.profile))
-        static_expectations: dict[str, Any] = {}
-        if state.color_temp_kelvin is not None and self.profile.static_readback_kelvin:
-            static_expectations["expected_color_temp_kelvin"] = normalize_kelvin(state.color_temp_kelvin, self.profile)
-        elif state.color_temp_kelvin is None and self.profile.static_readback_echoes_color:
-            static_expectations["expected_rgb_color"] = state.rgb_color
-        if state.color_temp_kelvin is None and self.profile.static_readback_zero_kelvin_is_rgb:
-            static_expectations["expected_zero_kelvin"] = True
+        request = RefreshRequest(
+            on=True,
+            brightness=state.brightness_pct,
+            color_temp_kelvin=normalize_kelvin(state.color_temp_kelvin, self.profile)
+            if state.color_temp_kelvin is not None and self.profile.static_readback_kelvin
+            else None,
+            rgb_color=state.rgb_color
+            if state.color_temp_kelvin is None and self.profile.static_readback_echoes_color
+            else None,
+            zero_kelvin=state.color_temp_kelvin is None and self.profile.static_readback_zero_kelvin_is_rgb,
+        )
         return (
             self.profile.state_readable
-            and await self.refresh_state(
-                expected_on=True, expected_brightness=state.brightness_pct, **static_expectations
-            )
+            and await self.refresh_state(request)
             and self.active_mode == "colour"
             and self.color_mode is ParsedMode.COLOUR
-            and bool(static_expectations)
+            and request.expects_color_readback
             and complete
         )

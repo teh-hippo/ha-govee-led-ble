@@ -52,6 +52,7 @@ from .const import (
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator import GoveeBLECoordinator
 from .coordinator_base import async_prepare_effect_profile
+from .coordinator_refresh import RefreshRequest
 from .coordinator_status import ParsedMode
 from .effect_backend import EffectBackend
 from .effect_catalogue import MODEL_EFFECT_CATALOGUES
@@ -765,39 +766,21 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         retry_command: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
         profile = self.coordinator.profile
-        expectations = {
-            field: value
-            for field, value, readable in (
-                ("expected_on", expected_on, profile.can_read(ReadDomain.POWER)),
-                ("expected_brightness", expected_brightness, profile.can_read(ReadDomain.BRIGHTNESS)),
-                (
-                    "expected_rgb_color",
-                    expected_rgb_color,
-                    profile.supports_color_mode_readback and profile.static_readback_echoes_color,
-                ),
-                (
-                    "expected_color_temp_kelvin",
-                    expected_color_temp_kelvin,
-                    profile.supports_color_mode_readback and profile.static_readback_kelvin,
-                ),
-                ("expected_video_mode", expected_video_mode, profile.supports_color_mode_readback),
-                ("expected_video_full_screen", expected_video_full_screen, profile.supports_color_mode_readback),
-                ("expected_video_saturation", expected_video_saturation, profile.supports_color_mode_readback),
-                ("expected_video_sound_effects", expected_video_sound_effects, profile.supports_color_mode_readback),
-                (
-                    "expected_video_sound_effects_softness",
-                    expected_video_sound_effects_softness,
-                    profile.supports_color_mode_readback,
-                ),
-            )
-            if value is not None and readable
-        }
-        if not expectations:
-            return
-        confirm = partial(
-            self.coordinator.refresh_state,
-            **expectations,
+        color_readable = profile.supports_color_mode_readback
+        request = RefreshRequest(
+            on=expected_on if profile.can_read(ReadDomain.POWER) else None,
+            brightness=expected_brightness if profile.can_read(ReadDomain.BRIGHTNESS) else None,
+            rgb_color=expected_rgb_color if color_readable and profile.static_readback_echoes_color else None,
+            color_temp_kelvin=expected_color_temp_kelvin if color_readable and profile.static_readback_kelvin else None,
+            video_mode=expected_video_mode if color_readable else None,
+            video_full_screen=expected_video_full_screen if color_readable else None,
+            video_saturation=expected_video_saturation if color_readable else None,
+            video_sound_effects=expected_video_sound_effects if color_readable else None,
+            video_sound_effects_softness=expected_video_sound_effects_softness if color_readable else None,
         )
+        if not request.field_expectations(profile):
+            return
+        confirm = partial(self.coordinator.refresh_state, request)
         if await confirm():
             return
         if retry_command is not None:
@@ -842,10 +825,12 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             return
         try:
             await coordinator._refresh_connected_state(
-                refresh_all=True,
-                query_segments=False,
-                query_native_settings=False,
-                required_domains=coordinator.profile.read_domains & {ReadDomain.POWER, ReadDomain.BRIGHTNESS},
+                RefreshRequest(
+                    refresh_all=True,
+                    query_segments=False,
+                    query_native_settings=False,
+                    required_domains=coordinator.profile.read_domains & {ReadDomain.POWER, ReadDomain.BRIGHTNESS},
+                ),
             )
         except BleakError, ValueError, TimeoutError:
             _LOGGER.debug("Could not reconcile interrupted Govee %s request", coordinator.model, exc_info=True)

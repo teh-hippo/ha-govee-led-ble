@@ -8,6 +8,7 @@ from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, MUSIC_MODE_
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_modes import PreModeSnapshot
+from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
 from custom_components.ha_govee_led_ble.effect_contracts import CapabilityWorkflow, release_capability
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_music_mode,
@@ -119,7 +120,7 @@ async def test_h6179_native_scene_uses_wire_selector_for_verification_and_state(
         )
 
     assert _sent(writer) == [build_scene_activation("H6179", selector)]
-    refresh.assert_awaited_once_with(expected_scene_code=selector)
+    refresh.assert_awaited_once_with(RefreshRequest(scene_code=selector))
     assert coordinator._scene_code == selector
 
 
@@ -307,12 +308,14 @@ async def test_apply_active_video_mode_requires_readback(h6199):
     assert h6199.video_mode == "game"
     assert {field: getattr(h6199, f"video_{field}") for field in values} == values
     refresh.assert_awaited_once_with(
-        expected_on=True,
-        expected_video_mode="game",
-        expected_video_full_screen=False,
-        expected_video_saturation=63,
-        expected_video_sound_effects=True,
-        expected_video_sound_effects_softness=27,
+        RefreshRequest(
+            on=True,
+            video_mode="game",
+            video_full_screen=False,
+            video_saturation=63,
+            video_sound_effects=True,
+            video_sound_effects_softness=27,
+        ),
     )
 
 
@@ -339,12 +342,14 @@ async def test_apply_active_video_mode_powers_on_and_raises_after_retry(h6199):
         refresh.await_args_list
         == [
             call(
-                expected_on=True,
-                expected_video_mode="movie",
-                expected_video_full_screen=True,
-                expected_video_saturation=100,
-                expected_video_sound_effects=False,
-                expected_video_sound_effects_softness=100,
+                RefreshRequest(
+                    on=True,
+                    video_mode="movie",
+                    video_full_screen=True,
+                    video_saturation=100,
+                    video_sound_effects=False,
+                    video_sound_effects_softness=100,
+                ),
             )
         ]
         * 2

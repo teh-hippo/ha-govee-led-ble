@@ -16,6 +16,7 @@ from custom_components.ha_govee_led_ble import select, switch
 from custom_components.ha_govee_led_ble.const import DOMAIN, ReadDomain
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_brightness_query,
     build_colour_mode_query,
@@ -350,7 +351,7 @@ async def test_old_poll_gates_control_until_all_pages_arrive(device, monkeypatch
     poll = asyncio.create_task(
         c._keep_alive_loop()
         if producer == "keepalive"
-        else c.refresh_state(refresh_all=True)
+        else c.refresh_state(RefreshRequest(refresh_all=True))
         if producer == "refresh"
         else c.async_observe_effect({"is_on": True, "brightness_pct": 15, "color_mode": c.color_mode})
         if producer == "observe"
@@ -470,7 +471,7 @@ async def test_optional_segment_timeout_keeps_basic_poll_but_not_connection_reus
     client.write_gatt_char = AsyncMock(side_effect=write)
     async with c._control_arbiter.hold(ControlIntent.BACKGROUND):
         assert await c.refresh_state(
-            refresh_all=True, required_domains=c.profile.setup_required_read_domains, timeout=0.01
+            RefreshRequest(refresh_all=True, required_domains=c.profile.setup_required_read_domains, timeout=0.01)
         )
     assert c.is_on and c.brightness_pct == 15 and c.available
     assert c._segment_query_incomplete and c.segment_state_source == "initial"
@@ -516,7 +517,7 @@ async def test_one_deadline_rejects_late_pages_even_before_timeout_waiter(
     if producer == "segments":
         result = await c.async_refresh_segments(timeout=0.01)
     elif producer == "refresh":
-        result = await c.refresh_state(refresh_all=True, timeout=0.01)
+        result = await c.refresh_state(RefreshRequest(refresh_all=True, timeout=0.01))
     elif producer == "observe":
         result = await c.async_observe_effect(
             {"is_on": True, "brightness_pct": 15, "color_mode": coordinator_module.ParsedMode.COLOUR}, timeout=0.01
@@ -558,7 +559,7 @@ async def test_stalled_segment_query_write_is_bounded_and_releases_locks(device,
         if producer == "segments":
             assert not await c.async_refresh_segments(timeout=0.01)
         elif producer == "refresh":
-            assert await c.refresh_state(refresh_all=True, timeout=0.01)
+            assert await c.refresh_state(RefreshRequest(refresh_all=True, timeout=0.01))
         elif producer == "observe":
             assert (
                 await c.async_observe_effect(
@@ -647,7 +648,7 @@ async def test_transmission_time_is_subtracted_from_collection_budget(device, mo
     monkeypatch.setattr(c, "_wait_for_revisions", collect)
     client.write_gatt_char = AsyncMock(side_effect=write)
     if producer == "refresh":
-        assert await c.refresh_state(refresh_all=True, timeout=0.04)
+        assert await c.refresh_state(RefreshRequest(refresh_all=True, timeout=0.04))
     else:
         assert await c.async_observe_effect(
             {"is_on": True, "brightness_pct": 15, "color_mode": coordinator_module.ParsedMode.COLOUR}, timeout=0.04
