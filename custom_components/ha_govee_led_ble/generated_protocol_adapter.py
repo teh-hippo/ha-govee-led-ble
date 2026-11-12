@@ -103,12 +103,66 @@ from .transport import (
     A1_02_COMMAND,
     A1_02_PREFIX,
     A3_CHUNK_SIZE,
+    A3_PREFIX,
     A4_PREFIX,
     reassemble_a1_02_upload,
     reassemble_a3,
     reassemble_a4_upload,
     xor_checksum,
 )
+
+
+class A3Sequence:
+    """Own complete upload framing and the header authorising each physical chunk."""
+
+    def __init__(self, packets: Sequence[bytes]) -> None:
+        chunks: list[tuple[bytes, bytes]] = []
+        pending: list[bytes] = []
+        for packet in packets:
+            if not self.is_frame(packet):
+                if pending:
+                    raise ValueError("A3 upload was interrupted before its final frame")
+                continue
+            parsed = _parse_xor_frame(
+                packet, "A3", {"A3": ("command_write.upload_frame", CommandWrite.UploadFrame)}
+            ).parsed
+            if parsed is None:
+                raise ValueError("Invalid A3 upload frame")
+            pending.append(packet)
+            if parsed.is_final:
+                reassemble_a3(pending)
+                chunks.extend((frame, pending[0]) for frame in pending)
+                pending = []
+        if pending:
+            raise ValueError("A3 upload is missing its final frame")
+        self._chunks = tuple(chunks)
+        self._index = 0
+
+    @staticmethod
+    def is_frame(packet: bytes) -> bool:
+        return packet[:1] == bytes((A3_PREFIX,))
+
+    def reset(self) -> None:
+        self._index = 0
+
+    def header_for(self, packet: bytes) -> bytes | None:
+        if not self.is_frame(packet):
+            return None
+        if self._index >= len(self._chunks) or self._chunks[self._index][0] != packet:
+            raise ValueError("A3 frame is outside the current ordered upload")
+        return self._chunks[self._index][1]
+
+    def note_write(self, packet: bytes) -> None:
+        if self.header_for(packet) is not None:
+            self._index += 1
+
+
+def require_a3_sequence_frame(packet: bytes, sequence: A3Sequence | None) -> bytes | None:
+    if not A3Sequence.is_frame(packet):
+        return None
+    if sequence is None:
+        raise ValueError("A3 uploads require a complete ordered effect sequence")
+    return sequence.header_for(packet)
 
 
 def parse_status_result(
@@ -697,6 +751,15 @@ def _check_upload_packet(frame: bytes, profile: ModelProfile) -> bool:
             variant.template for variant in profile.music_variants
         ):
             raise ValueError("music parameter upload is outside profile capabilities")
+        return True
+    if (
+        upload is not None
+        and upload.index != 0
+        and (
+            (profile.command_operations is None or "music" in profile.command_operations)
+            and any(variant.template for variant in profile.music_variants)
+        )
+    ):
         return True
     if profile.command_operations is not None and "effect_upload" in profile.command_operations:
         if upload is not None and profile.effect_grammar == "H60B0":

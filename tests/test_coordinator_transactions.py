@@ -30,7 +30,7 @@ from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_
 from custom_components.ha_govee_led_ble.protocol_core import StatusReply
 from custom_components.ha_govee_led_ble.reply_pacing import ReplyGate
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES, SCENES
-from custom_components.ha_govee_led_ble.transport import WRITE_UUID
+from custom_components.ha_govee_led_ble.transport import WRITE_UUID, fragment_a3
 from tests.coordinator_test_support import _c, _packet
 from tests.storage_test_double import InMemoryVersionedDocumentStore
 from tests.test_govee_encryption import client
@@ -326,6 +326,44 @@ async def test_successful_tx_debug_uses_redacted_packet_log(coord, caplog, priva
     messages = [record.message for record in caplog.records if record.message.startswith("tx ")]
     assert messages == [f"tx H617A raw={'' if private else packet.hex()}"]
     assert coord.address not in messages[0]
+
+
+@pytest.mark.parametrize("problem", ["truncated", "reordered", "orphaned"])
+async def test_invalid_upload_sequence_is_rejected_before_power_or_connection(coord, monkeypatch, problem):
+    frames = fragment_a3(4, bytes(range(60)))
+    if problem == "truncated":
+        frames = frames[:-1]
+    elif problem == "reordered":
+        frames[1], frames[2] = frames[2], frames[1]
+    else:
+        frames = frames[1:]
+    connect = AsyncMock()
+    monkeypatch.setattr(coord, "_ensure_connected", connect)
+    with pytest.raises(ValueError, match="A3"):
+        await coord.async_write_effect_sequence((build_power(True), *frames), intent=ControlIntent.APPLY)
+    connect.assert_not_awaited()
+
+
+@pytest.mark.parametrize("index", [0, 1])
+async def test_upload_chunks_cannot_bypass_the_sequence_writer(coord, monkeypatch, index):
+    client = _c(write_gatt_char=AsyncMock())
+    coord._client = client
+    monkeypatch.setattr(coord, "_ensure_connected", AsyncMock(return_value=client))
+    with pytest.raises(ValueError, match="complete ordered"):
+        await coord.send_command(fragment_a3(4, bytes(range(60)))[index])
+    client.write_gatt_char.assert_not_awaited()
+
+
+async def test_music_only_profile_authorises_all_bound_companion_chunks(coord, monkeypatch, virtual_clock):
+    coord.profile = replace(coord.profile, effect_grammar=None, command_operations=frozenset({"music"}))
+    packets = fragment_a3(0x41, bytes(range(60)))
+    client = _c(write_gatt_char=AsyncMock())
+    coord._client = client
+    monkeypatch.setattr(coord, "_ensure_connected", AsyncMock(return_value=client))
+    monkeypatch.setattr(coord, "_renew_foreground_lease", lambda: None)
+    await coord.async_write_effect_sequence(packets, intent=ControlIntent.APPLY)
+    assert [call.args[1] for call in client.write_gatt_char.await_args_list] == packets
+    assert coord._a3_sequence is None
 
 
 @pytest.mark.parametrize("transform", [None, _transform_packet])
