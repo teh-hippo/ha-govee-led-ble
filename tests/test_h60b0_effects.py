@@ -3,6 +3,7 @@
 import base64
 import json
 from dataclasses import replace
+from unittest.mock import Mock
 
 import pytest
 
@@ -73,14 +74,26 @@ def test_combined_catalogue_upload_preserves_its_actual_selector():
     assert packets[-1][:5] == b"\x33\x05\x04" + entry.code.to_bytes(2, "little")
 
 
-def test_authored_combination_roundtrips_and_requires_a_known_pact():
-    from custom_components.ha_govee_led_ble.effect_domain import effect_content_from_dict, effect_content_to_dict
+def test_authored_combination_roundtrips_and_requires_a_known_pact(monkeypatch):
+    from custom_components.ha_govee_led_ble import effect_compiler
+    from custom_components.ha_govee_led_ble.effect_domain import (
+        LibraryItem,
+        effect_content_from_dict,
+        effect_content_to_dict,
+    )
 
     combined = decode_combined_scene(CatalogueRef("H60B0", 0, 510), _combined_payloads()[0][1])
     content = NativeEffect(model="H60B0", family=81, layers=(), combined=combined)
     restored = effect_content_from_dict(effect_content_to_dict(content))
     assert restored == content
     assert encode_h60b0_diy(restored) == combined_upload_body(combined.raw_param)
+    encode = Mock(wraps=effect_compiler.encode_native_body)
+    monkeypatch.setattr(effect_compiler, "encode_native_body", encode)
+    compiled = effect_compiler.compile_effect(
+        LibraryItem.new("Combined", content), "H60B0", profile=device_profile("H60B0", 1, 1)
+    )
+    encode.assert_called_once_with(content)
+    assert reassemble_a3(compiled.upload_packets)[3:].startswith(combined_upload_body(combined.raw_param))
     for revision in (1, 2, 3):
         validate_h60b0_diy(content, revision)
     with pytest.raises(ValueError, match="Pact"):
