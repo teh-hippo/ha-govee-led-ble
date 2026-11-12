@@ -1034,6 +1034,56 @@ async def test_deployment_snapshot_and_lookup_cache_follow_document_mutations() 
         assert validate.call_count == 7
 
 
+async def test_transient_progress_reuses_validated_records_and_persists_latest_snapshot(monkeypatch) -> None:
+    store = InMemoryVersionedDocumentStore()
+    repository = EffectDeploymentRepository(store)
+    await repository.async_load()
+    active = replace(_deployment(DeploymentPhase.UPLOADING), progress_total=10)
+    other = _deployment(DeploymentPhase.CONFIRMED)
+    await repository.async_put(active, expected_version=0)
+    initial = await repository.async_put(other, expected_version=1)
+    cached_other = repository.get(other.operation_id)
+    with monkeypatch.context() as context:
+
+        def unexpected(*args, **kwargs):
+            raise AssertionError("progress must not reparse or serialise stored records")
+
+        context.setattr(DeploymentRecord, "from_dict", unexpected)
+        context.setattr(DeploymentRecord, "to_dict", unexpected)
+        for progress in range(1, 11):
+            current = replace(active, progress_current=progress)
+            snapshot = await repository.async_put(current, expected_version=progress + 1, durable=False)
+            assert repository.get(other.operation_id) is cached_other
+            assert repository.get(active.operation_id) == current
+    assert initial.records[0].progress_current == 0
+    assert snapshot.version == 12 and store.save_count == 2
+    await store.async_fire_delayed_save()
+    assert store.data is not None
+    assert store.data["records"][str(active.operation_id)]["progress_current"] == 10
+    assert store.data["version"] == snapshot.version
+
+
+@pytest.mark.parametrize("extra_byte", [False, True])
+async def test_transient_progress_preserves_document_byte_limit_at_version_digit_boundary(monkeypatch, extra_byte):
+    import json
+
+    record = replace(_deployment(DeploymentPhase.CONFIRMED), progress_total=10)
+    data = {"version": 9, "records": {str(record.operation_id): record.to_dict()}}
+    repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore(data))
+    initial = await repository.async_load()
+    size = len(json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode())
+    monkeypatch.setattr(
+        "custom_components.ha_govee_led_ble.effect_deployments.MAX_DEPLOYMENT_STORE_BYTES", size + int(extra_byte)
+    )
+    updated = replace(record, progress_current=1)
+    if extra_byte:
+        assert (await repository.async_put(updated, expected_version=9, durable=False)).version == 10
+    else:
+        with pytest.raises(EffectStorageError, match="bytes"):
+            await repository.async_put(updated, expected_version=9, durable=False)
+        assert repository.snapshot() is initial
+
+
 async def test_device_default_repositories_cache_lookups_across_mutations(monkeypatch) -> None:
     import copy
     from unittest.mock import patch
