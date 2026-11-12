@@ -97,10 +97,35 @@ async def test_outbound_workflows_share_profile_transform(coord, h6199, model, w
     assert [(entry["raw"], entry["outcome"], entry["reason"]) for entry in coordinator.packet_log] == [
         (_transform_packet(packet).hex(), "sent", "write_succeeded") for packet in packets
     ]
-    assert arm.call_args_list == ([call(packet) for packet in packets] if control else [])
+    assert arm.call_args_list == ([call(packet, expectations=ANY) for packet in packets] if control else [])
     assert renew.call_count == (len(packets) if control else 0)
     if not control:
         assert coordinator._expected_state == previous_expectations
+
+
+@pytest.mark.parametrize("guarded", [False, True])
+async def test_static_write_reuses_semantics_and_only_rechecks_permissions_around_hooks(coord, guarded):
+    from custom_components.ha_govee_led_ble import coordinator as coordinator_module
+    from custom_components.ha_govee_led_ble import coordinator_notifications
+    from custom_components.ha_govee_led_ble.light_commands import build_color_rgb
+
+    packet = build_color_rgb(10, 20, 30)
+    client = _c(write_gatt_char=AsyncMock())
+    with (
+        patch.object(coord, "_require_writable_packet", wraps=coord._require_writable_packet) as validate,
+        patch.object(coordinator_module, "parse_write_state", wraps=coordinator_module.parse_write_state) as parse,
+        patch.object(
+            coordinator_notifications,
+            "expectations_from_packet",
+            side_effect=AssertionError("write expectations must not be re-parsed"),
+        ),
+    ):
+        await coord._async_write_packet(
+            client, packet, arm_expected=True, before_write=(lambda: None) if guarded else None
+        )
+    assert validate.call_count == (2 if guarded else 1)
+    parse.assert_called_once()
+    assert coord.segment_colors == [(10, 20, 30)] * coord.profile.segment_count
 
 
 @pytest.mark.parametrize("result", [ValueError("Cannot transform packet"), b"", None, bytearray(b"wire")])

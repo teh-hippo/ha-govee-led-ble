@@ -1,14 +1,26 @@
 """Optimistic coordinator expectations derived from outgoing packets."""
 
+from dataclasses import dataclass
 from typing import Any
 
 from .const import MODE_COMMAND_GRAMMARS, VIDEO_GRAMMARS, ModelProfile, get_profile
 from .coordinator_status import ParsedMode
 from .generated_protocol_adapter import parse_command, parse_video_command, video_parameters_from_detail
-from .light_commands import parse_static_write
+from .light_commands import ParsedStaticWrite, static_write_from_command
 from .music_protocol import music_slug_for
-from .protocol_h6179 import parse_h6179_command
+from .protocol_h6179 import h6179_command_from_generated
 from .scenes import scene_key_for_code
+
+
+@dataclass(frozen=True, slots=True)
+class ParsedWriteState:
+    command: Any
+    static: ParsedStaticWrite | None
+
+
+def parse_write_state(packet: bytes, model: str, *, profile: ModelProfile) -> ParsedWriteState:
+    command = parse_command(packet, model, profile=profile)
+    return ParsedWriteState(command, static_write_from_command(command, profile))
 
 
 def expectations_from_packet(
@@ -17,11 +29,13 @@ def expectations_from_packet(
     *,
     static_echoes_color: bool = False,
     profile: ModelProfile | None = None,
+    parsed: ParsedWriteState | None = None,
 ) -> dict[str, Any]:
     """Map an outgoing command to the optimistic fields its replies should confirm."""
     profile = profile or get_profile(model)
+    parsed = parse_write_state(packet, model, profile=profile) if parsed is None else parsed
     if profile.command_grammar == "H6179":
-        return _h6179_expectations(packet, model, static_echoes_color=static_echoes_color, profile=profile)
+        return _h6179_expectations(parsed, model, static_echoes_color=static_echoes_color, profile=profile)
     video = parse_video_command(packet, model, profile=profile)
     if video is not None:
         detail = video.detail
@@ -38,7 +52,7 @@ def expectations_from_packet(
             expectations["video_sound_effects"] = bool(detail.sound_effects)
             expectations["video_sound_effects_softness"] = int(detail.softness)
         return expectations
-    generated = parse_command(packet, model, profile=profile)
+    generated = parsed.command
     if generated is None:
         return {}
     if hasattr(generated, "selector"):
@@ -152,7 +166,7 @@ def expectations_from_packet(
             expectations["effect"] = scene_key_for_code(model, scene_code, profile=profile)
             expectations["unknown_scene_code"] = scene_code if expectations["effect"] is None else None
             return expectations
-    if (static := parse_static_write(packet, model, profile=profile)) and static.whole_strip:
+    if (static := parsed.static) and static.whole_strip:
         if static.rgb is not None:
             expectations["rgb_color"] = static.rgb
             if profile.static_readback_kelvin:
@@ -165,13 +179,13 @@ def expectations_from_packet(
 
 
 def _h6179_expectations(
-    packet: bytes,
+    parsed: ParsedWriteState,
     model: str,
     *,
     static_echoes_color: bool,
     profile: ModelProfile,
 ) -> dict[str, Any]:
-    command = parse_h6179_command(packet)
+    command = h6179_command_from_generated(parsed.command)
     if command is None:
         return {}
     if command.operation == "power":
@@ -208,7 +222,7 @@ def _h6179_expectations(
             int(command.values["raw_mode"]) if static_echoes_color else None,
         ),
     }
-    static = parse_static_write(packet, model)
+    static = parsed.static
     if static is not None and static.rgb is not None:
         expectations["rgb_color"] = static.rgb
     elif static is not None and static.kelvin is not None:

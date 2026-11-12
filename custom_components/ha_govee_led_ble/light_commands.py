@@ -257,7 +257,7 @@ def static_write_from_command(generated: Any, profile: ModelProfile) -> ParsedSt
             whole_device_mask=0,
             rgb=command.values["rgb"],
         )
-    if generated is None or not hasattr(generated.opcode, "name"):
+    if generated is None or not hasattr(getattr(generated, "opcode", None), "name"):
         return None
     whole_device_mask = profile.whole_device_mask
     if profile.command_grammar == "H60B0":

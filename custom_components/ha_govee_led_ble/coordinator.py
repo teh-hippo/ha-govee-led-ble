@@ -6,7 +6,7 @@ import time
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from contextlib import asynccontextmanager, nullcontext
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import Any, cast
 
@@ -51,7 +51,7 @@ from .const import (
 )
 from .control_arbiter import BLEControlArbiter, ControlIntent, LatestRequests, PreviewAdmission, async_control_intent
 from .coordinator_dreamview import DreamviewClaimedError, _DreamviewMixin, is_dreamview_claimed
-from .coordinator_expectations import expectations_from_packet
+from .coordinator_expectations import expectations_from_packet, parse_write_state
 from .coordinator_h6102 import _H6102Mixin
 from .coordinator_modes import PreModeSnapshot, _ActiveModeMixin
 from .coordinator_notifications import _OPTIONAL_CONTROL_DOMAINS, _NotificationMixin
@@ -98,7 +98,6 @@ from .h6102_capabilities import (
 )
 from .light_commands import (
     ParsedStaticWrite,
-    parse_static_write,
 )
 from .low_blue_light import LowBlueLightState
 from .music_semantics import (
@@ -153,6 +152,13 @@ _WHITE_BALANCE_GAIN_FIELDS = (
     "white_balance_default_red",
     "white_balance_default_blue",
 )
+
+
+@dataclass(frozen=True, slots=True)
+class _StaticWriteIntent:
+    rgb: tuple[int, int, int] | None = None
+    sources: frozenset[str] = frozenset()
+    colour_sources: frozenset[str] = frozenset()
 
 
 class GoveeBLECoordinator(
@@ -1318,6 +1324,7 @@ class GoveeBLECoordinator(
         packet_validator: Callable[[bytes, ModelProfile], None],
         *,
         arm_expected: bool,
+        static: ParsedStaticWrite | None,
     ) -> None:
         sequence = self._a3_sequence
         header = require_a3_sequence_frame(
@@ -1335,9 +1342,62 @@ class GoveeBLECoordinator(
                 or self.profile.segment_count_ic_divisor is not None
                 and self._mask_transaction is not None
             )
-            and parse_static_write(packet, self.model, profile=self.profile) is not None
+            and static is not None
         ):
             self._require_mask_transaction()
+
+    def _apply_static_write_intent(
+        self, static: ParsedStaticWrite | None, requested: Mapping[str, Any]
+    ) -> _StaticWriteIntent:
+        if static is None:
+            if requested.get("color_mode", (None,))[0] is ParsedMode.COLOUR:
+                self._static_rgb_known = False
+                self.mark_segment_state_optimistic()
+                self._enter_static_mode()
+            return _StaticWriteIntent()
+        self._static_write_attempts += 1
+        mask = static.segment_mask if static.segment_mask is not None else self.profile.whole_device_mask
+        sources: set[str] = set()
+        colour_sources: set[str] = set()
+        for source in self.profile.light_sources:
+            source_mask = sum(1 << (segment - 1) for segment in source.segments)
+            if source_mask & mask:
+                sources.add(source.key)
+                if static.rgb is not None or static.kelvin is not None:
+                    colour_sources.add(source.key)
+                    self._arm_expected_values(
+                        {f"source_kelvin_{source.key}": static.kelvin if static.kelvin is not None else 0}
+                    )
+                    if source_mask & mask == source_mask:
+                        value = static.kelvin if static.kelvin is not None else static.rgb
+                        if value is not None:
+                            self.source_static_intents[source.key] = value
+                    else:
+                        self.source_static_intents.pop(source.key, None)
+        rgb_intent = None
+        if static.kelvin is not None:
+            self._static_rgb_known = False
+        elif static.rgb is not None and static.whole_strip:
+            self._static_rgb_known = False
+            rgb_intent = static.rgb
+        rgb = static.rgb or static.kelvin_companion_rgb
+        if static.whole_strip and rgb is not None:
+            self.install_static_color(rgb=static.rgb, kelvin=static.kelvin)
+        if static.segment_mask is not None:
+            self.mark_segment_state_optimistic(
+                colours=[
+                    rgb if rgb is not None and static.segment_mask & (1 << index) else colour
+                    for index, colour in enumerate(self.segment_colors)
+                ],
+                brightness=[
+                    static.brightness_pct
+                    if static.brightness_pct is not None and static.segment_mask & (1 << index)
+                    else value
+                    for index, value in enumerate(self.segment_brightness)
+                ],
+            )
+        self._enter_static_mode()
+        return _StaticWriteIntent(rgb_intent, frozenset(sources), frozenset(colour_sources))
 
     async def _async_write_packet(
         self,
@@ -1372,7 +1432,9 @@ class GoveeBLECoordinator(
             raise BleakError(f"Incomplete {query_kind} query requires a new connection")
         if self.identity_gated_controls and self._h607c_advertisement_observations:
             self._prune_h607c_advertisements()
-        self._require_writable_packet(packet, packet_validator, arm_expected=arm_expected)
+        parsed_profile = self.profile
+        parsed = parse_write_state(packet, self.model, profile=parsed_profile)
+        self._require_writable_packet(packet, packet_validator, arm_expected=arm_expected, static=parsed.static)
         generation = self._profile_generation
         authorization_generation = self._authorization_generation
         wire_packet = packet
@@ -1393,12 +1455,31 @@ class GoveeBLECoordinator(
         except BleakError:
             await self._disconnect_locked()
             raise
-        self._require_writable_packet(packet, packet_validator, arm_expected=arm_expected)
+        if (
+            before_write is not None
+            or transform is not None
+            or packet_validator is not require_profile_packet
+            or self.profile is not parsed_profile
+            or generation != self._profile_generation
+            or authorization_generation != self._authorization_generation
+        ):
+            if self.profile is not parsed_profile:
+                parsed = parse_write_state(packet, self.model, profile=self.profile)
+                parsed_profile = self.profile
+            self._require_writable_packet(packet, packet_validator, arm_expected=arm_expected, static=parsed.static)
         if arm_expected and generation != self._profile_generation:
             raise ValueError("Device profile changed before control write; refresh and retry")
         if arm_expected and authorization_generation != self._authorization_generation:
             raise ValueError("Device identity changed before control write; refresh and retry")
-        requested = expectations_from_packet(packet, self.model, profile=self.profile)
+        if self.profile is not parsed_profile:
+            parsed = parse_write_state(packet, self.model, profile=self.profile)
+        requested = expectations_from_packet(
+            packet,
+            self.model,
+            profile=self.profile,
+            static_echoes_color=self.profile.static_readback_echoes_color,
+            parsed=parsed,
+        )
         if (music_mode := requested.get("music_mode")) is not None and music_mode not in self.profile.music_modes:
             raise ValueError("Device profile does not support the requested music mode")
         previous_mode = self.color_mode
@@ -1425,67 +1506,21 @@ class GoveeBLECoordinator(
             for field, value in state_values.items():
                 setattr(self, field, value)
         if arm_expected:
-            self._arm_expected(packet)
+            self._arm_expected(packet, expectations=requested)
         if expected_values is not None:
             self._arm_expected_values(dict(expected_values))
-        rgb_intent: tuple[int, int, int] | None = None
-        static: ParsedStaticWrite | None = None
-        affected_sources: set[str] = set()
-        affected_colour_sources: set[str] = set()
+        static = parsed.static if arm_expected else None
+        intent = _StaticWriteIntent()
         if arm_expected:
             self.control_write_attempts += 1
-            static = parse_static_write(packet, self.model, profile=self.profile)
-            if static is not None:
-                self._static_write_attempts += 1
-                mask = static.segment_mask if static.segment_mask is not None else self.profile.whole_device_mask
-                for source in self.profile.light_sources:
-                    source_mask = sum(1 << (segment - 1) for segment in source.segments)
-                    if source_mask & mask:
-                        affected_sources.add(source.key)
-                        if static.rgb is not None or static.kelvin is not None:
-                            affected_colour_sources.add(source.key)
-                            self._arm_expected_values(
-                                {f"source_kelvin_{source.key}": static.kelvin if static.kelvin is not None else 0}
-                            )
-                            if source_mask & mask == source_mask:
-                                value = static.kelvin if static.kelvin is not None else static.rgb
-                                if value is not None:
-                                    self.source_static_intents[source.key] = value
-                            else:
-                                self.source_static_intents.pop(source.key, None)
-                if static.kelvin is not None:
-                    self._static_rgb_known = False
-                elif static.rgb is not None and static.whole_strip:
-                    self._static_rgb_known = False
-                    rgb_intent = static.rgb
-                rgb = static.rgb or static.kelvin_companion_rgb
-                if static.whole_strip and rgb is not None:
-                    self.install_static_color(rgb=static.rgb, kelvin=static.kelvin)
-                if static.segment_mask is not None:
-                    self.mark_segment_state_optimistic(
-                        colours=[
-                            rgb if rgb is not None and static.segment_mask & (1 << index) else colour
-                            for index, colour in enumerate(self.segment_colors)
-                        ],
-                        brightness=[
-                            static.brightness_pct
-                            if static.brightness_pct is not None and static.segment_mask & (1 << index)
-                            else value
-                            for index, value in enumerate(self.segment_brightness)
-                        ],
-                    )
-                self._enter_static_mode()
-            elif requested.get("color_mode", (None,))[0] is ParsedMode.COLOUR:
-                self._static_rgb_known = False
-                self.mark_segment_state_optimistic()
-                self._enter_static_mode()
+            intent = self._apply_static_write_intent(static, requested)
 
         def invalidate_failed_static() -> None:
-            for key in affected_colour_sources:
+            for key in intent.colour_sources:
                 self.source_static_intents.pop(key, None)
                 self._expected_state.pop(f"source_kelvin_{key}", None)
             if (
-                affected_sources
+                intent.sources
                 and not mode_confirmed_static
                 and self._field_revisions.get("color_mode", 0) <= mode_revision
             ):
@@ -1550,18 +1585,18 @@ class GoveeBLECoordinator(
         if (
             arm_expected
             and static is not None
-            and affected_sources
+            and intent.sources
             and "color_mode" in self._h607c_uncertain_state_fields
         ):
             self._h607c_uncertain_state_fields.discard("color_mode")
             self._h607c_uncertain_state_fields.add("color")
         if (
-            rgb_intent is not None
+            intent.rgb is not None
             and self._client is client
             and client.is_connected
             and self._notification_token is token
         ):
-            self._static_rgb_known = self.segment_colors == [rgb_intent] * self.profile.segment_count
+            self._static_rgb_known = self.segment_colors == [intent.rgb] * self.profile.segment_count
 
     def _setting_queries(self, profile: ModelProfile) -> list[tuple[bytes, tuple[str, ...]]]:
         from .generated_protocol_adapter import (

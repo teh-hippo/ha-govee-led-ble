@@ -48,9 +48,10 @@ PARALLEL_UPDATES  # light.py, select.py, sensor.py, switch.py
 _.supported_features  # light.py
 VERSION  # config_flow.py
 
-# --- Direct protocol encoder API ---
-# Protocol conformance tests exercise this standalone entry point; runtime preparation shares its typed encoder.
+# --- Direct protocol APIs ---
+# Protocol conformance tests exercise standalone entry points; runtime paths share their typed implementations.
 build_music_params  # music_commands.py
+parse_h6179_command  # protocol_h6179.py
 
 # --- Profile-selected music state ---
 # Parameter specs select these coordinator/DTO fields through getattr/setattr.
