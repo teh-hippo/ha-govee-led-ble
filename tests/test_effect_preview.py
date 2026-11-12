@@ -1979,7 +1979,18 @@ async def test_pending_verification_is_cancelled_by_new_work_cancel_unload_and_s
         content_kind="h617a_single",
         item=_item("pending"),
     )
-    verification = asyncio.create_task(asyncio.sleep(10))
+    cleaning_up = asyncio.Event()
+    release_cleanup = asyncio.Event()
+
+    async def verify():
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cleaning_up.set()
+            await release_cleanup.wait()
+
+    verification = asyncio.create_task(verify())
+    await asyncio.sleep(0)
     manager._devices["entry-a"] = effect_preview._DeviceWorker(
         verification_task=verification,
         verification_request=request,
@@ -1992,8 +2003,14 @@ async def test_pending_verification_is_cancelled_by_new_work_cancel_unload_and_s
         updated_at="2026-08-17T00:00:00Z",
         item=_item("new"),
     )
-    await asyncio.gather(verification, return_exceptions=True)
-    await manager.async_wait_idle("entry-a")
+    await cleaning_up.wait()
+    idle = asyncio.create_task(manager.async_wait_idle("entry-a"))
+    try:
+        await asyncio.sleep(0)
+        assert not idle.done()
+    finally:
+        release_cleanup.set()
+        await asyncio.gather(verification, idle, return_exceptions=True)
 
     verification = asyncio.create_task(asyncio.sleep(10))
     worker = manager._devices["entry-a"]
@@ -2022,6 +2039,28 @@ async def test_pending_verification_is_cancelled_by_new_work_cancel_unload_and_s
     manager._devices["entry-a"] = worker
     await manager.async_shutdown()
     assert not manager._devices
+
+
+async def test_repeated_pending_preview_cancellation_does_not_accumulate_generations(hass, monkeypatch):
+    coordinator = _coordinator()
+    manager, _cache = await _manager(hass, monkeypatch, coordinator)
+    owner = object()
+    session_id = _open(manager, owner, [])
+    for sequence in range(1, 51):
+        await manager.async_queue_snapshot(
+            session_id=session_id,
+            owner=owner,
+            config_entry_id="entry-a",
+            sequence=sequence,
+            updated_at="2026-08-17T00:00:00Z",
+            item=_item("pending"),
+        )
+        await manager.async_cancel(session_id=session_id, owner=owner, config_entry_id="entry-a")
+    await manager.async_wait_idle("entry-a")
+    worker = manager._devices["entry-a"]
+    assert not worker.cancelled_generations and not worker.cancelled_verifications
+    assert not worker.verification_tasks
+    await manager.async_shutdown()
 
 
 async def test_compilation_failure_is_reported_without_writing(

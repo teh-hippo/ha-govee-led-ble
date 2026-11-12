@@ -256,8 +256,33 @@ class _DeviceWorker:
     verification_task: asyncio.Task[None] | None = None
     verification_request: _PreviewRequest | None = None
     cancelled_generations: set[int] = field(default_factory=set)
+    verification_tasks: set[asyncio.Task[None]] = field(default_factory=set)
+    cancelled_verifications: set[int] = field(default_factory=set)
     latest_accepted_generation: int = 0
     closing: bool = False
+
+    @property
+    def tasks(self) -> tuple[asyncio.Task[None], ...]:
+        return tuple(task for task in (self.task, self.verification_task, *self.verification_tasks) if task is not None)
+
+    def track_verification(self, task: asyncio.Task[None]) -> None:
+        if task in self.verification_tasks:
+            return
+        self.verification_tasks.add(task)
+        task.add_done_callback(self.verification_tasks.discard)
+
+    def cancel_verification(self) -> None:
+        task = self.verification_task
+        if task is None:
+            return
+        self.track_verification(task)
+        if self.verification_request is not None:
+            generation = self.verification_request.generation
+            self.cancelled_verifications.add(generation)
+            task.add_done_callback(lambda _: self.cancelled_verifications.discard(generation))
+        task.cancel()
+        self.verification_task = None
+        self.verification_request = None
 
 
 class _PreviewWriter:
@@ -673,10 +698,7 @@ class EffectPreviewManager:
             superseded = worker.pending
             worker.pending = request
             worker.latest_accepted_generation = request.generation
-            if worker.verification_task is not None:
-                worker.verification_task.cancel()
-                worker.verification_task = None
-                worker.verification_request = None
+            worker.cancel_verification()
             if worker.task is None or worker.task.done():
                 worker.closing = False
                 worker.task = self._hass.async_create_task(
@@ -721,7 +743,6 @@ class EffectPreviewManager:
                     continue
                 if worker.pending is not None and worker.pending.session_id == session_id:
                     cancelled.append(worker.pending)
-                    worker.cancelled_generations.add(worker.pending.generation)
                     worker.pending = None
                 if worker.active is not None and worker.active.session_id == session_id:
                     cancelled.append(worker.active)
@@ -731,9 +752,7 @@ class EffectPreviewManager:
                     and worker.verification_request.session_id == session_id
                     and worker.verification_task is not None
                 ):
-                    worker.verification_task.cancel()
-                    worker.verification_task = None
-                    worker.verification_request = None
+                    worker.cancel_verification()
         for request in cancelled:
             self._publish(request, PreviewPhase.CANCELLED, error_code="session_cancelled")
             self._degrade_checking_health(request.config_entry_id)
@@ -752,7 +771,7 @@ class EffectPreviewManager:
             invalidate()
 
         cancelled: dict[int, _PreviewRequest] = {}
-        verification_task: asyncio.Task[None] | None = None
+        verification_tasks: tuple[asyncio.Task[None], ...] = ()
         async with self._lock:
             worker = self._devices.get(config_entry_id)
             self._health_targets.pop(config_entry_id, None)
@@ -761,19 +780,15 @@ class EffectPreviewManager:
             for request in (worker.pending, worker.verification_request):
                 if request is not None:
                     cancelled[request.generation] = request
-                    worker.cancelled_generations.add(request.generation)
             if worker.active is not None:
                 worker.cancelled_generations.add(worker.active.generation)
             worker.pending = None
-            verification_task = worker.verification_task
-            if verification_task is not None:
-                verification_task.cancel()
-                worker.verification_task = None
-                worker.verification_request = None
+            worker.cancel_verification()
+            verification_tasks = tuple(worker.verification_tasks)
         for request in cancelled.values():
             self._publish(request, PreviewPhase.CANCELLED, error_code=reason)
-        if verification_task is not None:
-            await asyncio.gather(verification_task, return_exceptions=True)
+        if verification_tasks:
+            await asyncio.gather(*verification_tasks, return_exceptions=True)
 
     async def async_close_session(self, session_id: str, owner: object) -> None:
         self.require_owner(session_id, owner)
@@ -796,23 +811,16 @@ class EffectPreviewManager:
             worker.closing = True
             if worker.pending is not None:
                 cancelled.append(worker.pending)
-                worker.cancelled_generations.add(worker.pending.generation)
                 worker.pending = None
             if worker.active is not None:
                 cancelled.append(worker.active)
                 worker.cancelled_generations.add(worker.active.generation)
-            task = worker.task
-            verification_task = worker.verification_task
-            if verification_task is not None:
-                verification_task.cancel()
-                worker.verification_task = None
-                worker.verification_request = None
+            worker.cancel_verification()
+            tasks = worker.tasks
         for request in cancelled:
             self._publish(request, PreviewPhase.CANCELLED, error_code="device_unloaded")
-        if task is not None:
-            await asyncio.gather(task, return_exceptions=True)
-        if verification_task is not None:
-            await asyncio.gather(verification_task, return_exceptions=True)
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
         async with self._lock:
             self._devices.pop(config_entry_id, None)
             self._health.pop(config_entry_id, None)
@@ -825,12 +833,7 @@ class EffectPreviewManager:
     async def async_shutdown(self) -> None:
         async with self._lock:
             if self._stopping:
-                tasks = [
-                    task
-                    for worker in self._devices.values()
-                    for task in (worker.task, worker.verification_task)
-                    if task is not None
-                ]
+                tasks = [task for worker in self._devices.values() for task in worker.tasks]
             else:
                 self._stopping = True
                 tasks = []
@@ -838,11 +841,9 @@ class EffectPreviewManager:
                     worker.closing = True
                     if worker.pending is not None:
                         self._publish(worker.pending, PreviewPhase.FAILED, error_code="shutdown_incomplete")
-                        worker.cancelled_generations.add(worker.pending.generation)
                         worker.pending = None
-                    if worker.verification_task is not None:
-                        worker.verification_task.cancel()
-                    tasks.extend(task for task in (worker.task, worker.verification_task) if task is not None)
+                    worker.cancel_verification()
+                    tasks.extend(worker.tasks)
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
         async with self._lock:
@@ -857,13 +858,7 @@ class EffectPreviewManager:
         while True:
             async with self._lock:
                 worker = self._devices.get(config_entry_id)
-                tasks = (
-                    []
-                    if worker is None
-                    else [
-                        task for task in (worker.task, worker.verification_task) if task is not None and not task.done()
-                    ]
-                )
+                tasks = [] if worker is None else [task for task in worker.tasks if not task.done()]
             if not tasks:
                 return
             await asyncio.gather(*tasks, return_exceptions=True)
@@ -1170,6 +1165,7 @@ class EffectPreviewManager:
                     ),
                     name=f"{DOMAIN} preview verify {request.config_entry_id}",
                 )
+                worker.track_verification(worker.verification_task)
                 worker.verification_request = request
         if expectations is None:
             self._mark_write_unverified(request)
@@ -1396,6 +1392,7 @@ class EffectPreviewManager:
                 and not worker.closing
                 and request.generation == worker.latest_accepted_generation
                 and request.generation not in worker.cancelled_generations
+                and request.generation not in worker.cancelled_verifications
                 and (request.admission is None or request.admission.is_current)
             )
 
