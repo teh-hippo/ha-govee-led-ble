@@ -504,17 +504,15 @@ class _RecoveryMixin(_CoordinatorBase):
                 getattr(state, field) is None or getattr(self, field) == getattr(state, field)
                 for field in ("white_balance_default_flag", "white_balance_default_red", "white_balance_default_blue")
             )
-        if (
-            "relative_brightness" in permitted & needed
-            and state.relative_brightness_left is not None
-            and state.relative_brightness_top is not None
-            and state.relative_brightness_right is not None
-            and state.relative_brightness_bottom is not None
-        ):
-            await apply_relative_brightness(
-                self._as_coordinator,
-                tuple(getattr(state, f"relative_brightness_{zone}") for zone in self.profile.video_brightness_zones),
+        if "relative_brightness" in permitted & needed:
+            values = tuple(
+                getattr(state, f"relative_brightness_{zone}") for zone in self.profile.video_brightness_zones
             )
+            if any(value is None for value in values):
+                complete = False
+                permitted.discard("relative_brightness")
+            else:
+                await apply_relative_brightness(self._as_coordinator, values)
         if "whole_relative_brightness" in permitted & needed and state.whole_relative_brightness is not None:
             await apply_whole_relative_brightness(self._as_coordinator, state.whole_relative_brightness)
         if "blank_screen" in permitted & needed and state.blank_screen is not None:

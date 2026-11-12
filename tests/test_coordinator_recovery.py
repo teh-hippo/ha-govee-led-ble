@@ -12,6 +12,7 @@ from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.effect_commands import build_h617a_diy_activation
+from custom_components.ha_govee_led_ble.effect_contracts import CapabilityState
 from custom_components.ha_govee_led_ble.effect_deployments import PriorControlState
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_blank_screen,
@@ -27,6 +28,37 @@ from custom_components.ha_govee_led_ble.video_applicability import video_identit
 from tests.coordinator_test_support import _CONFIGURATION_URL, _c, _packet
 
 M = "custom_components.ha_govee_led_ble.coordinator"
+
+
+@pytest.mark.parametrize("six_zones", [False, True])
+@pytest.mark.parametrize("missing", [False, True])
+async def test_relative_brightness_recovery_requires_all_declared_zones(h6199, monkeypatch, six_zones, missing):
+    module = "custom_components.ha_govee_led_ble.coordinator_recovery"
+    zones = ("left", "top", "right", "bottom") + (("strip_left", "strip_right") if six_zones else ())
+    h6199.profile = replace(h6199.profile, video_brightness_zones=zones)
+    values = {f"relative_brightness_{zone}": 40 for zone in zones}
+    if missing:
+        values[f"relative_brightness_{zones[-1]}"] = None
+    state = PriorControlState(
+        mode="colour",
+        is_on=True,
+        brightness_pct=20,
+        rgb_color=(1, 2, 3),
+        video_restore_controls=("relative_brightness",),
+        **values,
+    )
+    monkeypatch.setattr(
+        f"{module}.video_control_states", lambda *args: {"relative_brightness": CapabilityState.SUPPORTED}
+    )
+    apply = AsyncMock(return_value=True)
+    monkeypatch.setattr(f"{module}.apply_relative_brightness", apply)
+    permitted, complete = await h6199._restore_video_controls(state)
+    assert complete is (not missing)
+    if missing:
+        apply.assert_not_awaited()
+        assert "relative_brightness" not in permitted
+    else:
+        apply.assert_awaited_once_with(h6199, (40,) * len(zones))
 
 
 @pytest.mark.parametrize(
