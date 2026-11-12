@@ -1788,6 +1788,29 @@ async def test_custom_writes_wait_for_coordinator_control_lock(
     assert result.phase is DeploymentPhase.CONFIRMED
 
 
+async def test_passive_observations_keep_fresh_timestamps_without_rescheduling_storage():
+    repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
+    store = InMemoryVersionedDocumentStore()
+    cache = EffectDeviceCache(store)
+    await repository.async_load()
+    await cache.async_load()
+    engine = EffectDeploymentEngine(repository, cache)
+    coordinator = _coordinator()
+    engine.reconcile_current(coordinator, config_entry_id="entry-a", observed_at="2026-08-11T00:00:00Z", refreshed=True)
+    scheduled = store.delayed_data_func
+    for second in range(1, 5):
+        state = engine.reconcile_current(
+            coordinator, config_entry_id="entry-a", observed_at=f"2026-08-11T00:00:0{second}Z", refreshed=True
+        )
+        assert cache.get("entry-a") == state
+        assert store.delayed_data_func is scheduled
+    await store.async_fire_delayed_save()
+    assert store.data["devices"]["entry-a"]["observed_at"] == "2026-08-11T00:00:04Z"
+    coordinator.diy_code = 24
+    engine.reconcile_current(coordinator, config_entry_id="entry-a", observed_at="2026-08-11T00:00:05Z", refreshed=True)
+    assert store.delayed_data_func is not None
+
+
 async def test_reconciliation_matches_only_latest_confirmed_selector(
     hass: HomeAssistant,
 ) -> None:

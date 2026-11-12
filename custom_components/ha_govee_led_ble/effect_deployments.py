@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import copy
-import json
 import logging
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
@@ -24,6 +23,7 @@ from .effect_limits import (
     MAX_IDENTIFIER_LENGTH,
     MAX_REVISION,
     MAX_STORE_JSON_NODES,
+    json_document_size,
     validate_bounded_string,
     validate_json_document,
     validate_revision,
@@ -1144,7 +1144,7 @@ class EffectDeploymentRepository:
         old_raw = current["records"][key]
         encoded_size = self._encoded_size + len(str(version)) - len(str(snapshot.version))
         for field, value in changes.items():
-            encoded_size += _json_size(value) - _json_size(old_raw[field])
+            encoded_size += json_document_size(value) - json_document_size(old_raw[field])
         if encoded_size > MAX_DEPLOYMENT_STORE_BYTES:
             raise EffectStorageError(f"deployment store must not exceed {MAX_DEPLOYMENT_STORE_BYTES} bytes")
         candidate = {**current, "version": version, "records": {**current["records"], key: {**old_raw, **changes}}}
@@ -1189,7 +1189,7 @@ class EffectDeploymentRepository:
     ) -> None:
         self._data = data
         self._snapshot = (data, snapshot, {record.operation_id: record for record in snapshot.records})
-        self._encoded_size = _json_size(data) if encoded_size is None else encoded_size
+        self._encoded_size = json_document_size(data) if encoded_size is None else encoded_size
 
     def _cached(self) -> tuple[DeploymentSnapshot, dict[UUID, DeploymentRecord]]:
         data = self._require_loaded()
@@ -1213,10 +1213,6 @@ def _deployment_store(hass: HomeAssistant) -> VersionedDocumentStore:
         minor_version=DEPLOYMENT_STORE_MINOR_VERSION,
         migrate=_async_migrate_deployments,
     )
-
-
-def _json_size(value: Any) -> int:
-    return len(json.dumps(value, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode())
 
 
 async def _async_migrate_deployments(

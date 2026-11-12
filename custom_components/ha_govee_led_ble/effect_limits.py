@@ -84,6 +84,10 @@ def validate_timestamp(
         raise error_type(f"{name} must include a UTC offset")
 
 
+def json_document_size(value: object) -> int:
+    return len(json.dumps(value, allow_nan=False, ensure_ascii=False, separators=(",", ":")).encode())
+
+
 def validate_json_document(
     value: object,
     name: str,
@@ -135,13 +139,8 @@ def validate_json_document(
 
     visit(value, name, 0)
     try:
-        encoded = json.dumps(
-            value,
-            allow_nan=False,
-            ensure_ascii=False,
-            separators=(",", ":"),
-        ).encode()
+        encoded_size = json_document_size(value)
     except (TypeError, ValueError) as exc:
         raise error_type(f"{name} must contain valid JSON values") from exc
-    if len(encoded) > maximum_bytes:
+    if encoded_size > maximum_bytes:
         raise error_type(f"{name} must not exceed {maximum_bytes} bytes")
