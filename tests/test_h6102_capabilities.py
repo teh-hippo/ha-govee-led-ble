@@ -11,6 +11,7 @@ from homeassistant.components.light import ColorMode
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ReadDomain, device_profile
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator_h6102 import H6102InitialIdentity
 from custom_components.ha_govee_led_ble.effect_catalogue import (
     MODEL_EFFECT_CATALOGUES,
     resolve_catalogue_template,
@@ -183,8 +184,12 @@ def test_native_music_geometry_and_upload_order():
 
 
 async def test_two_devices_and_profile_downgrade_reject_inflight(hass, monkeypatch):
-    modern = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6102", configuration_url="studio", h6102_pact="10/1")
-    legacy = GoveeBLECoordinator(hass, "11:22:33:44:55:77", "H6102", configuration_url="studio", h6102_pact="1/1")
+    modern = GoveeBLECoordinator(
+        hass, "11:22:33:44:55:66", "H6102", configuration_url="studio", h6102_identity=H6102InitialIdentity(pact="10/1")
+    )
+    legacy = GoveeBLECoordinator(
+        hass, "11:22:33:44:55:77", "H6102", configuration_url="studio", h6102_identity=H6102InitialIdentity(pact="1/1")
+    )
     assert modern.configuration_url == "studio" and legacy.configuration_url is None
     assert GoveeBLELight(legacy).supported_color_modes == {ColorMode.BRIGHTNESS}
     item = LibraryItem.new(name="H6102 test", content=SingleEffect(family=0, variant=1, speed=50, palette=((1, 2, 3),)))
@@ -219,7 +224,9 @@ def test_new_music_compile_revoked_without_revoking_scenes():
 
 
 async def test_physical_music_selector_rechecks_effective_roster(hass):
-    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6102", configuration_url="studio", h6102_pact="10/1")
+    coordinator = GoveeBLECoordinator(
+        hass, "11:22:33:44:55:66", "H6102", configuration_url="studio", h6102_identity=H6102InitialIdentity(pact="10/1")
+    )
     profile = device_profile("H6102", 10, 1, firmware="3.02.02", hardware="3.02.01")
     item = LibraryItem.new("Music", MusicProfile(model="H6102", mode="bloom", sensitivity=50))
     compiled = compile_application(item, "H6102", profile=profile)
@@ -232,7 +239,9 @@ async def test_physical_music_selector_rechecks_effective_roster(hass):
 
 
 async def test_reconnect_retains_presentation_identity_but_restricts_write_profile(hass, monkeypatch):
-    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6102", configuration_url="studio", h6102_pact="10/1")
+    coordinator = GoveeBLECoordinator(
+        hass, "11:22:33:44:55:66", "H6102", configuration_url="studio", h6102_identity=H6102InitialIdentity(pact="10/1")
+    )
     coordinator.fw_version, coordinator.hw_version = "3.02.02", "3.02.01"
     coordinator._resolve_device_profile()
     assert "bloom" in coordinator.profile.music_modes
@@ -253,7 +262,9 @@ async def test_reconnect_retains_presentation_identity_but_restricts_write_profi
 
 
 def test_observed_pact_overrides_owner_context(hass):
-    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6102", configuration_url="studio", h6102_pact="10/1")
+    coordinator = GoveeBLECoordinator(
+        hass, "11:22:33:44:55:66", "H6102", configuration_url="studio", h6102_identity=H6102InitialIdentity(pact="10/1")
+    )
     advertise(coordinator, 1)
     assert not coordinator.profile.supports_rgb
     coordinator._note_advertisement(SimpleNamespace(manufacturer_data={}))
@@ -263,7 +274,9 @@ def test_observed_pact_overrides_owner_context(hass):
 
 
 def test_identity_change_invalidates_generation_even_with_same_roster(hass):
-    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6102", configuration_url="studio", h6102_pact="10/1")
+    coordinator = GoveeBLECoordinator(
+        hass, "11:22:33:44:55:66", "H6102", configuration_url="studio", h6102_identity=H6102InitialIdentity(pact="10/1")
+    )
     coordinator.fw_version, coordinator.hw_version = "3.02.02", "3.02.01"
     coordinator._resolve_device_profile()
     profile, generation = coordinator.profile, coordinator._profile_generation
@@ -280,7 +293,7 @@ async def test_saved_apply_requires_fresh_exact_h6102_readback(hass, monkeypatch
         "11:22:33:44:55:66",
         "H6102",
         configuration_url="studio",
-        h6102_pact="10/1",
+        h6102_identity=H6102InitialIdentity(pact="10/1"),
     )
     selected = False
 
@@ -331,7 +344,9 @@ async def test_saved_apply_requires_fresh_exact_h6102_readback(hass, monkeypatch
 async def test_boolean_setting_requires_fresh_matching_readback(
     hass, monkeypatch, control, domain, confirm, virtual_clock
 ):
-    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6102", configuration_url="studio", h6102_pact="10/1")
+    coordinator = GoveeBLECoordinator(
+        hass, "11:22:33:44:55:66", "H6102", configuration_url="studio", h6102_identity=H6102InitialIdentity(pact="10/1")
+    )
     coordinator.fw_version, coordinator.hw_version = "3.02.02", "3.02.01"
     coordinator._resolve_device_profile()
     coordinator._confirmed_identity_fields.update(coordinator.profile.profile_identity_fields)

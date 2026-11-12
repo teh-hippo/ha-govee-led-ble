@@ -47,6 +47,7 @@ from .coordinator_dreamview import (
     async_guard_dreamview_entry,
     async_recover_dreamview_claims,
 )
+from .coordinator_h6102 import H6102InitialIdentity
 from .editor import EDITOR_PANEL_PATH, async_register_editor_panel, editor_url
 from .effect_setup import async_setup_effects, get_effect_backend
 from .light_services import async_register_light_services
@@ -294,10 +295,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> 
         effect_categories=effect_categories_from_options(model, entry.options),
         prefix_effect_names=prefix_effect_names_from_options(entry.options),
         always_include_custom_effects=always_include_custom_effects_from_options(entry.options),
-        h6102_firmware=h6102_firmware,
-        h6102_firmware_source="configured" if h6102_firmware is not None else None,
-        h6102_hardware=configured_hardware if model == "H6102" and isinstance(configured_hardware, str) else None,
-        h6102_pact=entry.data.get(CONF_H6102_PACT) if model == "H6102" else None,
+        h6102_identity=H6102InitialIdentity(
+            firmware=h6102_firmware,
+            firmware_source="configured" if h6102_firmware is not None else None,
+            hardware=configured_hardware if isinstance(configured_hardware, str) else None,
+            pact=entry.data.get(CONF_H6102_PACT),
+        )
+        if model == "H6102"
+        else None,
     )
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator

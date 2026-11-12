@@ -1,5 +1,6 @@
 """Notification decoding and expected-state tracking for the Govee BLE coordinator."""
 
+import asyncio
 import logging
 import time
 from typing import Any
@@ -95,6 +96,20 @@ def _bulk_version(version: Any) -> str | None:
 
 class _NotificationMixin(_CoordinatorBase):
     """Decodes status notifications and reconciles them with recently written values."""
+
+    def _init_observation_state(self) -> None:
+        self._bulk_collector: BulkStatusCollector | None = None
+        self._bulk_query_deadline: float | None = None
+        self._bulk_query_incomplete = False
+        self.packet_log: list[dict[str, Any]] = []
+        self._expected_state: dict[str, tuple[Any, float]] = {}
+        self._notify_started_monotonic: float | None = None
+        self._last_rx_monotonic: float | None = None
+        self._domain_revisions: dict[StatusDomain, int] = {}
+        self._field_revisions: dict[str, int] = {}
+        self._field_received_at: dict[str, float] = {}
+        self._domain_received_at: dict[StatusDomain, float] = {}
+        self._revision_event = asyncio.Event()
 
     def _arm_expected(self, packet: bytes, *, expectations: dict[str, Any] | None = None) -> None:
         expectations = (

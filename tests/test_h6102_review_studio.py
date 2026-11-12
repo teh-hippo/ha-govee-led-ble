@@ -10,6 +10,7 @@ from homeassistant.config_entries import ConfigEntryState
 
 from custom_components.ha_govee_led_ble.const import DOMAIN, device_profile, get_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator_h6102 import H6102InitialIdentity
 from custom_components.ha_govee_led_ble.effect_catalogue import resolve_catalogue_template, validate_native_diy
 from custom_components.ha_govee_led_ble.effect_compiler import compile_music_profile
 from custom_components.ha_govee_led_ble.effect_domain import LayeredEffect, LibraryItem, MusicProfile
@@ -25,7 +26,11 @@ BODY = bytes.fromhex("3302010203040506aabbcc196104050708")
 
 def _coordinator(hass, *, resolved=True):
     coordinator = GoveeBLECoordinator(
-        hass, "AA:BB:CC:DD:EE:FF", "H6102", configuration_url=None, h6102_pact="10/1" if resolved else None
+        hass,
+        "AA:BB:CC:DD:EE:FF",
+        "H6102",
+        configuration_url=None,
+        h6102_identity=H6102InitialIdentity(pact="10/1" if resolved else None),
     )
     coordinator.fw_version, coordinator.hw_version = "3.02.02", "3.02.01"
     coordinator._resolve_device_profile()

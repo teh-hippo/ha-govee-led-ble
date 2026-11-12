@@ -32,6 +32,7 @@ from custom_components.ha_govee_led_ble.coordinator import (
     GoveeBLECoordinator,
 )
 from custom_components.ha_govee_led_ble.coordinator_expectations import expectations_from_packet
+from custom_components.ha_govee_led_ble.coordinator_h6102 import H6102InitialIdentity
 from custom_components.ha_govee_led_ble.coordinator_refresh import DEFAULT_REFRESH_REQUEST, RefreshRequest
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.effect_compiler import compile_application
@@ -53,6 +54,16 @@ from custom_components.ha_govee_led_ble.transport import WRITE_UUID, xor_checksu
 from tests.coordinator_test_support import _CONFIGURATION_URL, _c, _packet
 
 M = "custom_components.ha_govee_led_ble.coordinator"
+
+
+def test_failed_initial_profile_does_not_leak_a_shutdown_listener(hass, monkeypatch):
+    listeners = hass.bus.async_listeners().get(EVENT_HOMEASSISTANT_STOP, 0)
+    monkeypatch.setattr(
+        GoveeBLECoordinator, "_resolve_device_profile", MagicMock(side_effect=ValueError("Invalid initial profile"))
+    )
+    with pytest.raises(ValueError, match="Invalid initial profile"):
+        GoveeBLECoordinator(hass, "44:55:66:77:88:99", "H617A", configuration_url=None)
+    assert hass.bus.async_listeners().get(EVENT_HOMEASSISTANT_STOP, 0) == listeners
 
 
 @pytest.fixture
@@ -100,8 +111,7 @@ def test_h6102_configured_firmware_does_not_invent_pact(hass):
         "44:55:66:77:88:99",
         "H6102",
         configuration_url=_CONFIGURATION_URL,
-        h6102_firmware="1.03.01",
-        h6102_firmware_source="configured",
+        h6102_identity=H6102InitialIdentity(firmware="1.03.01", firmware_source="configured"),
     )
 
     assert not coordinator.profile.supports_rgb

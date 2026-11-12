@@ -546,7 +546,7 @@ async def test_native_scene_primitive_acquires_control_lock_exactly_once(coord):
             self.acquisitions += 1
             return super().hold(*args, **kwargs)
 
-    lock = coord._control_arbiter = coord._control_lock = CountingArbiter()
+    lock = coord._control_arbiter = CountingArbiter()
     coord.is_on = False
     packets = []
 
@@ -620,7 +620,7 @@ async def test_preview_observation_stays_read_only_when_device_is_silent(coord, 
     )
     disconnect.assert_not_awaited()
     send.assert_not_awaited()
-    assert not coord._control_lock.locked()
+    assert not coord._control_arbiter.locked()
 
 
 @pytest.mark.parametrize("connected", [False, True])
@@ -775,7 +775,7 @@ async def test_effect_observation_requires_fresh_selector_and_power(
 
     assert result is expected
     sent.assert_awaited_once()
-    assert not coord._control_lock.locked()
+    assert not coord._control_arbiter.locked()
 
 
 @pytest.mark.parametrize(

@@ -655,7 +655,7 @@ async def test_music_recovery_cancellation_respects_physical_boundary(hass, phas
     assert coordinator.capture_effect_control_state() == expected
     assert coordinator.control_write_attempts == (phase == "write")
     assert coordinator._field_revisions == coordinator._domain_revisions == {}
-    assert not coordinator._lock.locked() and not coordinator._control_lock.locked()
+    assert not coordinator._lock.locked() and not coordinator._control_arbiter.locked()
 
 
 @pytest.mark.parametrize("operation", ["apply", "recovery"])

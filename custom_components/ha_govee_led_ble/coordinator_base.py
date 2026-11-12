@@ -104,7 +104,7 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     _observed_power_write_generation: int
     _observed_power_profile_generation: int
     _source_power_observation_generation: dict[str, tuple[int, int]]
-    _control_lock: BLEControlArbiter
+    _control_arbiter: BLEControlArbiter
     _lock: asyncio.Lock
     segment_state_source: str
     pact_type: int | None

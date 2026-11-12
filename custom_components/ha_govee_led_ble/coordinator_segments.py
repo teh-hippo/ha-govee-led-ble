@@ -25,6 +25,21 @@ _SEGMENT_READ_TIMEOUT = 2.0
 
 
 class _SegmentMixin(_CoordinatorBase):
+    def _init_segment_state(self) -> None:
+        self.configured_strings: int | None = None
+        self._configured_strings_confirmed = False
+        self._mask_transaction: tuple[asyncio.Task[Any] | None, object | None, int] | None = None
+        self._segment_query_generation: int | None = None
+        self.segment_colors: list[tuple[int, int, int]] = [self.rgb_color] * self.profile.segment_count
+        self.segment_brightness: list[int] = [100] * self.profile.segment_count
+        self.segment_brightness_readable = False
+        self.segment_state_source = "initial"
+        self.segment_state_observed_at: str | None = None
+        self._segment_groups_observed: set[int] = set()
+        self._segment_query_colors: list[tuple[int, int, int]] | None = None
+        self._segment_query_brightness: list[int] | None = None
+        self._segment_query_incomplete = False
+
     @property
     def _segment_group_count(self) -> int:
         return self.profile.segment_group_count

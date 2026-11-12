@@ -107,8 +107,7 @@ def _coordinator(*, model: str = "H617A", readable: bool = False) -> SimpleNames
         if readable
         else replace(get_profile(model), read_domains=frozenset(), setup_required_read_domains=frozenset()),
         effect_families={EFFECT_FAMILY_SCENES},
-        _control_arbiter=(arbiter := BLEControlArbiter()),
-        _control_lock=arbiter,
+        _control_arbiter=BLEControlArbiter(),
         is_on=False,
         effect=None,
         diy_code=None,
@@ -657,7 +656,7 @@ async def test_native_scene_preview_uses_scene_speed_primitive_for_repeated_sele
         verify,
         intent,
     ):
-        async with coordinator._control_lock:
+        async with coordinator._control_arbiter:
             assert scene_entry is scene
             applied.append((scene_name, speed_index, verify))
             await before_write()
@@ -1107,7 +1106,7 @@ async def test_latest_verification_is_read_only_without_holding_control_lock(
 
     async def observe(_expectations, *, timeout):
         assert timeout == 0.1
-        assert not coordinator._control_lock.locked()
+        assert not coordinator._control_arbiter.locked()
         coordinator.send_command.assert_not_awaited()
         return True
 
@@ -1615,7 +1614,7 @@ async def test_higher_intent_waits_for_complete_atomic_preview_sequence(
     coordinator = _coordinator()
     arbiter = BLEControlArbiter()
     coordinator._control_arbiter = arbiter
-    coordinator._control_lock = arbiter
+    coordinator._control_arbiter = arbiter
     coordinator.admit_preview = arbiter.admit_preview
     coordinator.invalidate_previews = arbiter.invalidate_previews
     coordinator.is_on = True
@@ -1671,7 +1670,7 @@ async def test_preview_admitted_during_foreground_intent_applies_after_release(
     coordinator = _coordinator(readable=True)
     arbiter = BLEControlArbiter()
     coordinator._control_arbiter = arbiter
-    coordinator._control_lock = arbiter
+    coordinator._control_arbiter = arbiter
     coordinator.admit_preview = arbiter.admit_preview
     coordinator.invalidate_previews = arbiter.invalidate_previews
     original_sequence = coordinator.async_write_effect_sequence.side_effect
@@ -1900,7 +1899,7 @@ async def test_toggle_only_live_preview_uses_fresh_external_policy(hass, monkeyp
         blank_writes = [packet for packet in writes if packet[:3] == bytes.fromhex("33a90a")]
         assert blank_writes == ([build_blank_screen(True, "H6099", 1, 30, 240)] if fresh else [])
         assert any(event.phase is (PreviewPhase.WRITTEN if fresh else PreviewPhase.FAILED) for event in events)
-        assert not coordinator._lock.locked() and not coordinator._control_lock.locked()
+        assert not coordinator._lock.locked() and not coordinator._control_arbiter.locked()
     finally:
         await manager.async_shutdown()
 
