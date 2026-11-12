@@ -9,6 +9,7 @@ from contextlib import suppress
 from typing import cast
 
 from bleak import BleakClient, BleakError  # type: ignore[attr-defined]
+from bleak.exc import BleakDeviceNotFoundError
 from bleak_retry_connector import (
     BleakClientWithServiceCache,
     clear_cache,
@@ -57,6 +58,14 @@ _STALE_GATT_ERROR_CODES = (
     "org.bluez.error.doesnotexist",
     "org.freedesktop.dbus.error.unknownobject",
 )
+
+
+def needs_reconnect_backoff(error: BleakError | TimeoutError) -> bool:
+    if isinstance(error, (TimeoutError, BleakDeviceNotFoundError)):
+        return True
+    # Legacy backends expose teardown and discovery failures only as messages.
+    message = str(error).lower()
+    return "already shutdown" in message or "not found" in message
 
 
 def is_stale_gatt_error(err: BaseException) -> bool:

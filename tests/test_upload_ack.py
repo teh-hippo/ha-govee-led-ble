@@ -554,7 +554,7 @@ async def test_stale_early_disconnected_and_cancelled_uploads(connected, fault):
             if fault == "stale_subscription":
                 old_callback(None, bytearray(MUSIC_OK))
             elif fault == "profile":
-                c._profile_generation += 1
+                c._advance_profile_generation()
                 receive(client, MUSIC_OK)
             elif fault == "disconnect":
                 c._clear_client_state(client)
@@ -768,7 +768,9 @@ async def test_workshop_public_paths_require_upload_ack(connected, hass, monkeyp
     assert c._upload_ack is None
 
 
-@pytest.mark.parametrize("fault", ["cancel_wait", "disconnect_wait", "write_error", "guard_error"])
+@pytest.mark.parametrize(
+    "fault", ["cancel_wait", "disconnect_wait", "profile_wait", "subscription_wait", "write_error", "guard_error"]
+)
 async def test_preview_failure_cleans_pending_without_reconnect(connected, monkeypatch, fault):
     c, client = connected
     packets, index = sequence()
@@ -797,16 +799,28 @@ async def test_preview_failure_cleans_pending_without_reconnect(connected, monke
             writer=lambda *args, **kw: preview_writer(c, *args, **kw),
         )
     )
-    if fault in {"cancel_wait", "disconnect_wait"}:
+    if fault.endswith("_wait"):
         await asyncio.wait_for(final_written.wait(), 1)
-        pending = c._upload_ack[-1]
+        pending = c._upload_ack.future
         if fault == "cancel_wait":
             task.cancel()
-        else:
+        elif fault == "disconnect_wait":
             c._clear_client_state(client)
-        with pytest.raises(asyncio.CancelledError if fault == "cancel_wait" else BleakError):
+        elif fault == "profile_wait":
+            c._advance_profile_generation()
+        else:
+            await c._start_notify()
+        if fault != "cancel_wait":
+            assert pending.done()
+        error = (
+            asyncio.CancelledError if fault == "cancel_wait" else ValueError if fault == "profile_wait" else BleakError
+        )
+        with pytest.raises(error):
             await asyncio.wait_for(task, 1)
-        assert pending.cancelled()
+        if fault == "cancel_wait":
+            assert pending.cancelled()
+        else:
+            assert isinstance(pending.exception(), error)
     else:
         with pytest.raises(BleakError if fault == "write_error" else ValueError):
             await task

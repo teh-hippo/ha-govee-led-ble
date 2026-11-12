@@ -11,6 +11,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from .const import ModelProfile, ReadDomain
 from .control_arbiter import BLEControlArbiter, ControlIntent, async_control_intent
 from .coordinator_status import ParsedMode, StatusDomain
+from .coordinator_upload import PendingUploadAck
 
 if TYPE_CHECKING:
     from .coordinator_modes import PreModeSnapshot
@@ -150,7 +151,7 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     _initialized_music_parameters: set[str]
     _blank_screen_notification_revision: int
     _dreamview_private_write: bool
-    _upload_ack: tuple[BleakClient, object | None, int, int, int | None, int, asyncio.Future[bool]] | None
+    _upload_ack: PendingUploadAck | None
     _setting_ack: tuple[BleakClient, object | None, int, asyncio.Future[bool]] | None
 
     def install_static_color(
@@ -177,6 +178,8 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
         def _authorization_profile(self) -> ModelProfile: ...
 
         def _reconcile_authorization(self) -> None: ...
+
+        def _advance_profile_generation(self) -> None: ...
 
         def identity_fields_confirmed(self, fields: frozenset[str] | None = None) -> bool: ...
 
@@ -299,6 +302,8 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
             upload_ack_index: int | None = None,
             writer: ProfileWriter | None = None,
             packet_validator: Callable[[bytes, ModelProfile], None] = ...,
+            final_packet: bytes | None = None,
+            before_final: Callable[[], Awaitable[None]] | None = None,
         ) -> None: ...
 
         async def refresh_state(self, request: RefreshRequest = ...) -> bool: ...
