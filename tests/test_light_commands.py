@@ -1,6 +1,7 @@
 """Semantic light-command tests."""
 
 from dataclasses import replace
+from unittest.mock import Mock
 
 import pytest
 
@@ -36,6 +37,18 @@ from custom_components.ha_govee_led_ble.scenes import SCENES
 from custom_components.ha_govee_led_ble.transport import xor_checksum
 
 H = bytes.fromhex
+
+
+@pytest.mark.parametrize("model", ["H617A", "H6199", "H6181", "H6179"])
+def test_packet_authorisation_reuses_its_parsed_static_command(monkeypatch, model):
+    from custom_components.ha_govee_led_ble import generated_protocol_adapter as adapter
+
+    profile = MODEL_PROFILES[model]
+    packet = build_color_rgb(1, 2, 3, model, profile=profile)
+    parse = Mock(wraps=adapter.parse_command_result)
+    monkeypatch.setattr(adapter, "parse_command_result", parse)
+    require_profile_packet(packet, profile)
+    parse.assert_called_once()
 
 
 def test_h6199_blank_screen_builder_validates_durations() -> None:

@@ -98,7 +98,10 @@ def parse_h6179_command(frame: bytes) -> ParsedH6179Command | None:
 
     from .generated_protocol_adapter import parse_command
 
-    parsed = parse_command(frame, "H6179")
+    return h6179_command_from_generated(parse_command(frame, "H6179"))
+
+
+def h6179_command_from_generated(parsed: Any) -> ParsedH6179Command | None:
     if parsed is None:
         return None
     operation = getattr(parsed.opcode, "name", None)
