@@ -8,8 +8,8 @@ meta:
 doc: |
   SPECULATIVE H6181 later Pact >=10/1 status. Ordinary colour carries
   RGB, Kelvin BE16 and companion RGB, unlike legacy flag-based readback.
-  Music readback routes disagree about selector and style positions, so
-  these fields retain neutral names until qualified on hardware.
+  Music readback routes agree on palette selectors and sensitivity.
+  Other selector, style and colour interpretations remain unqualified.
   Opaque suffixes are retained; status and accepted writes are independent.
 seq:
   - id: header
@@ -41,6 +41,9 @@ enums:
     0x0a: diy
     0x0d: static_colour
     0x13: music
+  palette_music_mode:
+    48: bloom
+    49: radiant
 types:
   colour_mode_body:
     seq:
@@ -70,6 +73,7 @@ types:
     seq:
       - id: observed_selector
         type: u1
+        enum: palette_music_mode
       - id: sensitivity
         type: u1
       - id: observed_style

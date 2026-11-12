@@ -1,8 +1,10 @@
 from dataclasses import replace
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from custom_components.ha_govee_led_ble.const import device_profile
+from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_status import decode_status_frame, parse_color_mode
 from custom_components.ha_govee_led_ble.effect_compiler import compile_effect, validate_compiled_geometry
 from custom_components.ha_govee_led_ble.effect_domain import EffectPair, LibraryItem, MultiEffect, SingleEffect
@@ -172,7 +174,54 @@ def test_music_status_does_not_invent_a_selector_from_conflicting_readback_field
     decoded = decode_status_frame(frame(bytes.fromhex("aa051300320101ff0000")), "H6181", profile=profile)
     assert decoded is not None
     parsed = parse_color_mode(decoded.generated, "H6181", profile=profile)
-    assert parsed.music_mode is None and parsed.music_sensitivity is None
+    assert parsed.music_mode is None and parsed.music_sensitivity == 50
+    assert parsed.music_color is None and parsed.music_calm is None and not parsed.music_color_present
+
+
+@pytest.mark.parametrize(
+    "firmware,hardware,selector,sensitivity,mode,observed",
+    [
+        ("2.04.00", "2.01.01", 48, 0, "bloom", 0),
+        ("2.04.00", "3.05.01", 49, 99, "radiant", 99),
+        ("2.03.99", "2.01.01", 48, 73, None, 73),
+        ("2.04.00", "3.04.01", 49, 73, None, 73),
+        ("2.04.00", "2.01.01", 255, 73, None, 73),
+        ("2.04.00", "2.01.01", 48, 100, "bloom", None),
+    ],
+)
+def test_music_readback_qualifies_selector_and_sensitivity_independently(
+    firmware, hardware, selector, sensitivity, mode, observed
+):
+    profile = device_profile("H6181", 10, 2, firmware=firmware, hardware=hardware)
+    packet = frame(bytes([0xAA, 5, 0x13, selector, sensitivity, 0x7B, 1, 255, 0, 0]))
+    decoded = decode_status_frame(packet, "H6181", profile=profile)
+    assert decoded is not None
+    result = parse_color_mode(decoded.generated, "H6181", profile=profile)
+    assert result.music_mode == mode and result.music_sensitivity == observed
+    assert result.music_calm is None and result.music_color is None and not result.music_color_present
+
+
+@pytest.mark.parametrize("selector,mode", [(0, None), (48, "bloom")])
+async def test_music_observes_qualified_fields_without_confirming_ambiguous_settings(hass, selector, mode):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6181", configuration_url=None)
+    client = MagicMock(is_connected=True, start_notify=AsyncMock())
+    coordinator._client = client
+    coordinator.pact_type, coordinator.pact_code = 10, 2
+    coordinator._note_identity(fw_version="2.04.00", hw_version="2.01.01")
+    await coordinator._start_notify()
+    receive = client.start_notify.call_args.args[1]
+    coordinator.music_mode, coordinator.music_sensitivity = "dynamic", 73
+    coordinator.music_color, coordinator.music_calm = (12, 34, 56), True
+    coordinator._arm_expected_values({"music_sensitivity": 73})
+    for sensitivity in (42, 73):
+        receive(None, bytearray(frame(bytes([0xAA, 5, 0x13, selector, sensitivity, 1, 1, 255, 0, 0]))))
+        assert coordinator.music_sensitivity == 73
+        assert ("music_sensitivity" in coordinator._field_revisions) is (sensitivity == 73)
+    assert coordinator.music_mode == (mode or "dynamic")
+    assert ("music_mode" in coordinator._field_revisions) is (mode is not None)
+    assert coordinator.music_color == (12, 34, 56) and coordinator.music_calm
+    assert not {"music_color", "music_calm"} & coordinator._field_revisions.keys()
+    assert coordinator.profile.music_readback_ambiguous
 
 
 @pytest.mark.parametrize("payload", ["3305047b", "3399", "334101"])
