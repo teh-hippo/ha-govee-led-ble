@@ -34,6 +34,7 @@ Do not post Bluetooth addresses, serial numbers, account details or other unique
 - Plaintext marker compatibility is exact-model policy over a generated wire shape, never a generic malformed-marker fallback.
   Advertised or previously established encryption requirements always take precedence.
 - Qualify revision-dependent effects before compilation and bind prepared packets to their encoding policy.
+  Retain the content's semantic workflow in compiled effects and check current workflow restrictions without reconstructing intent from transport or wire fields.
   Preview connection preparation must preserve foreground invalidation without allowing an older preview admission to invalidate a newer preparation.
 - Qualify source power observations against the latest master-power write, effective profile and current subscription before using them to preserve siblings.
 - Compile inline video settings from complete typed requests before the first mode write.

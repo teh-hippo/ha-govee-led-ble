@@ -213,6 +213,31 @@ async def test_h6179_advertised_pact_rejects_stale_diy_at_physical_write(hass):
     assert coordinator.profile == device_profile("H6179", 10, 1)
 
 
+@pytest.mark.parametrize(
+    ("model", "template_id"),
+    [("H1771", "template:h1771:0:0"), ("H60A6", "template:native:11")],
+)
+async def test_native_workflow_narrowing_blocks_physical_activation(hass, model, template_id):
+    from custom_components.ha_govee_led_ble.effect_catalogue import MODEL_EFFECT_CATALOGUES
+    from custom_components.ha_govee_led_ble.effect_compiler import compile_application, validate_compiled_geometry
+    from custom_components.ha_govee_led_ble.effect_domain import LibraryItem
+
+    coordinator = GoveeBLECoordinator(hass, "55:66:77:88:99:AA", model, configuration_url=_CONFIGURATION_URL)
+    template = next(value for value in MODEL_EFFECT_CATALOGUES[model].templates if value.id == template_id)
+    compiled = compile_application(LibraryItem.new("Prepared native effect", template.content), model)
+    narrowed = replace(coordinator.profile, effect_workflows=frozenset({"single"}))
+    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
+    coordinator._client = client
+    assert compiled.activation_packet is not None
+    with pytest.raises(ValueError, match="compiled workflow"):
+        await coordinator._async_write_packet(
+            client,
+            compiled.activation_packet,
+            before_write=lambda: validate_compiled_geometry(compiled, narrowed),
+        )
+    client.write_gatt_char.assert_not_awaited()
+
+
 def test_h6125_advertised_pact_and_notified_identity_qualify_the_profile(h6125):
     h6125.config_entry = MagicMock(entry_id="test-entry")
     h6125._note_advertisement(SimpleNamespace(manufacturer_data={34818: bytes((0xEC, 0, 1, 2, 0))}))

@@ -41,6 +41,7 @@ from .effect_contracts import (
 )
 from .effect_domain import (
     BuiltinScene,
+    EffectContent,
     H6179MixedDiyEffect,
     H6179SingleDiyEffect,
     LayeredEffect,
@@ -56,6 +57,7 @@ from .effect_domain import (
     SingleEffect,
     VideoProfile,
     WorkshopEffect,
+    effect_content_workflow,
 )
 from .generated_protocol_adapter import build_diy_activation, build_scene_activation
 from .h60a6_effects import encode_native_body
@@ -111,6 +113,7 @@ class CompiledEffect:
     item_version: int
     model: str
     content_kind: str
+    workflow: CapabilityWorkflow
     diy_code: int | None
     activation_mode: ActivationMode
     expected_effect: str | None
@@ -253,34 +256,8 @@ def validate_compiled_geometry(compiled: CompiledApplication, profile: ModelProf
         if compiled.content_kind in {"h6179_single_diy", "h6179_mixed_diy"}:
             if compiled.upload_transport != profile.diy_upload_transport:
                 raise ValueError("Device DIY transport changed since compilation")
-        if profile.effect_workflows is not None:
-            workflow = {
-                "scene_builtin": CapabilityWorkflow.NATIVE_SCENES,
-                "scene_palette": CapabilityWorkflow.EDITED_PALETTE_SCENES,
-                "scene_layered": CapabilityWorkflow.LAYERED_SCENES,
-                "h617a_painted": CapabilityWorkflow.PAINTED,
-                "h617a_single": CapabilityWorkflow.SINGLE,
-                "h617a_multi": CapabilityWorkflow.MULTI,
-                "advanced": CapabilityWorkflow.ADVANCED,
-                "workshop": CapabilityWorkflow.WORKSHOP,
-                "palette_diy": CapabilityWorkflow.PALETTE_DIY,
-                "h6179_single_diy": CapabilityWorkflow.SINGLE,
-                "h6179_mixed_diy": CapabilityWorkflow.MULTI,
-                "native_effect": CapabilityWorkflow.LAYERED_SCENES
-                if compiled.scene_entry is not None
-                else CapabilityWorkflow.ADVANCED
-                if profile.effect_grammar == "H60B0" and compiled.body_effect_code in (13, 923)
-                else CapabilityWorkflow.MULTI
-                if profile.effect_grammar == "H60B0"
-                and (compiled.body_effect_code == 81 or compiled.native_effect_revision == 3)
-                else CapabilityWorkflow.MULTI
-                if profile.effect_grammar == "H607C" and compiled.body_effect_code == H607cDiyBody.Family.paired
-                else CapabilityWorkflow.PAINTED
-                if compiled.upload_transport == "a4"
-                else CapabilityWorkflow.SINGLE,
-            }.get(compiled.content_kind)
-            if workflow is None or workflow.value not in profile.effect_workflows:
-                raise ValueError("Device profile no longer supports the compiled workflow")
+        if profile.effect_workflows is not None and compiled.workflow.value not in profile.effect_workflows:
+            raise ValueError("Device profile no longer supports the compiled workflow")
     if isinstance(compiled, CompiledVideoProfile):
         if compiled.mode not in profile.video_modes:
             raise ValueError("Device profile no longer supports the compiled video mode")
@@ -371,7 +348,7 @@ def compatibility(item: LibraryItem, model: str, *, profile: ModelProfile | None
                 CompatibilityState.INCOMPATIBLE,
                 (f"{model} cannot apply H6179 DIY content",),
             )
-        workflow = CapabilityWorkflow.SINGLE if isinstance(content, H6179SingleDiyEffect) else CapabilityWorkflow.MULTI
+        workflow = _effect_workflow(content)
         try:
             require_effect_route(model, workflow, ("H6179",), profile=profile)
         except ValueError as error:
@@ -490,32 +467,29 @@ def compatibility(item: LibraryItem, model: str, *, profile: ModelProfile | None
     assert_never(content)
 
 
+def _effect_workflow(content: EffectContent) -> CapabilityWorkflow:
+    workflow = effect_content_workflow(content)
+    if workflow is None:
+        raise ValueError("Opaque content has no applicable workflow")
+    return CapabilityWorkflow(workflow)
+
+
 def _prepare_native_effect(item: LibraryItem, model: str, profile: ModelProfile) -> bytes:
     content = item.content
     if not isinstance(content, NativeEffect):
         raise ValueError("native compiler requires native content")
     if profile.effect_grammar in {"H60B0", "H607C"}:
-        require_effect_route(model, CapabilityWorkflow(content.workflow), (profile.effect_grammar,), profile=profile)
+        require_effect_route(model, _effect_workflow(content), (profile.effect_grammar,), profile=profile)
         validate_effect_eligibility(content, model, profile=profile)
     elif profile.effect_grammar == "H1771":
-        workflow = CapabilityWorkflow.LAYERED_SCENES if content.template is not None else CapabilityWorkflow.MULTI
-        require_effect_route(model, workflow, ("H1771",), profile=profile)
+        require_effect_route(model, _effect_workflow(content), ("H1771",), profile=profile)
         validate_effect_eligibility(content, model, profile=profile)
         if content.template is not None:
             _key, entry = _resolve_scene(model, content.template, expected_scene_type=5)
             if entry.diy_effect_codes != (content.family,):
                 raise ValueError("native scene family does not match its catalogue")
     else:
-        workflow = (
-            CapabilityWorkflow.LAYERED_SCENES
-            if content.template is not None
-            else CapabilityWorkflow.PAINTED
-            if content.family == 798
-            else CapabilityWorkflow.ADVANCED
-            if content.preset_id in (11, 12)
-            else CapabilityWorkflow.SINGLE
-        )
-        require_effect_route(model, workflow, ("H60A6",), profile=profile)
+        require_effect_route(model, _effect_workflow(content), ("H60A6",), profile=profile)
         if content.model != model or not profile.supports_custom_effects:
             raise ValueError("native content does not match the target profile")
         if content.family == 798 and profile.physical_ic_count != 133:
@@ -649,7 +623,7 @@ def resolve_diy_code(
         model = content.model if model is None else model
         if content.model != model:
             raise ValueError(f"effect targets {content.model}, not {model}")
-        workflow = CapabilityWorkflow.SINGLE if isinstance(content, H6179SingleDiyEffect) else CapabilityWorkflow.MULTI
+        workflow = _effect_workflow(content)
         require_effect_route(model, workflow, ("H6179",), profile=profile)
         if requested is None:
             raise ValueError("H6179 DIY application requires an explicitly approved disposable DIY code")
@@ -669,13 +643,7 @@ def resolve_diy_code(
             raise ValueError(f"{model} has no evidenced activation packet for the requested slot; expected {expected}")
         return expected
     if isinstance(content, PaintedEffect | SingleEffect | MultiEffect):
-        workflow = (
-            CapabilityWorkflow.PAINTED
-            if isinstance(content, PaintedEffect)
-            else CapabilityWorkflow.SINGLE
-            if isinstance(content, SingleEffect)
-            else CapabilityWorkflow.MULTI
-        )
+        workflow = _effect_workflow(content)
         profile = get_profile("H617A" if model is None else model) if profile is None else profile
         grammar = require_effect_route(
             "H617A" if model is None else model,
@@ -764,6 +732,7 @@ def _compile_workshop_effect(
         item_version=item.version,
         model=model,
         content_kind=content_kind,
+        workflow=_effect_workflow(content),
         diy_code=diy_code,
         activation_mode=ActivationMode.CUSTOM,
         selector_kind="scene",
@@ -817,6 +786,7 @@ def compile_scene_effect(
             item_version=item.version,
             model=model,
             content_kind="advanced",
+            workflow=_effect_workflow(content),
             diy_code=selector,
             activation_mode=ActivationMode.CUSTOM,
             selector_kind="diy" if contract is not None and requires_approved_diy_slot(model) else "scene",
@@ -909,6 +879,7 @@ def compile_scene_effect(
         item_version=item.version,
         model=model,
         content_kind=content_kind,
+        workflow=_effect_workflow(content),
         diy_code=scene_selector_code(model, entry, profile=profile),
         activation_mode=ActivationMode.SCENE,
         selector_kind="scene",
@@ -993,6 +964,7 @@ def compile_native_effect(
         item_version=item.version,
         model=model,
         content_kind="native_effect",
+        workflow=_effect_workflow(content),
         diy_code=selector,
         activation_mode=ActivationMode.SCENE
         if entry is not None or content.model == "H60B0" and content.family == 81
@@ -1075,6 +1047,7 @@ def compile_h617a(
         item_version=item.version,
         model=model,
         content_kind=content_kind,
+        workflow=_effect_workflow(content),
         diy_code=diy_code,
         activation_mode=ActivationMode.CUSTOM,
         selector_kind="diy",
@@ -1117,6 +1090,7 @@ def compile_h6179(item: LibraryItem, diy_code: int, *, profile: ModelProfile | N
         item_version=item.version,
         model="H6179",
         content_kind="h6179_single_diy" if isinstance(content, H6179SingleDiyEffect) else "h6179_mixed_diy",
+        workflow=_effect_workflow(content),
         diy_code=diy_code,
         activation_mode=ActivationMode.CUSTOM,
         expected_effect=None,
@@ -1174,6 +1148,7 @@ def compile_h6199(
         item_version=item.version,
         model=model,
         content_kind="palette_diy",
+        workflow=_effect_workflow(content),
         diy_code=H6199_PALETTE_DIY_APPLY_CODE,
         activation_mode=ActivationMode.CUSTOM,
         selector_kind="scene",
