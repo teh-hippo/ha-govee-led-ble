@@ -7,6 +7,7 @@ from datetime import timedelta
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, Mock
+from uuid import uuid4
 
 import pytest
 from homeassistant.config_entries import ConfigEntryState
@@ -17,6 +18,7 @@ from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
 
 from custom_components.ha_govee_led_ble.const import CONF_SHOW_EXPERIMENTAL_FEEDBACK, DOMAIN, get_profile
+from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
 from custom_components.ha_govee_led_ble.effect_catalogue import resolve_catalogue_template
 from custom_components.ha_govee_led_ble.effect_contracts import EDITOR_API_VERSION
@@ -44,6 +46,8 @@ from custom_components.ha_govee_led_ble.effect_websocket import (
     WS_LIBRARY_OVERWRITE,
     WS_LIBRARY_SUBSCRIBE,
     WS_LIBRARY_UPDATE,
+    WS_PREVIEW_APPLY_SNAPSHOT,
+    WS_SCENE_APPLY,
     WS_SCENE_DEFAULT_SET,
     WS_SCENE_RESET,
     WS_TEMPLATE_DEFAULT_GET,
@@ -55,6 +59,7 @@ from custom_components.ha_govee_led_ble.effect_websocket import (
     _send_preview_error,
     async_register_effect_websocket,
 )
+from custom_components.ha_govee_led_ble.govee_encryption import GoveeCryptoError, GoveeTransportError
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
 
 
@@ -495,6 +500,88 @@ async def test_apply_surfaces_item_version_conflict(
     assert response["success"] is False
     assert response["error"]["code"] == "conflict"
     backend.preview.async_supersede_device.assert_not_awaited()
+
+
+@pytest.mark.parametrize("operation", ["scene", "saved", "snapshot"])
+@pytest.mark.parametrize("error_type", [ValueError, GoveeCryptoError, GoveeTransportError])
+async def test_apply_distinguishes_session_failure_from_invalid_request(
+    hass, hass_ws_client, monkeypatch, operation, error_type
+):
+    from custom_components.ha_govee_led_ble import effect_websocket
+
+    backend = await _setup_backend(hass)
+    monkeypatch.setattr(backend.preview, "async_supersede_device", AsyncMock())
+    coordinator = SimpleNamespace(model="H617A", profile=get_profile("H617A"))
+    entry = SimpleNamespace(entry_id="entry-a", domain=DOMAIN, state=ConfigEntryState.LOADED, runtime_data=coordinator)
+    monkeypatch.setattr(hass.config_entries, "async_get_entry", lambda _entry_id: entry)
+    apply = AsyncMock(side_effect=error_type("operation_failed"))
+    message: dict[str, Any] = {"config_entry_id": entry.entry_id, "updated_at": "2026-08-27T00:00:00Z"}
+    if operation == "scene":
+        monkeypatch.setattr(effect_websocket, "async_apply_scene", apply)
+        scene = SCENE_ENTRIES["H617A"][0]
+        message = {
+            "type": WS_SCENE_APPLY,
+            "config_entry_id": entry.entry_id,
+            "scene_id": scene.scene_id,
+            "effect_id": scene.effect_id,
+        }
+    elif operation == "saved":
+        monkeypatch.setattr(backend.engine, "async_apply_saved", apply)
+        mutation = await backend.application.async_create_library_item(name="Saved", content=_content())
+        message.update({"type": WS_APPLY, "item_id": str(mutation.item.id), "expected_version": 1})
+    else:
+        monkeypatch.setattr(backend.engine, "async_apply_snapshot", apply)
+        message.update({"type": WS_APPLY_SNAPSHOT, "name": "Snapshot", "content": _content()})
+    client = await hass_ws_client(hass)
+    try:
+        await client.send_json_auto_id(message)
+        response = await client.receive_json()
+        assert response["success"] is False
+        expected = (
+            ("invalid_format" if operation == "scene" else "unsupported_model")
+            if error_type is ValueError
+            else "apply_failed"
+        )
+        assert response["error"]["code"] == expected
+        apply.assert_awaited_once()
+    finally:
+        await client.close()
+        await backend.preview.async_shutdown()
+
+
+@pytest.mark.parametrize("error_type", [ValueError, GoveeCryptoError, GoveeTransportError])
+async def test_preview_preparation_reports_session_failure_without_queueing(
+    hass, hass_ws_client, monkeypatch, error_type
+):
+    backend = await _setup_backend(hass)
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H619A", configuration_url=None)
+    entry = SimpleNamespace(entry_id="entry-a", domain=DOMAIN, state=ConfigEntryState.LOADED, runtime_data=coordinator)
+    monkeypatch.setattr(hass.config_entries, "async_get_entry", lambda _entry_id: entry)
+    prepare = AsyncMock(side_effect=error_type("encrypted_setup_failed"))
+    monkeypatch.setattr(coordinator, "_ensure_connected", prepare)
+    client = await hass_ws_client(hass)
+    try:
+        await client.send_json_auto_id(
+            {
+                "type": WS_PREVIEW_APPLY_SNAPSHOT,
+                "session_id": str(uuid4()),
+                "sequence": 1,
+                "config_entry_id": entry.entry_id,
+                "name": "Snapshot",
+                "content": _content(),
+                "updated_at": "2026-08-27T00:00:00Z",
+                "diy_code": 24,
+            }
+        )
+        response = await client.receive_json()
+        assert response["success"] is False
+        assert response["error"]["code"] == ("invalid_format" if error_type is ValueError else "preview_failed")
+        prepare.assert_awaited_once()
+        assert not backend.preview._devices and coordinator.control_write_attempts == 0
+    finally:
+        await client.close()
+        await backend.preview.async_shutdown()
+        await coordinator.async_shutdown()
 
 
 @pytest.mark.parametrize("saved", [True, False])

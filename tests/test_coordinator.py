@@ -46,7 +46,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_power_query,
     build_segment_query,
 )
-from custom_components.ha_govee_led_ble.govee_encryption import GoveeCryptoError
+from custom_components.ha_govee_led_ble.govee_encryption import GoveeCryptoError, GoveeTransportError
 from custom_components.ha_govee_led_ble.protocol_core import StatusReply
 from custom_components.ha_govee_led_ble.transport import WRITE_UUID, xor_checksum
 from tests.coordinator_test_support import _CONFIGURATION_URL, _c, _packet
@@ -1697,8 +1697,9 @@ async def test_async_setup_registers_presence_and_callbacks_flip(coord):
         notify.assert_called_once()
 
 
-async def test_first_refresh_reports_update_failed_then_degrades_silently(coord):
-    with patch.object(coord, "_ensure_connected", new_callable=AsyncMock, side_effect=BleakError("down")):
+@pytest.mark.parametrize("error_type", [BleakError, GoveeTransportError])
+async def test_first_refresh_reports_update_failed_then_degrades_silently(coord, error_type):
+    with patch.object(coord, "_ensure_connected", new_callable=AsyncMock, side_effect=error_type("down")):
         with pytest.raises(UpdateFailed):
             await coord._async_update_data()
         assert await coord._async_update_data() == coord._state_snapshot()
@@ -1723,15 +1724,17 @@ async def test_first_refresh_non_readable_requires_presence(hass):
     assert await c._async_update_data() == c._state_snapshot()
 
 
-async def test_config_entry_first_refresh_raises_config_entry_not_ready(coord):
+@pytest.mark.parametrize("error_type", [BleakError, GoveeTransportError])
+async def test_config_entry_first_refresh_raises_config_entry_not_ready(coord, error_type, caplog):
     coord.config_entry = MagicMock(state=ConfigEntryState.SETUP_IN_PROGRESS)
     with (
         patch(f"{M}.bluetooth") as bt,
-        patch.object(coord, "_ensure_connected", new_callable=AsyncMock, side_effect=BleakError("down")),
+        patch.object(coord, "_ensure_connected", new_callable=AsyncMock, side_effect=error_type("down")),
     ):
         bt.async_address_present.return_value = False
         with pytest.raises(ConfigEntryNotReady):
             await coord.async_config_entry_first_refresh()
+    assert not any("Unexpected error fetching" in record.getMessage() for record in caplog.records)
 
 
 async def test_hold_keeps_connection_and_refreshes_basic_state_without_segments(hass, monkeypatch):

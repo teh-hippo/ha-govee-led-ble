@@ -68,6 +68,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_video_mode,
     table_kelvin_rgb,
 )
+from custom_components.ha_govee_led_ble.govee_encryption import GoveeCryptoError, GoveeTransportError
 from custom_components.ha_govee_led_ble.h6102_capabilities import resolve_h6102_capabilities
 from custom_components.ha_govee_led_ble.light import (
     GoveeBLELight,
@@ -2245,12 +2246,21 @@ async def test_invalid_paint_scale_does_not_supersede_preview(light, mock_coordi
     mock_coordinator.async_paint_segments.assert_not_awaited()
 
 
-async def test_segment_service_wraps_transport_failure(light, mock_coordinator):
-    mock_coordinator.async_paint_segments.side_effect = BleakError("transport failed")
-
+@pytest.mark.parametrize("error_type", [BleakError, GoveeCryptoError, GoveeTransportError])
+@pytest.mark.parametrize("operation", ["paint", "brightness"])
+async def test_segment_service_wraps_device_failure(light, mock_coordinator, error_type, operation):
+    writer = (
+        mock_coordinator.async_paint_segments if operation == "paint" else mock_coordinator.async_set_segment_brightness
+    )
+    writer.side_effect = error_type("device failed")
     with pytest.raises(HomeAssistantError) as exc:
-        await light.async_paint_segments([{"segments": [1], "rgb_color": (1, 2, 3)}])
+        if operation == "paint":
+            await light.async_paint_segments([{"segments": [1], "rgb_color": (1, 2, 3)}])
+        else:
+            await light.async_set_segment_brightness([1], 42)
+    assert not isinstance(exc.value, ServiceValidationError)
     assert exc.value.translation_key == "device_command_failed"
+    writer.assert_awaited_once()
 
 
 async def test_set_segment_brightness_sends_packet(light, mock_coordinator):

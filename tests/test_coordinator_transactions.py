@@ -25,6 +25,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_power_query,
     build_subordinate_query,
 )
+from custom_components.ha_govee_led_ble.govee_encryption import GoveeTransportError
 from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_packets
 from custom_components.ha_govee_led_ble.protocol_core import StatusReply
 from custom_components.ha_govee_led_ble.reply_pacing import ReplyGate
@@ -32,6 +33,7 @@ from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES, SCENES
 from custom_components.ha_govee_led_ble.transport import WRITE_UUID
 from tests.coordinator_test_support import _c, _packet
 from tests.storage_test_double import InMemoryVersionedDocumentStore
+from tests.test_govee_encryption import client
 
 M = "custom_components.ha_govee_led_ble.coordinator"
 
@@ -263,6 +265,56 @@ async def test_failed_physical_write_does_not_leave_a_pending_reply(coord, virtu
     start = loop.time()
     await coord._reply_gate.wait()
     assert loop.time() - start == pytest.approx(0.5)
+
+
+@pytest.mark.parametrize("model", ["H617A", "H6199"])
+async def test_mid_poll_disconnect_handles_stale_write_and_cancels_real_keep_alive(
+    coord, h6199, monkeypatch, virtual_clock, caplog, model
+):
+    coordinator = coord if model == "H617A" else h6199
+    coordinator._first_refresh_done = coordinator._present = coordinator._state_read_available = True
+    coordinator._reply_gate = ReplyGate(0.5)
+    device = client(b"\x01\x00")
+    keep_alive = []
+    failures = []
+    refresh = coordinator.refresh_state
+
+    async def record_refresh(**kwargs):
+        try:
+            return await refresh(**kwargs)
+        except GoveeTransportError as error:
+            failures.append(str(error))
+            raise
+
+    def disconnect():
+        device.is_connected = False
+        coordinator._disconnected_callback(device)
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet == build_power_query(model):
+            keep_alive.append(coordinator._keep_alive_task)
+            asyncio.get_running_loop().call_later(0.1, disconnect)
+            return
+        payload = {0x06: list(b"3.02.24"), 0x07: [3, *b"3.02.01"]}.get(packet[1])
+        if payload is not None:
+            device.start_notify.await_args.args[1](None, bytearray(_packet(0xAA, packet[1], payload)))
+
+    device.write_gatt_char.side_effect = write
+    device.disconnect.side_effect = disconnect
+    establish = AsyncMock(return_value=device)
+    monkeypatch.setattr(f"{M}.async_establish_ble_connection", establish)
+    monkeypatch.setattr(coordinator, "refresh_state", record_refresh)
+    await coordinator.async_refresh()
+    await coordinator.hass.async_block_till_done(wait_background_tasks=True)
+    assert coordinator.last_update_success and coordinator.available
+    assert not coordinator._state_read_available
+    assert coordinator._client is None and not coordinator._encryption.ready
+    assert len(keep_alive) == 1 and keep_alive[0].done() and keep_alive[0].exception() is None
+    assert coordinator._keep_alive_task is None
+    assert failures == ["stale_connection"]
+    assert not any("Unexpected error fetching" in record.getMessage() for record in caplog.records)
+    establish.assert_awaited_once()
+    assert device.write_gatt_char.await_args.args[1] == build_power_query(model)
 
 
 @pytest.mark.parametrize("private", [False, True])

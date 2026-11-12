@@ -22,6 +22,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     require_profile_packet,
     table_kelvin_rgb,
 )
+from custom_components.ha_govee_led_ble.govee_encryption import GoveeCryptoError, GoveeTransportError
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.light_commands import (
     build_color_rgb,
@@ -49,6 +50,21 @@ async def test_preflight_keeps_preview_and_control_untouched(hass, monkeypatch, 
     preview.assert_not_awaited()
     coordinator.send_command.assert_not_awaited()
     coordinator.async_refresh_segments.assert_not_awaited()
+    assert coordinator.control_write_attempts == 0
+
+
+@pytest.mark.parametrize("error_type", [GoveeCryptoError, GoveeTransportError])
+async def test_kelvin_session_failure_is_not_invalid_segments(hass, monkeypatch, error_type):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H7025", configuration_url=None)
+    light = GoveeBLELight(coordinator)
+    writer = AsyncMock(side_effect=error_type("encrypted_setup_failed"))
+    monkeypatch.setattr(coordinator, "async_set_segment_kelvin", writer)
+    monkeypatch.setattr(light, "_notify_state_changed", lambda: None)
+    with pytest.raises(HomeAssistantError) as error:
+        await light.async_set_segment_color_temp([1], 3200)
+    assert not isinstance(error.value, ServiceValidationError)
+    assert error.value.translation_key == "device_command_failed"
+    writer.assert_awaited_once()
     assert coordinator.control_write_attempts == 0
 
 

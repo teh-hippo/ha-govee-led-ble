@@ -15,7 +15,7 @@ from aioesphomeapi import (
     BluetoothProxyFeature,
     DeviceInfo,
 )
-from bleak import BleakClient
+from bleak import BleakClient, BleakError
 from bleak.backends.characteristic import BleakGATTCharacteristic
 from bleak.backends.device import BLEDevice
 from bleak.backends.service import BleakGATTService, BleakGATTServiceCollection
@@ -30,7 +30,7 @@ from habluetooth.wrappers import HaBleakClientWrapper
 
 from custom_components.ha_govee_led_ble.ble_connection import async_clear_gatt_cache, stale_gatt_recovery_pending
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
-from custom_components.ha_govee_led_ble.govee_encryption import GoveeCryptoError
+from custom_components.ha_govee_led_ble.govee_encryption import GoveeCryptoError, GoveeTransportError
 from custom_components.ha_govee_led_ble.govee_encryption.session import GoveeEncryptionSession
 from custom_components.ha_govee_led_ble.transport import ENCRYPTION_UUID, READ_UUID, WRITE_UUID
 from tests.test_govee_encryption import M, client
@@ -175,13 +175,16 @@ async def test_esphome_native_clear_limits(native_proxy, remote_clear, caplog):
     [("select", "encryption_selection_failed"), ("negotiate", "negotiation_failed")],
 )
 @pytest.mark.parametrize("chain", ["cause", "context"])
-async def test_crypto_suppressed_stale_error_reaches_coordinator_recovery(hass, caplog, phase, expected_error, chain):
+@pytest.mark.parametrize("error_type", [RuntimeError, BleakError])
+async def test_crypto_suppressed_stale_error_reaches_coordinator_recovery(
+    hass, caplog, phase, expected_error, chain, error_type
+):
     coordinator = GoveeBLECoordinator(hass, ADDRESS, "H6076", configuration_url=None)
     replacement = GoveeBLECoordinator(hass, ADDRESS.lower(), "H6076", configuration_url=None)
     device = client(b"\x01\x01")
     stale = KeyError("org.bluez.GattService1")
     private_payload = "secret address/key payload"
-    backend_error = RuntimeError(private_payload)
+    backend_error = error_type(private_payload)
     events = []
 
     async def fail(*_args, **_kwargs):
@@ -240,5 +243,7 @@ async def test_crypto_suppressed_stale_error_reaches_coordinator_recovery(hass, 
     assert coordinator._client is None and not coordinator._connection_initializing
     assert coordinator._encryption._key is None and coordinator._encryption._handshake is None
     assert coordinator.packet_log == [] and coordinator.control_write_attempts == 0
-    assert coordinator.last_failure_type == "GoveeCryptoError"
+    expected_type = GoveeTransportError if error_type is BleakError else GoveeCryptoError
+    assert type(error.value) is expected_type
+    assert coordinator.last_failure_type == expected_type.__name__
     assert coordinator.fresh_services_required and replacement.fresh_services_required

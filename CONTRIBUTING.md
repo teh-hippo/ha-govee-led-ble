@@ -11,6 +11,7 @@ Do not post Bluetooth addresses, serial numbers, account details or other unique
 
 - Fix the cause rather than adding timing-based workarounds.  Prefer protocol acknowledgements, explicit state transitions and completion-driven backpressure; timeouts bound failures, not normal operation.
 - A dropped BLE link still owns native client resources: call `disconnect()` even when `is_connected` is false.  Retired-client cleanup must be tracked, survive entry-background-task cancellation and be drained on entry teardown without altering a replacement client.
+- Preserve native link failures and explicit session invalidation as `GoveeTransportError` through encryption wrappers.  Background polls handle it like `BleakError`; it must not enable foreground retries or hide programming errors, protocol rejection or ownership failures.
 - `tools/ble/kaitai/**/*.ksy` is the only source of BLE wire structure and the protocol documentation.  Files under `speculative/` are unconfirmed hypotheses; the rest are evidence-backed.  `generated_protocol/` is build output and is never edited.
 - Speculative schemas must retain unqualified suffix bytes; test nonzero tails rather than assuming zero padding when reusing shared types.
 - `const.py` holds one `ModelProfile` per exact SKU, declaring its capabilities.  Compatible models may share a Kaitai adapter but never a whole profile.
