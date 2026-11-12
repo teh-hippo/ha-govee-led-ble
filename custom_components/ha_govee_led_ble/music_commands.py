@@ -2,7 +2,7 @@
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
-from typing import Any
+from typing import Any, overload
 
 from kaitaistruct import KaitaiStructError
 
@@ -40,6 +40,32 @@ class _PreparedMusicRequest:
     targets: tuple[tuple[tuple[int, int, int] | None, dict[str, int]], ...]
     packets: tuple[bytes, ...]
     body: bytes | None
+
+
+type MusicWrite = tuple[bytes, Mapping[str, Any]]
+
+
+@dataclass(frozen=True, slots=True)
+class MusicWriteSequence(Sequence[MusicWrite]):
+    writes: tuple[MusicWrite, ...] = ()
+    first_upload: int | None = None
+    last_upload: int | None = None
+    body: tuple[str, bytes] | None = None
+    palette: tuple[str, tuple[tuple[int, int, int], ...]] | None = None
+    parameter_keys: tuple[str, ...] | None = None
+    unknown_style: bool = False
+
+    @overload
+    def __getitem__(self, index: int) -> MusicWrite: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> tuple[MusicWrite, ...]: ...
+
+    def __getitem__(self, index: int | slice) -> MusicWrite | tuple[MusicWrite, ...]:
+        return self.writes[index]
+
+    def __len__(self) -> int:
+        return len(self.writes)
 
 
 def _music_selector_targets(
@@ -313,7 +339,7 @@ def prepare_music_profile_writes(
     include_parameters: bool = True,
     palette: Sequence[tuple[int, int, int]] | None = None,
     original_body: bytes | None = None,
-) -> tuple[tuple[bytes, dict[str, Any]], ...]:
+) -> MusicWriteSequence:
     """Pair validated packets with retained state installed at their physical attempt."""
     profile = get_profile(model) if profile is None else profile
     if original_body is not None:
@@ -374,6 +400,10 @@ def prepare_music_profile_writes(
         # New selectors carry neither style nor fixed colour, even without an upload.
         del states[selector_index]["music_calm"]
         del states[selector_index]["music_color"]
+    first_upload = last_upload = None
+    candidate_body = candidate_palette = None
+    parameter_keys: tuple[str, ...] | None = None
+    unknown_style = False
     if len(packets) > 1 + selector_count:
         # Earlier fragments cannot complete the companion; a final attempt may.
         companion_index = selector_index - 1 if profile.music_upload_before_selector else len(packets) - 1
@@ -395,16 +425,15 @@ def prepare_music_profile_writes(
             if variant.supports_style:
                 # Unknown companion pairs must not inherit the previous effect's style.
                 style = music_body_style(body, mode, profile=profile)
-                states[companion_index]["_music_calm" if style is None else "music_calm"] = style
+                unknown_style = style is None
+                if style is not None:
+                    states[companion_index]["music_calm"] = style
             # Retained display fields are not edit intent or geometry-dependent writes.
-            states[companion_index]["_music_parameter_keys"] = ()
+            parameter_keys = ()
         first_companion = 1 if profile.music_upload_before_selector else 1 + selector_count
-        states[first_companion]["_music_body"] = None
-        # Candidate only: async_write_music_sequence defers this until successful completion.
-        states[companion_index]["_music_body"] = (mode, body)
+        first_upload, last_upload = first_companion, companion_index
+        candidate_body = (mode, body)
         if variant and variant.palette_bounds:
-            # An incomplete upload invalidates retained knowledge. Neither assignment is readback.
-            states[first_companion]["_music_palette"] = None
             retained = (
                 music_default_palette(replace(variant, template=body))
                 if original_body is not None
@@ -412,8 +441,16 @@ def prepare_music_profile_writes(
                 if palette is not None
                 else music_default_palette(variant)
             )
-            states[companion_index]["_music_palette"] = (mode, retained)
-    return tuple(zip(packets, states, strict=True))
+            candidate_palette = (mode, retained)
+    return MusicWriteSequence(
+        tuple(zip(packets, states, strict=True)),
+        first_upload,
+        last_upload,
+        candidate_body,
+        candidate_palette,
+        parameter_keys,
+        unknown_style,
+    )
 
 
 def validate_music_body(body: bytes, mode: str, *, profile: ModelProfile) -> Any:
@@ -446,7 +483,7 @@ def prepare_music_body_writes(
     body: bytes,
     *,
     profile: ModelProfile | None = None,
-) -> tuple[tuple[bytes, dict[str, Any]], ...]:
+) -> MusicWriteSequence:
     """Replay a complete known body verbatim; the new selector carries only mode/sensitivity."""
     return prepare_music_profile_writes(model, mode, sensitivity, None, False, {}, profile=profile, original_body=body)
 

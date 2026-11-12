@@ -380,7 +380,7 @@ async def test_native_music_rechecks_count_at_connection(hass, parameters_only):
     compiled = compile_application(_item("music"), coordinator.model, profile=coordinator.profile)
     coordinator._music_body = prepare_music_profile_writes(
         "H6099", "piano_keys", 42, None, False, compiled.parameters, profile=coordinator.profile
-    )[-2][1]["_music_body"]
+    ).body
     with _music_transport(coordinator) as physical, patch.object(coordinator, "_encryption", None):
 
         async def connect():
@@ -399,9 +399,11 @@ async def test_native_music_rechecks_count_at_connection(hass, parameters_only):
 async def test_recovery_uses_device_scoped_music_parameters(hass):
     coordinator = _device(hass)
     compiled = compile_application(_item("music"), coordinator.model, profile=coordinator.profile)
-    body = prepare_music_profile_writes(
+    writes = prepare_music_profile_writes(
         "H6099", "piano_keys", 42, None, False, compiled.parameters, profile=coordinator.profile
-    )[-2][1]["_music_body"][1]
+    )
+    assert writes.body is not None
+    body = writes.body[1]
     state = replace(
         coordinator.capture_effect_control_state(),
         mode="music",

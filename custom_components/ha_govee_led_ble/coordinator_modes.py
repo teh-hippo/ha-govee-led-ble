@@ -1,8 +1,8 @@
 """Active-mode derivation and mode-switching for the Govee BLE coordinator."""
 
 import asyncio
-from collections.abc import Awaitable, Callable, Mapping, Sequence
-from dataclasses import dataclass
+from collections.abc import Awaitable, Callable, Mapping
+from dataclasses import dataclass, replace
 from typing import Any, Literal
 
 from .control_arbiter import ControlIntent, async_control_intent
@@ -15,6 +15,7 @@ from .light_commands import (
     build_white_brightness,
 )
 from .music_commands import (
+    MusicWriteSequence,
     edit_music_body,
     music_body_parameters,
     music_body_style,
@@ -315,7 +316,7 @@ class _ActiveModeMixin(_CoordinatorBase):
 
     async def async_write_music_sequence(
         self,
-        writes: Sequence[tuple[bytes, Mapping[str, Any]]],
+        writes: MusicWriteSequence,
         *,
         mode_code: int,
         physical_ic_count: int | None,
@@ -331,30 +332,17 @@ class _ActiveModeMixin(_CoordinatorBase):
             for _, state in writes
             if spec.key in state
         }
-        parameter_keys = next(
-            (state["_music_parameter_keys"] for _, state in writes if "_music_parameter_keys" in state), None
-        )
+        parameter_keys = writes.parameter_keys
         if parameter_keys is not None:
             parameters = {key: value for key, value in parameters.items() if key in parameter_keys}
         dependent = parameter_keys != () and music_parameters_depend_on_ic(variant, parameters)
-        candidate = next((state["_music_body"] for _, state in writes if state.get("_music_body") is not None), None)
-        first_upload = next((index for index, (_, state) in enumerate(writes) if "_music_body" in state), None)
-        last_upload = next(
-            (index for index, (_, state) in enumerate(writes) if state.get("_music_body") is not None), None
-        )
-        states = tuple(
-            {
-                key: value
-                for key, value in state.items()
-                if key != "_music_parameter_keys" and (key != "_music_body" or value is None)
-            }
-            for _, state in writes
-        )
+        candidate = writes.body
+        first_upload, last_upload = writes.first_upload, writes.last_upload
+        states = tuple(state for _, state in writes)
         attempted_upload = False
         revision = self._music_body_revision
 
         def guard(index: int) -> None:
-            nonlocal attempted_upload, revision
             profile = self._authorization_profile()
             if mode_code not in (music_code_for(self.model, slug, profile=profile) for slug in profile.music_modes):
                 raise ValueError("Device profile no longer supports the requested music mode")
@@ -366,10 +354,6 @@ class _ActiveModeMixin(_CoordinatorBase):
                 revision if attempted_upload else retained_body_revision
             ):
                 raise ValueError("Retained music body changed before edit; refresh and retry")
-            if index == first_upload:
-                attempted_upload = True
-                # The shared writer installs the first-fragment None immediately after this guard.
-                revision = self._music_body_revision + 1
             if "music_mode" in writes[index][1]:
                 if self.active_mode == "colour":
                     self._pre_mode_snapshot = self._capture_static_state()
@@ -380,7 +364,20 @@ class _ActiveModeMixin(_CoordinatorBase):
             try:
 
                 def commit(index: int) -> None:
-                    if on_write is not None and ("music_mode" in writes[index][1] or "_music_body" in writes[index][1]):
+                    nonlocal attempted_upload, revision
+                    if index == first_upload:
+                        self._music_body = None
+                        self._music_palette = None
+                        attempted_upload = True
+                        revision = self._music_body_revision
+                    if index == last_upload:
+                        if writes.palette is not None:
+                            self._music_palette = writes.palette
+                        if writes.unknown_style:
+                            self._music_calm = None
+                    if on_write is not None and (
+                        "music_mode" in writes[index][1] or index in (first_upload, last_upload)
+                    ):
                         on_write()
 
                 sequence_options: dict[str, Any] = {}
@@ -395,7 +392,7 @@ class _ActiveModeMixin(_CoordinatorBase):
                     packet_write_guard=guard,
                     writer=writer,
                     **sequence_options,
-                    packet_on_write=commit if on_write is not None else None,
+                    packet_on_write=commit if first_upload is not None or on_write is not None else None,
                 )
                 if retained_body_revision is not None and self._music_body_revision != revision:
                     raise ValueError("Retained music body changed during edit; refresh and retry")
@@ -444,20 +441,30 @@ class _ActiveModeMixin(_CoordinatorBase):
         )
         upload = list(writes[1:-1] if self.profile.music_upload_before_selector else writes[2:])
         # Actual edited keys, rather than every control the mode could support, govern the guard.
-        upload[-1][1].update(
-            {
+        packet, final_state = upload[-1]
+        final_state = {
+            **final_state,
+            **{
                 spec.key: parameters[spec.profile_key]
                 for spec in music_params_for_mode(mode_code, self.profile)
                 if spec.profile_key in parameters
-            }
-        )
-        upload[-1][1]["_music_parameter_keys"] = tuple(parameters)
+            },
+        }
         if calm is not None:
-            upload[-1][1]["music_calm"] = calm
+            final_state["music_calm"] = calm
+        upload[-1] = (packet, final_state)
+        last_upload = len(upload) - 1
         if self.profile.music_params_require_activation:
             upload.append(writes[-1] if self.profile.music_upload_before_selector else writes[1])
         await self.async_write_music_sequence(
-            upload,
+            replace(
+                writes,
+                writes=tuple(upload),
+                first_upload=0,
+                last_upload=last_upload,
+                parameter_keys=tuple(parameters),
+                unknown_style=writes.unknown_style and calm is None,
+            ),
             mode_code=mode_code,
             physical_ic_count=self.profile.physical_ic_count,
             intent=ControlIntent.USER,

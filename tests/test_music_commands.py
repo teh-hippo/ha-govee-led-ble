@@ -105,7 +105,7 @@ def test_h6046_palette_bounds_upload_before_selector_and_retained_body(mode, cod
         assert writes[-1][0][:5] == bytes((0x33, 5, 0x13, code, 0))
         assert writes[-1][0][5:19] == bytes(14)
         assert "_music_body" not in writes[-1][1]
-        assert writes[-2][1]["_music_body"][0] == mode
+        assert writes.body is not None and writes.body[0] == mode
         assert upload_ack_mode([packet for packet, _ in writes], len(writes) - 2, "H6046") == code
     for size in (minimum - 1, 9):
         with pytest.raises(ValueError):
@@ -377,7 +377,6 @@ def test_music_profile_preparation_scopes_state_to_packets(mode, parameters):
         writes = prepare_music_profile_writes("H617A", mode, 50, None, False, parameters)
         compile.assert_called_once()
         assert encode.call_count == int(mode == "separation")
-    assert isinstance(writes, tuple)
     assert tuple(packet for packet, _ in writes) == prepare_music_request("H617A", mode, 50, None, False, parameters)
     assert writes[0][1] == {"is_on": True}
     selector = 1 if mode == "rhythm" else len(writes) - 1
@@ -393,9 +392,10 @@ def test_music_profile_preparation_scopes_state_to_packets(mode, parameters):
         assert len(writes) == 2
     else:
         assert len(writes) == 4
-        assert writes[1][1] == {"_music_palette": None, "_music_body": None}
+        assert writes[1][1] == {}
+        assert writes.first_upload == 1 and writes.last_upload == 2
         assert writes[2][1]["music_separation_point"] == 4
-        assert writes[2][1]["_music_palette"][0] == mode
+        assert writes.palette is not None and writes.palette[0] == mode
 
 
 @pytest.mark.parametrize("fresh_notification", [False, True])
@@ -594,14 +594,14 @@ async def test_music_preview_guard_failure_does_not_install_selector_state(hass)
     before = coordinator.capture_effect_control_state()
     snapshot = coordinator._pre_mode_snapshot
 
-    async def writer(packet, *, state_values=None, write_guard=None, expected_values=None):
+    async def writer(packet, *, state_values=None, write_guard=None, expected_values=None, on_write=None):
         def check():
             if state_values and "music_mode" in state_values:
                 raise ValueError("preview guard rejected selector")
             if write_guard is not None:
                 write_guard()
 
-        await coordinator.async_preview_write(packet, before_write=check, state_values=state_values)
+        await coordinator.async_preview_write(packet, before_write=check, state_values=state_values, on_write=on_write)
 
     with _music_transport(coordinator) as physical:
         with pytest.raises(ValueError, match="preview guard rejected selector"):
@@ -841,7 +841,7 @@ def test_h6076_companion_state_is_retained_for_recovery_but_selector_state_omits
     assert selector == _h6076_selector("33050f326300")
     assert selector_state["music_mode"] == "separation"
     assert "music_calm" not in selector_state and "music_color" not in selector_state
-    assert writes[-2][1]["_music_body"][0] == "separation"
+    assert writes.body is not None and writes.body[0] == "separation"
 
 
 def test_music_parameter_overlay_changes_only_named_offsets() -> None:

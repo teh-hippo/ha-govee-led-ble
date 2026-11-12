@@ -369,7 +369,7 @@ async def test_paired_music_saves_compiles_and_applies_independent_zone_edits():
     await async_apply_compiled_profile(coordinator, compiled)
     writes = coordinator.async_write_music_sequence.await_args.args[0]
     assert tuple(packet for packet, _ in writes) == compiled.packets
-    assert writes[-2][1]["_music_body"] == ("paired", compiled.music_body)
+    assert writes.body == ("paired", compiled.music_body)
     assert compiled.packets[-1] == frame("3305138249")
     for packet in compiled.packets:
         adapter.require_profile_packet(packet, profile)

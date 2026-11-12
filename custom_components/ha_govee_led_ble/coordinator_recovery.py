@@ -29,7 +29,7 @@ from .light_commands import (
     build_segment_paint,
     normalize_kelvin,
 )
-from .music_commands import prepare_music_profile_writes
+from .music_commands import MusicWriteSequence, prepare_music_profile_writes
 from .music_protocol import music_code_for
 from .music_semantics import (
     COMPANION_MUSIC_LAYOUTS,
@@ -316,14 +316,12 @@ class _RecoveryMixin(_CoordinatorBase):
         await self.send_command(build_power(False, self.model), state_values={"is_on": False})
         return await self.refresh_state(expected_on=False) and appearance_restored
 
-    def _prepare_music_restore(
-        self, state: PriorControlState
-    ) -> tuple[Any, tuple[tuple[bytes, dict[str, Any]], ...]] | None:
+    def _prepare_music_restore(self, state: PriorControlState) -> tuple[Any, MusicWriteSequence] | None:
         """Return (variant, writes) for a music snapshot, or None when it cannot be recovered."""
         from .music_commands import prepare_music_body_writes
 
         variant = None
-        music_writes: tuple[tuple[bytes, dict[str, Any]], ...] = ()
+        music_writes = MusicWriteSequence()
         if state.mode == "music" and state.is_on:
             if state.music_model is not None and state.music_model != self.model:
                 raise ValueError("music recovery model does not match device")
@@ -628,7 +626,7 @@ class _RecoveryMixin(_CoordinatorBase):
         self,
         state: PriorControlState,
         variant: Any,
-        music_writes: tuple[tuple[bytes, dict[str, Any]], ...],
+        music_writes: MusicWriteSequence,
         physical_ic_count: int | None,
         complete: bool,
     ) -> bool:

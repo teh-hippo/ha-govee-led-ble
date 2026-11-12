@@ -62,7 +62,8 @@ def test_h6097_energetic_upload_and_physical_geometry_are_independently_declared
     assert piano is not None
     assert [(spec.default, spec.min_value, spec.max_value) for spec in piano.parameters[:1]] == [(18, 12, 24)]
     writes = prepare_music_profile_writes("H6097", "piano_keys", 42, None, False, {})
-    tail = parse_music_parameters(piano, writes[-2][1]["_music_body"][1]).tail
+    assert writes.body is not None
+    tail = parse_music_parameters(piano, writes.body[1]).tail
     assert (tail.key_count, tail.speed, tail.off_minimum, tail.off_maximum) == (18, 10, 6, 9)
     assert music_params_for_mode(0x37, profile) == ()
 
@@ -239,19 +240,20 @@ def test_packet_specific_state_follows_reordered_packet():
     writes = prepare_music_profile_writes("H6099", "bloom", 42, None, True, {})
     assert [packet[0] for packet, _ in writes] == [0x33, 0xA3, 0xA3, 0x33]
     palette = music_default_palette(music_variant(get_profile("H6099"), 0x30))
-    assert [{key: value for key, value in state.items() if key != "_music_body"} for _, state in writes[:-1]] == [
+    assert [dict(state) for _, state in writes[:-1]] == [
         {"is_on": True},
-        {"_music_palette": None},
-        {"music_calm": True, "_music_palette": ("bloom", palette)},
+        {},
+        {"music_calm": True},
     ]
+    assert writes.palette == ("bloom", palette)
     assert writes[-1][1]["music_mode"] == "bloom" and "music_calm" not in writes[-1][1]
     profile = replace(get_profile("H6099"), physical_ic_count=60)
     writes = prepare_music_profile_writes("H6099", "piano_keys", 42, None, False, {}, profile=profile)
-    assert {key: value for key, value in writes[-2][1].items() if key != "_music_body"} == {
+    assert dict(writes[-2][1]) == {
         "music_piano_key_count": 18,
         "music_piano_gradient": False,
-        "_music_palette": ("piano_keys", palette),
     }
+    assert writes.palette == ("piano_keys", palette)
     assert "music_color" not in writes[-1][1] and "music_calm" not in writes[-1][1]
 
 
@@ -272,7 +274,7 @@ async def test_all_callers_order_and_physical_attempt_state(hass, route, failed_
         music_mode="bloom",
         music_calm=True,
         music_palette=music_default_palette(music_variant(coordinator.profile, 0x30)),
-        music_body=prepare_music_profile_writes("H6099", "bloom", 42, None, True, {})[-2][1]["_music_body"][1],
+        music_body=prepare_music_profile_writes("H6099", "bloom", 42, None, True, {}).body[1],
     )
     if route == "native":
         coordinator.music_calm = True
@@ -362,7 +364,7 @@ async def test_transform_rejection_keeps_unattempted_selector_state(hass, route)
         music_mode="bloom",
         music_sensitivity=42,
         music_palette=music_default_palette(music_variant(coordinator.profile, 0x30)),
-        music_body=prepare_music_profile_writes("H6099", "bloom", 42, None, True, {})[-2][1]["_music_body"][1],
+        music_body=prepare_music_profile_writes("H6099", "bloom", 42, None, True, {}).body[1],
     )
 
     def reject(packet):

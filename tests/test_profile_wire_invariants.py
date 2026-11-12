@@ -821,7 +821,8 @@ def test_every_advertised_music_mode_has_a_way_to_be_applied(model: str, profile
                 envelope = reassemble_a3(list(upload))
                 assert envelope[2] == 0x41
                 companion_index = len(packets) - 2 if active_profile.music_upload_before_selector else len(packets) - 1
-                mode_name, body = writes[companion_index][1]["_music_body"]
+                assert writes.last_upload == companion_index and writes.body is not None
+                mode_name, body = writes.body
                 assert mode_name == slug
                 parsed_body = protocol_music_params.parse_music_parameters(variant, body)
                 assert int(parsed_body.mode) == variant.mode_code

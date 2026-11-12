@@ -45,7 +45,7 @@ def test_h7025_retained_edits_preserve_unrequested_companions(mode, body, parame
     assert all(decoded[key] == value for key, value in parameters.items())
     writes = prepare_music_body_writes("H7025", mode, 42, edited)
     assert [packet for packet, _ in writes[1:-1]] == fragment_a3(0x41, edited)
-    assert writes[-2][1]["_music_body"] == (mode, edited)
+    assert writes.body == (mode, edited)
 
 
 @pytest.mark.parametrize("model", ["H617A", "H6099", "H617E"])
@@ -54,8 +54,8 @@ def test_original_body_replay_is_verbatim_not_an_authored_template(model):
     writes = prepare_music_body_writes(model, "hopping", 42, BODY, profile=profile)
     upload = writes[1:-1] if profile.music_upload_before_selector else writes[2:]
     assert [packet for packet, _ in upload] == fragment_a3(0x41, BODY)
-    assert upload[0][1]["_music_body"] is None
-    assert upload[-1][1]["_music_body"] == ("hopping", BODY)
+    assert writes.first_upload == (1 if profile.music_upload_before_selector else 2)
+    assert writes.body == ("hopping", BODY)
     assert upload[-1][1]["music_hopping_brightness"] == 25
     if model != "H617E":
         assert upload[-1][1]["music_hopping_background"] == 0xAABBCC
@@ -124,7 +124,7 @@ def test_h617e_metadata_does_not_inherit_new_controls_or_geometry_policy():
 
 
 @pytest.mark.parametrize("preview", [False, True])
-@pytest.mark.parametrize("failure", [None, 0, 1, 2, 3, "ack", "cancel", "notification"])
+@pytest.mark.parametrize("failure", [None, 0, 1, 2, 3, "guard", "ack", "cancel", "notification"])
 async def test_body_known_only_after_complete_sequence_and_positive_ack(hass, monkeypatch, preview, failure):
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H617A", configuration_url=None)
     coordinator.music_mode = "hopping"
@@ -135,7 +135,15 @@ async def test_body_known_only_after_complete_sequence_and_positive_ack(hass, mo
     preview_writer = AsyncMock() if preview else None
 
     async def sequence(
-        packets, *, packet_state_values, packet_write_guard, require_upload_ack, upload_ack_index, writer=None, **kwargs
+        packets,
+        *,
+        packet_state_values,
+        packet_write_guard,
+        packet_on_write,
+        require_upload_ack,
+        upload_ack_index,
+        writer=None,
+        **kwargs,
     ):
         assert require_upload_ack and upload_ack_index == len(writes) - 2
         assert writer is preview_writer
@@ -143,8 +151,11 @@ async def test_body_known_only_after_complete_sequence_and_positive_ack(hass, mo
             if failure == 0 and index == 0:
                 raise ValueError("before attempt")
             packet_write_guard(index)
+            if failure == "guard" and index == writes.first_upload:
+                raise ValueError("before upload attempt")
             for key, value in packet_state_values[index].items():
                 setattr(coordinator, key, value)
+            packet_on_write(index)
             events.append(packet)
             if index >= 1:
                 assert coordinator.music_body is None
@@ -165,7 +176,7 @@ async def test_body_known_only_after_complete_sequence_and_positive_ack(hass, mo
             await coordinator.async_write_music_sequence(
                 writes, mode_code=51, physical_ic_count=None, intent=ControlIntent.USER, writer=preview_writer
             )
-        assert coordinator.music_body == (old if failure == 0 else None)
+        assert coordinator.music_body == (old if failure in (0, "guard") else None)
     else:
         await coordinator.async_write_music_sequence(
             writes, mode_code=51, physical_ic_count=None, intent=ControlIntent.USER, writer=preview_writer
@@ -286,7 +297,7 @@ async def test_unknown_body_style_clears_stale_style_without_selector_authority(
     c.music_calm = True
     body = bytes.fromhex("30010102030b51")
     writes = prepare_music_body_writes("H617A", "bloom", 42, body)
-    assert writes[-2][1]["_music_calm"] is None
+    assert writes.unknown_style and "music_calm" not in writes[-2][1]
     assert "music_calm" not in writes[-1][1] and "_music_calm" not in writes[-1][1]
     with _music_transport(c):
         await c.async_write_music_sequence(writes, mode_code=48, physical_ic_count=None, intent=ControlIntent.USER)
