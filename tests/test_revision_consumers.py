@@ -8,6 +8,7 @@ import pytest
 
 from custom_components.ha_govee_led_ble import select, sensor
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator_refresh import DEFAULT_REFRESH_REQUEST
 from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
 from custom_components.ha_govee_led_ble.effect_deployments import DeploymentPhase, EffectDeploymentRepository
 from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, MusicProfile, PaletteDiyEffect, VideoProfile
@@ -42,7 +43,7 @@ async def test_non_video_failure_restores_power_without_white_balance(coordinato
     wb = AsyncMock(side_effect=RuntimeError("optional white balance silent"))
     monkeypatch.setattr("custom_components.ha_govee_led_ble.coordinator_recovery.apply_white_balance", wb)
 
-    async def refresh(**kwargs):
+    async def refresh(request=DEFAULT_REFRESH_REQUEST):
         for prefix in ("aa0100", "aa0464", "aa0504ffff"):
             c._notify_callback(None, bytearray(frame(prefix)))
         return True

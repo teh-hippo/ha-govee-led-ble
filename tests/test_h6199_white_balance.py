@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator_refresh import DEFAULT_REFRESH_REQUEST, RefreshRequest
 from custom_components.ha_govee_led_ble.effect_compiler import compile_video_profile
 from custom_components.ha_govee_led_ble.effect_deployments import EffectDeploymentRepository, PriorControlState
 from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, VideoProfile
@@ -144,15 +145,15 @@ async def test_same_gain_wrong_flag_is_not_fresh_confirmation(coordinator, monke
 
     monkeypatch.setattr(coordinator, "_send_state_queries", respond)
     assert not await coordinator.refresh_state(
-        expected_white_balance=(21, 5), expected_white_balance_flag=1, timeout=0.01
+        RefreshRequest(white_balance=(21, 5), white_balance_flag=1, timeout=0.01)
     )
-    assert await coordinator.refresh_state(expected_white_balance=(21, 5), expected_white_balance_flag=0, timeout=0.01)
+    assert await coordinator.refresh_state(RefreshRequest(white_balance=(21, 5), white_balance_flag=0, timeout=0.01))
 
 
 async def test_reset_uses_fresh_device_defaults_not_calibration_neutral(coordinator, monkeypatch):
     reply = frame("aaa90006001b09011505")
 
-    async def refresh(**kwargs):
+    async def refresh(request=DEFAULT_REFRESH_REQUEST):
         coordinator._notify_callback(None, bytearray(reply))
         return True
 
@@ -206,8 +207,8 @@ async def test_deployment_requires_complete_prior_wb_register(coordinator, monke
     coordinator._notify_callback(None, bytearray(AUTO))
     setattr(coordinator, missing, None)
 
-    async def refresh(**kwargs):
-        if kwargs.get("refresh_all"):
+    async def refresh(request=DEFAULT_REFRESH_REQUEST):
+        if request.refresh_all:
             for prefix in ("aa0101", "aa0464", "aa05000100320032"):
                 coordinator._notify_callback(None, bytearray(frame(prefix)))
         return True

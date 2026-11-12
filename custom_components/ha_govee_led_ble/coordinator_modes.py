@@ -7,6 +7,7 @@ from typing import Any, Literal
 
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator_base import _CoordinatorBase, async_prepare_effect_profile
+from .coordinator_refresh import RefreshRequest
 from .coordinator_status import ParsedMode
 from .generated_protocol_adapter import build_power
 from .light_commands import (
@@ -202,9 +203,9 @@ class _ActiveModeMixin(_CoordinatorBase):
                 power_in_sequence = True
             if not power_in_sequence:
                 self.is_on = True
-            if verify and self.profile.state_readable and not await self.refresh_state(expected_on=True):
+            if verify and self.profile.state_readable and not await self.refresh_state(RefreshRequest(on=True)):
                 await self.send_command(power, write_guard=qualified)
-                if not await self.refresh_state(expected_on=True):
+                if not await self.refresh_state(RefreshRequest(on=True)):
                     raise RuntimeError(f"Failed to confirm power-on before selecting scene {scene_name!r}")
 
         async def apply() -> None:
@@ -235,12 +236,12 @@ class _ActiveModeMixin(_CoordinatorBase):
         if (
             verify
             and self.profile.supports_color_mode_readback
-            and not await self.refresh_state(expected_scene_code=selector)
+            and not await self.refresh_state(RefreshRequest(scene_code=selector))
         ):
             if upload_count and not self.profile.effect_retry_after_upload:
                 raise RuntimeError(f"Failed to confirm scene {scene_name!r}")
             await apply()
-            if not await self.refresh_state(expected_scene_code=selector):
+            if not await self.refresh_state(RefreshRequest(scene_code=selector)):
                 raise RuntimeError(f"Failed to confirm scene {scene_name!r}")
         self.color_mode = ParsedMode.SCENE
         self.effect = scene_name

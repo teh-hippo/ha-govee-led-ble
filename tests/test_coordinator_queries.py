@@ -11,6 +11,7 @@ from bleak.exc import BleakError
 
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ModelProfile, ReadDomain
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_blank_screen_query,
@@ -274,7 +275,7 @@ async def test_power_required_profile_collects_optional_brightness_before_releas
             assert not client.is_connected and snapshot["brightness_pct"] == 37
         else:
             assert await c.refresh_state(
-                refresh_all=True, required_domains=profile.setup_required_read_domains, timeout=0.1
+                RefreshRequest(refresh_all=True, required_domains=profile.setup_required_read_domains, timeout=0.1)
             )
         assert c.brightness_pct == (37 if reply_brightness else 100)
         assert c._field_revisions.get("brightness_pct", 0) == int(reply_brightness)
@@ -356,6 +357,7 @@ async def test_refresh_state_query_selection(coord):
         query_brightness: bool,
         query_color_mode: bool,
         deadline: float,
+        **_options,
     ) -> bool:
         if query_power:
             coord._notify_callback(None, bytearray(_packet(0xAA, 0x01, [1])))
@@ -369,20 +371,38 @@ async def test_refresh_state_query_selection(coord):
         patch.object(coord, "_ensure_connected", new=AsyncMock(return_value=client)),
         patch.object(coord, "_send_state_queries", new=AsyncMock(side_effect=_reply)) as sq,
     ):
-        assert await coord.refresh_state(expected_effect=None, expected_on=True) is True
-        sq.assert_awaited_with(query_power=True, query_brightness=False, query_color_mode=False, deadline=ANY)
+        query_options = {
+            "query_white_balance": None,
+            "query_blank_screen": None,
+            "query_black_border": None,
+            "query_relative_brightness": None,
+            "required_domains": None,
+            "optional_baselines": None,
+            "query_native_settings": True,
+            "query_segments": None,
+        }
+        assert await coord.refresh_state(RefreshRequest(effect=None, on=True)) is True
+        sq.assert_awaited_with(
+            query_power=True, query_brightness=False, query_color_mode=False, deadline=ANY, **query_options
+        )
         sq.reset_mock()
 
-        assert await coord.refresh_state(expected_effect="candy", expected_on=None) is True
-        sq.assert_awaited_with(query_power=False, query_brightness=False, query_color_mode=True, deadline=ANY)
+        assert await coord.refresh_state(RefreshRequest(effect="candy", on=None)) is True
+        sq.assert_awaited_with(
+            query_power=False, query_brightness=False, query_color_mode=True, deadline=ANY, **query_options
+        )
         sq.reset_mock()
 
-        assert await coord.refresh_state(expected_brightness=42) is True
-        sq.assert_awaited_with(query_power=False, query_brightness=True, query_color_mode=False, deadline=ANY)
+        assert await coord.refresh_state(RefreshRequest(brightness=42)) is True
+        sq.assert_awaited_with(
+            query_power=False, query_brightness=True, query_color_mode=False, deadline=ANY, **query_options
+        )
         sq.reset_mock()
 
-        assert await coord.refresh_state(expected_effect=None, expected_on=None) is True
-        sq.assert_awaited_with(query_power=True, query_brightness=False, query_color_mode=True, deadline=ANY)
+        assert await coord.refresh_state(RefreshRequest(effect=None, on=None)) is True
+        sq.assert_awaited_with(
+            query_power=True, query_brightness=False, query_color_mode=True, deadline=ANY, **query_options
+        )
 
 
 async def test_h617e_legacy_scene_verifies_by_raw_selector_code(hass, virtual_clock):
@@ -407,7 +427,7 @@ async def test_h617e_legacy_scene_verifies_by_raw_selector_code(hass, virtual_cl
         patch.object(coordinator, "_ensure_connected", new=AsyncMock(return_value=client)),
         patch.object(coordinator, "_send_state_queries", new=AsyncMock(side_effect=_reply)),
     ):
-        assert await coordinator.refresh_state(expected_scene_code=legacy.code, timeout=0.02)
+        assert await coordinator.refresh_state(RefreshRequest(scene_code=legacy.code, timeout=0.02))
 
     assert coordinator.scene_code == legacy.code
     assert coordinator.unknown_scene_code == legacy.code
@@ -425,9 +445,7 @@ async def test_refresh_all_can_require_only_the_setup_domains(coord, virtual_clo
         patch.object(coord, "_send_state_queries", new=AsyncMock(side_effect=_reply)),
     ):
         assert await coord.refresh_state(
-            refresh_all=True,
-            required_domains=frozenset({ReadDomain.POWER}),
-            timeout=0.02,
+            RefreshRequest(refresh_all=True, required_domains=frozenset({ReadDomain.POWER}), timeout=0.02),
         )
 
 
@@ -445,6 +463,12 @@ async def test_refresh_without_colour_readback_requires_power_and_brightness_onl
             "required_domains": frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS}),
             "optional_baselines": {},
             "deadline": ANY,
+            "query_white_balance": None,
+            "query_blank_screen": None,
+            "query_black_border": None,
+            "query_relative_brightness": None,
+            "query_native_settings": True,
+            "query_segments": None,
         }
         limited_readback_coord._notify_callback(None, bytearray(_packet(0xAA, 0x01, [0])))
         limited_readback_coord._notify_callback(None, bytearray(_packet(0xAA, 0x04, [40])))
@@ -465,7 +489,7 @@ async def test_refresh_without_colour_readback_requires_power_and_brightness_onl
         patch.object(limited_readback_coord, "_ensure_connected", new=AsyncMock(return_value=client)),
         patch.object(limited_readback_coord, "_send_state_queries", new=AsyncMock(side_effect=_reply)),
     ):
-        assert await limited_readback_coord.refresh_state(refresh_all=True, timeout=0.02)
+        assert await limited_readback_coord.refresh_state(RefreshRequest(refresh_all=True, timeout=0.02))
 
     assert limited_readback_coord.is_on is False
     assert limited_readback_coord.brightness_pct == 40
@@ -476,7 +500,7 @@ async def test_refresh_without_colour_readback_requires_power_and_brightness_onl
 
 async def test_profile_without_colour_readback_rejects_colour_expectations(limited_readback_coord):
     with patch.object(limited_readback_coord, "_ensure_connected", new_callable=AsyncMock) as ensure:
-        assert await limited_readback_coord.refresh_state(expected_effect="candy") is False
+        assert await limited_readback_coord.refresh_state(RefreshRequest(effect="candy")) is False
     ensure.assert_not_awaited()
 
 
@@ -501,7 +525,7 @@ async def test_h6076_refresh_all_uses_colour_mode_and_segment_readback(hass, vir
         patch.object(coordinator, "_ensure_connected", new=AsyncMock(return_value=client)),
         patch.object(coordinator, "_send_state_queries", new=AsyncMock(side_effect=_reply)),
     ):
-        assert await coordinator.refresh_state(refresh_all=True, timeout=0.02)
+        assert await coordinator.refresh_state(RefreshRequest(refresh_all=True, timeout=0.02))
 
     assert coordinator.scene_name_set == frozenset(MODEL_SCENES["H6076"])
     assert coordinator.color_mode is ParsedMode.COLOUR
@@ -529,12 +553,14 @@ async def test_h6179_setup_reads_automatic_music_and_rejects_fixed_colour_mismat
     ):
         assert (
             await coordinator.refresh_state(
-                refresh_all=True,
-                required_domains=coordinator.profile.setup_required_read_domains,
-                expected_music_mode=f"mode_{mode_id}",
-                expected_music_sensitivity=99,
-                expected_music_auto_color=True,
-                timeout=0.02,
+                RefreshRequest(
+                    refresh_all=True,
+                    required_domains=coordinator.profile.setup_required_read_domains,
+                    music_mode=f"mode_{mode_id}",
+                    music_sensitivity=99,
+                    music_auto_color=True,
+                    timeout=0.02,
+                ),
             )
         ) is confirmed
 
@@ -567,8 +593,7 @@ async def test_refresh_reply_timeout_starts_after_connection(coord, virtual_cloc
         ),
     ):
         assert await coord.refresh_state(
-            expected_on=True,
-            timeout=0.02,
+            RefreshRequest(on=True, timeout=0.02),
         )
 
     client.disconnect.assert_not_awaited()
@@ -594,18 +619,20 @@ async def test_refresh_state_queries_each_display_domain(h6199):
         patch.object(h6199, "_ensure_connected", new=AsyncMock(return_value=client)),
         patch.object(h6199, "_send_state_queries", new=AsyncMock(side_effect=_reply)) as queries,
     ):
-        assert await h6199.refresh_state(expected_white_balance=(21, 5))
+        assert await h6199.refresh_state(RefreshRequest(white_balance=(21, 5)))
         assert queries.await_args.kwargs["query_white_balance"] is True
         queries.reset_mock()
-        assert await h6199.refresh_state(expected_blank_screen=True)
+        assert await h6199.refresh_state(RefreshRequest(blank_screen=True))
         assert queries.await_args.kwargs["query_blank_screen"] is True
         queries.reset_mock()
-        assert await h6199.refresh_state(expected_relative_brightness=(51, 20, 31, 41))
+        assert await h6199.refresh_state(RefreshRequest(relative_brightness=(51, 20, 31, 41)))
         assert queries.await_args.kwargs["query_relative_brightness"] is True
         queries.reset_mock()
         assert await h6199.refresh_state(
-            refresh_all=True,
-            required_domains=frozenset({ReadDomain.DISPLAY_SETTING, ReadDomain.RELATIVE_BRIGHTNESS}),
+            RefreshRequest(
+                refresh_all=True,
+                required_domains=frozenset({ReadDomain.DISPLAY_SETTING, ReadDomain.RELATIVE_BRIGHTNESS}),
+            ),
         )
         assert queries.await_args.kwargs["query_white_balance"] is True
         assert queries.await_args.kwargs["query_blank_screen"] is True
@@ -620,7 +647,7 @@ async def test_refresh_state_rejects_optimistic_value_without_fresh_reply(coord,
         patch.object(coord, "_send_state_queries", new=AsyncMock(return_value=True)) as queries,
         patch.object(coord, "_disconnect_if_current_locked", new_callable=AsyncMock) as disconnect,
     ):
-        assert await coord.refresh_state(expected_on=True, timeout=0.01) is False
+        assert await coord.refresh_state(RefreshRequest(on=True, timeout=0.01)) is False
     assert queries.await_count == 2
     disconnect.assert_awaited_once_with(client)
 
@@ -642,7 +669,7 @@ async def test_refresh_state_ignored_stale_reply_does_not_confirm(coord, virtual
         patch.object(coord, "_send_state_queries", new=AsyncMock(side_effect=_stale_reply)),
         patch.object(coord, "_disconnect_if_current_locked", new_callable=AsyncMock) as disconnect,
     ):
-        assert await coord.refresh_state(expected_music_mode="rhythm", timeout=0.01) is False
+        assert await coord.refresh_state(RefreshRequest(music_mode="rhythm", timeout=0.01)) is False
     disconnect.assert_not_awaited()
 
 
@@ -660,7 +687,7 @@ async def test_refresh_state_requires_fresh_power_and_video_replies(coord, virtu
         patch.object(coord, "_send_state_queries", new=AsyncMock(side_effect=_video_only)),
         patch.object(coord, "_disconnect_if_current_locked", new_callable=AsyncMock) as disconnect,
     ):
-        assert await coord.refresh_state(expected_on=True, expected_video_mode="game", timeout=0.01) is False
+        assert await coord.refresh_state(RefreshRequest(on=True, video_mode="game", timeout=0.01)) is False
     disconnect.assert_awaited_once_with(client)
 
 
@@ -682,13 +709,15 @@ async def test_refresh_state_rejects_wrong_video_parameters(coord, virtual_clock
     ):
         assert (
             await coord.refresh_state(
-                expected_on=True,
-                expected_video_mode="game",
-                expected_video_full_screen=False,
-                expected_video_saturation=60,
-                expected_video_sound_effects=True,
-                expected_video_sound_effects_softness=50,
-                timeout=0.01,
+                RefreshRequest(
+                    on=True,
+                    video_mode="game",
+                    video_full_screen=False,
+                    video_saturation=60,
+                    video_sound_effects=True,
+                    video_sound_effects_softness=50,
+                    timeout=0.01,
+                ),
             )
             is False
         )
@@ -708,7 +737,7 @@ async def test_refresh_state_does_not_disconnect_replacement_client(coord, virtu
         patch.object(coord, "_ensure_connected", new=AsyncMock(return_value=original)),
         patch.object(coord, "_send_state_queries", new=AsyncMock(side_effect=_replace)),
     ):
-        assert await coord.refresh_state(expected_on=True, timeout=0.01) is False
+        assert await coord.refresh_state(RefreshRequest(on=True, timeout=0.01)) is False
 
     assert coord._client is replacement
     original.disconnect.assert_not_awaited()
@@ -795,7 +824,7 @@ async def test_h6199_identity_queries_reconfirm_all_revision_fields_on_a_new_con
 @pytest.mark.parametrize("model", ["H66A0", "H1A42", "H61F5"])
 @pytest.mark.parametrize(
     ("reply", "expected"),
-    [("15000bb8", {"expected_color_temp_kelvin": 3000}), ("15000000", {"expected_zero_kelvin": True})],
+    [("15000bb8", {"color_temp_kelvin": 3000}), ("15000000", {"zero_kelvin": True})],
 )
 async def test_static_readback_confirms_measured_kelvin_and_rgb(
     hass, monkeypatch, model, reply, expected, virtual_clock
@@ -811,7 +840,7 @@ async def test_static_readback_confirms_measured_kelvin_and_rgb(
     coordinator._client = client
     monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
     if model == "H61F5":
-        assert not await coordinator.refresh_state(**expected)
+        assert not await coordinator.refresh_state(RefreshRequest(**expected))
         client.write_gatt_char.assert_not_awaited()
     else:
-        assert await coordinator.refresh_state(**expected)
+        assert await coordinator.refresh_state(RefreshRequest(**expected))

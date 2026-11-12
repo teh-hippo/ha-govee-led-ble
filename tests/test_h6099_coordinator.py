@@ -11,6 +11,7 @@ from bleak import BleakError
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, get_profile
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent, async_control_intent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator_refresh import DEFAULT_REFRESH_REQUEST, RefreshRequest
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.effect_compiler import compile_video_profile
 from custom_components.ha_govee_led_ble.effect_deployments import EffectDeploymentRepository
@@ -158,16 +159,16 @@ async def test_refresh_and_observe_require_exact_reply(device, virtual_clock, se
 
     device._client.write_gatt_char.side_effect = respond
     kwargs = (
-        {"expected_black_border": False}
+        {"black_border": False}
         if setting == "black_border"
         else {
-            "expected_blank_screen": True,
-            "expected_blank_screen_policy": (1, 300, 600),
+            "blank_screen": True,
+            "blank_screen_policy": (1, 300, 600),
         }
     )
-    assert await device.refresh_state(**kwargs, timeout=0.01) is fresh
+    assert await device.refresh_state(RefreshRequest(**kwargs, timeout=0.01)) is fresh
     assert await device.async_observe_effect(expected, timeout=0.01) is (True if fresh else None)
-    assert await device.refresh_state(refresh_display_settings=frozenset({setting}), timeout=0.01) is fresh
+    assert await device.refresh_state(RefreshRequest(display_settings=frozenset({setting}), timeout=0.01)) is fresh
 
 
 @pytest.mark.parametrize("version", [None, "1.00.10", "1.00.11"])
@@ -181,7 +182,7 @@ async def test_border_query_gate_and_optional_setup(device, monkeypatch, version
     assert (build_black_border_query("H6099") in packets) is (version == "1.00.11")
     if version != "1.00.11":
         device._ensure_connected.reset_mock()
-        assert not await device.refresh_state(expected_black_border=True, timeout=0)
+        assert not await device.refresh_state(RefreshRequest(black_border=True, timeout=0))
         device._ensure_connected.assert_not_awaited()
 
     # Exercise optional-query expiry without a 10 ms wall-clock race under CI
@@ -208,9 +209,7 @@ async def test_border_query_gate_and_optional_setup(device, monkeypatch, version
     client.write_gatt_char.reset_mock()
     client.write_gatt_char.side_effect = respond
     refreshed = await device.refresh_state(
-        refresh_all=True,
-        required_domains=device.profile.setup_required_read_domains,
-        timeout=60,
+        RefreshRequest(refresh_all=True, required_domains=device.profile.setup_required_read_domains, timeout=60),
     )
     assert refreshed is (missing_reply is None)
     packets = [call.args[1] for call in client.write_gatt_char.await_args_list]
@@ -305,7 +304,7 @@ async def test_full_refresh_needs_border_and_core_domains(device, reply):
         notify(device, reply)
 
     device._client.write_gatt_char.side_effect = respond
-    assert not await device.refresh_state(refresh_all=True, timeout=0)
+    assert not await device.refresh_state(RefreshRequest(refresh_all=True, timeout=0))
 
 
 async def test_border_reconnect_guard_prevents_optimistic_state(device):
@@ -446,10 +445,7 @@ async def test_music_recovery_uses_device_geometry_without_unsupported_colour(de
     assert device.music_piano_key_count == 18 and device.music_piano_gradient is False
     assert device.music_palette == state.music_palette
     device.refresh_state.assert_awaited_once_with(
-        expected_on=True,
-        expected_brightness=100,
-        expected_music_mode="piano_keys",
-        expected_music_sensitivity=99,
+        RefreshRequest(on=True, brightness=100, music_mode="piano_keys", music_sensitivity=99)
     )
     assert "music_palette" not in device._expected_state
     assert device._field_revisions == {}
@@ -490,8 +486,8 @@ async def test_video_recovery_restores_policy_and_border_only_when_requested(dev
         frame("330500010864010237"),
         build_power(False, "H6099"),
     ]
-    assert device.refresh_state.await_args_list[-2].kwargs == {"expected_on": True, "expected_brightness": 100}
-    assert device.refresh_state.await_args_list[-1].kwargs == {"expected_on": False}
+    assert device.refresh_state.await_args_list[-2].args == (RefreshRequest(on=True, brightness=100),)
+    assert device.refresh_state.await_args_list[-1].args == (RefreshRequest(on=False),)
     if missing_policy:
         blank.assert_not_awaited()
     else:
@@ -613,11 +609,11 @@ async def test_authored_policy_recovery_checks_notifications_at_physical_boundar
 async def test_studio_persists_policy_recovery_only_for_explicit_policy(device, monkeypatch, authored):
     notify(device, "aaa90a0601020a007800")
 
-    async def refresh(**kwargs):
-        if kwargs.get("refresh_all"):
+    async def refresh(request=DEFAULT_REFRESH_REQUEST):
+        if request.refresh_all:
             for prefix in ("aa0101", "aa0464", "aa0500010864010237"):
                 notify(device, prefix)
-        if kwargs.get("refresh_display_settings"):
+        if request.display_settings:
             notify(device, "aaa90a0601020a007800")
         return True
 
@@ -699,8 +695,8 @@ async def test_toggle_reads_fresh_external_policy_before_writing(device, monkeyp
     device._confirmed_identity_fields.add("subordinate_21_version")
     refresh = device.refresh_state
 
-    async def immediate_refresh(**kwargs):
-        return await refresh(**kwargs, timeout=0.01)
+    async def immediate_refresh(request=DEFAULT_REFRESH_REQUEST):
+        return await refresh(replace(request, timeout=0.01))
 
     monkeypatch.setattr(device, "refresh_state", immediate_refresh)
 
@@ -724,8 +720,8 @@ async def test_toggle_reads_fresh_external_policy_before_writing(device, monkeyp
         async with async_control_intent(device, intent):
             if route == "recovery":
                 # Verification is separate from the fresh policy read under test.
-                async def recovery_refresh(**kwargs):
-                    return await immediate_refresh(**kwargs) if "refresh_display_settings" in kwargs else True
+                async def recovery_refresh(request=DEFAULT_REFRESH_REQUEST):
+                    return await immediate_refresh(request) if request.display_settings else True
 
                 monkeypatch.setattr(device, "refresh_state", recovery_refresh)
                 await device.async_restore_effect_control_state(saved, overwritten_diy_code=None)
@@ -750,8 +746,8 @@ async def test_toggle_guard_rejects_filtered_reply_or_reconnect(device, monkeypa
     client = device._client
     refresh = device.refresh_state
 
-    async def immediate_refresh(**kwargs):
-        return await refresh(**kwargs, timeout=0.01)
+    async def immediate_refresh(request=DEFAULT_REFRESH_REQUEST):
+        return await refresh(replace(request, timeout=0.01))
 
     monkeypatch.setattr(device, "refresh_state", immediate_refresh)
 
@@ -791,8 +787,8 @@ async def test_compiled_toggle_prepares_policy_before_any_control(device, monkey
     refresh = device.refresh_state
     queries = 0
 
-    async def immediate_refresh(**kwargs):
-        return await refresh(**kwargs, timeout=0.01)
+    async def immediate_refresh(request=DEFAULT_REFRESH_REQUEST):
+        return await refresh(replace(request, timeout=0.01))
 
     monkeypatch.setattr(device, "refresh_state", immediate_refresh)
 

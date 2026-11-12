@@ -12,6 +12,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.ha_govee_led_ble.const import DOMAIN, ReadDomain
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
 from custom_components.ha_govee_led_ble.effect_deployments import (
     DeploymentPhase,
     EffectDeploymentRepository,
@@ -166,7 +167,7 @@ async def radio(hass, monkeypatch):
 @pytest.mark.parametrize("method", ["async_apply_saved", "async_apply_snapshot"])
 async def test_apply_after_idle_reconnect_rebuilds_fresh_baselines(radio, method):
     c, state, packets, clients = radio
-    assert await c.refresh_state(refresh_all=True)
+    assert await c.refresh_state(RefreshRequest(refresh_all=True))
     await c.disconnect()
     packets.clear()
     repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
@@ -186,7 +187,7 @@ async def test_apply_after_idle_reconnect_rebuilds_fresh_baselines(radio, method
 @pytest.mark.parametrize("missing", ["fw", "hw"])
 async def test_music_reconnect_revocation_precedes_power_and_upload(radio, missing):
     c, state, packets, _ = radio
-    assert await c.refresh_state(refresh_all=True)
+    assert await c.refresh_state(RefreshRequest(refresh_all=True))
     writes = prepare_music_profile_writes(c.model, "bloom", 50, None, False, {}, profile=c.profile)
     await c.disconnect()
     state[missing] = None
@@ -200,7 +201,7 @@ async def test_music_reconnect_revocation_precedes_power_and_upload(radio, missi
 
 async def test_music_retry_rechecks_revision_before_second_control_attempt(radio):
     c, state, packets, clients = radio
-    assert await c.refresh_state(refresh_all=True)
+    assert await c.refresh_state(RefreshRequest(refresh_all=True))
     writes = prepare_music_profile_writes(c.model, "bloom", 50, None, False, {}, profile=c.profile)
     original = clients[-1].write_gatt_char.side_effect
     attempted = []
@@ -222,7 +223,7 @@ async def test_music_retry_rechecks_revision_before_second_control_attempt(radio
 
 async def test_mode_gradual_observation_never_confirms_register_write(radio):
     c, state, packets, _ = radio
-    assert await c.refresh_state(refresh_all=True)
+    assert await c.refresh_state(RefreshRequest(refresh_all=True))
     baseline = c._field_revisions.get("boolean_gradual", 0)
     c._notify_callback(None, bytearray(frame("aa0515011194")))
     assert c.static_gradual is True
@@ -235,7 +236,7 @@ async def test_mode_gradual_observation_never_confirms_register_write(radio):
 
 async def test_music_recovery_revocation_precedes_brightness(radio):
     c, state, packets, _ = radio
-    assert await c.refresh_state(refresh_all=True)
+    assert await c.refresh_state(RefreshRequest(refresh_all=True))
     writes = prepare_music_profile_writes(c.model, "bloom", 50, None, False, {}, profile=c.profile)
     assert writes.body is not None
     body = writes.body[1]
@@ -254,7 +255,7 @@ async def test_music_variant_change_blocks_upload_after_power(radio):
     from dataclasses import replace
 
     c, state, packets, clients = radio
-    assert await c.refresh_state(refresh_all=True)
+    assert await c.refresh_state(RefreshRequest(refresh_all=True))
     writes = prepare_music_profile_writes(c.model, "bloom", 50, None, False, {}, profile=c.profile)
     original = clients[-1].write_gatt_char.side_effect
 
@@ -279,11 +280,11 @@ async def test_music_variant_change_blocks_upload_after_power(radio):
 @pytest.mark.parametrize("accept", [True, False])
 async def test_kelvin_and_gradual_recovery_do_not_use_rendered_rgb_as_kelvin(radio, accept):
     c, state, packets, _ = radio
-    assert await c.refresh_state(refresh_all=True)
+    assert await c.refresh_state(RefreshRequest(refresh_all=True))
     prior = PriorControlState.from_dict(c.capture_effect_control_state().to_dict())
     assert prior.color_temp_kelvin == 4500 and prior.static_gradual is True
     state.update(kelvin=3000, mode="15000bb8", gradual=False, accept_kelvin=accept)
-    assert await c.refresh_state(refresh_all=True)
+    assert await c.refresh_state(RefreshRequest(refresh_all=True))
     packets.clear()
     restored = await c.async_restore_effect_control_state(prior, overwritten_diy_code=None)
     assert restored is accept
@@ -295,7 +296,7 @@ async def test_kelvin_and_gradual_recovery_do_not_use_rendered_rgb_as_kelvin(rad
 async def test_authored_selector_recovery_is_selection_only(radio, code):
     c, state, packets, _ = radio
     state["mode"] = "04" + code.to_bytes(2, "little").hex()
-    assert await c.refresh_state(refresh_all=True)
+    assert await c.refresh_state(RefreshRequest(refresh_all=True))
     prior = c.capture_effect_control_state()
     assert prior.mode == "scene" and prior.scene_code == code
     packets.clear()
@@ -314,7 +315,7 @@ async def test_qualified_pact1_static_is_owner_confirmed_whole_strip_rgb(radio):
     c.fw_version, c.hw_version = state["fw"], state["hw"]
     c._resolve_device_profile()
     assert not c.profile.can_read(ReadDomain.COLOUR_MODE) and not c.profile.supports_segments
-    assert await c.refresh_state(refresh_all=True)
+    assert await c.refresh_state(RefreshRequest(refresh_all=True))
     assert not {bytes(packet[:2]) for packet in packets} & {bytes.fromhex("aa05"), bytes.fromhex("aaa5")}
     red = build_color_rgb(255, 0, 0, c.model, profile=c.profile)
     assert red == bytes.fromhex("33051501ff00000000000000ff7f00000000005d")
@@ -370,7 +371,9 @@ async def test_issue310_setup_control_and_reconnect_use_brightness_register(
     await light.async_turn_off()
     assert not state["on"] and not c.is_on
     await c.disconnect()
-    assert await c.refresh_state(refresh_all=True, required_domains=c.profile.setup_required_read_domains)
+    assert await c.refresh_state(
+        RefreshRequest(refresh_all=True, required_domains=c.profile.setup_required_read_domains)
+    )
     assert c.profile.brightness_wire_range == (20, 254) and c.brightness_pct == 100
     assert len(clients) >= 2
 
@@ -382,7 +385,7 @@ async def test_issue310_cached_identity_does_not_authorize_colour_after_reconnec
     c._configured_h6102_firmware, c._configured_h6102_hardware = "1.08.08", "1.00.03"
     c._resolve_device_profile()
     state.update(fw="1.08.08", hw="1.00.03", register_brightness=True)
-    assert await c.refresh_state(refresh_all=True)
+    assert await c.refresh_state(RefreshRequest(refresh_all=True))
     assert c._configured_h6102_firmware is c._configured_h6102_hardware is None
     await c.disconnect()
     assert c.profile.supports_rgb and c.fw_version == "1.08.08" and c.hw_version == "1.00.03"
@@ -421,7 +424,9 @@ async def test_issue310_failed_register_command_does_not_confirm_brightness(radi
     c.pact_type, c.pact_code = 1, 1
     c._resolve_device_profile()
     state.update(fw=None, hw=None, register_brightness=True, brightness=92)
-    assert await c.refresh_state(refresh_all=True, required_domains=c.profile.setup_required_read_domains)
+    assert await c.refresh_state(
+        RefreshRequest(refresh_all=True, required_domains=c.profile.setup_required_read_domains)
+    )
     revision = c._field_revisions["brightness_pct"]
     state["fault_brightness"] = fault == "write"
     state["brightness_reply_override"] = 235 if fault == "stale_readback" else None
@@ -441,7 +446,7 @@ async def test_pact1_static_recovery_preserves_register_transport_without_confir
     c.pact_type, c.pact_code = 1, 1
     c._resolve_device_profile()
     state.update(hw="1.00.03", fw="1.08.08", register_brightness=True)
-    assert await c.refresh_state(refresh_all=True)
+    assert await c.refresh_state(RefreshRequest(refresh_all=True))
     prior = c.capture_effect_control_state()
     light = GoveeBLELight(c)
     light.async_write_ha_state = MagicMock()
@@ -486,7 +491,7 @@ async def test_external_retained_body_change_stops_edit_and_preserves_external_v
 
 async def test_h6102_zero_kelvin_is_fresh_rgb_state(radio):
     c, state, _, _ = radio
-    assert await c.refresh_state(refresh_all=True)
+    assert await c.refresh_state(RefreshRequest(refresh_all=True))
     revision = c._field_revisions["color_temp_kelvin"]
     c._notify_callback(None, bytearray(frame("aa0515010000")))
     assert c.color_temp_kelvin is None
@@ -498,7 +503,7 @@ async def test_h6102_zero_kelvin_is_fresh_rgb_state(radio):
 async def test_rgb_recovery_requires_explicit_fresh_zero_kelvin(radio, accept):
     c, state, _, _ = radio
     state.update(kelvin=0, mode="15010000", colours=[(12, 34, 56)] * 15)
-    assert await c.refresh_state(refresh_all=True)
+    assert await c.refresh_state(RefreshRequest(refresh_all=True))
     assert c.rgb_color == (12, 34, 56) and c.color_temp_kelvin_source == "observed"
     prior = c.capture_effect_control_state()
     state.update(kelvin=4500, mode="15011194", colours=[(1, 2, 3)] * 15, accept_rgb_kelvin=accept)
@@ -511,7 +516,7 @@ async def test_rgb_recovery_requires_explicit_fresh_zero_kelvin(radio, accept):
 async def test_unrepresentable_kelvin_layout_is_never_overwritten_or_confirmed(radio, mixed, on):
     c, state, packets, _ = radio
     state.update(colours=[(9, 8, 7)] * 14 + ([(1, 2, 3)] if mixed else [(9, 8, 7)]), on=on)
-    assert await c.refresh_state(refresh_all=True)
+    assert await c.refresh_state(RefreshRequest(refresh_all=True))
     prior = c.capture_effect_control_state()
     packets.clear()
     assert not await c.async_restore_effect_control_state(prior, overwritten_diy_code=None)
@@ -523,7 +528,7 @@ async def test_unrepresentable_kelvin_layout_is_never_overwritten_or_confirmed(r
 async def test_matching_kelvin_with_wrong_fresh_segment_reply_is_incomplete(radio):
     c, state, _, _ = radio
     state["on"] = False
-    assert await c.refresh_state(refresh_all=True)
+    assert await c.refresh_state(RefreshRequest(refresh_all=True))
     prior = c.capture_effect_control_state()
     state["corrupt_kelvin_rgb"] = True
     assert not await c.async_restore_effect_control_state(prior, overwritten_diy_code=None)
@@ -549,7 +554,7 @@ async def test_engine_failed_upload_never_reselects_overwritten_scene_slot(radio
 
     c, state, packets, _ = radio
     state["mode"] = "04" + code.to_bytes(2, "little").hex()
-    assert await c.refresh_state(refresh_all=True)
+    assert await c.refresh_state(RefreshRequest(refresh_all=True))
     content = resolve_catalogue_template("H6102", f"template:native-diy:{501 if code == 402 else code}").content
     if code == 402:
         content = replace(content, native_diy=None)
@@ -575,7 +580,7 @@ async def test_issue424_pact1_scenes_music_studio_and_segments(radio, virtual_cl
     c, state, packets, _ = radio
     c.pact_type, c.pact_code = 1, 1
     state.update(hw="1.00.03", fw="1.08.08", register_brightness=True)
-    assert await c.refresh_state(refresh_all=True)
+    assert await c.refresh_state(RefreshRequest(refresh_all=True))
 
     # 1. Built-in scenes (type 0 selector-only and type 2 multi-packet A3 02 + selector)
     packets.clear()

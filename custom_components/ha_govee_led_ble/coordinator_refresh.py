@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from .const import ModelProfile
+from .const import ModelProfile, ReadDomain
 from .coordinator_status import ParsedMode
 
 BLANK_SCREEN_POLICY_FIELDS = (
@@ -14,11 +14,12 @@ BLANK_SCREEN_POLICY_FIELDS = (
     "blank_screen_low_brightness_duration_seconds",
     "blank_screen_same_tone_duration_seconds",
 )
+STATE_QUERY_TIMEOUT = 2.0
 
 
 @dataclass(frozen=True, slots=True)
-class RefreshExpectations:
-    """The ``expected_*`` arguments of a refresh, with the rules that derive queries and field checks from them."""
+class RefreshRequest:
+    """Expected observations and explicit query policy for one refresh."""
 
     effect: str | None = None
     scene_code: int | None = None
@@ -45,6 +46,13 @@ class RefreshExpectations:
     blank_screen_policy: tuple[int, int, int] | None = None
     black_border: bool | None = None
     relative_brightness: tuple[int, ...] | None = None
+    display_settings: frozenset[str] = frozenset()
+    refresh_relative_brightness: bool = False
+    refresh_all: bool = False
+    query_native_settings: bool = True
+    query_segments: bool | None = None
+    required_domains: frozenset[ReadDomain] | None = None
+    timeout: float = STATE_QUERY_TIMEOUT
 
     def unsupported_static_readback(self, profile: ModelProfile) -> bool:
         """Whether the profile cannot echo the static colour this refresh expects."""
@@ -149,3 +157,6 @@ class RefreshExpectations:
                 for zone, value in zip(profile.video_brightness_zones, self.relative_brightness, strict=True)
             )
         return expectations
+
+
+DEFAULT_REFRESH_REQUEST = RefreshRequest()

@@ -9,6 +9,7 @@ import pytest
 
 from custom_components.ha_govee_led_ble.const import KELVIN_RANGE_1000_10000, ModelProfile, ReadDomain
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode, decode_status_frame, parse_color_mode
 from custom_components.ha_govee_led_ble.effect_catalogue import MODEL_EFFECT_CATALOGUES
 from custom_components.ha_govee_led_ble.effect_compiler import DIY_ACK_EVIDENCE, compile_effect
@@ -300,7 +301,7 @@ async def test_candidate_kelvin_verification_reads_the_ordinary_mode_reply(hass,
             coordinator._notify_callback(None, bytearray(frame("aa050d010fa0")))
 
     client.write_gatt_char = AsyncMock(side_effect=write)
-    assert await coordinator.refresh_state(expected_color_temp_kelvin=4000, timeout=1)
+    assert await coordinator.refresh_state(RefreshRequest(color_temp_kelvin=4000, timeout=1))
     assert coordinator.color_temp_kelvin == 4000 and coordinator.color_temp_kelvin_source == "observed"
     assert client.write_gatt_char.await_args.args[1] == frame("aa0501")
 

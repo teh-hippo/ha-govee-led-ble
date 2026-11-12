@@ -28,6 +28,7 @@ from custom_components.ha_govee_led_ble.const import (
 )
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_expectations import expectations_from_packet
+from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode, parse_color_mode
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import table_kelvin_rgb
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
@@ -1039,7 +1040,7 @@ async def test_static_verification_rejects_newer_mode(static_coordinator, virtua
     coord._client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(side_effect=write))
     coord._ensure_connected = AsyncMock(return_value=coord._client)
     if method == "refresh":
-        assert await coord.refresh_state(**{f"expected_{field}": value}, timeout=0.01) is False
+        assert await coord.refresh_state(RefreshRequest(**{field: value}, timeout=0.01)) is False
     else:
         assert await coord.async_observe_effect({field: value}, timeout=0.01) is not True
     assert not coord._expected_state
@@ -1050,7 +1051,7 @@ async def test_static_verification_rejects_newer_mode(static_coordinator, virtua
 
     coord._client.write_gatt_char.side_effect = current_write
     if method == "refresh":
-        assert await coord.refresh_state(**{f"expected_{field}": value}, timeout=0.01) is True
+        assert await coord.refresh_state(RefreshRequest(**{field: value}, timeout=0.01)) is True
     else:
         assert await coord.async_observe_effect({field: value}, timeout=0.01) is True
 
@@ -1253,9 +1254,9 @@ async def test_static_verification_needs_fresh_accepted_fields(static_coordinato
     assert await coord.async_observe_effect({field: value}, timeout=0.001) is None
     assert field not in coord._field_revisions
     frame = _static_reply()
-    assert not await coord.refresh_state(**{f"expected_{field}": value}, timeout=0.001)
+    assert not await coord.refresh_state(RefreshRequest(**{field: value}, timeout=0.001))
     frame = _static_reply(rgb=rgb, kelvin=kelvin)
-    assert await coord.refresh_state(**{f"expected_{field}": value}, timeout=0.01)
+    assert await coord.refresh_state(RefreshRequest(**{field: value}, timeout=0.01))
     assert await coord.async_observe_effect({field: value}, timeout=0.01) is True
     revision = coord._field_revisions[field]
     coord._notify_callback(None, _static_reply(rgb=(9, 8, 7), kelvin=2000))
@@ -1376,7 +1377,7 @@ async def test_static_command_restoration_is_not_observation(static_coordinator,
     assert coord._field_revisions["color_temp_kelvin"] == 1
     if restore == "recovery":
         coord.refresh_state.assert_awaited_once_with(
-            expected_on=True, expected_brightness=prior.brightness_pct, expected_color_temp_kelvin=4200
+            RefreshRequest(on=True, brightness=prior.brightness_pct, color_temp_kelvin=4200)
         )
     assert coord._client.write_gatt_char.await_args.args[1] == build_color_temp(4200, coord.model)
 
@@ -1390,7 +1391,7 @@ async def test_static_verification_uses_actual_colour_query(static_coordinator):
 
     coord._client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(side_effect=write))
     coord._ensure_connected = AsyncMock(return_value=coord._client)
-    assert await coord.refresh_state(expected_rgb_color=(1, 2, 3), expected_color_temp_kelvin=4200)
+    assert await coord.refresh_state(RefreshRequest(rgb_color=(1, 2, 3), color_temp_kelvin=4200))
     assert await coord.async_observe_effect({"rgb_color": (1, 2, 3), "color_temp_kelvin": 4200}) is True
 
 
@@ -1410,7 +1411,7 @@ async def test_direct_rgb_verification_rejects_segment_only_evidence(
     coord._client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(side_effect=write))
     coord._ensure_connected = AsyncMock(return_value=coord._client)
     if method == "refresh":
-        assert await coord.refresh_state(expected_rgb_color=(1, 2, 3), timeout=0.01) is False
+        assert await coord.refresh_state(RefreshRequest(rgb_color=(1, 2, 3), timeout=0.01)) is False
     else:
         assert await coord.async_observe_effect({"rgb_color": (1, 2, 3)}, timeout=0.01) is None
     assert coord.rgb_color == segment_rgb and coord.rgb_color_source == "segment"
@@ -1518,8 +1519,8 @@ async def test_static_restore_rechecks_companion_and_mode_revision(static_coordi
 async def test_static_direct_verification_is_not_enabled_for_existing_models(hass, model):
     coord = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url=None)
     coord._ensure_connected = AsyncMock()
-    assert not await coord.refresh_state(expected_rgb_color=(1, 2, 3))
-    assert not await coord.refresh_state(expected_color_temp_kelvin=4200)
+    assert not await coord.refresh_state(RefreshRequest(rgb_color=(1, 2, 3)))
+    assert not await coord.refresh_state(RefreshRequest(color_temp_kelvin=4200))
     assert await coord.async_observe_effect({"rgb_color": (1, 2, 3)}) is None
     assert await coord.async_observe_effect({"color_temp_kelvin": 4200}) is None
     coord._ensure_connected.assert_not_called()
@@ -2062,7 +2063,7 @@ async def test_four_slot_profile_observes_every_declared_domain(
     client.write_gatt_char.reset_mock()
     if profile.can_read(ReadDomain.POWER):
         assert generated_protocol_adapter.parse_status_result(power_reply, "H617A").parsed is not None
-        assert await coordinator.refresh_state(expected_on=True, timeout=0.05)
+        assert await coordinator.refresh_state(RefreshRequest(on=True, timeout=0.05))
         assert coordinator.is_on
     assert await coordinator.async_refresh_segments(timeout=0.05)
     assert coordinator._field_revisions["segment_colors"] == 3

@@ -304,9 +304,9 @@ async def test_mid_poll_disconnect_handles_stale_write_and_cancels_real_keep_ali
     failures = []
     refresh = coordinator.refresh_state
 
-    async def record_refresh(**kwargs):
+    async def record_refresh(request):
         try:
-            return await refresh(**kwargs)
+            return await refresh(request)
         except GoveeTransportError as error:
             failures.append(str(error))
             raise

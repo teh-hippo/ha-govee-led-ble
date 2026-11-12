@@ -7,6 +7,7 @@ import pytest
 
 from custom_components.ha_govee_led_ble.const import get_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.effect_deployments import (
     DeploymentPhase,
@@ -95,7 +96,7 @@ def physical(hass, monkeypatch, request):
     monkeypatch.setattr(coordinator, "_renew_foreground_lease", MagicMock())
     refresh = coordinator.refresh_state
     segments = coordinator.async_refresh_segments
-    monkeypatch.setattr(coordinator, "refresh_state", lambda **kwargs: refresh(timeout=0.02, **kwargs))
+    monkeypatch.setattr(coordinator, "refresh_state", lambda request: refresh(replace(request, timeout=0.02)))
     monkeypatch.setattr(coordinator, "async_refresh_segments", lambda: segments(timeout=0.02))
     return coordinator, state
 
@@ -105,7 +106,7 @@ async def test_ambiguous_bulb_readback_never_repaints_white_as_rgb_during_rollba
     coordinator, state = physical
     state["colours"] = [(255, 213, 161)] + [(255, 0, 0)] * 14
     state["colour_modes"][0] = "white"
-    assert await coordinator.refresh_state(refresh_all=True)
+    assert await coordinator.refresh_state(RefreshRequest(refresh_all=True))
     prior = coordinator.capture_effect_control_state()
     assert prior.color_temp_kelvin is None and prior.segment_colors == tuple(state["colours"])
     state["packets"].clear()

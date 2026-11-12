@@ -1,6 +1,7 @@
 """Optional queries cannot invalidate basic state or historical segment siblings."""
 
 import asyncio
+from dataclasses import replace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -9,6 +10,7 @@ from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from custom_components.ha_govee_led_ble.const import ReadDomain
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator_refresh import DEFAULT_REFRESH_REQUEST, RefreshRequest
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_blank_screen_query,
     build_brightness_query,
@@ -36,8 +38,8 @@ def device(hass, monkeypatch):
     monkeypatch.setattr(c, "_renew_foreground_lease", lambda: None)
     refresh = c.refresh_state
 
-    async def short_refresh(**kwargs):
-        return await refresh(**{"timeout": 0.05, **kwargs})
+    async def short_refresh(request=DEFAULT_REFRESH_REQUEST):
+        return await refresh(replace(request, timeout=min(request.timeout, 0.05)))
 
     monkeypatch.setattr(c, "refresh_state", short_refresh)
     return c, client
@@ -129,7 +131,9 @@ async def test_setup_collects_delayed_optional_registers(device, virtual_clock, 
 
     client.write_gatt_char.side_effect = write
     try:
-        result = await c.refresh_state(refresh_all=True, required_domains=c.profile.setup_required_read_domains)
+        result = await c.refresh_state(
+            RefreshRequest(refresh_all=True, required_domains=c.profile.setup_required_read_domains)
+        )
         assert result is not disconnect
         assert c.white_balance_flag == 0 and c.white_balance_red == 21
         assert c.blank_screen and c.relative_brightness_bottom == 50 and c.camera_status == "healthy"
@@ -219,9 +223,7 @@ async def test_h6099_targeted_queries_and_optional_collection(hass, monkeypatch,
     client.write_gatt_char.side_effect = write
     try:
         assert await c.refresh_state(
-            refresh_all=True,
-            required_domains=c.profile.setup_required_read_domains,
-            timeout=0.03,
+            RefreshRequest(refresh_all=True, required_domains=c.profile.setup_required_read_domains, timeout=0.03),
         )
         assert c.white_balance_scalar == 50 and c.installation_direction == 3 and c.camera_health == "healthy"
     finally:

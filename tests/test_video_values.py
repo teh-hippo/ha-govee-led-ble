@@ -9,6 +9,7 @@ import pytest
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ModelProfile, ReadDomain
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_expectations import expectations_from_packet
+from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
 from custom_components.ha_govee_led_ble.effect_compiler import compile_video_profile
 from custom_components.ha_govee_led_ble.effect_deployments import PriorControlState
 from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, VideoProfile
@@ -66,7 +67,7 @@ async def test_selector_compiled_and_recovery_preserve_values(device, monkeypatc
     assert device._client.write_gatt_char.await_args.args[1] == expected
     assert device.video_parameters == snapshot.video_parameters
     assert device._field_revisions["video_parameters"] == 1  # optimistic != observed
-    assert device.refresh_state.await_args.kwargs["expected_video_parameters"] == snapshot.video_parameters
+    assert device.refresh_state.await_args.args[0].video_parameters == snapshot.video_parameters
     assert expectations_from_packet(expected, "H7002")["video_parameters"] == snapshot.video_parameters
 
     content = VideoProfile("H7002", mode, None, 62, True, 55, None, None, None)
@@ -179,7 +180,7 @@ async def test_extra_values_require_fresh_matching_readback(device, monkeypatch,
 
     monkeypatch.setattr(device, "_send_state_queries", mismatch)
     assert not await device.refresh_state(
-        expected_video_parameters={"picture_preset": "delicate", "opaque": 0xA5}, timeout=0.001
+        RefreshRequest(video_parameters={"picture_preset": "delicate", "opaque": 0xA5}, timeout=0.001)
     )
 
     async def match(*args, **kwargs):
@@ -188,7 +189,7 @@ async def test_extra_values_require_fresh_matching_readback(device, monkeypatch,
 
     monkeypatch.setattr(device, "_send_state_queries", match)
     assert await device.refresh_state(
-        expected_video_parameters={"picture_preset": "delicate", "opaque": 0xA5}, timeout=0.001
+        RefreshRequest(video_parameters={"picture_preset": "delicate", "opaque": 0xA5}, timeout=0.001)
     )
 
 

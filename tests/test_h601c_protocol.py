@@ -10,6 +10,7 @@ from homeassistant.exceptions import HomeAssistantError
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ModelProfile, ReadDomain
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_expectations import expectations_from_packet
+from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode, decode_status_frame, parse_color_mode
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_brightness,
@@ -200,9 +201,9 @@ async def test_real_coordinator_queries_static_state_and_fresh_verification(devi
     assert [call.args[1] for call in device._client.write_gatt_char.await_args_list] == list(replies)
     assert device.is_on and device.brightness_pct == 50 and device.color_temp_kelvin == 4000
     assert device.color_temp_kelvin_source == "observed"
-    assert await device.refresh_state(expected_color_temp_kelvin=4000, timeout=0.01)
+    assert await device.refresh_state(RefreshRequest(color_temp_kelvin=4000, timeout=0.01))
     # Complete but mismatched readback is not successful verification.
-    assert not await device.refresh_state(expected_color_temp_kelvin=5000, timeout=0.01)
+    assert not await device.refresh_state(RefreshRequest(color_temp_kelvin=5000, timeout=0.01))
 
 
 async def test_real_writer_expectations_rgb_kelvin_transition_and_rejections(device):

@@ -15,6 +15,7 @@ from homeassistant.util.color import brightness_to_value
 from .const import DOMAIN, LightSource, ModelProfile, ReadDomain
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator import GoveeBLECoordinator
+from .coordinator_refresh import RefreshRequest
 from .coordinator_status import ParsedMode
 from .entity import GoveeBLEEntity
 from .generated_protocol_adapter import build_brightness, build_power, build_source_value, require_profile_packet
@@ -278,7 +279,9 @@ class GoveeBLESourceLight(GoveeBLEEntity, LightEntity):
                 ):
                     revision = coordinator._field_revisions.get("is_on", 0)
                     if not await coordinator.refresh_state(
-                        refresh_all=True, query_segments=False, required_domains=frozenset({ReadDomain.POWER})
+                        RefreshRequest(
+                            refresh_all=True, query_segments=False, required_domains=frozenset({ReadDomain.POWER})
+                        )
                     ) or (
                         not self._fresh("is_on")
                         or coordinator._field_revisions.get("is_on", 0) <= revision
@@ -310,7 +313,9 @@ class GoveeBLESourceLight(GoveeBLEEntity, LightEntity):
 
                     try:
                         await coordinator.send_command(power, write_guard=power_guard)
-                        if profile.can_read(ReadDomain.POWER) and not await coordinator.refresh_state(expected_on=True):
+                        if profile.can_read(ReadDomain.POWER) and not await coordinator.refresh_state(
+                            RefreshRequest(on=True)
+                        ):
                             raise ValueError("The device did not confirm master power")
                     except BaseException:
                         if (

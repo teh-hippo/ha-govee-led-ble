@@ -32,6 +32,7 @@ from custom_components.ha_govee_led_ble.coordinator import (
     GoveeBLECoordinator,
 )
 from custom_components.ha_govee_led_ble.coordinator_expectations import expectations_from_packet
+from custom_components.ha_govee_led_ble.coordinator_refresh import DEFAULT_REFRESH_REQUEST, RefreshRequest
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.effect_compiler import compile_application
 from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, SingleEffect
@@ -564,7 +565,7 @@ async def test_background_refresh_disconnects_poll_only_connection_after_query(c
     coord._present = advertised
     client = _c()
 
-    async def refresh(**_kwargs) -> bool:
+    async def refresh(request=DEFAULT_REFRESH_REQUEST) -> bool:
         coord._client = client
         client.disconnect.assert_not_awaited()
         return True
@@ -587,7 +588,7 @@ async def test_failed_poll_revokes_read_availability_without_erasing_advertiseme
     coord._present = advertised
     client = _c()
 
-    async def refresh(**_kwargs) -> bool:
+    async def refresh(request=DEFAULT_REFRESH_REQUEST) -> bool:
         coord._client = client
         return True
 
@@ -1238,7 +1239,7 @@ async def test_background_refresh_disconnects_replacement_connection(coord):
     replacement = _c()
     coord._client = original
 
-    async def refresh(**_kwargs) -> bool:
+    async def refresh(request=DEFAULT_REFRESH_REQUEST) -> bool:
         coord._client = replacement
         return True
 
@@ -1772,10 +1773,12 @@ async def test_hold_keeps_connection_and_refreshes_basic_state_without_segments(
         "required_domains": frozenset({ReadDomain.POWER}),
     }
     refresh_connected.assert_awaited_once_with(
-        refresh_all=True,
-        query_segments=False,
-        required_domains=coord.profile.setup_required_read_domains,
-        query_native_settings=True,
+        RefreshRequest(
+            refresh_all=True,
+            query_segments=False,
+            required_domains=coord.profile.setup_required_read_domains,
+            query_native_settings=True,
+        )
     )
     client.disconnect.assert_not_awaited()
 

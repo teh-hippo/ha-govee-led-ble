@@ -17,6 +17,7 @@ from homeassistant.core import HomeAssistant
 from custom_components.ha_govee_led_ble.const import DOMAIN, EFFECT_FAMILY_SCENES, get_profile
 from custom_components.ha_govee_led_ble.control_arbiter import BLEControlArbiter, ControlIntent, async_control_intent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator_refresh import DEFAULT_REFRESH_REQUEST, RefreshRequest
 from custom_components.ha_govee_led_ble.effect_active_workspace import (
     ActiveEffectWorkspaceRepository,
 )
@@ -1415,8 +1416,8 @@ async def test_snapshot_profile_previews_use_preview_transport(
 
         set_qualified_identity(coordinator)
 
-        async def fresh_policy(**kwargs):
-            assert kwargs == {"refresh_display_settings": frozenset({"blank_screen"})}
+        async def fresh_policy(request):
+            assert request == RefreshRequest(display_settings=frozenset({"blank_screen"}))
             coordinator._notify_callback(None, bytearray(frame("aaa90a0600020a007800")))
             return True
 
@@ -1863,8 +1864,8 @@ async def test_toggle_only_live_preview_uses_fresh_external_policy(hass, monkeyp
     monkeypatch.setattr(coordinator, "_renew_foreground_lease", lambda: None)
     refresh = coordinator.refresh_state
 
-    async def immediate_refresh(**kwargs):
-        return await refresh(**kwargs, timeout=0.01)
+    async def immediate_refresh(request=DEFAULT_REFRESH_REQUEST):
+        return await refresh(replace(request, timeout=0.01))
 
     monkeypatch.setattr(coordinator, "refresh_state", immediate_refresh)
 

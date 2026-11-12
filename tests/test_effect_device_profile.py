@@ -11,6 +11,7 @@ from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.ha_govee_led_ble.const import DOMAIN, EFFECT_FAMILY_MUSIC, ReadDomain, get_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator_refresh import DEFAULT_REFRESH_REQUEST
 from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
 from custom_components.ha_govee_led_ble.effect_catalogue import MODEL_EFFECT_CATALOGUES, resolve_catalogue_template
 from custom_components.ha_govee_led_ble.effect_compiler import compile_application
@@ -40,9 +41,9 @@ from tests.test_music_commands import _music_transport as _transport
 
 @contextmanager
 def _music_transport(coordinator):
-    async def refresh(**kwargs):
+    async def refresh(request=DEFAULT_REFRESH_REQUEST):
         # Fresh preflight replies, without turning optimistic writes into observations.
-        if not kwargs.get("refresh_all"):
+        if not request.refresh_all:
             return True
         for prefix in (f"aa01{int(coordinator.is_on):02x}", "aa0464", "aa0515000000"):
             coordinator._notify_callback(None, bytearray(frame(prefix)))
@@ -158,9 +159,9 @@ async def test_committed_apply_fails_closed_when_geometry_changes(hass, kind, co
     with _music_transport(coordinator) as physical, patch.object(coordinator, "_encryption", None):
         refresh = coordinator.refresh_state.side_effect
 
-        async def change(**kwargs):
+        async def change(request=DEFAULT_REFRESH_REQUEST):
             coordinator.profile = replace(coordinator.profile, physical_ic_count=count)
-            return coordinator._client if stage == "connect" else await refresh(**kwargs)
+            return coordinator._client if stage == "connect" else await refresh(request)
 
         (coordinator.refresh_state if stage == "refresh" else coordinator._ensure_connected).side_effect = change
         with pytest.raises(ValueError, match="Physical IC count changed"):

@@ -10,6 +10,7 @@ from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 
 from .const import DOMAIN, ModelProfile, ReadDomain
 from .control_arbiter import ControlIntent, async_control_intent
+from .coordinator_refresh import RefreshRequest
 from .coordinator_status import ParsedStatusEnvelope
 from .generated_protocol_adapter import (
     build_camera_health_query,
@@ -66,7 +67,7 @@ async def async_read_h6099_controls(coordinator: GoveeBLECoordinator) -> dict[st
         )
     async with async_control_intent(coordinator, ControlIntent.USER):
         baselines = {domain: coordinator._domain_revisions.get(domain, 0) for domain in domains}
-        await coordinator.refresh_state(refresh_all=True, required_domains=domains)
+        await coordinator.refresh_state(RefreshRequest(refresh_all=True, required_domains=domains))
         return {
             domain.value: getattr(coordinator, domain.value, missing)
             if coordinator._domain_revisions.get(domain, 0) > baselines[domain]

@@ -15,6 +15,7 @@ from homeassistant.core import HomeAssistant
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ReadDomain, device_profile, get_profile
 from custom_components.ha_govee_led_ble.control_arbiter import BLEControlArbiter, ControlIntent, async_control_intent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator_refresh import DEFAULT_REFRESH_REQUEST, RefreshRequest
 from custom_components.ha_govee_led_ble.coordinator_status import parse_color_mode
 from custom_components.ha_govee_led_ble.effect_active_workspace import (
     ActiveEffectWorkspace,
@@ -267,10 +268,10 @@ async def test_prior_preflight_refreshes_master_brightness_in_every_mode(mode):
     coordinator.active_mode = mode
     coordinator.brightness_pct = 99
 
-    async def refresh(**kwargs):
-        assert kwargs["refresh_all"] is True
-        assert kwargs["query_segments"] is None
-        assert ReadDomain.BRIGHTNESS in kwargs["required_domains"]
+    async def refresh(request=DEFAULT_REFRESH_REQUEST):
+        assert request.refresh_all is True
+        assert request.query_segments is None
+        assert ReadDomain.BRIGHTNESS in request.required_domains
         coordinator.brightness_pct = 37
         return True
 
@@ -320,7 +321,7 @@ async def test_topology_independent_apply_does_not_require_ambiguous_segment_sna
     coordinator.async_refresh_segments.return_value = False
 
     assert await async_prepare_effect_control_state(coordinator, require_restorable_static=False)
-    assert coordinator.refresh_state.await_args.kwargs["query_segments"] is False
+    assert coordinator.refresh_state.await_args.args[0].query_segments is False
     coordinator.async_refresh_segments.assert_not_awaited()
 
 
@@ -610,11 +611,11 @@ def _profile_coordinator(model: str):
     coordinator.active_mode = None
     coordinator._field_revisions = {}
 
-    async def refresh(**kwargs):
-        if kwargs.get("refresh_all"):
+    async def refresh(request=DEFAULT_REFRESH_REQUEST):
+        if request.refresh_all:
             for field in ("is_on", "brightness_pct", "color_mode"):
                 coordinator._field_revisions[field] = coordinator._field_revisions.get(field, 0) + 1
-        if "blank_screen" in kwargs.get("refresh_display_settings", ()):
+        if "blank_screen" in request.display_settings:
             for field in (
                 "blank_screen_detection",
                 "blank_screen_low_brightness_duration_seconds",
@@ -774,7 +775,7 @@ class YieldingVersionedDocumentStore(InMemoryVersionedDocumentStore):
 
 
 def _confirm_on_call(coordinator, call_number: int, diy_code: int) -> None:
-    async def refresh(**_kwargs) -> bool:
+    async def refresh(request=DEFAULT_REFRESH_REQUEST) -> bool:
         if coordinator.refresh_state.await_count >= call_number:
             coordinator.diy_code = diy_code
         return True
@@ -783,7 +784,7 @@ def _confirm_on_call(coordinator, call_number: int, diy_code: int) -> None:
 
 
 def _confirm_scene_code_on_call(coordinator, call_number: int, scene_code: int) -> None:
-    async def refresh(**_kwargs) -> bool:
+    async def refresh(request=DEFAULT_REFRESH_REQUEST) -> bool:
         if coordinator.refresh_state.await_count >= call_number:
             coordinator.scene_code = scene_code
         return True
@@ -876,7 +877,7 @@ async def test_layered_scene_uses_shared_transaction_and_identity_verification(
     item = LibraryItem.new("Layered scene", content.effect if advanced else content)
     compiled = compile_effect(item, "H617A")
 
-    async def refresh(**_kwargs) -> bool:
+    async def refresh(request=DEFAULT_REFRESH_REQUEST) -> bool:
         if coordinator.refresh_state.await_count >= 2:
             coordinator.effect = compiled.expected_effect
             coordinator.scene_code = compiled.diy_code
@@ -924,7 +925,7 @@ async def test_h6199_layered_scene_uses_model_framing_and_identity_verification(
     item = LibraryItem.new("Layered scene", content)
     compiled = compile_effect(item, "H6199")
 
-    async def refresh(**_kwargs) -> bool:
+    async def refresh(request=DEFAULT_REFRESH_REQUEST) -> bool:
         if coordinator.refresh_state.await_count >= 2:
             coordinator.effect = compiled.expected_effect
             coordinator.scene_code = compiled.diy_code
@@ -1025,7 +1026,7 @@ async def test_verification_retry_only_repeats_safe_activation(
     item = _item()
     compiled = compile_h617a(item, 800)
 
-    async def refresh(**_kwargs) -> bool:
+    async def refresh(request=DEFAULT_REFRESH_REQUEST) -> bool:
         if coordinator.refresh_state.await_count == 2:
             coordinator.diy_code = 999
         elif coordinator.refresh_state.await_count >= 3:
@@ -1222,7 +1223,7 @@ async def test_verification_failure_retries_reads_then_recovers(
     coordinator = _coordinator()
     coordinator.async_restore_effect_control_state = AsyncMock(return_value=True)
 
-    async def refresh(**_kwargs) -> bool:
+    async def refresh(request=DEFAULT_REFRESH_REQUEST) -> bool:
         if coordinator.refresh_state.await_count == 1:
             return True
         raise RuntimeError("read failed")
@@ -1425,7 +1426,7 @@ async def test_music_deployment_before_first_control_preserves_native_selection(
     published: list[PriorControlState] = []
     unsubscribe = coordinator.async_add_listener(lambda: published.append(coordinator.capture_effect_control_state()))
 
-    async def refresh(**_kwargs):
+    async def refresh(request=DEFAULT_REFRESH_REQUEST):
         for field in ("is_on", "brightness_pct", "color_mode"):
             coordinator._field_revisions[field] = coordinator._field_revisions.get(field, 0) + 1
         field_revisions.update(coordinator._field_revisions)
@@ -2822,7 +2823,7 @@ async def test_reduced_video_profile_skips_unsupported_companion_workflows(
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
     monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
 
-    async def refresh(**_kwargs):
+    async def refresh(request=DEFAULT_REFRESH_REQUEST):
         for field in ("is_on", "brightness_pct", "color_mode"):
             coordinator._field_revisions[field] = coordinator._field_revisions.get(field, 0) + 1
         return True
@@ -2864,7 +2865,7 @@ async def test_reduced_video_profile_skips_unsupported_companion_workflows(
         WRITE_UUID, build_video_mode("movie", True, 88, False, 50, "H6199"), response=False
     )
     assert coordinator.video_mode == "movie"
-    assert call(expected_on=True, expected_video_mode="movie") in coordinator.refresh_state.await_args_list
+    assert call(RefreshRequest(on=True, video_mode="movie")) in coordinator.refresh_state.await_args_list
     coordinator.async_observe_effect.assert_awaited_once_with({"is_on": True, "video_mode": "movie"}, timeout=4.0)
     apply_white.assert_not_awaited()
     apply_brightness.assert_not_awaited()

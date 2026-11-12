@@ -10,6 +10,7 @@ import pytest
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, MUSIC_MODE_SLUGS, device_profile
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator_refresh import DEFAULT_REFRESH_REQUEST, RefreshRequest
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.effect_commands import build_h617a_diy_activation
 from custom_components.ha_govee_led_ble.effect_contracts import CapabilityState
@@ -283,7 +284,7 @@ async def test_restore_effect_control_state_reapplies_model_scene(coord, h6199):
 
         assert recovered is False  # original authored body/speed is unknown
         assert send.await_args_list == [call(packet) for packet in expected]
-        refresh.assert_awaited_once_with(expected_on=True, expected_brightness=72, expected_scene_code=scene.code)
+        refresh.assert_awaited_once_with(RefreshRequest(on=True, brightness=72, scene_code=scene.code))
 
 
 @pytest.mark.parametrize("with_code", [False, True])
@@ -315,7 +316,7 @@ async def test_restore_effect_control_state_reapplies_powered_off_state(coord):
 
     assert recovered is False  # power alone cannot recover the missing hidden layout
     send.assert_awaited_once_with(build_power(False), state_values={"is_on": False})
-    refresh.assert_awaited_once_with(expected_on=False)
+    refresh.assert_awaited_once_with(RefreshRequest(on=False))
 
 
 @pytest.mark.parametrize("model", ["H617A", "H9999"])
@@ -390,7 +391,7 @@ async def test_restore_effect_control_state_reapplies_complete_music_profile(coo
     assert send.await_args.args == (build_brightness(72, "H617A"),)
     send.await_args.kwargs["write_guard"]()
     refresh.assert_awaited_once_with(
-        expected_on=True, expected_brightness=72, expected_music_mode="separation", expected_music_sensitivity=50
+        RefreshRequest(on=True, brightness=72, music_mode="separation", music_sensitivity=50)
     )
 
 
@@ -488,8 +489,8 @@ async def test_blank_screen_recovery_preserves_live_policy(h6199, enabled, polic
             h6199._notify_callback(None, bytearray(_packet(0xAA, 0xA9, [0x0A, 0x06, 0, 0, 60, 0, 44, 1])))
         return client
 
-    async def refresh_policy(**kwargs):
-        if kwargs.get("refresh_display_settings") and None not in policy:
+    async def refresh_policy(request=DEFAULT_REFRESH_REQUEST):
+        if request.display_settings and None not in policy:
             h6199._notify_callback(
                 None, bytearray(_packet(0xAA, 0xA9, [0x0A, 0x06, int(enabled), policy[0], policy[1], 0, policy[2], 0]))
             )
@@ -504,7 +505,7 @@ async def test_blank_screen_recovery_preserves_live_policy(h6199, enabled, polic
             with pytest.raises(ValueError, match=message):
                 await h6199.async_restore_effect_control_state(state, overwritten_diy_code=None)
             client.write_gatt_char.assert_not_awaited()
-            refresh.assert_awaited_once_with(refresh_display_settings=frozenset({"blank_screen"}))
+            refresh.assert_awaited_once_with(RefreshRequest(display_settings=frozenset({"blank_screen"})))
             assert h6199.blank_screen is enabled
             assert "blank_screen" not in h6199._expected_state
         else:
@@ -522,8 +523,11 @@ async def test_blank_screen_recovery_preserves_live_policy(h6199, enabled, polic
             assert refresh.await_args_list == (
                 []
                 if enabled
-                else [call(refresh_display_settings=frozenset({"blank_screen"})), call(expected_blank_screen=True)]
-            ) + [call(expected_on=True, expected_brightness=state.brightness_pct, expected_scene_code=scene.code)]
+                else [
+                    call(RefreshRequest(display_settings=frozenset({"blank_screen"}))),
+                    call(RefreshRequest(blank_screen=True)),
+                ]
+            ) + [call(RefreshRequest(on=True, brightness=state.brightness_pct, scene_code=scene.code))]
             assert h6199.blank_screen is True
     assert (
         h6199.blank_screen_detection,
@@ -557,7 +561,7 @@ async def test_restore_effect_control_state_reapplies_h6199_scene(h6199):
         call(build_brightness(72, "H6199")),
         call(build_scene_activation("H6199", scene.code, scene.music_code)),
     ]
-    refresh.assert_awaited_once_with(expected_on=True, expected_brightness=72, expected_scene_code=scene.code)
+    refresh.assert_awaited_once_with(RefreshRequest(on=True, brightness=72, scene_code=scene.code))
 
 
 async def test_restore_h6179_scene_converts_legacy_catalogue_code_to_wire_selector(hass):
@@ -590,7 +594,7 @@ async def test_restore_h6179_scene_converts_legacy_catalogue_code_to_wire_select
         call(build_brightness(72, "H6179")),
         call(build_scene_activation("H6179", selector, scene.music_code)),
     ]
-    refresh.assert_awaited_once_with(expected_on=True, expected_brightness=72, expected_scene_code=selector)
+    refresh.assert_awaited_once_with(RefreshRequest(on=True, brightness=72, scene_code=selector))
 
 
 async def test_h6179_zero_kelvin_rgb_observation_replaces_retained_white_and_restores_rgb(hass):
@@ -614,9 +618,7 @@ async def test_h6179_zero_kelvin_rgb_observation_replaces_retained_white_and_res
         call(build_brightness(100, "H6179")),
         call(build_color_rgb(*rgb, "H6179")),
     ]
-    refresh.assert_awaited_once_with(
-        expected_on=True, expected_brightness=100, expected_rgb_color=rgb, expected_zero_kelvin=True
-    )
+    refresh.assert_awaited_once_with(RefreshRequest(on=True, brightness=100, rgb_color=rgb, zero_kelvin=True))
 
 
 async def test_h6179_off_grid_persisted_kelvin_restores_against_normalised_readback(hass, monkeypatch, virtual_clock):
@@ -734,7 +736,7 @@ async def test_restore_effect_control_state_maps_h617e_legacy_scene_name(hass):
         call(build_brightness(72, "H617E")),
         call(build_scene_activation("H617E", scene.code, scene.music_code)),
     ]
-    refresh.assert_awaited_once_with(expected_on=True, expected_brightness=72, expected_scene_code=scene.code)
+    refresh.assert_awaited_once_with(RefreshRequest(on=True, brightness=72, scene_code=scene.code))
 
 
 async def test_restore_effect_control_state_preserves_h617e_raw_legacy_scene(hass):
@@ -769,9 +771,7 @@ async def test_restore_effect_control_state_preserves_h617e_raw_legacy_scene(has
         call(build_brightness(state.brightness_pct, "H617E")),
         call(build_scene_activation("H617E", legacy.code, legacy.music_code)),
     ]
-    refresh.assert_awaited_once_with(
-        expected_on=True, expected_brightness=state.brightness_pct, expected_scene_code=legacy.code
-    )
+    refresh.assert_awaited_once_with(RefreshRequest(on=True, brightness=state.brightness_pct, scene_code=legacy.code))
 
 
 async def test_restore_effect_control_state_uses_legacy_identity_to_disambiguate_scene_code(hass):

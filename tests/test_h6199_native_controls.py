@@ -1,6 +1,7 @@
 """Direct-register replay and software qualification; not device-verified."""
 
 import asyncio
+from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -10,6 +11,7 @@ from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 
 from custom_components.ha_govee_led_ble import PLATFORMS, select, sensor
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     parse_command,
@@ -285,8 +287,8 @@ async def test_optional_camera_silence_does_not_fail_basic_refresh(
         c._keep_alive_ticks = 2
         refresh = c._refresh_connected_state
 
-        async def bounded_refresh(**kwargs):
-            return await refresh(timeout=0.01, **kwargs)
+        async def bounded_refresh(request):
+            return await refresh(replace(request, timeout=0.01))
 
         monkeypatch.setattr(c, "_refresh_connected_state", bounded_refresh)
         with monkeypatch.context() as held:
@@ -297,7 +299,7 @@ async def test_optional_camera_silence_does_not_fail_basic_refresh(
             await c._keep_alive_loop()
     else:
         assert await c.refresh_state(
-            refresh_all=True, required_domains=c.profile.setup_required_read_domains, timeout=0.01
+            RefreshRequest(refresh_all=True, required_domains=c.profile.setup_required_read_domains, timeout=0.01)
         )
     packets = [call.args[1] for call in c._client.write_gatt_char.await_args_list]
     assert all(build_h6199_control_query(key) in packets for key in H6199_NATIVE_CONTROLS)

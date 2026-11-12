@@ -56,7 +56,12 @@ from .coordinator_h6102 import _H6102Mixin
 from .coordinator_modes import PreModeSnapshot, _ActiveModeMixin
 from .coordinator_notifications import _OPTIONAL_CONTROL_DOMAINS, _NotificationMixin
 from .coordinator_recovery import _RecoveryMixin
-from .coordinator_refresh import BLANK_SCREEN_POLICY_FIELDS, RefreshExpectations
+from .coordinator_refresh import (
+    BLANK_SCREEN_POLICY_FIELDS,
+    DEFAULT_REFRESH_REQUEST,
+    STATE_QUERY_TIMEOUT,
+    RefreshRequest,
+)
 from .coordinator_segments import _SEGMENT_READ_TIMEOUT, _SegmentMixin
 from .coordinator_status import (
     ParsedMode,
@@ -122,9 +127,6 @@ from .video_applicability import (
 
 EFFECT_SEQUENCE_ATTEMPTS = 3
 UPLOAD_ACK_TIMEOUT = 2.0
-# How long to wait on one device exchange: a query's reply or a control write's confirmation.
-STATE_QUERY_TIMEOUT = 2.0
-
 _LOGGER = logging.getLogger(__name__)
 
 DISCONNECT_DELAY = 15
@@ -913,9 +915,11 @@ class GoveeBLECoordinator(
                             generation = self._profile_generation
                             authorization_generation = self._authorization_generation
                             refreshed = await self.refresh_state(
-                                refresh_all=True,
-                                required_domains=self.profile.setup_required_read_domains,
-                                **({"query_native_settings": False} if self.profile.setting_grammar == "H607C" else {}),
+                                RefreshRequest(
+                                    refresh_all=True,
+                                    required_domains=self.profile.setup_required_read_domains,
+                                    query_native_settings=self.profile.setting_grammar != "H607C",
+                                ),
                             )
                             if generation == self._profile_generation and (
                                 refreshed
@@ -2572,7 +2576,7 @@ class GoveeBLECoordinator(
                     self._static_rgb_known = False
                     self.left_bar_kelvin = self.right_bar_kelvin = None
                     self.segment_state_source = "initial"
-            await self.refresh_state(refresh_all=True)
+            await self.refresh_state(RefreshRequest(refresh_all=True))
 
     @property
     def physical_ic_count_source(self) -> str:
@@ -2645,42 +2649,24 @@ class GoveeBLECoordinator(
                 return False
         return True
 
-    async def refresh_state(self, **kwargs: Any) -> bool:
+    async def refresh_state(self, request: RefreshRequest = DEFAULT_REFRESH_REQUEST) -> bool:
         """Resolve connection identity before constructing queries and freshness baselines."""
         if not self.profile.state_readable:
             return False
-        if kwargs.get("expected_rgb_color") is not None and not self.profile.static_readback_echoes_color:
-            return False
-        if kwargs.get("expected_color_temp_kelvin") is not None and not self.profile.static_readback_kelvin:
-            return False
-        if kwargs.get("expected_zero_kelvin") and not self.profile.static_readback_zero_kelvin_is_rgb:
+        if request.unsupported_static_readback(self.profile):
             return False
         if (
-            kwargs.get("expected_black_border") is not None
+            request.black_border is not None
             and video_control_states(self.profile, self)["black_border"] is not CapabilityState.SUPPORTED
         ):
             return False
-        if not self.profile.supports_color_mode_readback and any(
-            value is not None
-            and key.startswith(
-                (
-                    "expected_effect",
-                    "expected_scene",
-                    "expected_rgb",
-                    "expected_color_temp",
-                    "expected_music",
-                    "expected_video",
-                    "expected_white_brightness",
-                )
-            )
-            for key, value in kwargs.items()
-        ):
+        if not self.profile.supports_color_mode_readback and request.expects_color_readback:
             return False
         current_intent = self._control_arbiter.current_task_intent
         async with async_control_intent(self, ControlIntent.USER if current_intent is None else current_intent):
             async with self._lock:
                 await self._ensure_connected()
-            return await self._refresh_connected_state(**kwargs)
+            return await self._refresh_connected_state(request)
 
     def _refresh_field_baselines(
         self,
@@ -2691,14 +2677,13 @@ class GoveeBLECoordinator(
         query_black_border: bool,
         query_white_balance: bool,
         display_settings: AbstractSet[str],
-        refresh_display_settings: bool | frozenset[str],
         refresh_relative_brightness: bool,
     ) -> dict[str, int]:
         """Field revisions captured before a refresh, so only newer observations satisfy its expectations."""
         field_baselines = {field: self._field_revisions.get(field, 0) for field in expectations}
         if refresh_all and query_black_border and required_domains is None:
             field_baselines["black_border"] = self._field_revisions.get("black_border", 0)
-        if refresh_display_settings:
+        if display_settings:
             display_fields: list[str] = []
             if query_black_border and "black_border" in display_settings:
                 display_fields.append("black_border")
@@ -2717,38 +2702,6 @@ class GoveeBLECoordinator(
                 for zone in self.profile.video_brightness_zones
             )
         return field_baselines
-
-    @staticmethod
-    def _refresh_query_options(
-        *,
-        deadline: float,
-        refresh_all: bool,
-        required_domains: frozenset[ReadDomain] | None,
-        awaited_domains: set[ReadDomain],
-        requested_registers: AbstractSet[str],
-        optional_baselines: dict[str, int],
-        query_native_settings: bool,
-        query_segments: bool | None,
-    ) -> dict[str, Any]:
-        """Keyword options for ``_send_state_queries``; only a full or domain-scoped refresh awaits domains."""
-        query_options: dict[str, Any] = {"deadline": deadline}
-        if refresh_all or required_domains is not None:
-            query_options = {
-                "deadline": deadline,
-                "required_domains": frozenset(awaited_domains)
-                | (
-                    {ReadDomain.DISPLAY_SETTING}
-                    if requested_registers & {"white_balance", "blank_screen", "black_border"}
-                    else set()
-                )
-                | ({ReadDomain.RELATIVE_BRIGHTNESS} if "relative_brightness" in requested_registers else set()),
-                "optional_baselines": optional_baselines,
-            }
-        if not query_native_settings:
-            query_options["query_native_settings"] = False
-        if query_segments is not None:
-            query_options["query_segments"] = query_segments
-        return query_options
 
     @staticmethod
     def _refresh_awaited_domains(
@@ -2781,73 +2734,12 @@ class GoveeBLECoordinator(
         queried_domains.update(required_domains & profile.read_domains & _OPTIONAL_CONTROL_DOMAINS)
         return queried_domains & required_domains
 
-    async def _refresh_connected_state(
-        self,
-        *,
-        expected_effect: str | None = None,
-        expected_scene_code: int | None = None,
-        expected_on: bool | None = None,
-        expected_brightness: int | None = None,
-        expected_rgb_color: tuple[int, int, int] | None = None,
-        expected_color_temp_kelvin: int | None = None,
-        expected_zero_kelvin: bool = False,
-        expected_music_mode: str | None = None,
-        expected_music_sensitivity: int | None = None,
-        expected_music_calm: bool | None = None,
-        expected_music_color: tuple[int, int, int] | None = None,
-        expected_music_auto_color: bool = False,
-        expected_video_mode: str | None = None,
-        expected_video_parameters: Mapping[str, Any] | None = None,
-        expected_video_full_screen: bool | None = None,
-        expected_video_saturation: int | None = None,
-        expected_video_sound_effects: bool | None = None,
-        expected_video_sound_effects_softness: int | None = None,
-        expected_white_brightness: int | None = None,
-        expected_white_balance: tuple[int, ...] | None = None,
-        expected_white_balance_flag: int | None = None,
-        expected_blank_screen: bool | None = None,
-        expected_blank_screen_policy: tuple[int, int, int] | None = None,
-        expected_black_border: bool | None = None,
-        expected_relative_brightness: tuple[int, ...] | None = None,
-        refresh_display_settings: bool | frozenset[str] = False,
-        refresh_relative_brightness: bool = False,
-        refresh_all: bool = False,
-        query_native_settings: bool = True,
-        query_segments: bool | None = None,
-        required_domains: frozenset[ReadDomain] | None = None,
-        timeout: float = STATE_QUERY_TIMEOUT,
-    ) -> bool:
+    async def _refresh_connected_state(self, request: RefreshRequest = DEFAULT_REFRESH_REQUEST) -> bool:
         self._reconcile_authorization()
         if not self.profile.state_readable:
             return False
         generation = self._profile_generation
-        expected = RefreshExpectations(
-            effect=expected_effect,
-            scene_code=expected_scene_code,
-            on=expected_on,
-            brightness=expected_brightness,
-            rgb_color=expected_rgb_color,
-            color_temp_kelvin=expected_color_temp_kelvin,
-            zero_kelvin=expected_zero_kelvin,
-            music_mode=expected_music_mode,
-            music_sensitivity=expected_music_sensitivity,
-            music_calm=expected_music_calm,
-            music_color=expected_music_color,
-            music_auto_color=expected_music_auto_color,
-            video_mode=expected_video_mode,
-            video_parameters=expected_video_parameters,
-            video_full_screen=expected_video_full_screen,
-            video_saturation=expected_video_saturation,
-            video_sound_effects=expected_video_sound_effects,
-            video_sound_effects_softness=expected_video_sound_effects_softness,
-            white_brightness=expected_white_brightness,
-            white_balance=expected_white_balance,
-            white_balance_flag=expected_white_balance_flag,
-            blank_screen=expected_blank_screen,
-            blank_screen_policy=expected_blank_screen_policy,
-            black_border=expected_black_border,
-            relative_brightness=expected_relative_brightness,
-        )
+        expected = request
         if expected.unsupported_static_readback(self.profile):
             return False
         expectations = expected.field_expectations(self.profile)
@@ -2856,13 +2748,7 @@ class GoveeBLECoordinator(
         query_power = expected.on is not None
         query_brightness = expected.brightness is not None
         query_color = self.profile.supports_color_mode_readback and expected.expects_color_readback
-        display_settings: AbstractSet[str]
-        if refresh_display_settings is True:
-            display_settings = {"white_balance", "blank_screen"}
-            if video_control_states(self.profile, self)["black_border"] is CapabilityState.SUPPORTED:
-                display_settings.add("black_border")
-        else:
-            display_settings = refresh_display_settings or frozenset()
+        display_settings = request.display_settings
         if not display_settings <= {"white_balance", "blank_screen", "black_border"}:
             raise ValueError("unknown display setting requested for refresh")
         query_white_balance = expected.expects_white_balance or "white_balance" in display_settings
@@ -2873,8 +2759,8 @@ class GoveeBLECoordinator(
             and video_control_states(self.profile, self)["black_border"] is not CapabilityState.SUPPORTED
         ):
             return False
-        query_relative_brightness = expected.expects_relative_brightness or refresh_relative_brightness
-        if refresh_all:
+        query_relative_brightness = expected.expects_relative_brightness or request.refresh_relative_brightness
+        if request.refresh_all:
             query_power = query_brightness = True
             query_color = self.profile.supports_color_mode_readback
         if not any(
@@ -2912,7 +2798,7 @@ class GoveeBLECoordinator(
                     ("white_balance", expected.expects_white_balance),
                     ("blank_screen", expected.expects_blank_screen),
                     ("black_border", expected.expects_black_border),
-                    ("relative_brightness", expected.expects_relative_brightness or refresh_relative_brightness),
+                    ("relative_brightness", query_relative_brightness),
                 )
                 if requested
             }
@@ -2920,7 +2806,7 @@ class GoveeBLECoordinator(
                 return False
             if requested_registers - confirmed_controls:
                 return False
-            if refresh_all:
+            if request.refresh_all:
                 query_white_balance = (
                     "white_balance" in confirmed_controls and states["white_balance"] is CapabilityState.SUPPORTED
                 )
@@ -2944,56 +2830,56 @@ class GoveeBLECoordinator(
                 query_color=query_color,
                 query_display=query_white_balance or query_blank_screen or query_black_border,
                 query_relative_brightness=query_relative_brightness,
-                required_domains=required_domains,
+                required_domains=request.required_domains,
             )
             initial_domain_baselines = {domain: self._domain_revisions.get(domain, 0) for domain in awaited_domains}
-            deadline = time.monotonic() + timeout
+            deadline = time.monotonic() + request.timeout
             optional_baselines: dict[str, int] = {}
+            domain_scoped = request.refresh_all or request.required_domains is not None
+            required_domains = (
+                frozenset(awaited_domains)
+                | (
+                    {ReadDomain.DISPLAY_SETTING}
+                    if requested_registers & {"white_balance", "blank_screen", "black_border"}
+                    else set()
+                )
+                | ({ReadDomain.RELATIVE_BRIGHTNESS} if "relative_brightness" in requested_registers else set())
+                if domain_scoped
+                else None
+            )
+            explicit_settings = any(
+                (query_white_balance, query_blank_screen, query_black_border, query_relative_brightness)
+            )
             for attempt in range(2):
                 if time.monotonic() >= deadline:
                     break
-                query_options = self._refresh_query_options(
-                    deadline=deadline,
-                    refresh_all=refresh_all,
-                    required_domains=required_domains,
-                    awaited_domains=awaited_domains,
-                    requested_registers=requested_registers,
-                    optional_baselines=optional_baselines,
-                    query_native_settings=query_native_settings,
-                    query_segments=query_segments,
-                )
                 field_baselines = self._refresh_field_baselines(
                     expectations,
-                    refresh_all=refresh_all,
-                    required_domains=required_domains,
+                    refresh_all=request.refresh_all,
+                    required_domains=request.required_domains,
                     query_black_border=query_black_border,
                     query_white_balance=query_white_balance,
                     display_settings=display_settings,
-                    refresh_display_settings=refresh_display_settings,
-                    refresh_relative_brightness=refresh_relative_brightness,
+                    refresh_relative_brightness=request.refresh_relative_brightness,
                 )
                 domain_baselines = {domain: self._domain_revisions.get(domain, 0) for domain in awaited_domains}
                 async with self._lock:
                     if self._client is not client:
                         return False
-                    if query_white_balance or query_blank_screen or query_black_border or query_relative_brightness:
-                        ok = await self._send_state_queries(
-                            query_power=query_power,
-                            query_brightness=query_brightness,
-                            query_color_mode=query_color,
-                            query_white_balance=query_white_balance,
-                            query_blank_screen=query_blank_screen,
-                            query_black_border=query_black_border,
-                            query_relative_brightness=query_relative_brightness,
-                            **query_options,
-                        )
-                    else:
-                        ok = await self._send_state_queries(
-                            query_power=query_power,
-                            query_brightness=query_brightness,
-                            query_color_mode=query_color,
-                            **query_options,
-                        )
+                    ok = await self._send_state_queries(
+                        query_power=query_power,
+                        query_brightness=query_brightness,
+                        query_color_mode=query_color,
+                        query_white_balance=query_white_balance if explicit_settings else None,
+                        query_blank_screen=query_blank_screen if explicit_settings else None,
+                        query_black_border=query_black_border if explicit_settings else None,
+                        query_relative_brightness=query_relative_brightness if explicit_settings else None,
+                        deadline=deadline,
+                        required_domains=required_domains,
+                        optional_baselines=optional_baselines if domain_scoped else None,
+                        query_native_settings=request.query_native_settings,
+                        query_segments=request.query_segments,
+                    )
                 if not ok:
                     if (
                         generation == self._profile_generation
@@ -3516,10 +3402,12 @@ class GoveeBLECoordinator(
                     if self.connection_mode == CONNECTION_MODE_HOLD and full:
                         h607c_settings = self.profile.setting_grammar == "H607C"
                         ok = await self._refresh_connected_state(
-                            refresh_all=True,
-                            query_segments=False,
-                            required_domains=self.profile.setup_required_read_domains,
-                            query_native_settings=not h607c_settings,
+                            RefreshRequest(
+                                refresh_all=True,
+                                query_segments=False,
+                                required_domains=self.profile.setup_required_read_domains,
+                                query_native_settings=not h607c_settings,
+                            ),
                         )
                         if ok and h607c_settings and client is not None:
                             await self._async_read_optional_h607c_settings(client)

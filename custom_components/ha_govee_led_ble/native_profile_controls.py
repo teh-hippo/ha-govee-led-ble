@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 from .const import ReadDomain
 from .control_arbiter import ControlIntent, async_control_intent
+from .coordinator_refresh import RefreshRequest
 from .generated_protocol_adapter import (
     build_black_border,
     build_blank_screen,
@@ -273,18 +274,17 @@ async def apply_active_video_mode(
     state_values = {f"video_{field}": value for field, value in values.items()}
     state_values.update(video_mode=mode, effect=None, music_mode="off", diy_code=None)
     observable = video_control_states(coordinator.profile, coordinator)
-    expectations = {
-        f"expected_video_{field}": values[field]
-        for field, control in (
-            ("full_screen", "capture_region"),
-            ("saturation", "saturation"),
-            ("sound_effects", "sound_effects"),
-            ("sound_effects_softness", "sound_effects"),
-        )
-        if observable[control] == "supported"
-    }
-    if "parameters" in values:
-        expectations["expected_video_parameters"] = values["parameters"]
+    request = RefreshRequest(
+        on=True,
+        video_mode=mode,
+        video_full_screen=values["full_screen"] if observable["capture_region"] == "supported" else None,
+        video_saturation=values["saturation"] if observable["saturation"] == "supported" else None,
+        video_sound_effects=values["sound_effects"] if observable["sound_effects"] == "supported" else None,
+        video_sound_effects_softness=values["sound_effects_softness"]
+        if observable["sound_effects"] == "supported"
+        else None,
+        video_parameters=values.get("parameters"),
+    )
     for _ in range(2 if verify else 1):
         await async_require_video_controls(coordinator, controls)
         if not coordinator.is_on:
@@ -307,11 +307,7 @@ async def apply_active_video_mode(
         )
         if not verify:
             return True
-        if await coordinator.refresh_state(
-            expected_on=True,
-            expected_video_mode=mode,
-            **expectations,
-        ):
+        if await coordinator.refresh_state(request):
             return True
     raise RuntimeError("Video-mode write was not confirmed by the device")
 
@@ -417,7 +413,7 @@ async def apply_white_balance(
             raise ValueError("Scalar white balance requires an explicit value")
         await async_require_video_controls(coordinator, ("white_balance",))
         baselines = {field: coordinator._field_revisions.get(field, 0) for field in reset_fields}
-        if not await coordinator.refresh_state(refresh_display_settings=frozenset({"white_balance"})) or any(
+        if not await coordinator.refresh_state(RefreshRequest(display_settings=frozenset({"white_balance"}))) or any(
             coordinator._field_revisions.get(field, 0) <= revision for field, revision in baselines.items()
         ):
             raise ValueError("White-balance defaults have not been read freshly; refresh the device first")
@@ -458,9 +454,9 @@ async def apply_white_balance(
         if not verify:
             return True
         confirmed = (
-            await coordinator.refresh_state(expected_white_balance=expected)
+            await coordinator.refresh_state(RefreshRequest(white_balance=expected))
             if scalar
-            else await coordinator.refresh_state(expected_white_balance=expected, expected_white_balance_flag=flag)
+            else await coordinator.refresh_state(RefreshRequest(white_balance=expected, white_balance_flag=flag))
         )
         if confirmed:
             check_defaults()
@@ -503,7 +499,7 @@ async def apply_relative_brightness(
         )
         if not verify:
             return True
-        if await coordinator.refresh_state(expected_relative_brightness=expected):
+        if await coordinator.refresh_state(RefreshRequest(relative_brightness=expected)):
             return True
     raise RuntimeError("Relative-brightness write was not confirmed by the device")
 
@@ -529,7 +525,7 @@ async def apply_blank_screen(
         }
         # Refresh owns its transport lock and inherits the caller's control intent.
         # Never refresh inside the synchronous physical-write guard.
-        if not await coordinator.refresh_state(refresh_display_settings=frozenset({"blank_screen"})) or any(
+        if not await coordinator.refresh_state(RefreshRequest(display_settings=frozenset({"blank_screen"}))) or any(
             coordinator._field_revisions.get(field, 0) <= revision for field, revision in baselines.items()
         ):
             raise ValueError("Blank-screen policy state has not been read freshly; refresh the device first")
@@ -584,9 +580,9 @@ async def apply_blank_screen(
         if not verify:
             return True
         confirmed = (
-            await coordinator.refresh_state(expected_blank_screen=expected)
+            await coordinator.refresh_state(RefreshRequest(blank_screen=expected))
             if policy is None
-            else await coordinator.refresh_state(expected_blank_screen=expected, expected_blank_screen_policy=policy)
+            else await coordinator.refresh_state(RefreshRequest(blank_screen=expected, blank_screen_policy=policy))
         )
         if confirmed:
             return True
@@ -611,6 +607,6 @@ async def apply_black_border(
             state_values=fields,
             expected_values=fields if verify else None,
         )
-        if not verify or await coordinator.refresh_state(expected_black_border=expected):
+        if not verify or await coordinator.refresh_state(RefreshRequest(black_border=expected)):
             return True
     raise RuntimeError("Black-border write was not confirmed by the device")

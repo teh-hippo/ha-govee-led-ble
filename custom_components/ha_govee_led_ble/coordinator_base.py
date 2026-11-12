@@ -14,6 +14,7 @@ from .coordinator_status import ParsedMode, StatusDomain
 
 if TYPE_CHECKING:
     from .coordinator_modes import PreModeSnapshot
+    from .coordinator_refresh import RefreshRequest
     from .generated_protocol_adapter import BulkStatusCollector
     from .govee_encryption.session import GoveeEncryptionSession
     from .low_blue_light import LowBlueLightState
@@ -300,7 +301,7 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
             packet_validator: Callable[[bytes, ModelProfile], None] = ...,
         ) -> None: ...
 
-        async def refresh_state(self, **kwargs: Any) -> bool: ...
+        async def refresh_state(self, request: RefreshRequest = ...) -> bool: ...
 
         @property
         def active_mode(self) -> str: ...

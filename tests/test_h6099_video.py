@@ -11,6 +11,7 @@ from bleak.exc import BleakError
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ReadDomain, get_profile
 from custom_components.ha_govee_led_ble.control_arbiter import BLEControlArbiter
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode, decode_status_frame, parse_color_mode
 from custom_components.ha_govee_led_ble.effect_catalogue import MODEL_EFFECT_CATALOGUES
 from custom_components.ha_govee_led_ble.effect_compiler import compile_video_profile
@@ -185,7 +186,7 @@ async def test_border_only_gate_and_physical_recheck(version, state) -> None:
 async def test_policy_edit_toggle_retention_and_race() -> None:
     device = coordinator("1.00.11")
 
-    async def refresh(**kwargs):
+    async def refresh(_request):
         for field in (
             "blank_screen_detection",
             "blank_screen_low_brightness_duration_seconds",
@@ -211,7 +212,7 @@ async def test_policy_edit_toggle_retention_and_race() -> None:
         "blank_screen_low_brightness_duration_seconds": 300,
         "blank_screen_same_tone_duration_seconds": 600,
     }
-    device.refresh_state.assert_awaited_with(expected_blank_screen=False, expected_blank_screen_policy=(1, 300, 600))
+    device.refresh_state.assert_awaited_with(RefreshRequest(blank_screen=False, blank_screen_policy=(1, 300, 600)))
     with pytest.raises(ValueError, match="not been read"):
         await apply_blank_screen(device, True, writer=writer)
 
