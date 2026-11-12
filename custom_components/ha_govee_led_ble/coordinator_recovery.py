@@ -648,6 +648,7 @@ class _RecoveryMixin(_CoordinatorBase):
             music_expectations["expected_music_calm"] = state.music_calm
 
         def guard_music_recovery() -> None:
+            self._reconcile_authorization()
             profile = self._authorization_profile()
             if (
                 state.music_mode not in profile.music_modes

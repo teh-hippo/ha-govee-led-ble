@@ -711,8 +711,7 @@ class GoveeBLECoordinator(
         async with async_control_intent(self, ControlIntent.BACKGROUND):
             async with self._lock:
                 client = await self._ensure_connected()
-                if self._h607c_advertisement_observations:
-                    self._prune_h607c_advertisements()
+                self._reconcile_authorization()
                 if not self._authorization_profile().supports_rgb or self._h607c_pact_conflict:
                     await self._disconnect_if_current_locked(client)
                     raise HomeAssistantError(translation_domain=DOMAIN, translation_key="identity_not_ready")
@@ -721,8 +720,7 @@ class GoveeBLECoordinator(
                 self._renew_foreground_lease()
 
         def guard() -> None:
-            if self._h607c_advertisement_observations:
-                self._prune_h607c_advertisements()
+            self._reconcile_authorization()
             if (
                 self._client is not client
                 or not client.is_connected
@@ -1430,8 +1428,7 @@ class GoveeBLECoordinator(
             # The caller owns reconnect/retry policy; never write across an abandoned query.
             query_kind = "segment" if self._segment_query_incomplete else "bulk"
             raise BleakError(f"Incomplete {query_kind} query requires a new connection")
-        if self.identity_gated_controls and self._h607c_advertisement_observations:
-            self._prune_h607c_advertisements()
+        self._reconcile_authorization()
         parsed_profile = self.profile
         parsed = parse_write_state(packet, self.model, profile=parsed_profile)
         self._require_writable_packet(packet, packet_validator, arm_expected=arm_expected, static=parsed.static)
@@ -1455,6 +1452,7 @@ class GoveeBLECoordinator(
         except BleakError:
             await self._disconnect_locked()
             raise
+        self._reconcile_authorization()
         if (
             before_write is not None
             or transform is not None
@@ -1825,6 +1823,7 @@ class GoveeBLECoordinator(
         try:
             async with self._lock:
                 deadline = time.monotonic() + 2.0
+                self._reconcile_authorization()
                 for query, fields in self._setting_queries(self._authorization_profile()):
                     if self._client is not client or not client.is_connected:
                         self._h607c_last_optional_read_failure = "disconnected"
@@ -1870,6 +1869,7 @@ class GoveeBLECoordinator(
                 await self._read_configured_strings(client, deadline=count_deadline)
             if query_segments is True and not self._configured_strings_confirmed:
                 return False
+        self._reconcile_authorization()
         generation = self._profile_generation
         authorization_generation = self._authorization_generation
         profile = self._authorization_profile()
@@ -2119,9 +2119,13 @@ class GoveeBLECoordinator(
     def _authorization_identity_fields(self) -> frozenset[str]:
         return self.profile.profile_identity_fields | frozenset(video_identity_fields(self.profile))
 
-    def _authorization_profile(self) -> ModelProfile:
+    def _reconcile_authorization(self) -> None:
+        """Apply expiring identity before taking operation-generation snapshots."""
         if self._tracks_pact_identity and self._h607c_advertisement_observations:
             self._prune_h607c_advertisements()
+
+    def _authorization_profile(self) -> ModelProfile:
+        """Read the last reconciled capabilities without changing coordinator state."""
         if get_profile(self.model).reconciles_marker_pact and self._h607c_pact_conflict:
             return replace(self.profile, command_operations=frozenset())
         if get_profile(self.model).requires_pact_confirmation and not self.identity_fields_confirmed(
@@ -2813,6 +2817,7 @@ class GoveeBLECoordinator(
         required_domains: frozenset[ReadDomain] | None = None,
         timeout: float = STATE_QUERY_TIMEOUT,
     ) -> bool:
+        self._reconcile_authorization()
         if not self.profile.state_readable:
             return False
         generation = self._profile_generation
@@ -2888,6 +2893,7 @@ class GoveeBLECoordinator(
         current_intent = self._control_arbiter.current_task_intent
         intent = ControlIntent.USER if current_intent is None else current_intent
         async with async_control_intent(self, intent):
+            self._reconcile_authorization()
             client = self._client
             if client is None or not client.is_connected or generation != self._profile_generation:
                 return False

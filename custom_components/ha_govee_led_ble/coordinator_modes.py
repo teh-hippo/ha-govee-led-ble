@@ -162,6 +162,7 @@ class _ActiveModeMixin(_CoordinatorBase):
         generation = self._profile_generation
 
         def qualified() -> None:
+            self._reconcile_authorization()
             current = self.effect_authorization_profile
             require_native_scenes(self.model, current)
             if generation != self._profile_generation:
@@ -343,6 +344,7 @@ class _ActiveModeMixin(_CoordinatorBase):
         revision = self._music_body_revision
 
         def guard(index: int) -> None:
+            self._reconcile_authorization()
             profile = self._authorization_profile()
             if mode_code not in (music_code_for(self.model, slug, profile=profile) for slug in profile.music_modes):
                 raise ValueError("Device profile no longer supports the requested music mode")

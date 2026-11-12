@@ -91,6 +91,9 @@ def _h6179_item(name: str = "H6179 DIY") -> LibraryItem:
 
 
 class _EffectCoordinator(SimpleNamespace):
+    def _reconcile_authorization(self):
+        pass
+
     @property
     def effect_authorization_profile(self):
         return self.profile

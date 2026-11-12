@@ -466,6 +466,7 @@ class _NotificationMixin(_CoordinatorBase):
     ) -> bool:
         if self._bulk_query_incomplete:
             return False
+        self._reconcile_authorization()
         packet = build_bulk_status_query(self._authorization_profile(), domains=domains)
         baseline = {"bulk_status": self._field_revisions.get("bulk_status", 0)}
         generation, token = self._profile_generation, self._notification_token

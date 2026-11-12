@@ -396,6 +396,7 @@ class _DreamviewMixin(_CoordinatorBase):
                 ):
                     future.set_result(acknowledgement[1])
             return True
+        self._reconcile_authorization()
         profile = self._authorization_profile()
         observed = parse_dreamview_status(frame, profile)
         if observed is None:
@@ -574,6 +575,7 @@ class _DreamviewMixin(_CoordinatorBase):
         requires_ack = self.profile.dreamview_requires_group_ack and operation is not None
 
         def guard() -> None:
+            self._reconcile_authorization()
             validator(packets[0], self._authorization_profile())
             self._dreamview_last_write = "attempted_unconfirmed"
 
@@ -652,6 +654,7 @@ class _DreamviewMixin(_CoordinatorBase):
             if self.profile.dreamview_requires_group_ack:
                 async with self._lock:
                     client = await self._ensure_connected()
+                    self._reconcile_authorization()
                     profile = self._authorization_profile()
                     settings = tuple(
                         setting for setting in DREAMVIEW_READ_SETTINGS if setting in profile.dreamview_reads
