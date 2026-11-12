@@ -266,7 +266,17 @@ def parse_color_mode(generated: Any, model: str, *, profile: ModelProfile | None
         )
     music_mode = None
     if profile.music_readback_ambiguous and mode_name == "music":
-        return ParsedColorModeResponse(mode=ParsedMode.MUSIC)
+        detail = body.detail
+        selector = getattr(detail.observed_selector, "name", None)
+        sensitivity = int(detail.sensitivity)
+        return ParsedColorModeResponse(
+            mode=ParsedMode.MUSIC,
+            music_mode=selector if selector in profile.music_modes else None,
+            music_sensitivity=sensitivity
+            if profile.music_sensitivity_min <= sensitivity <= profile.music_sensitivity_max
+            else None,
+            music_color_present=False,
+        )
     if mode_name == "music":
         detail = getattr(body, "detail", getattr(body, "mode_body", None))
         if detail is None:

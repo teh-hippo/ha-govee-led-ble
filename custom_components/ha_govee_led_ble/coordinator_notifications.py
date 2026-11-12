@@ -210,7 +210,7 @@ class _NotificationMixin(_CoordinatorBase):
                 self.effect = self.diy_code = None
                 self.video_mode = "off"
                 observed.extend(("effect", "diy_code"))
-                accept_parameters = False
+                accept_parameters = self.profile.music_readback_ambiguous
             elif self._accept_expected("music_mode", parsed.music_mode):
                 if parsed.music_mode != self.music_mode:
                     self._music_palette = self._music_body = None
