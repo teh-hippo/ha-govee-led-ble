@@ -141,17 +141,30 @@ async def test_source_readback_is_independent_and_invalid_state_cannot_update_fl
     decode = MagicMock(wraps=h60b0_controls.source_readback)
     monkeypatch.setattr(h60b0_controls, "source_readback", decode)
     monkeypatch.setattr(coordinator_notifications, "source_readback", decode)
-    coordinator._notify_callback(None, bytearray(frame("aa42d00fa0280bb81e")))
+    coordinator._notify_callback(None, bytearray(frame("aa42d00bb81e0fa028")))
     decode.assert_called_once()
     assert coordinator.boolean_control_state == {"top_enabled": True, "side_enabled": False, "bottom_enabled": True}
     assert (coordinator.bottom_kelvin, coordinator.bottom_brightness, coordinator.ripple_speed) == (4000, 40, 30)
-    coordinator._notify_callback(None, bytearray(frame("aa42200fa0650bb81e")))
+    coordinator._notify_callback(None, bytearray(frame("aa42200bb81e0fa065")))
     assert coordinator.boolean_control_state["top_enabled"] is True
     assert coordinator.bottom_brightness == 40
     bottom = GoveeBLESourceLight(coordinator, "bottom")
     assert bottom.supported_color_modes == {ColorMode.COLOR_TEMP}
     assert bottom.color_temp_kelvin == 4000 and bottom.brightness == 102
     assert bottom.rgb_color is None
+
+
+@pytest.mark.parametrize("pact_code", [1, 2, 3])
+@pytest.mark.parametrize("prefix", ["aa42b0", "aa052c"])
+async def test_reported_source_state_keeps_bottom_values_separate_from_ripple(hass, pact_code, prefix):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H60B0", configuration_url=None)
+    coordinator.profile = device_profile("H60B0", 1, pact_code)
+    coordinator._notify_callback(None, bytearray(frame(prefix + "000032196464")))
+    assert (coordinator.top_kelvin, coordinator.ripple_speed) == (0, 50)
+    assert (coordinator.bottom_kelvin, coordinator.bottom_brightness) == (6500, 100)
+    bottom = GoveeBLESourceLight(coordinator, "bottom")
+    assert bottom.color_temp_kelvin == 6500
+    assert bottom.brightness == 255
 
 
 async def test_bottom_source_uses_native_attributes_without_segment_writes(mock_coordinator):
@@ -187,8 +200,18 @@ async def test_bottom_source_uses_native_attributes_without_segment_writes(mock_
     coordinator.async_set_boolean_control.assert_not_awaited()
 
 
-@pytest.mark.parametrize("reported", [40, 30])
-async def test_native_source_setting_requires_fresh_matching_readback(hass, reported):
+@pytest.mark.parametrize(
+    ("source", "attribute", "value", "prefix", "matching_body", "mismatched_body"),
+    [
+        ("bottom", "brightness", 100, "33052c030264", "000032196464", "000032196432"),
+        ("bottom", "kelvin", 6500, "33052c03011964", "000032196464", "0000320fa064"),
+        ("top", "ripple_speed", 30, "33052c01031e", "00001e196464", "000032196464"),
+    ],
+)
+@pytest.mark.parametrize("matching", [True, False])
+async def test_native_source_setting_requires_fresh_matching_readback(
+    hass, source, attribute, value, prefix, matching_body, mismatched_body, matching
+):
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H60B0", configuration_url=None)
     coordinator.profile = PROFILE
     coordinator.pact_type, coordinator.pact_code = 1, 2
@@ -197,6 +220,7 @@ async def test_native_source_setting_requires_fresh_matching_readback(hass, repo
     coordinator._notification_token = object()
     coordinator._ensure_connected = AsyncMock(return_value=client)
     coordinator._async_supersede_effect_preview = AsyncMock()
+    body = matching_body if matching else mismatched_body
 
     async def write(_client, packet, **kwargs):
         if guard := kwargs.get("before_write"):
@@ -204,21 +228,22 @@ async def test_native_source_setting_requires_fresh_matching_readback(hass, repo
         if callback := kwargs.get("on_write"):
             callback()
         if packet == frame("aa42"):
-            coordinator._notify_callback(None, bytearray(frame(f"aa42f00fa0{reported:02x}0bb81e")))
+            coordinator._notify_callback(None, bytearray(frame("aa42f0" + body)))
         if packet == frame("aa05"):
-            coordinator._notify_callback(None, bytearray(frame(f"aa052c0fa0{reported:02x}0bb81e")))
+            coordinator._notify_callback(None, bytearray(frame("aa052c" + body)))
 
     coordinator._async_write_packet = AsyncMock(side_effect=write)
-    if reported == 40:
-        await coordinator.async_set_source_value("bottom", "brightness", 40)
-        assert coordinator.bottom_brightness == 40
+    if matching:
+        await coordinator.async_set_source_value(source, attribute, value)
+        field = "ripple_speed" if attribute == "ripple_speed" else f"{source}_{attribute}"
+        assert getattr(coordinator, field) == value
     else:
         with pytest.raises(ValueError, match="did not confirm"):
-            await coordinator.async_set_source_value("bottom", "brightness", 40)
+            await coordinator.async_set_source_value(source, attribute, value)
     assert [call.args[1] for call in coordinator._async_write_packet.await_args_list] == [
-        frame("33052c030228"),
+        frame(prefix),
         frame("aa42"),
-        *([frame("aa05")] if reported == 40 else []),
+        *([frame("aa05")] if matching else []),
     ]
 
 
@@ -458,7 +483,7 @@ async def test_live_pact_conflicts_revoke_write_authority(pact_connection, confl
 async def test_reported_source_notifications_update_only_power_fields(hass, flags, expected):
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H60B0", configuration_url=None)
     coordinator.profile = PROFILE
-    coordinator._notify_callback(None, bytearray(frame("aa42d00fa0280bb81e")))
+    coordinator._notify_callback(None, bytearray(frame("aa42d00bb81e0fa028")))
     native_revisions = {field: coordinator._field_revisions[field] for field in ("bottom_kelvin", "ripple_speed")}
     notification = frame(f"ee3001{flags:02x}" + "ab" * 15)
     coordinator._notify_callback(None, bytearray(notification))
