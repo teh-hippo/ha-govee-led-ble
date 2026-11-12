@@ -331,37 +331,63 @@ def resolve_scene_code(
     scene_code: int,
     *,
     preferred_key: str | None = None,
+    profile: ModelProfile | None = None,
 ) -> tuple[str, SceneEntry] | None:
-    legacy_model = MODEL_PROFILES[model].legacy_scene_catalogue_sku
+    profile = MODEL_PROFILES[model] if profile is None else profile
+    if not profile.supports_scenes:
+        return None
+    legacy_model = profile.legacy_scene_catalogue_sku
     if preferred_key is not None:
         preferred = OFFICIAL_MODEL_SCENES.get(model, {}).get(preferred_key)
-        if preferred is not None and scene_selector_code(model, preferred) == scene_code:
+        if (
+            preferred is not None
+            and scene_supported(preferred, profile)
+            and scene_selector_code(model, preferred, profile=profile) == scene_code
+        ):
             return preferred_key, preferred
         legacy = MODEL_SCENES.get(legacy_model or "", {}).get(preferred_key)
-        if legacy is not None and legacy.code == scene_code:
+        if legacy is not None and scene_supported(legacy, profile) and legacy.code == scene_code:
             return preferred_key, legacy
         canonical_key = canonical_scene_key(model, preferred_key)
         canonical = OFFICIAL_MODEL_SCENES.get(model, {}).get(canonical_key)
-        if canonical is not None and scene_selector_code(model, canonical) == scene_code:
+        if (
+            canonical is not None
+            and scene_supported(canonical, profile)
+            and scene_selector_code(model, canonical, profile=profile) == scene_code
+        ):
             return canonical_key, canonical
+
+    if profile.selector_only_scene_bits == MODEL_PROFILES[model].selector_only_scene_bits:
+        indexed_key = _MODEL_SCENE_KEYS_BY_CODE.get(model, {}).get(scene_code)
+        indexed = MODEL_SCENES.get(model, {}).get(indexed_key or "")
+        if indexed_key is not None and indexed is not None and scene_supported(indexed, profile):
+            return indexed_key, indexed
 
     resolved = next(
         (
             (key, entry)
             for key, entry in MODEL_SCENES.get(model, {}).items()
-            if scene_selector_code(model, entry) == scene_code
+            if scene_supported(entry, profile) and scene_selector_code(model, entry, profile=profile) == scene_code
         ),
         None,
     )
     if resolved is None:
         resolved = next(
-            ((key, entry) for key, entry in MODEL_SCENES.get(model, {}).items() if entry.code == scene_code),
+            (
+                (key, entry)
+                for key, entry in MODEL_SCENES.get(model, {}).items()
+                if scene_supported(entry, profile) and entry.code == scene_code
+            ),
             None,
         )
     if resolved is not None:
         return resolved
     return next(
-        ((key, entry) for key, entry in MODEL_SCENES.get(legacy_model or "", {}).items() if entry.code == scene_code),
+        (
+            (key, entry)
+            for key, entry in MODEL_SCENES.get(legacy_model or "", {}).items()
+            if scene_supported(entry, profile) and entry.code == scene_code
+        ),
         None,
     )
 

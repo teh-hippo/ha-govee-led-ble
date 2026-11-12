@@ -286,6 +286,16 @@ async def test_restore_effect_control_state_reapplies_model_scene(coord, h6199):
         refresh.assert_awaited_once_with(expected_on=True, expected_brightness=72, expected_scene_code=scene.code)
 
 
+@pytest.mark.parametrize("with_code", [False, True])
+async def test_recovery_rejects_revision_excluded_scene_before_any_write(coord, with_code):
+    effect, scene = next(iter(MODEL_SCENES[coord.model].items()))
+    coord.profile = replace(coord.profile, scene_codes=frozenset())
+    state = PriorControlState("scene", True, 50, (1, 2, 3), effect=effect, scene_code=scene.code if with_code else None)
+    with patch.object(coord, "send_command", new_callable=AsyncMock) as send:
+        assert not await coord.async_restore_effect_control_state(state, overwritten_diy_code=None)
+    send.assert_not_awaited()
+
+
 async def test_restore_effect_control_state_reapplies_powered_off_state(coord):
     state = PriorControlState(
         mode="colour",
