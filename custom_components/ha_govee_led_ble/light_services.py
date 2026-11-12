@@ -136,7 +136,7 @@ class _GoveeLightOwner:
 
     if TYPE_CHECKING:
 
-        def _rollback(self) -> AbstractContextManager[None]: ...
+        def _rollback(self) -> AbstractContextManager[Callable[[], None]]: ...
 
         async def _refresh_with_retry(
             self,
