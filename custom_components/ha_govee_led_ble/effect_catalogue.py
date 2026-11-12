@@ -258,41 +258,24 @@ class ModelEffectCatalogue:
     advanced_create: bool = True
     temporary_diy_selector: int | None = None
     native_actions: tuple[NativeModeOption, ...] = ()
+    native_zones: tuple[tuple[str, int, int | None], ...] = ()
+    music_zone_modes: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    auxiliary_music_modes: tuple[str, ...] = ()
 
     def to_dict(self, *, profile: ModelProfile | None = None) -> dict[str, JsonValue]:
         device_profile = profile
         profile = MODEL_PROFILES[self.sku] if profile is None else profile
+        effects_enabled = profile.command_operations is None or bool(
+            supported_effect_categories(self.sku, profile=profile)
+        )
         music_profile = (
-            replace(profile, music_modes=(*profile.music_modes, "vortex", "disabled"))
-            if self.sku == "H60B0" and profile.music_modes
+            replace(profile, music_modes=(*profile.music_modes, *self.auxiliary_music_modes))
+            if self.auxiliary_music_modes and profile.music_modes
             else profile
         )
+        zones = profile.native_zones or self.native_zones
         result: dict[str, JsonValue] = {
             "sku": self.sku,
-            **(
-                {
-                    "native_zones": [
-                        {"id": "side", "label": "Side", "segment_count": 8, "physical_ic_budget": None},
-                        {"id": "ripple", "label": "Ripple", "segment_count": 1, "physical_ic_budget": None},
-                    ],
-                    "music_zone_modes": {
-                        "side": [
-                            "spectrum",
-                            "hopping",
-                            "flow",
-                            "firefly",
-                            "vortex",
-                            "bloom",
-                            "rhythm",
-                            "shiny",
-                            "disabled",
-                        ],
-                        "ripple": ["bloom", "rhythm", "shiny", "spectrum", "disabled"],
-                    },
-                }
-                if self.sku == "H60B0"
-                else {}
-            ),
             **(
                 {
                     "native_zones": [
@@ -302,17 +285,23 @@ class ModelEffectCatalogue:
                             "segment_count": logical,
                             "physical_ic_budget": physical,
                         }
-                        for name, logical, physical in profile.native_zones
+                        for name, logical, physical in zones
                     ]
                 }
-                if profile.native_zones
+                if zones
+                else {}
+            ),
+            **(
+                {"music_zone_modes": {name: list(modes) for name, modes in self.music_zone_modes}}
+                if self.music_zone_modes
                 else {}
             ),
             **({"native_actions": [action.to_dict() for action in self.native_actions]} if self.native_actions else {}),
             "painted_effects": [
                 dict(effect)
                 for effect in self.painted_effects
-                if device_profile is None or profile_supports_workflow(profile, CapabilityWorkflow.PAINTED)
+                if effects_enabled
+                and (device_profile is None or profile_supports_workflow(profile, CapabilityWorkflow.PAINTED))
             ],
             **(
                 {"painted_addressing": self.painted_addressing, "painted_background": list(self.painted_background)}
@@ -322,55 +311,18 @@ class ModelEffectCatalogue:
             "effects": [
                 effect.to_dict()
                 for effect in self.effects
-                if device_profile is None or profile_supports_workflow(profile, CapabilityWorkflow.SINGLE)
+                if effects_enabled
+                and (device_profile is None or profile_supports_workflow(profile, CapabilityWorkflow.SINGLE))
             ],
-            "music_modes": [mode.to_dict() for mode in self.music_modes if mode.id in profile.music_modes],
+            "music_modes": [
+                mode.to_dict() for mode in self.music_modes if effects_enabled and mode.id in profile.music_modes
+            ],
             "music_settings": {
-                mode.id: {
-                    "available": (available := music_default_available(self.sku, mode.id, profile=music_profile)),
-                    "style": bool(
-                        (
-                            variant := music_variant(
-                                music_profile, music_code_for(self.sku, mode.id, profile=music_profile)
-                            )
-                        )
-                        and variant.supports_style
-                    ),
-                    "calm_default": variant.calm_default if variant else False,
-                    "colour": bool(profile.supports_music_color and variant and variant.supports_fixed_colour),
-                    "evidence": variant.evidence if variant else None,
-                    "palette_size": len(music_default_palette(variant))
-                    if available and variant and variant.template
-                    else 0,
-                    **(
-                        {
-                            "palette": {
-                                "min": variant.palette_bounds[0],
-                                "max": variant.palette_bounds[1],
-                                "default": [list(rgb) for rgb in music_default_palette(variant)],
-                            }
-                        }
-                        if variant and variant.palette_bounds and music_parameters_available(music_profile, variant)
-                        else {}
-                    ),
-                    "parameters": {
-                        spec.profile_key: {
-                            "kind": spec.kind,
-                            "default": spec.default,
-                            "min": spec.min_value,
-                            "max": spec.max_value,
-                            "options": list(spec.options),
-                        }
-                        for spec in music_params_for_mode(
-                            music_code_for(self.sku, mode.id, profile=music_profile),
-                            music_profile,
-                        )
-                    },
-                }
+                mode.id: _music_mode_settings(self.sku, mode.id, music_profile)
                 for mode in self.music_modes
-                if mode.id in music_profile.music_modes
+                if effects_enabled and mode.id in music_profile.music_modes
             },
-            "video_modes": [mode.to_dict() for mode in self.video_modes],
+            "video_modes": [mode.to_dict() for mode in self.video_modes if effects_enabled],
             "video_settings": list(_video_profile_settings(profile)),
             "video_controls": {
                 "saturation_min": profile.video_saturation_min,
@@ -387,18 +339,22 @@ class ModelEffectCatalogue:
             "templates": [
                 _template_for_profile(template, device_profile).to_dict()
                 for template in self.templates
-                if device_profile is None or _template_available(template, profile)
+                if effects_enabled and (device_profile is None or _template_available(template, profile))
             ],
             "workshop_templates": [
                 template.to_dict(self.sku)
                 for template in self.workshop_templates
-                if device_profile is None or profile_supports_workflow(profile, CapabilityWorkflow.WORKSHOP)
+                if effects_enabled
+                and (device_profile is None or profile_supports_workflow(profile, CapabilityWorkflow.WORKSHOP))
             ],
-            "workflows": frontend_release_capabilities(self.sku, profile=device_profile),
+            "workflows": frontend_release_capabilities(self.sku, profile=device_profile) if effects_enabled else [],
             "supports": {
                 name: state
-                if device_profile is None
-                or profile_supports_workflow(profile, CapabilityWorkflow(name), model=self.sku)
+                if effects_enabled
+                and (
+                    device_profile is None
+                    or profile_supports_workflow(profile, CapabilityWorkflow(name), model=self.sku)
+                )
                 else CapabilityState.UNSUPPORTED.value
                 for name, state in self.supports.to_dict().items()
             },
@@ -426,26 +382,49 @@ class ModelEffectCatalogue:
             },
             "apply": {
                 name: state
-                if device_profile is None or profile_supports_workflow(profile, CapabilityWorkflow(name))
+                if effects_enabled
+                and (device_profile is None or profile_supports_workflow(profile, CapabilityWorkflow(name)))
                 else CapabilityState.UNSUPPORTED.value
                 for name, state in self.apply.to_dict().items()
             },
         }
-        if profile.command_operations is not None and not supported_effect_categories(self.sku, profile=profile):
-            for key in (
-                "painted_effects",
-                "effects",
-                "music_modes",
-                "video_modes",
-                "templates",
-                "workshop_templates",
-                "workflows",
-            ):
-                result[key] = []
-            result["music_settings"] = {}
-            result["supports"] = {key: CapabilityState.UNSUPPORTED.value for key in self.supports.to_dict()}
-            result["apply"] = {key: CapabilityState.UNSUPPORTED.value for key in self.apply.to_dict()}
         return result
+
+
+def _music_mode_settings(model: str, mode: str, profile: ModelProfile) -> dict[str, JsonValue]:
+    code = music_code_for(model, mode, profile=profile)
+    variant = music_variant(profile, code)
+    available = music_default_available(model, mode, profile=profile)
+    palette = music_default_palette(variant) if available and variant and variant.template else ()
+    return {
+        "available": available,
+        "style": bool(variant and variant.supports_style),
+        "calm_default": variant.calm_default if variant else False,
+        "colour": bool(profile.supports_music_color and variant and variant.supports_fixed_colour),
+        "evidence": variant.evidence if variant else None,
+        "palette_size": len(palette) if available else 0,
+        **(
+            {
+                "palette": {
+                    "min": variant.palette_bounds[0],
+                    "max": variant.palette_bounds[1],
+                    "default": [list(rgb) for rgb in palette],
+                }
+            }
+            if variant and variant.palette_bounds and music_parameters_available(profile, variant)
+            else {}
+        ),
+        "parameters": {
+            spec.profile_key: {
+                "kind": spec.kind,
+                "default": spec.default,
+                "min": spec.min_value,
+                "max": spec.max_value,
+                "options": list(spec.options),
+            }
+            for spec in music_params_for_mode(code, profile)
+        },
+    }
 
 
 # These basic Type04 families form the base roster.  The family and variation bytes use the structure defined by
@@ -1931,6 +1910,12 @@ def _h60b0_templates() -> tuple[CatalogueTemplate, ...]:
 MODEL_EFFECT_CATALOGUES: Final = {
     "H60B0": ModelEffectCatalogue(
         sku="H60B0",
+        native_zones=(("side", 8, None), ("ripple", 1, None)),
+        music_zone_modes=(
+            ("side", ("spectrum", "hopping", "flow", "firefly", "vortex", "bloom", "rhythm", "shiny", "disabled")),
+            ("ripple", ("bloom", "rhythm", "shiny", "spectrum", "disabled")),
+        ),
+        auxiliary_music_modes=("vortex", "disabled"),
         painted_effects=(),
         effects=(),
         music_modes=(
