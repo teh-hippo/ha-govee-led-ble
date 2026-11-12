@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 from enum import IntEnum
 from importlib import import_module
+from math import ceil
 from typing import Any
 
 from kaitaistruct import KaitaiStream
@@ -20,10 +21,8 @@ from .protocol_core import (
     H6181MusicBody,
     H7025MusicBody,
     MusicBody,
-    _check_tree,
     _rgb,
     _serialize_a3_scene_param,
-    _write,
     serialize_native_body,
 )
 
@@ -151,6 +150,30 @@ def parse_music_parameters(variant: MusicVariant, body: bytes) -> Any:
     return root
 
 
+def _set_music_palette(
+    fields: Any, variant: MusicVariant, palette: list[tuple[int, int, int]] | None, *, count_field: str = "num_palette"
+) -> None:
+    if palette is None:
+        return
+    if variant.palette_bounds is None or not variant.palette_bounds[0] <= len(palette) <= variant.palette_bounds[1]:
+        raise ValueError("palette count is outside music variant bounds")
+    if any(
+        len(rgb) != 3 or any(type(channel) is not int or not 0 <= channel <= 255 for channel in rgb) for rgb in palette
+    ):
+        raise ValueError("invalid music palette")
+    setattr(fields, count_field, len(palette))
+    fields.palette = [_rgb(fields, *rgb) for rgb in palette]
+
+
+def _hopping_piece_counts(ic: int) -> tuple[int, int]:
+    return max(1, ceil(ic * 3 / 25)), max(1, ceil(ic * 2 / 5))
+
+
+def _piano_geometry(variant: MusicVariant, ic: int) -> tuple[int, int]:
+    speed = (10 if ic <= 30 else 35) if variant.physical_defaults == "rgbic" else (10 if ic < 30 else 35)
+    return speed, ceil(ic / 4) if ic < 30 else 1
+
+
 def encode_music_parameters(
     variant: MusicVariant,
     parameters: dict[str, int | bool | str],
@@ -171,15 +194,7 @@ def encode_music_parameters(
         root = parse_music_parameters(variant, variant.template)
         if parameters:
             raise ValueError("unsupported H1771 music parameters")
-        if palette is not None:
-            if (
-                variant.palette_bounds is None
-                or not variant.palette_bounds[0] <= len(palette) <= variant.palette_bounds[1]
-                or any(len(rgb) != 3 or any(type(c) is not int or not 0 <= c <= 255 for c in rgb) for rgb in palette)
-            ):
-                raise ValueError("invalid music palette")
-            root.num_palette = len(palette)
-            root.palette = [_rgb(root, *rgb) for rgb in palette]
+        _set_music_palette(root, variant, palette)
         if variant.supports_style and calm is not None:
             root.tail.style = int(not calm)
         elif calm:
@@ -187,20 +202,8 @@ def encode_music_parameters(
         return serialize_native_body(root)
     if variant.layout == "h6046_music_body":
         root = parse_music_parameters(variant, variant.template)
-        length = len(variant.template) + 3
-        if palette is not None:
-            if (
-                variant.palette_bounds is None
-                or not variant.palette_bounds[0] <= len(palette) <= variant.palette_bounds[1]
-            ):
-                raise ValueError("palette count is outside music variant bounds")
-            if any(len(rgb) != 3 or any(type(c) is not int or not 0 <= c <= 255 for c in rgb) for rgb in palette):
-                raise ValueError("invalid music palette")
-            length += 3 * (len(palette) - root.palette_count)
-            root.palette_count = len(palette)
-            root.palette = [_rgb(root, *rgb) for rgb in palette]
-        _check_tree(root)
-        return _write(root, length)[3:]
+        _set_music_palette(root, variant, palette, count_field="palette_count")
+        return _serialize_a3_scene_param(root)
     if variant.layout in {
         "h6097_music_parameters",
         "h6099_music_parameters",
@@ -214,23 +217,12 @@ def encode_music_parameters(
     if variant.layout not in COMPANION_MUSIC_LAYOUTS or not variant.evidence or not variant.template:
         raise ValueError("music parameter layout is unqualified")
     root = parse_music_parameters(variant, variant.template)
-    length = len(variant.template) + 3
     fields = root.body if variant.layout == "h607c_music_body" else root
     if not hasattr(fields, "palette"):
         if parameters or palette is not None or calm:
             raise ValueError("paired music requires independent zone edits")
         return variant.template
-    if palette is not None:
-        if variant.palette_bounds is None or not variant.palette_bounds[0] <= len(palette) <= variant.palette_bounds[1]:
-            raise ValueError("palette count is outside music variant bounds")
-        if any(
-            len(rgb) != 3 or any(type(channel) is not int or not 0 <= channel <= 255 for channel in rgb)
-            for rgb in palette
-        ):
-            raise ValueError("invalid music palette")
-        length += 3 * (len(palette) - fields.num_palette)
-        fields.num_palette = len(palette)
-        fields.palette = [_rgb(fields, *rgb) for rgb in palette]
+    _set_music_palette(fields, variant, palette)
     tail = fields.tail
     for spec in variant.parameters:
         if spec.profile_key not in parameters:
@@ -256,10 +248,7 @@ def encode_music_parameters(
         and not preserve_companions
         and (variant.requires_physical_ic_count or any(spec.requires_physical_ic_count for spec in variant.parameters))
     ):
-        from math import ceil
-
-        tail.piece_count_min = max(1, ceil(physical_ic_count * 3 / 25))
-        tail.piece_count_max = max(1, ceil(physical_ic_count * 2 / 5))
+        tail.piece_count_min, tail.piece_count_max = _hopping_piece_counts(physical_ic_count)
     if variant.gradient_companions is not None and "gradient" in parameters:
         tail.speed = variant.gradient_companions[bool(parameters["gradient"])]
     if variant.piano_derived_half and "key_count" in parameters:
@@ -268,14 +257,7 @@ def encode_music_parameters(
             and not preserve_companions
             and any(spec.profile_key == "key_count" and spec.requires_physical_ic_count for spec in variant.parameters)
         ):
-            from math import ceil
-
-            tail.speed = (
-                (10 if physical_ic_count <= 30 else 35)
-                if variant.physical_defaults == "rgbic"
-                else (10 if physical_ic_count < 30 else 35)
-            )
-            tail.off_minimum = ceil(physical_ic_count / 4) if physical_ic_count < 30 else 1
+            tail.speed, tail.off_minimum = _piano_geometry(variant, physical_ic_count)
         tail.off_maximum = max(tail.off_minimum, tail.key_count // 2)
     if variant.direction_values and "direction" in parameters:
         tail.start_point, tail.piece_num = {name: (start, pieces) for name, start, pieces in variant.direction_values}[
@@ -293,8 +275,7 @@ def encode_music_parameters(
             tail.minimum_brightness, tail.maximum_brightness = value >> 8, value & 255
         else:
             tail.no_rhythm_speed, tail.rhythm_speed = 10, value
-    _check_tree(root)
-    return _write(root, length)[3:]
+    return _serialize_a3_scene_param(root)
 
 
 def _encode_h6099_music_parameters(
@@ -305,20 +286,10 @@ def _encode_h6099_music_parameters(
     ic: int | None,
     preserve_companions: bool = False,
 ) -> bytes:
-    from math import ceil
-
     root = parse_music_parameters(variant, variant.template)
     if not variant.evidence:
         raise ValueError("music template does not match qualified variant")
-    length = len(variant.template)
-    if palette is not None:
-        if variant.palette_bounds is None or not variant.palette_bounds[0] <= len(palette) <= variant.palette_bounds[1]:
-            raise ValueError("palette count is outside music variant bounds")
-        if any(len(rgb) != 3 or any(type(c) is not int or not 0 <= c <= 255 for c in rgb) for rgb in palette):
-            raise ValueError("invalid music palette")
-        length += 3 * (len(palette) - root.num_palette)
-        root.num_palette = len(palette)
-        root.palette = [_rgb(root, *rgb) for rgb in palette]
+    _set_music_palette(root, variant, palette)
     tail = root.tail
     for spec in variant.parameters:
         if spec.profile_key not in parameters:
@@ -340,14 +311,10 @@ def _encode_h6099_music_parameters(
         if mode_name == "separation" and (not preserve_companions or "gradient" in parameters):
             tail.companion = (99, 98)[bool(tail.gradient)] if ic >= 30 else (97, 94)[bool(tail.gradient)]
         elif mode_name == "hopping" and not preserve_companions:
-            tail.piece_count_min = max(1, ceil(ic * 3 / 25))
-            tail.piece_count_max = max(1, ceil(ic * 2 / 5))
+            tail.piece_count_min, tail.piece_count_max = _hopping_piece_counts(ic)
         elif mode_name == "piano_keys" and (not preserve_companions or "key_count" in parameters):
             if not preserve_companions:
-                tail.speed = (
-                    (10 if ic <= 30 else 35) if variant.physical_defaults == "rgbic" else (10 if ic < 30 else 35)
-                )
-                tail.off_minimum = ceil(ic / 4) if ic < 30 else 1
+                tail.speed, tail.off_minimum = _piano_geometry(variant, ic)
             tail.off_maximum = max(tail.off_minimum, tail.key_count // 2)
         elif mode_name == "fountain" and (not preserve_companions or "direction" in parameters):
             tail.start_point = {"clockwise": 0, "counterclockwise": 2, "two_way": 1}[str(parameters["direction"])]
@@ -373,5 +340,4 @@ def _encode_h6099_music_parameters(
         type(value) is int and not 0 <= value <= 255 for key, value in vars(tail).items() if not key.startswith("_")
     ):
         raise ValueError("physical IC geometry exceeds music wire bounds")
-    _check_tree(root)
-    return _write(root, length)
+    return serialize_native_body(root)
