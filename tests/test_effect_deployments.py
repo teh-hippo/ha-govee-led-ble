@@ -467,6 +467,29 @@ def test_prior_state_rejects_invalid_body_and_segment_persistence(field, value):
         PriorControlState.from_dict(raw)
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("music_separation_point", {"invalid": 1}),
+        ("music_separation_point", 256),
+        ("music_separation_gradient", 1),
+        ("music_hopping_brightness", True),
+        ("music_piano_key_count", -1),
+        ("music_fountain_direction", ["clockwise"]),
+        ("music_fountain_direction", "sideways"),
+        ("music_daynight_segments", 256),
+        ("music_daynight_speed", "10"),
+        ("music_daynight_gradient", []),
+    ],
+)
+def test_modern_music_mapping_discards_redundant_legacy_values(field, value):
+    prior = PriorControlState("music", True, 50, (1, 2, 3), music_parameters={})
+    raw = {**prior.to_dict(), field: value}
+    restored = PriorControlState.from_dict(raw)
+    assert restored == prior
+    assert field not in restored.to_dict()
+
+
 def test_prior_state_legacy_missing_fields_stay_unknown():
     prior = PriorControlState.from_dict(
         {"mode": "colour", "is_on": False, "brightness_pct": 37, "rgb_color": [1, 2, 3]}

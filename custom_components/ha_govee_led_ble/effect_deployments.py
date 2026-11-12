@@ -97,6 +97,18 @@ class ObservationConfidence(StrEnum):
     UNKNOWN = "unknown"
 
 
+_LEGACY_MUSIC_FIELDS = (
+    "music_separation_point",
+    "music_separation_gradient",
+    "music_hopping_brightness",
+    "music_piano_key_count",
+    "music_fountain_direction",
+    "music_daynight_segments",
+    "music_daynight_speed",
+    "music_daynight_gradient",
+)
+
+
 @dataclass(frozen=True, slots=True)
 class PriorControlState:
     mode: str
@@ -181,6 +193,9 @@ class PriorControlState:
         self._validate_music_body()
         self._validate_segment_layout()
         self._validate_music_palette_and_parameters()
+        if self.music_parameters is not None:
+            for name in _LEGACY_MUSIC_FIELDS:
+                object.__setattr__(self, name, self.__dataclass_fields__[name].default)
         self._validate_video_restore_controls()
         self._validate_core_state()
         self._validate_tunable_values()
@@ -344,16 +359,12 @@ class PriorControlState:
                 0 if self.video_parameters else 1,
                 100,
             ),
+            (self.music_separation_point, "prior separation point", 0, 255),
+            (self.music_hopping_brightness, "prior hopping brightness", 0, 255),
+            (self.music_piano_key_count, "prior piano key count", 0, 255),
+            (self.music_daynight_segments, "prior day-and-night segment count", 0, 255),
+            (self.music_daynight_speed, "prior day-and-night speed", 0, 255),
         )
-        if self.music_parameters is None:
-            # Only legacy snapshots use these fields; mappings use variant validation before writes.
-            numeric_values += (
-                (self.music_separation_point, "prior separation point", 0, 255),
-                (self.music_hopping_brightness, "prior hopping brightness", 0, 255),
-                (self.music_piano_key_count, "prior piano key count", 0, 255),
-                (self.music_daynight_segments, "prior day-and-night segment count", 0, 255),
-                (self.music_daynight_speed, "prior day-and-night speed", 0, 255),
-            )
         for numeric_value, numeric_name, minimum, maximum in numeric_values:
             if (
                 not isinstance(numeric_value, int)
@@ -364,16 +375,13 @@ class PriorControlState:
         boolean_values: tuple[tuple[bool, str], ...] = (
             (self.video_full_screen, "prior video capture area"),
             (self.video_sound_effects, "prior video sound effects"),
+            (self.music_separation_gradient, "prior separation gradient"),
+            (self.music_daynight_gradient, "prior day-and-night gradient"),
         )
-        if self.music_parameters is None:
-            boolean_values += (
-                (self.music_separation_gradient, "prior separation gradient"),
-                (self.music_daynight_gradient, "prior day-and-night gradient"),
-            )
         for boolean_value, boolean_name in boolean_values:
             if not isinstance(boolean_value, bool):
                 raise EffectStorageError(f"{boolean_name} must be a boolean")
-        if self.music_parameters is None and self.music_fountain_direction not in {
+        if self.music_fountain_direction not in {
             "clockwise",
             "counterclockwise",
             "two_way",
@@ -502,14 +510,7 @@ class PriorControlState:
             "music_sensitivity": self.music_sensitivity,
             "music_calm": self.music_calm,
             "music_color": list(self.music_color) if self.music_color is not None else None,
-            "music_separation_point": self.music_separation_point,
-            "music_separation_gradient": self.music_separation_gradient,
-            "music_hopping_brightness": self.music_hopping_brightness,
-            "music_piano_key_count": self.music_piano_key_count,
-            "music_fountain_direction": self.music_fountain_direction,
-            "music_daynight_segments": self.music_daynight_segments,
-            "music_daynight_speed": self.music_daynight_speed,
-            "music_daynight_gradient": self.music_daynight_gradient,
+            **({name: getattr(self, name) for name in _LEGACY_MUSIC_FIELDS} if self.music_parameters is None else {}),
             "video_full_screen": self.video_full_screen,
             "video_saturation": self.video_saturation,
             "video_sound_effects": self.video_sound_effects,
@@ -572,9 +573,11 @@ class PriorControlState:
             palette = tuple(_required_rgb({"rgb": rgb}, "rgb") for rgb in palette)
         model = _optional_str(raw, "music_model")
         parameters = _required_mapping(raw, "music_parameters") if "music_parameters" in raw else None
+        if parameters is not None:
+            raw = {key: value for key, value in raw.items() if key not in _LEGACY_MUSIC_FIELDS}
         # Legacy records have no model and retain their shipped defaults. New records
         # use exact-profile defaults for omitted fields, not another device's geometry.
-        if model in MODEL_PROFILES:
+        if parameters is None and model in MODEL_PROFILES:
             profile = MODEL_PROFILES[model]
             raw = {
                 **{
@@ -630,30 +633,14 @@ class PriorControlState:
             music_sensitivity=_optional_int(raw, "music_sensitivity", default=100),
             music_calm=_optional_bool(raw, "music_calm", default=False),
             music_color=_optional_rgb(raw, "music_color"),
-            music_separation_point=raw.get("music_separation_point", 1)
-            if parameters is not None
-            else _optional_int(raw, "music_separation_point", default=1),
-            music_separation_gradient=raw.get("music_separation_gradient", True)
-            if parameters is not None
-            else _optional_bool(raw, "music_separation_gradient", default=True),
-            music_hopping_brightness=raw.get("music_hopping_brightness", 50)
-            if parameters is not None
-            else _optional_int(raw, "music_hopping_brightness", default=50),
-            music_piano_key_count=raw.get("music_piano_key_count", 15)
-            if parameters is not None
-            else _optional_int(raw, "music_piano_key_count", default=15),
-            music_fountain_direction=raw.get("music_fountain_direction", "clockwise")
-            if parameters is not None
-            else _optional_str(raw, "music_fountain_direction") or "clockwise",
-            music_daynight_segments=raw.get("music_daynight_segments", 1)
-            if parameters is not None
-            else _optional_int(raw, "music_daynight_segments", default=1),
-            music_daynight_speed=raw.get("music_daynight_speed", 10)
-            if parameters is not None
-            else _optional_int(raw, "music_daynight_speed", default=10),
-            music_daynight_gradient=raw.get("music_daynight_gradient", False)
-            if parameters is not None
-            else _optional_bool(raw, "music_daynight_gradient", default=False),
+            music_separation_point=_optional_int(raw, "music_separation_point", default=1),
+            music_separation_gradient=_optional_bool(raw, "music_separation_gradient", default=True),
+            music_hopping_brightness=_optional_int(raw, "music_hopping_brightness", default=50),
+            music_piano_key_count=_optional_int(raw, "music_piano_key_count", default=15),
+            music_fountain_direction=_optional_str(raw, "music_fountain_direction") or "clockwise",
+            music_daynight_segments=_optional_int(raw, "music_daynight_segments", default=1),
+            music_daynight_speed=_optional_int(raw, "music_daynight_speed", default=10),
+            music_daynight_gradient=_optional_bool(raw, "music_daynight_gradient", default=False),
             video_full_screen=_optional_bool(raw, "video_full_screen", default=True),
             video_saturation=_optional_int(raw, "video_saturation", default=100),
             video_sound_effects=_optional_bool(raw, "video_sound_effects", default=False),
