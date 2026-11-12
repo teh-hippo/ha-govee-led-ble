@@ -366,7 +366,17 @@ def _h7020_coordinator(hass) -> GoveeBLECoordinator:
 
 @pytest.mark.parametrize("mode,parameters", [("rhythm", {}), ("separation", {"point": 4})])
 def test_music_profile_preparation_scopes_state_to_packets(mode, parameters):
-    writes = prepare_music_profile_writes("H617A", mode, 50, None, False, parameters)
+    from custom_components.ha_govee_led_ble import music_commands
+
+    with (
+        patch.object(
+            music_commands, "compile_music_parameters", wraps=music_commands.compile_music_parameters
+        ) as compile,
+        patch.object(music_commands, "encode_music_parameters", wraps=music_commands.encode_music_parameters) as encode,
+    ):
+        writes = prepare_music_profile_writes("H617A", mode, 50, None, False, parameters)
+        compile.assert_called_once()
+        assert encode.call_count == int(mode == "separation")
     assert isinstance(writes, tuple)
     assert tuple(packet for packet, _ in writes) == prepare_music_request("H617A", mode, 50, None, False, parameters)
     assert writes[0][1] == {"is_on": True}
