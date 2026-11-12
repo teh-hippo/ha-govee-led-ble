@@ -1444,6 +1444,8 @@ class GoveeBLECoordinator(
         self._require_writable_packet(packet, packet_validator, arm_expected=arm_expected, static=parsed.static)
         generation = self._profile_generation
         authorization_generation = self._authorization_generation
+        transform_identity_fields = self.profile.outbound_transform_identity_fields
+        subscription = self._notification_token
         wire_packet = packet
         if (transform := self.profile.outbound_transform) is not None:
             wire_packet = transform(packet)
@@ -1475,6 +1477,20 @@ class GoveeBLECoordinator(
                 parsed = parse_write_state(packet, self.model, profile=self.profile)
                 parsed_profile = self.profile
             self._require_writable_packet(packet, packet_validator, arm_expected=arm_expected, static=parsed.static)
+        if (
+            reply_frame != packet
+            and transform_identity_fields
+            and (
+                self._client is not client
+                or not client.is_connected
+                or subscription is None
+                or self._notification_token is not subscription
+                or generation != self._profile_generation
+                or authorization_generation != self._authorization_generation
+                or not self.identity_fields_confirmed(transform_identity_fields)
+            )
+        ):
+            raise ValueError("Outbound encoding requires current-subscription device identity")
         if arm_expected and generation != self._profile_generation:
             raise ValueError("Device profile changed before control write; refresh and retry")
         if arm_expected and authorization_generation != self._authorization_generation:

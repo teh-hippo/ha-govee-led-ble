@@ -204,6 +204,7 @@ class ModelProfile:
     bulk_status_grammar: str | None = None
     setting_grammar: str | None = None
     outbound_transform: Callable[[bytes], bytes] | None = None
+    outbound_transform_identity_fields: frozenset[str] = frozenset()
     # Device register range for the brightness byte; None means the wire carries percent.
     brightness_wire_range: tuple[int, int] | None = None
     # AA05 selector byte the device accepts for the active-mode query.
@@ -856,6 +857,12 @@ def _h6181_wire(packet: bytes) -> bytes:
     from .protocol_transforms import h6181_outbound_transform
 
     return h6181_outbound_transform(packet)
+
+
+def _h6181_colour_probe_wire(packet: bytes) -> bytes:
+    from .protocol_transforms import h6181_outbound_transform
+
+    return h6181_outbound_transform(packet, colour_effect=True)
 
 
 MODEL_PROFILES: dict[str, ModelProfile] = {
@@ -2980,11 +2987,13 @@ def device_profile(
         profile = get_profile(model)
         later = pact_type is not None and pact_code is not None and pact_type >= 10 and pact_code >= 1
         if not later:
+            colour_probe = firmware == "1.03.00" and hardware == "1.00.03"
             return replace(
                 profile,
                 status_grammar="H6181",
                 brightness_wire_range=(20, 254),
-                outbound_transform=_h6181_wire,
+                outbound_transform=_h6181_colour_probe_wire if colour_probe else _h6181_wire,
+                outbound_transform_identity_fields=profile.profile_identity_fields if colour_probe else frozenset(),
                 diy_upload_transport="a1_02",
                 music_modes=(),
                 music_variants=(),
