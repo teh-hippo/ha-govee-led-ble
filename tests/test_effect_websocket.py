@@ -74,43 +74,50 @@ def _content(speed: int = 50) -> dict[str, Any]:
     return effect_content_to_dict(SingleEffect(0, 0, speed, ((255, 0, 0),)))
 
 
-async def test_light_entity_resolution_requires_one_enabled_integration_light(
+@pytest.mark.parametrize("sources_first", [False, True])
+async def test_light_entity_resolution_uses_the_enabled_primary_identity(
     hass: HomeAssistant,
     entity_registry,
+    sources_first,
 ) -> None:
-    entry = MockConfigEntry(domain=DOMAIN)
+    entry = MockConfigEntry(domain=DOMAIN, unique_id="AA:BB:CC:DD:EE:FF")
     entry.add_to_hass(hass)
-    other = entity_registry.async_get_or_create(
-        "light",
-        "other",
-        "other-light",
-        config_entry=entry,
-    )
-    disabled = entity_registry.async_get_or_create(
+    entity_registry.async_get_or_create("light", "other", "aabbccddeeff", config_entry=entry)
+    if sources_first:
+        entity_registry.async_get_or_create("light", DOMAIN, "aabbccddeeff_top", config_entry=entry)
+    primary = entity_registry.async_get_or_create(
         "light",
         DOMAIN,
-        "disabled-light",
+        "aabbccddeeff",
         config_entry=entry,
         disabled_by=er.RegistryEntryDisabler.USER,
     )
-
     assert _light_entity_id(hass, entry.entry_id) is None
-    assert other.entity_id != disabled.entity_id
-
-    first = entity_registry.async_get_or_create(
-        "light",
-        DOMAIN,
-        "first-light",
-        config_entry=entry,
+    primary = entity_registry.async_update_entity(
+        primary.entity_id, disabled_by=None, new_entity_id="light.renamed_master"
     )
-    assert _light_entity_id(hass, entry.entry_id) == first.entity_id
+    assert _light_entity_id(hass, entry.entry_id) == primary.entity_id
+    if not sources_first:
+        entity_registry.async_get_or_create("light", DOMAIN, "aabbccddeeff_top", config_entry=entry)
+    assert _light_entity_id(hass, entry.entry_id) == primary.entity_id
+    extra = entity_registry.async_get_or_create("light", DOMAIN, "aabbccddeeff_bottom", config_entry=entry)
+    assert _light_entity_id(hass, entry.entry_id) == primary.entity_id
+    entity_registry.async_update_entity(primary.entity_id, disabled_by=er.RegistryEntryDisabler.USER)
+    entity_registry.async_update_entity(extra.entity_id, disabled_by=er.RegistryEntryDisabler.USER)
+    assert _light_entity_id(hass, entry.entry_id) is None
+    entity_registry.async_remove(primary.entity_id)
+    assert _light_entity_id(hass, entry.entry_id) is None
 
-    entity_registry.async_get_or_create(
-        "light",
-        DOMAIN,
-        "second-light",
-        config_entry=entry,
-    )
+
+@pytest.mark.parametrize("unique_id", [None, "AA:BB:CC:DD:EE:FF"])
+async def test_light_entity_resolution_rejects_missing_identity_or_foreign_owner(
+    hass, entity_registry, unique_id
+) -> None:
+    entry = MockConfigEntry(domain=DOMAIN, unique_id=unique_id)
+    entry.add_to_hass(hass)
+    foreign = MockConfigEntry(domain=DOMAIN, unique_id="11:22:33:44:55:66")
+    foreign.add_to_hass(hass)
+    entity_registry.async_get_or_create("light", DOMAIN, "aabbccddeeff", config_entry=foreign)
     assert _light_entity_id(hass, entry.entry_id) is None
 
 
@@ -173,6 +180,7 @@ async def test_device_subscription_reports_observed_identity_without_querying(
     await _setup_backend(hass)
     entry = SimpleNamespace(
         entry_id="entry-a",
+        unique_id="AA:BB:CC:DD:EE:FF",
         title="Private device name",
         options={},
         domain=DOMAIN,

@@ -44,6 +44,7 @@ Do not post Bluetooth addresses, serial numbers, account details or other unique
 - Entity setters run through `GoveeBLEEntity._async_latest`: the first request sends at once, and while it runs only the newest queued request per control is sent.  Light on, off and attribute calls share one key, with queued `turn_on` attributes merged.  Services, Effect Studio and background work bypass it.
 - Keep generic guarded commands independent of video qualification.  Track interrupted control attempts and uncertainty in coordinator-owned requests, not entity-local transactions.
 - Declare source lights only for independently addressable power controls.
+  Identify the primary light by its stable device-derived unique ID, never by the number or order of enabled lights; an enabled source does not replace a disabled master.
   Attach segment masks or master brightness only when they leave siblings unchanged; keep uncertain mappings neutral and state unconfirmed until observed.
   Declare source-specific colour modes and native attributes explicitly.
   Partitioned segment writes must cover each position exactly once and keep separately addressed sources out of segment masks.
