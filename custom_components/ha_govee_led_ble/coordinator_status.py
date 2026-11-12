@@ -17,7 +17,7 @@ from .generated_protocol_adapter import (
     boolean_control_is_authorized,
     boolean_control_name,
     parse_status_result,
-    table_kelvin_rgb,
+    table_rgb_kelvin,
     video_parameters_from_detail,
 )
 from .light_commands import normalize_kelvin
@@ -317,15 +317,10 @@ def parse_color_mode(generated: Any, model: str, *, profile: ModelProfile | None
             if detail.temperature_flag:
                 companion = detail.companion_rgb
                 colour = (int(companion.red), int(companion.green), int(companion.blue))
-                matched_kelvin = next(
-                    (
-                        value
-                        for value in range(profile.min_color_temp_kelvin, profile.max_color_temp_kelvin + 1, 100)
-                        if table_kelvin_rgb(value) == colour
-                    ),
-                    None,
-                )
-                if matched_kelvin is None:
+                matched_kelvin = table_rgb_kelvin(colour)
+                if matched_kelvin is None or not (
+                    profile.min_color_temp_kelvin <= matched_kelvin <= profile.max_color_temp_kelvin
+                ):
                     raise ValueError("Unrecognised legacy colour-temperature companion")
                 return ParsedColorModeResponse(mode=ParsedMode.COLOUR, color_temp_kelvin=matched_kelvin)
             return ParsedColorModeResponse(

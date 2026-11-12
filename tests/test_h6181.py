@@ -51,6 +51,37 @@ def test_legacy_temperature_flag_is_not_misread_as_a_kelvin_integer(selector):
         parse_color_mode(bad.generated, "H6181", profile=profile)
 
 
+@pytest.mark.parametrize("selector", [2, 13])
+@pytest.mark.parametrize(
+    "companion,kelvin",
+    [
+        ("ff8912", 2000),
+        ("ffd1a3", 4000),
+        ("d6e1ff", 9000),
+        ("fff9fd", 6600),
+        ("f7f5ff", 7000),
+        ("eff0ff", 7400),
+    ],
+)
+def test_legacy_temperature_accepts_aliases_without_reassigning_overlapping_colours(selector, companion, kelvin):
+    profile = device_profile("H6181", None, None)
+    packet = frame(bytes([0xAA, 5, selector, 255, 255, 255, 1]) + bytes.fromhex(companion))
+    decoded = decode_status_frame(packet, "H6181", profile=profile)
+    assert decoded is not None
+    result = parse_color_mode(decoded.generated, "H6181", profile=profile)
+    assert result.color_temp_kelvin == kelvin and result.rgb_color is None
+
+
+@pytest.mark.parametrize("companion", ["ff8912", "d6e1ff", "fff9fd", "010203", "000000"])
+def test_legacy_temperature_rejects_unknown_or_out_of_range_companions(companion):
+    profile = replace(device_profile("H6181", None, None), color_temp_range=(2700, 6500))
+    packet = frame(bytes.fromhex("aa050dffffff01") + bytes.fromhex(companion))
+    decoded = decode_status_frame(packet, "H6181", profile=profile)
+    assert decoded is not None
+    with pytest.raises(ValueError, match="Unrecognised legacy colour-temperature companion"):
+        parse_color_mode(decoded.generated, "H6181", profile=profile)
+
+
 @pytest.mark.parametrize(
     "content",
     [
