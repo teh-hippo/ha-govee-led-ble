@@ -1,7 +1,7 @@
 """Qualified music requests, prepared in full before any control side effects."""
 
 from collections.abc import Mapping, Sequence
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from typing import Any
 
 from kaitaistruct import KaitaiStructError
@@ -11,6 +11,7 @@ from .generated_protocol_adapter import build_music_mode, build_power
 from .music_protocol import H6046CommandWrite, music_code_for, music_codebook, music_mode_has_parameter_write
 from .music_semantics import (
     COMPANION_MUSIC_LAYOUTS,
+    MusicVariant,
     MusicZone,
     compile_music_parameters,
     encode_music_selector_parameters,
@@ -29,6 +30,16 @@ from .protocol_music_params import (
     parse_music_parameters,
 )
 from .transport import fragment_a3
+
+
+@dataclass(frozen=True, slots=True)
+class _PreparedMusicRequest:
+    mode_code: int
+    variant: MusicVariant | None
+    parameters: dict[str, int | bool | str]
+    targets: tuple[tuple[tuple[int, int, int] | None, dict[str, int]], ...]
+    packets: tuple[bytes, ...]
+    body: bytes | None
 
 
 def _music_selector_targets(
@@ -71,6 +82,20 @@ def build_music_params(
         raise ValueError("music style must be a boolean")
     variant = music_variant(profile, mode)
     compiled = compile_music_parameters(parameters, mode, profile)
+    body = _encode_music_companion(variant, compiled, palette, profile=profile, calm=calm)
+    return [] if body is None else fragment_a3(0x41, body)
+
+
+def _encode_music_companion(
+    variant: MusicVariant | None,
+    compiled: dict[str, int | bool | str],
+    palette: list[tuple[int, int, int]] | None,
+    *,
+    profile: ModelProfile,
+    calm: bool,
+) -> bytes | None:
+    if not isinstance(calm, bool):
+        raise ValueError("music style must be a boolean")
     if variant is None or variant.layout is None:
         if (
             any(spec.profile_key in compiled for spec in (() if variant is None else variant.parameters))
@@ -78,18 +103,18 @@ def build_music_params(
             or (variant is not None and (variant.template or variant.parameters))
         ):
             raise ValueError("music parameter layout is unqualified")
-        return []
+        return None
     if not music_parameters_available(profile, variant):
         if palette is not None:
             raise ValueError("music parameters require known physical IC count")
-        return []
+        return None
     try:
         body = encode_music_parameters(
             variant, compiled, palette=palette, calm=calm, physical_ic_count=profile.physical_ic_count
         )
     except (KaitaiStructError, EOFError) as error:
         raise ValueError("music parameter layout or palette is invalid") from error
-    return fragment_a3(0x41, body)
+    return body
 
 
 def prepare_music_request(
@@ -104,6 +129,31 @@ def prepare_music_request(
     profile: ModelProfile | None = None,
     palette: Sequence[tuple[int, int, int]] | None = None,
 ) -> tuple[bytes, ...]:
+    return _prepare_music_request(
+        model,
+        mode,
+        sensitivity,
+        colour,
+        calm,
+        parameters,
+        include_parameters=include_parameters,
+        profile=profile,
+        palette=palette,
+    ).packets
+
+
+def _prepare_music_request(
+    model: str,
+    mode: str,
+    sensitivity: int,
+    colour: tuple[int, int, int] | None,
+    calm: bool,
+    parameters: Mapping[str, Any],
+    *,
+    include_parameters: bool,
+    profile: ModelProfile | None,
+    palette: Sequence[tuple[int, int, int]] | None,
+) -> _PreparedMusicRequest:
     profile = get_profile(model) if profile is None else profile
     if mode not in profile.music_modes:
         raise ValueError(f"{model} does not support music mode {mode}")
@@ -114,22 +164,26 @@ def prepare_music_request(
         raise ValueError("music mode does not support an authored palette")
     if palette is not None and not include_parameters:
         raise ValueError("music palette requires a parameter upload")
-    companion = (
-        build_music_params(
-            mode_code, parameters, None if palette is None else list(palette), profile=profile, calm=calm
+    body = (
+        _encode_music_companion(
+            variant, compiled, None if palette is None else list(palette), profile=profile, calm=calm
         )
         if include_parameters and music_mode_has_parameter_write(model, mode_code, profile=profile)
-        else []
+        else None
     )
+    companion = [] if body is None else fragment_a3(0x41, body)
     selector_parameters = encode_music_selector_parameters(compiled, mode_code, profile)
+    targets = _music_selector_targets(colour, selector_parameters, profile)
     selectors = tuple(
         build_music_mode(
             mode_code, sensitivity, target_colour, calm, model, profile=profile, selector_parameters=target_parameters
         )
-        for target_colour, target_parameters in _music_selector_targets(colour, selector_parameters, profile)
+        for target_colour, target_parameters in targets
     )
     control = (*companion, *selectors) if profile.music_upload_before_selector else (*selectors, *companion)
-    return (build_power(True, model, profile=profile), *control)
+    return _PreparedMusicRequest(
+        mode_code, variant, compiled, targets, (build_power(True, model, profile=profile), *control), body
+    )
 
 
 def resolve_music_profile(
@@ -155,25 +209,32 @@ def resolve_music_profile(
     if colour is not None and not (profile.supports_music_color and (variant is None or variant.supports_fixed_colour)):
         raise ValueError(f"{model} does not support a fixed music colour")
     resolved_calm = calm if calm is not None else variant.calm_default if variant and variant.supports_style else False
-    compiled = compile_music_parameters(parameters, mode_code, profile)
-    packets = (
-        prepare_music_request(
-            model, mode, sensitivity, colour, resolved_calm, compiled, profile=profile, palette=palette
+    if original_body is None:
+        prepared = _prepare_music_request(
+            model,
+            mode,
+            sensitivity,
+            colour,
+            resolved_calm,
+            parameters,
+            include_parameters=True,
+            profile=profile,
+            palette=palette,
         )
-        if original_body is None
-        else tuple(
-            packet
-            for packet, _ in prepare_music_profile_writes(
-                model,
-                mode,
-                sensitivity,
-                colour,
-                resolved_calm,
-                parameters,
-                profile=profile,
-                palette=palette,
-                original_body=original_body,
-            )
+        return resolved_calm, prepared.parameters, prepared.packets
+    compiled = compile_music_parameters(parameters, mode_code, profile)
+    packets = tuple(
+        packet
+        for packet, _ in prepare_music_profile_writes(
+            model,
+            mode,
+            sensitivity,
+            colour,
+            resolved_calm,
+            parameters,
+            profile=profile,
+            palette=palette,
+            original_body=original_body,
         )
     )
     return resolved_calm, compiled, packets
@@ -255,13 +316,11 @@ def prepare_music_profile_writes(
 ) -> tuple[tuple[bytes, dict[str, Any]], ...]:
     """Pair validated packets with retained state installed at their physical attempt."""
     profile = get_profile(model) if profile is None else profile
-    mode_code = music_code_for(model, mode, profile=profile)
-    compiled = compile_music_parameters(parameters, mode_code, profile)
     if original_body is not None:
         if not include_parameters or palette is not None or parameters:
             raise ValueError("original music body cannot be combined with authored parameters")
         validate_music_body(original_body, mode, profile=profile)
-    packets = prepare_music_request(
+    prepared = _prepare_music_request(
         model,
         mode,
         sensitivity,
@@ -272,14 +331,15 @@ def prepare_music_profile_writes(
         include_parameters=include_parameters and original_body is None,
         palette=palette,
     )
+    mode_code, compiled, variant = prepared.mode_code, prepared.parameters, prepared.variant
+    packets = prepared.packets
     if original_body is not None:
         power, selector = packets
         upload = fragment_a3(0x41, original_body)
         packets = (power, *upload, selector) if profile.music_upload_before_selector else (power, selector, *upload)
     states: list[dict[str, Any]] = [{} for _ in packets]
     states[0] = {"is_on": True}
-    targets = _music_selector_targets(colour, encode_music_selector_parameters(compiled, mode_code, profile), profile)
-    variant = music_variant(profile, mode_code)
+    targets = prepared.targets
     selector_count = len(targets)
     selector_index = len(packets) - selector_count if profile.music_upload_before_selector else 1
     selector_state = {
@@ -325,17 +385,8 @@ def prepare_music_profile_writes(
         if original_body is None and variant and variant.supports_style:
             states[companion_index]["music_calm"] = calm
         assert variant is not None
-        body = (
-            original_body
-            if original_body is not None
-            else encode_music_parameters(
-                variant,
-                compiled,
-                palette=None if palette is None else list(palette),
-                calm=calm,
-                physical_ic_count=profile.physical_ic_count,
-            )
-        )
+        body = original_body if original_body is not None else prepared.body
+        assert body is not None
         if original_body is not None:
             decoded = music_body_parameters(body, mode, profile=profile)
             states[companion_index].update(
@@ -354,7 +405,13 @@ def prepare_music_profile_writes(
         if variant and variant.palette_bounds:
             # An incomplete upload invalidates retained knowledge. Neither assignment is readback.
             states[first_companion]["_music_palette"] = None
-            retained = music_default_palette(replace(variant, template=body))
+            retained = (
+                music_default_palette(replace(variant, template=body))
+                if original_body is not None
+                else tuple(palette)
+                if palette is not None
+                else music_default_palette(variant)
+            )
             states[companion_index]["_music_palette"] = (mode, retained)
     return tuple(zip(packets, states, strict=True))
 
