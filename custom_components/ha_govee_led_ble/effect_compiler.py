@@ -350,7 +350,6 @@ def compatibility(item: LibraryItem, model: str, *, profile: ModelProfile | None
         return CompatibilityResult(CompatibilityState.COMPATIBLE)
     if isinstance(content, VideoProfile):
         try:
-            content.__post_init__()
             if content.saturation is not None:
                 profile.validate_video_saturation(content.saturation)
         except ValueError as error:
@@ -391,59 +390,7 @@ def compatibility(item: LibraryItem, model: str, *, profile: ModelProfile | None
         return CompatibilityResult(CompatibilityState.COMPATIBLE)
     if isinstance(content, NativeEffect):
         try:
-            if profile.effect_grammar == "H60B0":
-                require_effect_route(model, CapabilityWorkflow(content.workflow), ("H60B0",), profile=profile)
-                validate_effect_eligibility(content, model, profile=profile)
-                resolve_diy_code(item, model=model, profile=profile)
-                encode_native_body(content)
-                return CompatibilityResult(CompatibilityState.COMPATIBLE)
-            if profile.effect_grammar == "H1771":
-                workflow = (
-                    CapabilityWorkflow.LAYERED_SCENES if content.template is not None else CapabilityWorkflow.MULTI
-                )
-                require_effect_route(model, workflow, ("H1771",), profile=profile)
-                validate_effect_eligibility(content, model, profile=profile)
-                if content.template is not None:
-                    _key, entry = _resolve_scene(model, content.template, expected_scene_type=5)
-                    if entry.diy_effect_codes != (content.family,):
-                        raise ValueError("native scene family does not match its catalogue")
-                resolve_diy_code(item, model=model, profile=profile)
-                encode_native_body(content)
-                return CompatibilityResult(CompatibilityState.COMPATIBLE)
-            if profile.effect_grammar == "H607C":
-                require_effect_route(model, CapabilityWorkflow(content.workflow), ("H607C",), profile=profile)
-                validate_effect_eligibility(content, model, profile=profile)
-                resolve_diy_code(item, model=model, profile=profile)
-                encode_native_body(content)
-                return CompatibilityResult(CompatibilityState.COMPATIBLE)
-            workflow = (
-                CapabilityWorkflow.LAYERED_SCENES
-                if content.template is not None
-                else CapabilityWorkflow.PAINTED
-                if content.family == 798
-                else CapabilityWorkflow.ADVANCED
-                if content.preset_id in (11, 12)
-                else CapabilityWorkflow.SINGLE
-            )
-            require_effect_route(model, workflow, ("H60A6",), profile=profile)
-            if content.model != model or not profile.supports_custom_effects:
-                raise ValueError("native content does not match the target profile")
-            if content.family == 798 and profile.physical_ic_count != 133:
-                raise ValueError("native paint requires the exact 133-point geometry")
-            if content.template is not None:
-                _key, entry = _resolve_scene(model, content.template, expected_scene_type=5)
-                if entry.diy_effect_codes != (content.family,):
-                    raise ValueError("native scene family does not match its catalogue")
-                if content.speed_index is not None and (
-                    entry.speed is None or content.speed_index >= entry.speed.option_count
-                ):
-                    raise ValueError("native scene speed index is not present in its catalogue")
-            elif any(
-                isinstance(layer, NativeDiyLayer) and not 1 <= len(layer.palette) <= 8 for layer in content.layers
-            ):
-                raise ValueError("native DIY palette must contain 1 to 8 colours")
-            resolve_diy_code(item, model=model, profile=profile)
-            encode_native_body(content)
+            _prepare_native_effect(item, model, profile)
         except ValueError as error:
             return CompatibilityResult(CompatibilityState.INCOMPATIBLE, (str(error),))
         return CompatibilityResult(CompatibilityState.COMPATIBLE)
@@ -543,6 +490,50 @@ def compatibility(item: LibraryItem, model: str, *, profile: ModelProfile | None
     assert_never(content)
 
 
+def _prepare_native_effect(item: LibraryItem, model: str, profile: ModelProfile) -> bytes:
+    content = item.content
+    if not isinstance(content, NativeEffect):
+        raise ValueError("native compiler requires native content")
+    if profile.effect_grammar in {"H60B0", "H607C"}:
+        require_effect_route(model, CapabilityWorkflow(content.workflow), (profile.effect_grammar,), profile=profile)
+        validate_effect_eligibility(content, model, profile=profile)
+    elif profile.effect_grammar == "H1771":
+        workflow = CapabilityWorkflow.LAYERED_SCENES if content.template is not None else CapabilityWorkflow.MULTI
+        require_effect_route(model, workflow, ("H1771",), profile=profile)
+        validate_effect_eligibility(content, model, profile=profile)
+        if content.template is not None:
+            _key, entry = _resolve_scene(model, content.template, expected_scene_type=5)
+            if entry.diy_effect_codes != (content.family,):
+                raise ValueError("native scene family does not match its catalogue")
+    else:
+        workflow = (
+            CapabilityWorkflow.LAYERED_SCENES
+            if content.template is not None
+            else CapabilityWorkflow.PAINTED
+            if content.family == 798
+            else CapabilityWorkflow.ADVANCED
+            if content.preset_id in (11, 12)
+            else CapabilityWorkflow.SINGLE
+        )
+        require_effect_route(model, workflow, ("H60A6",), profile=profile)
+        if content.model != model or not profile.supports_custom_effects:
+            raise ValueError("native content does not match the target profile")
+        if content.family == 798 and profile.physical_ic_count != 133:
+            raise ValueError("native paint requires the exact 133-point geometry")
+        if content.template is not None:
+            _key, entry = _resolve_scene(model, content.template, expected_scene_type=5)
+            if entry.diy_effect_codes != (content.family,):
+                raise ValueError("native scene family does not match its catalogue")
+            if content.speed_index is not None and (
+                entry.speed is None or content.speed_index >= entry.speed.option_count
+            ):
+                raise ValueError("native scene speed index is not present in its catalogue")
+        elif any(isinstance(layer, NativeDiyLayer) and not 1 <= len(layer.palette) <= 8 for layer in content.layers):
+            raise ValueError("native DIY palette must contain 1 to 8 colours")
+    resolve_diy_code(item, model=model, profile=profile)
+    return encode_native_body(content)
+
+
 def compile_effect(
     item: LibraryItem,
     model: str,
@@ -550,9 +541,6 @@ def compile_effect(
     diy_code: int | None = None,
     profile: ModelProfile | None = None,
 ) -> CompiledEffect:
-    result = compatibility(item, model, profile=profile)
-    if result.state is not CompatibilityState.COMPATIBLE:
-        raise ValueError("; ".join(result.reasons))
     if isinstance(item.content, H6179SingleDiyEffect | H6179MixedDiyEffect):
         if diy_code is None:
             raise ValueError("H6179 DIY application requires an approved disposable DIY code")
@@ -747,6 +735,8 @@ def _compile_workshop_effect(
     grammar = profile.effect_grammar
     content = item.content
     if isinstance(content, WorkshopEffect):
+        if content.model != model:
+            raise ValueError(f"Workshop effect targets {content.model}, not {model}")
         payload = encode_workshop_effect(
             model,
             content.effect,
@@ -957,9 +947,7 @@ def compile_native_effect(
     content = item.content
     if not isinstance(content, NativeEffect):
         raise ValueError("native compiler requires native content")
-    result = compatibility(item, model, profile=profile)
-    if result.state is CompatibilityState.INCOMPATIBLE:
-        raise ValueError("; ".join(result.reasons))
+    body = _prepare_native_effect(item, model, profile)
     route = "a4" if content.family == 798 and profile.effect_grammar == "H60A6" else "a3"
     subtype = (
         int(H60b0SceneBody.UploadSubtype.combined)
@@ -972,7 +960,6 @@ def compile_native_effect(
         if profile.effect_grammar == "H1771"
         else int(H60a6EffectFrame.Subtype.native_effect)
     )
-    body = encode_native_body(content)
     entry = None
     scene_key = None
     if content.template is not None:
