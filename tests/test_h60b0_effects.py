@@ -231,8 +231,9 @@ def test_retained_music_style_matches_the_encoded_enum(mode, code, calm):
     variant = next(variant for variant in profile.music_variants if variant.mode_code == code)
     body = encode_music_parameters(variant, {}, palette=None, calm=calm)
     assert music_body_style(body, mode, profile=profile) is calm
-    states = [state for _, state in prepare_music_body_writes("H60B0", mode, 50, body, profile=profile)]
-    retained = next(state for state in states if isinstance(state.get("_music_body"), tuple))
+    writes = prepare_music_body_writes("H60B0", mode, 50, body, profile=profile)
+    assert writes.last_upload is not None
+    retained = writes[writes.last_upload][1]
     assert retained["music_calm"] is calm
 
 

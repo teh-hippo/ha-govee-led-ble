@@ -22,6 +22,7 @@ Do not post Bluetooth addresses, serial numbers, account details or other unique
 - Keep offsets, command literals and packet enums out of entity and coordinator code.
 - Every outbound frame goes through `_async_write_packet`, which waits for the previous `0x33` or `0xAA` frame's same-command reply before writing.  Never add per-feature sleeps to pace requests; `ReplyGate` learns commands that never reply on a subscription.
 - Submit complete A3 uploads through `async_write_effect_sequence`.  Framing is validated before transmission, and each physical chunk stays bound to its ordered sequence and authorising header, including injected preview writers.
+- Keep music upload boundaries and retained-body candidates in `MusicWriteSequence`, not packet state dictionaries.  Invalidate retained body knowledge at the first physical upload attempt, and install the candidate only after the complete sequence and required acknowledgement succeed.
 - Arm reply tracking before the physical write, and accept only validated replies.  A late reply reinstates pacing for a command previously learned as silent; failed writes must not teach silence.
 - Qualify observed colour mode against the latest mode-write generation, effective profile and current subscription.
   An expired optimistic expectation does not confirm a mode.

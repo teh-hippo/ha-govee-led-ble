@@ -140,9 +140,9 @@ def test_background_gradient_and_unexposed_companions_survive_palette_resize():
     assert parse_body(b"\x01\x02\x41" + encoded)._raw_tail == bytes.fromhex("010f0b090a")
     # Re-encoding a known complete preset is distinct from recovering unknown resident settings.
     writes = prepare_music_profile_writes("H617A", "hopping", 50, None, False, {"background": 0x010101})
-    assert writes[1][1]["_music_palette"] is None
+    assert writes.first_upload == 1
     assert writes[-2][1]["music_hopping_background"] == 0x010101
-    assert writes[-2][1]["_music_palette"] == ("hopping", music_default_palette(hopping))
+    assert writes.palette == ("hopping", music_default_palette(hopping))
 
 
 def test_explicit_physical_ic_metadata_qualifies_only_dependent_transforms():

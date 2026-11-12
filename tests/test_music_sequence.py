@@ -52,6 +52,7 @@ async def test_bloom_last_fragment_failure_restarts_all_packets(hass, route, ver
     writes = prepare_music_profile_writes("H6099", "bloom", 42, None, True, {})
     packets = list(compiled.packets)
     assert [packet[0] for packet in packets] == [0x33, 0xA3, 0xA3, 0x33]
+    assert writes.body is not None
     prior = replace(
         coordinator.capture_effect_control_state(),
         mode="music",
@@ -59,7 +60,7 @@ async def test_bloom_last_fragment_failure_restarts_all_packets(hass, route, ver
         music_mode="bloom",
         music_calm=True,
         music_palette=music_default_palette(music_variant(coordinator.profile, 0x30)),
-        music_body=writes[-2][1]["_music_body"][1],
+        music_body=writes.body[1],
     )
     prefix = [build_brightness(prior.brightness_pct, "H6099")] if route == "recovery" else []
     if route == "recovery":
@@ -113,13 +114,11 @@ async def test_bloom_last_fragment_failure_restarts_all_packets(hass, route, ver
                     return
                 index -= 1
             assert plain == b"\xfe" + packets[index]
-            expected_state.update(
-                {
-                    key: value
-                    for key, value in writes[index][1].items()
-                    if key not in {"_music_body", "_music_parameter_keys"}
-                }
-            )
+            expected_state.update(writes[index][1])
+            if index == writes.first_upload:
+                expected_state["_music_palette"] = None
+            if index == writes.last_upload and writes.palette is not None:
+                expected_state["_music_palette"] = writes.palette
             assert coordinator._music_body is None
             assert all(getattr(coordinator, field) == value for field, value in expected_state.items())
             if index < 3:

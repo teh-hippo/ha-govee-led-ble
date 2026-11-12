@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from .generated_protocol_adapter import BulkStatusCollector
     from .govee_encryption.session import GoveeEncryptionSession
     from .low_blue_light import LowBlueLightState
+    from .music_commands import MusicWriteSequence
     from .native_profile_controls import ProfileWriter
     from .reply_pacing import ReplyGate
 
@@ -238,7 +239,7 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
 
         async def async_write_music_sequence(
             self,
-            writes: Sequence[tuple[bytes, Mapping[str, Any]]],
+            writes: MusicWriteSequence,
             *,
             mode_code: int,
             physical_ic_count: int | None,

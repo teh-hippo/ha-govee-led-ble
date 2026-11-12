@@ -424,7 +424,7 @@ async def test_music_recovery_uses_device_geometry_without_unsupported_colour(de
             {"key_count": 18, "gradient": False},
             profile=device.profile,
             palette=((12, 34, 56),) * 7,
-        )[-2][1]["_music_body"][1],
+        ).body[1],
     )
     monkeypatch.setattr(device, "refresh_state", AsyncMock(return_value=True))
     assert not await device.async_restore_effect_control_state(state, overwritten_diy_code=None)

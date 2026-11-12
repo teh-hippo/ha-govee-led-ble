@@ -237,7 +237,8 @@ async def test_music_recovery_revocation_precedes_brightness(radio):
     c, state, packets, _ = radio
     assert await c.refresh_state(refresh_all=True)
     writes = prepare_music_profile_writes(c.model, "bloom", 50, None, False, {}, profile=c.profile)
-    body = next(values["_music_body"][1] for _, values in writes if values.get("_music_body"))
+    assert writes.body is not None
+    body = writes.body[1]
     from dataclasses import replace
 
     prior = replace(c.capture_effect_control_state(), mode="music", music_mode="bloom", music_body=body)

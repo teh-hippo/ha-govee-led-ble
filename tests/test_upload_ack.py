@@ -374,10 +374,10 @@ async def write_sequence(c, packets, index, **kwargs):
     )
 
 
-async def preview_writer(c, packet, *, write_guard=None, state_values=None, expected_values=None):
+async def preview_writer(c, packet, *, write_guard=None, state_values=None, expected_values=None, on_write=None):
     assert not c._lock.locked(), "caller must not deadlock the connection-bound writer"
     await c.async_preview_write(
-        packet, before_write=write_guard, state_values=state_values, expected_values=expected_values
+        packet, before_write=write_guard, state_values=state_values, expected_values=expected_values, on_write=on_write
     )
 
 
@@ -638,7 +638,8 @@ async def test_real_preview_path_upload_ack_then_own_selector(connected, hass, m
         from custom_components.ha_govee_led_ble.music_commands import prepare_music_profile_writes
 
         writes = prepare_music_profile_writes("H617A", "bloom", 42, None, False, {}, profile=c.profile)
-        final = next(packet for packet, state in writes if state.get("_music_body") is not None)
+        assert writes.last_upload is not None
+        final = writes[writes.last_upload][0]
         response = MUSIC_OK if positive else MUSIC_NO
     written = []
 

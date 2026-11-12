@@ -108,7 +108,7 @@ async def test_apply_recovery_and_retained_palette_are_not_readback(hass, route,
     compiled = compile_music_profile(LibraryItem.new("Palette", MusicProfile(model, mode, 42, palette=PALETTE)), model)
     coordinator.music_sensitivity = 42
 
-    async def preview_writer(packet, *, state_values=None, write_guard=None, expected_values=None):
+    async def preview_writer(packet, *, state_values=None, write_guard=None, expected_values=None, on_write=None):
         await coordinator._async_write_packet(
             coordinator._client,
             packet,
@@ -116,6 +116,7 @@ async def test_apply_recovery_and_retained_palette_are_not_readback(hass, route,
             state_values=state_values,
             before_write=write_guard,
             expected_values=expected_values,
+            on_write=on_write,
         )
 
     with _music_transport(coordinator) as physical, patch.object(coordinator, "_encryption", None):
