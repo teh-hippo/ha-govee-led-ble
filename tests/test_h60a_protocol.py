@@ -120,17 +120,22 @@ def test_bulk_and_native_setting_admission_are_independent_of_geometry(model):
 
 
 @pytest.mark.parametrize("model", ["H60A1", "H60A6"])
-async def test_bulk_updates_only_complete_state_and_zone_flags_are_independent(hass, model):
+async def test_bulk_updates_only_complete_state_and_zone_flags_are_independent(hass, monkeypatch, model):
+    from custom_components.ha_govee_led_ble import coordinator_notifications
+
     c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", model, configuration_url=None)
     c.hw_version, c.fw_version = "1.04.03", "1.02.20" if model == "H60A1" else "1.00.41"
     c._resolve_device_profile()
     c._bulk_collector = BulkStatusCollector()
     c._bulk_query_incomplete = True
+    decode = MagicMock(wraps=coordinator_notifications.parse_color_mode)
+    monkeypatch.setattr(coordinator_notifications, "parse_color_mode", decode)
     payload = bytes.fromhex("fe0c000102030405060708090a0b0503046300300200814102aa02")
     packets = bulk_frames(payload)
     c._notify_callback(None, bytearray(packets[0]))
     assert c.color_mode is None and not c.boolean_control_state
     c._notify_callback(None, bytearray(packets[1]))
+    decode.assert_called_once()
     assert c.color_mode is ParsedMode.SCENE and c.scene_code == 99
     assert not c._bulk_query_incomplete
     assert c.boolean_control_state == ({"panel_enabled": False, "ring_enabled": True} if model == "H60A6" else {})

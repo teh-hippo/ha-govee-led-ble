@@ -17,6 +17,7 @@ from .const import (
 from .coordinator_base import _CoordinatorBase
 from .coordinator_expectations import expectations_from_packet
 from .coordinator_status import (
+    ParsedColorModeResponse,
     ParsedMode,
     StatusDomain,
     decode_status_frame_result,
@@ -141,11 +142,21 @@ class _NotificationMixin(_CoordinatorBase):
         _LOGGER.debug("Ignoring stale %s for %s: %r (expecting %r)", field, self.address, value, expected)
         return False
 
+    def _select_color_mode(self, parsed: ParsedColorModeResponse, *, scene_effect: str | None = None) -> None:
+        self._scene_code = parsed.scene_code if parsed.mode is ParsedMode.SCENE else None
+        self.effect = scene_effect if parsed.mode is ParsedMode.SCENE else None
+        self.diy_code = parsed.diy_code if parsed.mode is ParsedMode.DIY else None
+        self.music_mode = (
+            parsed.music_mode or (self.music_mode if self.profile.music_readback_ambiguous else "off")
+            if parsed.mode is ParsedMode.MUSIC
+            else "off"
+        )
+        self.video_mode = (parsed.video_mode or "off") if parsed.mode is ParsedMode.VIDEO else "off"
+
     def _apply_color_mode_payload(
         self,
-        generated: Any,
+        parsed: ParsedColorModeResponse,
     ) -> tuple[str, ...]:
-        parsed = parse_color_mode(generated, self.model, profile=self.profile)
         if (
             parsed.mode is ParsedMode.COLOUR
             and self.profile.static_readback_gradual
@@ -190,6 +201,8 @@ class _NotificationMixin(_CoordinatorBase):
                 else:
                     self.source_static_intents[source.key] = reported
         self.color_mode = parsed.mode
+        if parsed.mode is not ParsedMode.SCENE:
+            self._scene_code = None
         # Track the device's scene independently from Home Assistant's configured effect-list projection.
         scene_effect = parsed.effect if parsed.effect in self.scene_name_set else None
         # A scene we cannot name still leaves the light running something, and effect has to stay
@@ -203,38 +216,26 @@ class _NotificationMixin(_CoordinatorBase):
         accept_parameters = True
         # Readback mirror of _enter_static_mode: committing one mode clears the others.
         if parsed.mode is ParsedMode.MUSIC:
-            self._scene_code = None
             if parsed.music_mode is None:
-                if not self.profile.music_readback_ambiguous:
-                    self.music_mode = "off"
-                self.effect = self.diy_code = None
-                self.video_mode = "off"
+                self._select_color_mode(parsed)
                 observed.extend(("effect", "diy_code"))
                 accept_parameters = self.profile.music_readback_ambiguous
             elif self._accept_expected("music_mode", parsed.music_mode):
                 if parsed.music_mode != self.music_mode:
                     self._music_palette = self._music_body = None
-                self.music_mode = parsed.music_mode
-                self.video_mode, self.effect = "off", None
-                self.diy_code = None
+                self._select_color_mode(parsed)
                 observed.append("music_mode")
             else:
                 accept_parameters = False
         elif parsed.mode is ParsedMode.VIDEO:
-            self._scene_code = None
             if parsed.video_mode is not None and self._accept_expected("video_mode", parsed.video_mode):
-                self.video_mode = parsed.video_mode
-                self.music_mode, self.effect = "off", None
-                self.diy_code = None
+                self._select_color_mode(parsed)
                 observed.append("video_mode")
             else:
                 accept_parameters = False
         elif parsed.mode is ParsedMode.DIY:
-            self._scene_code = None
             if self._accept_expected("effect", None):
-                self.effect = None
-                self.music_mode = self.video_mode = "off"
-                self.diy_code = parsed.diy_code
+                self._select_color_mode(parsed)
                 observed.extend(("effect", "diy_code"))
             else:
                 accept_parameters = False
@@ -245,22 +246,14 @@ class _NotificationMixin(_CoordinatorBase):
                 "unknown_scene_code": unknown_scene_code,
             }
             if self._accept_expected_values(values):
-                self.effect = scene_effect
-                self._scene_code = parsed.scene_code
-                self.music_mode, self.video_mode = "off", "off"
-                self.diy_code = None
+                self._select_color_mode(parsed, scene_effect=scene_effect)
                 observed.extend(values)
         elif parsed.mode is ParsedMode.COLOUR:
-            self._scene_code = None
             if self._accept_expected("effect", None):
-                self.effect, self.music_mode, self.video_mode = None, "off", "off"
-                self.diy_code = None
+                self._select_color_mode(parsed)
                 observed.append("effect")
         else:
-            self._scene_code = None
-            self.effect = None
-            self.diy_code = None
-            self.music_mode = self.video_mode = "off"
+            self._select_color_mode(parsed)
             observed.append("effect")
         if self.music_mode == "off":
             self._music_palette = self._music_body = None
@@ -290,10 +283,8 @@ class _NotificationMixin(_CoordinatorBase):
                 self.static_gradual = bool(parsed.multi_effect_flag)
                 observed.append("static_gradual")
             if self.profile.status_grammar == "H6199":
-                values = parse_h6199_control(generated)
-                for field, value in values.items():
-                    setattr(self, field, value)
-                observed.extend(values)
+                self.gradient = parsed.gradient
+                observed.append("gradient")
             static_values: dict[str, Any] = {}
             if parsed.rgb_color is not None and self.profile.static_readback_echoes_color:
                 static_values["rgb_color"] = parsed.rgb_color
@@ -375,10 +366,12 @@ class _NotificationMixin(_CoordinatorBase):
                 )
                 if power is not None and zones is not None and bool(power.body.is_on) != zones.body.master_enabled:
                     raise ValueError("Bulk master power observations disagree")
+            decode_generation = self._profile_generation
+            parsed_modes: dict[int, ParsedColorModeResponse] = {}
             for record in records:
                 domain = getattr(record.domain, "name", None)
                 if domain == "colour_mode":
-                    parse_color_mode(record, self.model, profile=self.profile)
+                    parsed_modes[id(record)] = parse_color_mode(record, self.model, profile=self.profile)
                 elif domain == "power" and record.body.is_on not in (0, 1):
                     raise ValueError("Bulk power flag is invalid")
                 elif domain == "brightness" and not 0 <= record.body.percent <= 100:
@@ -390,7 +383,12 @@ class _NotificationMixin(_CoordinatorBase):
             for record in records:
                 domain = getattr(record.domain, "name", None)
                 if domain == "colour_mode" and self.profile.supports_color_mode_readback:
-                    self._mark_received(StatusDomain.COLOUR_MODE, *self._apply_color_mode_payload(record))
+                    parsed_mode = (
+                        parsed_modes[id(record)]
+                        if decode_generation == self._profile_generation
+                        else parse_color_mode(record, self.model, profile=self.profile)
+                    )
+                    self._mark_received(StatusDomain.COLOUR_MODE, *self._apply_color_mode_payload(parsed_mode))
                 elif domain == "power" and self.profile.can_read(ReadDomain.POWER):
                     value = bool(record.body.is_on)
                     if self._accept_expected("is_on", value):
@@ -822,7 +820,7 @@ class _NotificationMixin(_CoordinatorBase):
             elif domain in {StatusDomain.COLOUR_MODE, StatusDomain.MODE}:
                 if not self.profile.supports_color_mode_readback:
                     return
-                observed = self._apply_color_mode_payload(generated)
+                observed = self._apply_color_mode_payload(parse_color_mode(generated, self.model, profile=self.profile))
             elif domain is StatusDomain.DISPLAY_SETTING:
                 observed = self._apply_display_setting(generated, observed)
             elif domain is StatusDomain.RELATIVE_BRIGHTNESS:
