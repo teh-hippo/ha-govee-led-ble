@@ -191,6 +191,9 @@ class ModelProfile:
     confirmation_issue: int | None = None
     allows_legacy_plaintext_marker: bool = False
     reconciles_marker_pact: bool = False
+    # Products whose transport is always the legacy e701/e702 encrypted session,
+    # even though they expose no 2b12 marker and advertise no encryption flag.
+    requires_legacy_encryption: bool = False
     command_grammar: str | None = None
     command_ack_grammar: str | None = None
     # None retains the grammar's shipped operations; a set restricts physical writes.
@@ -1100,6 +1103,38 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         music_upload_before_selector=True,
         music_requires_upload_ack=True,
         music_params_require_activation=True,
+    ),
+    "H60B2": ModelProfile(
+        "H60B2 Tree Floor Lamp",
+        # Verified 2026-11-12: the lamp ignores plaintext frames and only answers
+        # after the legacy e701/e702 session; it exposes no 2b12 marker and the
+        # advertisement carries no encryption flag, so the profile selects it.
+        requires_legacy_encryption=True,
+        command_grammar="H617A",
+        status_grammar="H617A",
+        command_operations=frozenset({"power", "brightness", "static"}),
+        read_domains=frozenset(
+            {
+                ReadDomain.POWER,
+                ReadDomain.BRIGHTNESS,
+                ReadDomain.COLOUR_MODE,
+                ReadDomain.FIRMWARE,
+            }
+        ),
+        setup_required_read_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS}),
+        # AA07 (hardware) is not answered by this firmware; only firmware is qualified.
+        profile_identity_fields=frozenset({"fw_version"}),
+        supports_rgb=True,
+        # Whole-lamp and per-head RGB use 33 05 15 01 R G B ... LO HI with the
+        # three-head mask (0x07 whole, 0x01 bottom, 0x02 middle, 0x04 top).
+        supports_segment_writes=True,
+        segment_count=3,
+        segment_group_size=3,
+        physical_ic_count=3,
+        segment_colour_mode_ambiguous=True,
+        # Status reports static mode without RGB/Kelvin, so readback is not authoritative.
+        static_readback_echoes_color=False,
+        connection_idle_timeout=IDLE_TIMEOUT_STANDARD,
     ),
     "H601C": ModelProfile(
         "H601C Recessed Downlight",
@@ -2765,6 +2800,7 @@ def _basic_revision_profile(profile: ModelProfile) -> ModelProfile:
         confirmation_issue=profile.confirmation_issue,
         allows_legacy_plaintext_marker=profile.allows_legacy_plaintext_marker,
         reconciles_marker_pact=profile.reconciles_marker_pact,
+        requires_legacy_encryption=profile.requires_legacy_encryption,
         command_grammar=profile.command_grammar,
         command_ack_grammar=profile.command_ack_grammar,
         command_operations=frozenset({"power", "brightness"}),

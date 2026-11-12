@@ -955,6 +955,10 @@ class GoveeBLECoordinator(
         if self._encryption is None:
             self._encryption = GoveeEncryptionSession()
         self._encryption.reset()
+        if self.profile.requires_legacy_encryption:
+            # The product never advertises encryption and has no 2b12 marker; it
+            # simply never answers plaintext frames.
+            self._encryption.required_version = 1
         try:
             self._client = client = await async_establish_ble_connection(
                 self.hass,
