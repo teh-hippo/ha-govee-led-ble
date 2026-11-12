@@ -87,7 +87,7 @@ from .generated_protocol_adapter import (
     upload_ack_mode,
     upload_ack_subtype,
 )
-from .govee_encryption import GoveeCryptoError
+from .govee_encryption import GoveeCryptoError, GoveeTransportError
 from .govee_encryption.session import GoveeEncryptionSession
 from .h6099_controls import h6099_control_queries
 from .h6102_capabilities import (
@@ -951,7 +951,7 @@ class GoveeBLECoordinator(
                             and (not read_succeeded or self.connection_mode != CONNECTION_MODE_HOLD)
                         ):
                             await self._disconnect_if_current_locked(client)
-            except BleakError as err:
+            except (BleakError, GoveeTransportError) as err:
                 # Missing state revokes read-based reachability, not independent advertisement evidence.
                 self._log_availability_transition()
                 if first_refresh:
@@ -1036,7 +1036,7 @@ class GoveeBLECoordinator(
             self._require_not_shutdown()
             self._require_not_dreamview_claimed()
             if self._client is not client or not client.is_connected:
-                raise GoveeCryptoError("disconnected_during_selection")
+                raise GoveeTransportError("disconnected_during_selection")
             if self.profile.requires_notifications or self._encryption.version:
                 await self._start_notify()
                 self._require_not_shutdown()
@@ -1045,7 +1045,7 @@ class GoveeBLECoordinator(
             self._require_not_shutdown()
             self._require_not_dreamview_claimed()
             if self._client is not client or not client.is_connected:
-                raise GoveeCryptoError("disconnected_during_setup")
+                raise GoveeTransportError("disconnected_during_setup")
             if self._tracks_pact_identity:
                 self._h607c_marker_pact = self._encryption.marker_pact
                 self._h607c_marker_seen |= self._h607c_marker_pact is not None
@@ -1080,7 +1080,7 @@ class GoveeBLECoordinator(
                     self._require_not_shutdown()
                     self._require_not_dreamview_claimed()
             if self._client is not client or not client.is_connected or not self._encryption.ready:
-                raise GoveeCryptoError("disconnected_during_setup")
+                raise GoveeTransportError("disconnected_during_setup")
             if self.profile.state_readable and self._notify_started_monotonic is not None:
                 self._start_keep_alive()
         except BaseException as err:
@@ -1091,7 +1091,8 @@ class GoveeBLECoordinator(
                 and self._encryption.version
                 and not isinstance(err, (GoveeCryptoError, DreamviewClaimedError))
             ):
-                raise GoveeCryptoError("encrypted_setup_failed") from None
+                error_type = GoveeTransportError if isinstance(err, BleakError) else GoveeCryptoError
+                raise error_type("encrypted_setup_failed") from None
             raise
         finally:
             self._connection_initializing = False
@@ -1246,7 +1247,7 @@ class GoveeBLECoordinator(
 
         await client.start_notify(READ_UUID, receive)
         if self._client is not client or self._notification_token is not token:
-            raise GoveeCryptoError("disconnected_during_subscription")
+            raise GoveeTransportError("disconnected_during_subscription")
         self._notify_started_monotonic = time.monotonic()
         self._last_rx_monotonic = None
 
@@ -1372,7 +1373,7 @@ class GoveeBLECoordinator(
         reply_frame = wire_packet
         if self._encryption is not None:
             if self._client is not client or not client.is_connected:
-                raise GoveeCryptoError("stale_connection")
+                raise GoveeTransportError("stale_connection")
             wire_packet = self._encryption.encode(wire_packet)
         if before_write is not None:
             before_write()
@@ -1521,7 +1522,8 @@ class GoveeBLECoordinator(
             if encrypted:
                 if isinstance(err, BleakError):
                     raise BleakError("encrypted_write_failed") from None
-                raise GoveeCryptoError("encrypted_write_failed") from None
+                error_type = GoveeTransportError if isinstance(err, GoveeTransportError) else GoveeCryptoError
+                raise error_type("encrypted_write_failed") from None
             raise
         if self._notification_token is token:
             self._reply_gate.sent()

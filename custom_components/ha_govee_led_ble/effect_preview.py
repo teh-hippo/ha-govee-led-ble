@@ -70,6 +70,7 @@ from .effect_scenes import (
 )
 from .effect_template_defaults import CatalogueTemplateDefault, CatalogueTemplateDefaultRepository
 from .generated_protocol_adapter import build_power
+from .govee_encryption import GoveeCryptoError
 from .native_profile_controls import async_require_video_controls
 from .native_scenes import build_native_scene_packets, encode_authored_scene_body, resolve_native_scene_body
 from .scenes import canonical_scene_key, scene_code_is_ambiguous, scene_selector_code
@@ -501,6 +502,8 @@ class EffectPreviewManager:
             profile = await async_prepare_effect_profile(coordinator, intent=ControlIntent.PREVIEW)
             diy_code = resolve_diy_code(item, diy_code, model=coordinator.model, profile=profile)
             compiled = compile_application(item, coordinator.model, diy_code=diy_code, profile=profile)
+        except GoveeCryptoError:
+            raise
         except ValueError as exc:
             raise PreviewError(str(exc)) from exc
         if isinstance(compiled, CompiledVideoProfile):

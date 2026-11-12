@@ -131,6 +131,7 @@ from .effect_websocket_schema import (
     WS_USER_STATE_GET,
     WS_USER_STATE_UPDATE,
 )
+from .govee_encryption import GoveeCryptoError
 from .music_commands import music_body_style
 from .music_protocol import music_code_for
 from .native_profile_controls import async_require_video_controls
@@ -444,6 +445,9 @@ async def ws_scene_apply(
             scene_defaults=backend.scene_defaults,
             before_apply=partial(backend.preview.async_supersede_device, entry.entry_id, reason="committed_apply"),
         )
+    except GoveeCryptoError as exc:
+        connection.send_error(msg["id"], "apply_failed", str(exc))
+        return
     except ValueError as exc:
         connection.send_error(msg["id"], "invalid_format", str(exc))
         return
@@ -1407,6 +1411,9 @@ async def ws_apply(
     except EffectVersionConflictError as exc:
         connection.send_error(msg["id"], "conflict", str(exc))
         return
+    except GoveeCryptoError as exc:
+        connection.send_error(msg["id"], "apply_failed", str(exc))
+        return
     except ValueError as exc:
         connection.send_error(msg["id"], "unsupported_model", str(exc))
         return
@@ -1484,6 +1491,9 @@ async def ws_apply_snapshot(
         )
     except EffectValidationError as exc:
         connection.send_error(msg["id"], "invalid_format", str(exc))
+        return
+    except GoveeCryptoError as exc:
+        connection.send_error(msg["id"], "apply_failed", str(exc))
         return
     except ValueError as exc:
         connection.send_error(msg["id"], "unsupported_model", str(exc))

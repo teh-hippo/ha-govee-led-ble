@@ -36,6 +36,7 @@ from custom_components.ha_govee_led_ble.govee_encryption import (
     KEY_COMMUNICATION,
     KEY_HANDSHAKE,
     GoveeCryptoError,
+    GoveeTransportError,
     build_v2_handshake,
     parse_v1_handshake,
     parse_v2_handshake,
@@ -677,6 +678,134 @@ async def negotiate(version=1, *, confirm=True):
 
 
 @pytest.mark.parametrize(
+    ("version", "failure"),
+    [
+        (0, "marker"),
+        (0, "subscription_reset"),
+        (1, "marker"),
+        (1, "subscription"),
+        (2, "subscription"),
+        (1, "silence"),
+        (2, "silence"),
+        (1, "programming"),
+        (1, "ambient_programming"),
+        (2, "invalid_handshake"),
+    ],
+)
+async def test_background_refresh_classifies_real_failure_origins(
+    hass, monkeypatch, virtual_clock, caplog, version, failure
+):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H617A", configuration_url=None)
+    coordinator._first_refresh_done = coordinator._present = coordinator._state_read_available = True
+    coordinator.is_on, coordinator.brightness_pct = True, 42
+    coordinator.async_set_updated_data(coordinator._state_snapshot())
+    device = client(bytes((1, version)))
+
+    def disconnect():
+        device.is_connected = False
+        coordinator._disconnected_callback(device)
+
+    async def read(_uuid):
+        disconnect()
+        raise BleakError("private marker link failure")
+
+    async def subscribe(_uuid, _receive):
+        if failure == "subscription":
+            raise BleakError("private subscription link failure")
+        if failure == "subscription_reset":
+            disconnect()
+
+    async def write(_uuid, frame, **_kwargs):
+        if failure == "silence":
+            return
+        reply = v1_reply(parse_v1_handshake(frame).opcode) if version == 1 else v2_reply()
+        device.start_notify.await_args.args[1](
+            None, bytearray(bytes(len(reply)) if failure == "invalid_handshake" else reply)
+        )
+
+    def transform(_packet):
+        if failure == "ambient_programming":
+            try:
+                raise BleakError("earlier handled Bluetooth error")
+            except BleakError:
+                disconnect()
+                raise ValueError("private programming failure") from None
+        raise ValueError("private programming failure")
+
+    device.disconnect.side_effect = disconnect
+    device.start_notify.side_effect = subscribe
+    device.write_gatt_char.side_effect = write
+    if failure == "marker":
+        coordinator._advertised_plaintext = version == 0
+        device.read_gatt_char.side_effect = read
+    if "programming" in failure:
+        coordinator.profile = replace(coordinator.profile, outbound_transform=transform)
+    establish = AsyncMock(return_value=device)
+    monkeypatch.setattr(f"{M}.async_establish_ble_connection", establish)
+    component = EntityComponent(logging.getLogger(__name__), "light", hass)
+    light = GoveeBLELight(coordinator)
+    await component.async_add_entities([light])
+    try:
+        await coordinator.async_refresh()
+        await hass.async_block_till_done()
+        operational = failure not in {"programming", "ambient_programming", "invalid_handshake"}
+        assert coordinator.last_update_success is operational
+        assert light.available is operational
+        assert hass.states.get(light.entity_id).state == ("on" if operational else "unavailable")
+        assert coordinator.data["is_on"] is True and coordinator.data["brightness_pct"] == 42
+        assert not coordinator._state_read_available
+        assert coordinator._client is None and coordinator._keep_alive_task is None
+        assert not coordinator._encryption.ready and coordinator._encryption._key is None
+        assert coordinator.control_write_attempts == 0
+        establish.assert_awaited_once()
+        device.disconnect.assert_awaited_once()
+        if operational:
+            assert not any(record.levelno >= logging.ERROR for record in caplog.records)
+            coordinator._set_present(False)
+            assert not light.available
+            coordinator._async_on_advertisement(SimpleNamespace(manufacturer_data={}), None)
+            await hass.async_block_till_done()
+            assert light.available and hass.states.get(light.entity_id).state == "on"
+        else:
+            assert type(coordinator.last_exception) is GoveeCryptoError
+            assert any("Unexpected error fetching" in record.getMessage() for record in caplog.records)
+            assert "private" not in str(coordinator.last_exception)
+    finally:
+        await light.async_remove()
+        await coordinator.async_shutdown()
+
+
+@pytest.mark.parametrize("workflow", ["command", "effect", "preview"])
+@pytest.mark.parametrize("failure", ["subscription", "previously_encrypted_connection"])
+async def test_transport_classification_does_not_add_foreground_attempts(hass, monkeypatch, workflow, failure):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H617A", configuration_url=None)
+    device = client(b"\x01\x01")
+    if failure == "subscription":
+        device.start_notify.side_effect = BleakError("private subscription failure")
+        establish = AsyncMock(return_value=device)
+    else:
+        coordinator._encryption = GoveeEncryptionSession()
+        await coordinator._encryption.async_select(device, advertised=False)
+        establish = AsyncMock(side_effect=BleakError("private reconnection failure"))
+    monkeypatch.setattr(f"{M}.async_establish_ble_connection", establish)
+    try:
+        with pytest.raises(GoveeTransportError, match="encrypted_setup_failed"):
+            if workflow == "command":
+                await coordinator.send_command(build_power(True))
+            elif workflow == "effect":
+                await coordinator.async_write_effect_sequence((build_power(True),), intent=ControlIntent.USER)
+            else:
+                await coordinator.async_preview_preflight()
+        establish.assert_awaited_once()
+        device.write_gatt_char.assert_not_awaited()
+        assert coordinator.control_write_attempts == 0 and not coordinator.packet_log
+        assert coordinator._client is None and not coordinator._encryption.ready
+        assert coordinator._encryption.required_version == 1
+    finally:
+        await coordinator.async_shutdown()
+
+
+@pytest.mark.parametrize(
     ("advertised", "marker", "version"),
     [
         (False, None, 0),
@@ -729,8 +858,9 @@ UNRECOGNISED_MARKERS = [b"", b"\0", b"\x01", b"\x02\x02", b"\x02\0", b"\x03\x01"
 @pytest.mark.parametrize("marker", UNRECOGNISED_MARKERS)
 async def test_invalid_marker_never_becomes_plaintext(marker):
     session, device = GoveeEncryptionSession(), client(marker)
-    with pytest.raises(GoveeCryptoError, match="selection_failed"):
+    with pytest.raises(GoveeCryptoError, match="selection_failed") as error:
         await session.async_select(device, advertised=False)
+    assert type(error.value) is GoveeCryptoError
     device.services = []
     with pytest.raises(GoveeCryptoError):
         await session.async_select(device, advertised=False)
@@ -817,18 +947,38 @@ async def test_profile_marker_does_not_confirm_a_retired_subscription(reset):
         return b"\0"
 
     device.read_gatt_char.side_effect = read
-    with pytest.raises(GoveeCryptoError):
+    with pytest.raises(GoveeCryptoError) as error:
         await session.async_select(device, advertised=False, allows_legacy_plaintext_marker=True)
+    assert type(error.value) is GoveeCryptoError
     assert not session.ready
 
 
-async def test_read_failure_has_no_raw_error_or_fallback():
+@pytest.mark.parametrize("error_type", [BleakError, RuntimeError])
+@pytest.mark.parametrize("plaintext_evidence", [False, True])
+async def test_read_failure_has_no_raw_error_or_disconnected_fallback(error_type, plaintext_evidence):
     session, device = GoveeEncryptionSession(), client(b"\x01\x02")
-    device.read_gatt_char.side_effect = RuntimeError("secret address/key payload")
+
+    async def read(_uuid):
+        device.is_connected = False
+        try:
+            raise BleakError("earlier handled Bluetooth error")
+        except BleakError:
+            raise error_type("secret address/key payload") from None
+
+    device.read_gatt_char.side_effect = read
     with pytest.raises(GoveeCryptoError) as err:
-        await session.async_select(device, advertised=False)
+        await session.async_select(device, advertised=False, plaintext_evidence=plaintext_evidence)
+    assert type(err.value) is (GoveeTransportError if error_type is BleakError else GoveeCryptoError)
+    assert err.value.__suppress_context__
     assert "secret" not in str(err.value)
     assert "secret" not in json.dumps(session.diagnostics())
+    assert not session.ready
+    device.write_gatt_char.assert_not_awaited()
+    device.is_connected = True
+    device.services = []
+    with pytest.raises(GoveeCryptoError, match="encryption_selection_failed") as failed:
+        await session.async_select(device, advertised=False)
+    assert type(failed.value) is GoveeCryptoError
     assert not session.ready
 
 
@@ -1037,8 +1187,9 @@ async def test_invalid_key_reply_fails_closed(reply):
     session, device = GoveeEncryptionSession(), client(b"\x01\x01")
     await session.async_select(device, advertised=False)
     device.write_gatt_char.side_effect = lambda *_args, **_kw: session.decode(reply)
-    with pytest.raises(GoveeCryptoError):
+    with pytest.raises(GoveeCryptoError) as error:
         await session.async_negotiate(device)
+    assert type(error.value) is GoveeCryptoError
     assert not session.ready and session._key is None
     assert device.write_gatt_char.await_count == 1
 
@@ -1076,8 +1227,9 @@ async def test_v2_authentication_replay_and_counter_exhaustion():
 async def test_v2_short_or_unknown_mtu_fails_before_writing(mtu):
     session, device = GoveeEncryptionSession(), client(b"\x01\x02", mtu=mtu)
     await session.async_select(device, advertised=False)
-    with pytest.raises(GoveeCryptoError):
+    with pytest.raises(GoveeCryptoError) as error:
         await session.async_negotiate(device)
+    assert type(error.value) is GoveeCryptoError
     assert not session.ready
     device.write_gatt_char.assert_not_awaited()
 
@@ -1242,16 +1394,18 @@ async def test_slow_connection_and_encrypted_setup_fit_operation_budget(hass, vi
 
 
 @pytest.mark.parametrize("version", [1, 2])
-async def test_disconnect_after_response_cannot_install_keys(version):
+@pytest.mark.parametrize("pending", [False, True])
+async def test_disconnect_during_handshake_cannot_install_keys(version, pending):
     session, device = GoveeEncryptionSession(), client(bytes((1, version)))
     await session.async_select(device, advertised=False)
 
     async def write(_uuid, frame, **_kwargs):
-        session.decode(v1_reply(parse_v1_handshake(frame).opcode) if version == 1 else v2_reply())
+        if not pending:
+            session.decode(v1_reply(parse_v1_handshake(frame).opcode) if version == 1 else v2_reply())
         session.reset()  # A disconnect can land after the future resolves but before its waiter resumes.
 
     device.write_gatt_char.side_effect = write
-    with pytest.raises(GoveeCryptoError):
+    with pytest.raises(GoveeTransportError, match="negotiation_failed"):
         await session.async_negotiate(device)
     assert not session.ready and session._key is None
     assert device.write_gatt_char.await_count == 1
@@ -1283,7 +1437,10 @@ async def test_encrypted_notifications_preserve_fresh_readback(hass, version):
     assert not coordinator._expected_state
 
 
-@pytest.mark.parametrize("error, expected", [(RuntimeError, GoveeCryptoError), (BleakError, BleakError)])
+@pytest.mark.parametrize(
+    "error, expected",
+    [(RuntimeError, GoveeCryptoError), (BleakError, BleakError), (GoveeTransportError, GoveeTransportError)],
+)
 async def test_transport_write_failure_hides_backend_exception(hass, error, expected):
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H617A", configuration_url=None)
     session, device = await negotiate()
@@ -1397,7 +1554,7 @@ async def test_mtu_acquisition_failure_cannot_send_handshake(monkeypatch, failur
     await entered.wait()
     if failure == "cancel":
         task.cancel()
-    with pytest.raises(asyncio.CancelledError if failure == "cancel" else GoveeCryptoError):
+    with pytest.raises(asyncio.CancelledError if failure == "cancel" else GoveeTransportError):
         await task
     assert not session.ready and session._key is None
     assert "private" not in json.dumps(session.diagnostics())

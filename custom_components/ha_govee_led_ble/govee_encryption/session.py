@@ -6,10 +6,13 @@ import os
 import warnings
 from typing import Any
 
+from bleak.exc import BleakError
+
 from ..transport import ENCRYPTION_UUID, WRITE_UUID, xor_checksum
 from . import (
     MIN_MTU,
     GoveeCryptoError,
+    GoveeTransportError,
     build_v1_handshake,
     build_v2_handshake,
     parse_v1_handshake,
@@ -56,7 +59,7 @@ class GoveeEncryptionSession:
         self.ready = False
         self.marker_pact = None
         if self._handshake is not None and not self._handshake.done():
-            self._handshake.set_exception(GoveeCryptoError("session_reset"))
+            self._handshake.set_exception(GoveeTransportError("session_reset"))
             self._handshake.exception()
         self._handshake = None
         self._opcode = 0
@@ -118,7 +121,12 @@ class GoveeEncryptionSession:
                     if not (plaintext_evidence or profile_plaintext) or advertised or self.required_version:
                         raise
                     if generation != self._generation or not client.is_connected:
-                        raise GoveeCryptoError("session_reset") from None
+                        error_type = (
+                            GoveeTransportError
+                            if isinstance(err, (BleakError, GoveeTransportError))
+                            else GoveeCryptoError
+                        )
+                        raise error_type("session_reset") from None
                     self._selection_failed = False
                     self.ready = True
                     self.last_result = (
@@ -133,7 +141,7 @@ class GoveeEncryptionSession:
             if self.version:
                 self.required_version = self.version
             if generation != self._generation or not client.is_connected:
-                raise GoveeCryptoError("session_reset")
+                raise GoveeTransportError("session_reset")
             self.ready = self.version == 0
             self.last_result = "plaintext" if self.ready else "selected"
         except asyncio.CancelledError:
@@ -141,11 +149,12 @@ class GoveeEncryptionSession:
             self.last_result = "cancelled"
             self.reset()
             raise
-        except Exception:
+        except Exception as err:
             self._selection_failed = True
             self.last_result = "selection_failed"
             self.reset()
-            raise GoveeCryptoError("encryption_selection_failed") from None
+            error_type = GoveeTransportError if isinstance(err, (BleakError, GoveeTransportError)) else GoveeCryptoError
+            raise error_type("encryption_selection_failed") from None
 
     async def _exchange(self, client: Any, opcode: int, packet: bytes) -> Any:
         generation = self._generation
@@ -155,7 +164,7 @@ class GoveeEncryptionSession:
             await client.write_gatt_char(WRITE_UUID, packet, response=False)
             result = await future
             if generation != self._generation or not client.is_connected:
-                raise GoveeCryptoError("session_reset")
+                raise GoveeTransportError("session_reset")
             return result
 
     async def async_negotiate(self, client: Any) -> None:
@@ -183,7 +192,7 @@ class GoveeEncryptionSession:
                         else:
                             _LOGGER.debug("BLE backend has no _acquire_mtu; MTU stays at %s", mtu)
                 if generation != self._generation or not client.is_connected:
-                    raise GoveeCryptoError("session_reset")
+                    raise GoveeTransportError("session_reset")
                 if type(mtu) is not int or mtu < MIN_MTU:
                     raise GoveeCryptoError("v2_fragmentation_unsupported")
                 self._mtu = mtu
@@ -192,7 +201,7 @@ class GoveeEncryptionSession:
             else:
                 raise GoveeCryptoError("session_not_selected")
             if not client.is_connected:
-                raise GoveeCryptoError("disconnected_during_negotiation")
+                raise GoveeTransportError("disconnected_during_negotiation")
             self.ready = True
             self.last_result = "encrypted"
         except asyncio.CancelledError:
@@ -202,7 +211,12 @@ class GoveeEncryptionSession:
         except Exception as err:
             self.last_result = "negotiation_timeout" if isinstance(err, TimeoutError) else "negotiation_failed"
             self.reset()
-            raise GoveeCryptoError(self.last_result) from None
+            error_type = (
+                GoveeTransportError
+                if isinstance(err, (BleakError, GoveeTransportError, TimeoutError))
+                else GoveeCryptoError
+            )
+            raise error_type(self.last_result) from None
         finally:
             self._handshake = None
             self._opcode = 0

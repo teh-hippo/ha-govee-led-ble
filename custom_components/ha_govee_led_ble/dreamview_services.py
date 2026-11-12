@@ -20,6 +20,7 @@ from .dreamview import (
     build_dreamview_group,
     integer,
 )
+from .govee_encryption import GoveeCryptoError
 from .light_service_dispatch import register_device_light_service
 from .schema_compat import vol
 
@@ -143,6 +144,9 @@ async def _async_dreamview_service(entity: Any, call: ServiceCall, *, name: str)
             await c.async_set_dreamview(setting, values)
     except ServiceValidationError:
         raise
+    except GoveeCryptoError as err:
+        _LOGGER.exception("DreamView service call failed")
+        raise HomeAssistantError(translation_domain=DOMAIN, translation_key="device_command_failed") from err
     except TypeError, ValueError, vol.Invalid:
         raise ServiceValidationError(translation_domain=DOMAIN, translation_key="invalid_control_request") from None
     except Exception as err:

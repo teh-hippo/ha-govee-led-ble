@@ -38,7 +38,7 @@ from custom_components.ha_govee_led_ble.dreamview_services import (
     DREAMVIEW_SERVICES,
     _async_dreamview_service,
 )
-from custom_components.ha_govee_led_ble.govee_encryption import v1_transform
+from custom_components.ha_govee_led_ble.govee_encryption import GoveeCryptoError, GoveeTransportError, v1_transform
 from custom_components.ha_govee_led_ble.light_services import async_register_light_services
 from custom_components.ha_govee_led_ble.transport import reassemble_a3, xor_checksum
 from tests.test_govee_encryption import KEY, negotiate
@@ -472,7 +472,8 @@ async def test_named_video_settings_and_readback(hass, model, apply_area, conten
     assert result["observed"] == {}
 
 
-async def test_registration_and_valid_service_dispatch(hass) -> None:
+@pytest.mark.parametrize("error_type", [BleakError, GoveeCryptoError, GoveeTransportError])
+async def test_registration_and_valid_service_dispatch(hass, error_type) -> None:
     with patch("homeassistant.helpers.service.async_register_batched_platform_entity_service") as register:
         async_register_light_services(hass)
     calls = {call.args[2]: call.kwargs for call in register.call_args_list}
@@ -522,7 +523,8 @@ async def test_registration_and_valid_service_dispatch(hass) -> None:
         )
     entity._async_supersede_preview.assert_not_awaited()
     c.profile = PROFILE
-    c.async_write_effect_sequence.side_effect = BleakError("private-address")
+    c.async_write_effect_sequence.reset_mock()
+    c.async_write_effect_sequence.side_effect = error_type("private-address")
     with pytest.raises(HomeAssistantError) as exc:
         await _async_dreamview_service(
             entity, ServiceCall(hass, DOMAIN, "set_dreamview_switch", {"enabled": True}), name="set_dreamview_switch"
@@ -530,6 +532,8 @@ async def test_registration_and_valid_service_dispatch(hass) -> None:
     assert "private-address" not in str(exc.value)
     assert exc.value.translation_domain == DOMAIN
     assert exc.value.translation_key == "device_command_failed"
+    assert not isinstance(exc.value, ServiceValidationError)
+    c.async_write_effect_sequence.assert_awaited_once()
 
 
 async def test_concrete_encrypted_notifications_and_private_logs(hass, caplog):

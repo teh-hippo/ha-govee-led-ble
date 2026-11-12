@@ -32,6 +32,10 @@ class GoveeCryptoError(ValueError):
     """A fixed, non-secret transport rejection. Never authorize fallback."""
 
 
+class GoveeTransportError(GoveeCryptoError):
+    """An operational link or session-lifecycle failure, not a protocol rejection."""
+
+
 def parse_wire(kind: str, data: bytes) -> Any:
     """Read a schema-owned structure without exposing parser exception payloads."""
     try:

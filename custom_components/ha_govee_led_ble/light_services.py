@@ -15,6 +15,7 @@ from .const import DOMAIN
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator import GoveeBLECoordinator
 from .dreamview_services import async_register_dreamview_services
+from .govee_encryption import GoveeCryptoError
 from .h6099_controls import (
     async_read_installation_controls,
     async_set_installation_direction,
@@ -199,6 +200,8 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
                     await self.coordinator.async_paint_segments(
                         resolved, **({"write_guard": guard} if guard is not None else {})
                     )
+        except GoveeCryptoError as err:
+            raise HomeAssistantError(translation_domain=DOMAIN, translation_key="device_command_failed") from err
         except (KeyError, TypeError, ValueError) as err:
             raise ServiceValidationError(
                 translation_domain=DOMAIN,
@@ -248,6 +251,8 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
                         await c.async_set_segment_kelvin(packet, requested_kelvin=color_temp_kelvin)
                 finally:
                     self._notify_state_changed()
+        except GoveeCryptoError as err:
+            raise HomeAssistantError(translation_domain=DOMAIN, translation_key="device_command_failed") from err
         except (TypeError, ValueError) as err:
             raise ServiceValidationError(
                 translation_domain=DOMAIN,
@@ -298,6 +303,8 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
                     segments, brightness, **({"write_guard": write_guard} if write_guard is not None else {})
                 )
                 self._notify_state_changed()
+        except GoveeCryptoError as err:
+            raise HomeAssistantError(translation_domain=DOMAIN, translation_key="device_command_failed") from err
         except (TypeError, ValueError) as err:
             raise ServiceValidationError(
                 translation_domain=DOMAIN,
