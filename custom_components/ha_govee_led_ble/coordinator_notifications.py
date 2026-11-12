@@ -19,6 +19,7 @@ from .coordinator_expectations import expectations_from_packet
 from .coordinator_status import (
     ParsedColorModeResponse,
     ParsedMode,
+    ParsedStatusEnvelope,
     StatusDomain,
     decode_status_frame_result,
     parse_color_mode,
@@ -29,6 +30,7 @@ from .generated_protocol_adapter import (
     BulkStatusCollector,
     build_bulk_status_query,
     is_bulk_status_frame,
+    parse_boolean_control,
     parse_command_ack_result,
     parse_command_result,
     parse_physical_ic_count,
@@ -37,7 +39,10 @@ from .generated_protocol_adapter import (
     upload_ack_success,
     video_parameters_from_brightness,
 )
+from .h60b0_controls import source_readback
 from .h6099_controls import h6099_control_status
+from .low_blue_light import parse_setting as parse_low_blue_light_setting
+from .low_blue_light import setting_state as low_blue_light_state
 from .music_semantics import (
     music_body_params_for_mode,
 )
@@ -348,14 +353,14 @@ class _NotificationMixin(_CoordinatorBase):
             )
             return True
         result = collector.feed(frame)
-        entry = self._record_packet(
-            "rx",
-            frame,
-            outcome="rejected" if result.rejection else "parsed",
-            reason=result.rejection.value if result.rejection else "bulk_status_fragment",
-            parser=result.parser,
-        )
         if result.parsed is None:
+            self._record_packet(
+                "rx",
+                frame,
+                outcome="rejected" if result.rejection else "parsed",
+                reason=result.rejection.value if result.rejection else "bulk_status_fragment",
+                parser=result.parser,
+            )
             return True
         try:
             records = result.parsed.records
@@ -444,10 +449,11 @@ class _NotificationMixin(_CoordinatorBase):
             self._bulk_query_incomplete = False
             self._bulk_collector = None
             self._mark_received(StatusDomain.OTHER, "bulk_status")
+            self._record_packet("rx", frame, outcome="parsed", reason="bulk_status_fragment", parser=result.parser)
             self.async_set_updated_data(self.data or {})
         except ValueError:
             collector.failed = True
-            entry.update(outcome="rejected", reason="semantic_rejected")
+            self._record_packet("rx", frame, outcome="rejected", reason="semantic_rejected", parser=result.parser)
             _LOGGER.debug("Rejected complete bulk status for %s", self.model, exc_info=True)
         return True
 
@@ -609,19 +615,10 @@ class _NotificationMixin(_CoordinatorBase):
                         setattr(self, spec.key, spec.default)
                         self._initialized_music_parameters.add(spec.key)
 
-    def _notify_callback(self, _sender: Any, data: bytearray) -> None:
-        frame = bytes(data)
-        if self._encryption is not None:
-            decoded_frame = self._encryption.decode(frame)
-            if decoded_frame is None:
-                return
-            frame = decoded_frame
-        self._last_rx_monotonic = time.monotonic()
-        if self._handle_bulk_notification(frame):
-            return
-        from .low_blue_light import parse_setting, setting_state
-
-        low_blue_light = parse_setting(frame, self.profile)
+    def _handle_low_blue_light_notification(self, frame: bytes) -> bool:
+        if self.profile.setting_grammar != "H6072":
+            return False
+        low_blue_light = parse_low_blue_light_setting(frame, self.profile)
         if low_blue_light.parsed is not None:
             if not self.profile.supports_low_blue_light or not self.identity_fields_confirmed(
                 frozenset({"fw_version"})
@@ -629,15 +626,18 @@ class _NotificationMixin(_CoordinatorBase):
                 self._record_packet(
                     "rx", frame, outcome="rejected", reason="unauthorised_setting", parser=low_blue_light.parser
                 )
-                return
-            self.low_blue_light = setting_state(low_blue_light.parsed)
+                return True
+            self.low_blue_light = low_blue_light_state(low_blue_light.parsed)
             self._mark_received(StatusDomain.LOW_BLUE_LIGHT, "low_blue_light")
             self._reply_gate.observe(frame)
             self._record_packet(
                 "rx", frame, outcome="parsed", reason="native_setting_status", parser=low_blue_light.parser
             )
             self.async_set_updated_data(self.data or {})
-            return
+            return True
+        return False
+
+    def _handle_zone_notification(self, frame: bytes) -> bool:
         zone_result = parse_zone_notification(frame, self.profile)
         if zone_result.parsed is not None:
             status = zone_result.parsed
@@ -654,6 +654,35 @@ class _NotificationMixin(_CoordinatorBase):
                 self._mark_received(StatusDomain.POWER, "is_on")
             self._record_packet("rx", frame, outcome="parsed", reason="native_zone_status", parser=zone_result.parser)
             self.async_set_updated_data(self.data or {})
+            return True
+        return False
+
+    def _apply_source_info(self, generated: Any) -> tuple[str, ...]:
+        body = generated.body
+        native_values = source_readback(body.operation, self.profile)
+        flags = {name: bool(getattr(body, name)) for name in self.profile.boolean_controls}
+        self.boolean_control_state.update(flags)
+        observed = [f"boolean_{name}" for name in flags]
+        if self._accept_expected_values(native_values):
+            for field, value in native_values.items():
+                setattr(self, field, value)
+            observed.extend(native_values)
+        if self._accept_expected("is_on", bool(body.master_enabled)):
+            self.is_on = bool(body.master_enabled)
+            observed.append("is_on")
+        return tuple(observed)
+
+    def _notify_callback(self, _sender: Any, data: bytearray) -> None:
+        frame = bytes(data)
+        if self._encryption is not None:
+            decoded_frame = self._encryption.decode(frame)
+            if decoded_frame is None:
+                return
+            frame = decoded_frame
+        self._last_rx_monotonic = time.monotonic()
+        if self._handle_bulk_notification(frame):
+            return
+        if self._handle_low_blue_light_notification(frame) or self._handle_zone_notification(frame):
             return
         if self._handle_dreamview_notification(frame):
             self._reply_gate.observe(frame)
@@ -710,7 +739,6 @@ class _NotificationMixin(_CoordinatorBase):
                 "" if self._dreamview_private_write else frame.hex(),
             )
             return
-        domain, payload = decoded.domain, decoded.payload
         if not status_is_authorized(decoded, self.profile):
             self._record_packet(
                 "rx",
@@ -721,26 +749,30 @@ class _NotificationMixin(_CoordinatorBase):
                 domain=decoded.raw_domain,
             )
             return
-        generated = decoded.generated
-        packet_entry = self._record_packet(
+        self._handle_decoded_status(frame, decoded, result.parser)
+
+    def _record_parsed_status(self, frame: bytes, decoded: ParsedStatusEnvelope, parser: str | None) -> None:
+        self._record_packet(
             "rx",
             frame,
             outcome="parsed",
             reason="status_parsed",
-            parser=result.parser,
+            parser=parser,
             domain=decoded.raw_domain,
         )
         _LOGGER.debug(
             "rx %s domain=0x%02x payload=%s",
             self.model,
             decoded.raw_domain,
-            "" if self._dreamview_private_write else payload.hex(),
+            "" if self._dreamview_private_write else decoded.payload.hex(),
         )
+
+    def _handle_decoded_status(self, frame: bytes, decoded: ParsedStatusEnvelope, parser: str | None) -> None:
+        domain, generated = decoded.domain, decoded.generated
         try:
             observed: tuple[str, ...] = ()
-            if self.profile.boolean_controls:
-                from .generated_protocol_adapter import parse_boolean_control
-
+            domain_name = getattr(generated.domain, "name", None)
+            if self.profile.boolean_controls and domain_name != "source_info":
                 boolean_values = parse_boolean_control(generated, self.model, profile=self.profile)
                 if self.profile.setting_grammar == "H6046" and boolean_values:
                     self.bar_enable_mask = int(generated.body.mask)
@@ -754,19 +786,9 @@ class _NotificationMixin(_CoordinatorBase):
                 for field, value in values.items():
                     setattr(self, field, value)
                 observed = tuple(values)
-            if getattr(generated.domain, "name", None) == "source_info":
-                from .h60b0_controls import source_readback
-
-                body = generated.body
-                native_values = source_readback(body.operation, self.profile)
-                if self._accept_expected_values(native_values):
-                    for field, value in native_values.items():
-                        setattr(self, field, value)
-                    observed += tuple(native_values)
-                if self._accept_expected("is_on", bool(body.master_enabled)):
-                    self.is_on = bool(body.master_enabled)
-                    observed += ("is_on",)
-            elif getattr(generated.domain, "name", None) == "power_on_behaviour":
+            if domain_name == "source_info":
+                observed += self._apply_source_info(generated)
+            elif domain_name == "power_on_behaviour":
                 value = getattr(generated.body.state, "name", None)
                 if (hasattr(generated.body, "availability") and not generated.body.availability) or value is None:
                     raise ValueError("Power-on behaviour is unavailable or unknown")
@@ -784,6 +806,7 @@ class _NotificationMixin(_CoordinatorBase):
                     observed += ("is_on",)
                 self._reply_gate.observe(frame)
                 self._mark_received(StatusDomain.OTHER, *observed)
+                self._record_parsed_status(frame, decoded, parser)
                 self.async_set_updated_data(self.data or {})
                 return
             elif domain is StatusDomain.CONFIGURED_STRINGS:
@@ -800,6 +823,7 @@ class _NotificationMixin(_CoordinatorBase):
                     observed = ("is_on",)
             elif domain is StatusDomain.BRIGHTNESS:
                 if not self.profile.can_read(ReadDomain.BRIGHTNESS):
+                    self._record_parsed_status(frame, decoded, parser)
                     return
                 brightness_value = (
                     int(generated.values["brightness_pct"])
@@ -819,6 +843,7 @@ class _NotificationMixin(_CoordinatorBase):
                     observed = ("brightness_pct",)
             elif domain in {StatusDomain.COLOUR_MODE, StatusDomain.MODE}:
                 if not self.profile.supports_color_mode_readback:
+                    self._record_parsed_status(frame, decoded, parser)
                     return
                 observed = self._apply_color_mode_payload(parse_color_mode(generated, self.model, profile=self.profile))
             elif domain is StatusDomain.DISPLAY_SETTING:
@@ -844,6 +869,7 @@ class _NotificationMixin(_CoordinatorBase):
                     observed = tuple(edge_values)
             elif domain is StatusDomain.SEGMENTS:
                 if not self.profile.supports_segments:
+                    self._record_parsed_status(frame, decoded, parser)
                     return
                 observed = self._apply_segment_group(generated)
             elif domain is StatusDomain.FIRMWARE:
@@ -867,6 +893,7 @@ class _NotificationMixin(_CoordinatorBase):
             elif domain in _OPTIONAL_CONTROL_DOMAINS:
                 control_values = h6099_control_status(decoded, self.profile)
                 if not control_values:
+                    self._record_parsed_status(frame, decoded, parser)
                     return
                 for field, control_value in control_values.items():
                     setattr(self, field, control_value)
@@ -875,13 +902,20 @@ class _NotificationMixin(_CoordinatorBase):
                 self._apply_physical_ic_count(generated)
             self._reply_gate.observe(frame)
             self._mark_received(domain, *observed)
+            self._record_parsed_status(frame, decoded, parser)
             self.async_set_updated_data(self.data or {})
         except IndexError, ValueError:
-            packet_entry["outcome"] = "rejected"
-            packet_entry["reason"] = "semantic_rejected"
+            self._record_packet(
+                "rx",
+                frame,
+                outcome="rejected",
+                reason="semantic_rejected",
+                parser=parser,
+                domain=decoded.raw_domain,
+            )
             _LOGGER.debug(
                 "Rejected %s status frame parser=%s reason=semantic_rejected raw=%s",
                 self.model,
-                result.parser,
+                parser,
                 "" if self._dreamview_private_write else frame.hex(),
             )

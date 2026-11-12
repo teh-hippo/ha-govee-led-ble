@@ -131,10 +131,16 @@ def test_unqualified_sources_masks_and_levels_are_rejected(prefix):
         require_profile_packet(frame(prefix), PROFILE)
 
 
-async def test_source_readback_is_independent_and_invalid_state_cannot_update_flags(hass):
+async def test_source_readback_is_independent_and_invalid_state_cannot_update_flags(hass, monkeypatch):
+    from custom_components.ha_govee_led_ble import coordinator_notifications, h60b0_controls
+
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H60B0", configuration_url=None)
     coordinator.profile = PROFILE
+    decode = MagicMock(wraps=h60b0_controls.source_readback)
+    monkeypatch.setattr(h60b0_controls, "source_readback", decode)
+    monkeypatch.setattr(coordinator_notifications, "source_readback", decode)
     coordinator._notify_callback(None, bytearray(frame("aa42d00fa0280bb81e")))
+    decode.assert_called_once()
     assert coordinator.boolean_control_state == {"top_enabled": True, "side_enabled": False, "bottom_enabled": True}
     assert (coordinator.bottom_kelvin, coordinator.bottom_brightness, coordinator.ripple_speed) == (4000, 40, 30)
     coordinator._notify_callback(None, bytearray(frame("aa42200fa0650bb81e")))
