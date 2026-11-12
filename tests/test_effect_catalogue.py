@@ -637,12 +637,35 @@ def test_catalogue_apply_support_and_visible_workflows_derive_from_release_contr
             )
 
 
-def test_capability_state_distinguishes_visibility_from_deployability() -> None:
+def test_capability_state_distinguishes_visibility_from_deployability(monkeypatch) -> None:
     assert workflow_capability_state("H617A", CapabilityWorkflow.ADVANCED) is CapabilityState.SUPPORTED
     assert workflow_capability_state("H6199", CapabilityWorkflow.ADVANCED) is CapabilityState.SUPPORTED
     assert studio_apply_capability_state("H6199", CapabilityWorkflow.PALETTE_DIY) is CapabilityState.SUPPORTED
     assert studio_apply_capability_state("H617A", CapabilityWorkflow.WORKSHOP) is CapabilityState.SUPPORTED
     assert studio_apply_capability_state("H6199", CapabilityWorkflow.WORKSHOP) is CapabilityState.SUPPORTED
+    monkeypatch.setattr(
+        "custom_components.ha_govee_led_ble.effect_contracts.RELEASE_CAPABILITY_CONTRACT",
+        tuple(
+            replace(
+                capability,
+                application_route=ApplicationRoute.NONE,
+                verification_confidence=VerificationConfidence.UNVERIFIED,
+            )
+            if capability.model == "H617A" and capability.workflow is CapabilityWorkflow.MULTI
+            else capability
+            for capability in RELEASE_CAPABILITY_CONTRACT
+        ),
+    )
+    catalogue = MODEL_EFFECT_CATALOGUES["H617A"]
+    payload = catalogue.to_dict()
+    assert cast(dict[str, str], payload["supports"])["multi"] == "evidence_gap"
+    assert cast(dict[str, str], payload["apply"])["multi"] == "unsupported"
+    narrowed = catalogue.to_dict(profile=replace(MODEL_PROFILES["H617A"], effect_workflows=frozenset({"single"})))
+    assert (
+        cast(dict[str, str], narrowed["supports"])["multi"]
+        == cast(dict[str, str], narrowed["apply"])["multi"]
+        == "unsupported"
+    )
 
 
 def test_workshop_protocol_fixtures_decode_embedded_payloads() -> None:
