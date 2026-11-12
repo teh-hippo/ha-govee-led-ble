@@ -30,6 +30,7 @@ from .ble_connection import (
     clear_stale_gatt_recovery,
     is_stale_gatt_error,
     mark_stale_gatt_recovery,
+    needs_reconnect_backoff,
     stale_gatt_recovery_pending,
 )
 from .ble_device_resolver import BLEDeviceResolver
@@ -67,6 +68,7 @@ from .coordinator_status import (
     ParsedMode,
     StatusDomain,
 )
+from .coordinator_upload import PendingUploadAck
 from .effect_contracts import CapabilityState
 from .generated_protocol_adapter import (
     A3Sequence,
@@ -230,9 +232,7 @@ class GoveeBLECoordinator(
         self._observed_physical_ic_count: int | None = None
         self._physical_ic_count_confirmed = False
         self._authorization_generation = 0
-        self._upload_ack: tuple[BleakClient, object | None, int, int, int | None, int, asyncio.Future[bool]] | None = (
-            None
-        )
+        self._upload_ack: PendingUploadAck | None = None
         self._setting_ack: tuple[BleakClient, object | None, int, asyncio.Future[bool]] | None = None
         self._lock = asyncio.Lock()
         self._control_arbiter = BLEControlArbiter()
@@ -769,7 +769,7 @@ class GoveeBLECoordinator(
                 profile = replace(profile, segment_count=bulbs)
         if profile == self.profile and not (self.model == "H607C" and not preserve_state and not profile.supports_rgb):
             if context_changed:
-                self._profile_generation += 1
+                self._advance_profile_generation()
                 self._expected_state.clear()
                 self.source_static_intents.clear()
             return
@@ -796,7 +796,7 @@ class GoveeBLECoordinator(
                 self.power_on_behaviour = self.power_on_open_flag = None
         if not profile.supports_low_blue_light:
             self.low_blue_light = None
-        self._profile_generation += 1
+        self._advance_profile_generation()
         self._expected_state.clear()
         self.source_static_intents.clear()
         self._sync_device_configuration_url()
@@ -1192,6 +1192,7 @@ class GoveeBLECoordinator(
     def _clear_client_state(self, client: BleakClient | None) -> None:
         if self._client is not client:
             return
+        self._invalidate_upload_ack(BleakError("Device disconnected during effect upload"))
         self._client = None
         self._static_rgb_known = False
         self._music_palette = self._music_body = None
@@ -1249,6 +1250,7 @@ class GoveeBLECoordinator(
         if not (self._client and self._client.is_connected):
             return
         client = self._client
+        self._invalidate_upload_ack(BleakError("Device subscription changed during effect upload"))
         token = self._notification_token = object()
         self._reply_gate.reset()
 
@@ -2176,7 +2178,7 @@ class GoveeBLECoordinator(
         self._configured_strings_confirmed = False
         bulbs = count * self.profile.bulbs_per_string
         self.profile = replace(self.profile, segment_count=bulbs)
-        self._profile_generation += 1
+        self._advance_profile_generation()
         self._expected_state.clear()
         self._segment_query_generation = None
         self._segment_groups_observed.clear()
@@ -2998,19 +3000,23 @@ class GoveeBLECoordinator(
             raise ValueError("Upload ACK index requires require_upload_ack")
         return None, None, 0
 
-    async def _await_upload_ack(
-        self, future: asyncio.Future[bool] | None, check_connection: Callable[[], None], protocol: int
-    ) -> None:
+    def _invalidate_upload_ack(self, error: Exception) -> None:
+        if self._upload_ack is not None:
+            self._upload_ack.invalidate(error)
+
+    def _advance_profile_generation(self) -> None:
+        self._profile_generation += 1
+        self._invalidate_upload_ack(ValueError("Device profile changed during effect upload"))
+
+    async def _await_upload_ack(self, pending: PendingUploadAck | None, check_connection: Callable[[], None]) -> None:
         """Wait for the device's verdict on the upload whose final packet was just written."""
-        if future is None:
+        if pending is None:
             raise RuntimeError("Upload writer did not run the physical-write guard")
         async with asyncio.timeout(UPLOAD_ACK_TIMEOUT):
-            while not future.done():
-                check_connection()
-                await asyncio.wait((future,), timeout=0.05)
+            accepted = await pending.future
         check_connection()
-        if not future.result():
-            raise RuntimeError(f"Device rejected {protocol:02X} upload")
+        if not accepted:
+            raise RuntimeError(f"Device rejected {pending.protocol:02X} upload")
         self._upload_ack = None
 
     async def _write_effect_final_packet(
@@ -3099,7 +3105,7 @@ class GoveeBLECoordinator(
                 upload_attempted = False
                 for attempt in range(1, attempts + 1):
                     sequence.reset()
-                    future: asyncio.Future[bool] | None = None
+                    pending_ack: PendingUploadAck | None = None
                     try:
                         if writer is None:
                             async with asyncio.timeout(CONNECTION_SETUP_TIMEOUT):
@@ -3145,7 +3151,7 @@ class GoveeBLECoordinator(
                                 token: object | None = token,
                                 generation: int = generation,
                             ) -> None:
-                                nonlocal future, upload_attempted
+                                nonlocal pending_ack, upload_attempted
                                 self._require_not_dreamview_claimed()
                                 if self._profile_generation != generation:
                                     raise ValueError("Device profile changed during effect upload")
@@ -3160,8 +3166,16 @@ class GoveeBLECoordinator(
                                 if subtype is not None and index - 1 == upload_ack_index:
                                     # After transforms and guards, immediately before the
                                     # final physical attempt: synchronous replies are valid.
-                                    future = asyncio.get_running_loop().create_future()
-                                    self._upload_ack = (client, token, generation, subtype, ack_mode, protocol, future)
+                                    pending_ack = PendingUploadAck(
+                                        client,
+                                        token,
+                                        generation,
+                                        subtype,
+                                        ack_mode,
+                                        protocol,
+                                        asyncio.get_running_loop().create_future(),
+                                    )
+                                    self._upload_ack = pending_ack
 
                             values = state_values if packet_state_values is None else packet_state_values[index - 1]
 
@@ -3190,7 +3204,7 @@ class GoveeBLECoordinator(
                                 )
                             self._renew_foreground_lease()
                             if require_upload_ack and index - 1 == upload_ack_index:
-                                await self._await_upload_ack(future, check_connection, protocol)
+                                await self._await_upload_ack(pending_ack, check_connection)
                             if progress is not None:
                                 await progress(index)
                         break
@@ -3213,13 +3227,12 @@ class GoveeBLECoordinator(
                             or (retry_allowed is not None and not retry_allowed())
                         ):
                             raise
-                        error = str(err).lower()
-                        if isinstance(err, TimeoutError) or "already shutdown" in error or "not found" in error:
+                        if needs_reconnect_backoff(err):
                             await asyncio.sleep(RETRY_BACKOFF_SECONDS * attempt)
                     finally:
                         self._upload_ack = None
-                        if future is not None:
-                            future.cancel()
+                        if pending_ack is not None:
+                            pending_ack.close()
                 if final_packet is not None:
                     if not require_upload_ack and self.profile.packet_write_delay > 0:
                         await asyncio.sleep(self.profile.packet_write_delay)
@@ -3550,6 +3563,7 @@ class GoveeBLECoordinator(
         self._music_palette = self._music_body = None
         self.video_parameters = None
         self._notification_token = None
+        self._invalidate_upload_ack(BleakError("Device disconnected during effect upload"))
         if self._encryption is not None:
             self._encryption.reset()
         self._stop_keep_alive()

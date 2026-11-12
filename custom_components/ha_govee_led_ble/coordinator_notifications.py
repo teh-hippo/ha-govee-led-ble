@@ -512,17 +512,16 @@ class _NotificationMixin(_CoordinatorBase):
                 future.set_result(bool(ack.parsed.is_success))
         pending = self._upload_ack
         if pending is not None:
-            client, token, generation, subtype, ack_mode, protocol, future = pending
-            ack_success = upload_ack_success(ack.parsed, subtype, ack_mode, protocol=protocol)
+            ack_success = upload_ack_success(ack.parsed, pending.subtype, pending.mode, protocol=pending.protocol)
             if (
                 ack_success is not None
-                and self._client is client
-                and client.is_connected
-                and self._notification_token is token
-                and self._profile_generation == generation
-                and not future.done()
+                and self._client is pending.client
+                and pending.client.is_connected
+                and self._notification_token is pending.token
+                and self._profile_generation == pending.profile_generation
+                and not pending.future.done()
             ):
-                future.set_result(ack_success)
+                pending.future.set_result(ack_success)
 
     def _apply_display_setting(self, generated: Any, observed: tuple[str, ...]) -> tuple[str, ...]:
         """Apply a display-setting reply; ``observed`` is returned unchanged when it sets nothing."""
@@ -604,7 +603,7 @@ class _NotificationMixin(_CoordinatorBase):
                 topology_changed = updated.segment_count != self.profile.segment_count
                 self.profile = updated
                 if topology_changed:
-                    self._profile_generation += 1
+                    self._advance_profile_generation()
                     self._segment_query_generation = None
                     self._expected_state.clear()
                     self.segment_colors = [(255, 255, 255)] * updated.segment_count

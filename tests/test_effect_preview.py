@@ -1401,7 +1401,7 @@ async def test_snapshot_profile_previews_use_preview_transport(
             if packet == compiled.packets[-2]:
                 assert coordinator.music_mode == "off"
                 assert coordinator._upload_ack is not None
-                pending = coordinator._upload_ack[-1]
+                pending = coordinator._upload_ack.future
                 assert not pending.done()
                 payload = bytes.fromhex("a3413200").ljust(19, b"\0")
                 coordinator._notify_callback(None, bytearray(payload + bytes([xor_checksum(payload)])))

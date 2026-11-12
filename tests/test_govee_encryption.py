@@ -1709,7 +1709,7 @@ async def test_h6076_identity_and_music_travel_over_v1_and_the_companion_is_ackn
             reply(b"\xaa\x06" + b"1.04.05\0")
         elif plain[:2] == b"\xa3\xff":
             reply(b"\xa3\x41\x4d\x00")  # A late acknowledgement for a different mode must be ignored.
-            assert not coordinator._upload_ack[-1].done()
+            assert not coordinator._upload_ack.future.done()
             reply(b"\xa3\x41\x50\x00")
 
     device.write_gatt_char.side_effect = write
