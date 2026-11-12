@@ -49,6 +49,7 @@ from .scenes import (
     canonical_scene_key,
     resolve_scene_code,
     scene_selector_code,
+    scene_supported,
 )
 from .video_applicability import (
     video_control_states,
@@ -592,6 +593,7 @@ class _RecoveryMixin(_CoordinatorBase):
                 self.model,
                 state.scene_code,
                 preferred_key=state.effect,
+                profile=self.profile,
             )
             if state.scene_code is not None
             else None
@@ -602,6 +604,8 @@ class _RecoveryMixin(_CoordinatorBase):
             scene_name = canonical_scene_key(self.model, state.effect)
             candidate = MODEL_SCENES.get(self.model, {}).get(scene_name)
             if candidate is None:
+                return False
+            if not scene_supported(candidate, self.profile):
                 return False
             scene = candidate
         else:
