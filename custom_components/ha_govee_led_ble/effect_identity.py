@@ -19,6 +19,7 @@ from .effect_limits import (
     MAX_DEVICE_CACHE_STORE_BYTES,
     MAX_IDENTIFIER_LENGTH,
     MAX_STORE_JSON_NODES,
+    json_document_size,
     validate_bounded_string,
     validate_json_document,
     validate_revision,
@@ -241,6 +242,7 @@ class EffectDeviceCache:
     def __init__(self, hass: HomeAssistant | VersionedDocumentStore) -> None:
         self._store = _device_cache_store(hass) if isinstance(hass, HomeAssistant) else hass
         self._data: dict[str, Any] | None = None
+        self._encoded_size = 0
 
     async def async_load(self) -> tuple[ObservedDeviceState, ...]:
         stored = await self._store.async_load()
@@ -266,7 +268,7 @@ class EffectDeviceCache:
             states = stale_states
         elif stored is not None and data != stored:
             await self._store.async_save(data)
-        self._data = copy.deepcopy(data)
+        self._install_data(copy.deepcopy(data))
         return states
 
     def get(self, config_entry_id: str) -> ObservedDeviceState | None:
@@ -275,6 +277,28 @@ class EffectDeviceCache:
         return None if not isinstance(raw, Mapping) else ObservedDeviceState.from_dict(cast(Mapping[str, Any], raw))
 
     def set(self, state: ObservedDeviceState) -> None:
+        current = self._require_loaded()
+        previous = self.get(state.config_entry_id)
+        if previous == state:
+            return
+        if previous is not None and replace(previous, observed_at=state.observed_at) == state:
+            encoded_size = (
+                self._encoded_size + json_document_size(state.observed_at) - json_document_size(previous.observed_at)
+            )
+            if encoded_size > MAX_DEVICE_CACHE_STORE_BYTES:
+                raise EffectStorageError(f"device cache must not exceed {MAX_DEVICE_CACHE_STORE_BYTES} bytes")
+            key = state.config_entry_id
+            self._install_data(
+                {
+                    **current,
+                    "devices": {
+                        **current["devices"],
+                        key: {**current["devices"][key], "observed_at": state.observed_at},
+                    },
+                },
+                encoded_size=encoded_size,
+            )
+            return
         candidate = copy.deepcopy(self._require_loaded())
         if state.config_entry_id not in candidate["devices"] and len(candidate["devices"]) >= MAX_DEVICE_CACHE_ENTRIES:
             oldest = min(
@@ -285,7 +309,7 @@ class EffectDeviceCache:
             candidate["devices"].pop(oldest_id, None)
         candidate["devices"][state.config_entry_id] = state.to_dict()
         _validate_device_cache(candidate)
-        self._data = candidate
+        self._install_data(candidate)
         self._store.async_delay_save(lambda: copy.deepcopy(self._require_loaded()), delay=5)
 
     def clear_active_effect(self, config_entry_id: str) -> None:
@@ -301,7 +325,7 @@ class EffectDeviceCache:
             return
         _validate_device_cache(candidate)
         await self._store.async_save(candidate)
-        self._data = candidate
+        self._install_data(candidate)
 
     def detach_item(self, item_id: UUID) -> None:
         current = self._require_loaded()
@@ -325,7 +349,7 @@ class EffectDeviceCache:
         if not changed:
             return
         _validate_device_cache(candidate)
-        self._data = candidate
+        self._install_data(candidate)
         self._store.async_delay_save(lambda: copy.deepcopy(self._require_loaded()), delay=5)
 
     async def async_flush(self) -> None:
@@ -352,7 +376,11 @@ class EffectDeviceCache:
             return
         _validate_device_cache(candidate)
         await self._store.async_save(candidate)
-        self._data = candidate
+        self._install_data(candidate)
+
+    def _install_data(self, data: dict[str, Any], *, encoded_size: int | None = None) -> None:
+        self._data = data
+        self._encoded_size = json_document_size(data) if encoded_size is None else encoded_size
 
     def _require_loaded(self) -> dict[str, Any]:
         if self._data is None:
