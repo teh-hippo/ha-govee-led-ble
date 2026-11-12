@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import json
 import logging
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
@@ -930,6 +931,7 @@ class EffectDeploymentRepository:
         self._data: dict[str, Any] | None = None
         self._snapshot: tuple[dict[str, Any], DeploymentSnapshot, dict[UUID, DeploymentRecord]] | None = None
         self._listeners: set[Callable[[DeploymentSnapshot], None]] = set()
+        self._encoded_size = 0
 
     async def async_load(self) -> DeploymentSnapshot:
         async with self._lock:
@@ -1090,6 +1092,12 @@ class EffectDeploymentRepository:
             version = cast(int, current["version"])
             if expected_version is not None and version != expected_version:
                 raise EffectVersionConflictError(version)
+            if not durable and (progress := self._progress_update(record)) is not None:
+                candidate, snapshot, encoded_size = progress
+                self._install_data(candidate, snapshot, encoded_size=encoded_size)
+                self._store.async_delay_save(lambda: copy.deepcopy(self._require_loaded()), delay=5)
+                self._notify_listeners(snapshot)
+                return snapshot
             candidate = copy.deepcopy(current)
             key = str(record.operation_id)
             if key not in candidate["records"] and len(candidate["records"]) >= MAX_DEPLOYMENT_RECORDS:
@@ -1106,12 +1114,51 @@ class EffectDeploymentRepository:
                     lambda: copy.deepcopy(self._require_loaded()),
                     delay=5,
                 )
-            for listener in tuple(self._listeners):
-                try:
-                    listener(snapshot)
-                except Exception:
-                    _LOGGER.exception("Effect deployment subscriber failed after a committed write")
+            self._notify_listeners(snapshot)
             return snapshot
+
+    def _progress_update(self, record: DeploymentRecord) -> tuple[dict[str, Any], DeploymentSnapshot, int] | None:
+        snapshot, records = self._cached()
+        previous = records.get(record.operation_id)
+        if previous is None:
+            return None
+        updated = replace(
+            previous,
+            progress_current=record.progress_current,
+            progress_total=record.progress_total,
+            updated_at=record.updated_at,
+        )
+        if updated != record:
+            return None
+        if type(record.progress_current) is not int or type(record.progress_total) is not int:
+            raise EffectStorageError("deployment progress must contain integers")
+        version = snapshot.version + 1
+        validate_revision(version, "deployment store version", minimum=0, error_type=EffectStorageError)
+        current = self._require_loaded()
+        key = str(record.operation_id)
+        changes = {
+            "progress_current": record.progress_current,
+            "progress_total": record.progress_total,
+            "updated_at": record.updated_at,
+        }
+        old_raw = current["records"][key]
+        encoded_size = self._encoded_size + len(str(version)) - len(str(snapshot.version))
+        for field, value in changes.items():
+            encoded_size += _json_size(value) - _json_size(old_raw[field])
+        if encoded_size > MAX_DEPLOYMENT_STORE_BYTES:
+            raise EffectStorageError(f"deployment store must not exceed {MAX_DEPLOYMENT_STORE_BYTES} bytes")
+        candidate = {**current, "version": version, "records": {**current["records"], key: {**old_raw, **changes}}}
+        updated_snapshot = DeploymentSnapshot(
+            version, tuple(updated if item.operation_id == record.operation_id else item for item in snapshot.records)
+        )
+        return candidate, updated_snapshot, encoded_size
+
+    def _notify_listeners(self, snapshot: DeploymentSnapshot) -> None:
+        for listener in tuple(self._listeners):
+            try:
+                listener(snapshot)
+            except Exception:
+                _LOGGER.exception("Effect deployment subscriber failed after a committed write")
 
     async def async_reconcile_library_hashes(self, items: tuple[LibraryItem, ...]) -> None:
         hashes = {(item.id, item.version): item.content_hash for item in items}
@@ -1137,15 +1184,19 @@ class EffectDeploymentRepository:
             await self._store.async_save(candidate)
             self._install_data(candidate, snapshot)
 
-    def _install_data(self, data: dict[str, Any], snapshot: DeploymentSnapshot) -> None:
+    def _install_data(
+        self, data: dict[str, Any], snapshot: DeploymentSnapshot, *, encoded_size: int | None = None
+    ) -> None:
         self._data = data
         self._snapshot = (data, snapshot, {record.operation_id: record for record in snapshot.records})
+        self._encoded_size = _json_size(data) if encoded_size is None else encoded_size
 
     def _cached(self) -> tuple[DeploymentSnapshot, dict[UUID, DeploymentRecord]]:
         data = self._require_loaded()
         if self._snapshot is None or self._snapshot[0] is not data:
             snapshot = _validate_deployments(data)
-            self._snapshot = (data, snapshot, {record.operation_id: record for record in snapshot.records})
+            self._install_data(data, snapshot)
+        assert self._snapshot is not None
         return self._snapshot[1], self._snapshot[2]
 
     def _require_loaded(self) -> dict[str, Any]:
@@ -1162,6 +1213,10 @@ def _deployment_store(hass: HomeAssistant) -> VersionedDocumentStore:
         minor_version=DEPLOYMENT_STORE_MINOR_VERSION,
         migrate=_async_migrate_deployments,
     )
+
+
+def _json_size(value: Any) -> int:
+    return len(json.dumps(value, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode())
 
 
 async def _async_migrate_deployments(
