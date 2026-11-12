@@ -15,6 +15,7 @@ from homeassistant.core import HomeAssistant
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ReadDomain, device_profile, get_profile
 from custom_components.ha_govee_led_ble.control_arbiter import BLEControlArbiter, ControlIntent, async_control_intent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator_status import parse_color_mode
 from custom_components.ha_govee_led_ble.effect_active_workspace import (
     ActiveEffectWorkspace,
     ActiveEffectWorkspaceRepository,
@@ -2249,7 +2250,9 @@ async def test_h6181_music_is_applied_without_claiming_unavailable_selector_veri
         raw = bytes.fromhex("aa051300320101ff0000").ljust(19, b"\0")
         decoded = decode_status_frame(raw + bytes([xor_checksum(raw)]), "H6181", profile=coordinator.profile)
         assert decoded is not None
-        observed = coordinator._apply_color_mode_payload(decoded.generated)
+        observed = coordinator._apply_color_mode_payload(
+            parse_color_mode(decoded.generated, coordinator.model, profile=coordinator.profile)
+        )
         assert coordinator.music_mode == mode and "music_mode" not in observed
         assert (coordinator._music_body, coordinator._music_palette) == retained
         reconciled = engine.reconcile_current(

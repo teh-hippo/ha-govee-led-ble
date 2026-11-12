@@ -157,6 +157,7 @@ class ParsedColorModeResponse:
     right_bar_kelvin: int | None = None
     raw_mode: int | None = None
     source_values: dict[str, int] | None = None
+    gradient: int | None = None
 
 
 def _readback_kelvin(reported: int, profile: ModelProfile) -> int:
@@ -351,6 +352,7 @@ def _parse_static_mode(detail: Any, profile: ModelProfile) -> ParsedColorModeRes
         else None,
         color_temp_kelvin=kelvin,
         multi_effect_flag=getattr(detail, "sub", None),
+        gradient=int(detail.gradient) if profile.status_grammar == "H6199" and detail.gradient in (0, 1) else None,
     )
 
 
