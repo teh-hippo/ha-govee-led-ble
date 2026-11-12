@@ -1086,11 +1086,14 @@ class EffectDeploymentRepository:
         *,
         expected_version: int | None,
         durable: bool = True,
+        expected_record: DeploymentRecord | None = None,
     ) -> DeploymentSnapshot:
         async with self._lock:
             current = self._require_loaded()
             version = cast(int, current["version"])
             if expected_version is not None and version != expected_version:
+                raise EffectVersionConflictError(version)
+            if expected_record is not None and self.get_optional(record.operation_id) != expected_record:
                 raise EffectVersionConflictError(version)
             if not durable and (progress := self._progress_update(record)) is not None:
                 candidate, snapshot, encoded_size = progress

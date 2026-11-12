@@ -16,7 +16,7 @@ from custom_components.ha_govee_led_ble.effect_deployments import (
     ObservationConfidence,
 )
 from custom_components.ha_govee_led_ble.effect_domain import BuiltinScene, CatalogueRef, LibraryItem, SingleEffect
-from custom_components.ha_govee_led_ble.effect_runtime import EffectDeploymentEngine
+from custom_components.ha_govee_led_ble.effect_runtime import EffectDeploymentEngine, _DeploymentTransaction
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_brightness_query,
     build_firmware_query,
@@ -785,7 +785,9 @@ async def test_deployment_retries_activation_after_fresh_wrong_mode(
         async with coord._control_arbiter.hold(ControlIntent.APPLY):
             await coord.async_write_effect_sequence(compiled.packets, intent=ControlIntent.APPLY)
             assert "color_mode" in coord._expected_state
-            confirmed, confidence, current = await engine._async_verify(coord, compiled, record)
+            transaction = _DeploymentTransaction(repository, record, len(compiled.upload_packets), persisted=True)
+            confirmed, confidence = await engine._async_verify(coord, compiled, transaction)
+            current = transaction.current
 
     expected_revisions = (
         [] if actual is None else ([False, True, True] if final_desired else [False, True, False, True])

@@ -954,6 +954,25 @@ async def test_deployment_history_discards_oldest_terminal_record(
     assert repository.get(next_record.operation_id) == next_record
 
 
+async def test_deployment_record_tokens_reject_stale_progress_without_conflicting_with_other_devices():
+    repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
+    await repository.async_load()
+    initial = _deployment(DeploymentPhase.UPLOADING)
+    await repository.async_put(initial, expected_version=0)
+    other = replace(_deployment(DeploymentPhase.CONFIRMED), config_entry_id="entry-b")
+    await repository.async_put(other, expected_version=1)
+    next_record = replace(initial, progress_current=1, progress_total=2)
+    await repository.async_put(next_record, expected_version=None, expected_record=initial, durable=False)
+    before = repository.snapshot()
+    with pytest.raises(EffectVersionConflictError):
+        await repository.async_put(
+            replace(initial, phase=DeploymentPhase.FAILED), expected_version=None, expected_record=initial
+        )
+    assert repository.snapshot() is before
+    assert repository.get(other.operation_id) == other
+    assert repository.get(initial.operation_id) == next_record
+
+
 async def test_deployment_snapshot_and_lookup_cache_follow_document_mutations() -> None:
     import copy
     from unittest.mock import patch
