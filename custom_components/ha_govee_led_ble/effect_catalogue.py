@@ -39,7 +39,7 @@ from .h60a6_effects import native_diy_preset
 from .layered_scene_decoder import decode_workshop_effect
 from .music_commands import default_music_zones, music_default_available
 from .music_protocol import music_code_for, music_codebook
-from .music_semantics import music_parameters_available, music_params_for_mode, music_variant
+from .music_semantics import H60B0_ZONE_MUSIC_MODES, music_parameters_available, music_params_for_mode, music_variant
 from .native_effect import NativeDiyLayer, NativeOpaqueLayer
 from .protocol_core import H60a6PaintBody, H607cDiyBody, H607cPaintBody, H1771DiyBody
 from .protocol_music_params import music_default_palette
@@ -1911,10 +1911,7 @@ MODEL_EFFECT_CATALOGUES: Final = {
     "H60B0": ModelEffectCatalogue(
         sku="H60B0",
         native_zones=(("side", 8, None), ("ripple", 1, None)),
-        music_zone_modes=(
-            ("side", ("spectrum", "hopping", "flow", "firefly", "vortex", "bloom", "rhythm", "shiny", "disabled")),
-            ("ripple", ("bloom", "rhythm", "shiny", "spectrum", "disabled")),
-        ),
+        music_zone_modes=H60B0_ZONE_MUSIC_MODES,
         auxiliary_music_modes=("vortex", "disabled"),
         painted_effects=(),
         effects=(),

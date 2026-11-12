@@ -620,13 +620,32 @@ def _serialized_length(value: ReadWriteKaitaiStruct) -> int:
     return cast(int, value._io.pos())
 
 
-def serialize_native_body(root: Any) -> bytes:
-    """Write a complete native body, retaining its generated lengths and opaque fields."""
+def native_body_length(root: Any) -> int:
     _check_tree(root)
     length = _serialized_length(root)
     if not 0 < length <= _SERIALIZE_MEASURE_BOUND:
         raise ValueError("Native effect body exceeds the serialization bound")
-    return _write(root, length)
+    return length
+
+
+def serialize_native_body(root: Any) -> bytes:
+    """Write a complete native body, retaining its generated lengths and opaque fields."""
+    return _write(root, native_body_length(root))
+
+
+def adopt_native_body(value: Any, parent: Any) -> Any:
+    """Bind a parsed generated subtree to a new parent without serialising it."""
+    value._parent, value._root = parent, parent._root
+    for name, child in tuple(vars(value).items()):
+        if name.startswith("_"):
+            continue
+        if isinstance(child, ReadWriteKaitaiStruct):
+            adopt_native_body(child, value)
+        elif isinstance(child, list):
+            for item in child:
+                if isinstance(item, ReadWriteKaitaiStruct):
+                    adopt_native_body(item, value)
+    return value
 
 
 def _serialize_a3_scene_param(root: Any, *, scene_type_size: int = 1) -> bytes:

@@ -1,15 +1,14 @@
 """Semantic encoding for combined RGBIC and ripple effects."""
 
-import io
 from importlib import import_module
 from math import ceil
 from typing import Any, cast
 
-from kaitaistruct import KaitaiStream, KaitaiStructError
+from kaitaistruct import KaitaiStructError
 
 from .layered_scene import CatalogueRef, LayeredEffect, LayeredScene, RippleLayer
-from .music_semantics import MusicVariant, MusicZone
-from .protocol_core import new_child, new_rgb, serialize_native_body
+from .music_semantics import H60B0_ZONE_MUSIC_MODES, MusicVariant, MusicZone
+from .protocol_core import adopt_native_body, native_body_length, new_child, new_rgb, serialize_native_body
 from .scenes import SceneSpeed
 
 H60b0SceneBody = cast(
@@ -222,9 +221,9 @@ def encode_h60b0_music_zones(profile: Any, zones: tuple[MusicZone, ...]) -> byte
     root.body = new_child(H60b0MusicBody.CombinedParameters, root)
     root.body.unknown_tail = b""
     codebook = music_codebook(profile)
-    for name, zone in zip(("side", "ripple"), zones, strict=True):
+    for (name, modes), zone in zip(H60B0_ZONE_MUSIC_MODES, zones, strict=True):
         code = codebook.get(zone.mode, -1)
-        if code not in ({0, 131, 51, 83, 81, 80, 48, 114, 49} if name == "side" else {0, 48, 114, 49, 131}):
+        if zone.mode not in modes:
             raise ValueError("Music mode is not eligible for this source")
         variant = music_variant(profile, code)
         if variant is None:
@@ -248,14 +247,8 @@ def encode_h60b0_music_zones(profile: Any, zones: tuple[MusicZone, ...]) -> byte
         child = parse_music_parameters(variant, body)
         section = new_child(H60b0MusicBody.Zone, root.body)
         section.mode = child.mode
-        section.body = H60b0MusicBody.Parameters(
-            section.mode,
-            KaitaiStream(io.BytesIO(serialize_native_body(child.body))),
-            _parent=section,
-            _root=root,
-        )
-        section.body._read()
-        section.len_parameters = len(serialize_native_body(child.body))
+        section.body = adopt_native_body(child.body, section)
+        section.len_parameters = native_body_length(section.body)
         if section.len_parameters > 255:
             raise ValueError("Music source exceeds its length field")
         setattr(root.body, name, section)
