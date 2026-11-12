@@ -7,6 +7,7 @@ from enum import StrEnum
 from math import ceil
 from typing import Any
 
+from .firmware_version import FirmwareVersion
 from .h6199_calibration import WHITE_BALANCE_POSITIONS
 from .music_semantics import (
     H1A42_MUSIC_VARIANTS,
@@ -2732,6 +2733,39 @@ def profile_with_physical_ic_count(profile: ModelProfile, count: int, *, segment
     return replace(profile, physical_ic_count=count, segment_count=segments)
 
 
+def _basic_revision_profile(profile: ModelProfile) -> ModelProfile:
+    """Grant only independently qualified basic controls, never inherit capability flags."""
+    domains = frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.FIRMWARE, ReadDomain.HARDWARE})
+    return ModelProfile(
+        profile.name,
+        support_quality=profile.support_quality,
+        confirmation_issue=profile.confirmation_issue,
+        allows_legacy_plaintext_marker=profile.allows_legacy_plaintext_marker,
+        reconciles_marker_pact=profile.reconciles_marker_pact,
+        command_grammar=profile.command_grammar,
+        command_ack_grammar=profile.command_ack_grammar,
+        command_operations=frozenset({"power", "brightness"}),
+        status_grammar=profile.status_grammar,
+        setting_grammar=profile.setting_grammar,
+        outbound_transform=profile.outbound_transform,
+        brightness_wire_range=profile.brightness_wire_range,
+        profile_identity_fields=profile.profile_identity_fields,
+        profile_pact_dependent=profile.profile_pact_dependent,
+        requires_qualified_identity=profile.requires_qualified_identity,
+        requires_pact_confirmation=profile.requires_pact_confirmation,
+        read_domains=domains & profile.read_domains,
+        setup_required_read_domains=domains & profile.setup_required_read_domains,
+        segment_count=profile.segment_count,
+        native_zones=profile.native_zones,
+        light_sources=profile.light_sources,
+        physical_ic_count=profile.physical_ic_count,
+        segment_count_capacity=profile.segment_count_capacity,
+        segment_count_ic_divisor=profile.segment_count_ic_divisor,
+        connection_idle_timeout=profile.connection_idle_timeout,
+        effect_workflows=frozenset(),
+    )
+
+
 def device_profile(
     model: str,
     pact_type: int | None,
@@ -2742,8 +2776,6 @@ def device_profile(
 ) -> ModelProfile:
     """Resolve exact-product capabilities from evidenced revision context."""
     if model == "H6181":
-        from .firmware_version import FirmwareVersion
-
         profile = get_profile(model)
         later = pact_type is not None and pact_code is not None and pact_type >= 10 and pact_code >= 1
         if not later:
@@ -2785,25 +2817,7 @@ def device_profile(
         profile = get_profile(model)
         if pact_type == 1 and pact_code in {1, 2, 3}:
             return replace(profile, native_effect_revision=pact_code)
-        return replace(
-            profile,
-            command_operations=frozenset({"power", "brightness"}),
-            read_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.FIRMWARE, ReadDomain.HARDWARE}),
-            supports_rgb=False,
-            supports_color_temperature=False,
-            supports_segment_writes=False,
-            supports_segment_brightness=False,
-            supports_segment_color_temperature=False,
-            supports_custom_effects=False,
-            supports_multi_layered_effects=False,
-            supports_advanced_effects=False,
-            supports_scenes=False,
-            music_modes=(),
-            music_variants=(),
-            boolean_controls=frozenset(),
-            supports_ripple_speed=False,
-            supports_power_on_behaviour=False,
-        )
+        return _basic_revision_profile(profile)
     if model == "H605C":
         profile = get_profile(model)
         if (pact_type, pact_code) == (1, 2):
@@ -2822,42 +2836,8 @@ def device_profile(
         profile = get_profile(model)
         if (pact_type, pact_code) in _STANDARD_PACTS or (model == "H607C" and (pact_type, pact_code) == (2, 2)):
             return profile
-        return replace(
-            profile,
-            command_operations=frozenset({"power", "brightness"}),
-            read_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.FIRMWARE, ReadDomain.HARDWARE}),
-            setup_required_read_domains=profile.setup_required_read_domains
-            & {ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.FIRMWARE, ReadDomain.HARDWARE},
-            supports_rgb=False,
-            supports_color_temperature=False,
-            supports_segment_writes=False,
-            supports_segment_brightness=False,
-            supports_segment_color_temperature=False,
-            supports_custom_effects=False,
-            supports_scenes=False,
-            supports_multi_layered_effects=False,
-            music_modes=(),
-            music_variants=(),
-            boolean_controls=frozenset(),
-            configured_string_counts=(),
-            supports_video_mode=False,
-            video_modes=(),
-            supports_video_capture_region=False,
-            supports_video_saturation=False,
-            supports_video_sound_effects=False,
-            supports_white_balance=False,
-            supports_white_balance_readback=False,
-            supports_relative_brightness=False,
-            supports_blank_screen=False,
-            supports_black_border=False,
-            supports_installation_direction=False,
-            supports_power_on_behaviour=False,
-            dreamview_operations=frozenset(),
-            dreamview_reads=frozenset(),
-        )
+        return _basic_revision_profile(profile)
     if model in {"H60A1", "H60A6"}:
-        from .firmware_version import FirmwareVersion
-
         profile = get_profile(model)
         if model == "H60A6" and not (
             (pact_type, pact_code) in _H60A6_NATIVE_CONTROL_PACTS
@@ -2904,16 +2884,12 @@ def device_profile(
             replace(profile, color_temp_range=KELVIN_RANGE_1000_10000) if (pact_type, pact_code) == (4, 1) else profile
         )
     if model == "H619A":
-        from .firmware_version import FirmwareVersion
-
         fw, hw = FirmwareVersion.parse(firmware), FirmwareVersion.parse(hardware)
         return replace(
             get_profile(model),
             rgbic_scene_v0=fw is None or hw is None or fw < FirmwareVersion((1, 6)) or hw < FirmwareVersion((1, 0, 2)),
         )
     if model == "H6199":
-        from .firmware_version import FirmwareVersion
-
         profile = H6199_PACT1_PROFILE if (pact_type, pact_code) == (1, 1) else get_profile(model)
         if (pact_type, pact_code) not in _H6199_DREAMVIEW_PACTS:
             return replace(profile, dreamview_operations=frozenset(), dreamview_reads=frozenset())

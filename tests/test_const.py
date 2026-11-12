@@ -350,6 +350,19 @@ def test_h6076_profile_is_basic_and_fail_closed_until_identity_qualifies_music()
     assert profile.boolean_controls == frozenset({"gradual"})
 
 
+@pytest.mark.parametrize("model", ["H60B0", "H6046", "H607C", "H6097", "H7020"])
+def test_unknown_revision_cannot_inherit_effect_or_native_control_capabilities(model):
+    profile = device_profile(model, None, None)
+    assert profile.command_operations == {"power", "brightness"}
+    assert not supported_effect_categories(model, profile=profile)
+    assert profile.effect_grammar is None and not profile.boolean_controls
+    assert profile.light_sources == MODEL_PROFILES[model].light_sources
+    assert not profile.supports_advanced_effects and not profile.supports_whole_relative_brightness
+    assert not profile.supports_relative_brightness and not profile.supports_music_mode
+    assert profile.setup_required_read_domains <= profile.read_domains
+    assert profile.requires_pact_confirmation == MODEL_PROFILES[model].requires_pact_confirmation
+
+
 def test_h6076_registry_profile_is_the_music_ceiling_of_the_basic_profile():
     ceiling = MODEL_PROFILES["H6076"]
 
