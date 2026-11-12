@@ -116,6 +116,7 @@ _.reversed_mac  # dreamview.py
 # Assigning the field fills the wire frame; nothing reads it back.
 
 _._parent  # protocol_core.py: adopted subtree ownership is checked by generated writers
+_.num_palette  # music codecs: count is selected dynamically and consumed by generated writers
 _.a3_type  # generated_protocol_adapter.py
 _.bottom_percent  # generated_protocol_adapter.py
 _.dynamic  # generated_protocol_adapter.py
