@@ -498,9 +498,20 @@ def _check_video_write_packet(frame: bytes, profile: ModelProfile) -> bool:
     return False
 
 
+def _command_mode_parts(command: Any, grammar: str | None) -> tuple[str, Any]:
+    operation = getattr(command.opcode, "name", "")
+    if operation == "multi":
+        return getattr(command.body.sub, "name", ""), command.body.sub_body
+    if operation == "mode":
+        if grammar == "H6179":
+            return getattr(command.body.mode, "name", ""), command.body.payload
+        return getattr(command.body.sub_mode, "name", ""), command.body.detail
+    return "", None
+
+
 def _check_command_packet(frame: bytes, profile: ModelProfile) -> bool:
     """Ordinary command writes."""
-    from .light_commands import parse_static_write
+    from .light_commands import static_write_from_command
 
     result = parse_command_result(frame, profile=profile)
     command = result.parsed
@@ -535,28 +546,19 @@ def _check_command_packet(frame: bytes, profile: ModelProfile) -> bool:
                 return True
             raise ValueError("Bar control is outside profile capabilities")
         if operation in {"multi", "mode"}:
-            sub_attr = getattr(command.body, "sub", getattr(command.body, "sub_mode", None))
-            sub_operation = getattr(sub_attr, "name", "")
+            sub_operation, detail = _command_mode_parts(command, profile.command_grammar)
             if profile.command_operations is not None and sub_operation not in {"static", "static_colour"}:
                 operation = sub_operation
-            if sub_operation == "music" and getattr(command.opcode, "name", "") in {"multi", "mode"}:
+            if sub_operation == "music":
+                mode_id = (
+                    detail.effect_id
+                    if profile.command_grammar == "H6179"
+                    else detail.mode_id
+                    if profile.command_grammar in {"H617A", "H7020"}
+                    else detail.mode
+                )
                 if (
-                    profile.music_grammar in _MUSIC_WRITE_ROOTS
-                    or music_slug_for(
-                        profile.command_grammar or "",
-                        int(
-                            getattr(
-                                getattr(command.body, "sub_body", getattr(command.body, "detail", None)),
-                                "mode_id",
-                                getattr(
-                                    getattr(command.body, "sub_body", getattr(command.body, "detail", None)),
-                                    "mode",
-                                    -1,
-                                ),
-                            )
-                        ),
-                        profile=profile,
-                    )
+                    music_slug_for(profile.command_grammar or "", int(mode_id), profile=profile)
                     not in profile.music_modes
                 ):
                     raise ValueError("music mode selector is outside profile capabilities")
@@ -568,11 +570,11 @@ def _check_command_packet(frame: bytes, profile: ModelProfile) -> bool:
                 return True
             raise ValueError(f"{profile.name} does not support boolean control {control}")
         if operation == "scene" and profile.scene_codes is not None:
-            detail = getattr(command.body, "sub_body", getattr(command.body, "detail", None))
+            _sub_operation, detail = _command_mode_parts(command, profile.command_grammar)
             code = getattr(detail, "code", getattr(detail, "scene_id", None))
             if code not in profile.scene_codes:
                 raise ValueError("scene selector is outside the confirmed revision")
-        static = parse_static_write(frame, profile=profile)
+        static = static_write_from_command(command, profile)
         if (
             profile.command_operations is None
             or operation in profile.command_operations

@@ -2,6 +2,7 @@
 
 from collections.abc import Iterable
 from dataclasses import dataclass
+from typing import Any
 
 from .const import KELVIN_RANGE_1000_10000, KELVIN_STEP, WHOLE_BULB_GRAMMARS, ModelProfile, get_profile
 from .generated_protocol_adapter import (
@@ -14,7 +15,7 @@ from .generated_protocol_adapter import (
 from .generated_protocol_adapter import (
     build_segment_brightness as build_segment_brightness_mask,
 )
-from .protocol_h6179 import parse_h6179_command
+from .protocol_h6179 import h6179_command_from_generated
 
 SEGMENT_COUNT = 15
 ALL_SEGMENTS: tuple[int, ...] = tuple(range(1, SEGMENT_COUNT + 1))
@@ -233,8 +234,12 @@ def parse_static_write(
 ) -> ParsedStaticWrite | None:
     """Convert a generated static command into optimistic semantic state."""
     profile = profile or get_profile(model)
+    return static_write_from_command(parse_command(packet, model, profile=profile), profile)
+
+
+def static_write_from_command(generated: Any, profile: ModelProfile) -> ParsedStaticWrite | None:
     if profile.command_grammar == "H6179":
-        command = parse_h6179_command(packet)
+        command = h6179_command_from_generated(generated)
         if command is None or command.operation != "mode" or command.values.get("mode") != "static":
             return None
         kelvin = int(command.values["kelvin"])
@@ -252,7 +257,6 @@ def parse_static_write(
             whole_device_mask=0,
             rgb=command.values["rgb"],
         )
-    generated = parse_command(packet, model, profile=profile)
     if generated is None or not hasattr(generated.opcode, "name"):
         return None
     whole_device_mask = profile.whole_device_mask
