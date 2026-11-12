@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from hashlib import sha256
 from types import MappingProxyType
-from typing import Any, Self, cast
+from typing import Any, Self, assert_never, cast
 from uuid import UUID, uuid4
 
 from .const import MODEL_PROFILES
@@ -608,6 +608,38 @@ type EffectContent = (
     | LayeredScene
     | OpaqueContent
 )
+
+
+def effect_content_workflow(content: EffectContent) -> str | None:
+    match content:
+        case NativeEffect():
+            return content.workflow
+        case PaintedEffect():
+            return "painted"
+        case SingleEffect() | H6179SingleDiyEffect():
+            return "single"
+        case MultiEffect() | H6179MixedDiyEffect():
+            return "multi"
+        case PaletteDiyEffect():
+            return "palette_diy"
+        case LayeredEffect():
+            return "advanced"
+        case WorkshopEffect():
+            return "workshop"
+        case BuiltinScene():
+            return "native_scenes"
+        case PaletteScene():
+            return "edited_palette_scenes"
+        case LayeredScene():
+            return "layered_scenes"
+        case MusicProfile():
+            return "native_music"
+        case VideoProfile():
+            return "video"
+        case OpaqueContent():
+            return None
+        case _:
+            assert_never(content)
 
 
 def effect_content_to_dict(content: EffectContent) -> dict[str, JsonValue]:

@@ -15,6 +15,7 @@ from custom_components.ha_govee_led_ble.effect_catalogue import (
     H617A_WORKSHOP_APPLY_CODE,
     H617A_WORKSHOP_SCENE_TYPE,
     H6199_WORKSHOP_APPLY_CODE,
+    MODEL_EFFECT_CATALOGUES,
     WORKSHOP_PROTOCOL_FIXTURES,
 )
 from custom_components.ha_govee_led_ble.effect_compiler import (
@@ -26,6 +27,7 @@ from custom_components.ha_govee_led_ble.effect_compiler import (
     compile_h617a,
     compile_music_profile,
     compile_video_profile,
+    validate_compiled_geometry,
 )
 from custom_components.ha_govee_led_ble.effect_contracts import (
     EDITOR_API_VERSION,
@@ -112,6 +114,32 @@ def test_effect_route_does_not_substitute_an_unrelated_activation(workflow, oper
     profile = replace(MODEL_PROFILES["H617A"], command_operations=frozenset({operation, "effect_upload"}))
     with pytest.raises(ValueError, match="activation route"):
         require_effect_route("H617A", workflow, profile=profile)
+
+
+@pytest.mark.parametrize(
+    ("model", "template_id", "workflow"),
+    [
+        ("H1771", "template:h1771:0:0", "multi"),
+        ("H60A6", "template:native:11", "advanced"),
+    ],
+)
+@pytest.mark.parametrize("matching", [True, False])
+def test_prepared_native_effect_preserves_workflow_restrictions(model, template_id, workflow, matching):
+    template = next(value for value in MODEL_EFFECT_CATALOGUES[model].templates if value.id == template_id)
+    item = LibraryItem.new("Workflow restriction", template.content)
+    base = MODEL_PROFILES[model]
+    prepared = compile_application(item, model, profile=base)
+    narrowed = replace(base, effect_workflows=frozenset({workflow if matching else "single"}))
+    if matching:
+        fresh = compile_application(item, model, profile=narrowed)
+        assert fresh.packets == prepared.packets
+        assert fresh.artifact_sha256 == prepared.artifact_sha256
+        validate_compiled_geometry(fresh, narrowed)
+    else:
+        with pytest.raises(ValueError):
+            compile_application(item, model, profile=narrowed)
+        with pytest.raises(ValueError, match="compiled workflow"):
+            validate_compiled_geometry(prepared, narrowed)
 
 
 def _layered_effect() -> LayeredEffect:
