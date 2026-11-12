@@ -455,6 +455,7 @@ async def test_music_apply_partial_failure_installs_only_attempted_packet_state(
     coordinator.diy_code = 7
     coordinator.music_hopping_brightness = 99
     before = coordinator.capture_effect_control_state()
+    before_hopping_brightness = coordinator.music_hopping_brightness
     snapshot = coordinator._pre_mode_snapshot
     compiled = compile_music_profile(
         LibraryItem.new("Hopping", MusicProfile("H617A", "hopping", 50, parameters={"relative_brightness": 0})),
@@ -500,7 +501,8 @@ async def test_music_apply_partial_failure_installs_only_attempted_packet_state(
         "brightness_pct",
         "rgb_color",
     ):
-        assert getattr(coordinator, key) == attempted_state.get(key, getattr(before, key)), key
+        previous = before_hopping_brightness if key == "music_hopping_brightness" else getattr(before, key)
+        assert getattr(coordinator, key) == attempted_state.get(key, previous), key
     assert coordinator.control_write_attempts == (failed_index + 1) * 3
     assert coordinator._field_revisions == coordinator._domain_revisions == {}
     assert coordinator._pre_mode_snapshot is snapshot
@@ -906,7 +908,9 @@ async def test_variant_encoding_application_and_restoration(hass, alternative):
         assert [call.args[1] for call in send.await_args_list] == list(packets)
         state = PriorControlState.from_dict(coordinator.capture_effect_control_state().to_dict())
         omitted = state.to_dict()
-        del omitted["music_separation_point"]
+        assert "music_separation_point" not in omitted
+        assert PriorControlState.from_dict(omitted).music_parameters == {"point": 8, "gradient": False}
+        del omitted["music_parameters"]
         assert PriorControlState.from_dict(omitted).music_separation_point == 8
         del omitted["music_model"]
         del omitted["music_body"]
@@ -1285,7 +1289,7 @@ async def test_alternate_fountain_direction_survives_capture_and_recovery(hass, 
         await async_apply_compiled_profile(coordinator, compiled)
         packets = [call.args[1] for call in send.await_args_list]
         raw = coordinator.capture_effect_control_state().to_dict()
-        assert raw["music_fountain_direction"] == "alternate"
+        assert "music_fountain_direction" not in raw
         assert raw["music_parameters"] == {"direction": "alternate"}
         state = PriorControlState.from_dict(raw)
         coordinator.music_fountain_direction = "clockwise"
@@ -1319,6 +1323,7 @@ async def test_alternate_fountain_direction_survives_capture_and_recovery(hass, 
         assert not await coordinator.async_restore_effect_control_state(powered_off, overwritten_diy_code=None)
         assert send.await_args_list[-1].args[1] == build_power(False, coordinator.model)
     del raw["music_parameters"]
+    raw["music_fountain_direction"] = "alternate"
     with pytest.raises(EffectStorageError, match="prior fountain direction is invalid"):
         PriorControlState.from_dict(raw)
 
@@ -1336,13 +1341,15 @@ async def test_alternate_fountain_direction_survives_capture_and_recovery(hass, 
         ("music_fountain_direction", "alternate"),
     ],
 )
-def test_authoritative_mapping_bypasses_only_redundant_legacy_parameter_validation(key, value):
+def test_authoritative_mapping_normalises_redundant_legacy_parameters(key, value):
     state = PriorControlState(mode="music", is_on=True, brightness_pct=50, rgb_color=(1, 2, 3))
     with pytest.raises(EffectStorageError):
         replace(state, **{key: value})
     with pytest.raises(EffectStorageError):
         PriorControlState.from_dict({**state.to_dict(), key: value})
     authoritative = replace(state, music_parameters={}, **{key: value})
+    assert getattr(authoritative, key) == getattr(state, key)
+    assert key not in authoritative.to_dict()
     assert PriorControlState.from_dict(authoritative.to_dict()) == authoritative
 
 

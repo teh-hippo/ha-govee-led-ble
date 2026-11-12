@@ -96,6 +96,13 @@ class _RecoveryMixin(_CoordinatorBase):
             if self.video_mode not in (None, "off")
             else "colour"
         )
+        observed_controls: dict[str, int | None] = {
+            name: getattr(self, name)
+            if self._notify_started_monotonic is not None
+            and self._field_received_at.get(name, -1) >= self._notify_started_monotonic
+            else None
+            for name in ("bottom_kelvin", "bottom_brightness", "ripple_speed")
+        }
         return PriorControlState(
             mode=mode,
             is_on=self.is_on,
@@ -115,13 +122,9 @@ class _RecoveryMixin(_CoordinatorBase):
             top_enabled=zone_flags.get("top_enabled"),
             side_enabled=zone_flags.get("side_enabled"),
             bottom_enabled=zone_flags.get("bottom_enabled"),
-            **{
-                field: getattr(self, field)
-                if self._notify_started_monotonic is not None
-                and self._field_received_at.get(field, -1) >= self._notify_started_monotonic
-                else None
-                for field in ("bottom_kelvin", "bottom_brightness", "ripple_speed")
-            },
+            bottom_kelvin=observed_controls["bottom_kelvin"],
+            bottom_brightness=observed_controls["bottom_brightness"],
+            ripple_speed=observed_controls["ripple_speed"],
             left_bar_kelvin=self.left_bar_kelvin
             if self._notify_started_monotonic is not None
             and self._field_received_at.get("left_bar_kelvin", -1) >= self._notify_started_monotonic
@@ -153,14 +156,6 @@ class _RecoveryMixin(_CoordinatorBase):
             music_sensitivity=self.music_sensitivity,
             music_calm=self.music_calm,
             music_color=self.music_color,
-            music_separation_point=self.music_separation_point,
-            music_separation_gradient=self.music_separation_gradient,
-            music_hopping_brightness=self.music_hopping_brightness,
-            music_piano_key_count=self.music_piano_key_count,
-            music_fountain_direction=self.music_fountain_direction,
-            music_daynight_segments=self.music_daynight_segments,
-            music_daynight_speed=self.music_daynight_speed,
-            music_daynight_gradient=self.music_daynight_gradient,
             video_full_screen=self.video_full_screen,
             video_saturation=self.video_saturation,
             video_sound_effects=self.video_sound_effects,
