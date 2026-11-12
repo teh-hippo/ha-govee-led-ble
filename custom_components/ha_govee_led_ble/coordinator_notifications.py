@@ -96,12 +96,16 @@ def _bulk_version(version: Any) -> str | None:
 class _NotificationMixin(_CoordinatorBase):
     """Decodes status notifications and reconciles them with recently written values."""
 
-    def _arm_expected(self, packet: bytes) -> None:
-        expectations = expectations_from_packet(
-            packet,
-            self.model,
-            static_echoes_color=self.profile.static_readback_echoes_color,
-            profile=self.profile,
+    def _arm_expected(self, packet: bytes, *, expectations: dict[str, Any] | None = None) -> None:
+        expectations = (
+            expectations
+            if expectations is not None
+            else expectations_from_packet(
+                packet,
+                self.model,
+                static_echoes_color=self.profile.static_readback_echoes_color,
+                profile=self.profile,
+            )
         )
         if "color_mode" in expectations:
             if self.profile.setting_grammar == "H607C":

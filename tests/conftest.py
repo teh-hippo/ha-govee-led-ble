@@ -273,6 +273,9 @@ def _make_coord(**ov) -> MagicMock:
     c.install_static_color = MagicMock(
         side_effect=lambda **kwargs: GoveeBLECoordinator.install_static_color(c, **kwargs)
     )
+    c._apply_static_write_intent = MagicMock(
+        side_effect=lambda static, requested: GoveeBLECoordinator._apply_static_write_intent(c, static, requested)
+    )
     c.async_paint_segments = AsyncMock()
     c.async_set_segment_brightness = AsyncMock()
     c.async_refresh_segments = AsyncMock(return_value=True)
