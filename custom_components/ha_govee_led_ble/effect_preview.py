@@ -492,11 +492,7 @@ class EffectPreviewManager:
     ) -> PreviewAcceptance:
         self.ensure_session(session_id, owner)
         coordinator = self._loaded_coordinator(config_entry_id)
-        preparation_generation = (
-            coordinator._control_arbiter.foreground_generation
-            if coordinator.profile.rgbic_scene_v0 is not None
-            else None
-        )
+        preparation_generation = coordinator._control_arbiter.foreground_generation
         try:
             profile = await async_prepare_effect_profile(coordinator, intent=ControlIntent.PREVIEW)
             diy_code = resolve_diy_code(item, diy_code, model=coordinator.model, profile=profile)
@@ -558,6 +554,7 @@ class EffectPreviewManager:
     ) -> PreviewAcceptance:
         self.ensure_session(session_id, owner)
         coordinator = self._loaded_coordinator(config_entry_id)
+        preparation_generation = coordinator._control_arbiter.foreground_generation
         resolved = resolve_scene(coordinator.model, scene_id, effect_id)
         scene_default = scene_default_for(
             self._scene_defaults,
@@ -567,19 +564,20 @@ class EffectPreviewManager:
             resolved.entry,
         )
         try:
+            profile = await async_prepare_effect_profile(coordinator, intent=ControlIntent.PREVIEW)
             canonical_body, resolved_speed = resolve_scene_application_body(
                 resolved.entry,
                 scene_default=scene_default,
                 speed_index=speed_index,
-                profile=coordinator.profile,
+                profile=profile,
             )
-            require_native_scenes(coordinator.model, coordinator.profile)
+            require_native_scenes(coordinator.model, profile)
             build_native_scene_packets(
                 coordinator.model,
                 resolved.entry,
                 speed_index=resolved_speed,
                 canonical_body=canonical_body or None,
-                profile=coordinator.profile,
+                profile=profile,
             )
         except ValueError as exc:
             raise PreviewError(str(exc)) from exc
@@ -609,7 +607,7 @@ class EffectPreviewManager:
                 else None
             ),
         )
-        return await self._async_accept(owner, request)
+        return await self._async_accept(owner, request, preparation_generation=preparation_generation)
 
     async def _async_accept(
         self,
