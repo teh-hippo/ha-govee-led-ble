@@ -868,16 +868,28 @@ async def test_concurrent_dreamview_centres_preserve_claims_and_reject_conflicts
 
 
 @pytest.mark.parametrize("failure", ["disable", "disconnect"])
-async def test_dreamview_failed_handover_never_uploads_and_restores_preview(hass, monkeypatch, failure):
+@pytest.mark.parametrize("previous_claim", [None, False, True])
+async def test_dreamview_failed_handover_never_uploads_and_restores_preview(hass, monkeypatch, failure, previous_claim):
     from homeassistant.config_entries import ConfigEntryDisabler
 
-    from custom_components.ha_govee_led_ble.coordinator_dreamview import async_load_dreamview_claims
+    from custom_components.ha_govee_led_ble.coordinator_dreamview import (
+        _async_save_dreamview_claims,
+        async_load_dreamview_claims,
+    )
 
     centre = coordinator(hass, "H66A0")
     target = coordinator(hass, "H1A42", entry_id="member")
     entry = target.config_entry
     object.__setattr__(entry, "unique_id", "11:22:33:44:55:01")
     entry.runtime_data = target
+    prior_claims = {}
+    if previous_claim is not None:
+        prior_claims[entry.entry_id] = {
+            "centre_entry_id": centre.config_entry.entry_id,
+            "disabled_by_dreamview": previous_claim,
+            "prior_disabled_by": None,
+        }
+        await _async_save_dreamview_claims(hass, prior_claims)
     client = SimpleNamespace(is_connected=True, disconnect=AsyncMock(side_effect=BleakError("disconnect failed")))
     target._client = client
     preview = SimpleNamespace(async_unload_device=AsyncMock(), async_load_device=AsyncMock())
@@ -902,11 +914,12 @@ async def test_dreamview_failed_handover_never_uploads_and_restores_preview(hass
     assert entry.disabled_by is None
     assert not target._dreamview_claimed
     assert centre._dreamview_authored is None
-    assert await async_load_dreamview_claims(hass) == {}
+    assert await async_load_dreamview_claims(hass) == prior_claims
     preview.async_load_device.assert_awaited_once_with(entry.entry_id)
 
 
-async def test_dreamview_restoration_failure_retains_restart_recovery(hass, monkeypatch):
+@pytest.mark.parametrize("restore_previous", [False, True])
+async def test_dreamview_restoration_failure_retains_restart_recovery(hass, monkeypatch, restore_previous):
     from homeassistant.config_entries import ConfigEntryDisabler
 
     from custom_components.ha_govee_led_ble.coordinator_dreamview import (
@@ -927,11 +940,14 @@ async def test_dreamview_restoration_failure_retains_restart_recovery(hass, monk
 
     monkeypatch.setattr(hass.config_entries, "async_set_disabled_by", AsyncMock(side_effect=set_disabled))
     await centre.async_replace_dreamview_group((member(address=entry.unique_id),))
+    previous = {"centre_entry_id": centre.config_entry.entry_id, "disabled_by_dreamview": False}
     monkeypatch.setattr(
         hass.config_entries, "async_set_disabled_by", AsyncMock(side_effect=RuntimeError("restore failed"))
     )
     with pytest.raises(RuntimeError, match="restore failed"):
-        await async_release_dreamview_claims_for_centre(hass, centre.config_entry.entry_id)
+        await async_release_dreamview_claims_for_centre(
+            hass, centre.config_entry.entry_id, restore_claims={"member": previous} if restore_previous else None
+        )
     assert entry.disabled_by == ConfigEntryDisabler.USER
     assert (await async_load_dreamview_claims(hass))["member"]["releasing"]
     assert not is_dreamview_claimed(hass, "member")
@@ -942,7 +958,7 @@ async def test_dreamview_restoration_failure_retains_restart_recovery(hass, monk
     monkeypatch.setattr(hass.config_entries, "async_set_disabled_by", AsyncMock(side_effect=set_disabled))
     await async_recover_dreamview_claims(hass)
     assert entry.disabled_by is None
-    assert await async_load_dreamview_claims(hass) == {}
+    assert await async_load_dreamview_claims(hass) == ({"member": previous} if restore_previous else {})
 
 
 @pytest.mark.parametrize("fail_native_save", [False, True])

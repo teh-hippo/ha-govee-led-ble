@@ -234,6 +234,7 @@ async def async_release_dreamview_claims_for_centre(
     centre_entry_id: str,
     *,
     only_entry_ids: set[str] | None = None,
+    restore_claims: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> None:
     await async_load_dreamview_claims(hass)
     async with _claims_lock(hass):
@@ -246,6 +247,10 @@ async def async_release_dreamview_claims_for_centre(
         }
         if not released:
             return
+        if restore_claims:
+            for entry_id, claim in released.items():
+                if entry_id in restore_claims:
+                    claim["rollback_claim"] = dict(restore_claims[entry_id])
         # Keep recovery intent until native re-enable completes, without blocking setup.
         await _async_save_dreamview_claims(hass, {**claims, **released})
     for entry_id in released:
@@ -273,9 +278,12 @@ async def async_release_dreamview_claims_for_centre(
     await _async_persist_dreamview_restoration(hass, restored)
     async with _claims_lock(hass):
         claims = await async_load_dreamview_claims(hass)
-        await _async_save_dreamview_claims(
-            hass, {eid: dict(item) for eid, item in claims.items() if item != released.get(eid)}
-        )
+        remaining = {eid: dict(item) for eid, item in claims.items() if item != released.get(eid)}
+        if hass.config_entries.async_get_entry(centre_entry_id) is not None:
+            for entry_id, claim in released.items():
+                if claims.get(entry_id) == claim and isinstance(previous := claim.get("rollback_claim"), Mapping):
+                    remaining[entry_id] = dict(previous)
+        await _async_save_dreamview_claims(hass, remaining)
 
 
 async def async_recover_dreamview_claims(hass: HomeAssistant) -> None:
@@ -434,6 +442,7 @@ class _DreamviewMixin(_CoordinatorBase):
             self._dreamview_private_write = True
             prior_claims: dict[str, dict[str, Any]] = {}
             new_entry_ids: set[str] = set()
+            changed_entry_ids: set[str] = set()
             try:
                 async with _claims_lock(self.hass):
                     claims = await async_load_dreamview_claims(self.hass)
@@ -449,6 +458,7 @@ class _DreamviewMixin(_CoordinatorBase):
                     updated_claims = dict(claims)
                     for member_entry in resolved_entries:
                         if member_entry.entry_id not in prior_claims or member_entry.disabled_by is None:
+                            changed_entry_ids.add(member_entry.entry_id)
                             updated_claims[member_entry.entry_id] = {
                                 "centre_entry_id": centre_entry_id,
                                 "disabled_by_dreamview": member_entry.disabled_by is None,
@@ -490,10 +500,12 @@ class _DreamviewMixin(_CoordinatorBase):
             except BaseException:
                 if self._dreamview_last_write == "not_attempted" and centre_entry_id is not None:
                     try:
-                        newly_claimed = new_entry_ids - prior_claims.keys()
-                        if newly_claimed:
+                        if changed_entry_ids:
                             await async_release_dreamview_claims_for_centre(
-                                self.hass, centre_entry_id, only_entry_ids=newly_claimed
+                                self.hass,
+                                centre_entry_id,
+                                only_entry_ids=changed_entry_ids,
+                                restore_claims=prior_claims,
                             )
                         if self._dreamview_authored != prior_authored:
                             if prior_authored is None:
