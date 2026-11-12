@@ -167,6 +167,7 @@ def _coord_defaults() -> dict[str, Any]:
         _notification_token=None,
         _notify_started_monotonic=None,
         _reply_gate=ReplyGate(0),
+        _a3_sequence=None,
         _field_revisions={},
         _field_received_at={},
         _domain_revisions={},

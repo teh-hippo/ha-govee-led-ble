@@ -193,7 +193,8 @@ async def test_native_scene_uses_subscription_identity_and_rechecks_after_reply_
             monkeypatch.setattr(
                 coordinator._reply_gate, "wait", AsyncMock(side_effect=coordinator._confirmed_identity_fields.clear)
             )
-            await coordinator._async_write_packet(client, packets[0], before_write=write_guard)
+            async with coordinator._a3_upload_transaction(packets):
+                await coordinator._async_write_packet(client, packets[0], before_write=write_guard)
         else:
             write_guard()
 

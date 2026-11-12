@@ -64,6 +64,7 @@ from .coordinator_status import (
 )
 from .effect_contracts import CapabilityState
 from .generated_protocol_adapter import (
+    A3Sequence,
     BulkStatusCollector,
     build_black_border_query,
     build_blank_screen_query,
@@ -83,6 +84,7 @@ from .generated_protocol_adapter import (
     build_whole_relative_brightness,
     is_bulk_status_frame,
     parse_command_result,
+    require_a3_sequence_frame,
     require_profile_packet,
     upload_ack_mode,
     upload_ack_subtype,
@@ -215,6 +217,7 @@ class GoveeBLECoordinator(
         self._connection_initializing = False
         self._notification_token: object | None = None
         self._reply_gate = ReplyGate(REPLY_PACING_TIMEOUT)
+        self._a3_sequence: tuple[asyncio.Task[Any] | None, A3Sequence] | None = None
         self._confirmed_identity_fields: set[str] = set()
         self._observed_physical_ic_count: int | None = None
         self._physical_ic_count_confirmed = False
@@ -1316,8 +1319,15 @@ class GoveeBLECoordinator(
         *,
         arm_expected: bool,
     ) -> None:
+        sequence = self._a3_sequence
+        header = require_a3_sequence_frame(
+            packet, sequence[1] if sequence is not None and sequence[0] is asyncio.current_task() else None
+        )
         packet_validator(packet, self.profile)
         self._validate_authorized_packet(packet, packet_validator)
+        if header is not None and header != packet:
+            packet_validator(header, self.profile)
+            self._validate_authorized_packet(header, packet_validator)
         if (
             arm_expected
             and (
@@ -1487,6 +1497,8 @@ class GoveeBLECoordinator(
 
         if on_write is not None:
             on_write()
+        if self._a3_sequence is not None and self._a3_sequence[0] is asyncio.current_task():
+            self._a3_sequence[1].note_write(packet)
         token = self._notification_token
         self._reply_gate.arm(reply_frame)
         try:
@@ -3105,6 +3117,16 @@ class GoveeBLECoordinator(
             await writer(final_packet, write_guard=final_guard, expected_values=expected_values)
         self._renew_foreground_lease()
 
+    @asynccontextmanager
+    async def _a3_upload_transaction(self, packets: Sequence[bytes]) -> AsyncIterator[A3Sequence]:
+        previous = self._a3_sequence
+        sequence = A3Sequence(packets)
+        self._a3_sequence = (asyncio.current_task(), sequence)
+        try:
+            yield sequence
+        finally:
+            self._a3_sequence = previous
+
     async def async_write_effect_sequence(
         self,
         packets: Sequence[bytes],
@@ -3135,12 +3157,13 @@ class GoveeBLECoordinator(
         """
         if self.hass.is_stopping:
             raise RuntimeError("Home Assistant is stopping")
+        packets = tuple(packets)
         if not packets:
             raise ValueError("effect sequence must contain at least one packet")
         if packet_state_values is not None and len(packet_state_values) != len(packets):
             raise ValueError("packet state must match the effect sequence length")
         subtype, ack_mode, protocol = self._upload_ack_expectation(packets, require_upload_ack, upload_ack_index)
-        async with async_control_intent(self, intent):
+        async with async_control_intent(self, intent), self._a3_upload_transaction(packets) as sequence:
             # Preview writers acquire _lock themselves. The existing control intent
             # still owns the entire upload/ACK/selector transaction.
             async with self._lock if writer is None else nullcontext():
@@ -3148,6 +3171,7 @@ class GoveeBLECoordinator(
                 attempts = EFFECT_SEQUENCE_ATTEMPTS if writer is None else 1
                 upload_attempted = False
                 for attempt in range(1, attempts + 1):
+                    sequence.reset()
                     future: asyncio.Future[bool] | None = None
                     try:
                         if writer is None:

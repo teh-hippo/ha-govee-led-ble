@@ -7,7 +7,7 @@ WRITE_UUID = "00010203-0405-0607-0809-0a0b0c0d2b11"
 READ_UUID = "00010203-0405-0607-0809-0a0b0c0d2b10"
 ENCRYPTION_UUID = "00010203-0405-0607-0809-0a0b0c0d2b12"
 
-_A3_FRAME_PREFIX = 0xA3
+A3_PREFIX = 0xA3
 A3_CHUNK_SIZE = 17
 A4_PREFIX = 0xA4
 
@@ -27,7 +27,7 @@ def xor_checksum(data: bytes | bytearray) -> int:
 
 
 def _a3_frame(index: int, chunk: bytes) -> bytes:
-    packet = bytearray([_A3_FRAME_PREFIX, index, *chunk])
+    packet = bytearray([A3_PREFIX, index, *chunk])
     packet = (packet + bytearray(19 - len(packet)))[:19]
     packet.append(xor_checksum(packet))
     return bytes(packet)
@@ -141,7 +141,7 @@ def reassemble_a3(frames: Sequence[bytes]) -> bytes:
     for position, frame in enumerate(frames):
         if not isinstance(frame, bytes) or len(frame) != 20:
             raise ValueError(f"A3 frame {position} must be exactly 20 bytes")
-        if frame[0] != _A3_FRAME_PREFIX:
+        if frame[0] != A3_PREFIX:
             raise ValueError(f"A3 frame {position} has an invalid prefix")
         if xor_checksum(frame[:19]) != frame[19]:
             raise ValueError(f"A3 frame {position} has an invalid checksum")

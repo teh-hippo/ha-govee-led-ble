@@ -316,15 +316,7 @@ def _music_transport(coordinator):
         # belongs to the parent-owned transport tests, not these music state tests.
         if require_upload_ack:
             assert upload_ack_index is not None and packets[upload_ack_index][0] == 0xA3
-        if writer is None:
-            await sequence(packets, **kwargs)
-        else:
-            for index, packet in enumerate(packets):
-                await writer(
-                    packet,
-                    state_values=kwargs["packet_state_values"][index],
-                    write_guard=lambda index=index: kwargs["packet_write_guard"](index),
-                )
+        await sequence(packets, writer=writer, **kwargs)
 
     with (
         patch.object(coordinator, "_client", client),
