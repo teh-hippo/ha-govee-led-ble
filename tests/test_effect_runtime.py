@@ -1084,10 +1084,12 @@ async def test_upload_does_not_start_if_uploading_phase_cannot_be_persisted(
     operation_id = uuid4()
     original_put = repository.async_put
 
-    async def fail_uploading(record, *, expected_version):
+    async def fail_uploading(record, *, expected_version, durable=True, expected_record=None):
         if record.phase is DeploymentPhase.UPLOADING:
             raise OSError("storage unavailable")
-        return await original_put(record, expected_version=expected_version)
+        return await original_put(
+            record, expected_version=expected_version, durable=durable, expected_record=expected_record
+        )
 
     monkeypatch.setattr(repository, "async_put", fail_uploading)
 
@@ -1102,7 +1104,7 @@ async def test_upload_does_not_start_if_uploading_phase_cannot_be_persisted(
 
     failed = repository.get(operation_id)
     assert failed.phase is DeploymentPhase.FAILED
-    assert failed.error_code == "OSError"
+    assert failed.error_code == "deployment_failed"
     coordinator.send_command.assert_not_awaited()
 
 
@@ -1127,7 +1129,7 @@ async def test_mid_upload_failure_is_uncertain_without_supported_recovery(
 
     failed = repository.get(operation_id)
     assert failed.phase is DeploymentPhase.UNCERTAIN
-    assert failed.error_code == "RuntimeError"
+    assert failed.error_code == "deployment_failed"
     assert failed.progress_current == 1
     assert failed.progress_total == len(compiled.packets)
     assert coordinator.send_command.await_args_list == [
@@ -1478,7 +1480,7 @@ async def test_music_deployment_before_first_control_preserves_native_selection(
         failed = repository.get(operation_id)
         assert failed.phase is DeploymentPhase.FAILED
         assert failed.verification_confidence is ObservationConfidence.UNKNOWN
-        assert failed.error_code == ("operation_cancelled" if cancelled else "RuntimeError")
+        assert failed.error_code == ("operation_cancelled" if cancelled else "deployment_failed")
         assert failed.progress_current == 0
         assert failed.prior_state == replace(before, video_restore_controls=())
         assert coordinator.control_write_attempts == 0
@@ -2181,7 +2183,7 @@ async def test_reconciliation_preserves_native_mode_with_unknown_confidence(
 
 
 @pytest.mark.parametrize("readable_power", [False, True])
-async def test_unobservable_effect_is_uncertain_without_rollback(
+async def test_unobservable_effect_is_applied_without_rollback(
     hass: HomeAssistant,
     readable_power: bool,
 ) -> None:
@@ -2202,8 +2204,9 @@ async def test_unobservable_effect_is_uncertain_without_rollback(
         updated_at="2026-08-11T00:00:00Z",
     )
 
-    assert result.phase is DeploymentPhase.UNCERTAIN
-    assert result.verification_confidence is ObservationConfidence.UNKNOWN
+    assert result.phase is DeploymentPhase.APPLIED
+    assert result.error_code is None
+    assert result.verification_confidence is ObservationConfidence.WRITE_COMPLETED
     if readable_power:
         coordinator.refresh_state.assert_awaited_once()
     else:
@@ -2282,8 +2285,8 @@ async def test_write_only_h601c_deployment_installs_optimistic_state_without_rol
         updated_at="2026-08-11T00:00:00Z",
     )
 
-    assert result.phase is DeploymentPhase.UNCERTAIN
-    assert result.error_code == "device_state_unconfirmed"
+    assert result.phase is DeploymentPhase.APPLIED
+    assert result.error_code is None
     assert [call.args[1] for call in client.write_gatt_char.await_args_list] == list(compiled.packets)
     assert coordinator.active_mode == "custom"
     assert coordinator.diy_code == 24
@@ -2299,7 +2302,7 @@ async def test_write_only_h601c_deployment_installs_optimistic_state_without_rol
         config_entry_id="entry-a",
         updated_at="2026-08-11T00:01:00Z",
     )
-    assert snapshot_result.phase is DeploymentPhase.UNCERTAIN
+    assert snapshot_result.phase is DeploymentPhase.APPLIED
     workspace = active_workspaces.get("entry-a")
     assert workspace is not None and workspace.selector_label == "Draft Jump"
     assert workspace.confidence is ObservationConfidence.WRITE_COMPLETED
@@ -2887,7 +2890,7 @@ async def test_video_profile_requires_complete_prior_display_state(
 
     failed = repository.get(operation_id)
     assert failed.phase is DeploymentPhase.FAILED
-    assert failed.error_code == "RuntimeError"
+    assert failed.error_code == "deployment_failed"
     assert failed.prior_state is None
 
 

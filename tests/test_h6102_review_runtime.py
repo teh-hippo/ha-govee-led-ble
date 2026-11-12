@@ -644,7 +644,7 @@ async def test_issue424_pact1_scenes_music_studio_and_segments(radio, virtual_cl
     engine = EffectDeploymentEngine(repository, device_cache=cache, active_workspaces=workspaces)
     music_item = LibraryItem.new("Saved Hopping", MusicProfile("H6102", "hopping", 50))
     record = await engine.async_apply_saved(c, music_item, config_entry_id="entry", updated_at="2026-10-24T00:00:00Z")
-    assert record.phase is DeploymentPhase.UNCERTAIN and record.error_code == "device_state_unconfirmed"
+    assert record.phase is DeploymentPhase.APPLIED and record.error_code is None
     observed = cache.get("entry")
     assert observed is not None and observed.mode == "music"
     assert observed.confidence is ObservationConfidence.WRITE_COMPLETED
@@ -655,7 +655,8 @@ async def test_issue424_pact1_scenes_music_studio_and_segments(radio, virtual_cl
     diy_record = await engine.async_apply_snapshot(
         c, diy_item, config_entry_id="entry", updated_at="2026-10-24T00:01:00Z"
     )
-    assert diy_record.phase is DeploymentPhase.UNCERTAIN
+    assert diy_record.phase is DeploymentPhase.APPLIED
+    assert diy_record.verification_confidence is ObservationConfidence.WRITE_COMPLETED
     a1_frames = [packet for packet in packets if packet[0] == 0xA1]
     assert reassemble_a1_02(a1_frames)[0] == 0xFE
     assert packets[-1] == frame("33050afe00")

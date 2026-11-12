@@ -6,7 +6,7 @@ import asyncio
 import logging
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from contextlib import asynccontextmanager
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from functools import partial
 from typing import Any
 from uuid import UUID, uuid4
@@ -85,6 +85,48 @@ VERIFICATION_ATTEMPTS = 2
 _LOGGER = logging.getLogger(__name__)
 
 type _PriorEffectOrigin = tuple[ObservedDeviceState | None, ActiveEffectWorkspace | None]
+
+
+@dataclass(slots=True)
+class _DeploymentTransaction:
+    repository: EffectDeploymentRepository
+    current: DeploymentRecord
+    upload_count: int
+    persisted: bool = False
+
+    async def store(self, record: DeploymentRecord, *, durable: bool = True) -> None:
+        await self.repository.async_put(
+            record,
+            expected_version=None,
+            durable=durable,
+            expected_record=self.current if self.persisted else None,
+        )
+        self.current = record
+        self.persisted = True
+
+    async def attempt_started(self, attempt: int) -> None:
+        if attempt != 1:
+            await self.store(
+                replace(
+                    self.current,
+                    phase=DeploymentPhase.UPLOADING if self.upload_count else DeploymentPhase.ACTIVATING,
+                    progress_current=0,
+                ),
+                durable=False,
+            )
+
+    async def sequence_progress(self, index: int) -> None:
+        await self.store(
+            replace(
+                self.current,
+                phase=DeploymentPhase.ACTIVATING if index >= self.upload_count else DeploymentPhase.UPLOADING,
+                progress_current=index,
+            ),
+            durable=False,
+        )
+
+    async def profile_progress(self, index: int) -> None:
+        await self.store(replace(self.current, progress_current=index), durable=False)
 
 
 async def async_apply_compiled_profile(
@@ -544,7 +586,9 @@ class EffectDeploymentEngine:
             raise RuntimeError(
                 f"deployment operation {record.operation_id} already exists in phase {existing.phase.value}"
             )
-        current = record
+        transaction = _DeploymentTransaction(
+            self._deployments, record, len(compiled.upload_packets) if isinstance(compiled, CompiledEffect) else 0
+        )
         lock_acquired = False
         prior_origin: _PriorEffectOrigin | None = None
         try:
@@ -563,7 +607,7 @@ class EffectDeploymentEngine:
 
                 try:
                     # Admit APPLY before persistence yields, so later previews remain newer.
-                    await self._deployments.async_put(record, expected_version=None)
+                    await transaction.store(record)
                     if isinstance(compiled, CompiledVideoProfile):
                         require_video_mode(coordinator.profile, coordinator)
                         require_video_controls(coordinator.profile, coordinator, requested_video_controls(compiled))
@@ -584,7 +628,7 @@ class EffectDeploymentEngine:
                     )
                     prior_state = self._capture_prior_state(
                         coordinator,
-                        config_entry_id=current.config_entry_id,
+                        config_entry_id=transaction.current.config_entry_id,
                     )
                     if isinstance(compiled, CompiledVideoProfile):
                         prior_state = replace(
@@ -598,13 +642,8 @@ class EffectDeploymentEngine:
                         )
                     else:
                         prior_state = replace(prior_state, video_restore_controls=())
-                    next_record = replace(current, prior_state=prior_state)
-                    await self._deployments.async_put(next_record, expected_version=None)
-                    current = next_record
-
-                    next_record = replace(current, phase=DeploymentPhase.UPLOADING)
-                    await self._deployments.async_put(next_record, expected_version=None)
-                    current = next_record
+                    await transaction.store(replace(transaction.current, prior_state=prior_state))
+                    await transaction.store(replace(transaction.current, phase=DeploymentPhase.UPLOADING))
                     if isinstance(compiled, CompiledEffect):
                         if compiled.activation_packet is None:
                             raise RuntimeError("compiled activation verification has no activation packet")
@@ -618,38 +657,8 @@ class EffectDeploymentEngine:
                             coordinator.is_on = True
                         upload_count = len(compiled.upload_packets)
 
-                        async def attempt_started(attempt: int) -> None:
-                            nonlocal current
-                            if attempt == 1:
-                                return
-                            current = replace(
-                                current,
-                                phase=(DeploymentPhase.UPLOADING if upload_count else DeploymentPhase.ACTIVATING),
-                                progress_current=0,
-                            )
-                            await self._deployments.async_put(
-                                current,
-                                expected_version=None,
-                                durable=False,
-                            )
-
-                        async def record_sequence_progress(index: int) -> None:
-                            nonlocal current
-                            phase = DeploymentPhase.ACTIVATING if index >= upload_count else DeploymentPhase.UPLOADING
-                            current = replace(
-                                current,
-                                phase=phase,
-                                progress_current=index,
-                            )
-                            await self._deployments.async_put(
-                                current,
-                                expected_version=None,
-                                durable=False,
-                            )
-
                         if upload_count == 0:
-                            current = replace(current, phase=DeploymentPhase.ACTIVATING)
-                            await self._deployments.async_put(current, expected_version=None)
+                            await transaction.store(replace(transaction.current, phase=DeploymentPhase.ACTIVATING))
                         ack_options: dict[str, Any] = {}
                         if DIY_ACK_EVIDENCE in compiled.evidence_codes:
                             ack_options = {"require_upload_ack": True, "upload_ack_index": upload_count - 1}
@@ -664,8 +673,8 @@ class EffectDeploymentEngine:
                         await coordinator.async_write_effect_sequence(
                             compiled.upload_packets if a1_activation is not None else compiled.packets,
                             intent=ControlIntent.APPLY,
-                            attempt_started=attempt_started,
-                            progress=record_sequence_progress,
+                            attempt_started=transaction.attempt_started,
+                            progress=transaction.sequence_progress,
                             write_guard=validate_effect_write,
                             **ack_options,
                         )
@@ -682,16 +691,20 @@ class EffectDeploymentEngine:
                                 coordinator.diy_code = compiled.diy_code
                             coordinator.music_mode = coordinator.video_mode = "off"
                     else:
-                        current = await self._async_apply_profile(coordinator, compiled, current)
+                        await self._async_apply_profile(coordinator, compiled, transaction)
 
-                    if isinstance(compiled, CompiledMusicProfile) and coordinator.profile.music_readback_ambiguous:
+                    if (
+                        isinstance(compiled, CompiledMusicProfile)
+                        and coordinator.profile.music_readback_ambiguous
+                        or compiled_observation(compiled, profile=coordinator.profile)[0] is None
+                    ):
                         completed = replace(
-                            current,
+                            transaction.current,
                             phase=DeploymentPhase.APPLIED,
                             error_code=None,
                             verification_confidence=ObservationConfidence.WRITE_COMPLETED,
                         )
-                        await self._deployments.async_put(completed, expected_version=None)
+                        await transaction.store(completed)
                         self._reconcile_observation(
                             coordinator,
                             config_entry_id=record.config_entry_id,
@@ -700,29 +713,27 @@ class EffectDeploymentEngine:
                             matched_record=completed,
                         )
                         return completed
-                    next_record = replace(current, phase=DeploymentPhase.VERIFYING)
-                    await self._deployments.async_put(next_record, expected_version=None)
-                    current = next_record
-                    confirmed, confidence, current = await self._async_verify(
+                    await transaction.store(replace(transaction.current, phase=DeploymentPhase.VERIFYING))
+                    confirmed, confidence = await self._async_verify(
                         coordinator,
                         compiled,
-                        current,
+                        transaction,
                     )
                     if not confirmed:
                         return await self._async_finish_failure(
                             coordinator,
-                            current,
+                            transaction.current,
                             error_code="device_state_unconfirmed",
                             writes_attempted=writes_attempted(),
                             prior_origin=prior_origin,
                         )
                     completed = replace(
-                        current,
+                        transaction.current,
                         phase=DeploymentPhase.CONFIRMED,
                         error_code=None,
                         verification_confidence=confidence,
                     )
-                    await self._deployments.async_put(completed, expected_version=None)
+                    await transaction.store(completed)
                     self._reconcile_observation(
                         coordinator,
                         config_entry_id=record.config_entry_id,
@@ -732,21 +743,19 @@ class EffectDeploymentEngine:
                     )
                     return completed
                 except asyncio.CancelledError:
-                    current = self._deployments.get_optional(record.operation_id) or current
                     await self._async_finish_failure_while_locked_best_effort(
                         coordinator,
-                        current,
+                        transaction.current,
                         error_code="operation_cancelled",
                         writes_attempted=writes_attempted(),
                         prior_origin=prior_origin,
                     )
                     raise
-                except Exception as exc:
-                    current = self._deployments.get_optional(record.operation_id) or current
+                except Exception:
                     await self._async_finish_failure_while_locked_best_effort(
                         coordinator,
-                        current,
-                        error_code=type(exc).__name__,
+                        transaction.current,
+                        error_code="deployment_failed",
                         writes_attempted=writes_attempted(),
                         prior_origin=prior_origin,
                     )
@@ -755,16 +764,16 @@ class EffectDeploymentEngine:
             if not lock_acquired:
                 await self._async_finish_failure_best_effort(
                     coordinator,
-                    current,
+                    transaction.current,
                     error_code="operation_cancelled",
                 )
             raise
-        except Exception as exc:
+        except Exception:
             if not lock_acquired:
                 await self._async_finish_failure_best_effort(
                     coordinator,
-                    current,
-                    error_code=type(exc).__name__,
+                    transaction.current,
+                    error_code="deployment_failed",
                 )
             raise
 
@@ -806,49 +815,28 @@ class EffectDeploymentEngine:
         self,
         coordinator: GoveeBLECoordinator,
         compiled: CompiledMusicProfile | CompiledVideoProfile,
-        record: DeploymentRecord,
-    ) -> DeploymentRecord:
-        current = record
-
-        async def record_progress(progress_current: int) -> None:
-            nonlocal current
-            current = await self._record_profile_progress(current, progress_current)
-
+        transaction: _DeploymentTransaction,
+    ) -> None:
         await async_apply_compiled_profile(
             coordinator,
             compiled,
-            progress=record_progress,
-            on_write=partial(self.clear_active_origin, record.config_entry_id),
+            progress=transaction.profile_progress,
+            on_write=partial(self.clear_active_origin, transaction.current.config_entry_id),
         )
-        return current
-
-    async def _record_profile_progress(
-        self,
-        record: DeploymentRecord,
-        progress_current: int,
-    ) -> DeploymentRecord:
-        current = replace(record, progress_current=progress_current)
-        await self._deployments.async_put(
-            current,
-            expected_version=None,
-            durable=False,
-        )
-        return current
 
     async def _async_verify(
         self,
         coordinator: GoveeBLECoordinator,
         compiled: CompiledApplication,
-        record: DeploymentRecord,
-    ) -> tuple[bool, ObservationConfidence, DeploymentRecord]:
+        transaction: _DeploymentTransaction,
+    ) -> tuple[bool, ObservationConfidence]:
         expectations, confidence = compiled_observation(compiled, profile=coordinator.profile)
         if expectations is None:
-            return False, ObservationConfidence.UNKNOWN, record
+            return False, ObservationConfidence.UNKNOWN
         if not isinstance(compiled, CompiledEffect):
-            return await self._async_verify_profile(coordinator, compiled, record)
+            return await self._async_verify_profile(coordinator, compiled, transaction)
         if compiled.activation_packet is None:
             raise RuntimeError("compiled activation verification has no activation packet")
-        current = record
         for attempt in range(VERIFICATION_ATTEMPTS):
             # Suppressed or missing readback does not spend an activation retry.
             refreshed = None
@@ -862,29 +850,26 @@ class EffectDeploymentEngine:
                 if refreshed is not None:
                     break
             if refreshed is True:
-                return True, confidence, current
+                return True, confidence
             if refreshed is not False or attempt + 1 == VERIFICATION_ATTEMPTS:
                 break
-            current = replace(current, phase=DeploymentPhase.ACTIVATING)
-            await self._deployments.async_put(current, expected_version=None)
+            await transaction.store(replace(transaction.current, phase=DeploymentPhase.ACTIVATING))
             await self._async_activate(coordinator, compiled)
-            current = replace(current, phase=DeploymentPhase.VERIFYING)
-            await self._deployments.async_put(current, expected_version=None)
-        return False, ObservationConfidence.UNKNOWN, current
+            await transaction.store(replace(transaction.current, phase=DeploymentPhase.VERIFYING))
+        return False, ObservationConfidence.UNKNOWN
 
     async def _async_verify_profile(
         self,
         coordinator: GoveeBLECoordinator,
         compiled: CompiledMusicProfile | CompiledVideoProfile,
-        record: DeploymentRecord,
-    ) -> tuple[bool, ObservationConfidence, DeploymentRecord]:
-        current = record
+        transaction: _DeploymentTransaction,
+    ) -> tuple[bool, ObservationConfidence]:
         expectations, confidence = compiled_observation(compiled, profile=coordinator.profile)
         if expectations is None:
-            return False, ObservationConfidence.UNKNOWN, current
+            return False, ObservationConfidence.UNKNOWN
         for attempt in range(VERIFICATION_ATTEMPTS):
             if await coordinator.async_observe_effect(expectations, timeout=4.0) is True:
-                return True, confidence, current
+                return True, confidence
             if (
                 isinstance(compiled, CompiledMusicProfile)
                 and len(compiled.packets) > 2
@@ -895,16 +880,16 @@ class EffectDeploymentEngine:
             ):
                 continue
             if attempt + 1 < VERIFICATION_ATTEMPTS:
-                current = replace(
-                    current,
-                    phase=DeploymentPhase.UPLOADING,
-                    progress_current=0,
+                await transaction.store(
+                    replace(
+                        transaction.current,
+                        phase=DeploymentPhase.UPLOADING,
+                        progress_current=0,
+                    )
                 )
-                await self._deployments.async_put(current, expected_version=None)
-                current = await self._async_apply_profile(coordinator, compiled, current)
-                current = replace(current, phase=DeploymentPhase.VERIFYING)
-                await self._deployments.async_put(current, expected_version=None)
-        return False, ObservationConfidence.UNKNOWN, current
+                await self._async_apply_profile(coordinator, compiled, transaction)
+                await transaction.store(replace(transaction.current, phase=DeploymentPhase.VERIFYING))
+        return False, ObservationConfidence.UNKNOWN
 
     async def _async_finish_failure(
         self,
@@ -928,7 +913,11 @@ class EffectDeploymentEngine:
                 error_code=error_code,
                 verification_confidence=ObservationConfidence.UNKNOWN,
             )
-            await self._deployments.async_put(failed, expected_version=None)
+            await self._deployments.async_put(
+                failed,
+                expected_version=None,
+                expected_record=record if self._deployments.get_optional(record.operation_id) is not None else None,
+            )
             self._publish_coordinator_state(coordinator)
             return failed
 
@@ -938,7 +927,7 @@ class EffectDeploymentEngine:
             error_code=error_code,
             verification_confidence=ObservationConfidence.UNKNOWN,
         )
-        await self._deployments.async_put(recovering, expected_version=None)
+        await self._deployments.async_put(recovering, expected_version=None, expected_record=record)
         recovered = False
         if recovering.prior_state is not None and (
             coordinator.profile.supports_color_mode_readback or error_code != "device_state_unconfirmed"
@@ -966,7 +955,7 @@ class EffectDeploymentEngine:
             recovering,
             phase=DeploymentPhase.FAILED if recovered else DeploymentPhase.UNCERTAIN,
         )
-        await self._deployments.async_put(final, expected_version=None)
+        await self._deployments.async_put(final, expected_version=None, expected_record=recovering)
         if recovered and prior_origin is not None:
             observed, workspace = prior_origin
             if self._device_cache is not None and observed is not None:
