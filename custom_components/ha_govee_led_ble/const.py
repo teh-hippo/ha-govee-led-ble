@@ -1106,6 +1106,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     ),
     "H60B2": ModelProfile(
         "H60B2 Tree Floor Lamp",
+        confirmation_issue=600,
         # Verified 2026-11-12: the lamp ignores plaintext frames and only answers
         # after the legacy e701/e702 session; it exposes no 2b12 marker and the
         # advertisement carries no encryption flag, so the profile selects it.
