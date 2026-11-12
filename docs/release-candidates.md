@@ -20,6 +20,9 @@ Merging release-bearing changes to `master` automatically publishes a candidate 
 Python Semantic Release calculates the upcoming version and successive `v<version>-rc.<number>` tags, updating source versions and the lockfile through its normal release commit.
 Maintenance-only changes do not force a new candidate.
 Use the published master candidate containing the change; do not dispatch a second workflow just to recreate it.
+If automatic publication did not run, request the same validated-master candidate path with `gh workflow run release.yml --ref master -f release_type=rc`.
+The default manual channel is stable; explicitly select `rc` and use the normal Semantic Release version calculation without forcing a maintenance-only version.
+If publication already created a tag or draft before failing, use the same-tag recovery below instead of creating another version.
 Wait for the complete `Release` workflow and verify its ZIP and checksum before sharing the tag.
 Stable publication is a separate operator decision, not a prerequisite for hardware testing.
 
