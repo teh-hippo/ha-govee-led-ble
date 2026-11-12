@@ -251,8 +251,8 @@ async def test_preview_rechecks_firmware_at_physical_write(hass, monkeypatch, ch
     begin = manager._async_begin_transmission
     reached = asyncio.Event()
 
-    async def delayed_begin(request):
-        await begin(request)
+    async def delayed_begin(request, health_target):
+        await begin(request, health_target)
         if change_at == "begin":
             await asyncio.sleep(0)
             coordinator.subordinate_21_version = "9.08.06"
@@ -324,8 +324,8 @@ async def test_preview_forwards_retained_field_guard_to_physical_write(hass, mon
     begin = manager._async_begin_transmission
     reached = asyncio.Event()
 
-    async def delayed_begin(request):
-        await begin(request)
+    async def delayed_begin(request, health_target):
+        await begin(request, health_target)
         if change_at == "begin":
             await asyncio.sleep(0)
             coordinator.video_saturation = 50
