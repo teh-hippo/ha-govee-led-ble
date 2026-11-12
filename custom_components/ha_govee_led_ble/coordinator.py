@@ -1937,7 +1937,7 @@ class GoveeBLECoordinator(
                         optional_baselines.setdefault(field, revision)
                 if time.monotonic() >= deadline:
                     return authorization_generation == self._authorization_generation and all(
-                        d not in required for _, d, _ in queries[index:]
+                        d not in required for _, d, _ in queries[index + 1 :]
                     )
             if (
                 generation != self._profile_generation

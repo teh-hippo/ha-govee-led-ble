@@ -264,9 +264,16 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
             query_power: bool = True,
             query_brightness: bool = True,
             query_color_mode: bool = True,
+            query_white_balance: bool | None = None,
+            query_blank_screen: bool | None = None,
+            query_black_border: bool | None = None,
+            query_relative_brightness: bool | None = None,
+            query_whole_relative_brightness: bool | None = None,
             query_segments: bool | None = None,
             required_domains: frozenset[ReadDomain] | None = None,
+            optional_baselines: dict[str, int] | None = None,
             deadline: float | None = None,
+            query_native_settings: bool = True,
         ) -> bool: ...
 
         async def async_write_effect_sequence(
