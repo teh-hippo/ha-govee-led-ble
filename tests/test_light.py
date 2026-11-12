@@ -848,7 +848,7 @@ def test_saved_categories_remain_visible_when_native_families_are_narrower(
         effect_backend=backend,
     )
 
-    backend.template_defaults = SimpleNamespace(get=MagicMock(return_value=None))
+    backend.template_defaults = SimpleNamespace(generation=0, get=MagicMock(return_value=None))
     assert {"Saved scene", "Saved reactive"} <= set(entity.effect_list)
 
 
@@ -1701,6 +1701,7 @@ async def test_turn_on_music_effect_uses_the_device_template_default(mock_coordi
                 library_snapshot=MagicMock(return_value=LibrarySnapshot(())),
             ),
             template_defaults=SimpleNamespace(
+                generation=0,
                 get=MagicMock(return_value=SimpleNamespace(model="H617A", content=content)),
             ),
         ),
@@ -1786,6 +1787,7 @@ async def test_turn_on_video_effect_uses_the_device_template_default(mock_h6199_
                 library_snapshot=MagicMock(return_value=LibrarySnapshot(())),
             ),
             template_defaults=SimpleNamespace(
+                generation=0,
                 get=MagicMock(return_value=SimpleNamespace(model="H6199", content=content)),
             ),
         ),
@@ -1865,7 +1867,7 @@ async def saved_video_light(hass, monkeypatch, request):
         device_cache=cache,
         active_workspaces=workspaces,
         engine=engine,
-        template_defaults=SimpleNamespace(get=MagicMock(return_value=None)),
+        template_defaults=SimpleNamespace(generation=0, get=MagicMock(return_value=None)),
     )
     entity = GoveeBLELight(coordinator, config_entry_id="entry-a", effect_backend=backend)
     entity.async_write_ha_state = MagicMock()
@@ -2274,6 +2276,7 @@ async def test_set_segment_brightness_sends_packet(light, mock_coordinator):
 async def test_selector_cache_reuses_entries_and_invalidates_across_all_inputs(
     hass, mock_h6199_coordinator, monkeypatch
 ):
+    from custom_components.ha_govee_led_ble.video_applicability import validate_video_request
     from tests.test_h6199_capabilities import set_qualified_identity
 
     set_qualified_identity(mock_h6199_coordinator)
@@ -2307,6 +2310,9 @@ async def test_selector_cache_reuses_entries_and_invalidates_across_all_inputs(
             "from_dict",
             wraps=CatalogueTemplateDefault.from_dict,
         ) as parse_template,
+        patch(
+            "custom_components.ha_govee_led_ble.light.validate_video_request", wraps=validate_video_request
+        ) as validate_available,
     ):
         for _ in range(4):
             _ = entity.supported_features
@@ -2315,6 +2321,7 @@ async def test_selector_cache_reuses_entries_and_invalidates_across_all_inputs(
             assert entity.effect == "Movie"
         assert build_selector.call_count == 1
         assert parse_template.call_count == 1
+        assert validate_available.call_count == 1
 
         workspace = ActiveEffectWorkspace(
             config_entry_id="entry-a",
@@ -2333,6 +2340,7 @@ async def test_selector_cache_reuses_entries_and_invalidates_across_all_inputs(
             assert entity._selector_entries(active_custom=False)
             assert entity._selector_entries(active_custom=True)
         assert build_selector.call_count == 2
+        assert validate_available.call_count == 2
         backend.active_workspaces.clear("entry-a")
 
         family = MODEL_EFFECT_CATALOGUES["H6199"].effects[0]
@@ -2410,6 +2418,21 @@ async def test_selector_cache_reuses_entries_and_invalidates_across_all_inputs(
             ),
         )
         assert "Effect: Custom Pulse" not in entity.effect_list
+
+        mock_h6199_coordinator.fw_version = "1.07.02"
+        assert "Video: Movie" not in entity.effect_list
+        before_default = build_selector.call_count
+        stored = backend.template_defaults.get("entry-a", "template:video:movie")
+        assert stored is not None
+        await backend.template_defaults.async_set(
+            replace(
+                stored,
+                content=VideoProfile("H6199", "movie", True, 70, False, 50, None, None, None),
+                content_hash="",
+            )
+        )
+        assert "Video: Movie" in entity.effect_list
+        assert build_selector.call_count == before_default + 1
 
 
 async def test_segment_services_reject_unsupported(mock_coordinator):

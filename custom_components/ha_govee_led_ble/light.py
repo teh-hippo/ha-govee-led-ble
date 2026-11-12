@@ -106,6 +106,7 @@ from .video_applicability import (
     require_video_controls,
     require_video_mode,
     validate_video_request,
+    video_identity_fields,
     video_mode_controls,
 )
 
@@ -115,6 +116,26 @@ PARALLEL_UPDATES = 0
 _LIGHT_MODE_ATTRS = frozenset({ATTR_RGB_COLOR, ATTR_COLOR_TEMP_KELVIN, ATTR_EFFECT})
 
 _LOGGER = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True, slots=True)
+class _SelectorCacheEntry:
+    references: tuple[object, ...]
+    context: tuple[object, ...]
+    catalogues: tuple[Mapping[str, object], ...]
+    entries: tuple[EffectSelectorEntry, ...]
+
+    def matches(
+        self,
+        references: tuple[object, ...],
+        context: tuple[object, ...],
+        catalogues: tuple[Mapping[str, object], ...],
+    ) -> bool:
+        return (
+            all(left is right for left, right in zip(self.references, references, strict=True))
+            and self.context == context
+            and self.catalogues == catalogues
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -248,7 +269,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         self._library_snapshot = (
             effect_backend.application.library_snapshot() if effect_backend is not None else LibrarySnapshot(())
         )
-        self._selector_cache: tuple[tuple[tuple[Any, ...], tuple[EffectSelectorEntry, ...]], ...] = ()
+        self._selector_cache: tuple[_SelectorCacheEntry, ...] = ()
 
     @contextmanager
     def _rollback(self) -> Generator[Callable[[], None]]:
@@ -500,6 +521,58 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
     def _selector_entries(self, *, active_custom: bool | None = None) -> tuple[EffectSelectorEntry, ...]:
         if active_custom is None:
             active_custom = self._matching_active_workspace() is not None
+        model = self.coordinator.model
+        canonical_model = resolve_model(model) or model
+        registered_profile = MODEL_PROFILES.get(canonical_model)
+        legacy_model = registered_profile.legacy_scene_catalogue_sku if registered_profile is not None else None
+        categories = self._effect_categories
+        prefix_effect_names = getattr(self.coordinator, "prefix_effect_names", False) is True
+        always_include_custom_effects = getattr(self.coordinator, "always_include_custom_effects", False) is True
+        native_categories = self._native_selector_categories
+        profile = self.coordinator.profile
+        defaults = (
+            self._effect_backend.template_defaults
+            if profile.video_modes and self._effect_backend is not None and self._config_entry_id is not None
+            else None
+        )
+        references = (
+            self._library_snapshot,
+            profile,
+            registered_profile,
+            MODEL_EFFECT_CATALOGUES.get(canonical_model),
+            effect_contracts.RELEASE_CAPABILITY_CONTRACT,
+            defaults,
+        )
+        context = (
+            model,
+            categories,
+            prefix_effect_names,
+            always_include_custom_effects,
+            active_custom,
+            native_categories,
+            self.coordinator._profile_generation,
+            tuple(getattr(self.coordinator, field, None) for field in sorted(video_identity_fields(profile))),
+            self.coordinator.pact_type,
+            self.coordinator.pact_code,
+            self.coordinator.camera_health in {"absent", "incompatible"},
+            self.coordinator.camera_status in {"absent", "incompatible"},
+            defaults.generation if defaults is not None else 0,
+        )
+        catalogues = (
+            MODEL_SCENES.get(canonical_model, {}),
+            MODEL_SCENE_LABELS.get(canonical_model, {}),
+            MODEL_SCENE_ALIASES.get(canonical_model, {}),
+            *(
+                (MODEL_SCENES.get(legacy_model, {}), MODEL_SCENE_LABELS.get(legacy_model, {}))
+                if legacy_model is not None
+                else ()
+            ),
+        )
+        for index, cached in enumerate(self._selector_cache):
+            if cached.matches(references, context, catalogues):
+                if index:
+                    self._selector_cache = (cached, self._selector_cache[0])
+                return cached.entries
 
         def available(content: object) -> bool:
             try:
@@ -508,62 +581,20 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 return False
             return True
 
-        video_modes = self.coordinator.profile.video_modes
+        video_modes = profile.video_modes
         try:
-            require_video_mode(self.coordinator.profile, self.coordinator)
+            require_video_mode(profile, self.coordinator)
         except CameraUnavailableError:
             video_modes = ()
-        if self._effect_backend is not None and self._config_entry_id is not None:
+        if defaults is not None and self._config_entry_id is not None:
             video_modes = tuple(
                 mode
                 for mode in video_modes
-                if (
-                    stored := self._effect_backend.template_defaults.get(
-                        self._config_entry_id, f"template:video:{mode}"
-                    )
-                )
-                is None
-                or stored.model != self.coordinator.model
+                if (stored := defaults.get(self._config_entry_id, f"template:video:{mode}")) is None
+                or stored.model != model
                 or available(stored.content)
             )
-        model = self.coordinator.model
-        canonical_model = resolve_model(model) or model
-        registered_profile = MODEL_PROFILES.get(canonical_model)
-        legacy_model = registered_profile.legacy_scene_catalogue_sku if registered_profile is not None else None
-        categories = self._effect_categories
         available_items = tuple(item for item in self._library_snapshot.items if available(item.content))
-        prefix_effect_names = getattr(self.coordinator, "prefix_effect_names", False) is True
-        always_include_custom_effects = getattr(self.coordinator, "always_include_custom_effects", False) is True
-        native_categories = self._native_selector_categories
-        profile = self.coordinator.profile
-        key = (
-            model,
-            categories,
-            available_items,
-            prefix_effect_names,
-            always_include_custom_effects,
-            active_custom,
-            native_categories,
-            profile,
-            video_modes,
-            registered_profile,
-            MODEL_EFFECT_CATALOGUES.get(canonical_model),
-            effect_contracts.RELEASE_CAPABILITY_CONTRACT,
-            tuple(MODEL_SCENES.get(canonical_model, {}).items()),
-            tuple(MODEL_SCENE_LABELS.get(canonical_model, {}).items()),
-            tuple(MODEL_SCENE_ALIASES.get(canonical_model, {}).items()),
-            (
-                tuple(MODEL_SCENES.get(legacy_model, {}).items()),
-                tuple(MODEL_SCENE_LABELS.get(legacy_model, {}).items()),
-            )
-            if legacy_model is not None
-            else None,
-        )
-        for index, (cached_key, cached_entries) in enumerate(self._selector_cache):
-            if cached_key == key:
-                if index:
-                    self._selector_cache = ((cached_key, cached_entries), self._selector_cache[0])
-                return cached_entries
         entries = effect_selector_entries(
             model,
             categories,
@@ -575,7 +606,8 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             profile=profile,
             video_modes=video_modes,
         )
-        self._selector_cache = ((key, entries), *self._selector_cache[:1])
+        cached = _SelectorCacheEntry(references, context, tuple(dict(values) for values in catalogues), entries)
+        self._selector_cache = (cached, *self._selector_cache[:1])
         return entries
 
     def _matching_active_workspace(self) -> Any | None:
