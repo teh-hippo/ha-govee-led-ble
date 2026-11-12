@@ -53,6 +53,8 @@ types:
       - id: unknown_tail
         size-eos: true
     instances:
+      write_tail_size:
+        value: '14 - (is_legacy ? 2 + (has_fixed_colour != 0 ? 3 : 0) : 0)'
       is_legacy:
         value: >-
           mode_id == music_mode::rhythm or mode_id == music_mode::spectrum or

@@ -209,3 +209,5 @@ types:
     instances:
       is_base:
         value: mode == music_mode::rhythm or mode == music_mode::energetic or mode == music_mode::impact or mode == music_mode::spray
+      write_tail_size:
+        value: '14 - (mode == music_mode::rhythm ? 1 : 0) - (is_base ? 1 + (has_fixed_colour != 0 ? 4 : 0) : 0)'

@@ -27,7 +27,6 @@ from .protocol_core import (
     DiyType03,
     DiyType04,
     GoveeCommon,
-    H1a42MusicWrite,
     H60a6Control,
     H60a6EffectFrame,
     H60aBulk,
@@ -35,8 +34,6 @@ from .protocol_core import (
     H60b0CommandWrite,
     H60b0EffectUpload,
     H61f5ExtendedStaticWrite,
-    H61f5MusicWrite,
-    H66a0MusicWrite,
     H66a0VideoCommand,
     H600aCommandWrite,
     H601cCommandWrite,
@@ -66,7 +63,6 @@ from .protocol_core import (
     H6076MusicBody,
     H6076MusicWrite,
     H6097Control,
-    H6097MusicWrite,
     H6099CommandWrite,
     H6099EffectUpload,
     H6179CommandWrite,
@@ -74,7 +70,6 @@ from .protocol_core import (
     H6181DiyBody,
     H6199EffectUpload,
     H7020CommandWrite,
-    H7025MusicWrite,
     ProtocolParseRejection,
     ProtocolParseResult,
     SceneBody,
@@ -2587,6 +2582,17 @@ def build_relative_brightness(
     return _serialize_xor(root)
 
 
+def _music_mode_command(root_type: Any) -> tuple[Any, Any]:
+    root = root_type()
+    root.header = b"\x33"
+    root.opcode = root_type.CommandOp.mode
+    root.body = _child(root_type.ModeBody, root)
+    root.body.sub_mode = root_type.ModeSel.music
+    detail = _child(root_type.MusicBody, root.body)
+    root.body.detail = detail
+    return root, detail
+
+
 def build_music_mode(
     mode_id: int,
     sensitivity: int,
@@ -2620,12 +2626,7 @@ def build_music_mode(
     if resolved == "H6181":
         if selector_parameters:
             raise ValueError("Unsupported music selector parameter")
-        root = H6181CommandWrite()
-        root.header = b"\x33"
-        root.opcode = H6181CommandWrite.CommandOp.mode
-        root.body = _child(H6181CommandWrite.ModeBody, root)
-        root.body.sub_mode = H6181CommandWrite.ModeSel.music
-        detail = _child(H6181CommandWrite.MusicBody, root.body)
+        root, detail = _music_mode_command(H6181CommandWrite)
         detail.mode = H6181CommandWrite.MusicMode(mode_id)
         detail.sensitivity = sensitivity
         if mode_id in (0, 1):
@@ -2633,8 +2634,7 @@ def build_music_mode(
             detail.has_fixed_colour = int(colour is not None)
             if colour is not None:
                 detail.fixed_colour = _rgb(detail, *colour)
-        detail.padding = bytes(14 if mode_id in (48, 49) else 9 if colour is not None else 12)
-        root.body.detail = detail
+        detail.padding = bytes(detail.write_tail_size)
         return _serialize_xor(root)
     if resolved in {"H1771", "H60B0"}:
         if colour is not None or selector_parameters:
@@ -2674,12 +2674,7 @@ def build_music_mode(
         mask = selector_parameters.get("bar_mask", left | right)
         if type(mask) is not int or mask not in (left, right, left | right):
             raise ValueError("Music bar mask must target left, right or both")
-        root = root_type()
-        root.header = b"\x33"
-        root.opcode = root_type.CommandOp.mode
-        mode = _child(root_type.ModeBody, root)
-        mode.sub_mode = root_type.ModeSel.music
-        detail = _child(root_type.MusicBody, mode)
+        root, detail = _music_mode_command(root_type)
         detail.mode = root_type.MusicMode(mode_id)
         detail.sensitivity = sensitivity
         if variant is not None and variant.supports_fixed_colour:
@@ -2688,12 +2683,7 @@ def build_music_mode(
             if colour is not None:
                 detail.bar_mask = mask
                 detail.fixed_colour = _rgb(detail, *colour)
-        used = 2 + int(mode_id == int(root_type.MusicMode.rhythm))
-        if detail.is_base:
-            used += 1 + (4 if colour is not None else 0)
-        detail.unknown_tail = bytes(16 - used)
-        mode.detail = detail
-        root.body = mode
+        detail.unknown_tail = bytes(detail.write_tail_size)
         return _serialize_xor(root)
     if resolved == "H7020":
         allowed = {"rhythm_response"} if mode_id == 3 else set()
@@ -2718,17 +2708,7 @@ def build_music_mode(
         root.body = multi
         return _serialize_xor(root)
     if resolved in {"H6097", "H1A42", "H61F5", "H66A0", "H7025"}:
-        root_cls = (
-            H6097MusicWrite
-            if resolved == "H6097"
-            else H1a42MusicWrite
-            if resolved == "H1A42"
-            else H61f5MusicWrite
-            if resolved == "H61F5"
-            else H66a0MusicWrite
-            if resolved == "H66A0"
-            else H7025MusicWrite
-        )
+        root_cls = _MUSIC_WRITE_ROOTS[resolved][1]
         root = root_cls()
         root.header, root.opcode, root.sub = b"\x33", b"\x05", b"\x13"
         selector = _child(root_cls.MusicSelector, root)
@@ -2741,7 +2721,7 @@ def build_music_mode(
                 selector.rgb = _rgb(selector, *colour)
         elif resolved in {"H6097", "H1A42", "H61F5", "H66A0"} and colour is not None:
             raise ValueError(f"new {resolved} music selectors omit fixed colour")
-        selector.unknown_tail = bytes(14 - (2 + (3 if colour is not None else 0) if selector.is_legacy else 0))
+        selector.unknown_tail = bytes(selector.write_tail_size)
         root.selector = selector
         return _serialize_xor(root)
     if resolved == "H6179":
@@ -2756,18 +2736,13 @@ def build_music_mode(
         detail.colour_mode = int(colour is not None)
         if colour is not None:
             detail.fixed_colour = _rgb(detail, *colour)
-        detail.opaque = bytes(10 if colour is not None else 13)
+        detail.opaque = bytes(detail.write_tail_size)
         mode.payload = detail
         root.body = mode
         return _serialize_xor(root)
     if resolved in {"H6099", "H6199"}:
         root_type = _COMMAND_ROOTS[resolved][1]
-        root = root_type()
-        root.header = b"\x33"
-        root.opcode = root_type.CommandOp.mode
-        mode = _child(root_type.ModeBody, root)
-        mode.sub_mode = root_type.ModeSel.music
-        detail = _child(root_type.MusicBody, mode)
+        root, detail = _music_mode_command(root_type)
         detail.mode = root_type.MusicMode(mode_id)
         detail.sensitivity = max(0, min(100, sensitivity))
         if resolved == "H6199" or detail.is_legacy:
@@ -2776,8 +2751,6 @@ def build_music_mode(
             detail.fixed_colour = _rgb(detail, *(colour or (0, 0, 0)))
         elif colour is not None:
             raise ValueError("new H6099 music selectors omit fixed colour")
-        mode.detail = detail
-        root.body = mode
         return _serialize_xor(root)
 
     if resolved != "H617A":
