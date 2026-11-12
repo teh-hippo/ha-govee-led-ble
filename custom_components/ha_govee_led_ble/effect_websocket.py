@@ -24,6 +24,8 @@ from homeassistant.loader import async_get_integration
 from homeassistant.util import dt as dt_util
 
 from .const import CONF_SHOW_EXPERIMENTAL_FEEDBACK, DOMAIN, ModelProfile, light_unique_id, supported_effect_categories
+from .control_arbiter import ControlIntent
+from .coordinator_base import async_prepare_effect_profile
 from .effect_backend import EffectBackend
 from .effect_catalogue import (
     custom_effect_catalogue_payload,
@@ -61,6 +63,7 @@ from .effect_scenes import (
     async_reset_scene_default,
     async_set_scene_default,
     resolve_scene,
+    resolve_scene_application_body,
     scene_catalogue_payload,
     scene_default_for,
     scene_detail_payload,
@@ -431,11 +434,15 @@ async def ws_scene_apply(
     if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
         connection.send_error(msg["id"], "not_found", "target config entry is not loaded")
         return
-    if not entry.runtime_data.profile.supports_scenes:
-        connection.send_error(msg["id"], "unsupported_model", "Device profile supports no scenes")
-        return
     try:
         backend = _backend(hass)
+        resolved = resolve_scene(entry.runtime_data.model, msg["scene_id"], msg["effect_id"])
+        if "speed_index" in msg:
+            resolve_scene_application_body(resolved.entry, scene_default=None, speed_index=msg["speed_index"])
+        profile = await async_prepare_effect_profile(entry.runtime_data, intent=ControlIntent.BACKGROUND)
+        if not profile.supports_scenes:
+            connection.send_error(msg["id"], "unsupported_model", "Device profile supports no scenes")
+            return
         resolved, speed_index = await async_apply_scene(
             hass,
             entry,
@@ -1390,7 +1397,9 @@ async def ws_apply(
             msg["item_id"],
             expected_version=msg["expected_version"],
         ) as item:
-            compiled = await async_prepare_application(entry.runtime_data, item, diy_code=msg.get("diy_code"))
+            compiled = await async_prepare_application(
+                entry.runtime_data, item, diy_code=msg.get("diy_code"), intent=ControlIntent.BACKGROUND
+            )
             await backend.preview.async_supersede_device(entry.entry_id, reason="committed_apply")
             result = await backend.engine.async_apply_saved(
                 entry.runtime_data,
@@ -1463,7 +1472,9 @@ async def ws_apply_snapshot(
             ),
         )
         operation_id = UUID(msg["operation_id"]) if "operation_id" in msg else None
-        compiled = await async_prepare_application(entry.runtime_data, item, diy_code=msg.get("diy_code"))
+        compiled = await async_prepare_application(
+            entry.runtime_data, item, diy_code=msg.get("diy_code"), intent=ControlIntent.BACKGROUND
+        )
         await backend.preview.async_supersede_device(entry.entry_id, reason="committed_apply")
         result = await backend.engine.async_apply_snapshot(
             entry.runtime_data,

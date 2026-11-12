@@ -2,21 +2,24 @@
 
 import asyncio
 from dataclasses import replace
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from bleak import BleakError
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.exceptions import HomeAssistantError
 
-from custom_components.ha_govee_led_ble.const import ReadDomain, device_profile
+from custom_components.ha_govee_led_ble.const import DOMAIN, ReadDomain, device_profile
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.effect_catalogue import H617A_TYPE04_APPLY_CODE, H6117_NATIVE_DIY_TEMPLATES
 from custom_components.ha_govee_led_ble.effect_compiler import compile_application
 from custom_components.ha_govee_led_ble.effect_deployments import DeploymentPhase, EffectDeploymentRepository
-from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, SingleEffect
+from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, SingleEffect, effect_content_to_dict
 from custom_components.ha_govee_led_ble.effect_runtime import EffectDeploymentEngine
+from custom_components.ha_govee_led_ble.effect_scenes import resolve_scene
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_boolean_control,
     build_boolean_control_query,
@@ -42,6 +45,7 @@ from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES
 from custom_components.ha_govee_led_ble.transport import reassemble_a1_02, xor_checksum
 from tests.storage_test_double import InMemoryVersionedDocumentStore
 from tests.test_effect_preview import _manager, _open
+from tests.test_effect_websocket import _setup_backend
 
 
 def _profile(*, firmware="1.08.06", hardware="1.00.02", pact=(1, 1)):
@@ -255,7 +259,7 @@ async def test_cached_identity_does_not_authorise_reconnect_writes(hass, monkeyp
 
 
 @pytest.fixture(params=[(1, 1), (2, 1)])
-async def reconnect_identity(hass, monkeypatch, virtual_clock, request):
+async def reconnect_identity(hass, monkeypatch, request):
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6117", configuration_url="test")
     coordinator.pact_type, coordinator.pact_code = request.param
     coordinator.fw_version, coordinator.hw_version = "1.08.06", "1.00.02"
@@ -307,7 +311,7 @@ async def reconnect_identity(hass, monkeypatch, virtual_clock, request):
 
 
 @pytest.mark.parametrize("route", ["scenes", "diy", "advanced", "brightness", "gradual", "recovery"])
-async def test_foreground_requalifies_missing_reconnect_identity(reconnect_identity, monkeypatch, route):
+async def test_foreground_requalifies_missing_reconnect_identity(reconnect_identity, monkeypatch, route, virtual_clock):
     coordinator, replies, packets = reconnect_identity
     replies[build_firmware_query("H6117")] = b"\xaa\x06" + b"1.08.06"
     expected = []
@@ -369,7 +373,7 @@ async def test_foreground_requalifies_missing_reconnect_identity(reconnect_ident
 
 
 @pytest.mark.parametrize("reply", [None, b"\xaa\x06invalid"])
-async def test_missing_reconnect_identity_is_not_reported_as_unsupported(reconnect_identity, reply):
+async def test_missing_reconnect_identity_is_not_reported_as_unsupported(reconnect_identity, reply, virtual_clock):
     coordinator, replies, packets = reconnect_identity
     if reply is not None:
         replies[build_firmware_query("H6117")] = reply
@@ -382,7 +386,7 @@ async def test_missing_reconnect_identity_is_not_reported_as_unsupported(reconne
     assert packets[-1] == build_power(False, "H6117")
 
 
-async def test_identity_refresh_cancellation_does_not_authorise_writes(reconnect_identity):
+async def test_identity_refresh_cancellation_does_not_authorise_writes(reconnect_identity, virtual_clock):
     coordinator, _, packets = reconnect_identity
     request = asyncio.create_task(coordinator.send_command(build_brightness(50, profile=coordinator.profile)))
     await asyncio.sleep(0)
@@ -393,7 +397,7 @@ async def test_identity_refresh_cancellation_does_not_authorise_writes(reconnect
     assert not any(packet[0] != 0xAA for packet in packets)
 
 
-async def test_identity_refresh_rejects_replaced_subscription(reconnect_identity):
+async def test_identity_refresh_rejects_replaced_subscription(reconnect_identity, virtual_clock):
     coordinator, replies, packets = reconnect_identity
     replies[build_firmware_query("H6117")] = b"\xaa\x06" + b"1.08.06"
     original_write = coordinator._client.write_gatt_char.side_effect
@@ -411,7 +415,7 @@ async def test_identity_refresh_rejects_replaced_subscription(reconnect_identity
 @pytest.mark.parametrize("cold", [False, True])
 @pytest.mark.parametrize("identity_available", [False, True])
 async def test_studio_snapshot_qualifies_identity_before_applying(
-    reconnect_identity, monkeypatch, cold, identity_available
+    reconnect_identity, monkeypatch, cold, identity_available, virtual_clock
 ):
     coordinator, replies, packets = reconnect_identity
     if cold:
@@ -473,7 +477,9 @@ async def test_studio_snapshot_qualifies_identity_before_applying(
 
 
 @pytest.mark.parametrize("route", ["scene", "snapshot"])
-async def test_cold_studio_preview_qualifies_before_compilation(hass, monkeypatch, reconnect_identity, route):
+async def test_cold_studio_preview_qualifies_before_compilation(
+    hass, monkeypatch, reconnect_identity, route, virtual_clock
+):
     coordinator, replies, packets = reconnect_identity
     coordinator.fw_version = coordinator.hw_version = None
     coordinator._confirmed_identity_fields.clear()
@@ -508,6 +514,67 @@ async def test_cold_studio_preview_qualifies_before_compilation(hass, monkeypatc
         assert packets and all(packet[0] == 0xAA for packet in packets)
     finally:
         await manager.async_shutdown()
+
+
+@pytest.mark.parametrize("route", ["snapshot", "saved", "scene"])
+@pytest.mark.parametrize("identity_available", [False, True])
+async def test_studio_api_prepares_cold_profile_before_admission(
+    hass, hass_ws_client, monkeypatch, reconnect_identity, route, identity_available
+):
+    coordinator, replies, packets = reconnect_identity
+    coordinator.fw_version = coordinator.hw_version = None
+    coordinator._confirmed_identity_fields.clear()
+    coordinator._resolve_device_profile()
+    if identity_available:
+        replies[build_firmware_query("H6117")] = b"\xaa\x06" + b"1.08.06"
+    backend = await _setup_backend(hass)
+    entry = SimpleNamespace(entry_id="entry-a", domain=DOMAIN, state=ConfigEntryState.LOADED, runtime_data=coordinator)
+    monkeypatch.setattr(hass.config_entries, "async_get_entry", lambda _id: entry)
+    record = SimpleNamespace(to_public_dict=lambda: {"phase": "confirmed"})
+    snapshot = AsyncMock(return_value=record)
+    saved = AsyncMock(return_value=record)
+    monkeypatch.setattr(backend.engine, "async_apply_snapshot", snapshot)
+    monkeypatch.setattr(backend.engine, "async_apply_saved", saved)
+    scene = MODEL_SCENES["H6117"]["action-a"]
+    apply_scene = AsyncMock(return_value=(resolve_scene("H6117", scene.scene_id, scene.effect_id), None))
+    monkeypatch.setattr("custom_components.ha_govee_led_ble.effect_websocket.async_apply_scene", apply_scene)
+    content = effect_content_to_dict(SingleEffect(0, 0, 50, ((255, 0, 0),)))
+    message = {"config_entry_id": "entry-a"}
+    if route == "scene":
+        message.update(type=f"{DOMAIN}/editor/scene/apply", scene_id=scene.scene_id, effect_id=scene.effect_id)
+    elif route == "saved":
+        mutation = await backend.application.async_create_library_item(name="Cold API", content=content)
+        message.update(
+            type=f"{DOMAIN}/editor/apply",
+            item_id=str(mutation.item.id),
+            expected_version=mutation.item.version,
+            updated_at="2026-11-12T00:00:00Z",
+        )
+    else:
+        message.update(
+            type=f"{DOMAIN}/editor/apply_snapshot",
+            name="Cold API",
+            content=content,
+            updated_at="2026-11-12T00:00:00Z",
+        )
+    client = await hass_ws_client(hass)
+    await client.send_json_auto_id(message)
+    response = await client.receive_json()
+    assert response["success"] is identity_available
+    if identity_available:
+        assert coordinator.identity_fields_confirmed()
+        assert (snapshot.await_count, saved.await_count, apply_scene.await_count) == (
+            int(route == "snapshot"),
+            int(route == "saved"),
+            int(route == "scene"),
+        )
+    else:
+        assert response["error"]["code"] == "apply_failed"
+        snapshot.assert_not_awaited()
+        saved.assert_not_awaited()
+        apply_scene.assert_not_awaited()
+    assert packets and all(packet[0] == 0xAA for packet in packets)
+    assert coordinator.control_write_attempts == 0
 
 
 async def test_write_only_segment_paint_preserves_siblings_without_querying(hass, monkeypatch, virtual_clock):
