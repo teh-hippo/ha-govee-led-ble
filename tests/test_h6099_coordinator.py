@@ -401,7 +401,7 @@ async def test_off_recovery_cleanup_preserves_original_failure(device, attempted
     packets = [call.args[1] for call in device._client.write_gatt_char.await_args_list]
     assert packets == ([build_power(True, "H6099"), off] if attempted else [])
     assert device.control_write_attempts == len(packets)
-    assert not device._lock.locked() and not device._control_lock.locked()
+    assert not device._lock.locked() and not device._control_arbiter.locked()
 
 
 async def test_music_recovery_uses_device_geometry_without_unsupported_colour(device, monkeypatch):
@@ -736,7 +736,7 @@ async def test_toggle_reads_fresh_external_policy_before_writing(device, monkeyp
         with pytest.raises(ValueError, match="read freshly"):
             await asyncio.wait_for(apply(), 1)
         assert device.control_write_attempts == 0
-    assert not device._lock.locked() and not device._control_lock.locked()
+    assert not device._lock.locked() and not device._control_arbiter.locked()
 
 
 @pytest.mark.parametrize("change", ["filtered", "reconnect"])
@@ -824,4 +824,4 @@ async def test_compiled_toggle_prepares_policy_before_any_control(device, monkey
         assert not any(call.args[1][0] == 0x33 for call in client.write_gatt_char.await_args_list)
         assert device.capture_effect_control_state() == before
         assert not device._expected_state
-    assert not device._lock.locked() and not device._control_lock.locked()
+    assert not device._lock.locked() and not device._control_arbiter.locked()

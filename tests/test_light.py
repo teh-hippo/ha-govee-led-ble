@@ -270,7 +270,7 @@ async def test_effect_preflight_precedes_light_side_effects(hass, mock_coordinat
     mock_coordinator.async_write_effect_sequence.assert_not_awaited()
     entity.async_write_ha_state.assert_not_called()
     assert (mock_coordinator.is_on, mock_coordinator.brightness_pct, mock_coordinator.rgb_color) == before
-    assert not mock_coordinator._control_lock.locked()
+    assert not mock_coordinator._control_arbiter.locked()
 
 
 @pytest.mark.parametrize("saved", [False, True])
@@ -1013,11 +1013,11 @@ async def test_saved_effects_are_compatible_reactive_and_lock_safe(
 
     @asynccontextmanager
     async def saved_effect_for_apply(*_args, **_kwargs):
-        assert not mock_coordinator._control_lock.locked()
+        assert not mock_coordinator._control_arbiter.locked()
         yield saved
 
     async def apply_saved_effect(*_args, **_kwargs):
-        assert mock_coordinator._control_lock.locked()
+        assert mock_coordinator._control_arbiter.locked()
 
     application = SimpleNamespace(
         library_snapshot=MagicMock(

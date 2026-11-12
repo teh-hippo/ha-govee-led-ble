@@ -53,8 +53,8 @@ from .const import (
 from .control_arbiter import BLEControlArbiter, ControlIntent, LatestRequests, PreviewAdmission, async_control_intent
 from .coordinator_dreamview import DreamviewClaimedError, _DreamviewMixin, is_dreamview_claimed
 from .coordinator_expectations import expectations_from_packet, parse_write_state
-from .coordinator_h6102 import _H6102Mixin
-from .coordinator_modes import PreModeSnapshot, _ActiveModeMixin
+from .coordinator_h6102 import H6102InitialIdentity, _H6102Mixin
+from .coordinator_modes import _ActiveModeMixin
 from .coordinator_notifications import _OPTIONAL_CONTROL_DOMAINS, _NotificationMixin
 from .coordinator_recovery import _RecoveryMixin
 from .coordinator_refresh import (
@@ -72,7 +72,6 @@ from .coordinator_upload import PendingUploadAck
 from .effect_contracts import CapabilityState
 from .generated_protocol_adapter import (
     A3Sequence,
-    BulkStatusCollector,
     build_black_border_query,
     build_blank_screen_query,
     build_brightness_query,
@@ -100,16 +99,12 @@ from .govee_encryption import GoveeCryptoError, GoveeTransportError
 from .govee_encryption.session import GoveeEncryptionSession
 from .h6099_controls import h6099_control_queries
 from .h6102_capabilities import (
-    H6102FirmwareSource,
     resolve_h6102_capabilities,
 )
 from .light_commands import (
     ParsedStaticWrite,
 )
 from .low_blue_light import LowBlueLightState
-from .music_semantics import (
-    music_body_params_for_mode,
-)
 from .native_profile_controls import (
     ProfileWriter,
 )
@@ -183,15 +178,15 @@ class GoveeBLECoordinator(
         prefix_effect_names: bool = False,
         always_include_custom_effects: bool = False,
         device_resolver: BLEDeviceResolver | None = None,
-        h6102_firmware: str | None = None,
-        h6102_firmware_source: H6102FirmwareSource | None = None,
-        h6102_hardware: str | None = None,
-        h6102_pact: str | None = None,
+        h6102_identity: H6102InitialIdentity | None = None,
     ) -> None:
         profile = get_profile(model)
         if model == "H7020":
             profile = device_profile(model, None, None)
-        resolution = resolve_h6102_capabilities(h6102_firmware, h6102_firmware_source) if model == "H6102" else None
+        identity = h6102_identity or H6102InitialIdentity()
+        resolution = (
+            resolve_h6102_capabilities(identity.firmware, identity.firmware_source) if model == "H6102" else None
+        )
         if resolution is not None:
             profile = resolution.profile
         super().__init__(
@@ -201,13 +196,7 @@ class GoveeBLECoordinator(
             update_interval=timedelta(seconds=30) if profile.state_readable else None,
         )
         self.address, self.model, self.profile = address, model, profile
-        self._init_h6102(
-            resolution,
-            firmware=h6102_firmware,
-            firmware_source=h6102_firmware_source,
-            hardware=h6102_hardware,
-            pact=h6102_pact,
-        )
+        self._init_h6102(resolution, identity)
         self._profile_generation = 0
         self._configuration_url = configuration_url
         self.effect_families = default_effect_families(model) if effect_families is None else effect_families
@@ -236,7 +225,6 @@ class GoveeBLECoordinator(
         self._setting_ack: tuple[BleakClient, object | None, int, asyncio.Future[bool]] | None = None
         self._lock = asyncio.Lock()
         self._control_arbiter = BLEControlArbiter()
-        self._control_lock = self._control_arbiter
         self.latest_requests = LatestRequests()
         self._cancel_disconnect: CALLBACK_TYPE | None = None
         self._disconnect_generation = 0
@@ -260,7 +248,6 @@ class GoveeBLECoordinator(
         self.right_bar_kelvin: int | None = None
         self.bar_enable_mask: int | None = None
         self.rgb_color_source = self.color_temp_kelvin_source = "initial"
-        self.effect: str | None = None
         # Device identity from the aa 06/aa 07 handshake replies; None until first read.
         self.fw_version: str | None = None
         self.hw_version: str | None = None
@@ -288,115 +275,23 @@ class GoveeBLECoordinator(
         self.low_blue_light: LowBlueLightState | None = None
         self.power_on_behaviour: str | None = None
         self.power_on_open_flag: int | None = None
-        self._bulk_collector: BulkStatusCollector | None = None
-        self._bulk_query_deadline: float | None = None
-        self._bulk_query_incomplete = False
-        self.configured_strings: int | None = None
-        self._configured_strings_confirmed = False
-        self._mask_transaction: tuple[asyncio.Task[Any] | None, object | None, int] | None = None
-        self._segment_query_generation: int | None = None
-        self.installation_direction: int | None = None
-        self.camera_health = "unknown"
-        self.strip_direction: int | None = None
-        self.camera_position: int | None = None
-        self.gradient: int | None = None
-        self.camera_status = "unknown"
-        self.music_mode = "off"
-        self.video_mode = "off"
-        self.diy_code: int | None = None
-        self.diy_companion: int | None = None
-        self.color_mode: ParsedMode | None = None
-        self._observed_color_mode: ParsedMode | None = None
-        self._mode_write_generation = 0
-        self._observed_mode_write_generation = -1
-        self._observed_mode_profile_generation = -1
-        self._power_write_generation = 0
-        self._observed_power_write_generation = -1
-        self._observed_power_profile_generation = -1
-        self._source_power_observation_generation: dict[str, tuple[int, int]] = {}
-        self._scene_code: int | None = None
-        self._pre_mode_snapshot = PreModeSnapshot(kind="rgb", rgb=(255, 255, 255))
-        self.segment_colors: list[tuple[int, int, int]] = [self.rgb_color] * profile.segment_count
-        self.segment_brightness: list[int] = [100] * profile.segment_count
-        self.segment_brightness_readable = False
-        self.segment_state_source = "initial"
-        self.segment_state_observed_at: str | None = None
-        self._segment_groups_observed: set[int] = set()
-        self._segment_query_colors: list[tuple[int, int, int]] | None = None
-        self._segment_query_brightness: list[int] | None = None
-        self._segment_query_incomplete = False
-        self.video_saturation = self.white_brightness = 100
-        self.music_sensitivity = 99
-        self.video_full_screen, self.video_sound_effects = True, False
-        self.video_sound_effects_softness = 100
-        self.video_parameters: dict[str, Any] | None = None
-        self.music_color: tuple[int, int, int] | None = None
-        self.music_fixed_colour: bool | None = None
-        self.music_left_colour: int | None = None
-        self.music_right_colour: int | None = None
-        # H6199 display settings and edge brightness. None means the first read has not landed.
-        self.white_balance_red: int | None = None
         self.control_write_attempts = 0
         self._static_write_attempts = 0
         self.source_static_intents: dict[str, int | tuple[int, int, int]] = {}
-        self.white_balance_blue: int | None = None
-        self.white_balance_flag: int | None = None
-        self.white_balance_default_flag: int | None = None
-        self.white_balance_default_red: int | None = None
-        self.white_balance_default_blue: int | None = None
-        self.white_balance_scalar: int | None = None
-        self.relative_brightness: int | None = None
-        self.whole_relative_brightness: int | None = None
-        self.relative_brightness_left: int | None = None
-        self.relative_brightness_top: int | None = None
-        self.relative_brightness_right: int | None = None
-        self.relative_brightness_bottom: int | None = None
-        self.relative_brightness_strip_left: int | None = None
-        self.relative_brightness_strip_right: int | None = None
-        self.blank_screen: bool | None = None
-        self.black_border: bool | None = None
-        self.blank_screen_detection: int | None = None
-        self.blank_screen_low_brightness_duration_seconds: int | None = None
-        self.blank_screen_same_tone_duration_seconds: int | None = None
-        self._blank_screen_notification_revision = 0
-        self.music_separation_point = 1
-        self.music_separation_gradient = True
-        self.music_hopping_brightness = 50
-        self.music_piano_key_count = 15
-        self.music_fountain_direction = "clockwise"
-        self.music_daynight_segments = 1
-        self.music_daynight_speed = 10
-        self.music_daynight_gradient = False
-        self._initialized_music_parameters: set[str] = set()
-        for variant in profile.music_variants:
-            for spec in music_body_params_for_mode(variant.mode_code, profile):
-                setattr(self, spec.key, spec.default)
-                if not profile.can_read(ReadDomain.PHYSICAL_IC_COUNT) or not (
-                    variant.requires_physical_ic_count or spec.requires_physical_ic_count
-                ):
-                    self._initialized_music_parameters.add(spec.key)
-            for spec in variant.selector_parameters:
-                setattr(self, spec.key, None)
-        self.packet_log: list[dict[str, Any]] = []
-        self._expected_state: dict[str, tuple[Any, float]] = {}
-        self._notify_started_monotonic: float | None = None
-        self._last_rx_monotonic: float | None = None
-        self._domain_revisions: dict[StatusDomain, int] = {}
-        self._field_revisions: dict[str, int] = {}
-        self._field_received_at: dict[str, float] = {}
-        self._domain_received_at: dict[StatusDomain, float] = {}
-        self._revision_event = asyncio.Event()
+        self._init_mode_state()
+        self._init_video_state()
+        self._init_segment_state()
+        self._init_observation_state()
         # Successful polling survives intentional release independently of advertisement presence.
         self._present = False
         self._state_read_available = False
         self._first_refresh_done = False
         self._model_reload_scheduled = False
-        self._cancel_hass_stop: CALLBACK_TYPE | None = hass.bus.async_listen_once(
-            EVENT_HOMEASSISTANT_STOP, self._handle_hass_stop
-        )
+        self._cancel_hass_stop: CALLBACK_TYPE | None = None
         self._init_dreamview()
-        self._apply_h6102_context(firmware=h6102_firmware, firmware_source=h6102_firmware_source, pact=h6102_pact)
+        self._apply_h6102_context(identity)
         self._resolve_device_profile()
+        self._cancel_hass_stop = hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, self._handle_hass_stop)
 
     @property
     def configuration_url(self) -> str | None:

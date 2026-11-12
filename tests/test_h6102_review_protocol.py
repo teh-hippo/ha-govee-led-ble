@@ -8,6 +8,7 @@ import pytest
 
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ModelProfile, ReadDomain, get_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator_h6102 import H6102InitialIdentity
 from custom_components.ha_govee_led_ble.coordinator_status import (
     ParsedMode,
     decode_status_frame,
@@ -152,9 +153,7 @@ def test_legacy_short_config_is_unqualified_until_reentered_or_observed(hass) ->
         "11:22:33:44:55:66",
         "H6102",
         configuration_url=None,
-        h6102_firmware="3.2.2",
-        h6102_firmware_source="configured",
-        h6102_pact="10/1",
+        h6102_identity=H6102InitialIdentity(firmware="3.2.2", firmware_source="configured", pact="10/1"),
     )
     coordinator.hw_version = "3.01.01"
     coordinator._resolve_device_profile()

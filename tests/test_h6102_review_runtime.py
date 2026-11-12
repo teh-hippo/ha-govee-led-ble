@@ -12,6 +12,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.ha_govee_led_ble.const import DOMAIN, ReadDomain
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator_h6102 import H6102InitialIdentity
 from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
 from custom_components.ha_govee_led_ble.effect_deployments import (
     DeploymentPhase,
@@ -39,7 +40,13 @@ async def radio(hass, monkeypatch):
     entry = MockConfigEntry(domain=DOMAIN)
     entry.add_to_hass(hass)
     with current_entry.set(entry):
-        c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6102", configuration_url="studio", h6102_pact="10/1")
+        c = GoveeBLECoordinator(
+            hass,
+            "11:22:33:44:55:66",
+            "H6102",
+            configuration_url="studio",
+            h6102_identity=H6102InitialIdentity(pact="10/1"),
+        )
     state = {
         "fw": "3.02.02",
         "hw": "3.02.01",
@@ -470,7 +477,9 @@ def test_legacy_static_snapshot_keeps_new_fields_unknown():
 async def test_external_retained_body_change_stops_edit_and_preserves_external_value(hass, fragment, replacement):
     from tests.test_music_commands import _music_transport
 
-    c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6102", configuration_url=None, h6102_pact="10/1")
+    c = GoveeBLECoordinator(
+        hass, "11:22:33:44:55:66", "H6102", configuration_url=None, h6102_identity=H6102InitialIdentity(pact="10/1")
+    )
     c.fw_version, c.hw_version = "3.02.02", "3.02.01"
     c._resolve_device_profile()
     c._confirmed_identity_fields.update(c.profile.profile_identity_fields)

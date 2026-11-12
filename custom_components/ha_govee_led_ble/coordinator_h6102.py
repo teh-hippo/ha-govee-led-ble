@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 from .const import ModelProfile
@@ -15,6 +16,18 @@ from .h6102_capabilities import (
 from .h6102_protocol import H6102_PACTS, H6102RgbVariant
 
 
+@dataclass(frozen=True, slots=True)
+class H6102InitialIdentity:
+    firmware: str | None = None
+    firmware_source: H6102FirmwareSource | None = None
+    hardware: str | None = None
+    pact: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.pact is not None and self.pact not in H6102_PACTS:
+            raise ValueError("Unknown H6102 Pact context")
+
+
 class _H6102Mixin(_CoordinatorBase):
     rgb_variant: H6102RgbVariant | None
     firmware_source: H6102FirmwareSource | None
@@ -26,30 +39,22 @@ class _H6102Mixin(_CoordinatorBase):
     def _init_h6102(
         self,
         resolution: H6102CapabilityResolution | None,
-        *,
-        firmware: str | None,
-        firmware_source: H6102FirmwareSource | None,
-        hardware: str | None,
-        pact: str | None,
+        identity: H6102InitialIdentity,
     ) -> None:
         self.rgb_variant = resolution.rgb_variant if resolution is not None else None
         self.firmware_source = resolution.firmware_source if resolution is not None else None
         self.capability_resolution_reason = resolution.capability_resolution_reason if resolution is not None else None
-        self._configured_h6102_firmware = firmware if firmware_source == "configured" else None
-        self._configured_h6102_hardware = hardware
-        if pact is not None and pact not in H6102_PACTS:
-            raise ValueError("Unknown H6102 Pact context")
+        self._configured_h6102_firmware = identity.firmware if identity.firmware_source == "configured" else None
+        self._configured_h6102_hardware = identity.hardware
 
-    def _apply_h6102_context(
-        self, *, firmware: str | None, firmware_source: H6102FirmwareSource | None, pact: str | None
-    ) -> None:
+    def _apply_h6102_context(self, identity: H6102InitialIdentity) -> None:
         """Seed the observed identity from the config entry once the base attributes exist."""
         if self.model != "H6102":
             return
-        if firmware_source == "ble":
-            self.fw_version = firmware
-        if pact is not None:
-            self.pact_type, self.pact_code = H6102_PACTS[pact]
+        if identity.firmware_source == "ble":
+            self.fw_version = identity.firmware
+        if identity.pact is not None:
+            self.pact_type, self.pact_code = H6102_PACTS[identity.pact]
 
     def _forget_configured_identity(self, field: str) -> None:
         """A device reply supersedes the value the user typed into the config entry."""

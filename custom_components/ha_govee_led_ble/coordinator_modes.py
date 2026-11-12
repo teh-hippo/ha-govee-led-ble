@@ -5,6 +5,7 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, replace
 from typing import Any, Literal
 
+from .const import ReadDomain
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator_base import _CoordinatorBase, async_prepare_effect_profile
 from .coordinator_refresh import RefreshRequest
@@ -25,6 +26,7 @@ from .music_commands import (
 )
 from .music_protocol import music_code_for, music_mode_supports_style
 from .music_semantics import (
+    music_body_params_for_mode,
     music_parameters_depend_on_ic,
     music_params_for_mode,
     music_variant,
@@ -57,6 +59,80 @@ class _ActiveModeMixin(_CoordinatorBase):
     _music_palette: tuple[str, tuple[tuple[int, int, int], ...]] | None = None
     _retained_music_body: tuple[str, bytes] | None = None
     _music_body_revision: int = 0
+
+    def _init_mode_state(self) -> None:
+        self.effect: str | None = None
+        self.music_mode = "off"
+        self.diy_code: int | None = None
+        self.diy_companion: int | None = None
+        self.color_mode: ParsedMode | None = None
+        self._observed_color_mode: ParsedMode | None = None
+        self._mode_write_generation = 0
+        self._observed_mode_write_generation = -1
+        self._observed_mode_profile_generation = -1
+        self._power_write_generation = 0
+        self._observed_power_write_generation = -1
+        self._observed_power_profile_generation = -1
+        self._source_power_observation_generation: dict[str, tuple[int, int]] = {}
+        self._scene_code = None
+        self._pre_mode_snapshot = PreModeSnapshot(kind="rgb", rgb=(255, 255, 255))
+        self.music_sensitivity = 99
+        self.music_color: tuple[int, int, int] | None = None
+        self.music_fixed_colour: bool | None = None
+        self.music_left_colour: int | None = None
+        self.music_right_colour: int | None = None
+        self.music_separation_point = 1
+        self.music_separation_gradient = True
+        self.music_hopping_brightness = 50
+        self.music_piano_key_count = 15
+        self.music_fountain_direction = "clockwise"
+        self.music_daynight_segments = 1
+        self.music_daynight_speed = 10
+        self.music_daynight_gradient = False
+        self._initialized_music_parameters: set[str] = set()
+        for variant in self.profile.music_variants:
+            for spec in music_body_params_for_mode(variant.mode_code, self.profile):
+                setattr(self, spec.key, spec.default)
+                if not self.profile.can_read(ReadDomain.PHYSICAL_IC_COUNT) or not (
+                    variant.requires_physical_ic_count or spec.requires_physical_ic_count
+                ):
+                    self._initialized_music_parameters.add(spec.key)
+            for spec in variant.selector_parameters:
+                setattr(self, spec.key, None)
+
+    def _init_video_state(self) -> None:
+        self.video_mode = "off"
+        self.video_saturation = self.white_brightness = 100
+        self.video_full_screen, self.video_sound_effects = True, False
+        self.video_sound_effects_softness = 100
+        self.video_parameters: dict[str, Any] | None = None
+        self.installation_direction: int | None = None
+        self.camera_health = "unknown"
+        self.strip_direction: int | None = None
+        self.camera_position: int | None = None
+        self.gradient: int | None = None
+        self.camera_status = "unknown"
+        self.white_balance_red: int | None = None
+        self.white_balance_blue: int | None = None
+        self.white_balance_flag: int | None = None
+        self.white_balance_default_flag: int | None = None
+        self.white_balance_default_red: int | None = None
+        self.white_balance_default_blue: int | None = None
+        self.white_balance_scalar: int | None = None
+        self.relative_brightness: int | None = None
+        self.whole_relative_brightness: int | None = None
+        self.relative_brightness_left: int | None = None
+        self.relative_brightness_top: int | None = None
+        self.relative_brightness_right: int | None = None
+        self.relative_brightness_bottom: int | None = None
+        self.relative_brightness_strip_left: int | None = None
+        self.relative_brightness_strip_right: int | None = None
+        self.blank_screen: bool | None = None
+        self.black_border: bool | None = None
+        self.blank_screen_detection: int | None = None
+        self.blank_screen_low_brightness_duration_seconds: int | None = None
+        self.blank_screen_same_tone_duration_seconds: int | None = None
+        self._blank_screen_notification_revision = 0
 
     @property
     def _music_body(self) -> tuple[str, bytes] | None:

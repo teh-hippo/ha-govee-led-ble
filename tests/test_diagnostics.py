@@ -13,6 +13,7 @@ from custom_components.ha_govee_led_ble.coordinator import (
     PACKET_LOG_RAW_BYTES_LIMIT,
     GoveeBLECoordinator,
 )
+from custom_components.ha_govee_led_ble.coordinator_h6102 import H6102InitialIdentity
 from custom_components.ha_govee_led_ble.diagnostics import async_get_config_entry_diagnostics
 from custom_components.ha_govee_led_ble.effect_diagnostics import (
     DiagnosticOutcome,
@@ -210,8 +211,9 @@ async def test_h6102_diagnostics_expose_resolved_capabilities_without_implying_i
         "44:55:66:77:88:99",
         "H6102",
         configuration_url=None,
-        h6102_firmware=firmware,
-        h6102_firmware_source="configured" if firmware is not None else None,
+        h6102_identity=H6102InitialIdentity(
+            firmware=firmware, firmware_source="configured" if firmware is not None else None
+        ),
     )
 
     diag = await _run(_prep(coordinator), entry, hass)
@@ -282,8 +284,7 @@ async def test_h6102_diagnostics_keep_configured_and_observed_firmware_distinct(
         "44:55:66:77:88:99",
         "H6102",
         configuration_url=None,
-        h6102_firmware="1.03.01",
-        h6102_firmware_source="ble",
+        h6102_identity=H6102InitialIdentity(firmware="1.03.01", firmware_source="ble"),
     )
     coordinator.fw_version = "1.03.01"
     coordinator.hw_version = "1.00.03"

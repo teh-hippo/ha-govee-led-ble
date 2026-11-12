@@ -296,7 +296,7 @@ def _make_coord(**ov) -> MagicMock:
 
     c.mark_segment_state_optimistic = MagicMock(side_effect=mark_segment_state_optimistic)
     c.mark_segment_state_restored = MagicMock(side_effect=mark_segment_state_restored)
-    c._control_arbiter = c._control_lock = BLEControlArbiter()
+    c._control_arbiter = BLEControlArbiter()
     c.latest_requests = LatestRequests()
     c.refresh_state, c.async_set_updated_data = AsyncMock(return_value=True), MagicMock()
     c.unknown_scene_code = None

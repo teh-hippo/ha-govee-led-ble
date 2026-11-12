@@ -510,8 +510,7 @@ async def test_partial_observation_does_not_confirm_or_repeat_activation(hass: H
 
 def _coordinator(*, readable: bool = True):
     coordinator = _EffectCoordinator(
-        _control_arbiter=(arbiter := BLEControlArbiter()),
-        _control_lock=arbiter,
+        _control_arbiter=BLEControlArbiter(),
         address="AA:BB:CC:DD:EE:FF",
         model="H617A",
         profile=get_profile("H617A")
@@ -598,7 +597,7 @@ def _profile_coordinator(model: str):
     from tests.test_h6199_capabilities import set_qualified_identity
 
     coordinator = _coordinator()
-    coordinator._control_arbiter = coordinator._control_lock = BLEControlArbiter()
+    coordinator._control_arbiter = BLEControlArbiter()
     coordinator._client = MagicMock(is_connected=True)
     coordinator._notification_token = object()
     coordinator._authorization_generation = 0
@@ -1200,7 +1199,7 @@ async def test_queued_user_command_runs_after_recovery_under_original_lock(
     await failed_write_started.wait()
 
     async def queued_user_command() -> None:
-        async with coordinator._control_lock:
+        async with coordinator._control_arbiter:
             order.append("user")
             coordinator.brightness_pct = 10
 
@@ -1359,7 +1358,7 @@ async def test_video_deployment_cancellation_recovers_only_after_physical_attemp
         assert record.prior_state is not None
         assert record.prior_state.white_balance_scalar == 90
         assert record.prior_state.relative_brightness_strip_right == 66
-        assert coordinator._control_lock.locked() and coordinator._lock.locked()
+        assert coordinator._control_arbiter.locked() and coordinator._lock.locked()
         published.append(coordinator.capture_effect_control_state())
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
@@ -1390,7 +1389,7 @@ async def test_video_deployment_cancellation_recovers_only_after_physical_attemp
         assert not any(
             field.startswith(("white_balance", "relative_brightness")) for field in coordinator._expected_state
         )
-        assert not coordinator._control_lock.locked()
+        assert not coordinator._control_arbiter.locked()
         assert not coordinator._lock.locked()
         assert not engine._operation_locks and not engine._operation_lock_users
     finally:
@@ -1471,7 +1470,7 @@ async def test_music_deployment_before_first_control_preserves_native_selection(
     try:
         await asyncio.wait_for(reached.wait(), timeout=5)
         if cancelled:
-            assert coordinator._control_lock.locked() and coordinator._lock.locked()
+            assert coordinator._control_arbiter.locked() and coordinator._lock.locked()
             user_task = asyncio.create_task(native_selection())
             await asyncio.sleep(0)
             assert not user_task.done()
@@ -1506,7 +1505,7 @@ async def test_music_deployment_before_first_control_preserves_native_selection(
             call(WRITE_UUID, bytes.fromhex("3305130314000000000000000000000000000032"), response=False),
         ]
         assert coordinator.control_write_attempts == 2
-        assert not coordinator._control_lock.locked()
+        assert not coordinator._control_arbiter.locked()
         restore.assert_not_awaited()
     finally:
         tasks = [task] if user_task is None else [task, user_task]
