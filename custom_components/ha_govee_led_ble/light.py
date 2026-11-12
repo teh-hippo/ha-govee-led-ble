@@ -5,7 +5,6 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable, Generator, Mapping
 from contextlib import contextmanager
-from copy import copy
 from dataclasses import dataclass
 from functools import partial
 from typing import Any
@@ -52,6 +51,7 @@ from .const import (
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator import GoveeBLECoordinator
 from .coordinator_base import async_prepare_effect_profile
+from .coordinator_control import ControlStateSnapshot
 from .coordinator_refresh import RefreshRequest
 from .coordinator_status import ParsedMode
 from .effect_backend import EffectBackend
@@ -203,17 +203,6 @@ def _coerce_segment_brightness(raw: Any, count: int) -> list[int] | None:
     return values
 
 
-_STATE_FIELDS = (
-    "is_on brightness_pct rgb_color color_temp_kelvin effect video_saturation "
-    "rgb_color_source color_temp_kelvin_source "
-    "segment_colors video_full_screen video_sound_effects video_sound_effects_softness "
-    "white_brightness music_sensitivity "
-    "_music_calm music_color diy_code music_mode video_mode"
-    " color_mode _scene_code segment_brightness segment_state_source segment_state_observed_at"
-    " _segment_groups_observed _segment_query_colors _segment_query_brightness"
-).split()
-
-
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
@@ -262,58 +251,20 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         self._selector_cache: tuple[tuple[tuple[Any, ...], tuple[EffectSelectorEntry, ...]], ...] = ()
 
     @contextmanager
-    def _rollback(self) -> Generator[None]:
-        snap = {f: copy(getattr(self.coordinator, f)) for f in _STATE_FIELDS}
-        generation = self.coordinator._profile_generation
-        revisions = dict(self.coordinator._field_revisions)
-        segment_revision = self.coordinator._domain_revisions.get(ReadDomain.SEGMENTS, 0)
-        static_attempts = self.coordinator._static_write_attempts
-        mode_snap = self._attr_color_mode
+    def _rollback(self) -> Generator[Callable[[], None]]:
+        modes: list[tuple[ControlStateSnapshot, ColorMode | None]] = []
         try:
-            yield
+            with self.coordinator.control_state_checkpoint() as transaction:
+                modes.append((transaction.current, self._attr_color_mode))
+
+                def checkpoint() -> None:
+                    modes.append((transaction.checkpoint(), self._attr_color_mode))
+
+                yield checkpoint
         except Exception as err:
-            mode_updated = self.coordinator._field_revisions.get("color_mode", 0) != revisions.get("color_mode", 0)
-            colour_updated = any(
-                self.coordinator._field_revisions.get(field, 0) != revisions.get(field, 0)
-                for field in ("rgb_color", "color_temp_kelvin")
-            )
-            segments_updated = self.coordinator._field_revisions.get("segment_colors", 0) != revisions.get(
-                "segment_colors", 0
-            )
-            segment_page_received = self.coordinator._domain_revisions.get(ReadDomain.SEGMENTS, 0) != segment_revision
-            for f, v in snap.items():
-                if self.coordinator._static_write_attempts != static_attempts and (
-                    f.startswith(("segment_", "_segment_")) or f in {"rgb_color_source", "color_temp_kelvin_source"}
-                ):
-                    continue
-                if self.coordinator._profile_generation != generation:
-                    # A newly identified wire family invalidates the old control snapshot.
-                    continue
-                # Segment pages prove neither mode nor a failed command's optimistic state.
-                if f.startswith("_segment_"):
-                    if segment_page_received:
-                        continue
-                elif f.startswith("segment_"):
-                    if segments_updated:
-                        continue
-                elif f not in {"is_on", "brightness_pct"} and mode_updated:
-                    continue
-                # Complete segment evidence can also clear Kelvin without its own revision.
-                if (colour_updated or segments_updated) and f in {
-                    "rgb_color",
-                    "color_temp_kelvin",
-                    "rgb_color_source",
-                    "color_temp_kelvin_source",
-                }:
-                    continue
-                field = "music_calm" if f == "_music_calm" else f
-                if field in {"is_on", "brightness_pct", "music_calm"} and self.coordinator._field_revisions.get(
-                    field, 0
-                ) != revisions.get(field, 0):
-                    continue
-                setattr(self.coordinator, f, v)
-            if not mode_updated:
-                self._attr_color_mode = mode_snap
+            for snapshot, mode in reversed(modes):
+                if not transaction.mode_observed(snapshot):
+                    self._attr_color_mode = mode
             if isinstance(err, HomeAssistantError):
                 raise
             raise HomeAssistantError(
@@ -1374,7 +1325,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             build_power(True, coordinator.model),
         )
         try:
-            with self._rollback():
+            with self._rollback() as checkpoint:
                 if not coordinator.is_on or "is_on" in coordinator._h607c_uncertain_state_fields:
                     with track("is_on"):
                         await power_on()
@@ -1408,8 +1359,8 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                         coordinator.model,
                         profile=coordinator.profile,
                     )
-                    # Checkpoint observations received during earlier power/brightness writes.
-                    with self._rollback(), track("rgb_color"):
+                    checkpoint()
+                    with track("rgb_color"):
                         self._attr_color_mode = ColorMode.RGB
                         await send(packet)
                         if coordinator.profile.static_readback_echoes_color:
@@ -1431,7 +1382,8 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                         kelvin,
                     )
                     packet = build_color_temp(kelvin, coordinator.model, profile=coordinator.profile)
-                    with self._rollback(), track("color_temp_kelvin"):
+                    checkpoint()
+                    with track("color_temp_kelvin"):
                         self._attr_color_mode = ColorMode.COLOR_TEMP
                         if (
                             coordinator.profile.kelvin_verification_reads_colour_mode

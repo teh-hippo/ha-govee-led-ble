@@ -1,8 +1,8 @@
 """Shared typed base for the coordinator and its write mixins."""
 
 import asyncio
-from collections.abc import Awaitable, Callable, Mapping, Sequence
-from contextlib import AbstractAsyncContextManager
+from collections.abc import Awaitable, Callable, Generator, Mapping, Sequence
+from contextlib import AbstractAsyncContextManager, contextmanager
 from typing import TYPE_CHECKING, Any
 
 from bleak import BleakClient
@@ -10,6 +10,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import ModelProfile, ReadDomain
 from .control_arbiter import BLEControlArbiter, ControlIntent, async_control_intent
+from .coordinator_control import ControlStateCheckpoint
 from .coordinator_status import ParsedMode, StatusDomain
 from .coordinator_upload import PendingUploadAck
 
@@ -152,7 +153,17 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     _blank_screen_notification_revision: int
     _dreamview_private_write: bool
     _upload_ack: PendingUploadAck | None
+    _domain_revisions: dict[StatusDomain, int]
     _setting_ack: tuple[BleakClient, object | None, int, asyncio.Future[bool]] | None
+
+    @contextmanager
+    def control_state_checkpoint(self) -> Generator[ControlStateCheckpoint]:
+        checkpoint = ControlStateCheckpoint(self)
+        try:
+            yield checkpoint
+        except Exception:
+            checkpoint.restore()
+            raise
 
     def install_static_color(
         self, *, rgb: tuple[int, int, int] | None = None, kelvin: int | None = None, source: str = "optimistic"
