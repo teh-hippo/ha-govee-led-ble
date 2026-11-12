@@ -21,6 +21,7 @@ Do not post Bluetooth addresses, serial numbers, account details or other unique
 - Derive Studio catalogue support and apply projections from the exact-model release contract, then narrow them with the effective profile.  Do not duplicate those capability states in catalogue declarations.
 - Apply observed physical geometry and its derived logical segment count together, using the declared product capacity rather than the current or original installed length.  Equivalent profile resolution must preserve observations and in-progress transactions.
 - Bind prepared segment masks to their layout generation and BLE subscription.  Qualify wider masks per product without reinterpreting other models' opaque bytes.
+  Run RGB and brightness batches through one control-owned executor; reconcile earlier physical attempts after a later pre-write rejection, never from guard execution alone or by replaying the batch.
 - Keep offsets, command literals and packet enums out of entity and coordinator code.
 - Every outbound frame goes through `_async_write_packet`, which waits for the previous `0x33` or `0xAA` frame's same-command reply before writing.  Never add per-feature sleeps to pace requests; `ReplyGate` learns commands that never reply on a subscription.
 - Submit complete A3 uploads through `async_write_effect_sequence`.  Framing is validated before transmission, and each physical chunk stays bound to its ordered sequence and authorising header, including injected preview writers.
