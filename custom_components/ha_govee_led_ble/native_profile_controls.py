@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 from .const import ReadDomain
 from .control_arbiter import ControlIntent, async_control_intent
+from .coordinator_control import async_send_guarded_command
 from .coordinator_refresh import RefreshRequest
 from .generated_protocol_adapter import (
     build_black_border,
@@ -349,51 +350,22 @@ async def _send_video_setting(
 ) -> None:
     profile = coordinator.profile
     await async_require_video_controls(coordinator, controls)
-    if coordinator._client is None or not coordinator._client.is_connected:
-        current_intent = coordinator._control_arbiter.current_task_intent
-        async with async_control_intent(coordinator, current_intent or ControlIntent.USER):
-            async with coordinator._lock:
-                await coordinator._ensure_connected()
-    client, token = coordinator._client, coordinator._notification_token
-    generation = coordinator._authorization_generation
 
     def check() -> None:
         require_video_controls(coordinator.profile, coordinator, controls)
-        if (
-            coordinator.profile != profile
-            or coordinator._client is not client
-            or coordinator._notification_token is not token
-            or coordinator._authorization_generation != generation
-        ):
-            raise ValueError("Video profile, identity or subscription changed before write; refresh and retry")
         if write_guard is not None:
             write_guard()
 
-    check()
-
-    if writer is None:
-
-        def commit(_index: int) -> None:
-            if on_write is not None:
-                on_write()
-
-        # The sequence callback runs under the transport lock after every reconnect.
-        await coordinator.async_write_effect_sequence(
-            (packet,),
-            intent=coordinator._control_arbiter.current_task_intent or ControlIntent.USER,
-            write_guard=check,
-            state_values=state_values,
-            expected_values=expected_values,
-            packet_on_write=commit if on_write is not None else None,
-        )
-    else:
-        await writer(
-            packet,
-            write_guard=check,
-            state_values=state_values,
-            expected_values=expected_values,
-            **({"on_write": on_write} if on_write is not None else {}),
-        )
+    await async_send_guarded_command(
+        coordinator,
+        packet,
+        prepared_profile=profile,
+        write_guard=check,
+        writer=writer,
+        state_values=state_values,
+        expected_values=expected_values,
+        on_write=on_write,
+    )
 
 
 async def apply_white_balance(

@@ -154,6 +154,8 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     _dreamview_private_write: bool
     _upload_ack: PendingUploadAck | None
     _domain_revisions: dict[StatusDomain, int]
+    _h607c_uncertain_state_fields: set[str]
+    _h607c_failed_color_write: bool
     _setting_ack: tuple[BleakClient, object | None, int, asyncio.Future[bool]] | None
 
     @contextmanager
@@ -318,6 +320,8 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
         ) -> None: ...
 
         async def refresh_state(self, request: RefreshRequest = ...) -> bool: ...
+
+        async def _refresh_connected_state(self, request: RefreshRequest = ...) -> bool: ...
 
         @property
         def active_mode(self) -> str: ...

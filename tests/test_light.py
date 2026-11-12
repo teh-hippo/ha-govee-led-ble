@@ -1714,11 +1714,17 @@ async def test_turn_on_music_effect_uses_the_device_template_default(mock_coordi
     entity.async_write_ha_state = MagicMock()
     mock_coordinator.is_on = True
 
-    with patch(
-        "custom_components.ha_govee_led_ble.light.async_apply_compiled_profile",
-        new_callable=AsyncMock,
-    ) as apply_profile:
-        await entity.async_turn_on(effect="Music: Rhythm")
+    with (
+        patch(
+            "custom_components.ha_govee_led_ble.light.async_apply_compiled_profile",
+            new_callable=AsyncMock,
+        ) as apply_profile,
+        patch(
+            "custom_components.ha_govee_led_ble.native_profile_controls.async_require_video_controls",
+            side_effect=AssertionError("Music prerequisite writes must not qualify video controls"),
+        ),
+    ):
+        await entity.async_turn_on(effect="Music: Rhythm", brightness=128)
 
     compiled = apply_profile.await_args.args[1]
     assert isinstance(compiled, CompiledMusicProfile)

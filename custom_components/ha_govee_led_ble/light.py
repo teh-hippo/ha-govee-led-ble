@@ -10,7 +10,6 @@ from functools import partial
 from typing import Any
 from uuid import UUID, uuid4
 
-from bleak import BleakClient, BleakError  # type: ignore[attr-defined]
 from homeassistant.components.light import (  # type: ignore[attr-defined]
     ATTR_BRIGHTNESS,
     ATTR_COLOR_MODE,
@@ -51,7 +50,7 @@ from .const import (
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator import GoveeBLECoordinator
 from .coordinator_base import async_prepare_effect_profile
-from .coordinator_control import ControlStateSnapshot
+from .coordinator_control import ControlStateSnapshot, ControlWriteRequest
 from .coordinator_refresh import RefreshRequest
 from .coordinator_status import ParsedMode
 from .effect_backend import EffectBackend
@@ -96,8 +95,8 @@ from .light_source import GoveeBLESourceLight
 from .music_commands import prepare_music_request
 from .music_protocol import music_code_for
 from .music_semantics import music_variant
-from .native_profile_controls import _send_video_setting, async_prepare_video_mode, async_require_video_controls
 from .native_profile_controls import apply_active_video_mode as apply_active_video_mode
+from .native_profile_controls import async_prepare_video_mode, async_require_video_controls
 from .native_scenes import build_native_scene_packets
 from .scenes import MODEL_SCENE_ALIASES, MODEL_SCENE_LABELS, MODEL_SCENES
 from .video_applicability import (
@@ -297,7 +296,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
 
     @property
     def is_on(self) -> bool | None:
-        return None if "is_on" in self.coordinator._h607c_uncertain_state_fields else self.coordinator.is_on
+        return None if self.coordinator.control_state_uncertain("is_on") else self.coordinator.is_on
 
     @property
     def supported_color_modes(self) -> set[ColorMode]:
@@ -315,14 +314,12 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
 
     @property
     def assumed_state(self) -> bool:
-        return bool(self.coordinator._h607c_uncertain_state_fields) or not self.coordinator.profile.can_read(
-            ReadDomain.POWER
-        )
+        return self.coordinator.control_state_uncertain() or not self.coordinator.profile.can_read(ReadDomain.POWER)
 
     @property
     def brightness(self) -> int | None:
         if self.supported_color_modes == {ColorMode.ONOFF} or (
-            "brightness_pct" in self.coordinator._h607c_uncertain_state_fields
+            self.coordinator.control_state_uncertain("brightness_pct")
         ):
             return None
         return round(self.coordinator.brightness_pct * 255 / 100)
@@ -330,13 +327,13 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
     @property
     def color_mode(self) -> ColorMode | None:
         coordinator = self.coordinator
-        if "color_mode" in coordinator._h607c_uncertain_state_fields:
+        if coordinator.control_state_uncertain("color_mode"):
             return ColorMode.UNKNOWN
         if self.supported_color_modes == {ColorMode.ONOFF}:
             return ColorMode.ONOFF
         if self.supported_color_modes == {ColorMode.BRIGHTNESS}:
             return ColorMode.BRIGHTNESS
-        if "color" in coordinator._h607c_uncertain_state_fields and coordinator._h607c_failed_color_write:
+        if coordinator.static_color_unknown():
             return ColorMode.UNKNOWN
         # Colour attributes are hidden while an effect runs; the remembered colour returns when it clears.
         if coordinator.color_mode not in (None, ParsedMode.COLOUR) and self.effect not in (None, EFFECT_OFF):
@@ -371,7 +368,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
 
     @property
     def effect(self) -> str | None:
-        if "color_mode" in self.coordinator._h607c_uncertain_state_fields:
+        if self.coordinator.control_state_uncertain("color_mode"):
             return None
         active_workspace = self._matching_active_workspace()
         if active_workspace is not None:
@@ -422,7 +419,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         attrs: dict[str, Any] = {}
-        uncertain = self.coordinator._h607c_uncertain_state_fields
+        uncertain = self.coordinator.unconfirmed_state_fields()
         if uncertain:
             attrs["unconfirmed_state_fields"] = sorted(uncertain)
         if (scene_code := self.coordinator.unknown_scene_code) is not None:
@@ -444,7 +441,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
 
     @property
     def extra_restore_state_data(self) -> ExtraStoredData | None:
-        if self.coordinator._h607c_uncertain_state_fields & {"color", "color_mode"}:
+        if self.coordinator.control_state_uncertain("color", "color_mode"):
             return None
         if self.color_mode is ColorMode.COLOR_TEMP and self.coordinator.color_temp_kelvin is not None:
             return _StaticColorRestoreData(
@@ -656,7 +653,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             and coordinator.diy_code is None
             and coordinator.music_mode == "off"
             and coordinator.video_mode == "off"
-            and not coordinator._h607c_uncertain_state_fields.intersection({"color", "color_mode"})
+            and not coordinator.control_state_uncertain("color", "color_mode")
             and coordinator.segment_state_source != "optimistic"
             and coordinator.rgb_color_source not in {"observed", "optimistic"}
             and coordinator.color_temp_kelvin_source not in {"observed", "optimistic"}
@@ -776,48 +773,16 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             self.async_write_ha_state()
         self.coordinator.async_set_updated_data(self.coordinator.data or {})
 
-    def _mark_interrupted_request(self, attempted_fields: Mapping[str, int], phase: str) -> None:
-        coordinator = self.coordinator
-        for field, revision in attempted_fields.items():
-            if coordinator._field_revisions.get(field, 0) <= revision:
-                uncertain = "color" if field in {"rgb_color", "color_temp_kelvin"} else field
-                coordinator._h607c_uncertain_state_fields.add(uncertain)
-                if uncertain == "color":
-                    coordinator._h607c_failed_color_write = True
-                for expected in ("color_mode", "rgb_color", "color_temp_kelvin") if uncertain == "color" else (field,):
-                    coordinator._expected_state.pop(expected, None)
+    def _mark_interrupted_request(self, request: ControlWriteRequest) -> None:
+        request.mark_interrupted()
         _LOGGER.warning(
             "Govee %s (%s) %s request was interrupted after a write was attempted; "
             "the light may have partially changed",
-            coordinator.model,
+            self.coordinator.model,
             self.entity_id or "light",
-            phase,
+            request.phase,
         )
-        coordinator.async_set_updated_data(coordinator.data or {})
-
-    async def _reconcile_interrupted_request(self, client: BleakClient | None, token: object | None) -> None:
-        coordinator = self.coordinator
-        if (
-            not coordinator._h607c_uncertain_state_fields.intersection({"is_on", "brightness_pct"})
-            or client is None
-            or coordinator._client is not client
-            or not client.is_connected
-            or coordinator._notification_token is not token
-            or (coordinator._encryption is not None and not coordinator._encryption.ready)
-        ):
-            return
-        try:
-            await coordinator._refresh_connected_state(
-                RefreshRequest(
-                    refresh_all=True,
-                    query_segments=False,
-                    query_native_settings=False,
-                    required_domains=coordinator.profile.read_domains & {ReadDomain.POWER, ReadDomain.BRIGHTNESS},
-                ),
-            )
-        except BleakError, ValueError, TimeoutError:
-            _LOGGER.debug("Could not reconcile interrupted Govee %s request", coordinator.model, exc_info=True)
-        coordinator.async_set_updated_data(coordinator.data or {})
+        self.coordinator.async_set_updated_data(self.coordinator.data or {})
 
     async def _async_supersede_preview(self) -> None:
         preview = getattr(self._effect_backend, "preview", None) if self._effect_backend is not None else None
@@ -1103,7 +1068,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             await self._async_turn_on(
                 clear_workspace_on_success=clear_workspace,
                 prepared_effect=prepared_effect,
-                video_write_guard=video_guards[0] if video_guards else None,
+                effect_write_guard=video_guards[0] if video_guards else None,
                 native_write_guard=native_write_guard,
                 **kwargs,
             )
@@ -1154,7 +1119,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                     await self._async_supersede_preview()
                     if turn_on_kwargs is not None:
                         await self._async_turn_on(
-                            video_write_guard=guard,
+                            effect_write_guard=guard,
                             native_write_guard=native_write_guard,
                             **turn_on_kwargs,
                         )
@@ -1301,84 +1266,45 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         *,
         clear_workspace_on_success: bool = False,
         prepared_effect: Callable[[], Awaitable[None]] | None = None,
-        video_write_guard: Callable[[], None] | None = None,
+        effect_write_guard: Callable[[], None] | None = None,
         native_write_guard: Callable[[], None] | None = None,
         **kwargs: Any,
     ) -> None:
         self._validate_basic_request(kwargs)
         coordinator = self.coordinator
-        client, token = coordinator._client, coordinator._notification_token
-        attempted_fields: dict[str, int] = {}
-        phase = "power"
-        tracked_field: str | None = None
-        tracked_attempts = tracked_revision = 0
-
-        def combined_guard() -> None:
-            nonlocal tracked_revision
-            if native_write_guard is not None:
-                native_write_guard()
-            if video_write_guard is not None:
-                video_write_guard()
-            if (
-                native_write_guard is not None
-                and tracked_field is not None
-                and coordinator.control_write_attempts == tracked_attempts
-            ):
-                # Only notifications after the physical write attempt can confirm its outcome.
-                tracked_revision = coordinator._field_revisions.get(tracked_field, 0)
-
-        @contextmanager
-        def track(field: str) -> Generator[None]:
-            nonlocal tracked_field, tracked_attempts, tracked_revision
-            tracked_field = field
-            tracked_attempts = coordinator.control_write_attempts
-            tracked_revision = coordinator._field_revisions.get(field, 0)
-            try:
-                yield
-            finally:
-                if native_write_guard is not None and coordinator.control_write_attempts != tracked_attempts:
-                    attempted_fields[field] = tracked_revision
-                tracked_field = None
-
-        async def send(packet: bytes) -> None:
-            if video_write_guard is None and native_write_guard is None:
-                await coordinator.send_command(packet)
-            elif video_write_guard is None:
-                await coordinator.send_command(packet, write_guard=combined_guard)
-            else:
-                await _send_video_setting(coordinator, packet, frozenset(), writer=None, write_guard=combined_guard)
+        request = coordinator.control_write_request(identity_guard=native_write_guard, effect_guard=effect_write_guard)
 
         if ATTR_BRIGHTNESS in kwargs:
             self._require_support("brightness", supported=self.supported_color_modes != {ColorMode.ONOFF})
-        if video_write_guard is not None:
-            video_write_guard()
+        if effect_write_guard is not None:
+            effect_write_guard()
         power_on = partial(
-            send,
+            request.send,
             build_power(True, coordinator.model),
         )
         try:
             with self._rollback() as checkpoint:
-                if not coordinator.is_on or "is_on" in coordinator._h607c_uncertain_state_fields:
-                    with track("is_on"):
+                if not coordinator.is_on or coordinator.control_state_uncertain("is_on"):
+                    with request.track("is_on"):
                         await power_on()
                         await self._refresh_with_retry(
                             expected_on=True, retry_command=None if native_write_guard is not None else power_on
                         )
                 if ATTR_BRIGHTNESS in kwargs:
-                    phase = "brightness"
+                    request.phase = "brightness"
                     pct = max(1, round(brightness_to_value((1, 100), kwargs[ATTR_BRIGHTNESS])))
 
                     async def apply_brightness() -> None:
-                        await send(build_brightness(pct, coordinator.model))
+                        await request.send(build_brightness(pct, coordinator.model))
 
-                    with track("brightness_pct"):
+                    with request.track("brightness_pct"):
                         await apply_brightness()
                         await self._refresh_with_retry(
                             expected_brightness=pct,
                             retry_command=None if native_write_guard is not None else apply_brightness,
                         )
                 if ATTR_RGB_COLOR in kwargs:
-                    phase = "RGB colour"
+                    request.phase = "RGB colour"
                     self._require_support(
                         "RGB colour",
                         supported=ColorMode.RGB in self.supported_color_modes,
@@ -1392,16 +1318,16 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                         profile=coordinator.profile,
                     )
                     checkpoint()
-                    with track("rgb_color"):
+                    with request.track("rgb_color"):
                         self._attr_color_mode = ColorMode.RGB
-                        await send(packet)
+                        await request.send(packet)
                         if coordinator.profile.static_readback_echoes_color:
                             await self._refresh_with_retry(
                                 expected_rgb_color=(r, g, b),
-                                retry_command=partial(send, packet),
+                                retry_command=partial(request.send, packet),
                             )
                 if ATTR_COLOR_TEMP_KELVIN in kwargs:
-                    phase = "colour temperature"
+                    request.phase = "colour temperature"
                     self._require_support(
                         "colour temperature",
                         supported=coordinator.profile.supports_color_temperature,
@@ -1415,7 +1341,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                     )
                     packet = build_color_temp(kelvin, coordinator.model, profile=coordinator.profile)
                     checkpoint()
-                    with track("color_temp_kelvin"):
+                    with request.track("color_temp_kelvin"):
                         self._attr_color_mode = ColorMode.COLOR_TEMP
                         if (
                             coordinator.profile.kelvin_verification_reads_colour_mode
@@ -1426,33 +1352,32 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                                 packet,
                                 requested_kelvin=kwargs[ATTR_COLOR_TEMP_KELVIN],
                                 **(
-                                    {"write_guard": combined_guard}
-                                    if native_write_guard is not None or video_write_guard is not None
+                                    {"write_guard": request.before_write}
+                                    if native_write_guard is not None or effect_write_guard is not None
                                     else {}
                                 ),
                             )
                         else:
-                            await send(packet)
+                            await request.send(packet)
                         if coordinator.profile.static_readback_kelvin:
                             await self._refresh_with_retry(
                                 expected_color_temp_kelvin=kelvin,
-                                retry_command=partial(send, packet),
+                                retry_command=partial(request.send, packet),
                             )
                 if prepared_effect is not None:
-                    phase = "effect"
+                    request.phase = "effect"
                     await prepared_effect()
         except asyncio.CancelledError:
-            if attempted_fields:
-                self._mark_interrupted_request(attempted_fields, phase)
+            if request.has_attempted_writes:
+                self._mark_interrupted_request(request)
             raise
         except Exception as err:
-            if not attempted_fields:
+            if not request.has_attempted_writes:
                 raise
-            self._mark_interrupted_request(attempted_fields, phase)
-            await self._reconcile_interrupted_request(client, token)
+            self._mark_interrupted_request(request)
+            await request.reconcile()
             raise HomeAssistantError(translation_domain=DOMAIN, translation_key="partial_command") from err
-        if native_write_guard is not None and (ATTR_RGB_COLOR in kwargs or ATTR_COLOR_TEMP_KELVIN in kwargs):
-            coordinator._h607c_failed_color_write = False
+        request.complete(colour_requested=ATTR_RGB_COLOR in kwargs or ATTR_COLOR_TEMP_KELVIN in kwargs)
         if clear_workspace_on_success:
             self._clear_active_workspace()
         self._notify_state_changed()

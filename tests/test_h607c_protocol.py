@@ -578,7 +578,7 @@ async def test_h607c_saved_effect_guard_prevents_kelvin_retry_on_new_connection(
     light.hass = hass
     light.entity_id = "light.h607c"
     with pytest.raises(HomeAssistantError, match="context changed"):
-        await light._async_turn_on(color_temp_kelvin=3200, video_write_guard=saved_effect_guard)
+        await light._async_turn_on(color_temp_kelvin=3200, effect_write_guard=saved_effect_guard)
     first.write_gatt_char.assert_awaited_once()
     second.write_gatt_char.assert_not_awaited()
 

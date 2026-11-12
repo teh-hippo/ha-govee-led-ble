@@ -39,6 +39,7 @@ Do not post Bluetooth addresses, serial numbers, account details or other unique
   Recover omitted mandatory values through qualified independent reads; retained cache values and successful writes are not fresh observations.
 - Evaluate compound revision requirements together: a known failed prerequisite wins over missing identity, and missing identity never grants a control.
 - Entity setters run through `GoveeBLEEntity._async_latest`: the first request sends at once, and while it runs only the newest queued request per control is sent.  Light on, off and attribute calls share one key, with queued `turn_on` attributes merged.  Services, Effect Studio and background work bypass it.
+- Keep generic guarded commands independent of video qualification.  Track interrupted control attempts and uncertainty in coordinator-owned requests, not entity-local transactions.
 - Declare source lights only for independently addressable power controls.
   Attach segment masks or master brightness only when they leave siblings unchanged; keep uncertain mappings neutral and state unconfirmed until observed.
   Declare source-specific colour modes and native attributes explicitly.
