@@ -461,13 +461,42 @@ async def test_hard_delete_waits_for_saved_effect_application() -> None:
     await asyncio.sleep(0)
 
     assert not delete_task.done()
+    unrelated = await asyncio.wait_for(
+        application.async_create_library_item(name="Unrelated", content=CONTENT), timeout=1
+    )
+    async with asyncio.timeout(1):
+        async with application.saved_effect_for_apply(str(created.item.id), model="H617A") as concurrent:
+            assert concurrent == created.item
 
     release.set()
     await apply_task
     await delete_task
 
     assert applied == [created.item]
-    assert application.library_snapshot().items == ()
+    assert application.library_snapshot().items == (unrelated.item,)
+
+
+async def test_cancelled_saved_application_releases_its_item_reservation() -> None:
+    application = await _application()
+    created = await application.async_create_library_item(name="Effect", content=CONTENT)
+    entered = asyncio.Event()
+
+    async def apply():
+        async with application.saved_effect_for_apply(str(created.item.id), model="H617A"):
+            entered.set()
+            await asyncio.Event().wait()
+
+    task = asyncio.create_task(apply())
+    await entered.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    async with asyncio.timeout(1):
+        await application.async_delete_library_item(
+            item_id=str(created.item.id),
+            expected_version=created.item.version,
+            expected_updated_at=created.item.updated_at,
+        )
 
 
 async def test_name_based_apply_rejects_a_concurrently_changed_version() -> None:

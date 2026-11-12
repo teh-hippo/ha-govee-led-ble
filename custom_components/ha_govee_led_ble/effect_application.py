@@ -58,7 +58,8 @@ class EffectStudioApplication:
     deployments: EffectDeploymentRepository
     user_state: EffectUserStateRepository
     device_cache: EffectDeviceCache | None = None
-    _library_mutation_lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False, repr=False)
+    _library_condition: asyncio.Condition = field(default_factory=asyncio.Condition, init=False, repr=False)
+    _applying_items: dict[UUID, int] = field(default_factory=dict, init=False, repr=False)
 
     def library_snapshot(self) -> LibrarySnapshot:
         return self.library.snapshot()
@@ -113,6 +114,12 @@ class EffectStudioApplication:
             return await engine.async_apply_saved(coordinator, item, **kwargs)
 
     @asynccontextmanager
+    async def _mutating_item(self, item_id: UUID) -> AsyncIterator[None]:
+        async with self._library_condition:
+            await self._library_condition.wait_for(lambda: item_id not in self._applying_items)
+            yield
+
+    @asynccontextmanager
     async def saved_effect_for_apply(
         self,
         item_id: str,
@@ -122,14 +129,24 @@ class EffectStudioApplication:
         expected_version: int | None = None,
         diy_code: int | None = None,
     ) -> AsyncIterator[LibraryItem]:
-        async with self._library_mutation_lock:
+        async with self._library_condition:
             item = self.get_saved_effect(item_id)
             if expected_version is not None and item.version != expected_version:
                 raise EffectVersionConflictError(item.version)
             compile_application(
                 item, model, diy_code=resolve_diy_code(item, diy_code, model=model, profile=profile), profile=profile
             )
+            self._applying_items[item.id] = self._applying_items.get(item.id, 0) + 1
+        try:
             yield item
+        finally:
+            async with self._library_condition:
+                remaining = self._applying_items[item.id] - 1
+                if remaining:
+                    self._applying_items[item.id] = remaining
+                else:
+                    del self._applying_items[item.id]
+                    self._library_condition.notify_all()
 
     async def async_create_library_item(
         self,
@@ -138,7 +155,7 @@ class EffectStudioApplication:
         content: Mapping[str, Any],
         layer_labels: Sequence[int] | None = None,
     ) -> LibraryMutation:
-        async with self._library_mutation_lock:
+        async with self._library_condition:
             item = self.new_authored_item(name=name, content=content, layer_labels=layer_labels)
             validate_saved_effect_name(item.name, self.library_snapshot().items)
             snapshot = await self.library.async_create(item)
@@ -154,7 +171,7 @@ class EffectStudioApplication:
         expected_updated_at: str,
         layer_labels: Sequence[int] | None = None,
     ) -> LibraryMutation:
-        async with self._library_mutation_lock:
+        async with self._mutating_item(UUID(item_id)):
             current = self.get_saved_effect(item_id)
             authored_content = _authored_content_from_dict(content)
             item = replace(
@@ -190,7 +207,7 @@ class EffectStudioApplication:
         layer_labels: Sequence[int] | None = None,
     ) -> LibraryMutation:
         resolved_item_id = UUID(target_item_id)
-        async with self._library_mutation_lock:
+        async with self._mutating_item(resolved_item_id):
             target = self.library.assert_write_token(
                 resolved_item_id,
                 expected_version=expected_version,
@@ -227,7 +244,7 @@ class EffectStudioApplication:
         expected_updated_at: str,
     ) -> LibrarySnapshot:
         resolved_item_id = UUID(item_id)
-        async with self._library_mutation_lock:
+        async with self._mutating_item(resolved_item_id):
             item = self.library.assert_write_token(
                 resolved_item_id,
                 expected_version=expected_version,
