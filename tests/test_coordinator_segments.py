@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from bleak import BleakError
 
-from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ReadDomain
+from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ReadDomain, device_profile
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
@@ -21,6 +21,7 @@ from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.light_commands import (
     build_color_temp,
     build_segment_brightness,
+    build_segment_brightness_packets,
     build_segment_paint,
 )
 from custom_components.ha_govee_led_ble.transport import WRITE_UUID
@@ -572,6 +573,54 @@ async def test_paint_later_transform_failure_keeps_latest_observations(coord, se
 
 
 @pytest.mark.parametrize("operation", ["paint", "brightness"])
+@pytest.mark.parametrize("failure", ["later", "recovery", "zero", "cancelled"])
+async def test_multipart_segment_recovery_tracks_physical_attempts(hass, operation, failure):
+    coord = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H60B0", configuration_url=_CONFIGURATION_URL)
+    coord.profile = device_profile("H60B0", 1, 2)
+    coord.pact_type, coord.pact_code = 1, 2
+    coord._confirmed_identity_fields.add("pact")
+    coord.is_on = True
+    coord._client = client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
+    coord._ensure_connected = AsyncMock(return_value=client)
+    coord._refresh_h607c_advertisements = MagicMock()
+    coord._renew_foreground_lease = MagicMock()
+    groups = [([1, 9], (1, 2, 3))]
+    packets = (
+        build_segment_paint(groups, "H60B0", profile=coord.profile)
+        if operation == "paint"
+        else build_segment_brightness_packets([1, 9], 40, "H60B0", profile=coord.profile)
+    )
+    assert len(packets) == 2
+    original_send = coord.send_command
+    error = asyncio.CancelledError() if failure == "cancelled" else ValueError("pre-write rejection")
+
+    async def send(packet, *, write_guard):
+        assert coord._control_arbiter.current_task_intent is ControlIntent.USER
+        if failure == "zero":
+            write_guard()
+            raise error
+        if packet == packets[1]:
+            raise error
+        await original_send(packet, write_guard=write_guard)
+
+    refresh = AsyncMock(side_effect=RuntimeError("refresh failed")) if failure == "recovery" else AsyncMock()
+    with patch.object(coord, "send_command", side_effect=send), patch.object(coord, "async_refresh_segments", refresh):
+        with pytest.raises(type(error)) as raised:
+            if operation == "paint":
+                await coord.async_paint_segments(groups)
+            else:
+                await coord.async_set_segment_brightness([1, 9], 40)
+    assert raised.value is error
+    assert client.write_gatt_char.await_count == coord._static_write_attempts == (0 if failure == "zero" else 1)
+    if failure in {"later", "recovery"}:
+        refresh.assert_awaited_once_with()
+    else:
+        refresh.assert_not_awaited()
+    assert not coord._control_arbiter.locked()
+    assert not coord._lock.locked()
+
+
+@pytest.mark.parametrize("operation", ["paint", "brightness"])
 async def test_segment_recovery_cancellation_releases_operation(coord, segment_client, operation):
     started = asyncio.Event()
     segment_client.write_gatt_char.side_effect = TimeoutError("ambiguous write")
@@ -699,8 +748,13 @@ async def test_segment_verification_error_preserves_state(coord, segment_client,
 
 
 @pytest.mark.parametrize("operation", ["paint", "brightness"])
-@pytest.mark.parametrize("during_write", [False, True])
-async def test_segment_preservation_baseline_is_first_write_boundary(coord, segment_client, operation, during_write):
+@pytest.mark.parametrize(
+    ("during_write", "shape"),
+    [(False, "same"), (True, "same"), (False, "short"), (False, "long")],
+)
+async def test_segment_preservation_baseline_is_first_write_boundary(
+    coord, segment_client, operation, during_write, shape
+):
     _send_uniform_segment_replies(coord, (10, 20, 30))
 
     async def connect():
@@ -721,11 +775,16 @@ async def test_segment_preservation_baseline_is_first_write_boundary(coord, segm
             for index in range((group - 1) * 3, group * 3):
                 payload.extend((60 if operation == "brightness" and index == 0 else 100, *colors[index]))
             coord._notify_callback(None, bytearray(_packet(0xAA, 0xA5, payload)))
+        values = coord.segment_colors if operation == "paint" else coord.segment_brightness
+        if shape == "short":
+            values.pop()
+        elif shape == "long":
+            values.append(values[-1])
         return True
 
     coord._ensure_connected.side_effect = connect
     segment_client.write_gatt_char.side_effect = write
-    with patch.object(coord, "async_refresh_segments", AsyncMock(side_effect=refresh)):
+    with patch.object(coord, "async_refresh_segments", AsyncMock(side_effect=refresh)) as verify:
 
         async def apply():
             if operation == "paint":
@@ -735,6 +794,11 @@ async def test_segment_preservation_baseline_is_first_write_boundary(coord, segm
 
         # Only the connect-time observation is a pre-write baseline. The historical
         # observation and replies after the first write cannot establish one.
-        await apply()
+        if shape == "same":
+            await apply()
+        else:
+            with pytest.raises(RuntimeError, match="confirm segment"):
+                await apply()
+    verify.assert_awaited_once_with()
     assert coord.segment_state_source == "observed"
     assert coord.segment_colors[-1] == (9, 8, 7)
