@@ -127,7 +127,7 @@
       "message": "Only {maximum} areas can be selected at once. Turn another area off first."
     },
     "identity_not_ready": {
-      "message": "The device's Bluetooth protocol is not confirmed. Wait for a compatible advertisement and try again."
+      "message": "The device's Bluetooth identity is not confirmed. Wait for the connection to become ready and try again."
     },
     "unsupported_model": {
       "message": "{service} is not supported on {model}"

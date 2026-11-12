@@ -228,8 +228,9 @@ async def test_reconnect_retains_cached_profile_but_revokes_write_authority(hass
     async def establish(*args, **kwargs):
         assert c.hw_version == "1.04.03" and c.fw_version == ("1.02.20" if model == "H60A1" else "1.00.41")
         assert c.profile.supports_rgb and c.profile.supports_segments
-        with pytest.raises(ValueError):
+        with pytest.raises(HomeAssistantError) as error:
             c._validate_authorized_packet(packet)
+        assert error.value.translation_key == "identity_not_ready"
         raise RuntimeError("stop before connecting")
 
     monkeypatch.setattr("custom_components.ha_govee_led_ble.coordinator.async_establish_ble_connection", establish)
