@@ -31,8 +31,10 @@ from custom_components.ha_govee_led_ble.effect_contracts import (
     EDITOR_API_VERSION,
     EFFECT_COMPILER_VERSION,
     CapabilityState,
+    CapabilityWorkflow,
     EditorApiInfo,
     device_effect_capabilities,
+    require_effect_route,
 )
 from custom_components.ha_govee_led_ble.effect_domain import (
     AppliedArea,
@@ -79,6 +81,37 @@ from custom_components.ha_govee_led_ble.effect_limits import (
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_h617a_scene
 from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_workshop_effect
 from custom_components.ha_govee_led_ble.protocol_h6199 import build_h6199_scene
+
+
+@pytest.mark.parametrize(
+    ("model", "workflow", "operation"),
+    [
+        ("H60B0", CapabilityWorkflow.MULTI, "scene"),
+        ("H60B0", CapabilityWorkflow.MULTI, "diy"),
+        ("H60B0", CapabilityWorkflow.ADVANCED, "diy"),
+        ("H7020", CapabilityWorkflow.ADVANCED, "diy"),
+    ],
+)
+def test_effect_route_uses_declared_activation_operations(model, workflow, operation):
+    profile = replace(MODEL_PROFILES[model], command_operations=frozenset({operation, "effect_upload"}))
+    assert require_effect_route(model, workflow, profile=profile) == profile.effect_grammar
+
+
+@pytest.mark.parametrize("grammar", ["unknown", "H6199"])
+def test_custom_diy_route_requires_an_available_diy_codec(grammar):
+    profile = replace(MODEL_PROFILES["H617A"], command_grammar=grammar)
+    with pytest.raises(ValueError, match="activation route"):
+        require_effect_route("H617A", CapabilityWorkflow.SINGLE, profile=profile)
+
+
+@pytest.mark.parametrize(
+    ("workflow", "operation"),
+    [(CapabilityWorkflow.MULTI, "scene"), (CapabilityWorkflow.ADVANCED, "diy")],
+)
+def test_effect_route_does_not_substitute_an_unrelated_activation(workflow, operation):
+    profile = replace(MODEL_PROFILES["H617A"], command_operations=frozenset({operation, "effect_upload"}))
+    with pytest.raises(ValueError, match="activation route"):
+        require_effect_route("H617A", workflow, profile=profile)
 
 
 def _layered_effect() -> LayeredEffect:
