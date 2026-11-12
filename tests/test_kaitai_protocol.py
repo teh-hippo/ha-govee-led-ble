@@ -140,7 +140,7 @@ def _generated(module: str, class_name: str) -> type[Any]:
         ("h60b0_command_write", "H60b0CommandWrite", "33300301"),
         ("h60b0_command_write", "H60b0CommandWrite", "33052c020101020300000100"),
         ("h60b0_status_query", "H60b0StatusQuery", "aa42"),
-        ("h60b0_status_reply", "H60b0StatusReply", "aa42d00fa0280bb81e"),
+        ("h60b0_status_reply", "H60b0StatusReply", "aa42d00bb81e0fa028"),
         ("h60b0_command_ack", "H60b0CommandAck", "a35a00"),
         ("h60b0_command_ack", "H60b0CommandAck", "a3413300"),
     ],
