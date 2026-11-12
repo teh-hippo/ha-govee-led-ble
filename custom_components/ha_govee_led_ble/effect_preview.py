@@ -291,16 +291,18 @@ class _PreviewWriter:
         manager: EffectPreviewManager,
         request: _PreviewRequest,
         coordinator: Any,
+        health_target: _HealthTarget | None,
     ) -> None:
         self._manager = manager
         self._request = request
         self._coordinator = coordinator
+        self._health_target = health_target
         self.started = False
         self.completed = False
 
     async def begin(self) -> None:
         if not self.started:
-            await self._manager._async_begin_transmission(self._request)
+            await self._manager._async_begin_transmission(self._request, self._health_target)
             self.started = True
 
     async def __call__(
@@ -937,101 +939,19 @@ class EffectPreviewManager:
                 error_code="superseded",
             )
             return
-        if expectations is not None:
-            self._health_targets[request.config_entry_id] = _HealthTarget(
+        health_target = (
+            _HealthTarget(
                 expectations=dict(expectations),
                 confirmed_confidence=_confirmed_confidence(request, compiled, coordinator),
             )
+            if expectations is not None
+            else None
+        )
         writer: _PreviewWriter | None = None
         try:
-            await coordinator.async_preview_preflight(timeout=self._connect_timeout)
-            inline_brightness = (
-                isinstance(compiled, CompiledVideoProfile)
-                and compiled.relative_brightness_inline
-                and compiled.relative_brightness is not None
-            )
-            inline_revision = coordinator._field_revisions.get("video_parameters", 0) if inline_brightness else 0
-            await async_prepare_effect_control_state(coordinator, require_restorable_static=True)
-            if inline_brightness and coordinator._field_revisions.get("video_parameters", 0) <= inline_revision:
-                await coordinator.refresh_state()
-                if coordinator._field_revisions.get("video_parameters", 0) <= inline_revision and (
-                    not await coordinator.async_read_video_setting("video_parameters")
-                ):
-                    raise PreviewError("Fresh video brightness observations are required before Preview")
-            if compiled is not None:
-                validate_compiled_geometry(compiled, coordinator.effect_authorization_profile)
-            if (
-                isinstance(compiled, CompiledEffect)
-                and compiled.selector_kind == "diy"
-                and requires_approved_diy_slot(compiled.model)
-            ):
-                refreshed = await coordinator.refresh_state()
-                if not refreshed:
-                    raise PreviewError("approved disposable DIY code could not be refreshed")
-                _validate_diy_slot_approval(coordinator, compiled)
-            writer = _PreviewWriter(self, request, coordinator)
-            if request.scene is not None:
-                await coordinator.async_apply_native_scene(
-                    request.scene.key,
-                    scene_entry=request.scene.entry,
-                    speed_index=request.speed_index,
-                    canonical_body=request.canonical_body,
-                    before_write=writer.begin,
-                    verify=False,
-                    intent=ControlIntent.PREVIEW,
-                )
-            else:
-                assert compiled is not None
-                if isinstance(compiled, CompiledEffect):
-                    final_activation = (
-                        compiled.activation_packet
-                        if compiled.upload_transport == "a1_02" or requires_approved_diy_slot(compiled.model)
-                        else None
-                    )
-                    packets = list(compiled.upload_packets if final_activation is not None else compiled.packets)
-                    power_required = not coordinator.is_on
-                    if power_required:
-                        packets.insert(0, build_power(True, coordinator.model))
-
-                    async def before_final() -> None:
-                        if not await self._async_request_is_current(request):
-                            raise _PreviewSupersededError
-
-                    write_options: dict[str, Any] = (
-                        {
-                            "require_upload_ack": True,
-                            "upload_ack_index": len(compiled.upload_packets) - 1 + int(power_required),
-                            "writer": writer,
-                        }
-                        if DIY_ACK_EVIDENCE in compiled.evidence_codes
-                        else {}
-                    )
-                    if final_activation is not None:
-                        write_options.update(final_packet=final_activation, before_final=before_final)
-
-                    def validate_effect_write() -> None:
-                        validate_compiled_geometry(compiled, coordinator.effect_authorization_profile)
-                        _validate_diy_slot_approval(coordinator, compiled)
-
-                    await coordinator.async_write_effect_sequence(
-                        packets,
-                        intent=ControlIntent.PREVIEW,
-                        before_write=writer.begin,
-                        write_guard=validate_effect_write,
-                        **write_options,
-                    )
-                    if power_required:
-                        coordinator.is_on = True
-                    _install_effect_state(coordinator, compiled)
-                else:
-                    async with async_control_intent(coordinator, ControlIntent.PREVIEW):
-                        await async_apply_compiled_profile(
-                            coordinator,
-                            compiled,
-                            writer=writer,
-                            verify=False,
-                            on_write=lambda: self._supersede_active_origin(request),
-                        )
+            await self._async_prepare_execution(coordinator, compiled)
+            writer = _PreviewWriter(self, request, coordinator, health_target)
+            await self._async_transmit_request(request, coordinator, compiled, writer)
             writer.completed = True
             if not await self._async_request_is_current(request):
                 raise _PreviewSupersededError
@@ -1170,6 +1090,102 @@ class EffectPreviewManager:
         if expectations is None:
             self._mark_write_unverified(request)
 
+    async def _async_prepare_execution(self, coordinator: Any, compiled: CompiledApplication | None) -> None:
+        await coordinator.async_preview_preflight(timeout=self._connect_timeout)
+        inline_brightness = (
+            isinstance(compiled, CompiledVideoProfile)
+            and compiled.relative_brightness_inline
+            and compiled.relative_brightness is not None
+        )
+        inline_revision = coordinator._field_revisions.get("video_parameters", 0) if inline_brightness else 0
+        await async_prepare_effect_control_state(coordinator, require_restorable_static=True)
+        if inline_brightness and coordinator._field_revisions.get("video_parameters", 0) <= inline_revision:
+            await coordinator.refresh_state()
+            if coordinator._field_revisions.get("video_parameters", 0) <= inline_revision and (
+                not await coordinator.async_read_video_setting("video_parameters")
+            ):
+                raise PreviewError("Fresh video brightness observations are required before Preview")
+        if compiled is not None:
+            validate_compiled_geometry(compiled, coordinator.effect_authorization_profile)
+        if (
+            isinstance(compiled, CompiledEffect)
+            and compiled.selector_kind == "diy"
+            and requires_approved_diy_slot(compiled.model)
+        ):
+            if not await coordinator.refresh_state():
+                raise PreviewError("approved disposable DIY code could not be refreshed")
+            _validate_diy_slot_approval(coordinator, compiled)
+
+    async def _async_transmit_request(
+        self,
+        request: _PreviewRequest,
+        coordinator: Any,
+        compiled: CompiledApplication | None,
+        writer: _PreviewWriter,
+    ) -> None:
+        if request.scene is not None:
+            await coordinator.async_apply_native_scene(
+                request.scene.key,
+                scene_entry=request.scene.entry,
+                speed_index=request.speed_index,
+                canonical_body=request.canonical_body,
+                before_write=writer.begin,
+                verify=False,
+                intent=ControlIntent.PREVIEW,
+            )
+            return
+        assert compiled is not None
+        if not isinstance(compiled, CompiledEffect):
+            async with async_control_intent(coordinator, ControlIntent.PREVIEW):
+                await async_apply_compiled_profile(
+                    coordinator,
+                    compiled,
+                    writer=writer,
+                    verify=False,
+                    on_write=lambda: self._supersede_active_origin(request),
+                )
+            return
+        final_activation = (
+            compiled.activation_packet
+            if compiled.upload_transport == "a1_02" or requires_approved_diy_slot(compiled.model)
+            else None
+        )
+        packets = list(compiled.upload_packets if final_activation is not None else compiled.packets)
+        power_required = not coordinator.is_on
+        if power_required:
+            packets.insert(0, build_power(True, coordinator.model))
+
+        async def before_final() -> None:
+            if not await self._async_request_is_current(request):
+                raise _PreviewSupersededError
+
+        write_options: dict[str, Any] = (
+            {
+                "require_upload_ack": True,
+                "upload_ack_index": len(compiled.upload_packets) - 1 + int(power_required),
+                "writer": writer,
+            }
+            if DIY_ACK_EVIDENCE in compiled.evidence_codes
+            else {}
+        )
+        if final_activation is not None:
+            write_options.update(final_packet=final_activation, before_final=before_final)
+
+        def validate_effect_write() -> None:
+            validate_compiled_geometry(compiled, coordinator.effect_authorization_profile)
+            _validate_diy_slot_approval(coordinator, compiled)
+
+        await coordinator.async_write_effect_sequence(
+            packets,
+            intent=ControlIntent.PREVIEW,
+            before_write=writer.begin,
+            write_guard=validate_effect_write,
+            **write_options,
+        )
+        if power_required:
+            coordinator.is_on = True
+        _install_effect_state(coordinator, compiled)
+
     def _degrade_checking_health(self, config_entry_id: str) -> None:
         current_health = self.health(config_entry_id)
         if current_health.phase is PreviewHealthPhase.CHECKING and current_health.incident_id is not None:
@@ -1260,7 +1276,7 @@ class EffectPreviewManager:
             profile=self._loaded_coordinator(request.config_entry_id).profile,
         )
 
-    async def _async_begin_transmission(self, request: _PreviewRequest) -> None:
+    async def _async_begin_transmission(self, request: _PreviewRequest, health_target: _HealthTarget | None) -> None:
         async with self._lock:
             if self._stopping or self._hass.is_stopping:
                 raise PreviewShutdownError("Home Assistant is stopping")
@@ -1273,6 +1289,10 @@ class EffectPreviewManager:
                 or (request.admission is not None and not request.admission.is_current)
             ):
                 raise _PreviewSupersededError
+            if health_target is None:
+                self._health_targets.pop(request.config_entry_id, None)
+            else:
+                self._health_targets[request.config_entry_id] = health_target
         self._publish(request, PreviewPhase.WRITING)
 
     async def _async_verify(

@@ -1057,6 +1057,44 @@ async def test_transport_failure_does_not_delay_newest_request(
     await manager.async_shutdown()
 
 
+@pytest.mark.parametrize("prior_write", [False, True])
+async def test_failed_preflight_cannot_install_a_health_target_for_an_unwritten_request(hass, monkeypatch, prior_write):
+    coordinator = _coordinator(readable=True)
+    manager, _cache = await _manager(hass, monkeypatch, coordinator)
+    owner = object()
+    events = []
+    session_id = _open(manager, owner, events)
+    if prior_write:
+        await manager.async_queue_snapshot(
+            session_id=session_id,
+            owner=owner,
+            config_entry_id="entry-a",
+            sequence=1,
+            updated_at="2026-08-17T00:00:00Z",
+            item=_item("written"),
+        )
+        await manager.async_wait_idle("entry-a")
+    previous = manager._health_targets.get("entry-a")
+    coordinator.async_preview_preflight.side_effect = OSError("unreachable")
+    coordinator.async_preview_write.reset_mock()
+    await manager.async_queue_snapshot(
+        session_id=session_id,
+        owner=owner,
+        config_entry_id="entry-a",
+        sequence=2,
+        updated_at="2026-08-17T00:00:01Z",
+        item=_item("not written", 60),
+    )
+    await manager.async_wait_idle("entry-a")
+    coordinator.async_preview_write.assert_not_awaited()
+    assert manager._health_targets.get("entry-a") is previous
+    assert events[-1].write_disposition is PreviewWriteDisposition.NOT_STARTED
+    if not prior_write:
+        with pytest.raises(PreviewError, match="no Live verification target"):
+            await manager.async_check_health("entry-a")
+    await manager.async_shutdown()
+
+
 async def test_latest_verification_is_read_only_without_holding_control_lock(
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,
