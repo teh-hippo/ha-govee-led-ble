@@ -330,6 +330,13 @@ class ModelProfile:
     def whole_device_mask(self) -> int:
         return self.whole_device_mask_override or (1 << self.segment_count) - 1
 
+    @property
+    def effect_activation_operations(self) -> frozenset[str]:
+        operations = frozenset(
+            operation for operation, grammars in _EFFECT_ACTIVATION_GRAMMARS.items() if self.command_grammar in grammars
+        )
+        return operations if self.command_operations is None else operations & self.command_operations
+
     def __post_init__(self) -> None:
         if self.requires_pact_confirmation and not (self.requires_qualified_identity and self.profile_pact_dependent):
             raise ValueError("Pact confirmation requires identity-qualified, Pact-dependent controls")
@@ -2418,6 +2425,22 @@ UNSUPPORTED_PROFILE = ModelProfile("Unsupported Govee device")
 # Grammar families shared by several SKUs; shared code tests membership here, not literal sets.
 VIDEO_GRAMMARS = frozenset({"H6099", "H6199"})
 WHOLE_BULB_GRAMMARS = frozenset({"H600A", "H601C", "H6181"})
+_DIY_ACTIVATION_GRAMMARS = WHOLE_BULB_GRAMMARS | {
+    "H1771",
+    "H60B0",
+    "H6072",
+    "H6072-legacy",
+    "H607C",
+    "H617A",
+    "H7020",
+    "H6046",
+    "H6099",
+    "H6179",
+}
+_EFFECT_ACTIVATION_GRAMMARS = {
+    "diy": _DIY_ACTIVATION_GRAMMARS,
+    "scene": _DIY_ACTIVATION_GRAMMARS | {"H6199"},
+}
 MODE_COMMAND_GRAMMARS = WHOLE_BULB_GRAMMARS | {"H6046", "H6099", "H6199"}
 PERCENT_BRIGHTNESS_STATUS_GRAMMARS = frozenset(
     {"H1771", "H60B0", "H600A", "H6046", "H6097", "H6099", "H6181", "H6181-modern", "H6199", "H66A0"}

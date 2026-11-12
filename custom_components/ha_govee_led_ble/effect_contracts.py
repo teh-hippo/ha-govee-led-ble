@@ -88,6 +88,7 @@ class ReleaseCapability:
     application_route: ApplicationRoute
     compiler_deployer_strategy: CompilerDeployerStrategy
     verification_confidence: VerificationConfidence
+    activation_operations: frozenset[str]
 
     @property
     def frontend_application(self) -> FrontendApplicationState:
@@ -127,6 +128,8 @@ def _capability(
     application_route: ApplicationRoute,
     compiler_deployer_strategy: CompilerDeployerStrategy,
     verification_confidence: VerificationConfidence,
+    *,
+    activation_operations: frozenset[str] | None = None,
 ) -> ReleaseCapability:
     return ReleaseCapability(
         model=model,
@@ -137,6 +140,15 @@ def _capability(
         application_route=application_route,
         compiler_deployer_strategy=compiler_deployer_strategy,
         verification_confidence=verification_confidence,
+        activation_operations=activation_operations
+        if activation_operations is not None
+        else frozenset(
+            {"diy"}
+            if workflow in {CapabilityWorkflow.PAINTED, CapabilityWorkflow.SINGLE, CapabilityWorkflow.MULTI}
+            or persistent_content_kind == "native_effect"
+            and workflow is CapabilityWorkflow.ADVANCED
+            else {"scene"}
+        ),
     )
 
 
@@ -371,7 +383,16 @@ _RELEASE_CAPABILITY_BASE: Final = (
 
 RELEASE_CAPABILITY_CONTRACT: Final = (
     *(
-        _capability("H60B0", workflow, label, kind, route, strategy, _V.UNVERIFIED)
+        _capability(
+            "H60B0",
+            workflow,
+            label,
+            kind,
+            route,
+            strategy,
+            _V.UNVERIFIED,
+            activation_operations=frozenset({"scene", "diy"}) if workflow is _W.MULTI else None,
+        )
         for workflow, label, kind, route, strategy in (
             (_W.NATIVE_SCENES, "Scenes", "scene_builtin", _R.STUDIO_SCENE_APPLY, _S.NATIVE_EFFECT_SELECTION),
             (
@@ -796,7 +817,16 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
     ),
     *(capability for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H6199"),
     *(
-        _capability("H7020", workflow, label, kind, route, strategy, _V.SELECTION_ONLY)
+        _capability(
+            "H7020",
+            workflow,
+            label,
+            kind,
+            route,
+            strategy,
+            _V.SELECTION_ONLY,
+            activation_operations=frozenset({"diy"}) if workflow is _W.ADVANCED else None,
+        )
         for workflow, label, kind, route, strategy in (
             (_W.NATIVE_SCENES, "Scenes", "scene_builtin", _R.STUDIO_SCENE_APPLY, _S.NATIVE_EFFECT_SELECTION),
             (_W.LAYERED_SCENES, "Layered scenes", "scene_layered", _R.HOME_ASSISTANT_CONTROL, _S.MODEL_SCENE_ENGINE),
@@ -889,16 +919,8 @@ def require_effect_route(
         raise ValueError(f"{model} effective profile does not support {label}")
     if profile.effect_grammar is None or profile.effect_grammar not in grammars or profile.command_grammar is None:
         raise ValueError(f"{model} has no supported {label} grammar and activation route")
-    from .generated_protocol_adapter import build_diy_activation, build_scene_activation
-
-    # The activation codec is independent of the upload codec, but must exist.
-    try:
-        if workflow in {CapabilityWorkflow.PAINTED, CapabilityWorkflow.SINGLE, CapabilityWorkflow.MULTI}:
-            build_diy_activation(0, model, profile=profile)
-        else:
-            build_scene_activation(model, 0, profile=profile)
-    except ValueError as error:
-        raise ValueError(f"{model} has no supported {label} grammar and activation route") from error
+    if not profile.effect_activation_operations & capability.activation_operations:
+        raise ValueError(f"{model} has no supported {label} grammar and activation route")
     return profile.effect_grammar
 
 
