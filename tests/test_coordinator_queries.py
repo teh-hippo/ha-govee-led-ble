@@ -32,6 +32,37 @@ from tests.coordinator_test_support import _CONFIGURATION_URL, _c, _packet
 M = "custom_components.ha_govee_led_ble.coordinator"
 
 
+@pytest.mark.parametrize(
+    ("remaining_domain", "complete"),
+    [(None, True), (ReadDomain.BRIGHTNESS, False), (ReadDomain.OTHER, True)],
+)
+async def test_query_deadline_after_completed_write_only_counts_unsent_required_reads(
+    coord, monkeypatch, remaining_domain, complete
+):
+    coord._client = _c()
+    now = time.monotonic()
+    deadline = now + 1
+    queries = [(build_power_query(), ReadDomain.POWER, ("is_on",))]
+    if remaining_domain is not None:
+        queries.append((build_brightness_query(), remaining_domain, ("brightness_pct",)))
+    monkeypatch.setattr(coord, "_build_state_queries", lambda *args, **kwargs: (queries, {}))
+    monkeypatch.setattr(f"{M}.time", SimpleNamespace(monotonic=lambda: now))
+
+    async def write(*args, **kwargs):
+        nonlocal now
+        now = deadline
+
+    writer = AsyncMock(side_effect=write)
+    monkeypatch.setattr(coord, "_async_write_packet", writer)
+    assert (
+        await coord._send_state_queries(
+            required_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS}), deadline=deadline
+        )
+        is complete
+    )
+    writer.assert_awaited_once()
+
+
 @pytest.mark.parametrize("missing", ["zone", "power_on"])
 @pytest.mark.parametrize("error", [None, BleakError, ValueError, TimeoutError])
 async def test_h607c_optional_setting_timeout_preserves_required_setup(
