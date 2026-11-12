@@ -146,7 +146,8 @@ def test_legacy_advanced_disabled_side_and_ripple_parameters():
     assert encode_h60b0_diy(content) == bytes.fromhex("0d020800320101020301190000")
 
 
-def test_three_source_diy_lengths_temperature_and_safety():
+@pytest.mark.parametrize("placeholder_palette", [False, True])
+def test_three_source_diy_lengths_temperature_and_safety(placeholder_palette):
     off = NativeDiyLayer(1, 0, ())
     content = NativeEffect(
         model="H60B0",
@@ -155,7 +156,7 @@ def test_three_source_diy_lengths_temperature_and_safety():
         layers=(
             NativeDiyLayer(1, 50, (), enabled=False, parameter=50, direction=1),
             off,
-            NativeDiyLayer(2, 50, ((255, 249, 251),), points=(1,), temperatures=(6500,)),
+            NativeDiyLayer(2, 50, ((255, 249, 251),) if placeholder_palette else (), points=(1,), temperatures=(6500,)),
         ),
     )
     payload = encode_h60b0_diy(content)
@@ -163,6 +164,10 @@ def test_three_source_diy_lengths_temperature_and_safety():
     parsed = H60b0DiyV3.from_bytes(payload)
     parsed._read()
     assert parsed.body.bottom.body.colours[0].kelvin == 6500
+    with pytest.raises(ValueError, match="temperature records"):
+        validate_h60b0_diy(
+            replace(content, layers=(*content.layers[:2], replace(content.layers[2], kind=3, points=(50,)))), 3
+        )
     with pytest.raises(ValueError):
         encode_h60b0_diy(
             replace(
