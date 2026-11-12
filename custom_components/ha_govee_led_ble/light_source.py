@@ -12,7 +12,7 @@ from homeassistant.components.light import (  # type: ignore[attr-defined]
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.util.color import brightness_to_value
 
-from .const import DOMAIN, LightSource, ModelProfile, ReadDomain
+from .const import DOMAIN, LightSource, ModelProfile, ReadDomain, light_unique_id
 from .coordinator import GoveeBLECoordinator
 from .coordinator_sources import SourceTurnOnRequest, source_color_modes, source_segments_available
 from .coordinator_status import ParsedMode
@@ -29,7 +29,7 @@ class GoveeBLESourceLight(GoveeBLEEntity, LightEntity):
         super().__init__(coordinator)
         self._key = key
         self._attr_translation_key = key
-        self._attr_unique_id = f"{coordinator.address.replace(':', '').lower()}_{key}"
+        self._attr_unique_id = light_unique_id(coordinator.address, key)
         self._attr_device_info = coordinator.device_info
         self.device_service_owner = device_service_owner
         self._pending_turn_on: dict[str, Any] | None = None

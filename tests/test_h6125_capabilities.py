@@ -388,6 +388,7 @@ async def test_public_device_catalogues_and_music_defaults_are_revision_scoped(h
         coordinator.profile = profile
         entries[name] = SimpleNamespace(
             entry_id=name,
+            unique_id=coordinator.address,
             domain=DOMAIN,
             title=name,
             options={},

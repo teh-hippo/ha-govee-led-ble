@@ -2972,6 +2972,11 @@ def device_profile(
     return get_profile(model)
 
 
+def light_unique_id(address: str, source: str | None = None) -> str:
+    base = address.replace(":", "").lower()
+    return f"{base}_{source}" if source is not None else base
+
+
 def resolve_model(model: str) -> str | None:
     candidate = model.strip().upper()
     return candidate if candidate in MODEL_PROFILES else None

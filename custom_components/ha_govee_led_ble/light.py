@@ -44,6 +44,7 @@ from .const import (
     ModelProfile,
     ReadDomain,
     effect_category_for_content_kind,
+    light_unique_id,
     resolve_model,
     supported_effect_categories,
 )
@@ -261,7 +262,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         effect_backend: EffectBackend | None = None,
     ) -> None:
         super().__init__(coordinator)
-        self._attr_unique_id = coordinator.address.replace(":", "").lower()
+        self._attr_unique_id = light_unique_id(coordinator.address)
         self._attr_device_info = coordinator.device_info
         self._config_entry_id = config_entry_id
         self._effect_backend = effect_backend
