@@ -84,6 +84,7 @@ There are three publication paths:
 - **Master candidates:** after a release-bearing change merges and `Validate` succeeds on current `master`, `Release` automatically publishes the upcoming version as `v<version>-rc.<number>`.
   Python Semantic Release calculates versions and release notes from Conventional Commits; `feat`, `fix`, `perf`, `build` and breaking changes drive releases.
   Documentation or maintenance alone does not force a candidate.
+  To request the same candidate path manually, select `release_type=rc` in `Release`; the manual default remains stable and neither path forces a maintenance-only version.
 - **Optional PR candidates:** request a reviewed, exact-SHA build when hardware testing is needed before merge.
   `Prerelease Package` publishes `v<version>-pr-<PR number>.<candidate number>` tags, for example `v7.40.1-pr-145.1`.
   The master release checkout excludes these preview tags locally so they cannot affect master numbering or release notes; remote tags remain untouched.

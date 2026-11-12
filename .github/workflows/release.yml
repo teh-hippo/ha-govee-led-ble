@@ -2,13 +2,22 @@ name: Release
 
 on:
   workflow_dispatch:
+    inputs:
+      release_type:
+        description: Publication channel (stable remains the default)
+        required: true
+        default: stable
+        type: choice
+        options:
+          - stable
+          - rc
   workflow_run:
     workflows: [Validate]
     types: [completed]
     branches: [master]
 
 concurrency:
-  group: release-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && 'stable' || 'rc' }}
+  group: release-${{ github.ref }}-${{ github.event_name == 'workflow_run' && 'rc' || inputs.release_type || 'stable' }}
   cancel-in-progress: false
 
 jobs:
@@ -31,6 +40,7 @@ jobs:
       contents: write
     env:
       SOURCE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      RELEASE_CHANNEL: ${{ github.event_name == 'workflow_run' && 'rc' || inputs.release_type || 'stable' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -42,6 +52,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          case "$RELEASE_CHANNEL" in
+            stable|rc) ;;
+            *) echo "::error::Unknown release channel"; exit 1 ;;
+          esac
           master_sha="$(git ls-remote origin refs/heads/master | cut -f1)"
           if [[ "$SOURCE_SHA" != "$master_sha" ]]; then
             echo "::error::Master has advanced; release only its current validated commit."
@@ -60,12 +74,10 @@ jobs:
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
 
       - name: Select release history
-        env:
-          RELEASE_EVENT: ${{ github.event_name }}
         run: |
           while IFS= read -r tag; do
             if [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-pr-[0-9]+\.[0-9]+$ ]] ||
-               [[ "$RELEASE_EVENT" == workflow_dispatch && "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]]; then
+               [[ "$RELEASE_CHANNEL" == stable && "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]]; then
               git tag --delete "$tag"
             fi
           done < <(git tag --list)
@@ -74,10 +86,9 @@ jobs:
         id: semantic_release
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
-          RELEASE_EVENT: ${{ github.event_name }}
         run: |
           args=(version --no-changelog --no-vcs-release)
-          if [[ "$RELEASE_EVENT" == "workflow_run" ]]; then
+          if [[ "$RELEASE_CHANNEL" == "rc" ]]; then
             args+=(--as-prerelease --prerelease-token rc)
           fi
           uvx \
