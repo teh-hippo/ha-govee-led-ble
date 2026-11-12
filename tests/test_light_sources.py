@@ -1,7 +1,7 @@
 import asyncio
 import time
 from dataclasses import replace
-from unittest.mock import AsyncMock, MagicMock, call
+from unittest.mock import ANY, AsyncMock, MagicMock, call
 
 import pytest
 from homeassistant.components.light import ColorMode
@@ -133,6 +133,29 @@ def source_coordinator(mock_coordinator):
     return coordinator
 
 
+async def test_source_preflight_does_not_claim_foreign_preview_writes_as_partial(source_coordinator):
+    failure = HomeAssistantError("Preview restoration failed")
+
+    async def supersede():
+        source_coordinator.control_write_attempts += 1
+        raise failure
+
+    source_coordinator._async_supersede_effect_preview = AsyncMock(side_effect=supersede)
+    with pytest.raises(HomeAssistantError) as raised:
+        await GoveeBLESourceLight(source_coordinator, "left_bar").async_turn_on()
+    assert raised.value is failure
+    source_coordinator.async_set_boolean_control.assert_not_awaited()
+
+
+async def test_source_switch_without_values_does_not_require_segment_geometry(source_coordinator):
+    source_coordinator.boolean_control_state["left_bar_enabled"] = False
+    source_coordinator.async_mask_transaction = MagicMock(
+        side_effect=AssertionError("Source power does not address segments")
+    )
+    await GoveeBLESourceLight(source_coordinator, "left_bar").async_turn_on()
+    source_coordinator.async_set_boolean_control.assert_awaited_once_with("left_bar_enabled", True)
+
+
 async def test_setup_adds_sources_without_changing_main_light_identity(source_coordinator):
     entry = MagicMock(runtime_data=source_coordinator)
     added = []
@@ -238,14 +261,20 @@ def test_missing_source_observation_is_not_fresh_at_clock_zero(source_coordinato
 async def test_source_controls_only_its_segments_and_does_not_change_sibling(source_coordinator):
     source = GoveeBLESourceLight(source_coordinator, "left_bar")
     await source.async_turn_on(brightness=128, rgb_color=(10, 20, 30))
-    source_coordinator.async_set_segment_brightness.assert_awaited_once_with(list(LEFT.segments), 50)
-    source_coordinator.async_paint_segments.assert_awaited_once_with([(list(LEFT.segments), (10, 20, 30))])
+    source_coordinator.async_set_segment_brightness.assert_awaited_once_with(list(LEFT.segments), 50, write_guard=ANY)
+    source_coordinator.async_paint_segments.assert_awaited_once_with(
+        [(list(LEFT.segments), (10, 20, 30))], write_guard=ANY
+    )
     source_coordinator.async_set_boolean_control.assert_not_awaited()
     source_coordinator.send_command.assert_not_awaited()
 
     await source.async_turn_off()
     source_coordinator.async_set_boolean_control.assert_awaited_once_with("left_bar_enabled", False)
     source_coordinator.send_command.assert_not_awaited()
+    guard = source_coordinator.async_paint_segments.await_args.kwargs["write_guard"]
+    source_coordinator.profile = replace(source_coordinator.profile, segment_count=11)
+    with pytest.raises(ValueError, match="profile changed"):
+        guard()
 
 
 async def test_h607c_base_writes_only_its_own_segment_mask(source_coordinator):
@@ -255,8 +284,8 @@ async def test_h607c_base_writes_only_its_own_segment_mask(source_coordinator):
     coordinator.boolean_control_state = {"pole_enabled": True, "base_enabled": True}
     source = GoveeBLESourceLight(coordinator, "base")
     await source.async_turn_on(brightness=128, rgb_color=(10, 20, 30))
-    coordinator.async_set_segment_brightness.assert_awaited_once_with([9, 10, 11, 12, 13], 50)
-    coordinator.async_paint_segments.assert_awaited_once_with([([9, 10, 11, 12, 13], (10, 20, 30))])
+    coordinator.async_set_segment_brightness.assert_awaited_once_with([9, 10, 11, 12, 13], 50, write_guard=ANY)
+    coordinator.async_paint_segments.assert_awaited_once_with([([9, 10, 11, 12, 13], (10, 20, 30))], write_guard=ANY)
     coordinator.async_set_boolean_control.assert_not_awaited()
 
 
@@ -311,7 +340,7 @@ async def test_h60a6_panel_colour_uses_only_the_panel_segment(source_coordinator
     coordinator.boolean_control_state = {"panel_enabled": True, "ring_enabled": True}
     panel = GoveeBLESourceLight(coordinator, "panel")
     await panel.async_turn_on(rgb_color=(10, 20, 30))
-    coordinator.async_paint_segments.assert_awaited_once_with([([13], (10, 20, 30))])
+    coordinator.async_paint_segments.assert_awaited_once_with([([13], (10, 20, 30))], write_guard=ANY)
     coordinator.async_set_boolean_control.assert_not_awaited()
 
 

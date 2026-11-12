@@ -164,8 +164,19 @@ async def test_bottom_source_uses_native_attributes_without_segment_writes(mock_
     coordinator.async_set_source_value = AsyncMock()
     coordinator.async_set_segment_brightness = AsyncMock()
     coordinator.async_set_segment_kelvin = AsyncMock()
+    coordinator._notify_started_monotonic = 1.0
+    coordinator._field_revisions["is_on"] = 1
+    coordinator._field_received_at.update({"is_on": 2.0, "boolean_bottom_enabled": 2.0})
+    coordinator._observed_power_write_generation = coordinator._power_write_generation
+    coordinator._observed_power_profile_generation = coordinator._profile_generation
+    coordinator._source_power_observation_generation["boolean_bottom_enabled"] = (
+        coordinator._power_write_generation,
+        coordinator._profile_generation,
+    )
+    coordinator.async_mask_transaction = MagicMock(
+        side_effect=AssertionError("Native source controls do not address segments")
+    )
     source = GoveeBLESourceLight(coordinator, "bottom")
-    source._fresh = MagicMock(return_value=True)
     await source.async_turn_on(brightness=102, color_temp_kelvin=4000)
     assert coordinator.async_set_source_value.await_args_list[0].args == ("bottom", "brightness", 40)
     assert coordinator.async_set_source_value.await_args_list[1].args == ("bottom", "kelvin", 4000)
