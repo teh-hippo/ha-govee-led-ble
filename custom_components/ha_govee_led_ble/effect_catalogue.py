@@ -200,38 +200,6 @@ class NativeDiyTemplateContract:
 
 
 @dataclass(frozen=True, slots=True)
-class CatalogueSupport:
-    multi: CapabilityState
-    advanced: CapabilityState
-    workshop: CapabilityState
-
-    def to_dict(self) -> dict[str, JsonValue]:
-        return {
-            "multi": self.multi.value,
-            "advanced": self.advanced.value,
-            "workshop": self.workshop.value,
-        }
-
-
-@dataclass(frozen=True, slots=True)
-class ApplySupport:
-    painted: CapabilityState
-    single: CapabilityState
-    multi: CapabilityState
-    palette_diy: CapabilityState
-    workshop: CapabilityState
-
-    def to_dict(self) -> dict[str, JsonValue]:
-        return {
-            "painted": self.painted.value,
-            "single": self.single.value,
-            "multi": self.multi.value,
-            "palette_diy": self.palette_diy.value,
-            "workshop": self.workshop.value,
-        }
-
-
-@dataclass(frozen=True, slots=True)
 class ModelEffectCatalogue:
     sku: str
     painted_effects: tuple[dict[str, str], ...]
@@ -240,8 +208,6 @@ class ModelEffectCatalogue:
     video_modes: tuple[NativeModeOption, ...]
     templates: tuple[CatalogueTemplate, ...]
     workshop_templates: tuple[WorkshopTemplate, ...]
-    supports: CatalogueSupport
-    apply: ApplySupport
     palette_min: int = 1
     palette_max: int = 8
     multi_max: int = MAX_MULTI_EFFECTS
@@ -349,14 +315,10 @@ class ModelEffectCatalogue:
             ],
             "workflows": frontend_release_capabilities(self.sku, profile=device_profile) if effects_enabled else [],
             "supports": {
-                name: state
+                name: workflow_capability_state(self.sku, CapabilityWorkflow(name), profile=device_profile).value
                 if effects_enabled
-                and (
-                    device_profile is None
-                    or profile_supports_workflow(profile, CapabilityWorkflow(name), model=self.sku)
-                )
                 else CapabilityState.UNSUPPORTED.value
-                for name, state in self.supports.to_dict().items()
+                for name in ("multi", "advanced", "workshop")
             },
             **(
                 {"native_diy_templates": [template.to_dict() for template in self.native_diy_templates]}
@@ -381,11 +343,10 @@ class ModelEffectCatalogue:
                 "music_sensitivity_max": profile.music_sensitivity_max,
             },
             "apply": {
-                name: state
+                name: studio_apply_capability_state(self.sku, CapabilityWorkflow(name), profile=device_profile).value
                 if effects_enabled
-                and (device_profile is None or profile_supports_workflow(profile, CapabilityWorkflow(name)))
                 else CapabilityState.UNSUPPORTED.value
-                for name, state in self.apply.to_dict().items()
+                for name in ("painted", "single", "multi", "palette_diy", "workshop")
             },
         }
         return result
@@ -1717,18 +1678,6 @@ def _ceiling_catalogue(model: str) -> ModelEffectCatalogue:
         )
         if native
         else tuple(_single_template(model, family, grammar="H617A") for family in H60A1_DIY_FAMILIES),
-        supports=CatalogueSupport(
-            multi=workflow_capability_state(model, CapabilityWorkflow.MULTI),
-            advanced=workflow_capability_state(model, CapabilityWorkflow.ADVANCED),
-            workshop=CapabilityState.UNSUPPORTED,
-        ),
-        apply=ApplySupport(
-            painted=studio_apply_capability_state(model, CapabilityWorkflow.PAINTED),
-            single=studio_apply_capability_state(model, CapabilityWorkflow.SINGLE),
-            multi=studio_apply_capability_state(model, CapabilityWorkflow.MULTI),
-            palette_diy=CapabilityState.UNSUPPORTED,
-            workshop=CapabilityState.UNSUPPORTED,
-        ),
         advanced_create=False,
         temporary_diy_selector=254,
         native_actions=tuple(
@@ -1923,18 +1872,6 @@ MODEL_EFFECT_CATALOGUES: Final = {
         video_modes=(),
         templates=(*_h60b0_templates(), *(_music_template("H60B0", mode) for mode in _native_music_modes("H60B0"))),
         workshop_templates=(),
-        supports=CatalogueSupport(
-            multi=workflow_capability_state("H60B0", CapabilityWorkflow.MULTI),
-            advanced=workflow_capability_state("H60B0", CapabilityWorkflow.ADVANCED),
-            workshop=CapabilityState.UNSUPPORTED,
-        ),
-        apply=ApplySupport(
-            painted=CapabilityState.UNSUPPORTED,
-            single=studio_apply_capability_state("H60B0", CapabilityWorkflow.SINGLE),
-            multi=studio_apply_capability_state("H60B0", CapabilityWorkflow.MULTI),
-            palette_diy=CapabilityState.UNSUPPORTED,
-            workshop=CapabilityState.UNSUPPORTED,
-        ),
         advanced_create=False,
         temporary_diy_selector=254,
     ),
@@ -1961,18 +1898,6 @@ MODEL_EFFECT_CATALOGUES: Final = {
             *(_video_template("H605C", mode) for mode in _native_video_modes("H605C")),
         ),
         workshop_templates=(),
-        supports=CatalogueSupport(
-            multi=workflow_capability_state("H605C", CapabilityWorkflow.MULTI),
-            advanced=workflow_capability_state("H605C", CapabilityWorkflow.ADVANCED),
-            workshop=workflow_capability_state("H605C", CapabilityWorkflow.WORKSHOP),
-        ),
-        apply=ApplySupport(
-            painted=studio_apply_capability_state("H605C", CapabilityWorkflow.PAINTED),
-            single=studio_apply_capability_state("H605C", CapabilityWorkflow.SINGLE),
-            multi=studio_apply_capability_state("H605C", CapabilityWorkflow.MULTI),
-            palette_diy=CapabilityState.UNSUPPORTED,
-            workshop=studio_apply_capability_state("H605C", CapabilityWorkflow.WORKSHOP),
-        ),
         diy_slot_policy="approved_observed",
     ),
     "H1771": ModelEffectCatalogue(
@@ -1983,18 +1908,6 @@ MODEL_EFFECT_CATALOGUES: Final = {
         video_modes=(),
         templates=(*_h1771_templates(), *(_music_template("H1771", mode) for mode in _native_music_modes("H1771"))),
         workshop_templates=(),
-        supports=CatalogueSupport(
-            multi=workflow_capability_state("H1771", CapabilityWorkflow.MULTI),
-            advanced=workflow_capability_state("H1771", CapabilityWorkflow.ADVANCED),
-            workshop=workflow_capability_state("H1771", CapabilityWorkflow.WORKSHOP),
-        ),
-        apply=ApplySupport(
-            painted=CapabilityState.UNSUPPORTED,
-            single=studio_apply_capability_state("H1771", CapabilityWorkflow.SINGLE),
-            multi=studio_apply_capability_state("H1771", CapabilityWorkflow.MULTI),
-            palette_diy=CapabilityState.UNSUPPORTED,
-            workshop=CapabilityState.UNSUPPORTED,
-        ),
         temporary_diy_selector=254,
         advanced_create=False,
     ),
@@ -2009,18 +1922,6 @@ MODEL_EFFECT_CATALOGUES: Final = {
             *(_music_template("H6046", mode) for mode in _native_music_modes("H6046")),
         ),
         workshop_templates=(),
-        supports=CatalogueSupport(
-            multi=workflow_capability_state("H6046", CapabilityWorkflow.MULTI),
-            advanced=workflow_capability_state("H6046", CapabilityWorkflow.ADVANCED),
-            workshop=workflow_capability_state("H6046", CapabilityWorkflow.WORKSHOP),
-        ),
-        apply=ApplySupport(
-            painted=CapabilityState.UNSUPPORTED,
-            single=studio_apply_capability_state("H6046", CapabilityWorkflow.SINGLE),
-            multi=studio_apply_capability_state("H6046", CapabilityWorkflow.MULTI),
-            palette_diy=CapabilityState.UNSUPPORTED,
-            workshop=studio_apply_capability_state("H6046", CapabilityWorkflow.WORKSHOP),
-        ),
         speed_min=1,
         multi_max=4,
         diy_slot_policy="approved_observed",
@@ -2060,18 +1961,6 @@ MODEL_EFFECT_CATALOGUES: Final = {
             *H6102_NATIVE_DIY_TEMPLATES,
         ),
         workshop_templates=(),
-        supports=CatalogueSupport(
-            multi=workflow_capability_state("H6102", CapabilityWorkflow.MULTI),
-            advanced=workflow_capability_state("H6102", CapabilityWorkflow.ADVANCED),
-            workshop=workflow_capability_state("H6102", CapabilityWorkflow.WORKSHOP),
-        ),
-        apply=ApplySupport(
-            painted=studio_apply_capability_state("H6102", CapabilityWorkflow.PAINTED),
-            single=studio_apply_capability_state("H6102", CapabilityWorkflow.SINGLE),
-            multi=studio_apply_capability_state("H6102", CapabilityWorkflow.MULTI),
-            palette_diy=studio_apply_capability_state("H6102", CapabilityWorkflow.PALETTE_DIY),
-            workshop=studio_apply_capability_state("H6102", CapabilityWorkflow.WORKSHOP),
-        ),
     ),
     "H6097": ModelEffectCatalogue(
         sku="H6097",
@@ -2097,18 +1986,6 @@ MODEL_EFFECT_CATALOGUES: Final = {
             *(_video_template("H6097", mode, saturation=100) for mode in _native_video_modes("H6097")),
         ),
         workshop_templates=(),
-        supports=CatalogueSupport(
-            multi=workflow_capability_state("H6097", CapabilityWorkflow.MULTI),
-            advanced=workflow_capability_state("H6097", CapabilityWorkflow.ADVANCED),
-            workshop=workflow_capability_state("H6097", CapabilityWorkflow.WORKSHOP),
-        ),
-        apply=ApplySupport(
-            painted=studio_apply_capability_state("H6097", CapabilityWorkflow.PAINTED),
-            single=studio_apply_capability_state("H6097", CapabilityWorkflow.SINGLE),
-            multi=studio_apply_capability_state("H6097", CapabilityWorkflow.MULTI),
-            palette_diy=studio_apply_capability_state("H6097", CapabilityWorkflow.PALETTE_DIY),
-            workshop=studio_apply_capability_state("H6097", CapabilityWorkflow.WORKSHOP),
-        ),
     ),
     "H6099": ModelEffectCatalogue(
         sku="H6099",
@@ -2133,18 +2010,6 @@ MODEL_EFFECT_CATALOGUES: Final = {
             *(_video_template("H6099", mode, saturation=100) for mode in _native_video_modes("H6099")),
         ),
         workshop_templates=(),
-        supports=CatalogueSupport(
-            multi=workflow_capability_state("H6099", CapabilityWorkflow.MULTI),
-            advanced=workflow_capability_state("H6099", CapabilityWorkflow.ADVANCED),
-            workshop=workflow_capability_state("H6099", CapabilityWorkflow.WORKSHOP),
-        ),
-        apply=ApplySupport(
-            painted=studio_apply_capability_state("H6099", CapabilityWorkflow.PAINTED),
-            single=studio_apply_capability_state("H6099", CapabilityWorkflow.SINGLE),
-            multi=studio_apply_capability_state("H6099", CapabilityWorkflow.MULTI),
-            palette_diy=studio_apply_capability_state("H6099", CapabilityWorkflow.PALETTE_DIY),
-            workshop=studio_apply_capability_state("H6099", CapabilityWorkflow.WORKSHOP),
-        ),
     ),
     "H66A0": ModelEffectCatalogue(
         sku="H66A0",
@@ -2169,18 +2034,6 @@ MODEL_EFFECT_CATALOGUES: Final = {
             *(_video_template("H66A0", mode, saturation=100) for mode in _native_video_modes("H66A0")),
         ),
         workshop_templates=(),
-        supports=CatalogueSupport(
-            multi=workflow_capability_state("H66A0", CapabilityWorkflow.MULTI),
-            advanced=workflow_capability_state("H66A0", CapabilityWorkflow.ADVANCED),
-            workshop=workflow_capability_state("H66A0", CapabilityWorkflow.WORKSHOP),
-        ),
-        apply=ApplySupport(
-            painted=studio_apply_capability_state("H66A0", CapabilityWorkflow.PAINTED),
-            single=studio_apply_capability_state("H66A0", CapabilityWorkflow.SINGLE),
-            multi=studio_apply_capability_state("H66A0", CapabilityWorkflow.MULTI),
-            palette_diy=studio_apply_capability_state("H66A0", CapabilityWorkflow.PALETTE_DIY),
-            workshop=studio_apply_capability_state("H66A0", CapabilityWorkflow.WORKSHOP),
-        ),
     ),
     "H1A42": ModelEffectCatalogue(
         sku="H1A42",
@@ -2203,18 +2056,6 @@ MODEL_EFFECT_CATALOGUES: Final = {
             *(_music_template("H1A42", mode) for mode in _native_music_modes("H1A42")),
         ),
         workshop_templates=(),
-        supports=CatalogueSupport(
-            multi=workflow_capability_state("H1A42", CapabilityWorkflow.MULTI),
-            advanced=workflow_capability_state("H1A42", CapabilityWorkflow.ADVANCED),
-            workshop=workflow_capability_state("H1A42", CapabilityWorkflow.WORKSHOP),
-        ),
-        apply=ApplySupport(
-            painted=studio_apply_capability_state("H1A42", CapabilityWorkflow.PAINTED),
-            single=studio_apply_capability_state("H1A42", CapabilityWorkflow.SINGLE),
-            multi=studio_apply_capability_state("H1A42", CapabilityWorkflow.MULTI),
-            palette_diy=studio_apply_capability_state("H1A42", CapabilityWorkflow.PALETTE_DIY),
-            workshop=studio_apply_capability_state("H1A42", CapabilityWorkflow.WORKSHOP),
-        ),
     ),
     "H61F5": ModelEffectCatalogue(
         sku="H61F5",
@@ -2237,18 +2078,6 @@ MODEL_EFFECT_CATALOGUES: Final = {
             *(_music_template("H61F5", mode) for mode in _native_music_modes("H61F5")),
         ),
         workshop_templates=(),
-        supports=CatalogueSupport(
-            multi=workflow_capability_state("H61F5", CapabilityWorkflow.MULTI),
-            advanced=workflow_capability_state("H61F5", CapabilityWorkflow.ADVANCED),
-            workshop=workflow_capability_state("H61F5", CapabilityWorkflow.WORKSHOP),
-        ),
-        apply=ApplySupport(
-            painted=studio_apply_capability_state("H61F5", CapabilityWorkflow.PAINTED),
-            single=studio_apply_capability_state("H61F5", CapabilityWorkflow.SINGLE),
-            multi=studio_apply_capability_state("H61F5", CapabilityWorkflow.MULTI),
-            palette_diy=studio_apply_capability_state("H61F5", CapabilityWorkflow.PALETTE_DIY),
-            workshop=studio_apply_capability_state("H61F5", CapabilityWorkflow.WORKSHOP),
-        ),
     ),
     "H6117": ModelEffectCatalogue(
         sku="H6117",
@@ -2287,18 +2116,6 @@ MODEL_EFFECT_CATALOGUES: Final = {
             *H6117_NATIVE_DIY_TEMPLATES,
         ),
         workshop_templates=(),
-        supports=CatalogueSupport(
-            multi=workflow_capability_state("H6117", CapabilityWorkflow.MULTI),
-            advanced=workflow_capability_state("H6117", CapabilityWorkflow.ADVANCED),
-            workshop=workflow_capability_state("H6117", CapabilityWorkflow.WORKSHOP),
-        ),
-        apply=ApplySupport(
-            painted=studio_apply_capability_state("H6117", CapabilityWorkflow.PAINTED),
-            single=studio_apply_capability_state("H6117", CapabilityWorkflow.SINGLE),
-            multi=studio_apply_capability_state("H6117", CapabilityWorkflow.MULTI),
-            palette_diy=studio_apply_capability_state("H6117", CapabilityWorkflow.PALETTE_DIY),
-            workshop=studio_apply_capability_state("H6117", CapabilityWorkflow.WORKSHOP),
-        ),
     ),
     "H6125": ModelEffectCatalogue(
         sku="H6125",
@@ -2333,18 +2150,6 @@ MODEL_EFFECT_CATALOGUES: Final = {
             *H6125_NATIVE_DIY_TEMPLATES,
         ),
         workshop_templates=(),
-        supports=CatalogueSupport(
-            multi=workflow_capability_state("H6125", CapabilityWorkflow.MULTI),
-            advanced=workflow_capability_state("H6125", CapabilityWorkflow.ADVANCED),
-            workshop=workflow_capability_state("H6125", CapabilityWorkflow.WORKSHOP),
-        ),
-        apply=ApplySupport(
-            painted=studio_apply_capability_state("H6125", CapabilityWorkflow.PAINTED),
-            single=studio_apply_capability_state("H6125", CapabilityWorkflow.SINGLE),
-            multi=studio_apply_capability_state("H6125", CapabilityWorkflow.MULTI),
-            palette_diy=studio_apply_capability_state("H6125", CapabilityWorkflow.PALETTE_DIY),
-            workshop=studio_apply_capability_state("H6125", CapabilityWorkflow.WORKSHOP),
-        ),
     ),
     "H617A": ModelEffectCatalogue(
         sku="H617A",
@@ -2354,18 +2159,6 @@ MODEL_EFFECT_CATALOGUES: Final = {
         video_modes=(),
         templates=H617A_CATALOGUE_TEMPLATES,
         workshop_templates=(),
-        supports=CatalogueSupport(
-            multi=workflow_capability_state("H617A", CapabilityWorkflow.MULTI),
-            advanced=workflow_capability_state("H617A", CapabilityWorkflow.ADVANCED),
-            workshop=workflow_capability_state("H617A", CapabilityWorkflow.WORKSHOP),
-        ),
-        apply=ApplySupport(
-            painted=studio_apply_capability_state("H617A", CapabilityWorkflow.PAINTED),
-            single=studio_apply_capability_state("H617A", CapabilityWorkflow.SINGLE),
-            multi=studio_apply_capability_state("H617A", CapabilityWorkflow.MULTI),
-            palette_diy=studio_apply_capability_state("H617A", CapabilityWorkflow.PALETTE_DIY),
-            workshop=studio_apply_capability_state("H617A", CapabilityWorkflow.WORKSHOP),
-        ),
     ),
     "H617C": ModelEffectCatalogue(
         sku="H617C",
@@ -2400,18 +2193,6 @@ MODEL_EFFECT_CATALOGUES: Final = {
             *H617C_NATIVE_DIY_TEMPLATES,
         ),
         workshop_templates=(),
-        supports=CatalogueSupport(
-            multi=workflow_capability_state("H617C", CapabilityWorkflow.MULTI),
-            advanced=workflow_capability_state("H617C", CapabilityWorkflow.ADVANCED),
-            workshop=workflow_capability_state("H617C", CapabilityWorkflow.WORKSHOP),
-        ),
-        apply=ApplySupport(
-            painted=studio_apply_capability_state("H617C", CapabilityWorkflow.PAINTED),
-            single=studio_apply_capability_state("H617C", CapabilityWorkflow.SINGLE),
-            multi=studio_apply_capability_state("H617C", CapabilityWorkflow.MULTI),
-            palette_diy=studio_apply_capability_state("H617C", CapabilityWorkflow.PALETTE_DIY),
-            workshop=studio_apply_capability_state("H617C", CapabilityWorkflow.WORKSHOP),
-        ),
     ),
     "H617E": ModelEffectCatalogue(
         sku="H617E",
@@ -2421,18 +2202,6 @@ MODEL_EFFECT_CATALOGUES: Final = {
         video_modes=(),
         templates=H617E_CATALOGUE_TEMPLATES,
         workshop_templates=(),
-        supports=CatalogueSupport(
-            multi=workflow_capability_state("H617E", CapabilityWorkflow.MULTI),
-            advanced=workflow_capability_state("H617E", CapabilityWorkflow.ADVANCED),
-            workshop=workflow_capability_state("H617E", CapabilityWorkflow.WORKSHOP),
-        ),
-        apply=ApplySupport(
-            painted=studio_apply_capability_state("H617E", CapabilityWorkflow.PAINTED),
-            single=studio_apply_capability_state("H617E", CapabilityWorkflow.SINGLE),
-            multi=studio_apply_capability_state("H617E", CapabilityWorkflow.MULTI),
-            palette_diy=studio_apply_capability_state("H617E", CapabilityWorkflow.PALETTE_DIY),
-            workshop=studio_apply_capability_state("H617E", CapabilityWorkflow.WORKSHOP),
-        ),
     ),
     "H6181": ModelEffectCatalogue(
         sku="H6181",
@@ -2449,18 +2218,6 @@ MODEL_EFFECT_CATALOGUES: Final = {
         ),
         workshop_templates=(),
         diy_slot_policy="approved_observed",
-        supports=CatalogueSupport(
-            multi=workflow_capability_state("H6181", CapabilityWorkflow.MULTI),
-            advanced=workflow_capability_state("H6181", CapabilityWorkflow.ADVANCED),
-            workshop=workflow_capability_state("H6181", CapabilityWorkflow.WORKSHOP),
-        ),
-        apply=ApplySupport(
-            painted=studio_apply_capability_state("H6181", CapabilityWorkflow.PAINTED),
-            single=studio_apply_capability_state("H6181", CapabilityWorkflow.SINGLE),
-            multi=studio_apply_capability_state("H6181", CapabilityWorkflow.MULTI),
-            palette_diy=studio_apply_capability_state("H6181", CapabilityWorkflow.PALETTE_DIY),
-            workshop=studio_apply_capability_state("H6181", CapabilityWorkflow.WORKSHOP),
-        ),
     ),
     "H6179": ModelEffectCatalogue(
         sku="H6179",
@@ -2471,18 +2228,6 @@ MODEL_EFFECT_CATALOGUES: Final = {
         templates=H6179_CATALOGUE_TEMPLATES,
         workshop_templates=(),
         diy_slot_policy="approved_observed",
-        supports=CatalogueSupport(
-            multi=workflow_capability_state("H6179", CapabilityWorkflow.MULTI),
-            advanced=workflow_capability_state("H6179", CapabilityWorkflow.ADVANCED),
-            workshop=workflow_capability_state("H6179", CapabilityWorkflow.WORKSHOP),
-        ),
-        apply=ApplySupport(
-            painted=studio_apply_capability_state("H6179", CapabilityWorkflow.PAINTED),
-            single=studio_apply_capability_state("H6179", CapabilityWorkflow.SINGLE),
-            multi=studio_apply_capability_state("H6179", CapabilityWorkflow.MULTI),
-            palette_diy=studio_apply_capability_state("H6179", CapabilityWorkflow.PALETTE_DIY),
-            workshop=studio_apply_capability_state("H6179", CapabilityWorkflow.WORKSHOP),
-        ),
     ),
     "H619A": ModelEffectCatalogue(
         sku="H619A",
@@ -2517,18 +2262,6 @@ MODEL_EFFECT_CATALOGUES: Final = {
             *H619A_NATIVE_DIY_TEMPLATES,
         ),
         workshop_templates=(),
-        supports=CatalogueSupport(
-            multi=workflow_capability_state("H619A", CapabilityWorkflow.MULTI),
-            advanced=workflow_capability_state("H619A", CapabilityWorkflow.ADVANCED),
-            workshop=workflow_capability_state("H619A", CapabilityWorkflow.WORKSHOP),
-        ),
-        apply=ApplySupport(
-            painted=studio_apply_capability_state("H619A", CapabilityWorkflow.PAINTED),
-            single=studio_apply_capability_state("H619A", CapabilityWorkflow.SINGLE),
-            multi=studio_apply_capability_state("H619A", CapabilityWorkflow.MULTI),
-            palette_diy=studio_apply_capability_state("H619A", CapabilityWorkflow.PALETTE_DIY),
-            workshop=studio_apply_capability_state("H619A", CapabilityWorkflow.WORKSHOP),
-        ),
     ),
     "H6199": ModelEffectCatalogue(
         sku="H6199",
@@ -2538,18 +2271,6 @@ MODEL_EFFECT_CATALOGUES: Final = {
         video_modes=H6199_VIDEO_MODES,
         templates=H6199_CATALOGUE_TEMPLATES,
         workshop_templates=(),
-        supports=CatalogueSupport(
-            multi=workflow_capability_state("H6199", CapabilityWorkflow.MULTI),
-            advanced=workflow_capability_state("H6199", CapabilityWorkflow.ADVANCED),
-            workshop=workflow_capability_state("H6199", CapabilityWorkflow.WORKSHOP),
-        ),
-        apply=ApplySupport(
-            painted=studio_apply_capability_state("H6199", CapabilityWorkflow.PAINTED),
-            single=studio_apply_capability_state("H6199", CapabilityWorkflow.SINGLE),
-            multi=studio_apply_capability_state("H6199", CapabilityWorkflow.MULTI),
-            palette_diy=studio_apply_capability_state("H6199", CapabilityWorkflow.PALETTE_DIY),
-            workshop=studio_apply_capability_state("H6199", CapabilityWorkflow.WORKSHOP),
-        ),
     ),
     "H6072": ModelEffectCatalogue(
         sku="H6072",
@@ -2580,18 +2301,6 @@ MODEL_EFFECT_CATALOGUES: Final = {
             *(_music_template("H6072", mode) for mode in H6072_NATIVE_MUSIC_MODES),
         ),
         workshop_templates=(),
-        supports=CatalogueSupport(
-            multi=workflow_capability_state("H6072", CapabilityWorkflow.MULTI),
-            advanced=workflow_capability_state("H6072", CapabilityWorkflow.ADVANCED),
-            workshop=workflow_capability_state("H6072", CapabilityWorkflow.WORKSHOP),
-        ),
-        apply=ApplySupport(
-            painted=studio_apply_capability_state("H6072", CapabilityWorkflow.PAINTED),
-            single=studio_apply_capability_state("H6072", CapabilityWorkflow.SINGLE),
-            multi=studio_apply_capability_state("H6072", CapabilityWorkflow.MULTI),
-            palette_diy=studio_apply_capability_state("H6072", CapabilityWorkflow.PALETTE_DIY),
-            workshop=studio_apply_capability_state("H6072", CapabilityWorkflow.WORKSHOP),
-        ),
         diy_slot_policy="approved_observed",
     ),
     "H607C": ModelEffectCatalogue(
@@ -2606,18 +2315,6 @@ MODEL_EFFECT_CATALOGUES: Final = {
         video_modes=(),
         templates=_h607c_templates(),
         workshop_templates=(),
-        supports=CatalogueSupport(
-            multi=workflow_capability_state("H607C", CapabilityWorkflow.MULTI),
-            advanced=CapabilityState.UNSUPPORTED,
-            workshop=workflow_capability_state("H607C", CapabilityWorkflow.WORKSHOP),
-        ),
-        apply=ApplySupport(
-            painted=studio_apply_capability_state("H607C", CapabilityWorkflow.PAINTED),
-            single=studio_apply_capability_state("H607C", CapabilityWorkflow.SINGLE),
-            multi=studio_apply_capability_state("H607C", CapabilityWorkflow.MULTI),
-            palette_diy=CapabilityState.UNSUPPORTED,
-            workshop=studio_apply_capability_state("H607C", CapabilityWorkflow.WORKSHOP),
-        ),
         multi_max=2,
         temporary_diy_selector=int(H607cDiyBody.ActivationSelector.temporary),
         advanced_create=False,
@@ -2651,18 +2348,6 @@ MODEL_EFFECT_CATALOGUES: Final = {
             *(_music_template("H6076", mode) for mode in H6076_NATIVE_MUSIC_MODES),
         ),
         workshop_templates=(),
-        supports=CatalogueSupport(
-            multi=workflow_capability_state("H6076", CapabilityWorkflow.MULTI),
-            advanced=workflow_capability_state("H6076", CapabilityWorkflow.ADVANCED),
-            workshop=workflow_capability_state("H6076", CapabilityWorkflow.WORKSHOP),
-        ),
-        apply=ApplySupport(
-            painted=studio_apply_capability_state("H6076", CapabilityWorkflow.PAINTED),
-            single=studio_apply_capability_state("H6076", CapabilityWorkflow.SINGLE),
-            multi=studio_apply_capability_state("H6076", CapabilityWorkflow.MULTI),
-            palette_diy=studio_apply_capability_state("H6076", CapabilityWorkflow.PALETTE_DIY),
-            workshop=studio_apply_capability_state("H6076", CapabilityWorkflow.WORKSHOP),
-        ),
         brightness_min=1,
     ),
     "H7020": ModelEffectCatalogue(
@@ -2676,18 +2361,6 @@ MODEL_EFFECT_CATALOGUES: Final = {
         native_diy_templates=H7020_NATIVE_DIY_CONTRACTS,
         diy_slot_policy="approved_observed",
         advanced_create=False,
-        supports=CatalogueSupport(
-            multi=workflow_capability_state("H7020", CapabilityWorkflow.MULTI),
-            advanced=workflow_capability_state("H7020", CapabilityWorkflow.ADVANCED),
-            workshop=workflow_capability_state("H7020", CapabilityWorkflow.WORKSHOP),
-        ),
-        apply=ApplySupport(
-            painted=studio_apply_capability_state("H7020", CapabilityWorkflow.PAINTED),
-            single=studio_apply_capability_state("H7020", CapabilityWorkflow.SINGLE),
-            multi=studio_apply_capability_state("H7020", CapabilityWorkflow.MULTI),
-            palette_diy=studio_apply_capability_state("H7020", CapabilityWorkflow.PALETTE_DIY),
-            workshop=studio_apply_capability_state("H7020", CapabilityWorkflow.WORKSHOP),
-        ),
         speed_min=1,
     ),
     "H7025": ModelEffectCatalogue(
@@ -2700,18 +2373,6 @@ MODEL_EFFECT_CATALOGUES: Final = {
         workshop_templates=(),
         diy_slot_policy="approved_observed",
         advanced_create=False,
-        supports=CatalogueSupport(
-            multi=workflow_capability_state("H7025", CapabilityWorkflow.MULTI),
-            advanced=workflow_capability_state("H7025", CapabilityWorkflow.ADVANCED),
-            workshop=workflow_capability_state("H7025", CapabilityWorkflow.WORKSHOP),
-        ),
-        apply=ApplySupport(
-            painted=studio_apply_capability_state("H7025", CapabilityWorkflow.PAINTED),
-            single=studio_apply_capability_state("H7025", CapabilityWorkflow.SINGLE),
-            multi=studio_apply_capability_state("H7025", CapabilityWorkflow.MULTI),
-            palette_diy=studio_apply_capability_state("H7025", CapabilityWorkflow.PALETTE_DIY),
-            workshop=studio_apply_capability_state("H7025", CapabilityWorkflow.WORKSHOP),
-        ),
     ),
     "H600A": ModelEffectCatalogue(
         sku="H600A",
@@ -2723,18 +2384,6 @@ MODEL_EFFECT_CATALOGUES: Final = {
         workshop_templates=(),
         advanced_create=False,
         diy_slot_policy="approved_observed",
-        supports=CatalogueSupport(
-            multi=workflow_capability_state("H600A", CapabilityWorkflow.MULTI),
-            advanced=workflow_capability_state("H600A", CapabilityWorkflow.ADVANCED),
-            workshop=workflow_capability_state("H600A", CapabilityWorkflow.WORKSHOP),
-        ),
-        apply=ApplySupport(
-            painted=studio_apply_capability_state("H600A", CapabilityWorkflow.PAINTED),
-            single=studio_apply_capability_state("H600A", CapabilityWorkflow.SINGLE),
-            multi=studio_apply_capability_state("H600A", CapabilityWorkflow.MULTI),
-            palette_diy=studio_apply_capability_state("H600A", CapabilityWorkflow.PALETTE_DIY),
-            workshop=studio_apply_capability_state("H600A", CapabilityWorkflow.WORKSHOP),
-        ),
     ),
     "H601C": ModelEffectCatalogue(
         sku="H601C",
@@ -2745,18 +2394,6 @@ MODEL_EFFECT_CATALOGUES: Final = {
         templates=tuple(_single_template("H601C", family) for family in H601C_DIY_FAMILIES),
         workshop_templates=(),
         advanced_create=False,
-        supports=CatalogueSupport(
-            multi=workflow_capability_state("H601C", CapabilityWorkflow.MULTI),
-            advanced=workflow_capability_state("H601C", CapabilityWorkflow.ADVANCED),
-            workshop=workflow_capability_state("H601C", CapabilityWorkflow.WORKSHOP),
-        ),
-        apply=ApplySupport(
-            painted=studio_apply_capability_state("H601C", CapabilityWorkflow.PAINTED),
-            single=studio_apply_capability_state("H601C", CapabilityWorkflow.SINGLE),
-            multi=studio_apply_capability_state("H601C", CapabilityWorkflow.MULTI),
-            palette_diy=studio_apply_capability_state("H601C", CapabilityWorkflow.PALETTE_DIY),
-            workshop=studio_apply_capability_state("H601C", CapabilityWorkflow.WORKSHOP),
-        ),
     ),
 }
 

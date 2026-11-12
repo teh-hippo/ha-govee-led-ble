@@ -622,9 +622,10 @@ def test_custom_effects_use_their_transport_slot_and_physical_geometry():
     painted = LibraryItem.new("Paint", PaintedEffect("clockwise", 50, 100, (None,) * 15))
     assert compatibility(painted, "H6125", profile=CURRENT).state is CompatibilityState.INCOMPATIBLE
     catalogue = MODEL_EFFECT_CATALOGUES["H6125"]
-    assert catalogue.painted_effects and catalogue.supports.advanced.value == "supported"
-    assert catalogue.apply.single.value == catalogue.apply.multi.value == "supported"
-    assert catalogue.apply.painted.value == catalogue.apply.workshop.value == "supported"
+    payload = catalogue.to_dict()
+    assert catalogue.painted_effects and payload["supports"]["advanced"] == "supported"
+    assert payload["apply"]["single"] == payload["apply"]["multi"] == "supported"
+    assert payload["apply"]["painted"] == payload["apply"]["workshop"] == "supported"
     physical_paint = LibraryItem.new(
         "Paint", PaintedEffect("clockwise", 50, 100, (None,) * 50, addressing="physical_ic")
     )
