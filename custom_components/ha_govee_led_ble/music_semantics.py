@@ -112,6 +112,10 @@ H6181_MUSIC_VARIANTS = (
 )
 
 _H60B0_PALETTE = "07ff0000ff7f00ffff0000ff000000ff00ffff8b00ff"
+H60B0_ZONE_MUSIC_MODES = (
+    ("side", ("spectrum", "hopping", "flow", "firefly", "vortex", "bloom", "rhythm", "shiny", "disabled")),
+    ("ripple", ("bloom", "rhythm", "shiny", "spectrum", "disabled")),
+)
 H60B0_MUSIC_VARIANTS = (
     MusicVariant(
         0,

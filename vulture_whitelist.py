@@ -115,6 +115,7 @@ _.reversed_mac  # dreamview.py
 # Kaitai field writes made while encoding (generated_protocol_adapter.py, protocol_h6199.py, protocol_transforms.py).
 # Assigning the field fills the wire frame; nothing reads it back.
 
+_._parent  # protocol_core.py: adopted subtree ownership is checked by generated writers
 _.a3_type  # generated_protocol_adapter.py
 _.bottom_percent  # generated_protocol_adapter.py
 _.dynamic  # generated_protocol_adapter.py

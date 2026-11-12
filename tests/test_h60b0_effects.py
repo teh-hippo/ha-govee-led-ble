@@ -236,7 +236,9 @@ def test_retained_music_style_matches_the_encoded_enum(mode, code, calm):
     assert retained["music_calm"] is calm
 
 
-def test_combined_music_has_independently_bounded_source_parameters():
+def test_combined_music_has_independently_bounded_source_parameters(monkeypatch):
+    from custom_components.ha_govee_led_ble import h60b0_effects
+
     profile = replace(
         device_profile("H60B0", 1, 1),
         music_modes=("spectrum", "hopping", "flow", "firefly", "bloom", "rhythm", "shiny", "combined"),
@@ -246,7 +248,10 @@ def test_combined_music_has_independently_bounded_source_parameters():
         MusicZone("side", "bloom", palette=((1, 2, 3), (4, 5, 6)), calm=True),
         MusicZone("ripple", "spectrum", palette=((7, 8, 9),)),
     )
+    serialise = Mock(wraps=h60b0_effects.serialize_native_body)
+    monkeypatch.setattr(h60b0_effects, "serialize_native_body", serialise)
     encoded = encode_h60b0_music_zones(profile, zones)
+    assert serialise.call_count == 3
     assert encoded == bytes.fromhex("8230080201020304050601830401070809")
     restored = h60b0_music_zones(encoded)
     assert restored[0].calm is True
