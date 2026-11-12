@@ -274,6 +274,14 @@ def _make_coord(**ov) -> MagicMock:
 
     c.send_command = AsyncMock(side_effect=send_command)
     c.control_state_checkpoint = MagicMock(side_effect=lambda: GoveeBLECoordinator.control_state_checkpoint(c))
+    c.control_write_request = MagicMock(
+        side_effect=lambda **kwargs: GoveeBLECoordinator.control_write_request(c, **kwargs)
+    )
+    c.control_state_uncertain = MagicMock(
+        side_effect=lambda *fields: GoveeBLECoordinator.control_state_uncertain(c, *fields)
+    )
+    c.static_color_unknown = MagicMock(side_effect=lambda: GoveeBLECoordinator.static_color_unknown(c))
+    c.unconfirmed_state_fields = MagicMock(side_effect=lambda: GoveeBLECoordinator.unconfirmed_state_fields(c))
     c.install_static_color = MagicMock(
         side_effect=lambda **kwargs: GoveeBLECoordinator.install_static_color(c, **kwargs)
     )

@@ -51,6 +51,7 @@ from .const import (
     supported_effect_categories,
 )
 from .control_arbiter import BLEControlArbiter, ControlIntent, LatestRequests, PreviewAdmission, async_control_intent
+from .coordinator_control import ControlWriteRequest
 from .coordinator_dreamview import DreamviewClaimedError, _DreamviewMixin, is_dreamview_claimed
 from .coordinator_expectations import expectations_from_packet, parse_write_state
 from .coordinator_h6102 import H6102InitialIdentity, _H6102Mixin
@@ -292,6 +293,27 @@ class GoveeBLECoordinator(
         self._apply_h6102_context(identity)
         self._resolve_device_profile()
         self._cancel_hass_stop = hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, self._handle_hass_stop)
+
+    def control_write_request(
+        self,
+        *,
+        identity_guard: Callable[[], None] | None = None,
+        effect_guard: Callable[[], None] | None = None,
+    ) -> ControlWriteRequest:
+        return ControlWriteRequest(self, identity_guard=identity_guard, effect_guard=effect_guard)
+
+    def control_state_uncertain(self, *fields: str) -> bool:
+        return (
+            bool(self._h607c_uncertain_state_fields.intersection(fields))
+            if fields
+            else bool(self._h607c_uncertain_state_fields)
+        )
+
+    def static_color_unknown(self) -> bool:
+        return "color" in self._h607c_uncertain_state_fields and self._h607c_failed_color_write
+
+    def unconfirmed_state_fields(self) -> frozenset[str]:
+        return frozenset(self._h607c_uncertain_state_fields)
 
     @property
     def configuration_url(self) -> str | None:
