@@ -6,9 +6,10 @@ from contextlib import AbstractAsyncContextManager, contextmanager
 from typing import TYPE_CHECKING, Any
 
 from bleak import BleakClient
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-from .const import ModelProfile, ReadDomain
+from .const import DOMAIN, ModelProfile, ReadDomain
 from .control_arbiter import BLEControlArbiter, ControlIntent, async_control_intent
 from .coordinator_control import ControlStateCheckpoint
 from .coordinator_status import ParsedMode, StatusDomain
@@ -360,10 +361,18 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
 
 
 async def async_prepare_effect_profile(coordinator: _CoordinatorBase, *, intent: ControlIntent) -> ModelProfile:
-    if coordinator.profile.rgbic_scene_v0 is None:
+    if coordinator.profile.rgbic_scene_v0 is None and (
+        not coordinator.profile.profile_identity_fields
+        or coordinator.profile.supports_rgb
+        or coordinator.identity_fields_confirmed(coordinator.profile.profile_identity_fields)
+    ):
         return coordinator.profile
     async with async_control_intent(coordinator, intent):
         async with coordinator._lock:
             await coordinator._ensure_connected()
         coordinator._reconcile_authorization()
+        if not coordinator.profile.supports_rgb and not coordinator.identity_fields_confirmed(
+            coordinator.profile.profile_identity_fields
+        ):
+            raise HomeAssistantError(translation_domain=DOMAIN, translation_key="identity_not_ready")
         return coordinator.effect_authorization_profile

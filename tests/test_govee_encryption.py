@@ -1444,8 +1444,9 @@ async def test_h6181_marker_only_conflicts_with_current_subscription_advertiseme
     coordinator._prune_h607c_advertisements()
     assert coordinator._h607c_pact_conflict is fresh
     if fresh:
-        with pytest.raises(ValueError):
+        with pytest.raises(HomeAssistantError) as error:
             coordinator._validate_authorized_packet(build_power(True, "H6181"))
+        assert error.value.translation_key == "identity_not_ready"
     else:
         assert (coordinator.pact_type, coordinator.pact_code) == (10, 2)
         coordinator._validate_authorized_packet(build_power(True, "H6181"))

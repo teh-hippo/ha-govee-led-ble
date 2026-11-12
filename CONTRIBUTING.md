@@ -44,6 +44,8 @@ Keep real product differences without turning each product into a separate imple
   Bind qualified protocol evidence to its live subscription, not scanner-cache age; advertisement expiry alone must not revoke it or clear independently observed state.
   Release that authority when its subscription ends, without using retained presentation identity to authorise a replacement.
   Reconcile expiry at explicit operation boundaries before capturing generations; capability getters must be side-effect free.
+  Re-query missing profile identity before reusing a connected client and qualify restricted bootstrap profiles before effect compilation.
+  Missing identity is temporary readiness, not evidence that the hardware lacks a workflow; preserve safe bootstrap controls and final-write authorisation.
 - `tools/ble/kaitai/**/*.ksy` is the only source of BLE wire structure and protocol documentation.
   Files under `speculative/` are unconfirmed hypotheses; the rest are evidence-backed.
   Generated outputs are never edited.

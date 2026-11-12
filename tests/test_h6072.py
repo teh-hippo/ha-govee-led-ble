@@ -3,6 +3,7 @@
 from dataclasses import replace
 
 import pytest
+from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.ha_govee_led_ble.const import ReadDomain, device_profile, get_profile
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_segment_query, require_profile_packet
@@ -173,8 +174,9 @@ def test_h6072_physical_authorisation_uses_each_fresh_field_without_cached_sibli
     for packet in packets:
         coordinator._validate_authorized_packet(packet)
     coordinator._confirmed_identity_fields.clear()
-    with pytest.raises(ValueError):
+    with pytest.raises(HomeAssistantError) as error:
         coordinator._validate_authorized_packet(packets[-1])
+    assert error.value.translation_key == "identity_not_ready"
 
 
 def test_h6072_baseline_palette_edits_use_the_admitted_type_one_route():

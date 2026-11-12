@@ -882,10 +882,12 @@ async def test_reconnect_revokes_cached_pact_and_qualifies_the_current_marker(ha
     assert coordinator.profile.native_effect_revision == 2
     assert not coordinator.identity_fields_confirmed()
     assert coordinator.h607c_pact_readiness == "stale"
-    with pytest.raises(ValueError):
+    with pytest.raises(HomeAssistantError) as error:
         coordinator._validate_authorized_packet(source_packet)
-    with pytest.raises(ValueError):
+    assert error.value.translation_key == "identity_not_ready"
+    with pytest.raises(HomeAssistantError) as error:
         coordinator._validate_authorized_packet(compiled.upload_packets[0])
+    assert error.value.translation_key == "identity_not_ready"
 
     client = MagicMock(is_connected=True, start_notify=AsyncMock(), write_gatt_char=AsyncMock(), disconnect=AsyncMock())
     coordinator._encryption = MagicMock(
@@ -906,8 +908,9 @@ async def test_reconnect_revokes_cached_pact_and_qualifies_the_current_marker(ha
             validate_compiled_geometry(compiled, coordinator.profile)
         coordinator._clear_client_state(client)
         assert not coordinator.identity_fields_confirmed()
-        with pytest.raises(ValueError):
+        with pytest.raises(HomeAssistantError) as error:
             coordinator._validate_authorized_packet(source_packet)
+        assert error.value.translation_key == "identity_not_ready"
         assert coordinator.profile.native_effect_revision == 3
     finally:
         await coordinator.disconnect()
@@ -946,8 +949,9 @@ async def test_pact_is_rechecked_after_reply_pacing_before_the_physical_write(ha
         coordinator._confirmed_identity_fields.discard("pact")
 
     monkeypatch.setattr(coordinator._reply_gate, "wait", lose_confirmation)
-    with pytest.raises(ValueError):
+    with pytest.raises(HomeAssistantError) as error:
         await coordinator._async_write_packet(client, packet, arm_expected=True)
+    assert error.value.translation_key == "identity_not_ready"
     client.write_gatt_char.assert_not_awaited()
 
 
@@ -992,7 +996,7 @@ async def test_live_pact_read_qualifies_without_marker_or_connected_advertisemen
         assert source.is_on is None
         assert coordinator.profile == initial_profile
         assert not coordinator.identity_fields_confirmed()
-        with pytest.raises(ValueError):
+        with pytest.raises(HomeAssistantError if cached else ValueError):
             coordinator._require_writable_packet(
                 packet,
                 require_profile_packet,
@@ -1033,8 +1037,9 @@ async def test_pact_timeout_preserves_presentation_but_not_write_authority(pact_
         assert not coordinator.identity_fields_confirmed()
         assert not coordinator._authorization_profile().supports_rgb
         coordinator._validate_authorized_packet(build_brightness(50, profile=PROFILE))
-        with pytest.raises(ValueError):
+        with pytest.raises(HomeAssistantError) as error:
             coordinator._validate_authorized_packet(packet)
+        assert error.value.translation_key == "identity_not_ready"
         receive = client.start_notify.await_args.args[1]
         malformed = bytearray(frame("aaef000102"))
         malformed[-1] ^= 1
