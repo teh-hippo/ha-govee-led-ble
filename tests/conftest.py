@@ -282,6 +282,17 @@ def _make_coord(**ov) -> MagicMock:
     )
     c.static_color_unknown = MagicMock(side_effect=lambda: GoveeBLECoordinator.static_color_unknown(c))
     c.unconfirmed_state_fields = MagicMock(side_effect=lambda: GoveeBLECoordinator.unconfirmed_state_fields(c))
+    c.source_field_fresh = MagicMock(side_effect=lambda field: GoveeBLECoordinator.source_field_fresh(c, field))
+    c.source_power_state = MagicMock(side_effect=lambda key: GoveeBLECoordinator.source_power_state(c, key))
+
+    async def turn_on_source(key, request):
+        await GoveeBLECoordinator.async_turn_on_source(c, key, request)
+
+    async def set_source_enabled(key, enabled):
+        await GoveeBLECoordinator.async_set_source_enabled(c, key, enabled)
+
+    c.async_turn_on_source = AsyncMock(side_effect=turn_on_source)
+    c.async_set_source_enabled = AsyncMock(side_effect=set_source_enabled)
     c.install_static_color = MagicMock(
         side_effect=lambda **kwargs: GoveeBLECoordinator.install_static_color(c, **kwargs)
     )

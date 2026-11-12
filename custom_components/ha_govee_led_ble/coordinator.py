@@ -20,6 +20,7 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import UpdateFailed
 
+from . import coordinator_sources
 from .advertisement import parse_govee_advertisement
 from .ble_connection import (
     CONNECTION_SETUP_TIMEOUT,
@@ -314,6 +315,18 @@ class GoveeBLECoordinator(
 
     def unconfirmed_state_fields(self) -> frozenset[str]:
         return frozenset(self._h607c_uncertain_state_fields)
+
+    def source_field_fresh(self, field: str) -> bool:
+        return coordinator_sources.source_field_fresh(self, field)
+
+    def source_power_state(self, key: str) -> bool | None:
+        return coordinator_sources.source_power_state(self, key)
+
+    async def async_turn_on_source(self, key: str, request: coordinator_sources.SourceTurnOnRequest) -> None:
+        await coordinator_sources.SourceTurnOnTransaction(self, key, request).run()
+
+    async def async_set_source_enabled(self, key: str, enabled: bool) -> None:
+        await coordinator_sources.async_set_source_enabled(self, key, enabled)
 
     @property
     def configuration_url(self) -> str | None:

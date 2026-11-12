@@ -44,6 +44,7 @@ Do not post Bluetooth addresses, serial numbers, account details or other unique
   Attach segment masks or master brightness only when they leave siblings unchanged; keep uncertain mappings neutral and state unconfirmed until observed.
   Declare source-specific colour modes and native attributes explicitly.
   Partitioned segment writes must cover each position exactly once and keep separately addressed sources out of segment masks.
+  Run source turn-on as one coordinator-owned transaction, qualify preserved sibling state there, and reserve segment geometry only for segment-addressed writes.
 - A new model needs its scene catalogue: run `uv run python tools/ble/refresh_scene_catalogues.py <SKU>` before registering its profile.  A workflow keeps existing catalogues current.
 - Plans and findings for a model live in its issue or pull request, not in `docs/`.
 
