@@ -66,6 +66,7 @@ Keep real product differences without turning each product into a separate imple
   Recover omitted mandatory values through qualified independent observations, not successful writes or retained cache alone.
   Preparation reads retain the submitting operation's intent; acquiring state must not invalidate that same request.
   Scope preparation ownership to the required work, not unrelated connection or persistence stages.
+  Keep API identity preparation under background ownership until validation succeeds, so invalid requests cannot invalidate active previews.
 - Bind prepared work and observations to their actual lifetime: device, effective profile, layout, subscription and operation generation as applicable.
   Revalidate at physical boundaries, and invalidate dependent knowledge when its authority changes.
   Older work must not invalidate newer preparation, restore over newer observations or mutate a replacement session.
@@ -125,6 +126,7 @@ Decode-only Kaitai documentation of these is fine; runtime control is not.
 ## Development
 
 Run `make protocol` after a fresh clone, a new worktree or any `.ksy` change, and `make check` before finishing.
+Keep virtual event-loop clocks out of real HTTP/WebSocket tests; use them only around simulated transport work.
 
 ### Change and test design
 
