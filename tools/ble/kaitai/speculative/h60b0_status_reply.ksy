@@ -7,10 +7,11 @@ meta:
     - h6102_status_reply
     - h60b0_command_write
 doc: |
-  SPECULATIVE: Exact-model reply layouts, not confirmed by device traffic.
+  SPECULATIVE: Exact-model reply layouts remain partly unconfirmed.
   Source flags occupy the high nibble, independently of lower unknown bits.
-  The bottom Kelvin/brightness and top Kelvin/ripple speed are independent
-  values. A5 records cover eight side colours and the top colour only.
+  Source state carries top Kelvin/ripple speed before bottom Kelvin/brightness,
+  as corroborated by recorded AA42 and AA05 replies. A5 records cover eight
+  side colours and the top colour only.
   The candidate EF identity reply carries Pact type BE16 and Pact code.
   Captured EE30 source notifications carry an opaque prefix then the same
   high-nibble power flags; their suffix does not confirm native attributes.
@@ -91,13 +92,13 @@ types:
         size-eos: true
   operation_state:
     seq:
-      - id: bottom_kelvin
-        type: u2be
-      - id: bottom_brightness
-        type: u1
       - id: top_kelvin
         type: u2be
       - id: ripple_speed
+        type: u1
+      - id: bottom_kelvin
+        type: u2be
+      - id: bottom_brightness
         type: u1
       - id: unknown_tail
         size-eos: true
