@@ -1913,10 +1913,31 @@ _TABLE_KELVIN_RGB = {
     )
 }
 
+_TABLE_RGB_KELVIN = {
+    bytes.fromhex(rgb): 2000 + index * 100
+    for index, rgb in enumerate(
+        (
+            "ff8912 ff8e21 ff932c ff9836 ff9d3f ffa148 ffa54f ffa957 ffad5e ffb165 "
+            "ffb46b ffb872 ffbb78 ffbe7e ffc184 ffc489 ffc78f ffc994 ffcc99 ffce9f "
+            "ffd1a3 ffd3a8 ffd5ad ffd7b1 ffd9b6 ffdbba ffddbe ffdfc2 ffe1c6 ffe3ca "
+            "ffe4ce ffe6d2 ffe8d5 ffe9d9 ffebdc ffece0 ffeee3 ffefe6 fff0e9 fff2ec "
+            "fff3ef fff4f2 fff5f5 fff6f8 fff8fb fff9fd fef9ff fcf7ff f9f6ff f7f5ff "
+            "f5f3ff f3f2ff f0f1ff eff0ff edefff ebeeff e9edff e7ecff e6ebff e4eaff "
+            "e3e9ff e1e8ff e0e7ff dee6ff dde6ff dce5ff dae4ff d9e3ff d8e3ff d7e2ff d6e1ff"
+        ).split()
+    )
+}
+# An alias overlapping a later canonical companion retains the later Kelvin value.
+_TABLE_RGB_KELVIN.update((rgb, kelvin) for kelvin, rgb in _TABLE_KELVIN_RGB.items())
+
 
 def table_kelvin_rgb(kelvin: int) -> tuple[int, int, int]:
     red, green, blue = _TABLE_KELVIN_RGB.get(kelvin, bytes(3))
     return red, green, blue
+
+
+def table_rgb_kelvin(rgb: tuple[int, int, int]) -> int | None:
+    return _TABLE_RGB_KELVIN.get(bytes(rgb))
 
 
 def _build_h6072_legacy_colour(
