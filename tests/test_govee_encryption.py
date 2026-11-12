@@ -200,6 +200,50 @@ async def test_h607c_advertisement_expiry_during_preflight_rejects_colour(hass, 
     assert not coordinator.profile.supports_rgb
 
 
+@pytest.mark.parametrize("operation", ["read", "write"])
+async def test_authorization_reads_are_pure_and_operations_reconcile_expired_identity(hass, monkeypatch, operation):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H607C", configuration_url=None)
+    device = client()
+    now = time.monotonic()
+    coordinator._client = device
+    coordinator._notification_token = object()
+    coordinator._notify_started_monotonic = now - 1
+    coordinator._note_advertisement(
+        SimpleNamespace(
+            name="Govee_H607C",
+            source="scanner",
+            time=now,
+            manufacturer_data={0x8843: bytes.fromhex("ec00010100")},
+        )
+    )
+    coordinator._prune_h607c_advertisements()
+    profile, generation = coordinator.profile, coordinator._authorization_generation
+    assert profile.supports_rgb
+    coordinator._h607c_advertisement_observations["scanner"] = (now - 1000, frozenset({(1, 1)}))
+    listeners = MagicMock()
+    monkeypatch.setattr(coordinator, "async_update_listeners", listeners)
+
+    assert coordinator._authorization_profile() is profile
+    assert coordinator.effect_authorization_profile is profile
+    assert coordinator._authorization_generation == generation
+    listeners.assert_not_called()
+
+    if operation == "read":
+        assert await coordinator._send_state_queries(
+            query_brightness=False, query_color_mode=False, query_native_settings=False
+        )
+        device.write_gatt_char.assert_awaited_once()
+    else:
+        with pytest.raises(ValueError):
+            await coordinator._async_write_packet(
+                device, build_color_rgb(12, 34, 56, "H607C", profile=profile), arm_expected=True
+            )
+        device.write_gatt_char.assert_not_awaited()
+    assert not coordinator.profile.supports_rgb
+    assert coordinator._authorization_generation > generation
+    listeners.assert_called_once()
+
+
 @pytest.mark.parametrize("all_advertisements_api", [True, False])
 async def test_h607c_registers_supported_advertisement_callback(hass, monkeypatch, all_advertisements_api):
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H607C", configuration_url=None)

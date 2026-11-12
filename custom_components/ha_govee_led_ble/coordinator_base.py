@@ -175,6 +175,8 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
 
         def _authorization_profile(self) -> ModelProfile: ...
 
+        def _reconcile_authorization(self) -> None: ...
+
         def identity_fields_confirmed(self, fields: frozenset[str] | None = None) -> bool: ...
 
         def _record_packet(
@@ -322,4 +324,5 @@ async def async_prepare_effect_profile(coordinator: _CoordinatorBase, *, intent:
     async with async_control_intent(coordinator, intent):
         async with coordinator._lock:
             await coordinator._ensure_connected()
+        coordinator._reconcile_authorization()
         return coordinator.effect_authorization_profile

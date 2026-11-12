@@ -16,6 +16,7 @@ Do not post Bluetooth addresses, serial numbers, account details or other unique
 - Speculative schemas must retain unqualified suffix bytes; test nonzero tails rather than assuming zero padding when reusing shared types.
 - `const.py` holds one `ModelProfile` per exact SKU, declaring its capabilities.  Compatible models may share a Kaitai adapter but never a whole profile.
   Products requiring subscription-qualified Pact must revoke confirmation on disconnect, retain cached identity only for presentation, and reconcile a fresh marker or current-subscription advertisement before writes.
+  Reconcile expiring identity at operation boundaries before snapshotting generations; capability getters must be side-effect free.
 - Aim for complete in-scope support on every evidenced revision, not discovery or capability flags alone.  Keep exact-model BLE documentation in Kaitai and product facts in profiles/catalogues; implement execution, editing and recovery through shared capability-driven paths, without per-model UI or manual packet workarounds.
 - Apply observed physical geometry and its derived logical segment count together, using the declared product capacity rather than the current or original installed length.  Equivalent profile resolution must preserve observations and in-progress transactions.
 - Bind prepared segment masks to their layout generation and BLE subscription.  Qualify wider masks per product without reinterpreting other models' opaque bytes.
