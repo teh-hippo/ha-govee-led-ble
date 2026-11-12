@@ -23,6 +23,7 @@ Do not post Bluetooth addresses, serial numbers, account details or other unique
 - Arm reply tracking before the physical write, and accept only validated replies.  A late reply reinstates pacing for a command previously learned as silent; failed writes must not teach silence.
 - A connected client is not necessarily identity-qualified.  Re-query missing profile identity before reusing it for controls; retain final-write authorisation and keep safe bootstrap operations available.
 - Refresh an identity-restricted bootstrap profile before effect compilation; missing identity is temporary readiness, not evidence that the hardware lacks the requested workflow.
+- Prepare API identity under background ownership until validation finishes; invalid requests must not invalidate previews or acquire foreground control.
 - Qualify observed colour mode against the latest mode-write generation, effective profile and current subscription.
   An expired optimistic expectation does not confirm a mode.
 - Where selector readback is ambiguous, complete successful applications as `APPLIED` with `WRITE_COMPLETED` confidence, not confirmed or failed.
@@ -66,6 +67,7 @@ Decode-only Kaitai documentation of these is fine; runtime control is not.
 ## Development
 
 Run `make protocol` after a fresh clone, a new worktree or any `.ksy` change, and `make check` before finishing.
+Keep virtual event-loop clocks out of real HTTP/WebSocket tests; use them only around simulated transport work.
 
 ## Releases
 

@@ -25,6 +25,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import CONF_SHOW_EXPERIMENTAL_FEEDBACK, DOMAIN, ModelProfile, supported_effect_categories
 from .control_arbiter import ControlIntent
+from .coordinator_base import async_prepare_effect_profile
 from .effect_backend import EffectBackend
 from .effect_catalogue import (
     custom_effect_catalogue_payload,
@@ -64,6 +65,7 @@ from .effect_scenes import (
     async_reset_scene_default,
     async_set_scene_default,
     resolve_scene,
+    resolve_scene_application_body,
     scene_catalogue_payload,
     scene_default_for,
     scene_detail_payload,
@@ -429,11 +431,15 @@ async def ws_scene_apply(
     if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
         connection.send_error(msg["id"], "not_found", "target config entry is not loaded")
         return
-    if not entry.runtime_data.profile.supports_scenes:
-        connection.send_error(msg["id"], "unsupported_model", "Device profile supports no scenes")
-        return
     try:
         backend = _backend(hass)
+        resolved = resolve_scene(entry.runtime_data.model, msg["scene_id"], msg["effect_id"])
+        if "speed_index" in msg:
+            resolve_scene_application_body(resolved.entry, scene_default=None, speed_index=msg["speed_index"])
+        profile = await async_prepare_effect_profile(entry.runtime_data, intent=ControlIntent.BACKGROUND)
+        if not profile.supports_scenes:
+            connection.send_error(msg["id"], "unsupported_model", "Device profile supports no scenes")
+            return
         resolved, speed_index = await async_apply_scene(
             hass,
             entry,
@@ -1381,11 +1387,15 @@ async def ws_apply(
         connection.send_error(msg["id"], "invalid_format", str(exc))
         return
     try:
+        item = backend.application.get_saved_effect(msg["item_id"])
+        if item.version != msg["expected_version"]:
+            raise EffectVersionConflictError(item.version)
+        profile = await async_prepare_effect_profile(entry.runtime_data, intent=ControlIntent.BACKGROUND)
         async with backend.application.saved_effect_for_apply(
             msg["item_id"],
             model=entry.runtime_data.model,
             expected_version=msg["expected_version"],
-            profile=entry.runtime_data.profile,
+            profile=profile,
             diy_code=msg.get("diy_code"),
         ) as item:
             if isinstance(item.content, VideoProfile):
@@ -1460,14 +1470,13 @@ async def ws_apply_snapshot(
             ),
         )
         operation_id = UUID(msg["operation_id"]) if "operation_id" in msg else None
-        diy_code = resolve_diy_code(
-            item, msg.get("diy_code"), model=entry.runtime_data.model, profile=entry.runtime_data.profile
-        )
+        profile = await async_prepare_effect_profile(entry.runtime_data, intent=ControlIntent.BACKGROUND)
+        diy_code = resolve_diy_code(item, msg.get("diy_code"), model=entry.runtime_data.model, profile=profile)
         compile_application(
             item,
             entry.runtime_data.model,
             diy_code=diy_code,
-            profile=entry.runtime_data.profile,
+            profile=profile,
         )
         if isinstance(item.content, VideoProfile):
             await async_require_video_controls(

@@ -17,6 +17,7 @@ from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
 
 from custom_components.ha_govee_led_ble.const import CONF_SHOW_EXPERIMENTAL_FEEDBACK, DOMAIN, get_profile
+from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
 from custom_components.ha_govee_led_ble.effect_catalogue import resolve_catalogue_template
 from custom_components.ha_govee_led_ble.effect_contracts import EDITOR_API_VERSION
@@ -44,6 +45,7 @@ from custom_components.ha_govee_led_ble.effect_websocket import (
     WS_LIBRARY_OVERWRITE,
     WS_LIBRARY_SUBSCRIBE,
     WS_LIBRARY_UPDATE,
+    WS_SCENE_APPLY,
     WS_SCENE_DEFAULT_SET,
     WS_SCENE_RESET,
     WS_TEMPLATE_DEFAULT_GET,
@@ -67,6 +69,70 @@ async def _setup_backend(hass: HomeAssistant) -> EffectBackend:
 
 def _content(speed: int = 50) -> dict[str, Any]:
     return effect_content_to_dict(SingleEffect(0, 0, speed, ((255, 0, 0),)))
+
+
+@pytest.mark.parametrize("reason", ["missing", "stale"])
+async def test_invalid_saved_apply_preserves_preview_before_identity_preparation(
+    hass, hass_ws_client, monkeypatch, reason
+):
+    backend = await _setup_backend(hass)
+    mutation = await backend.application.async_create_library_item(name="Saved guard", content=_content())
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H619A", configuration_url=None)
+    entry = SimpleNamespace(entry_id="entry", domain=DOMAIN, state=ConfigEntryState.LOADED, runtime_data=coordinator)
+    monkeypatch.setattr(hass.config_entries, "async_get_entry", lambda _id: entry)
+    connect = AsyncMock(return_value=MagicMock(is_connected=True))
+    monkeypatch.setattr(coordinator, "_ensure_connected", connect)
+    preview = coordinator.admit_preview()
+    client = await hass_ws_client(hass)
+    await client.send_json_auto_id(
+        {
+            "type": WS_APPLY,
+            "config_entry_id": "entry",
+            "item_id": "00000000-0000-0000-0000-000000000000" if reason == "missing" else str(mutation.item.id),
+            "expected_version": mutation.item.version + 1,
+            "updated_at": "2026-11-12T00:00:00Z",
+        }
+    )
+    response = await client.receive_json()
+    assert not response["success"]
+    assert response["error"]["code"] == ("not_found" if reason == "missing" else "conflict")
+    assert preview.is_current
+    connect.assert_not_awaited()
+
+
+@pytest.mark.parametrize("case", ["speed-range", "no-speed", "unsupported-snapshot"])
+async def test_invalid_studio_parameters_preserve_preview_during_preparation(hass, hass_ws_client, monkeypatch, case):
+    await _setup_backend(hass)
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H619A", configuration_url=None)
+    entry = SimpleNamespace(entry_id="entry", domain=DOMAIN, state=ConfigEntryState.LOADED, runtime_data=coordinator)
+    monkeypatch.setattr(hass.config_entries, "async_get_entry", lambda _id: entry)
+    connect = AsyncMock(return_value=MagicMock(is_connected=True))
+    monkeypatch.setattr(coordinator, "_ensure_connected", connect)
+    preview = coordinator.admit_preview()
+    if case == "unsupported-snapshot":
+        message = {
+            "type": WS_APPLY_SNAPSHOT,
+            "config_entry_id": "entry",
+            "name": "Unsupported",
+            "content": effect_content_to_dict(SingleEffect(250, 0, 50, ((255, 0, 0),))),
+            "updated_at": "2026-11-12T00:00:00Z",
+        }
+    else:
+        scene = next(scene for scene in SCENE_ENTRIES["H619A"] if (scene.speed is not None) == (case == "speed-range"))
+        message = {
+            "type": WS_SCENE_APPLY,
+            "config_entry_id": "entry",
+            "scene_id": scene.scene_id,
+            "effect_id": scene.effect_id,
+            "speed_index": 255 if case == "speed-range" else 0,
+        }
+    client = await hass_ws_client(hass)
+    await client.send_json_auto_id(message)
+    response = await client.receive_json()
+    assert not response["success"]
+    assert response["error"]["code"] == ("unsupported_model" if case == "unsupported-snapshot" else "invalid_format")
+    assert preview.is_current
+    assert connect.await_count == int(case == "unsupported-snapshot")
 
 
 async def test_light_entity_resolution_requires_one_enabled_integration_light(
