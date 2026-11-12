@@ -120,8 +120,11 @@ def test_pr_candidate_revision_reuses_exact_sha_or_advances(tmp_path: Path, new_
     assert f"version=1.2.3-pr-145.{2 if new_commit else 1}\n" in output.read_text()
 
 
-@pytest.mark.parametrize("event", ["workflow_run", "workflow_dispatch"])
-def test_release_history_keeps_rc_tags_only_for_candidates(tmp_path: Path, event: str) -> None:
+@pytest.mark.parametrize(
+    ("event", "channel"),
+    [("workflow_run", "rc"), ("workflow_dispatch", "stable"), ("workflow_dispatch", "rc")],
+)
+def test_release_history_keeps_rc_tags_only_for_candidates(tmp_path: Path, event: str, channel: str) -> None:
     setup = _run(
         "git init -b master; git config user.name Fixture; git config user.email fixture@example.invalid; "
         "git config tag.gpgsign false; git config core.hooksPath /dev/null; "
@@ -134,13 +137,15 @@ def test_release_history_keeps_rc_tags_only_for_candidates(tmp_path: Path, event
     assert setup.returncode == 0, setup.stderr
 
     result = _run(
-        _step_script("release.yml", "Select release history"), tmp_path, {**os.environ, "RELEASE_EVENT": event}
+        _step_script("release.yml", "Select release history"),
+        tmp_path,
+        {**os.environ, "RELEASE_EVENT": event, "RELEASE_CHANNEL": channel},
     )
 
     assert result.returncode == 0, result.stderr
     tags = _run("git tag --list", tmp_path, dict(os.environ))
     expected = {"v1.2.2", "unrelated"}
-    if event == "workflow_run":
+    if channel == "rc":
         expected |= {"v1.2.3-rc.1", "v1.2.3-rc.2"}
     assert set(tags.stdout.splitlines()) == expected
     remote_tags = _run("git --git-dir=remote.git tag --list", tmp_path, dict(os.environ))
@@ -155,16 +160,18 @@ def test_release_history_keeps_rc_tags_only_for_candidates(tmp_path: Path, event
 
 
 @pytest.mark.parametrize(
-    ("remote_sha", "conclusion", "accepted"),
+    ("remote_sha", "conclusion", "channel", "accepted"),
     [
-        (_SOURCE_SHA, "success", True),
-        ("b" * 40, "success", False),
-        (_SOURCE_SHA, "failure", False),
-        (_SOURCE_SHA, "", False),
+        (_SOURCE_SHA, "success", "rc", True),
+        (_SOURCE_SHA, "success", "stable", True),
+        ("b" * 40, "success", "rc", False),
+        (_SOURCE_SHA, "failure", "rc", False),
+        (_SOURCE_SHA, "", "rc", False),
+        (_SOURCE_SHA, "success", "unknown", False),
     ],
 )
 def test_master_release_requires_current_validated_commit(
-    tmp_path: Path, remote_sha: str, conclusion: str, accepted: bool
+    tmp_path: Path, remote_sha: str, conclusion: str, channel: str, accepted: bool
 ) -> None:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -190,6 +197,7 @@ def test_master_release_requires_current_validated_commit(
         **os.environ,
         "PATH": f"{bin_dir}:{os.environ['PATH']}",
         "SOURCE_SHA": _SOURCE_SHA,
+        "RELEASE_CHANNEL": channel,
         "REMOTE_SHA": remote_sha,
         "VALIDATE_CONCLUSION": conclusion,
         "GITHUB_REPOSITORY": "example/release-fixture",
@@ -202,8 +210,17 @@ def test_master_release_requires_current_validated_commit(
     assert checked_out.exists() is accepted
 
 
-@pytest.mark.parametrize(("event", "candidate"), [("workflow_run", True), ("workflow_dispatch", False)])
-def test_automatic_master_publication_cannot_publish_stable(tmp_path: Path, event: str, candidate: bool) -> None:
+@pytest.mark.parametrize(
+    ("event", "channel"),
+    [("workflow_run", "rc"), ("workflow_dispatch", "stable"), ("workflow_dispatch", "rc")],
+)
+def test_selected_master_publication_channel(tmp_path: Path, event: str, channel: str) -> None:
+    workflow = load_yaml(_REPO / ".github/workflows/release.yml")
+    assert isinstance(workflow, dict)
+    dispatch = workflow[True]["workflow_dispatch"]  # YAML 1.1 reads the "on" key as True.
+    assert dispatch["inputs"]["release_type"]["default"] == "stable"
+    assert "rc" in dispatch["inputs"]["release_type"]["options"]
+    assert workflow["concurrency"]["group"].endswith(workflow["jobs"]["release"]["env"]["RELEASE_CHANNEL"])
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     uvx = bin_dir / "uvx"
@@ -214,6 +231,7 @@ def test_automatic_master_publication_cannot_publish_stable(tmp_path: Path, even
         **os.environ,
         "PATH": f"{bin_dir}:{os.environ['PATH']}",
         "RELEASE_EVENT": event,
+        "RELEASE_CHANNEL": channel,
         "ARGUMENTS": str(arguments),
     }
 
@@ -221,7 +239,8 @@ def test_automatic_master_publication_cannot_publish_stable(tmp_path: Path, even
 
     assert result.returncode == 0, result.stderr
     args = arguments.read_text().splitlines()
-    assert ("--as-prerelease" in args) is candidate
+    assert ("--as-prerelease" in args) is (channel == "rc")
+    assert "--patch" not in args and "--prerelease" not in args
     assert "--no-vcs-release" in args
 
 
