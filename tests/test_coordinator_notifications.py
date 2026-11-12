@@ -4,7 +4,7 @@ import asyncio
 import logging
 import time
 from dataclasses import replace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -40,6 +40,17 @@ from tests.coordinator_test_support import _CONFIGURATION_URL, _c, _packet
 M = "custom_components.ha_govee_led_ble.coordinator"
 _MUSIC_SLUG_BY_ID = {code: slug for slug, code in MUSIC_MODE_SLUGS.items()}
 _SCENE_EFFECT_BY_ID = {scene.code: name for name, scene in SCENES.items()}
+
+
+def test_semantically_invalid_status_is_never_recorded_as_parsed(coord, monkeypatch):
+    record = Mock(wraps=coord._record_packet)
+    monkeypatch.setattr(coord, "_record_packet", record)
+    before = coord.capture_effect_control_state()
+    coord._notify_callback(None, bytearray(_packet(0xAA, 0x05, [0x15, 0, 0x03, 0xE7])))
+    record.assert_called_once()
+    assert record.call_args.kwargs["outcome"] == "rejected"
+    assert record.call_args.kwargs["reason"] == "semantic_rejected"
+    assert coord.capture_effect_control_state() == before
 
 
 @pytest.fixture
