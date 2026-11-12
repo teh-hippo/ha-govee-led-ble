@@ -103,6 +103,8 @@ types:
     instances:
       is_legacy:
         value: mode == music_mode::dynamic or mode == music_mode::soft
+      write_tail_size:
+        value: '14 - (is_legacy ? 2 + (has_fixed_colour != 0 ? 3 : 0) : 0)'
   scene_body:
     seq:
       - id: scene_id

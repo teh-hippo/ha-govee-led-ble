@@ -103,6 +103,9 @@ types:
         if: colour_mode != 0
       - id: opaque
         size-eos: true
+    instances:
+      write_tail_size:
+        value: '13 - (colour_mode != 0 ? 3 : 0)'
   diy_body:
     seq:
       - id: diy_id

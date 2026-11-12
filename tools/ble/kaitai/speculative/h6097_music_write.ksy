@@ -57,3 +57,5 @@ types:
     instances:
       is_legacy:
         value: mode_id == music_mode::rhythm or mode_id == music_mode::spectrum or mode_id == music_mode::rolling
+      write_tail_size:
+        value: '14 - (is_legacy ? 2 + (has_fixed_colour != 0 ? 3 : 0) : 0)'
