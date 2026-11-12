@@ -214,59 +214,55 @@ def parse_color_mode(generated: Any, model: str, *, profile: ModelProfile | None
 
     body = generated.body
     mode_name = getattr(body.mode, "name", None)
-    if profile.status_grammar == "H60B0":
-        if mode_name == "source_control":
-            from .h60b0_controls import source_readback
+    detail = getattr(body, "detail", None)
+    if detail is None:
+        detail = getattr(body, "mode_body", None)
+    if profile.status_grammar == "H60B0" and mode_name == "source_control":
+        from .h60b0_controls import source_readback
 
-            return ParsedColorModeResponse(mode=ParsedMode.COLOUR, source_values=source_readback(body.detail, profile))
-        if mode_name == "music":
-            from .music_protocol import music_slug_for
-
-            detail = body.detail
-            mode = music_slug_for("H60B0", int(detail.mode), profile=profile)
-            if mode not in profile.music_modes or not 0 <= detail.sensitivity <= 100:
-                raise ValueError("Invalid native music status")
-            return ParsedColorModeResponse(
-                mode=ParsedMode.MUSIC,
-                music_mode=mode,
-                music_sensitivity=int(detail.sensitivity),
-                music_color_present=False,
-            )
-        if mode_name == "static":
-            detail = body.detail
-            kelvin = int(detail.kelvin)
-            return ParsedColorModeResponse(
-                mode=ParsedMode.COLOUR,
-                rgb_color=None if kelvin else (detail.rgb.red, detail.rgb.green, detail.rgb.blue),
-                color_temp_kelvin=_readback_kelvin(kelvin, profile) if kelvin else None,
-            )
+        return ParsedColorModeResponse(mode=ParsedMode.COLOUR, source_values=source_readback(detail, profile))
     if mode_name in {"legacy_static", "legacy_colour", "whole_device_colour"}:
         mode_name = "static"
     elif mode_name == "legacy_music":
         mode_name = "music"
     if profile.bulk_status_grammar == "H60A" and mode_name == "music":
         return ParsedColorModeResponse(mode=ParsedMode.MUSIC)
-    if mode_name == "video" and profile.video_grammar == "H66A0-video":
-        detail = body.detail
-        source = getattr(detail.source, "name", None)
-        if source not in profile.video_modes:
-            return ParsedColorModeResponse()
-        parameters = video_parameters_from_detail(detail, profile.video_grammar)
-        if detail.sound_effects not in (0, 1) or not 0 <= detail.softness <= 100:
-            raise ValueError("invalid video sound effects or softness")
+    if mode_name == "music":
+        return _parse_music_mode(detail, model, profile)
+    if mode_name in {"static", "static_colour"}:
+        return _parse_static_mode(detail, profile)
+    if mode_name == "video":
+        return _parse_video_mode(detail, profile)
+    detail = body if detail is None else detail
+    if mode_name == "scene":
+        scene_code = int(detail.scene_id)
         return ParsedColorModeResponse(
-            mode=ParsedMode.VIDEO,
-            video_mode=source,
-            video_parameters=parameters,
-            video_saturation=int(detail.saturation)
-            if profile.supports_video_saturation and profile.video_saturation_min <= detail.saturation <= 100
-            else None,
-            video_sound_effects=bool(detail.sound_effects) if profile.supports_video_sound_effects else None,
-            video_sound_effects_softness=int(detail.softness) if profile.supports_video_sound_effects else None,
+            mode=ParsedMode.SCENE, effect=scene_key_for_code(model, scene_code, profile=profile), scene_code=scene_code
         )
-    music_mode = None
-    if profile.music_readback_ambiguous and mode_name == "music":
-        detail = body.detail
+    if mode_name == "diy":
+        return ParsedColorModeResponse(
+            mode=ParsedMode.DIY, diy_code=int(detail.code), diy_companion=getattr(detail, "companion", None)
+        )
+    return ParsedColorModeResponse()
+
+
+def _rgb_values(rgb: Any) -> tuple[int, int, int]:
+    return int(rgb.red), int(rgb.green), int(rgb.blue)
+
+
+def _parse_music_mode(detail: Any, model: str, profile: ModelProfile) -> ParsedColorModeResponse:
+    if detail is None:
+        raise ValueError("Music status has no details")
+    if profile.status_grammar == "H60B0":
+        from .music_protocol import music_slug_for
+
+        mode = music_slug_for(model, int(detail.mode), profile=profile)
+        if mode not in profile.music_modes or not 0 <= detail.sensitivity <= 100:
+            raise ValueError("Invalid native music status")
+        return ParsedColorModeResponse(
+            mode=ParsedMode.MUSIC, music_mode=mode, music_sensitivity=int(detail.sensitivity), music_color_present=False
+        )
+    if profile.music_readback_ambiguous:
         selector = getattr(detail.observed_selector, "name", None)
         sensitivity = int(detail.sensitivity)
         return ParsedColorModeResponse(
@@ -277,165 +273,111 @@ def parse_color_mode(generated: Any, model: str, *, profile: ModelProfile | None
             else None,
             music_color_present=False,
         )
-    if mode_name == "music":
-        detail = getattr(body, "detail", getattr(body, "mode_body", None))
-        if detail is None:
-            raise ValueError("Music status has no details")
-        mode_id = getattr(detail, "mode", getattr(detail, "mode_id", -1))
-        music_mode = getattr(mode_id, "name", None)
-        if music_mode not in (profile.readback_music_modes or profile.music_modes):
-            raise ValueError("music selector is unsupported for model")
-        if profile.status_grammar == "H6046":
-            music_values: dict[str, Any] = {}
-            if detail.is_base:
-                music_values["music_fixed_colour"] = bool(detail.has_fixed_colour)
-                for bar in ("left", "right"):
-                    rgb = getattr(detail, f"{bar}_colour")
-                    music_values[f"music_{bar}_colour"] = (int(rgb.red) << 16) | (int(rgb.green) << 8) | int(rgb.blue)
-                if detail.has_fixed_colour and music_values["music_left_colour"] == music_values["music_right_colour"]:
-                    rgb = detail.left_colour
-                    music_values["music_color"] = (int(rgb.red), int(rgb.green), int(rgb.blue))
-            return ParsedColorModeResponse(
-                mode=ParsedMode.MUSIC,
-                music_mode=music_mode,
-                music_sensitivity=int(detail.sensitivity),
-                music_calm=bool(detail.is_calm) if music_mode == "rhythm" else None,
-                music_color_present=bool(detail.is_base),
-                **music_values,
-            )
-    if mode_name in {"static", "static_colour"}:
-        if profile.status_grammar == "H605C":
-            return ParsedColorModeResponse(mode=ParsedMode.COLOUR)
-        detail = getattr(body, "mode_body", getattr(body, "detail", None))
-        if detail is None:
-            raise ValueError("Static status has no details")
-        if profile.status_grammar == "H6046":
-            left, right = (
-                _readback_kelvin(value, profile) if value else 0
-                for value in (int(detail.left_kelvin), int(detail.right_kelvin))
-            )
-            return ParsedColorModeResponse(
-                mode=ParsedMode.COLOUR,
-                color_temp_kelvin=left if left == right and left else None,
-                left_bar_kelvin=left,
-                right_bar_kelvin=right,
-            )
-        rgb = getattr(detail, "rgb", None)
-        if profile.status_grammar == "H6181":
-            if detail.temperature_flag not in (0, 1):
-                raise ValueError("Invalid legacy colour-temperature flag")
-            if detail.temperature_flag:
-                companion = detail.companion_rgb
-                colour = (int(companion.red), int(companion.green), int(companion.blue))
-                matched_kelvin = table_rgb_kelvin(colour)
-                if matched_kelvin is None or not (
-                    profile.min_color_temp_kelvin <= matched_kelvin <= profile.max_color_temp_kelvin
-                ):
-                    raise ValueError("Unrecognised legacy colour-temperature companion")
-                return ParsedColorModeResponse(mode=ParsedMode.COLOUR, color_temp_kelvin=matched_kelvin)
-            return ParsedColorModeResponse(
-                mode=ParsedMode.COLOUR,
-                rgb_color=(int(detail.rgb.red), int(detail.rgb.green), int(detail.rgb.blue)),
-            )
-        raw_kelvin = _readback_kelvin(int(reported), profile) if (reported := getattr(detail, "kelvin", None)) else None
-        return ParsedColorModeResponse(
-            mode=ParsedMode.COLOUR,
-            rgb_color=(int(rgb.red), int(rgb.green), int(rgb.blue))
-            if rgb is not None
-            and not (profile.status_grammar in WHOLE_BULB_GRAMMARS | {"H6181-modern"} and raw_kelvin is not None)
-            else None,
-            color_temp_kelvin=raw_kelvin,
-            multi_effect_flag=getattr(detail, "sub", None),
-        )
-    if profile.status_grammar in PERCENT_BRIGHTNESS_STATUS_GRAMMARS | {"H605C"} or (
-        mode_name == "video" and profile.video_grammar in VIDEO_GRAMMARS | {"H605C-video"}
-    ):
-        if mode_name == "video":
-            if profile.video_grammar not in VIDEO_GRAMMARS | {"H605C-video"}:
-                return ParsedColorModeResponse()
-            detail = body.detail
-            source_name = getattr(detail.source, "name", None)
-            region_name = getattr(detail.region, "name", None)
-            if source_name not in profile.video_modes or region_name not in {"part", "all"}:
-                return ParsedColorModeResponse()
-            return ParsedColorModeResponse(
-                mode=ParsedMode.VIDEO,
-                video_mode=source_name,
-                video_parameters=video_parameters_from_detail(detail, profile.video_grammar),
-                video_full_screen=region_name == "all" if profile.supports_video_capture_region else None,
-                # Keep sibling video observations when firmware reports an unqualified saturation.
-                video_saturation=(
-                    int(detail.saturation)
-                    if profile.supports_video_saturation and profile.video_saturation_min <= detail.saturation <= 100
-                    else None
-                ),
-                video_sound_effects=bool(detail.sound_effects) if profile.supports_video_sound_effects else None,
-                video_sound_effects_softness=int(detail.softness) if profile.supports_video_sound_effects else None,
-            )
-        if mode_name == "music":
-            detail = body.detail
-            if not getattr(detail, "is_legacy", True):
-                return ParsedColorModeResponse(
-                    mode=ParsedMode.MUSIC,
-                    music_mode=music_mode,
-                    music_sensitivity=int(detail.sensitivity),
-                    music_color_present=False,
-                )
-            fixed_colour = None
-            if detail.has_fixed_colour:
-                fixed_colour = (
-                    int(detail.fixed_colour.red),
-                    int(detail.fixed_colour.green),
-                    int(detail.fixed_colour.blue),
-                )
-            return ParsedColorModeResponse(
-                mode=ParsedMode.MUSIC,
-                music_mode=music_mode,
-                music_sensitivity=int(detail.sensitivity),
-                music_calm=bool(detail.is_calm) if music_mode == "rhythm" else None,
-                music_color=fixed_colour,
-            )
-        if mode_name == "scene":
-            scene_code = int(body.detail.scene_id)
-            return ParsedColorModeResponse(
-                mode=ParsedMode.SCENE,
-                effect=scene_key_for_code(model, scene_code, profile=profile),
-                scene_code=scene_code,
-            )
-        if mode_name == "diy":
-            return ParsedColorModeResponse(mode=ParsedMode.DIY, diy_code=int(body.detail.code))
-        return ParsedColorModeResponse()
-
-    if mode_name == "scene":
-        detail = getattr(body, "mode_body", getattr(body, "detail", body))
-        scene_code = int(detail.scene_id)
-        return ParsedColorModeResponse(
-            mode=ParsedMode.SCENE,
-            effect=scene_key_for_code(model, scene_code, profile=profile),
-            scene_code=scene_code,
-        )
-    if mode_name == "diy":
-        detail = getattr(body, "mode_body", getattr(body, "detail", body))
-        return ParsedColorModeResponse(
-            mode=ParsedMode.DIY, diy_code=int(detail.code), diy_companion=getattr(detail, "companion", None)
-        )
-    if mode_name == "music":
-        detail = body.mode_body
-        if not getattr(detail, "is_legacy", True):
-            return ParsedColorModeResponse(
-                mode=ParsedMode.MUSIC,
-                music_mode=music_mode,
-                music_sensitivity=int(detail.sensitivity),
-                music_color_present=False,
-            )
-        music_color = None
-        if detail.has_fixed_colour:
-            music_color = (int(detail.rgb.red), int(detail.rgb.green), int(detail.rgb.blue))
+    mode_id = detail.mode if hasattr(detail, "mode") else getattr(detail, "mode_id", -1)
+    music_mode = getattr(mode_id, "name", None)
+    if music_mode not in (profile.readback_music_modes or profile.music_modes):
+        raise ValueError("music selector is unsupported for model")
+    if profile.status_grammar == "H6046":
+        music_values: dict[str, Any] = {}
+        if detail.is_base:
+            music_values["music_fixed_colour"] = bool(detail.has_fixed_colour)
+            for bar in ("left", "right"):
+                red, green, blue = _rgb_values(getattr(detail, f"{bar}_colour"))
+                music_values[f"music_{bar}_colour"] = (red << 16) | (green << 8) | blue
+            if detail.has_fixed_colour and music_values["music_left_colour"] == music_values["music_right_colour"]:
+                music_values["music_color"] = _rgb_values(detail.left_colour)
         return ParsedColorModeResponse(
             mode=ParsedMode.MUSIC,
             music_mode=music_mode,
             music_sensitivity=int(detail.sensitivity),
-            music_calm=bool(detail.style) if music_mode == "rhythm" and hasattr(detail, "style") else None,
-            music_color=music_color,
+            music_calm=bool(detail.is_calm) if music_mode == "rhythm" else None,
+            music_color_present=bool(detail.is_base),
+            **music_values,
         )
-    return ParsedColorModeResponse()
+    if not getattr(detail, "is_legacy", True):
+        return ParsedColorModeResponse(
+            mode=ParsedMode.MUSIC,
+            music_mode=music_mode,
+            music_sensitivity=int(detail.sensitivity),
+            music_color_present=False,
+        )
+    percent = profile.status_grammar in PERCENT_BRIGHTNESS_STATUS_GRAMMARS | {"H605C"}
+    colour = None
+    if detail.has_fixed_colour:
+        colour = detail.fixed_colour if percent else detail.rgb
+    style = getattr(detail, "is_calm" if percent else "style", None)
+    return ParsedColorModeResponse(
+        mode=ParsedMode.MUSIC,
+        music_mode=music_mode,
+        music_sensitivity=int(detail.sensitivity),
+        music_calm=bool(style) if music_mode == "rhythm" and style is not None else None,
+        music_color=_rgb_values(colour) if colour is not None else None,
+    )
+
+
+def _parse_static_mode(detail: Any, profile: ModelProfile) -> ParsedColorModeResponse:
+    if profile.status_grammar == "H605C":
+        return ParsedColorModeResponse(mode=ParsedMode.COLOUR)
+    if detail is None:
+        raise ValueError("Static status has no details")
+    if profile.status_grammar == "H6046":
+        left, right = (
+            _readback_kelvin(value, profile) if value else 0
+            for value in (int(detail.left_kelvin), int(detail.right_kelvin))
+        )
+        return ParsedColorModeResponse(
+            mode=ParsedMode.COLOUR,
+            color_temp_kelvin=left if left == right and left else None,
+            left_bar_kelvin=left,
+            right_bar_kelvin=right,
+        )
+    if profile.status_grammar == "H6181":
+        if detail.temperature_flag not in (0, 1):
+            raise ValueError("Invalid legacy colour-temperature flag")
+        if detail.temperature_flag:
+            kelvin = table_rgb_kelvin(_rgb_values(detail.companion_rgb))
+            if kelvin is None or not profile.min_color_temp_kelvin <= kelvin <= profile.max_color_temp_kelvin:
+                raise ValueError("Unrecognised legacy colour-temperature companion")
+            return ParsedColorModeResponse(mode=ParsedMode.COLOUR, color_temp_kelvin=kelvin)
+        return ParsedColorModeResponse(mode=ParsedMode.COLOUR, rgb_color=_rgb_values(detail.rgb))
+    reported = getattr(detail, "kelvin", None)
+    kelvin = _readback_kelvin(int(reported), profile) if reported else None
+    rgb = getattr(detail, "rgb", None)
+    return ParsedColorModeResponse(
+        mode=ParsedMode.COLOUR,
+        rgb_color=_rgb_values(rgb)
+        if rgb is not None
+        and not (profile.status_grammar in WHOLE_BULB_GRAMMARS | {"H6181-modern", "H60B0"} and kelvin is not None)
+        else None,
+        color_temp_kelvin=kelvin,
+        multi_effect_flag=getattr(detail, "sub", None),
+    )
+
+
+def _parse_video_mode(detail: Any, profile: ModelProfile) -> ParsedColorModeResponse:
+    if profile.video_grammar not in VIDEO_GRAMMARS | {"H605C-video", "H66A0-video"}:
+        return ParsedColorModeResponse()
+    source = getattr(detail.source, "name", None)
+    if source not in profile.video_modes:
+        return ParsedColorModeResponse()
+    full_screen = None
+    if profile.video_grammar == "H66A0-video":
+        if detail.sound_effects not in (0, 1) or not 0 <= detail.softness <= 100:
+            raise ValueError("invalid video sound effects or softness")
+    else:
+        region = getattr(detail.region, "name", None)
+        if region not in {"part", "all"}:
+            return ParsedColorModeResponse()
+        if profile.supports_video_capture_region:
+            full_screen = region == "all"
+    return ParsedColorModeResponse(
+        mode=ParsedMode.VIDEO,
+        video_mode=source,
+        video_parameters=video_parameters_from_detail(detail, profile.video_grammar),
+        video_full_screen=full_screen,
+        video_saturation=int(detail.saturation)
+        if profile.supports_video_saturation and profile.video_saturation_min <= detail.saturation <= 100
+        else None,
+        video_sound_effects=bool(detail.sound_effects) if profile.supports_video_sound_effects else None,
+        video_sound_effects_softness=int(detail.softness) if profile.supports_video_sound_effects else None,
+    )
