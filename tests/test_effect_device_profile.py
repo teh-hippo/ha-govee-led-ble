@@ -279,6 +279,7 @@ async def test_websocket_apply_and_device_payload_use_aa40(hass, hass_ws_client,
     coordinator = _device(hass)
     entry = SimpleNamespace(
         entry_id="entry-a",
+        unique_id=coordinator.address,
         domain=DOMAIN,
         title="Device",
         options={},

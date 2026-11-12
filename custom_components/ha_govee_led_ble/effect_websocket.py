@@ -23,7 +23,7 @@ from homeassistant.helpers.event import async_call_later
 from homeassistant.loader import async_get_integration
 from homeassistant.util import dt as dt_util
 
-from .const import CONF_SHOW_EXPERIMENTAL_FEEDBACK, DOMAIN, ModelProfile, supported_effect_categories
+from .const import CONF_SHOW_EXPERIMENTAL_FEEDBACK, DOMAIN, ModelProfile, light_unique_id, supported_effect_categories
 from .control_arbiter import ControlIntent
 from .effect_backend import EffectBackend
 from .effect_catalogue import (
@@ -247,12 +247,17 @@ def _device_payload(
 
 
 def _light_entity_id(hass: HomeAssistant, config_entry_id: str) -> str | None:
-    entries = [
-        entry
-        for entry in er.async_entries_for_config_entry(er.async_get(hass), config_entry_id)
-        if entry.domain == "light" and entry.platform == DOMAIN and entry.disabled_by is None
-    ]
-    return entries[0].entity_id if len(entries) == 1 else None
+    entry = hass.config_entries.async_get_entry(config_entry_id)
+    if entry is None or entry.domain != DOMAIN or not entry.unique_id:
+        return None
+    registry = er.async_get(hass)
+    entity_id = registry.async_get_entity_id("light", DOMAIN, light_unique_id(entry.unique_id))
+    registered = registry.async_get(entity_id) if entity_id is not None else None
+    return (
+        entity_id
+        if registered is not None and registered.config_entry_id == config_entry_id and registered.disabled_by is None
+        else None
+    )
 
 
 @websocket_command(
