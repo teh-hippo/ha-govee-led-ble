@@ -137,7 +137,7 @@ export function effectContentEligible(
         if (top?.type !== "diy" || side?.type !== "diy" || bottom?.type !== "diy") return false;
         if (side.kind !== 1 && bottom.kind !== 1 && (top.enabled === false || top.kind !== 1)) return false;
       }
-      const workflow = [13, 923].includes(content.family) ? "advanced" : content.family === 81 || content.revision === 3 ? "multi" : "single";
+      const workflow = nativeEffectWorkflow(content);
       return catalogue.workflows.some(candidate => candidate.id === workflow && candidate.content_kind === "native_effect") &&
         (content.family === 81 || catalogue.templates?.some(candidate =>
           candidate.content.kind === "native_effect" && candidate.content.model === model && candidate.content.revision === content.revision) === true);
@@ -705,6 +705,28 @@ export function customEffectCategoryForKind(
   return "advanced";
 }
 
+export function nativeEffectWorkflow(content: NativeEffectContent): NonNullable<LibrarySummary["native_workflow"]> {
+  if (content.template !== null) return "layered_scenes";
+  if (content.model === "H1771") return "multi";
+  if (content.model === "H60B0") {
+    return [13, 923].includes(content.family) ? "advanced" : content.family === 81 || content.revision === 3 ? "multi" : "single";
+  }
+  if (content.model === "H607C") return content.family === 153 ? "multi" : "single";
+  return content.family === 798 ? "painted" : [11, 12].includes(content.preset_id ?? -1) ? "advanced" : "single";
+}
+
+export function customEffectCategoryForItem(
+  item: LibraryItem | LibrarySummary,
+): Exclude<CustomEffectCategory, "all" | "my-effects"> {
+  const workflow = "content" in item
+    ? item.content.kind === "native_effect" ? nativeEffectWorkflow(item.content) : undefined
+    : item.native_workflow;
+  if (workflow === "single" || workflow === "painted") return "single-layer";
+  if (workflow === "multi") return "multi-layer";
+  if (workflow === "advanced") return "advanced";
+  return customEffectCategoryForKind("content" in item ? item.content.kind : item.kind);
+}
+
 export function sameLibraryItemVersion(
   left: LibraryItem | undefined,
   right: LibraryItem | undefined,
@@ -753,6 +775,7 @@ export function upsertSummary(
           : item.content.kind,
       content_hash: item.content_hash,
       origin: item.origin,
+      ...(item.content.kind === "native_effect" ? { native_workflow: nativeEffectWorkflow(item.content) } : {}),
       ...(model ? { model } : {}),
       ...(item.content.kind === "scene_builtin" ||
       item.content.kind === "scene_palette" ||

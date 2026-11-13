@@ -522,7 +522,7 @@ export function decodeLibrarySnapshot(value: unknown): LibrarySnapshot {
         ...(model ? { model } : {}),
         ...(template ? { template } : {}),
         ...(summary.native_workflow === undefined ? {} : {
-          native_workflow: enumString(summary.native_workflow, ["single", "multi", "advanced"], "native workflow"),
+          native_workflow: enumString(summary.native_workflow, ["painted", "single", "multi", "advanced", "layered_scenes"], "native workflow"),
         }),
       };
     }),

@@ -67,7 +67,7 @@ def item_summary(item: LibraryItem) -> dict[str, Any]:
             "source_id": item.origin.source_id,
         },
     }
-    if isinstance(item.content, NativeEffect) and item.content.model in {"H607C", "H60B0"}:
+    if isinstance(item.content, NativeEffect):
         summary["native_workflow"] = item.content.workflow
     model = (
         content.get("model")

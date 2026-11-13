@@ -1,5 +1,5 @@
 import {
-  customEffectCategoryForKind,
+  customEffectCategoryForItem,
   isMyEffectKind,
   type CustomEffectCategory,
   type NewEffectKind,
@@ -104,14 +104,15 @@ export function buildCustomEffectEntries(
     ) ?? []),
     ...context.libraryItems
       .filter(
-        (item) => isMyEffectKind(item.kind) && item.kind !== "video_profile",
+        (item) => isMyEffectKind(item.kind) && item.kind !== "video_profile" &&
+          !(item.kind === "native_effect" && item.template !== undefined),
       )
       .map(
         (item): CustomEffectListEntry => ({
           kind: "saved",
           key: `saved:${item.id}`,
           label: item.name,
-          category: item.native_workflow === "advanced" ? "advanced" : item.native_workflow === "multi" ? "multi-layer" : customEffectCategoryForKind(item.kind),
+          category: customEffectCategoryForItem(item),
           item,
         }),
       ),
