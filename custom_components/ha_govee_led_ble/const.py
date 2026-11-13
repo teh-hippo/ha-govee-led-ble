@@ -224,6 +224,10 @@ class ModelProfile:
     read_domains: frozenset[ReadDomain] = frozenset()
     setup_required_read_domains: frozenset[ReadDomain] = frozenset()
     supports_rgb: bool = False
+    main_color_modes: frozenset[str] | None = None
+    minimum_enabled_sources: int = 0
+    maximum_enabled_sources: int | None = None
+    exclusive_source_groups: tuple[frozenset[str], ...] = ()
     supports_installation_direction: bool = False
     supports_color_temperature: bool = False
     supports_low_blue_light: bool = False
@@ -350,6 +354,22 @@ class ModelProfile:
             segments = [segment for source in self.light_sources for segment in source.segments]
             if len(segments) != self.segment_count or set(segments) != set(range(1, self.segment_count + 1)):
                 raise ValueError("partitioned sources must cover every segment exactly once")
+        if self.main_color_modes is not None and (
+            not self.main_color_modes or not self.main_color_modes <= {"onoff", "brightness", "rgb", "color_temp"}
+        ):
+            raise ValueError("unknown main light colour modes")
+        source_controls = {source.control for source in self.light_sources}
+        if (
+            type(self.minimum_enabled_sources) is not int
+            or not 0 <= self.minimum_enabled_sources <= len(source_controls)
+            or self.maximum_enabled_sources is not None
+            and (
+                type(self.maximum_enabled_sources) is not int
+                or not self.minimum_enabled_sources <= self.maximum_enabled_sources <= len(source_controls)
+            )
+            or any(len(group) < 2 or not group <= source_controls for group in self.exclusive_source_groups)
+        ):
+            raise ValueError("source power constraints require declared sources and valid limits")
         if self.diy_upload_transport not in {None, "a1_02", "a3"}:
             raise ValueError("unknown DIY upload transport")
         if not self.restarting_boolean_controls <= self.boolean_controls:
@@ -1049,6 +1069,9 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         ),
         setup_required_read_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS}),
         supports_rgb=True,
+        main_color_modes=frozenset({"brightness"}),
+        minimum_enabled_sources=1,
+        maximum_enabled_sources=2,
         supports_color_temperature=True,
         color_temp_range=KELVIN_RANGE_2700_6500,
         supports_segment_writes=True,
@@ -2684,7 +2707,11 @@ def device_profile(
     if model == "H60B0":
         profile = get_profile(model)
         if pact_type == 1 and pact_code in {1, 2, 3}:
-            return replace(profile, native_effect_revision=pact_code)
+            return replace(
+                profile,
+                native_effect_revision=pact_code,
+                exclusive_source_groups=(frozenset({"top_enabled", "bottom_enabled"}),) if pact_code == 1 else (),
+            )
         return replace(
             profile,
             command_operations=frozenset({"power", "brightness"}),

@@ -1521,7 +1521,10 @@ async def async_prepare_effect_control_state(
     if require_restorable_static:
         if profile.supports_ripple_speed and (
             not isinstance(prior, PriorControlState)
-            or any(getattr(prior, field) is None for field in ("bottom_kelvin", "bottom_brightness", "ripple_speed"))
+            or any(
+                getattr(prior, field) is None
+                for field in ("top_kelvin", "bottom_kelvin", "bottom_brightness", "ripple_speed")
+            )
             or not prior.bottom_kelvin
         ):
             raise RuntimeError("Could not read restorable source values before preview")
@@ -1552,7 +1555,10 @@ async def async_prepare_effect_control_state(
         if prior_mode not in {"colour", "unknown"}:
             return True
         if profile.segment_colour_mode_ambiguous and not (
-            isinstance(prior, PriorControlState) and (prior.static_rgb_known or prior.restorable_bar_white(profile))
+            isinstance(prior, PriorControlState)
+            and (
+                prior.static_rgb_known or prior.restorable_bar_white(profile) or prior.restorable_source_colour(profile)
+            )
         ):
             raise RuntimeError("The current per-bulb RGB or white intent cannot be safely restored after preview")
         if not profile.configured_string_counts:

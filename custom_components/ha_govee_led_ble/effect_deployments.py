@@ -116,6 +116,8 @@ class PriorControlState:
     top_enabled: bool | None = None
     side_enabled: bool | None = None
     bottom_enabled: bool | None = None
+    top_kelvin: int | None = None
+    source_static_intents: Mapping[str, int | tuple[int, int, int]] | None = None
     bottom_kelvin: int | None = None
     bottom_brightness: int | None = None
     ripple_speed: int | None = None
@@ -196,10 +198,24 @@ class PriorControlState:
         for kelvin in (self.left_bar_kelvin, self.right_bar_kelvin):
             if kelvin is not None and (type(kelvin) is not int or not 0 <= kelvin <= KELVIN_RANGE_1000_10000[1]):
                 raise EffectStorageError("prior bar Kelvin must be a bounded integer or null")
-        if self.bottom_kelvin is not None and (
-            type(self.bottom_kelvin) is not int or not 0 <= self.bottom_kelvin <= 10000
+        for kelvin in (self.top_kelvin, self.bottom_kelvin):
+            if kelvin is not None and (type(kelvin) is not int or not 0 <= kelvin <= 10000):
+                raise EffectStorageError("prior source Kelvin must be a bounded integer or null")
+        if self.source_static_intents is not None and (
+            not isinstance(self.source_static_intents, Mapping)
+            or any(
+                not isinstance(key, str)
+                or not (
+                    type(value) is int
+                    and 1000 <= value <= 10000
+                    or isinstance(value, tuple)
+                    and len(value) == 3
+                    and all(type(channel) is int and 0 <= channel <= 255 for channel in value)
+                )
+                for key, value in self.source_static_intents.items()
+            )
         ):
-            raise EffectStorageError("prior source Kelvin must be a bounded integer or null")
+            raise EffectStorageError("invalid prior source colour intent")
         for value in (self.bottom_brightness, self.ripple_speed):
             if value is not None and (type(value) is not int or not 0 <= value <= 100):
                 raise EffectStorageError("prior source level must be from 0 to 100 or null")
@@ -433,6 +449,29 @@ class PriorControlState:
             for start, kelvin in ((0, self.left_bar_kelvin), (half, self.right_bar_kelvin))
         )
 
+    def restorable_source_colour(self, profile: ModelProfile) -> bool:
+        from .light_commands import kelvin_rendering_matches
+
+        if self.source_static_intents is None or self.segment_colors is None:
+            return False
+        if len(self.segment_colors) != profile.segment_count:
+            return False
+        for source in profile.light_sources:
+            if not source.segments:
+                continue
+            intent = self.source_static_intents.get(source.key)
+            kelvin = getattr(self, f"{source.key}_kelvin", None)
+            if kelvin is not None and kelvin != (intent if type(intent) is int else 0):
+                return False
+            if intent is None or not all(
+                kelvin_rendering_matches(self.segment_colors[index - 1], intent, profile)
+                if type(intent) is int
+                else self.segment_colors[index - 1] == intent
+                for index in source.segments
+            ):
+                return False
+        return bool(profile.light_sources)
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "mode": self.mode,
@@ -445,6 +484,16 @@ class PriorControlState:
             "brightness_pct": self.brightness_pct,
             "rgb_color": list(self.rgb_color),
             "color_temp_kelvin": self.color_temp_kelvin,
+            **(
+                {
+                    "source_static_intents": {
+                        key: list(value) if isinstance(value, tuple) else value
+                        for key, value in self.source_static_intents.items()
+                    }
+                }
+                if self.source_static_intents is not None
+                else {}
+            ),
             **({"static_rgb_known": True} if self.static_rgb_known else {}),
             **({"static_gradual": self.static_gradual} if self.static_gradual is not None else {}),
             "panel_enabled": self.panel_enabled,
@@ -461,6 +510,7 @@ class PriorControlState:
                     ("top_enabled", self.top_enabled),
                     ("side_enabled", self.side_enabled),
                     ("bottom_enabled", self.bottom_enabled),
+                    ("top_kelvin", self.top_kelvin),
                     ("bottom_kelvin", self.bottom_kelvin),
                     ("bottom_brightness", self.bottom_brightness),
                     ("ripple_speed", self.ripple_speed),
@@ -582,6 +632,8 @@ class PriorControlState:
             not isinstance(controls, list) or any(not isinstance(control, str) for control in controls)
         ):
             raise EffectStorageError("invalid video restoration controls")
+        if raw.get("source_static_intents") is not None and not isinstance(raw["source_static_intents"], dict):
+            raise EffectStorageError("invalid prior source colour intent")
         return cls(
             mode=_required_str(raw, "mode"),
             video_restore_controls=tuple(raw["video_restore_controls"]) if "video_restore_controls" in raw else None,
@@ -602,6 +654,15 @@ class PriorControlState:
             top_enabled=_optional_bool(raw, "top_enabled"),
             side_enabled=_optional_bool(raw, "side_enabled"),
             bottom_enabled=_optional_bool(raw, "bottom_enabled"),
+            top_kelvin=_optional_int(raw, "top_kelvin"),
+            source_static_intents=(
+                {
+                    key: tuple(value) if isinstance(value, list) else value
+                    for key, value in raw["source_static_intents"].items()
+                }
+                if isinstance(raw.get("source_static_intents"), dict)
+                else None
+            ),
             bottom_kelvin=_optional_int(raw, "bottom_kelvin"),
             bottom_brightness=_optional_int(raw, "bottom_brightness"),
             ripple_speed=_optional_int(raw, "ripple_speed"),

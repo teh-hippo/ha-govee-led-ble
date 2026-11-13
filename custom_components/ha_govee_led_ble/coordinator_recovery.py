@@ -26,6 +26,7 @@ from .light_commands import (
     build_segment_brightness,
     build_segment_brightness_packets,
     build_segment_color_temp,
+    build_segment_kelvin_packets,
     build_segment_paint,
     normalize_kelvin,
 )
@@ -75,6 +76,35 @@ class _RecoveryMixin(_CoordinatorBase):
         return cast("GoveeBLECoordinator", self)
 
     def capture_effect_control_state(self) -> PriorControlState:
+        current_source_layout = (
+            self._client is not None
+            and self._client.is_connected
+            and self._notify_started_monotonic is not None
+            and self._field_received_at.get("segment_colors", -1) >= self._notify_started_monotonic
+            and self._field_received_at.get("color_mode", -1) >= self._notify_started_monotonic
+            and self._observed_mode_write_generation == self._mode_write_generation
+            and self._observed_mode_profile_generation == self._profile_generation
+        )
+        observed_segments = self.segment_state_source == "observed" and (
+            not self.profile.partition_segment_writes or current_source_layout
+        )
+        source_intents = None
+        if self.profile.partition_segment_writes and observed_segments and self.color_mode is ParsedMode.COLOUR:
+            source_intents = {
+                source.key: self.source_static_intents[source.key]
+                for source in self.profile.light_sources
+                if source.segments and source.key in self.source_static_intents
+            }
+            for source in self.profile.light_sources:
+                field = f"{source.key}_kelvin"
+                kelvin = getattr(self, field, None)
+                if (
+                    source.segments
+                    and kelvin is not None
+                    and self._notify_started_monotonic is not None
+                    and self._field_received_at.get(field, -1) >= self._notify_started_monotonic
+                ):
+                    source_intents[source.key] = kelvin or self.segment_colors[source.segments[0] - 1]
         zone_flags = {
             name: value
             for name, value in self.boolean_control_state.items()
@@ -82,6 +112,8 @@ class _RecoveryMixin(_CoordinatorBase):
             and self._notify_started_monotonic is not None
             and self._field_received_at.get(f"boolean_{name}", -1) >= self._notify_started_monotonic
         }
+        if self.profile.partition_segment_writes:
+            zone_flags = self._as_coordinator._fresh_source_power() or {}
         # active_mode hides the resident mode while powered off and maps unknown to colour.
         mode = (
             "unknown"
@@ -102,7 +134,7 @@ class _RecoveryMixin(_CoordinatorBase):
             brightness_pct=self.brightness_pct,
             rgb_color=self.rgb_color,
             color_temp_kelvin=self.color_temp_kelvin,
-            static_rgb_known=self._static_rgb_known and self.segment_state_source == "observed",
+            static_rgb_known=self._static_rgb_known and observed_segments,
             static_gradual=self.static_gradual if self.color_mode is ParsedMode.COLOUR else None,
             panel_enabled=zone_flags.get("panel_enabled"),
             ring_enabled=zone_flags.get("ring_enabled"),
@@ -115,12 +147,13 @@ class _RecoveryMixin(_CoordinatorBase):
             top_enabled=zone_flags.get("top_enabled"),
             side_enabled=zone_flags.get("side_enabled"),
             bottom_enabled=zone_flags.get("bottom_enabled"),
+            source_static_intents=source_intents,
             **{
                 field: getattr(self, field)
                 if self._notify_started_monotonic is not None
                 and self._field_received_at.get(field, -1) >= self._notify_started_monotonic
                 else None
-                for field in ("bottom_kelvin", "bottom_brightness", "ripple_speed")
+                for field in ("top_kelvin", "bottom_kelvin", "bottom_brightness", "ripple_speed")
             },
             left_bar_kelvin=self.left_bar_kelvin
             if self._notify_started_monotonic is not None
@@ -130,9 +163,9 @@ class _RecoveryMixin(_CoordinatorBase):
             if self._notify_started_monotonic is not None
             and self._field_received_at.get("right_bar_kelvin", -1) >= self._notify_started_monotonic
             else None,
-            segment_colors=tuple(self.segment_colors) if self.segment_state_source == "observed" else None,
+            segment_colors=tuple(self.segment_colors) if observed_segments else None,
             segment_brightness=tuple(self.segment_brightness)
-            if self.segment_state_source == "observed" and self.segment_brightness_readable
+            if observed_segments and self.segment_brightness_readable
             else None,
             effect=self.effect,
             scene_code=self.scene_code,
@@ -192,10 +225,25 @@ class _RecoveryMixin(_CoordinatorBase):
         *,
         overwritten_diy_code: int | None,
     ) -> bool:
+        native_zones = self.profile.boolean_controls.intersection(NATIVE_ZONE_CONTROLS)
+        expected = {name: value for name in native_zones if (value := getattr(state, name)) is not None}
+        if self.profile.minimum_enabled_sources and (
+            set(expected) != native_zones
+            or not (
+                self.profile.minimum_enabled_sources
+                <= sum(expected.values())
+                <= (self.profile.maximum_enabled_sources or len(native_zones))
+            )
+            or any(
+                sum(expected.get(name, False) for name in group) > 1 for group in self.profile.exclusive_source_groups
+            )
+        ):
+            return False
         source_values = {}
         if self.profile.supports_ripple_speed:
             source_values = {
-                field: getattr(state, field) for field in ("bottom_kelvin", "bottom_brightness", "ripple_speed")
+                field: getattr(state, field)
+                for field in ("top_kelvin", "bottom_kelvin", "bottom_brightness", "ripple_speed")
             }
             if any(value is None for value in source_values.values()) or not source_values["bottom_kelvin"]:
                 return False
@@ -207,10 +255,8 @@ class _RecoveryMixin(_CoordinatorBase):
                 if getattr(self, field) != source_values[field]:
                     await self._as_coordinator.async_set_source_value(source, attribute, source_values[field])
         restored = await self._async_restore_effect_appearance(state, overwritten_diy_code=overwritten_diy_code)
-        native_zones = self.profile.boolean_controls.intersection(NATIVE_ZONE_CONTROLS)
         if not native_zones:
             return restored
-        expected = {name: value for name in native_zones if (value := getattr(state, name)) is not None}
         if not expected:
             return False
         async with self._lock:
@@ -238,9 +284,28 @@ class _RecoveryMixin(_CoordinatorBase):
                 client, deadline=time.monotonic() + 4.0, domains=("zone_enable",)
             ):
                 return False
-        for name, value in expected.items():
-            if self.boolean_control_state.get(name) != value:
-                await self.async_set_boolean_control(name, value)
+        if self.profile.minimum_enabled_sources:
+            for _ in range(len(expected) * 2):
+                remove = [
+                    name for name, value in expected.items() if not value and self.boolean_control_state.get(name)
+                ]
+                add = [name for name, value in expected.items() if value and not self.boolean_control_state.get(name)]
+                if not remove and not add:
+                    break
+                if (
+                    remove
+                    and sum(self.boolean_control_state.get(name, False) for name in expected)
+                    > self.profile.minimum_enabled_sources
+                ):
+                    await self.async_set_boolean_control(remove[0], False)
+                elif add:
+                    await self.async_set_boolean_control(add[0], True)
+                else:
+                    return False
+        else:
+            for name, value in expected.items():
+                if self.boolean_control_state.get(name) != value:
+                    await self.async_set_boolean_control(name, value)
         return (
             restored
             and set(expected) == native_zones
@@ -259,7 +324,11 @@ class _RecoveryMixin(_CoordinatorBase):
         if (
             state.mode == "colour"
             and self.profile.segment_colour_mode_ambiguous
-            and not (state.static_rgb_known or state.restorable_bar_white(self.profile))
+            and not (
+                state.static_rgb_known
+                or state.restorable_bar_white(self.profile)
+                or state.restorable_source_colour(self.profile)
+            )
         ):
             return False
         async with self.async_mask_transaction() if state.mode == "colour" else nullcontext():
@@ -727,7 +796,12 @@ class _RecoveryMixin(_CoordinatorBase):
         if state.segment_brightness is not None:
             for index, brightness in enumerate(state.segment_brightness, 1):
                 brightness_groups.setdefault(brightness, []).append(index)
-        kelvin_restore = state.color_temp_kelvin is not None and self.profile.static_readback_kelvin
+        source_restore = self.profile.partition_segment_writes
+        if source_restore and not state.restorable_source_colour(self.profile):
+            return False
+        kelvin_restore = (
+            not source_restore and state.color_temp_kelvin is not None and self.profile.static_readback_kelvin
+        )
         if (
             kelvin_restore
             and state.color_temp_kelvin is not None
@@ -752,6 +826,25 @@ class _RecoveryMixin(_CoordinatorBase):
             for brightness, segments in brightness_groups.items()
             for packet in build_segment_brightness_packets(segments, brightness, self.model, profile=self.profile)
         ]
+        if source_restore:
+            packets = []
+            for source in self.profile.light_sources:
+                intent = (state.source_static_intents or {}).get(source.key)
+                if not source.segments:
+                    continue
+                if type(intent) is int:
+                    packets.extend(
+                        build_segment_kelvin_packets(source.segments, intent, self.model, profile=self.profile)
+                    )
+                elif isinstance(intent, tuple):
+                    packets.extend(
+                        build_segment_paint([(list(source.segments), intent)], self.model, profile=self.profile)
+                    )
+            packets.extend(
+                packet
+                for brightness, segments in brightness_groups.items()
+                for packet in build_segment_brightness_packets(segments, brightness, self.model, profile=self.profile)
+            )
         if self.profile.setting_grammar == "H6046" and state.restorable_bar_white(self.profile):
             half = self.profile.segment_count // 2
             packets = [
@@ -781,6 +874,7 @@ class _RecoveryMixin(_CoordinatorBase):
             ),
             expected_zero_kelvin=(
                 self.profile.static_readback_zero_kelvin_is_rgb
+                and not source_restore
                 and not kelvin_restore
                 and not state.restorable_bar_white(self.profile)
             ),
@@ -802,6 +896,11 @@ class _RecoveryMixin(_CoordinatorBase):
                 or (self.left_bar_kelvin, self.right_bar_kelvin) == (state.left_bar_kelvin, state.right_bar_kelvin)
             )
             and complete
+            and (
+                not source_restore
+                or self.top_kelvin == state.top_kelvin
+                and self.capture_effect_control_state().source_static_intents == state.source_static_intents
+            )
         )
         if restored:
             self._static_rgb_known = state.static_rgb_known

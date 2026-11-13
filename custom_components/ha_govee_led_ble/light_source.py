@@ -152,6 +152,8 @@ class GoveeBLESourceLight(GoveeBLEEntity, LightEntity):
     def color_mode(self) -> ColorMode | None:
         modes = self.supported_color_modes
         source = self._source(self.coordinator.profile)
+        if f"source_colour_{self._key}" in self.coordinator._h607c_uncertain_state_fields:
+            return ColorMode.UNKNOWN
         if source is not None and source.native_control:
             return (
                 ColorMode.COLOR_TEMP if getattr(self.coordinator, f"{source.key}_kelvin", None) else ColorMode.UNKNOWN
@@ -290,7 +292,8 @@ class GoveeBLESourceLight(GoveeBLEEntity, LightEntity):
                     if guard is not None:
                         guard()
                 master_off = coordinator.is_on is not True or "is_on" in coordinator._h607c_uncertain_state_fields
-                if master_off:
+                await coordinator.async_validate_source_power(source.control, True)
+                if master_off and not profile.minimum_enabled_sources:
                     for sibling in profile.light_sources:
                         if sibling.key != source.key and (
                             coordinator.boolean_control_state.get(sibling.control) is not False
@@ -412,10 +415,12 @@ class GoveeBLESourceLight(GoveeBLEEntity, LightEntity):
         return True
 
     async def _set_source_control(self, control: str, enabled: bool) -> None:
+        attempts = self.coordinator.control_write_attempts
         try:
             await self.coordinator.async_set_boolean_control(control, enabled)
         except BaseException:
-            self.coordinator.boolean_control_state.pop(control, None)
-            self.coordinator._field_received_at.pop(f"boolean_{control}", None)
-            self.coordinator.async_set_updated_data(self.coordinator.data or {})
+            if self.coordinator.control_write_attempts != attempts:
+                self.coordinator.boolean_control_state.pop(control, None)
+                self.coordinator._field_received_at.pop(f"boolean_{control}", None)
+                self.coordinator.async_set_updated_data(self.coordinator.data or {})
             raise

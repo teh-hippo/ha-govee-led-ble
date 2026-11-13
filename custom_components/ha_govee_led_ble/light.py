@@ -324,6 +324,8 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
     @property
     def supported_color_modes(self) -> set[ColorMode]:
         profile = self.coordinator.native_presentation_profile
+        if profile.main_color_modes is not None:
+            return {ColorMode(mode) for mode in profile.main_color_modes}
         modes = set()
         if profile.supports_rgb:
             modes.add(ColorMode.RGB)
@@ -984,6 +986,9 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
 
     async def _async_clear_effect(self) -> None:
         coordinator = self.coordinator
+        if coordinator.profile.partition_segment_writes:
+            await coordinator.async_restore_pre_mode()
+            return
         async with coordinator.async_mask_transaction():
             with self._rollback():
                 if coordinator.color_temp_kelvin is not None:
@@ -1003,6 +1008,11 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
     def _validate_basic_request(self, kwargs: Mapping[str, Any], *, profile: ModelProfile | None = None) -> None:
         profile = self.coordinator.profile if profile is None else profile
         model = self.coordinator.model
+        if profile.main_color_modes is not None and any(
+            attribute in kwargs and mode not in profile.main_color_modes
+            for attribute, mode in ((ATTR_RGB_COLOR, "rgb"), (ATTR_COLOR_TEMP_KELVIN, "color_temp"))
+        ):
+            raise ServiceValidationError(translation_domain=DOMAIN, translation_key="area_colour_only")
         with self._rollback():
             if ATTR_BRIGHTNESS in kwargs:
                 self._require_support("brightness", supported=self.supported_color_modes != {ColorMode.ONOFF})

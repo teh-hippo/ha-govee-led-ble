@@ -115,6 +115,15 @@
     }
   },
   "exceptions": {
+    "area_colour_only": {
+      "message": "Set colour on the individual area lights. The main light controls power, brightness and effects."
+    },
+    "last_source": {
+      "message": "Use the main light to turn the lamp off. At least one area must remain selected."
+    },
+    "source_limit": {
+      "message": "Only {maximum} areas can be selected at once. Turn another area off first."
+    },
     "identity_not_ready": {
       "message": "The device's Bluetooth protocol is not confirmed. Wait for a compatible advertisement and try again."
     },

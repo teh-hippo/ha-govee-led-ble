@@ -14,6 +14,7 @@ from .coordinator_status import ParsedMode, StatusDomain
 
 if TYPE_CHECKING:
     from .coordinator_modes import PreModeSnapshot
+    from .effect_deployments import PriorControlState
     from .generated_protocol_adapter import BulkStatusCollector
     from .govee_encryption.session import GoveeEncryptionSession
     from .low_blue_light import LowBlueLightState
@@ -109,6 +110,7 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     _confirmed_identity_fields: set[str]
     control_write_attempts: int
     _static_write_attempts: int
+    _h607c_uncertain_state_fields: set[str]
     source_static_intents: dict[str, int | tuple[int, int, int]]
     _profile_generation: int
     _authorization_generation: int
@@ -164,6 +166,12 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
         self.color_temp_kelvin_source = source if kelvin is not None else "initial"
 
     if TYPE_CHECKING:
+
+        def capture_effect_control_state(self) -> PriorControlState: ...
+
+        async def async_restore_effect_control_state(
+            self, state: PriorControlState, *, overwritten_diy_code: int | None
+        ) -> bool: ...
 
         @property
         def effect_authorization_profile(self) -> ModelProfile: ...

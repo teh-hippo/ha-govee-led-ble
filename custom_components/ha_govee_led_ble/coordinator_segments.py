@@ -25,6 +25,39 @@ _SEGMENT_READ_TIMEOUT = 2.0
 
 
 class _SegmentMixin(_CoordinatorBase):
+    def _discard_unconfirmed_source_colours(self, packets: list[bytes]) -> bool:
+        mask = 0
+        affected = False
+        for packet in packets:
+            static = parse_static_write(packet, self.model, profile=self.profile)
+            if static is not None and (static.rgb is not None or static.kelvin is not None):
+                mask |= static.segment_mask if static.segment_mask is not None else self.profile.whole_device_mask
+        for source in self.profile.light_sources:
+            if not any(mask & (1 << (index - 1)) for index in source.segments):
+                continue
+            affected = True
+            intent = self.source_static_intents.get(source.key)
+            confirmed = (
+                intent is not None
+                and self.segment_state_source == "observed"
+                and all(
+                    kelvin_rendering_matches(self.segment_colors[index - 1], intent, self.profile)
+                    if type(intent) is int
+                    else self.segment_colors[index - 1] == intent
+                    for index in source.segments
+                )
+                and getattr(self, f"{source.key}_kelvin", None) in (None, intent if type(intent) is int else 0)
+            )
+            if confirmed:
+                continue
+            self.source_static_intents.pop(source.key, None)
+            self._expected_state.pop(f"source_kelvin_{source.key}", None)
+            if self.segment_state_source != "observed" and not self._h607c_uncertain_state_fields.intersection(
+                {"color", "color_mode"}
+            ):
+                self._h607c_uncertain_state_fields.add(f"source_colour_{source.key}")
+        return affected
+
     @property
     def _segment_group_count(self) -> int:
         return self.profile.segment_group_count
@@ -124,6 +157,8 @@ class _SegmentMixin(_CoordinatorBase):
         self._segment_query_brightness = None
         self._segment_groups_observed.clear()
         self.segment_state_source = "observed"
+        for source in self.profile.light_sources:
+            self._h607c_uncertain_state_fields.discard(f"source_colour_{source.key}")
         self.segment_state_observed_at = datetime.now().astimezone().isoformat()
         observed = ["segment_colors"]
         if page_brightness is not None:
@@ -212,6 +247,8 @@ class _SegmentMixin(_CoordinatorBase):
         started = time.monotonic()
         rounds = 0
         outcome = "failed"
+        attempts = self._static_write_attempts
+        write_generation = self._mode_write_generation + 1
         async with async_control_intent(self, ControlIntent.USER):
             if not await self.async_refresh_segments():
                 raise RuntimeError("Failed to read segments before colour temperature write")
@@ -317,6 +354,21 @@ class _SegmentMixin(_CoordinatorBase):
                     self._pending_kelvin = None
                     if (
                         outcome not in {"confirmed", "confirmed_rendering"}
+                        and self._static_write_attempts != attempts
+                        and self.profile == profile
+                        and self._profile_generation == generation
+                        and self._mode_write_generation == write_generation
+                    ):
+                        affected_sources = self._discard_unconfirmed_source_colours([packet])
+                        task = asyncio.current_task()
+                        if affected_sources and task is not None and not task.cancelling():
+                            try:
+                                async with asyncio.timeout(_SEGMENT_READ_TIMEOUT):
+                                    await read_pages(time.monotonic() + _SEGMENT_READ_TIMEOUT, mode=True)
+                            except Exception:
+                                _LOGGER.debug("Unconfirmed Kelvin reconciliation did not complete", exc_info=True)
+                    if (
+                        outcome not in {"confirmed", "confirmed_rendering"}
                         and static.whole_strip
                         and (not profile.kelvin_renders_device_white or not profile.static_readback_kelvin)
                         and self.profile == profile
@@ -362,6 +414,10 @@ class _SegmentMixin(_CoordinatorBase):
         expected_colors = {segment - 1: rgb for segments, rgb in resolved for segment in segments}
         expected_brightness: list[int] | None = None
         attempted = False
+        attempted_packets: list[bytes] = []
+        profile = self.profile
+        generation = self._profile_generation
+        write_generation = self._mode_write_generation
         async with async_control_intent(self, ControlIntent.USER):
             segment_revision = self._field_revisions.get("segment_colors", 0)
             try:
@@ -393,12 +449,32 @@ class _SegmentMixin(_CoordinatorBase):
                             except Exception:
                                 _LOGGER.debug("Partial segment paint reconciliation failed", exc_info=True)
                         raise
+                    finally:
+                        if self._static_write_attempts != attempts:
+                            attempted_packets.append(packet)
+                            write_generation = self._mode_write_generation
                 if self.profile.can_read(ReadDomain.SEGMENTS) and (
                     not await self.async_refresh_segments()
                     or any(self.segment_colors[index] != rgb for index, rgb in expected_colors.items())
                     or (expected_brightness is not None and self.segment_brightness != expected_brightness)
                 ):
                     raise RuntimeError("Failed to confirm segment paint")
+            except BaseException:
+                if (
+                    attempted_packets
+                    and self.profile == profile
+                    and self._profile_generation == generation
+                    and self._mode_write_generation == write_generation
+                ):
+                    affected_sources = self._discard_unconfirmed_source_colours(attempted_packets)
+                    task = asyncio.current_task()
+                    if affected_sources and task is not None and not task.cancelling():
+                        try:
+                            async with asyncio.timeout(_SEGMENT_READ_TIMEOUT):
+                                await self.refresh_state(refresh_all=True, query_segments=True)
+                        except Exception:
+                            _LOGGER.debug("Unconfirmed source colour reconciliation failed", exc_info=True)
+                raise
             finally:
                 if attempted:
                     self.async_set_updated_data(self.data or {})
