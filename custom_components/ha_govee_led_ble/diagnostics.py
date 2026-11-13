@@ -15,6 +15,7 @@ from .coordinator_status import decode_status_frame
 from .effect_contracts import diagnostics_release_capabilities
 from .effect_diagnostics import empty_effect_diagnostic_snapshot
 from .h6199_calibration import WHITE_BALANCE_POSITIONS
+from .protocol_core import StatusReply
 from .video_applicability import h6199_camera_controls_state, video_control_states
 
 REDACT_KEYS = {"address", "unique_id"}
@@ -309,7 +310,11 @@ def _light_count_observation(packet_log: list[dict[str, Any]], model: str) -> di
     if model != "H617A":
         return None
     for entry in reversed(packet_log):
-        if entry.get("dir") != "rx" or entry.get("outcome") != "parsed":
+        if (
+            entry.get("dir") != "rx"
+            or entry.get("outcome") != "parsed"
+            or entry.get("domain") != f"0x{StatusReply.AaDomain.light_count:02x}"
+        ):
             continue
         raw = entry.get("raw")
         if not isinstance(raw, str):
