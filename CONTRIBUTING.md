@@ -2,55 +2,96 @@
 
 ## Requesting support or suggesting fixes
 
-Request a new model with a support-request issue and the exact SKU label (for example `H617A`); pull requests for a specific model carry the same label.
+Request a new model with a support-request issue and the exact SKU label; pull requests for a specific model carry the same label.
 For a device-specific problem on a supported model, open an issue or pull request describing the behaviour you saw, with diagnostics.  Fixes are welcome as suggestions, and protocol corrections belong in the model's `.ksy` file.
 Owner confirmations go on the model's confirmation child under [the owner-confirmation tracker](https://github.com/teh-hippo/ha-govee-led-ble/issues/442), not in new issues.
 Do not post Bluetooth addresses, serial numbers, account details or other unique identifiers.
 
 ## Architecture
 
-- Fix the cause rather than adding timing-based workarounds.  Prefer protocol acknowledgements, explicit state transitions and completion-driven backpressure; timeouts bound failures, not normal operation.
-- A dropped BLE link still owns native client resources: call `disconnect()` even when `is_connected` is false.  Retired-client cleanup must be tracked, survive entry-background-task cancellation and be drained on entry teardown without altering a replacement client.
-- Preserve native link failures and explicit session invalidation as `GoveeTransportError` through encryption wrappers.  Background polls handle it like `BleakError`; it must not enable foreground retries or hide programming errors, protocol rejection or ownership failures.
-- `tools/ble/kaitai/**/*.ksy` is the only source of BLE wire structure and the protocol documentation.  Files under `speculative/` are unconfirmed hypotheses; the rest are evidence-backed.  `generated_protocol/` is build output and is never edited.
-- Speculative schemas must retain unqualified suffix bytes; test nonzero tails rather than assuming zero padding when reusing shared types.
-- `const.py` holds one `ModelProfile` per exact SKU, declaring its capabilities.  Compatible models may share a Kaitai adapter but never a whole profile.
-  Products requiring subscription-qualified Pact must revoke confirmation on disconnect, retain cached identity only for presentation, and reconcile a fresh marker or current-subscription advertisement before writes.
-  Reconcile expiring identity at operation boundaries before snapshotting generations; capability getters must be side-effect free.
-- Aim for complete in-scope support on every evidenced revision, not discovery or capability flags alone.  Keep exact-model BLE documentation in Kaitai and product facts in profiles/catalogues; implement execution, editing and recovery through shared capability-driven paths, without per-model UI or manual packet workarounds.
-- Derive Studio catalogue support and apply projections from the exact-model release contract, then narrow them with the effective profile.  Do not duplicate those capability states in catalogue declarations.
-- Apply observed physical geometry and its derived logical segment count together, using the declared product capacity rather than the current or original installed length.  Equivalent profile resolution must preserve observations and in-progress transactions.
-- Bind prepared segment masks to their layout generation and BLE subscription.  Qualify wider masks per product without reinterpreting other models' opaque bytes.
-  Run RGB and brightness batches through one control-owned executor; reconcile earlier physical attempts after a later pre-write rejection, never from guard execution alone or by replaying the batch.
-- Keep offsets, command literals and packet enums out of entity and coordinator code.
-- Every outbound frame goes through `_async_write_packet`, which waits for the previous `0x33` or `0xAA` frame's same-command reply before writing.  Never add per-feature sleeps to pace requests; `ReplyGate` learns commands that never reply on a subscription.
-- Submit complete A3 uploads through `async_write_effect_sequence`.  Framing is validated before transmission, and each physical chunk stays bound to its ordered sequence and authorising header, including injected preview writers.
-  Complete pending upload acknowledgements explicitly on subscription loss or profile invalidation; never poll for connection changes while awaiting an acknowledgement.
-- Keep music upload boundaries and retained-body candidates in `MusicWriteSequence`, not packet state dictionaries.  Invalidate retained body knowledge at the first physical upload attempt, and install the candidate only after the complete sequence and required acknowledgement succeed.
-- Arm reply tracking before the physical write, and accept only validated replies.  A late reply reinstates pacing for a command previously learned as silent; failed writes must not teach silence.
-- Qualify observed colour mode against the latest mode-write generation, effective profile and current subscription.
-  An expired optimistic expectation does not confirm a mode.
-- Where selector readback is ambiguous, complete successful applications as `APPLIED` with `WRITE_COMPLETED` confidence, not confirmed or failed.
-  Keep locally delivered editing context on the current subscription only; missing verification alone must not trigger rollback or retransmission.
-- Plaintext marker compatibility is exact-model policy over a generated wire shape, never a generic malformed-marker fallback.
-  Advertised or previously established encryption requirements always take precedence.
-- Qualify revision-dependent effects before compilation and bind prepared packets to their encoding policy.
-  Retain the content's semantic workflow in compiled effects and check current workflow restrictions without reconstructing intent from transport or wire fields.
-  Preview connection preparation must preserve foreground invalidation without allowing an older preview admission to invalidate a newer preparation.
-- Qualify source power observations against the latest master-power write, effective profile and current subscription before using them to preserve siblings.
-- Compile inline video settings from complete typed requests before the first mode write.
-  Recover omitted mandatory values through qualified independent reads; retained cache values and successful writes are not fresh observations.
-- Evaluate compound revision requirements together: a known failed prerequisite wins over missing identity, and missing identity never grants a control.
-- Entity setters run through `GoveeBLEEntity._async_latest`: the first request sends at once, and while it runs only the newest queued request per control is sent.  Light on, off and attribute calls share one key, with queued `turn_on` attributes merged.  Services, Effect Studio and background work bypass it.
-- Keep generic guarded commands independent of video qualification.  Track interrupted control attempts and uncertainty in coordinator-owned requests, not entity-local transactions.
-- Declare source lights only for independently addressable power controls.
-  Identify the primary light by its stable device-derived unique ID, never by the number or order of enabled lights; an enabled source does not replace a disabled master.
-  Attach segment masks or master brightness only when they leave siblings unchanged; keep uncertain mappings neutral and state unconfirmed until observed.
-  Declare source-specific colour modes and native attributes explicitly.
-  Partitioned segment writes must cover each position exactly once and keep separately addressed sources out of segment masks.
-  Run source turn-on as one coordinator-owned transaction, qualify preserved sibling state there, and reserve segment geometry only for segment-addressed writes.
+Provide one shared Home Assistant light core, repeated through explicit capability declarations.
+Keep real product differences without turning each product into a separate implementation.
+
+### Shared behaviour and product differences
+
+- Trace the complete affected path before editing: capability declaration, public control, preparation, transport, observation and recovery.
+  Compare equivalent operations across entry points and capability combinations, not just the reporting device.
+- Classify each difference as a product fact, a wire-format difference, a genuinely different operation or a defect in the shared mechanism.
+  Put facts in profiles/catalogues, wire structure in Kaitai, and execution in the shared runtime.
+  An identity check, device-named helper, duplicated handler or new feature flag needs an evidenced reason that those existing seams cannot express.
+- Fix a shared cause at its owning layer and migrate affected callers rather than adding an exception beside the symptom.
+  Prefer deleting duplicate paths and redundant state; do not introduce a general framework, growing switch or override hook for every device.
+  A genuine behavioural override must be narrow, typed, capability-selected and use the same validation, transport and recovery boundaries.
+- Keep ordinary controls independent of optional features and transport encodings.
+  Shared grammar does not grant capabilities, and shared transport does not make distinct semantic workflows interchangeable.
+  Preserve semantic intent through preparation rather than reconstructing it from packets later.
+- Identify entities by stable identity and declared role, not enumeration order, enabled-entity counts or display names.
+  A source cannot substitute for an absent or disabled primary light.
+  Declare sources only for independently addressable power controls, with explicit colour modes and native attributes.
+
+### Capability and protocol authority
+
+- `const.py` holds one complete, explicit profile per exact SKU; compatible products may share codecs but never inherit a whole profile.
+  Select command, status and effect grammars independently.
+  Aim for complete in-scope support on every evidenced revision, not discovery or capability flags alone.
+- Give each fact one authority.
+  Derive catalogue support and apply projections from the release contract, narrowed by the effective profile, rather than maintaining parallel capability flags.
+  Preserve distinctions between unknown, unsupported and explicitly disabled.
+- Evaluate revision prerequisites together and fail closed when required identity is missing or a prerequisite fails.
+  Where identity requires subscription qualification, cached identity is presentation-only; require current-subscription evidence before authorising dependent writes.
+  Reconcile expiry at explicit operation boundaries before capturing generations; capability getters must be side-effect free.
+- `tools/ble/kaitai/**/*.ksy` is the only source of BLE wire structure and protocol documentation.
+  Files under `speculative/` are unconfirmed hypotheses; the rest are evidence-backed.
+  Generated outputs are never edited.
+  Keep offsets, command literals and packet enums out of entities and coordinators; preserve unknown fields without assuming zero padding or reinterpreting opaque bytes.
+- Compatibility exceptions belong to evidenced product policy over a generated wire shape, not permissive parsing fallbacks.
+  Advertised or established encryption requirements always take precedence.
 - A new model needs its scene catalogue: run `uv run python tools/ble/refresh_scene_catalogues.py <SKU>` before registering its profile.  A workflow keeps existing catalogues current.
 - Plans and findings for a model live in its issue or pull request, not in `docs/`.
+
+### State, ownership and execution
+
+- Entities adapt Home Assistant inputs and presentation; the coordinator owns admission, state qualification, physical attempts and recovery.
+  Ordinary entity controls send the first request immediately and coalesce later requests to the newest per control.
+  A light's power and attribute requests share one control stream, merging queued attributes; services, Studio and background work bypass this coalescing.
+- Use complete typed requests and prepared results, not expanding keyword lists, positional tuples, string-matched intent or private sentinels in public state.
+  Validate the whole operation before its first state-changing device write, compile once, and retain the metadata required to revalidate it.
+  Check semantic eligibility directly rather than constructing dummy packets or encoding content merely to authorise an operation.
+  Recover omitted mandatory values through qualified independent observations, not successful writes or retained cache alone.
+- Bind prepared work and observations to their actual lifetime: device, effective profile, layout, subscription and operation generation as applicable.
+  Revalidate at physical boundaries, and invalidate dependent knowledge when its authority changes.
+  Older work must not invalidate newer preparation, restore over newer observations or mutate a replacement session.
+- Update physical geometry and derived logical counts together against declared product capacity.
+  Equivalent profile resolution preserves observations and transactions.
+  Segment partitions must cover each position exactly once and exclude separately addressed sources.
+  Require geometry only for operations that address it; preserve siblings only with qualified state and mappings that leave them unchanged.
+- Distinguish admission, preparation, physical attempt, completed delivery and independent confirmation.
+  An executed guard is not a physical attempt; optimistic state and expired expectations are not fresh observations.
+  Where no independent readback exists, successful delivery is completed, not confirmed or failed; required acknowledgements must still succeed.
+  Missing confirmation alone never justifies blind rollback or retransmission.
+  Verification must compare complete shapes and companion values, not a matching subset.
+- Scope mutable state, locks and reservations to the resource they protect.
+  Keep unrelated devices and items independent; do not retain collection-wide locks during device I/O when only one item needs a reservation.
+  Cache derived results at their owning layer, invalidate on meaningful changes, and avoid repeated parsing, serialisation, whole-history rebuilding or persistence for unchanged observations.
+
+### Transport, recovery and lifecycle
+
+- Route every physical write through the common guarded transport.
+  Prefer validated acknowledgements, explicit state transitions and completion-driven backpressure; timeouts bound failure, not normal operation.
+  Arm reply tracking before writing, learn silent commands only from successful attempts on the current subscription, and restore pacing when a valid late reply arrives.
+  Never add feature-specific sleeps or acknowledgement polling.
+- Submit multipart transfers as complete, prevalidated, ordered transactions, including injected writers.
+  Bind every chunk to its authorising sequence and retain typed transfer metadata outside packet state.
+  Invalidate retained payload knowledge at the first physical attempt; install a replacement only after complete delivery and any required acknowledgement.
+  Subscription or profile invalidation must explicitly complete pending waits.
+- Keep shared batch execution and recovery independent of the value being written.
+  Attribute partial failure while holding operation ownership, reconcile actual earlier attempts when later work is rejected, and never replay a batch as recovery.
+  Rollback preserves fresh observations and newer ownership, retains the original error and handles cancellation without leaking reservations or tasks.
+- Preserve transport-failure classification through wrappers without converting protocol rejection, ownership failures or programming errors into retries.
+  Background availability handling must not silently enable foreground retransmission.
+- Initialise owners before registering lifecycle callbacks.
+  Track and drain tasks, acknowledgements and retired native clients through cancellation and teardown, even when the link already reports disconnected.
+  Cleanup must remain bounded and must not touch a replacement client.
 
 ## Support status
 
@@ -75,6 +116,23 @@ Decode-only Kaitai documentation of these is fine; runtime control is not.
 ## Development
 
 Run `make protocol` after a fresh clone, a new worktree or any `.ksy` change, and `make check` before finishing.
+
+### Change and test design
+
+- Organise work by shared root cause and observable contract, not one implementation or test module per device or reported incident.
+  A correct shared fix includes affected callers; unrelated discoveries remain follow-ups.
+- Extend existing contract suites with representative capability partitions and boundary conditions.
+  Prove the intended behaviour and safety invariant through the normal entry point, including relevant state and recovery effects.
+  Avoid assertions about helper layout or duplicated constants, and keep test doubles faithful to public boundary contracts.
+- Characterise surprising device behaviour before changing it, distinguishing an evidenced device constraint from an integration bug.
+  Preserve meaningful characterisation in shared coverage, then remove temporary or duplicate tests.
+  Use explicit synchronisation to test asynchronous ordering and ownership rather than timing guesses.
+- For refactors, compare complete relevant public payloads and generated wire output, not selected fields alone.
+  For fixes, demonstrate the old failure and intended new behaviour without blessing the defect as a compatibility requirement.
+  Report software evidence separately from hardware observations; an accepted write or optimistic UI is not physical confirmation.
+- Review both the exception and the proposed abstraction.
+  Justify any remaining special treatment with evidence, check that equivalent capability combinations use the same core, and remove superseded branches, adapters, state and tests.
+  Prefer a smaller implementation, but do not trade away explicit product declarations or safety boundaries to meet a line-count target.
 
 ## Releases
 

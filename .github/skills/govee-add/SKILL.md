@@ -2,14 +2,14 @@
 name: govee-add
 description: >-
   Add complete Experimental support for a new Govee BLE model. Give it a SKU (and the support-request
-  issue if there is one): it builds the device brief from the device evidence, implements full support,
-  audits itself, opens the PR, merges it and tells the requester.
+  issue if there is one): it builds the device brief from the device evidence, implements full support
+  through shared capability-driven paths, audits itself, opens the PR, merges it and tells the requester.
 license: MIT
 ---
 
 # govee-add
 
-Argument: a SKU (`/govee-add H6076`), optionally the support-request issue.  Read `.github/skills/govee-shared.md` first.
+Argument: a SKU, optionally the support-request issue.  Read `.github/skills/govee-shared.md` first.
 
 Goal: complete Experimental support, merged and available in a master release candidate.
 
@@ -17,8 +17,12 @@ Task list:
 
 1. Build the device brief.
 2. Create the confirmation issue (wording below) under tracker #442, with the SKU label (create it if missing: colour `5319e7`, description `Govee <SKU> device support`).  Its number goes in the profile's `confirmation_issue`.
-3. Implement full support; cover every row of the checklist below or say why a row does not apply.
-4. Run `govee-audit` on the result.  Fix each finding as a fixup to the support commit, re-review, and repeat until the audit is clean.
+3. Map the device brief onto existing capability declarations, codecs and shared operations before implementing.
+   Follow the shared design workflow; cover every row of the checklist below or say why a row does not apply.
+   Complete support should normally add product declarations and evidenced codecs, not another entity, coordinator, editor or recovery path.
+   Where existing machinery cannot express a capability, correct or extend that machinery for all affected callers; keep an override only for evidenced semantic differences.
+4. Run `govee-audit` on both completeness and special treatment in the result.
+   Fix supported root causes as fixups to the support commit, remove superseded code, re-review, and repeat until no actionable findings remain.
 5. Review, commit, `make check`, PR (references the request and the confirmation issue).
 6. When the PR is green, merge it to `master`.
 7. Follow `CONTRIBUTING.md` release policy: wait for the automatic master candidate containing the merge and verify its workflow and assets.  Do not dispatch another master RC or publish stable.
@@ -47,7 +51,10 @@ Support remains Experimental until owner confirmation and maintainer review.
 
 Drop the request line when there is no request.
 
-## New-model file checklist
+## New-model integration checklist
+
+These are integration points, not a requirement to add a new handler or test file for each device.
+Follow existing shared contracts rather than copying the nearest model's implementation.
 
 | File | What it needs |
 | --- | --- |
@@ -58,12 +65,9 @@ Drop the request line when there is no request.
 | `tools/ble/kaitai/speculative/<sku>_*.ksy` | Exact-model schemas (outside `speculative/` only with recorded device traffic). |
 | `scripts/kaitai-runtime-roots.txt`, `scripts/kaitai-runtime-outputs.txt` | Each new `.ksy` root and its generated module. |
 | `README.md` | Device-support row: `[🚧 Experimental](<confirmation issue URL>)`. |
-| `tests/test_const.py` | SKU-set assertions the profile joins. |
-| `tests/test_config_flow.py` | A BLE-name → SKU case per prefix. |
-| `tests/test_effect_catalogue.py`, `tests/test_effect_websocket.py` | SKU in the catalogue model lists. |
-| `tests/test_profile_wire_invariants.py` | One case per distinct effective profile across revisions. |
-| `tests/test_kaitai_protocol.py` | Parse/serialise cases per new schema. |
-| `frontend/tests/unit/backend-contracts.spec.ts`, `frontend/tests/unit/catalogue-validation.spec.ts` | SKU in the model lists. |
+| Existing discovery, profile, catalogue, protocol and frontend contract suites | Register new declarations and cover each distinct effective capability contract, discovery prefix and wire shape through shared parametrisation. |
 
-Often also touched: `protocol_core.py` (generated-module imports), `effect_contracts.py`, `coordinator_status.py`, `generated_protocol_adapter.py`, `music_semantics.py`, `tools/ble/refresh_scene_catalogues.py` with its test, `tests/test_palette_scene_decoder.py` (catalogue fixture count), `tests/test_scenes.py`, a `tests/test_<sku>_*.py` suite, `vulture_whitelist.py`, and `CONTRIBUTING.md` for a new contributor-wide invariant.
+Runtime changes are justified by missing shared behaviour or a new evidenced wire shape, not by adding a SKU alone.
+Extend existing protocol adapters, semantic handlers and shared tests only where the device brief demonstrates a gap.
+Update `CONTRIBUTING.md` only for a new contributor-wide invariant, not a recipe for this device.
 `generated_protocol/` and `frontend/tests/fixtures/backend-contracts.json` are gitignored build outputs; never edit or commit them.

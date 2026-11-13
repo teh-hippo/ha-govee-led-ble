@@ -22,7 +22,12 @@ Read and follow [`CONTRIBUTING.md`](../CONTRIBUTING.md) before planning or imple
 ## Agent-specific reminders
 
 - Use the four-section plan in `.github/PULL_REQUEST_TEMPLATE.md` for new-model work; do not invent a provider-specific planning format.
-- Trace the complete affected path before editing, then prefer shared profile, adapter, coordinator, and test paths over model-specific duplicates.
+- Apply the architecture and change/test-design rules in `CONTRIBUTING.md` before proposing an implementation.
+  Group work by root cause and shared contract, not by device or count of findings.
+- Before adding special treatment, classify the difference and explain why an existing declaration, codec or shared operation cannot express it.
+  Challenge the proposed abstraction too; neither a local exception nor a new framework is the default.
+- Review the complete resulting path, including affected callers and removed code, rather than checking only the reporting device or added lines.
+  Record reusable contributor invariants in `CONTRIBUTING.md`, not named-function recipes or a growing list of past incidents here.
 - Never edit generated protocol or frontend outputs manually.
 - Run focused existing checks while iterating and `make check` before declaring the final tree complete.
 - Run `make package` only when a distributable archive is requested.
