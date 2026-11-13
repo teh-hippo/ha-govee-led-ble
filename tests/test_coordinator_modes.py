@@ -68,11 +68,10 @@ async def test_native_scene_application_requires_exact_capability_and_grammar(
     monkeypatch.setitem(MODEL_SCENES, model, {"synthetic": scene})
     coord.model, coord.profile = model, profile
     coord.is_on = False
-    writer = AsyncMock()
     # Packet encoding needs grammar, not application permission, even for uploaded scenes.
     packets = build_native_scene_packets(model, scene)
     with pytest.raises(ValueError, match="native_scenes application is not supported"):
-        await coord.async_apply_native_scene("synthetic", writer=writer, verify=False, intent=intent)
+        await coord.async_apply_native_scene("synthetic", verify=False, intent=intent)
 
     capability = release_capability(grammar, CapabilityWorkflow.NATIVE_SCENES)
     assert capability is not None
@@ -85,17 +84,15 @@ async def test_native_scene_application_requires_exact_capability_and_grammar(
         coord.profile = replace(profile, effect_grammar=effect_grammar)
         monkeypatch.setitem(MODEL_PROFILES, model, coord.profile)
         with pytest.raises(ValueError, match="grammar and activation route"):
-            await coord.async_apply_native_scene(
-                "synthetic", scene_entry=scene, writer=writer, verify=False, intent=intent
-            )
-    writer.assert_not_awaited()
+            await coord.async_apply_native_scene("synthetic", scene_entry=scene, verify=False, intent=intent)
     assert coord.is_on is False
     assert coord.effect is None
 
     coord.profile = replace(profile, effect_grammar=grammar)
     monkeypatch.setitem(MODEL_PROFILES, model, coord.profile)
-    await coord.async_apply_native_scene("synthetic", writer=writer, verify=False, intent=intent)
-    assert _sent(writer) == [build_power(True, model), *packets]
+    with _music_transport(coord) as transport:
+        await coord.async_apply_native_scene("synthetic", verify=False, intent=intent)
+    assert [entry.args[1] for entry in transport.await_args_list] == [build_power(True, model), *packets]
     assert coord.effect == "synthetic"
 
 
@@ -109,17 +106,17 @@ async def test_h6179_native_scene_uses_wire_selector_for_verification_and_state(
     scene = MODEL_SCENES["H6179"]["karst cave"]
     selector = scene_selector_code("H6179", scene)
     coordinator.is_on = True
-    writer = AsyncMock()
-
-    with patch.object(coordinator, "refresh_state", new_callable=AsyncMock, return_value=True) as refresh:
+    with (
+        _music_transport(coordinator) as transport,
+        patch.object(coordinator, "refresh_state", new_callable=AsyncMock, return_value=True) as refresh,
+    ):
         await coordinator.async_apply_native_scene(
             "karst cave",
             scene_entry=scene,
-            writer=writer,
             verify=True,
         )
 
-    assert _sent(writer) == [build_scene_activation("H6179", selector)]
+    assert [entry.args[1] for entry in transport.await_args_list] == [build_scene_activation("H6179", selector)]
     refresh.assert_awaited_once_with(RefreshRequest(scene_code=selector))
     assert coordinator._scene_code == selector
 
