@@ -1,11 +1,13 @@
 """AA0F is optional diagnostic evidence, never IC metadata or setup authority."""
 
 import io
+from unittest.mock import Mock
 
 import pytest
 from kaitaistruct import KaitaiStream
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.ha_govee_led_ble import diagnostics
 from custom_components.ha_govee_led_ble.const import DOMAIN
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_status import decode_status_frame
@@ -53,3 +55,17 @@ def test_query_and_unknown_tail_have_generated_coverage():
     payload = bytes([0xAA, 0x0F, 15]) + bytes(range(16))
     decoded = decode_status_frame(payload + bytes([xor_checksum(payload)]))
     assert decoded is not None and decoded.generated.body.unknown == bytes(range(16))
+
+
+async def test_diagnostics_decode_only_candidate_count_reports(hass, monkeypatch):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H617A", configuration_url=None)
+    entry = MockConfigEntry(domain=DOMAIN)
+    entry.runtime_data = coordinator
+    for domain, value in [(0x0F, 15), *[(0x01, 1)] * 10]:
+        payload = bytes([0xAA, domain, value]) + bytes(16)
+        coordinator._notify_callback(None, bytearray(payload + bytes([xor_checksum(payload)])))
+    decode = Mock(wraps=decode_status_frame)
+    monkeypatch.setattr(diagnostics, "decode_status_frame", decode)
+    diagnostic = await async_get_config_entry_diagnostics(hass, entry)
+    assert diagnostic["coordinator"]["light_count_observation"]["value"] == 15
+    assert decode.call_count == 1
