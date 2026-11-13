@@ -220,6 +220,13 @@ async def test_h6046_mixed_native_white_revokes_known_rgb_even_when_rendering_is
     assert not coord._static_rgb_known
     assert coord._field_revisions.get("color_temp_kelvin", 0) == baseline
     assert coord.color_temp_kelvin_source != "observed"
+
+    async def refresh(request):
+        for field in ("is_on", "brightness_pct", "color_mode", *request.query_native_settings):
+            coord._field_revisions[field] = coord._field_revisions.get(field, 0) + 1
+        return True
+
+    coord.refresh_state = AsyncMock(side_effect=refresh)
     with pytest.raises(RuntimeError, match="white intent"):
         await async_prepare_effect_control_state(coord, require_restorable_static=True)
 

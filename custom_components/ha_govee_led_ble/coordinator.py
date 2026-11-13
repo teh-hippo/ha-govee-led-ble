@@ -39,6 +39,7 @@ from .const import (
     CONNECTION_MODE_HOLD,
     CONNECTION_MODE_RELEASE,
     DOMAIN,
+    NATIVE_ZONE_CONTROLS,
     REPLY_PACING_TIMEOUT,
     ModelProfile,
     ReadDomain,
@@ -1603,7 +1604,9 @@ class GoveeBLECoordinator(
         ):
             self._static_rgb_known = self.segment_colors == [intent.rgb] * self.profile.segment_count
 
-    def _setting_queries(self, profile: ModelProfile) -> list[tuple[bytes, tuple[str, ...]]]:
+    def _setting_queries(
+        self, profile: ModelProfile, *, fields: frozenset[str] | None = None
+    ) -> list[tuple[bytes, tuple[str, ...]]]:
         from .generated_protocol_adapter import (
             build_boolean_control_query,
             build_bulk_status_query,
@@ -1612,23 +1615,39 @@ class GoveeBLECoordinator(
 
         queries: dict[bytes, tuple[str, ...]] = {}
         if profile.bulk_status_grammar == "H1771":
-            fields = tuple(f"boolean_{control}" for control in sorted(profile.boolean_controls))
+            selected = tuple(f"boolean_{control}" for control in sorted(profile.boolean_controls))
             if profile.supports_power_on_behaviour:
-                fields += ("power_on_behaviour",)
-            if fields:
-                return [(build_bulk_status_query(profile), fields)]
+                selected += ("power_on_behaviour",)
+            domains = None
+            if fields is not None:
+                selected = tuple(field for field in selected if field in fields)
+                domains = tuple(
+                    domain
+                    for domain, reported in (
+                        ("zone_enable", {f"boolean_{name}" for name in NATIVE_ZONE_CONTROLS}),
+                        ("gradual", {"boolean_gradual"}),
+                        ("power_on_behaviour", {"power_on_behaviour"}),
+                    )
+                    if fields & reported
+                )
+            if selected:
+                return [(build_bulk_status_query(profile, domains=domains), selected)]
         if profile.bulk_status_grammar is None:
             for control in sorted(profile.boolean_controls):
                 query = build_boolean_control_query(control, self.model, profile=profile)
                 queries[query] = (*queries.get(query, ()), f"boolean_{control}")
         if profile.supports_power_on_behaviour and profile.bulk_status_grammar is None:
-            fields = (
+            reported = (
                 ("power_on_behaviour", "power_on_open_flag")
                 if profile.setting_grammar == "H607C"
                 else ("power_on_behaviour",)
             )
-            queries[build_power_on_behaviour_query(profile)] = fields
-        return list(queries.items())
+            queries[build_power_on_behaviour_query(profile)] = reported
+        return [
+            (query, selected)
+            for query, reported in queries.items()
+            if (selected := tuple(field for field in reported if fields is None or field in fields))
+        ]
 
     async def async_read_video_setting(self, control: str) -> bool:
         """Recover independent video registers with current-subscription evidence."""
@@ -1691,7 +1710,7 @@ class GoveeBLECoordinator(
         query_black_border: bool | None,
         query_relative_brightness: bool | None,
         query_segments: bool | None,
-        query_native_settings: bool,
+        query_native_settings: bool | frozenset[str],
         query_whole_relative_brightness: bool | None = None,
     ) -> tuple[list[tuple[bytes, ReadDomain, tuple[str, ...]]], dict[str, int]]:
         """Queries to send, each with the domain it reads and the fields it should refresh."""
@@ -1823,7 +1842,10 @@ class GoveeBLECoordinator(
                     for control in H6199_NATIVE_CONTROLS
                 )
         if full_query and query_native_settings:
-            queries.extend((query, ReadDomain.OTHER, fields) for query, fields in self._setting_queries(profile))
+            selected = query_native_settings if isinstance(query_native_settings, frozenset) else None
+            queries.extend(
+                (query, ReadDomain.OTHER, fields) for query, fields in self._setting_queries(profile, fields=selected)
+            )
         return queries, segment_baseline
 
     async def _async_read_optional_h607c_settings(self, client: BleakClient) -> None:
@@ -1860,7 +1882,7 @@ class GoveeBLECoordinator(
         required_domains: frozenset[ReadDomain] | None = None,
         optional_baselines: dict[str, int] | None = None,
         deadline: float | None = None,
-        query_native_settings: bool = True,
+        query_native_settings: bool | frozenset[str] = True,
     ) -> bool:
         client = self._client
         if client is None or not client.is_connected or self._segment_query_incomplete or self._bulk_query_incomplete:
@@ -1951,7 +1973,7 @@ class GoveeBLECoordinator(
                     if optional_baselines is not None and domain not in required:
                         for field, revision in baselines.items():
                             optional_baselines.setdefault(field, revision)
-                    if not await self._async_read_bulk_status(client, deadline=deadline):
+                    if not await self._async_read_bulk_status(client, deadline=deadline, query=query):
                         return domain not in required and all(d not in required for _, d, _ in queries[index + 1 :])
                     continue
 
@@ -2916,6 +2938,7 @@ class GoveeBLECoordinator(
             client = self._client
             if client is None or not client.is_connected or generation != self._profile_generation:
                 return False
+            token = self._notification_token
             authorization_generation = self._authorization_generation
             profile = self._authorization_profile()
             states = video_control_states(self.profile, self)
@@ -3013,6 +3036,8 @@ class GoveeBLECoordinator(
                         query_native_settings=request.query_native_settings,
                         query_segments=request.query_segments,
                     )
+                if self._notification_token is not token:
+                    return False
                 if not ok:
                     if (
                         generation == self._profile_generation
@@ -3034,8 +3059,13 @@ class GoveeBLECoordinator(
                             and authorization_generation == self._authorization_generation
                             and self._client is client
                             and client.is_connected
+                            and self._notification_token is token
                         )
-                if generation != self._profile_generation or authorization_generation != self._authorization_generation:
+                if (
+                    generation != self._profile_generation
+                    or authorization_generation != self._authorization_generation
+                    or self._notification_token is not token
+                ):
                     return False
                 if time.monotonic() >= deadline:
                     break

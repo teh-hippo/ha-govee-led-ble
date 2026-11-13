@@ -667,6 +667,13 @@ async def test_native_source_setting_requires_fresh_matching_readback(
 async def test_preview_requires_complete_source_values_and_preserves_them_in_storage(hass):
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H60B0", configuration_url=None)
     coordinator.profile = PROFILE
+
+    async def refresh(request):
+        for field in ("is_on", "brightness_pct", "color_mode", *request.query_native_settings):
+            coordinator._field_revisions[field] = coordinator._field_revisions.get(field, 0) + 1
+        return True
+
+    coordinator.refresh_state = AsyncMock(side_effect=refresh)
     prior = PriorControlState("scene", True, 50, (1, 2, 3), top_enabled=True, side_enabled=False, bottom_enabled=True)
     coordinator.capture_effect_control_state = MagicMock(return_value=prior)
     with pytest.raises(RuntimeError, match="restorable source values"):
