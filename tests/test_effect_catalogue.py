@@ -3,9 +3,11 @@
 import base64
 from dataclasses import replace
 from typing import Any, cast
+from unittest.mock import Mock
 
 import pytest
 
+from custom_components.ha_govee_led_ble import music_commands
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, MUSIC_MODE_SLUGS
 from custom_components.ha_govee_led_ble.coordinator_expectations import expectations_from_packet
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
@@ -498,6 +500,19 @@ def test_h7020_catalogue_exposes_exact_music_roster_and_rhythm_response() -> Non
         },
     }
     assert all(music_settings[mode.id]["parameters"] == {} for mode in H7020_NATIVE_MUSIC_MODES if mode.id != "rhythm")
+
+
+def test_music_availability_reuses_validation_only_for_equivalent_profiles(monkeypatch) -> None:
+    profile = replace(MODEL_PROFILES["H617A"], name="catalogue-availability-cache")
+    resolve = Mock(wraps=music_commands.resolve_music_profile)
+    monkeypatch.setattr(music_commands, "resolve_music_profile", resolve)
+    assert music_commands.music_default_available("H617A", "rhythm", profile=profile)
+    assert music_commands.music_default_available("H617A", "rhythm", profile=replace(profile))
+    assert resolve.call_count == 1
+    narrowed = replace(profile, music_modes=())
+    assert not music_commands.music_default_available("H617A", "rhythm", profile=narrowed)
+    assert not music_commands.music_default_available("H617A", "rhythm", profile=replace(narrowed))
+    assert resolve.call_count == 2
 
 
 def test_release_capability_contract_covers_every_preview_workflow() -> None:
