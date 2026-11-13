@@ -637,7 +637,7 @@ class GoveeBLECoordinator(
         return "ready" if self.profile.supports_rgb else "unsupported"
 
     async def async_prepare_identity_gated_control(self) -> Callable[[], None]:
-        if not self.identity_gated_controls and not self.profile.static_identity_fields:
+        if not self.identity_gated_controls and not get_profile(self.model).static_identity_fields:
             return lambda: None
         self._refresh_h607c_advertisements()
         async with async_control_intent(self, ControlIntent.BACKGROUND):
@@ -1341,13 +1341,6 @@ class GoveeBLECoordinator(
         """
         lifetime = self._client, self._notification_token, self._profile_generation, self._authorization_generation
         await self._reply_gate.wait()
-        if arm_expected and lifetime != (
-            self._client,
-            self._notification_token,
-            self._profile_generation,
-            self._authorization_generation,
-        ):
-            raise ValueError("Control context changed while waiting for device reply")
         try:
             self._require_not_shutdown()
             self._require_not_dreamview_claimed()
@@ -1400,7 +1393,8 @@ class GoveeBLECoordinator(
         if parsed.static is not None:
             static_identity_fields |= self.profile.static_identity_fields
         if static_identity_fields and (
-            lifetime != (self._client, subscription, generation, authorization_generation)
+            not arm_expected
+            and lifetime != (self._client, subscription, generation, authorization_generation)
             or self._client is not client
             or not client.is_connected
             or subscription is None
@@ -1414,6 +1408,13 @@ class GoveeBLECoordinator(
             raise ValueError("Device profile changed before control write; refresh and retry")
         if arm_expected and authorization_generation != self._authorization_generation:
             raise ValueError("Device identity changed before control write; refresh and retry")
+        if arm_expected and lifetime != (
+            self._client,
+            self._notification_token,
+            self._profile_generation,
+            self._authorization_generation,
+        ):
+            raise ValueError("Control context changed while waiting for device reply")
         if self.profile is not parsed_profile:
             parsed = parse_write_state(packet, self.model, profile=self.profile)
         requested = expectations_from_packet(
@@ -2048,6 +2049,8 @@ class GoveeBLECoordinator(
             try:
                 validator(packet, self.profile)
             except ValueError:
+                if self.profile.command_operations != frozenset({"power"}):
+                    raise
                 validator(packet, get_profile(self.model))
                 required |= fields
                 continue

@@ -2137,6 +2137,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         effect_workflows=frozenset({"native_scenes", "edited_palette_scenes", "single", "multi", "native_music"}),
         colour_mode_query_selector=1,
         profile_identity_fields=frozenset({"fw_version", "hw_version"}),
+        static_identity_fields=frozenset({"fw_version", "hw_version"}),
         profile_pact_dependent=True,
         read_domains=frozenset(
             {ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE, ReadDomain.FIRMWARE, ReadDomain.HARDWARE}
@@ -2815,7 +2816,6 @@ def device_profile(
                 status_grammar="H6181",
                 brightness_wire_range=(20, 254),
                 outbound_transform=_h6181_legacy_colour_wire if legacy_colour else _h6181_wire,
-                static_identity_fields=profile.profile_identity_fields,
                 diy_upload_transport="a1_02",
                 music_modes=(),
                 music_variants=(),
@@ -2834,6 +2834,7 @@ def device_profile(
         modes = profile.music_modes if palette_music else ("dynamic", "soft")
         return replace(
             profile,
+            static_identity_fields=frozenset(),
             brightness_wire_range=None if percentage else (20, 254),
             outbound_transform=None if percentage else _h6181_wire,
             music_modes=modes if percentage else (),

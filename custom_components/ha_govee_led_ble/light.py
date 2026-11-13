@@ -44,6 +44,7 @@ from .const import (
     ModelProfile,
     ReadDomain,
     effect_category_for_content_kind,
+    get_profile,
     light_unique_id,
     resolve_model,
     supported_effect_categories,
@@ -835,8 +836,6 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
     ) -> Callable[[], Awaitable[None]]:
         key = normalise_effect_name(effect_name)
         coordinator = self.coordinator
-        if key == EFFECT_OFF:
-            return self._async_clear_effect
         try:
             selected = resolve_effect_selector(self._selector_entries(), effect_name)
         except EffectValidationError as exc:
@@ -961,24 +960,6 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             translation_placeholders={"effect": key},
         )
 
-    async def _async_clear_effect(self) -> None:
-        coordinator = self.coordinator
-        async with coordinator.async_mask_transaction():
-            with self._rollback():
-                if coordinator.color_temp_kelvin is not None:
-                    packet = build_color_temp(
-                        coordinator.color_temp_kelvin, coordinator.model, profile=coordinator.profile
-                    )
-                    self._attr_color_mode = ColorMode.COLOR_TEMP
-                else:
-                    packet = build_color_rgb(
-                        *coordinator.rgb_color,
-                        coordinator.model,
-                        profile=coordinator.profile,
-                    )
-                    self._attr_color_mode = ColorMode.RGB
-                await coordinator.send_command(packet)
-
     def _validate_basic_request(self, kwargs: Mapping[str, Any], *, profile: ModelProfile | None = None) -> None:
         profile = self.coordinator.profile if profile is None else profile
         model = self.coordinator.model
@@ -1016,7 +997,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             self.coordinator.profile.brightness_zero_turns_off and kwargs.get(ATTR_BRIGHTNESS) == 0
         ):
             guard = None
-            if self.coordinator.identity_gated_controls or self.coordinator.profile.static_identity_fields:
+            if self.coordinator.identity_gated_controls or get_profile(self.coordinator.model).static_identity_fields:
                 self._validate_basic_request(kwargs, profile=self.coordinator.native_presentation_profile)
                 guard = await self.coordinator.async_prepare_identity_gated_control()
             async with self.coordinator.async_mask_transaction():
@@ -1035,6 +1016,13 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             async with async_control_intent(self.coordinator, ControlIntent.USER):
                 await self._async_turn_off(clear_workspace_on_success=active_workspace is not None)
             return
+        if normalise_effect_name(str(kwargs.get(ATTR_EFFECT, ""))) == EFFECT_OFF:
+            kwargs.pop(ATTR_EFFECT)
+            if not (ATTR_RGB_COLOR in kwargs or ATTR_COLOR_TEMP_KELVIN in kwargs):
+                if self.coordinator.color_temp_kelvin is not None:
+                    kwargs[ATTR_COLOR_TEMP_KELVIN] = self.coordinator.color_temp_kelvin
+                else:
+                    kwargs[ATTR_RGB_COLOR] = self.coordinator.rgb_color
         self._validate_basic_request(kwargs)
         custom_requested = (
             ATTR_EFFECT in kwargs
