@@ -6,11 +6,12 @@ import binascii
 from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from homeassistant.core import HomeAssistant
 
+from custom_components.ha_govee_led_ble import effect_scenes
 from custom_components.ha_govee_led_ble.const import device_profile, get_profile
 from custom_components.ha_govee_led_ble.effect_domain import (
     NativeEffect,
@@ -116,6 +117,19 @@ def test_catalogue_and_identity_errors() -> None:
 
     assert scene_catalogue_payload("H6199")["enabled"] is True
     assert scene_catalogue_payload("H6076")["enabled"] is True
+
+
+@pytest.mark.parametrize("model", ["H617A", "H6199", "H617E", "H60A6"])
+def test_catalogue_preserves_labels_without_repeated_identity_scans(monkeypatch, model) -> None:
+    expected = [resolve_scene(model, scene.scene_id, scene.effect_id).label for scene in SCENE_ENTRIES[model]]
+    resolve = Mock(wraps=effect_scenes.resolve_scene_identity)
+    monkeypatch.setattr(effect_scenes, "resolve_scene_identity", resolve)
+    profile = replace(get_profile(model), selector_only_scene_bits=16)
+    payload = scene_catalogue_payload(model, profile=profile)
+    scenes = cast(list[dict[str, Any]], payload["scenes"])
+    assert [scene["display_name"] for scene in scenes] == expected
+    assert all(scene["selector_only"] for scene in scenes)
+    assert resolve.call_count == 0
 
 
 def test_h617e_legacy_scene_identity_preserves_its_original_metadata() -> None:

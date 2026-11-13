@@ -155,6 +155,10 @@ def scene_catalogue_payload(model: str, *, profile: ModelProfile | None = None) 
         raise ValueError(f"{model} has no native scene catalogue")
     if profile is not None:
         entries = tuple(scene_for_profile(entry, profile) for entry in entries if scene_supported(entry, profile))
+    labels = {
+        (entry.scene_id, entry.effect_id): MODEL_SCENE_LABELS[model].get(key, entry.display_name)
+        for key, entry in reversed(MODEL_SCENES[model].items())
+    }
     categories: list[JsonValue] = []
     seen_categories: set[int] = set()
     for entry in entries:
@@ -166,7 +170,7 @@ def scene_catalogue_payload(model: str, *, profile: ModelProfile | None = None) 
         "sku": model,
         "enabled": (get_profile(model) if profile is None else profile).supports_scenes,
         "categories": categories,
-        "scenes": [_scene_summary(model, entry) for entry in entries],
+        "scenes": [_scene_summary(entry, labels[entry.scene_id, entry.effect_id]) for entry in entries],
     }
 
 
@@ -209,7 +213,7 @@ def scene_detail_payload(
         speed_index,
     )
     return {
-        "scene": _scene_summary(model, resolved.entry),
+        "scene": _scene_summary(resolved.entry, resolved.label),
         "content": effect_content_to_dict(content),
         "catalogue_content": effect_content_to_dict(catalogue_content),
         "has_default": scene_default is not None,
@@ -427,8 +431,7 @@ def resolve_scene_application_body(
     return body, resolved_speed
 
 
-def _scene_summary(model: str, entry: SceneEntry) -> dict[str, JsonValue]:
-    resolved = resolve_scene(model, entry.scene_id, entry.effect_id)
+def _scene_summary(entry: SceneEntry, label: str) -> dict[str, JsonValue]:
     parameter_kind = (
         "none"
         if entry.selector_only or not entry.param
@@ -446,7 +449,7 @@ def _scene_summary(model: str, entry: SceneEntry) -> dict[str, JsonValue]:
         "category": entry.category,
         "name": entry.name,
         "variant": entry.variant,
-        "display_name": resolved.label,
+        "display_name": label,
         "scene_type": 0 if entry.selector_only else entry.scene_type,
         "selector_only": entry.selector_only,
         "parameter_kind": parameter_kind,
