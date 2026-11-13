@@ -35,7 +35,7 @@ async def async_setup_entry(
 
     def add_qualified() -> None:
         nonlocal added, strings_added, power_on_added
-        if not power_on_added and coordinator.profile.supports_power_on_behaviour:
+        if not power_on_added and coordinator.native_presentation_profile.supports_power_on_behaviour:
             power_on_added = True
             async_add_entities([GoveeBLEPowerOnBehaviourSelect(entry)])
         if not strings_added and coordinator.profile.configured_string_counts:
@@ -139,7 +139,7 @@ class GoveeBLEPowerOnBehaviourSelect(GoveeBLEEntity, SelectEntity):
 
     @property
     def available(self) -> bool:
-        return self.coordinator.profile.supports_power_on_behaviour and super().available
+        return self.coordinator.native_presentation_profile.supports_power_on_behaviour and super().available
 
     @property
     def current_option(self) -> str | None:
