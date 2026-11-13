@@ -580,7 +580,7 @@ async def test_native_selector_without_default_guards_physical_write(hass, monke
     monkeypatch.setattr(backend.preview, "async_supersede_device", supersede)
     writes = []
 
-    async def send(packet):
+    async def send(packet, **_kwargs):
         writes.append(packet)
         if during in {"power", "retained_power"}:
             coordinator.video_saturation = 50
@@ -610,8 +610,11 @@ async def test_native_selector_without_default_guards_physical_write(hass, monke
     else:
         with pytest.raises((HomeAssistantError, ValueError)) as error:
             await entity.async_turn_on(effect="Video: Movie")
+        cause = error.value
+        while cause.__cause__ is not None:
+            cause = cause.__cause__
         assert any(
-            message in str(error.value.__cause__ or error.value)
+            message in str(cause)
             for message in (
                 "saturation is unsupported",
                 "Retained video settings changed",

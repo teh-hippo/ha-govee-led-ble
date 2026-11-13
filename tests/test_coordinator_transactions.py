@@ -6,8 +6,9 @@ from unittest.mock import ANY, AsyncMock, MagicMock, call, patch
 
 import pytest
 from bleak import BleakError
+from homeassistant.exceptions import HomeAssistantError
 
-from custom_components.ha_govee_led_ble.const import MODEL_PROFILES
+from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ReadDomain
 from custom_components.ha_govee_led_ble.control_arbiter import BLEControlArbiter, ControlIntent
 from custom_components.ha_govee_led_ble.effect_compiler import compile_effect
 from custom_components.ha_govee_led_ble.effect_deployments import (
@@ -18,6 +19,7 @@ from custom_components.ha_govee_led_ble.effect_deployments import (
 from custom_components.ha_govee_led_ble.effect_domain import BuiltinScene, CatalogueRef, LibraryItem, SingleEffect
 from custom_components.ha_govee_led_ble.effect_runtime import EffectDeploymentEngine, _DeploymentTransaction
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
+    build_brightness,
     build_brightness_query,
     build_firmware_query,
     build_hardware_query,
@@ -26,6 +28,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_subordinate_query,
 )
 from custom_components.ha_govee_led_ble.govee_encryption import GoveeTransportError
+from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_packets
 from custom_components.ha_govee_led_ble.protocol_core import StatusReply
 from custom_components.ha_govee_led_ble.reply_pacing import ReplyGate
@@ -40,6 +43,127 @@ M = "custom_components.ha_govee_led_ble.coordinator"
 
 def _transform_packet(packet: bytes) -> bytes:
     return b"\xfe" + packet
+
+
+@pytest.mark.parametrize("on", [False, True])
+async def test_write_only_power_delivery_clears_previous_failure_without_observation(coord, monkeypatch, on):
+    coord.profile = replace(coord.profile, read_domains=frozenset(), setup_required_read_domains=frozenset())
+    device = _c(write_gatt_char=AsyncMock(side_effect=TimeoutError("ambiguous power write")))
+    coord._client = device
+    monkeypatch.setattr(coord, "_ensure_connected", AsyncMock(return_value=device))
+    light = GoveeBLELight(coord)
+    light.hass = coord.hass
+    light.async_write_ha_state = MagicMock()
+    revisions = dict(coord._field_revisions)
+
+    with pytest.raises(HomeAssistantError):
+        await light.async_turn_on()
+    assert light.is_on is None
+
+    device.write_gatt_char.side_effect = None
+    await (light.async_turn_on() if on else light.async_turn_off())
+
+    assert light.is_on is on
+    assert not coord.control_state_uncertain("is_on")
+    assert coord._field_revisions == revisions
+    assert [entry.args[1] for entry in device.write_gatt_char.await_args_list] == [build_power(True), build_power(on)]
+
+
+@pytest.mark.parametrize("retry", ["transport", "confirmation", "guard_rejected"])
+async def test_interrupted_retry_uses_last_physical_attempt_revision(coord, monkeypatch, retry):
+    device = _c(write_gatt_char=AsyncMock())
+    coord.is_on = True
+    coord._client = device
+    coord._notification_token = object()
+
+    async def connected():
+        coord._client = device
+        return device
+
+    async def write(*_args, **_kwargs):
+        if device.write_gatt_char.await_count == 1:
+            coord._expected_state.clear()
+            coord._notify_callback(None, bytearray(_packet(0xAA, 4, [75])))
+            if retry == "transport":
+                raise BleakError("retryable first write")
+        else:
+            raise TimeoutError("ambiguous retry")
+
+    validate = coord._require_writable_packet
+    validations = 0
+
+    def qualified(*args, **kwargs):
+        nonlocal validations
+        validations += 1
+        validate(*args, **kwargs)
+        if retry == "guard_rejected" and validations == 4:
+            raise ValueError("final guard rejected retry")
+
+    device.write_gatt_char.side_effect = write
+    monkeypatch.setattr(coord, "_ensure_connected", connected)
+    monkeypatch.setattr(coord, "_require_writable_packet", qualified)
+    monkeypatch.setattr(coord, "refresh_state", AsyncMock(return_value=False))
+    monkeypatch.setattr(coord, "_async_read_setting_fields", AsyncMock(return_value=False))
+    light = GoveeBLELight(coord)
+    light.hass = coord.hass
+    light.async_write_ha_state = MagicMock()
+
+    with pytest.raises(HomeAssistantError) as error:
+        await light.async_turn_on(brightness=128)
+
+    assert error.value.translation_key == "partial_command"
+    assert coord._field_revisions["brightness_pct"] == 1
+    assert coord.control_write_attempts == device.write_gatt_char.await_count == (1 if retry == "guard_rejected" else 2)
+    assert coord.control_state_uncertain("brightness_pct") is (retry != "guard_rejected")
+    assert coord.brightness_pct == (75 if retry == "guard_rejected" else 50)
+    if retry != "guard_rejected":
+        assert "brightness_pct" not in coord._expected_state
+
+
+@pytest.mark.parametrize(
+    ("readable", "observed"),
+    [
+        (frozenset(), False),
+        (frozenset({ReadDomain.POWER}), False),
+        (MODEL_PROFILES["H617A"].read_domains, False),
+        (MODEL_PROFILES["H617A"].read_domains, True),
+    ],
+)
+async def test_interrupted_control_queries_only_attempted_readable_fields(coord, monkeypatch, readable, observed):
+    coord.profile = replace(coord.profile, read_domains=readable, setup_required_read_domains=frozenset())
+    coord.is_on = True
+    coord.brightness_pct = 20
+    device = _c(write_gatt_char=AsyncMock())
+    coord._client = device
+    coord._notification_token = object()
+    monkeypatch.setattr(coord, "_ensure_connected", AsyncMock(return_value=device))
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet == build_brightness(50):
+            if observed:
+                coord._expected_state.clear()
+                coord._notify_callback(None, bytearray(_packet(0xAA, 4, [75])))
+            raise TimeoutError("ambiguous brightness write")
+        assert packet == build_brightness_query("H617A")
+        coord._notify_callback(None, bytearray(_packet(0xAA, 4, [37])))
+
+    device.write_gatt_char.side_effect = write
+    light = GoveeBLELight(coord)
+    light.hass = coord.hass
+    light.async_write_ha_state = MagicMock()
+    reconciled = not observed and ReadDomain.BRIGHTNESS in readable
+
+    with pytest.raises(HomeAssistantError) as error:
+        await light.async_turn_on(brightness=128)
+
+    assert error.value.translation_key == "partial_command"
+    assert coord.control_write_attempts == 1
+    assert [entry.args[1] for entry in device.write_gatt_char.await_args_list] == [
+        build_brightness(50),
+        *([build_brightness_query("H617A")] if reconciled else []),
+    ]
+    assert coord.brightness_pct == (75 if observed else 37 if reconciled else 20)
+    assert coord.control_state_uncertain("brightness_pct") is (not observed and not reconciled)
 
 
 @pytest.mark.parametrize("model", ["H617A", "H6199"])

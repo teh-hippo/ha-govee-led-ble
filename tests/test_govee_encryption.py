@@ -24,9 +24,10 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.ha_govee_led_ble import light as light_platform
 from custom_components.ha_govee_led_ble import switch as switch_platform
 from custom_components.ha_govee_led_ble.advertisement import parse_govee_advertisement
-from custom_components.ha_govee_led_ble.const import CONF_MODEL, DOMAIN
+from custom_components.ha_govee_led_ble.const import CONF_MODEL, DOMAIN, ReadDomain
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_brightness_query,
     build_power,
@@ -346,10 +347,21 @@ async def test_h607c_interrupted_power_reports_or_reconciles_uncertainty(
 
     device.write_gatt_char.side_effect = write
     if confirmation == "none":
-        monkeypatch.setattr(coordinator, "_refresh_connected_state", AsyncMock(return_value=False))
+        monkeypatch.setattr(coordinator, "_async_read_setting_fields", AsyncMock(return_value=False))
     with pytest.raises(HomeAssistantError) as error:
         await light.async_turn_on(rgb_color=(12, 34, 56), brightness=100)
 
+    if confirmation == "reconcile":
+        assert light.is_on is None
+        assert device.write_gatt_char.await_count == 1
+        assert await coordinator.refresh_state(
+            RefreshRequest(
+                refresh_all=True,
+                query_segments=False,
+                query_native_settings=False,
+                required_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS}),
+            )
+        )
     assert error.value.translation_key == "partial_command"
     assert coordinator.control_write_attempts == 1
     assert device.write_gatt_char.await_count == (3 if confirmation == "reconcile" else 1)
@@ -478,7 +490,7 @@ async def test_h607c_interrupted_colour_is_not_reported_as_confirmed(h607c_light
 async def test_h607c_unconfirmed_power_is_not_retried_during_colour_request(h607c_light, monkeypatch, caplog):
     coordinator, device, light = h607c_light
     monkeypatch.setattr(coordinator, "refresh_state", AsyncMock(return_value=False))
-    monkeypatch.setattr(coordinator, "_refresh_connected_state", AsyncMock(return_value=False))
+    monkeypatch.setattr(coordinator, "_async_read_setting_fields", AsyncMock(return_value=False))
     with pytest.raises(HomeAssistantError) as error:
         await light.async_turn_on(rgb_color=(12, 34, 56))
     assert error.value.translation_key == "partial_command"

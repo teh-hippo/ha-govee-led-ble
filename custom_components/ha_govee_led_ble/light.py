@@ -1362,11 +1362,8 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                             await coordinator.async_set_segment_kelvin(
                                 packet,
                                 requested_kelvin=kwargs[ATTR_COLOR_TEMP_KELVIN],
-                                **(
-                                    {"write_guard": request.before_write}
-                                    if native_write_guard is not None or effect_write_guard is not None
-                                    else {}
-                                ),
+                                write_guard=request.before_write,
+                                on_write=request.on_write,
                             )
                         else:
                             await request.send(packet)
