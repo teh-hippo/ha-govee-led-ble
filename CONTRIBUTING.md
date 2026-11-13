@@ -57,6 +57,8 @@ Keep real product differences without turning each product into a separate imple
 
 ### State, ownership and execution
 
+- Prepare effect recovery from fresh required observations before checking restorable source state.
+  Query only the native settings needed by the operation, and distinguish unsafe restoration from a Bluetooth connection failure.
 - Entities adapt Home Assistant inputs and presentation; the coordinator owns admission, state qualification, physical attempts and recovery.
   Ordinary entity controls send the first request immediately and coalesce later requests to the newest per control.
   A light's power and attribute requests share one control stream, merging queued attributes; services, Studio and background work bypass this coalescing.

@@ -613,7 +613,8 @@ def _profile_coordinator(model: str):
 
     async def refresh(request=DEFAULT_REFRESH_REQUEST):
         if request.refresh_all:
-            for field in ("is_on", "brightness_pct", "color_mode"):
+            native = request.query_native_settings if isinstance(request.query_native_settings, frozenset) else ()
+            for field in ("is_on", "brightness_pct", "color_mode", *native):
                 coordinator._field_revisions[field] = coordinator._field_revisions.get(field, 0) + 1
         if "blank_screen" in request.display_settings:
             for field in (

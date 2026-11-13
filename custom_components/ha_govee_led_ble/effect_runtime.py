@@ -88,11 +88,15 @@ _LOGGER = logging.getLogger(__name__)
 type _PriorEffectOrigin = tuple[ObservedDeviceState | None, ActiveEffectWorkspace | None]
 
 
-class EffectStateReadError(RuntimeError):
+class EffectPreparationError(RuntimeError):
+    """Required observations or lossless recovery are unavailable before a write."""
+
+
+class EffectStateReadError(EffectPreparationError):
     """Required independent observations could not be acquired."""
 
 
-class EffectRestorationError(RuntimeError):
+class EffectRestorationError(EffectPreparationError):
     """The observed state cannot be restored without losing its semantics."""
 
 
@@ -1578,6 +1582,44 @@ async def async_prepare_effect_control_state(
 ) -> bool:
     """Refresh ordinary prior state, optionally requiring a lossless static restore."""
     profile = coordinator.profile
+    refreshed = False
+    if profile.state_readable and (not require_restorable_static or profile.light_sources):
+        native_fields = frozenset(
+            f"boolean_{name}" for name in (*NATIVE_ZONE_CONTROLS, "gradual") if name in profile.boolean_controls
+        )
+        revisions = getattr(coordinator, "_field_revisions", {})
+        baselines = {
+            field: revisions.get(field, 0)
+            for field, readable in (
+                ("is_on", profile.can_read(ReadDomain.POWER)),
+                ("brightness_pct", profile.can_read(ReadDomain.BRIGHTNESS)),
+                ("color_mode", profile.supports_color_mode_readback),
+                *((field, True) for field in native_fields),
+            )
+            if readable and hasattr(coordinator, "_field_revisions")
+        }
+        refreshed = (
+            await coordinator.refresh_state(
+                RefreshRequest(
+                    refresh_all=True,
+                    query_segments=False
+                    if require_restorable_static or profile.segment_colour_mode_ambiguous
+                    else None,
+                    query_native_settings=native_fields,
+                    required_domains=profile.read_domains
+                    & {ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE, ReadDomain.MODE},
+                ),
+            )
+            is True
+        )
+        if not refreshed or any(
+            coordinator._field_revisions.get(field, 0) <= baseline for field, baseline in baselines.items()
+        ):
+            raise EffectStateReadError(
+                "Could not read current power, mode, brightness and source states before applying the effect"
+            )
+        if require_restorable_static and coordinator.profile != profile:
+            raise EffectStateReadError("The device profile changed while preparing the effect")
     capture = getattr(coordinator, "capture_effect_control_state", None)
     prior = capture() if require_restorable_static and capture is not None else None
     prior_mode = prior.mode if isinstance(prior, PriorControlState) else _coordinator_mode(coordinator)
@@ -1627,14 +1669,7 @@ async def async_prepare_effect_control_state(
         if any(
             name in profile.boolean_controls and getattr(prior, name, None) is None for name in NATIVE_ZONE_CONTROLS
         ):
-            zones = (
-                "left and right bar"
-                if profile.setting_grammar == "H6046"
-                else "pole and base"
-                if profile.setting_grammar == "H607C"
-                else "panel and ring"
-            )
-            raise EffectRestorationError(f"Could not read restorable {zones} enablement before preview")
+            raise EffectRestorationError("Could not read restorable source enablement before preview")
         if (
             profile.setting_grammar == "H607C"
             and prior_mode == "custom"
@@ -1653,13 +1688,16 @@ async def async_prepare_effect_control_state(
         if profile.segment_colour_mode_ambiguous and not (
             isinstance(prior, PriorControlState)
             and (
-                prior.static_rgb_known or prior.restorable_bar_white(profile) or prior.restorable_source_colour(profile)
+                prior.static_rgb_known
+                or getattr(coordinator, "_static_rgb_known", False) is True
+                or prior.restorable_bar_white(profile)
+                or prior.restorable_source_colour(profile)
             )
         ):
             raise EffectRestorationError(
                 "The current per-bulb RGB or white intent cannot be safely restored after preview"
             )
-        if not profile.configured_string_counts:
+        if not profile.configured_string_counts and not profile.light_sources:
             return True
         if (
             not profile.supports_segments
@@ -1668,6 +1706,15 @@ async def async_prepare_effect_control_state(
         ):
             raise EffectStateReadError("Could not read a restorable current segment layout before preview")
         prior = capture() if capture is not None else None
+        if profile.segment_colour_mode_ambiguous and not (
+            isinstance(prior, PriorControlState)
+            and (
+                prior.static_rgb_known or prior.restorable_bar_white(profile) or prior.restorable_source_colour(profile)
+            )
+        ):
+            raise EffectRestorationError(
+                "The current per-bulb RGB or white intent cannot be safely restored after preview"
+            )
         colours = (
             prior.segment_colors
             if isinstance(prior, PriorControlState)
@@ -1694,31 +1741,6 @@ async def async_prepare_effect_control_state(
         return True
     if not profile.state_readable:
         return False
-    revisions = getattr(coordinator, "_field_revisions", {})
-    baselines = {
-        field: revisions.get(field, 0)
-        for field, readable in (
-            ("is_on", profile.can_read(ReadDomain.POWER)),
-            ("brightness_pct", profile.can_read(ReadDomain.BRIGHTNESS)),
-            ("color_mode", profile.supports_color_mode_readback),
-        )
-        if readable and hasattr(coordinator, "_field_revisions")
-    }
-    refreshed = (
-        await coordinator.refresh_state(
-            RefreshRequest(
-                refresh_all=True,
-                query_segments=False if profile.segment_colour_mode_ambiguous else None,
-                required_domains=profile.read_domains
-                & {ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE, ReadDomain.MODE},
-            ),
-        )
-        is True
-    )
-    if not refreshed or any(
-        coordinator._field_revisions.get(field, 0) <= baseline for field, baseline in baselines.items()
-    ):
-        raise RuntimeError("Could not read the current power, mode and brightness before applying the effect")
     if (
         not profile.segment_colour_mode_ambiguous
         and profile.supports_segments
@@ -1727,7 +1749,7 @@ async def async_prepare_effect_control_state(
         and await coordinator.async_refresh_segments() is not True
         and not profile.configured_string_counts
     ):
-        raise RuntimeError("Could not read the current segment layout before applying the effect")
+        raise EffectStateReadError("Could not read the current segment layout before applying the effect")
     return True
 
 
