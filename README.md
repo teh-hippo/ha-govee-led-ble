@@ -50,7 +50,8 @@ H607C exposes candidate RGB, colour-temperature and Gradual controls.  If its Bl
 H6046 and H607C expose separate source lights on compatible revisions.
 H60A6 exposes panel and ring lights; [ring brightness is not independently supported](https://github.com/teh-hippo/ha-govee-led-ble/issues/402).
 H1771 source switches are numbered until their physical mapping is confirmed.
-H60B0's main light controls power, brightness and effects.  Set colour and colour temperature on its top, side and bottom lights; the bottom is white-only.
+H60B0's main light controls power, brightness, effects and combined colour.  RGB applies to its top and side lights; colour temperature also applies to its white-only bottom light, without changing area selection.
+Use the individual area lights for independent settings.  The main light reports a common colour only when the relevant areas agree.
 Source selection follows the detected protocol revision, including the two-area limit and separate master-off control.  Native DIY features also follow that revision.
 H60B2 exposes bottom, middle and top lights with independent power, brightness, RGB and colour temperature.
 

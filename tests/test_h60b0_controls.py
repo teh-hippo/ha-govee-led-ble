@@ -62,47 +62,126 @@ def frame(prefix: str) -> bytes:
 
 @pytest.mark.parametrize("pact_code", [1, 2, 3])
 @pytest.mark.parametrize("colour", [{"rgb_color": (1, 2, 3)}, {"color_temp_kelvin": 5000}])
-async def test_main_colour_is_rejected_without_changing_sources(mock_coordinator, pact_code, colour):
-    coordinator = mock_coordinator
-    coordinator.model, coordinator.profile = "H60B0", device_profile("H60B0", 1, pact_code)
-    coordinator.source_static_intents = {"top": 2700, "side": (0, 0, 255)}
-    coordinator._expected_state = {}
-    before_segments = list(coordinator.segment_colors)
-    before_expectations = dict(coordinator._expected_state)
+async def test_main_colour_uses_area_controls_without_changing_selection(source_wire, pact_code, colour):
+    coordinator, state = source_wire
+    coordinator.profile = device_profile("H60B0", 1, pact_code)
+    coordinator._authorization_profile.return_value = coordinator.profile
+    state["apply"] = True
+    state["flags"] = 0xB0
+    assert await coordinator.refresh_state(RefreshRequest(refresh_all=True, query_segments=True))
+    coordinator._client.write_gatt_char.reset_mock()
     light = GoveeBLELight(coordinator)
-    assert light.supported_color_modes == {ColorMode.BRIGHTNESS}
+    light.async_write_ha_state = MagicMock()
+    assert light.supported_color_modes == {ColorMode.RGB, ColorMode.COLOR_TEMP}
     for key in ("top", "side"):
         assert GoveeBLESourceLight(coordinator, key).supported_color_modes == {ColorMode.RGB, ColorMode.COLOR_TEMP}
     assert GoveeBLESourceLight(coordinator, "bottom").supported_color_modes == {ColorMode.COLOR_TEMP}
-    with pytest.raises(HomeAssistantError) as error:
-        await light.async_turn_on(brightness=128, **colour)
-    assert error.value.translation_key == "area_colour_only"
-    coordinator.send_command.assert_not_awaited()
-    assert coordinator.source_static_intents == {"top": 2700, "side": (0, 0, 255)}
-    assert coordinator.segment_colors == before_segments
-    assert coordinator._expected_state == before_expectations
+    await light.async_turn_on(**colour)
+    physical_writes = [
+        call.args[1] for call in coordinator._client.write_gatt_char.await_args_list if call.args[1][0] == 0x33
+    ]
+    if "rgb_color" in colour:
+        assert physical_writes == [frame("33052c01010102030000"), frame("33052c02010102030000ff00")]
+        assert state["colours"] == [(1, 2, 3)] * 9
+        assert state["bottom"] == 4000
+        assert light.rgb_color == (1, 2, 3)
+    else:
+        preview = bytes(table_kelvin_rgb(5000)).hex()
+        assert physical_writes == [
+            frame(f"33052c0101{preview}1388"),
+            frame(f"33052c0201{preview}1388ff00"),
+            frame("33052c03011388"),
+        ]
+        assert state["colours"] == [table_kelvin_rgb(5000)] * 9
+        assert state["bottom"] == 5000
+        assert light.color_temp_kelvin == 5000
+        assert GoveeBLESourceLight(coordinator, "bottom").color_temp_kelvin == 5000
+    assert state["flags"] == 0xB0
+    assert state["levels"] == [40] * 8 + [60]
+    assert state["bottom_brightness"] == 40
+    assert light.brightness is not None
 
 
-async def test_main_ha_service_uses_only_advertised_brightness(hass):
-    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H60B0", configuration_url=None)
-    coordinator.profile, coordinator.is_on = PROFILE, True
-    coordinator._client = MagicMock(is_connected=True)
-    coordinator.send_command = AsyncMock()
-    coordinator.refresh_state = AsyncMock(return_value=True)
-    coordinator.source_static_intents = {"top": 2700, "side": (0, 0, 255)}
+async def test_main_ha_service_delivers_colour_instead_of_filtering_it(hass, source_wire):
+    coordinator, physical = source_wire
+    physical["apply"] = True
+    assert await coordinator.refresh_state(RefreshRequest(refresh_all=True, query_segments=True))
     light = GoveeBLELight(coordinator)
     light._attr_device_info = None
     light.async_added_to_hass = AsyncMock()
     assert await async_setup_component(hass, "light", {})
     await hass.data["light"].async_add_entities([light])
     await hass.services.async_call(
-        "light", "turn_on", {"entity_id": light.entity_id, "brightness": 128, "rgb_color": [1, 2, 3]}, blocking=True
+        "light", "turn_on", {"entity_id": light.entity_id, "rgb_color": [1, 2, 3]}, blocking=True
     )
-    assert [call.args[0] for call in coordinator.send_command.await_args_list] == [build_brightness(50)]
     state = hass.states.get(light.entity_id)
-    assert state.attributes["supported_color_modes"] == ["brightness"]
-    assert "rgb_color" not in state.attributes and "color_temp_kelvin" not in state.attributes
-    assert coordinator.source_static_intents == {"top": 2700, "side": (0, 0, 255)}
+    assert set(state.attributes["supported_color_modes"]) == {"rgb", "color_temp"}
+    assert tuple(state.attributes["rgb_color"]) == (1, 2, 3)
+    assert physical["colours"] == [(1, 2, 3)] * 9
+
+
+@pytest.mark.parametrize(
+    "colour",
+    [{"rgb_color": (256, 0, 0)}, {"rgb_color": (1, 2, 3), "color_temp_kelvin": 4000}],
+)
+async def test_invalid_main_colour_is_rejected_before_power_brightness_or_preview(source_wire, colour):
+    coordinator, state = source_wire
+    state["flags"] = 0x30
+    coordinator.is_on = False
+    light = GoveeBLELight(coordinator)
+    light._async_supersede_preview = AsyncMock()
+    with pytest.raises(HomeAssistantError):
+        await light.async_turn_on(brightness=128, **colour)
+    light._async_supersede_preview.assert_not_awaited()
+    coordinator._client.write_gatt_char.assert_not_awaited()
+
+
+async def test_partial_main_kelvin_preserves_confirmed_areas_and_reconciles_bottom(source_wire, virtual_clock):
+    coordinator, state = source_wire
+    state["apply"] = True
+    state["ignore_bottom_kelvin"] = True
+    light = GoveeBLELight(coordinator)
+    with pytest.raises(HomeAssistantError) as error:
+        await light.async_turn_on(color_temp_kelvin=5000)
+    assert error.value.translation_key == "partial_command"
+    assert state["top"] == 5000
+    assert state["colours"] == [table_kelvin_rgb(5000)] * 9
+    assert state["bottom"] == 4000
+    assert GoveeBLESourceLight(coordinator, "top").color_temp_kelvin == 5000
+    assert GoveeBLESourceLight(coordinator, "side").color_temp_kelvin == 5000
+    assert GoveeBLESourceLight(coordinator, "bottom").color_temp_kelvin == 4000
+    assert light.color_temp_kelvin is None
+    assert light.rgb_color is None
+    writes = [call.args[1] for call in coordinator._client.write_gatt_char.await_args_list if call.args[1][0] == 0x33]
+    assert len(writes) == 3
+    assert "bottom_kelvin" not in coordinator._expected_state
+
+
+async def test_main_kelvin_rejects_contradictory_final_native_observation(source_wire):
+    coordinator, state = source_wire
+    state["apply"] = True
+    state["mode_bottom"] = 4000
+    light = GoveeBLELight(coordinator)
+    with pytest.raises(HomeAssistantError) as error:
+        await light.async_turn_on(color_temp_kelvin=5000)
+    assert error.value.translation_key == "partial_command"
+    assert GoveeBLESourceLight(coordinator, "bottom").color_temp_kelvin == 4000
+    assert light.color_temp_kelvin is None
+    writes = [call.args[1] for call in coordinator._client.write_gatt_char.await_args_list if call.args[1][0] == 0x33]
+    assert len(writes) == 3
+
+
+async def test_hidden_observed_scene_does_not_expose_static_main_colour(source_wire):
+    coordinator, state = source_wire
+    state["colours"] = [(1, 2, 3)] * 9
+    coordinator._notify_callback(None, bytearray(frame("aa05049999")))
+    assert await coordinator.async_refresh_segments()
+    light = GoveeBLELight(coordinator)
+    assert coordinator.color_mode is ParsedMode.SCENE
+    assert light.effect == "off"
+    assert light.color_mode is ColorMode.BRIGHTNESS
+    assert light.rgb_color is None
+    assert light.color_temp_kelvin is None
 
 
 @pytest.fixture
@@ -230,6 +309,7 @@ def source_wire(native_sources):
         "levels": [40] * 8 + [60],
         "ripple": 50,
         "bottom_brightness": 40,
+        "bottom": 4000,
         "drop_source_readback": False,
     }
 
@@ -245,22 +325,30 @@ def source_wire(native_sources):
                 state["ripple"] = packet[5]
             elif command == 0x05 and packet[2:5] == bytes.fromhex("2c0302"):
                 state["bottom_brightness"] = packet[5]
-            static = parse_static_write(packet, "H60B0", profile=PROFILE)
-            if static is not None:
-                assert packet[2] != 0x0D
+            elif command == 0x05 and packet[2:5] in (bytes.fromhex("2c0301"), bytes.fromhex("2c0303")):
+                if not state.get("ignore_bottom_kelvin"):
+                    state["bottom"] = int.from_bytes(packet[5:7], "big")
+            if command == 0x05 and packet[2] == 0x2C and packet[3] in (1, 2) and packet[4] in (1, 2):
+                source, operation = packet[3:5]
+                mask = (
+                    0x100 if source == 1 else int.from_bytes(packet[10:12] if operation == 1 else packet[6:8], "little")
+                )
                 for index in range(9):
-                    if static.segment_mask & (1 << index):
-                        if static.rgb is not None or static.kelvin is not None:
-                            state["colours"][index] = static.rgb or table_kelvin_rgb(static.kelvin)
-                        if static.brightness_pct is not None:
-                            state["levels"][index] = static.brightness_pct
-                if static.segment_mask & 0x100 and (static.rgb is not None or static.kelvin is not None):
-                    state["top"] = static.kelvin or 0
+                    if mask & (1 << index):
+                        if operation == 1:
+                            state["colours"][index] = tuple(packet[5:8])
+                        else:
+                            state["levels"][index] = packet[5]
+                if source == 1 and operation == 1:
+                    state["top"] = int.from_bytes(packet[8:10], "big")
         if command in (0x05, 0x42):
             if command == 0x42 and state["drop_source_readback"]:
                 return
             prefix = "aa052c" if command == 0x05 else f"aa42{state['flags']:02x}"
-            response = frame(prefix + f"{state['top']:04x}{state['ripple']:02x}0fa0{state['bottom_brightness']:02x}")
+            bottom = state.get("mode_bottom", state["bottom"]) if command == 0x05 else state["bottom"]
+            response = frame(
+                prefix + f"{state['top']:04x}{state['ripple']:02x}{bottom:04x}{state['bottom_brightness']:02x}"
+            )
         elif command == 0xA5:
             group = packet[2]
             offset = (group - 1) * 4
@@ -328,7 +416,7 @@ async def test_unconfirmed_source_write_reconciles_real_area_state(source_wire, 
     assert "source_kelvin_top" not in coordinator._expected_state
     assert "source_kelvin_side" not in coordinator._expected_state
     assert coordinator.segment_state_source == "observed"
-    assert GoveeBLELight(coordinator).color_mode is ColorMode.BRIGHTNESS
+    assert GoveeBLELight(coordinator).rgb_color is None
     assert GoveeBLELight(coordinator).brightness is not None
 
 
@@ -611,7 +699,7 @@ async def test_bottom_source_uses_native_attributes_without_segment_writes(mock_
     source = GoveeBLESourceLight(coordinator, "bottom")
     await source.async_turn_on(brightness=102, color_temp_kelvin=4000)
     assert coordinator.async_set_source_value.await_args_list[0].args == ("bottom", "brightness", 40)
-    assert coordinator.async_set_source_value.await_args_list[1].args == ("bottom", "kelvin", 4000)
+    assert coordinator.async_apply_source_value.await_args.args[0].packet == frame("33052c03010fa0")
     coordinator.async_set_segment_brightness.assert_not_awaited()
     coordinator.async_set_segment_kelvin.assert_not_awaited()
     coordinator.async_set_boolean_control.assert_not_awaited()
