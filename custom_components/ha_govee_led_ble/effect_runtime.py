@@ -15,7 +15,7 @@ from .const import NATIVE_ZONE_CONTROLS, ModelProfile, ReadDomain, get_profile
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator import GoveeBLECoordinator
 from .coordinator_base import async_prepare_effect_profile
-from .coordinator_refresh import RefreshRequest
+from .coordinator_refresh import STATE_QUERY_TIMEOUT, RefreshRequest
 from .coordinator_status import ParsedMode
 from .effect_active_workspace import (
     ActiveEffectWorkspace,
@@ -1574,11 +1574,38 @@ async def async_prepare_effect_control_state(
 ) -> bool:
     """Refresh ordinary prior state, optionally requiring a lossless static restore."""
     profile = coordinator.profile
+    capture = getattr(coordinator, "capture_effect_control_state", None)
     refreshed = False
     if profile.state_readable and (not require_restorable_static or profile.light_sources):
-        native_fields = frozenset(
-            f"boolean_{name}" for name in (*NATIVE_ZONE_CONTROLS, "gradual") if name in profile.boolean_controls
-        )
+        resident_mode = None
+        preparation_deadline = None
+        prepared_token = None
+        if "gradual" in profile.boolean_controls:
+            async with coordinator._lock:
+                await coordinator._ensure_connected()
+            profile = coordinator.profile
+            loop = asyncio.get_running_loop()
+            preparation_deadline = loop.time() + STATE_QUERY_TIMEOUT
+            mode_baseline = getattr(coordinator, "_field_revisions", {}).get("color_mode", 0)
+            qualified = await coordinator.refresh_state(
+                RefreshRequest(
+                    query_native_settings=False,
+                    query_segments=False,
+                    required_domains=profile.read_domains & {ReadDomain.COLOUR_MODE, ReadDomain.MODE},
+                    timeout=max(0.0, preparation_deadline - loop.time()),
+                )
+            )
+            if qualified is not True or (
+                profile.supports_color_mode_readback
+                and hasattr(coordinator, "_field_revisions")
+                and coordinator._field_revisions.get("color_mode", 0) <= mode_baseline
+            ):
+                raise EffectPreparationError("Could not read the resident mode before preparing effect recovery")
+            resident = capture() if capture is not None else None
+            resident_mode = resident.mode if isinstance(resident, PriorControlState) else _coordinator_mode(coordinator)
+            prepared_token = getattr(coordinator, "_notification_token", None)
+        controls = (*NATIVE_ZONE_CONTROLS, "gradual") if resident_mode == "colour" else NATIVE_ZONE_CONTROLS
+        native_fields = frozenset(f"boolean_{name}" for name in controls if name in profile.boolean_controls)
         revisions = getattr(coordinator, "_field_revisions", {})
         baselines = {
             field: revisions.get(field, 0)
@@ -1600,6 +1627,9 @@ async def async_prepare_effect_control_state(
                     query_native_settings=native_fields,
                     required_domains=profile.read_domains
                     & {ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE, ReadDomain.MODE},
+                    timeout=STATE_QUERY_TIMEOUT
+                    if preparation_deadline is None
+                    else max(0.0, preparation_deadline - asyncio.get_running_loop().time()),
                 ),
             )
             is True
@@ -1612,7 +1642,11 @@ async def async_prepare_effect_control_state(
             )
         if require_restorable_static and coordinator.profile != profile:
             raise EffectPreparationError("The device profile changed while preparing the effect")
-    capture = getattr(coordinator, "capture_effect_control_state", None)
+        if resident_mode is not None:
+            resident = capture() if capture is not None else None
+            current_mode = resident.mode if isinstance(resident, PriorControlState) else _coordinator_mode(coordinator)
+            if current_mode != resident_mode or getattr(coordinator, "_notification_token", None) is not prepared_token:
+                raise EffectPreparationError("The device mode or subscription changed while preparing effect recovery")
     prior = capture() if require_restorable_static and capture is not None else None
     prior_mode = prior.mode if isinstance(prior, PriorControlState) else _coordinator_mode(coordinator)
     if require_restorable_static:
@@ -1644,11 +1678,13 @@ async def async_prepare_effect_control_state(
             raise EffectPreparationError("The current music mode cannot be safely restored after preview")
         if prior_mode not in {"colour", "unknown"}:
             return True
+        requires_segment_refresh = bool(profile.configured_string_counts or profile.light_sources)
         if profile.segment_colour_mode_ambiguous and not (
             isinstance(prior, PriorControlState)
             and (
                 prior.static_rgb_known
-                or getattr(coordinator, "_static_rgb_known", False) is True
+                or requires_segment_refresh
+                and getattr(coordinator, "_static_rgb_known", False) is True
                 or prior.restorable_bar_white(profile)
                 or prior.restorable_source_colour(profile)
             )
@@ -1656,7 +1692,7 @@ async def async_prepare_effect_control_state(
             raise EffectPreparationError(
                 "The current per-bulb RGB or white intent cannot be safely restored after preview"
             )
-        if not profile.configured_string_counts and not profile.light_sources:
+        if not requires_segment_refresh:
             return True
         if (
             not profile.supports_segments

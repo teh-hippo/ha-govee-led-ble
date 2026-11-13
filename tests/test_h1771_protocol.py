@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import json
 from dataclasses import replace
@@ -9,7 +10,7 @@ import pytest
 
 from custom_components.ha_govee_led_ble.const import KELVIN_RANGE_1000_10000, ModelProfile, ReadDomain
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
-from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
+from custom_components.ha_govee_led_ble.coordinator_refresh import STATE_QUERY_TIMEOUT, RefreshRequest
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode, decode_status_frame, parse_color_mode
 from custom_components.ha_govee_led_ble.effect_catalogue import MODEL_EFFECT_CATALOGUES
 from custom_components.ha_govee_led_ble.effect_compiler import DIY_ACK_EVIDENCE, compile_application, compile_effect
@@ -364,6 +365,59 @@ async def test_effect_preparation_rejects_cached_required_fields_without_writes(
     with pytest.raises(RuntimeError, match="Could not read current"):
         await async_prepare_effect_control_state(coordinator, require_restorable_static=True)
     assert all(packet[0] != 0x33 for packet in writes)
+
+
+@pytest.mark.parametrize(
+    ("preview", "mode", "reply"),
+    [(False, "scene", "aa05043412"), (True, "music", "aa05135100")],
+)
+async def test_nonstatic_effect_preparation_does_not_require_gradual(effect_connection, preview, mode, reply):
+    coordinator, writes, replies = effect_connection
+    replies[frame("aa0501")] = frame(reply)
+    replies[frame("ac030136")] = frame("ac000100030300360107")
+    del replies[frame("ac030236a3")]
+
+    assert await async_prepare_effect_control_state(coordinator, require_restorable_static=preview)
+    prior = coordinator.capture_effect_control_state()
+    assert prior.mode == mode and prior.static_gradual is None
+    assert prior.source_0_enabled is True and prior.source_1_enabled is True
+    assert frame("ac030236a3") not in writes
+
+
+async def test_effect_preparation_rejects_resident_mode_change_between_reads(effect_connection):
+    coordinator, writes, replies = effect_connection
+    replies[frame("aa0501")] = frame("aa05043412")
+    replies[frame("ac030136")] = frame("ac000100030300360107")
+    write = coordinator._client.write_gatt_char.side_effect
+    mode_reads = 0
+
+    async def change_mode(uuid, packet, **kwargs):
+        nonlocal mode_reads
+        if packet == frame("aa0501"):
+            mode_reads += 1
+            if mode_reads == 2:
+                replies[packet] = frame("aa050d000000")
+        await write(uuid, packet, **kwargs)
+
+    coordinator._client.write_gatt_char.side_effect = change_mode
+    with pytest.raises(RuntimeError, match="mode or subscription changed"):
+        await async_prepare_effect_control_state(coordinator, require_restorable_static=True)
+    assert all(packet[0] != 0x33 for packet in writes)
+
+
+async def test_effect_preparation_read_budget_starts_after_connection_setup(effect_connection):
+    coordinator, _writes, _replies = effect_connection
+    prepared = False
+
+    async def ensure_connected():
+        nonlocal prepared
+        if not prepared:
+            await asyncio.sleep(STATE_QUERY_TIMEOUT + 1)
+            prepared = True
+        return coordinator._client
+
+    coordinator._ensure_connected.side_effect = ensure_connected
+    assert await async_prepare_effect_control_state(coordinator, require_restorable_static=True)
 
 
 async def test_effect_preparation_rejects_replaced_subscription(effect_connection):
