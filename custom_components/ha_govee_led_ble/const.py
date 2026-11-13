@@ -1080,7 +1080,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
             LightSource("middle", "middle_enabled", (2,)),
             LightSource("top", "top_enabled", (3,)),
         ),
-        boolean_controls=frozenset({"bottom_enabled", "middle_enabled", "top_enabled", "gradual"}),
+        boolean_controls=frozenset({"bottom_enabled", "middle_enabled", "top_enabled"}),
         supports_power_on_behaviour=True,
         supports_scenes=True,
         scene_catalogue_sku="H60B2",

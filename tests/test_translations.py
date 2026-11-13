@@ -4,6 +4,8 @@ import ast
 import json
 from pathlib import Path
 
+from custom_components.ha_govee_led_ble.const import MODEL_PROFILES
+
 _COMPONENT = Path(__file__).resolve().parents[1] / "custom_components" / "ha_govee_led_ble"
 _STRINGS = _COMPONENT / "strings.json"
 _EN = _COMPONENT / "translations" / "en.json"
@@ -11,6 +13,14 @@ _EN = _COMPONENT / "translations" / "en.json"
 
 def test_strings_and_en_are_byte_identical():
     assert _STRINGS.read_bytes() == _EN.read_bytes()
+
+
+def test_declared_boolean_controls_have_names():
+    strings = json.loads(_STRINGS.read_text(encoding="utf-8"))
+    controls = {control for profile in MODEL_PROFILES.values() for control in profile.boolean_controls}
+    labels = strings["entity"]["switch"]
+
+    assert {control for control in controls if not labels.get(control, {}).get("name")} == set()
 
 
 def test_effect_category_options_have_direct_labels():
