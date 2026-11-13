@@ -501,6 +501,7 @@ async def test_h607c_settings_verify_only_their_own_fresh_register(
     c._resolve_device_profile()
     c._notification_token = object()
     c._notify_started_monotonic = time.monotonic()
+    c.boolean_control_state[control] = not reply
     device = MagicMock(is_connected=True, disconnect=AsyncMock())
     c._client = device
     monkeypatch.setattr(c, "_ensure_connected", AsyncMock(return_value=device))
@@ -508,6 +509,8 @@ async def test_h607c_settings_verify_only_their_own_fresh_register(
     monkeypatch.setattr(c, "_refresh_h607c_advertisements", lambda: None)
 
     async def write(_uuid, packet, **_kwargs):
+        if packet == adapter.build_boolean_control(control, True, "H607C", profile=c.profile):
+            assert control not in c.boolean_control_state
         if packet == adapter.build_boolean_control_query("gradual", "H607C", profile=c.profile):
             c._notify_callback(None, bytearray(frame(f"aaa3{int(reply):02x}")))
         elif packet == adapter.build_boolean_control_query("pole_enabled", "H607C", profile=c.profile):

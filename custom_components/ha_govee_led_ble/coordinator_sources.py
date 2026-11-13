@@ -113,24 +113,12 @@ def source_field_fresh(coordinator: GoveeBLECoordinator, field: str) -> bool:
     return True
 
 
-async def _async_set_source_control(coordinator: GoveeBLECoordinator, control: str, enabled: bool) -> None:
-    attempts = coordinator.control_write_attempts
-    try:
-        await coordinator.async_set_boolean_control(control, enabled)
-    except BaseException:
-        if coordinator.control_write_attempts != attempts:
-            coordinator.boolean_control_state.pop(control, None)
-            coordinator._field_received_at.pop(f"boolean_{control}", None)
-            coordinator.async_set_updated_data(coordinator.data or {})
-        raise
-
-
 async def async_set_source_enabled(coordinator: GoveeBLECoordinator, key: str, enabled: bool) -> None:
     source = _source(coordinator.profile, key)
     if source is None or source.control not in coordinator.profile.boolean_controls:
         raise HomeAssistantError(translation_domain=DOMAIN, translation_key="device_command_failed")
     try:
-        await _async_set_source_control(coordinator, source.control, enabled)
+        await coordinator.async_set_boolean_control(source.control, enabled)
         coordinator.async_set_updated_data(coordinator.data or {})
     except HomeAssistantError:
         raise
@@ -241,7 +229,7 @@ class SourceTurnOnTransaction:
                     )
                 ):
                     guard()
-                    await _async_set_source_control(coordinator, sibling.control, False)
+                    await coordinator.async_set_boolean_control(sibling.control, False)
             with self._track_write("is_on", guard, refresh_revision=True) as power_guard:
                 await coordinator.send_command(
                     build_power(True, coordinator.model, profile=profile), write_guard=power_guard
@@ -254,7 +242,7 @@ class SourceTurnOnTransaction:
             or not source_field_fresh(coordinator, f"boolean_{source.control}")
         ):
             guard()
-            await _async_set_source_control(coordinator, source.control, True)
+            await coordinator.async_set_boolean_control(source.control, True)
 
     async def _apply_values(self, prepared: _PreparedSourceRequest, guard: Callable[[], None]) -> None:
         coordinator, source, values = self._coordinator, prepared.source, prepared.values
