@@ -34,7 +34,7 @@ H6199_NATIVE_CONTROLS = ("strip_direction", "camera_position", "gradient", "came
 def build_h6199_control_query(control: str) -> bytes:
     """Encode a named register query; callers must check runtime applicability."""
 
-    from .generated_protocol_adapter import _build_status_query
+    from .protocol_settings import _build_status_query
 
     if control not in H6199_NATIVE_CONTROLS:
         raise ValueError("Unknown H6199 control")

@@ -41,12 +41,12 @@ H = bytes.fromhex
 
 @pytest.mark.parametrize("model", ["H617A", "H6199", "H6181", "H6179"])
 def test_packet_authorisation_reuses_its_parsed_static_command(monkeypatch, model):
-    from custom_components.ha_govee_led_ble import generated_protocol_adapter as adapter
+    from custom_components.ha_govee_led_ble import protocol_admission as admission
 
     profile = MODEL_PROFILES[model]
     packet = build_color_rgb(1, 2, 3, model, profile=profile)
-    parse = Mock(wraps=adapter.parse_command_result)
-    monkeypatch.setattr(adapter, "parse_command_result", parse)
+    parse = Mock(wraps=admission.parse_command_result)
+    monkeypatch.setattr(admission, "parse_command_result", parse)
     require_profile_packet(packet, profile)
     parse.assert_called_once()
 
