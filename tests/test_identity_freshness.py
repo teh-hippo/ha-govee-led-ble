@@ -233,10 +233,14 @@ async def test_foreground_recovers_missed_identity_before_selecting_colour_route
 
 @pytest.mark.parametrize("reply", [None, b"\xaa\x07\x03invalid"])
 @pytest.mark.parametrize("attributes", [{"rgb_color": (255, 0, 0)}, {"effect": "off"}])
+@pytest.mark.parametrize("cached_later", [False, True])
 async def test_unresolved_colour_identity_does_not_partially_apply_light_request(
-    revision_control, reply, attributes, virtual_clock
+    revision_control, reply, attributes, cached_later, virtual_clock
 ):
     coordinator, _, packets, replies = revision_control
+    if cached_later:
+        coordinator.pact_type, coordinator.pact_code = 10, 1
+        coordinator._note_identity(fw_version="1.03.00", hw_version="1.00.03")
     replies[build_hardware_query("H6181")] = reply
     light = GoveeBLELight(coordinator)
     light.hass = coordinator.hass
@@ -324,11 +328,16 @@ async def test_cancelled_identity_acquisition_never_attempts_the_control(revisio
     assert not coordinator.identity_fields_confirmed()
 
 
+@pytest.mark.parametrize("cached_later", [False, True])
 async def test_static_recovery_qualifies_identity_before_its_first_control(
-    revision_control, monkeypatch, virtual_clock
+    revision_control, monkeypatch, cached_later, virtual_clock
 ):
     coordinator, _, packets, _ = revision_control
-    await coordinator._ensure_connected()
+    if cached_later:
+        coordinator.pact_type, coordinator.pact_code = 10, 1
+        coordinator._note_identity(fw_version="1.03.00", hw_version="1.00.03")
+    else:
+        await coordinator._ensure_connected()
     state = replace(
         coordinator.capture_effect_control_state(),
         is_on=True,
@@ -399,3 +408,31 @@ async def test_identity_change_during_reply_pacing_invalidates_prepared_control(
     assert not any(packet[0] == 0x33 for packet in packets)
     assert coordinator.control_write_attempts == 0
     assert coordinator._expected_state == {}
+
+
+@pytest.mark.parametrize("attributes", [{"effect": "off"}, {"rgb_color": (255, 0, 0)}])
+async def test_complete_static_request_does_not_follow_a_readback_reconnect(
+    revision_control, monkeypatch, attributes, virtual_clock
+):
+    coordinator, _, _, _ = revision_control
+    await coordinator._ensure_connected()
+    coordinator.is_on = True
+    replacement = MagicMock(
+        is_connected=True, start_notify=AsyncMock(), write_gatt_char=AsyncMock(), disconnect=AsyncMock()
+    )
+    light = GoveeBLELight(coordinator)
+    light.hass = coordinator.hass
+    light.async_write_ha_state = MagicMock()
+
+    async def reconnect(**kwargs):
+        await coordinator.disconnect()
+        coordinator._client = replacement
+        await coordinator._start_notify()
+        notify(coordinator, 0x06, "1.03.00")
+        notify(coordinator, 0x07, "1.00.03")
+
+    monkeypatch.setattr(light, "_refresh_with_retry", reconnect)
+    with pytest.raises(HomeAssistantError) as error:
+        await light.async_turn_on(**attributes, brightness=128)
+    assert error.value.translation_key == "partial_command"
+    replacement.write_gatt_char.assert_not_awaited()

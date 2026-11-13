@@ -6,7 +6,7 @@ from contextlib import nullcontext
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any, cast
 
-from .const import NATIVE_ZONE_CONTROLS
+from .const import NATIVE_ZONE_CONTROLS, get_profile
 from .control_arbiter import ControlIntent
 from .coordinator_base import _CoordinatorBase
 from .coordinator_refresh import RefreshRequest
@@ -906,7 +906,7 @@ class _RecoveryMixin(_CoordinatorBase):
     async def _restore_static_colour(self, state: PriorControlState, complete: bool) -> bool:
         guard = (
             await self._as_coordinator.async_prepare_identity_gated_control()
-            if self.profile.static_identity_fields
+            if get_profile(self.model).static_identity_fields
             else None
         )
         control = self._as_coordinator.control_write_request(identity_guard=guard)
