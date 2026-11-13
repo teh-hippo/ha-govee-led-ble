@@ -54,14 +54,14 @@ def test_ordinary_colour_and_raw_brightness_match_their_distinct_contracts():
         ((10, 3), "1.03.00", "1.00.03"),
     ],
 )
-def test_colour_probe_does_not_change_other_revision_contexts(pact, firmware, hardware):
+def test_legacy_colour_does_not_change_other_revision_contexts(pact, firmware, hardware):
     profile = device_profile("H6181", *pact, firmware=firmware, hardware=hardware)
     for packet in (build_color_rgb(255, 0, 0, "H6181"), build_color_temp(4000, "H6181")):
         assert (profile.outbound_transform(packet) if profile.outbound_transform else packet) == packet
 
 
 @pytest.fixture
-async def colour_probe(hass):
+async def legacy_colour(hass):
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6181", configuration_url=None)
     client = MagicMock(is_connected=True, start_notify=AsyncMock(), write_gatt_char=AsyncMock())
     coordinator._client = client
@@ -71,7 +71,7 @@ async def colour_probe(hass):
     return coordinator, client
 
 
-def confirm_probe_identity(client):
+def confirm_legacy_identity(client):
     receive = client.start_notify.call_args.args[1]
     receive(None, bytearray(frame(b"\xaa\x06" + b"1.03.00")))
     receive(None, bytearray(frame(b"\xaa\x07\x03" + b"1.00.03")))
@@ -96,11 +96,11 @@ def confirm_probe_identity(client):
         ),
     ],
 )
-async def test_colour_probe_preserves_logical_expectations_and_strict_readback(
-    colour_probe, packet, wire, field, value, reply
+async def test_legacy_colour_preserves_logical_expectations_and_strict_readback(
+    legacy_colour, packet, wire, field, value, reply
 ):
-    coordinator, client = colour_probe
-    confirm_probe_identity(client)
+    coordinator, client = legacy_colour
+    confirm_legacy_identity(client)
     await coordinator._async_write_packet(client, packet, arm_expected=True)
     client.write_gatt_char.assert_awaited_once()
     assert client.write_gatt_char.call_args.args[1] == frame(bytes.fromhex(wire))
@@ -115,10 +115,10 @@ async def test_colour_probe_preserves_logical_expectations_and_strict_readback(
 
 @pytest.mark.parametrize("confirmed", [(), ("fw_version",), ("hw_version",), ("reconnect",)])
 @pytest.mark.parametrize("arm_expected", [False, True])
-async def test_colour_probe_cannot_use_cached_or_partially_confirmed_identity(colour_probe, confirmed, arm_expected):
-    coordinator, client = colour_probe
+async def test_legacy_colour_cannot_use_cached_or_partially_confirmed_identity(legacy_colour, confirmed, arm_expected):
+    coordinator, client = legacy_colour
     if confirmed == ("reconnect",):
-        confirm_probe_identity(client)
+        confirm_legacy_identity(client)
         coordinator._clear_client_state(client)
         coordinator._client = client
         await coordinator._start_notify()
@@ -133,9 +133,9 @@ async def test_colour_probe_cannot_use_cached_or_partially_confirmed_identity(co
 
 
 @pytest.mark.parametrize("change", ["identity", "profile", "subscription", "client"])
-async def test_colour_probe_rechecks_authorisation_after_the_write_guard(colour_probe, change):
-    coordinator, client = colour_probe
-    confirm_probe_identity(client)
+async def test_legacy_colour_rechecks_authorisation_after_the_write_guard(legacy_colour, change):
+    coordinator, client = legacy_colour
+    confirm_legacy_identity(client)
 
     def revoke():
         if change == "identity":
@@ -153,8 +153,8 @@ async def test_colour_probe_rechecks_authorisation_after_the_write_guard(colour_
     assert coordinator._expected_state == {}
 
 
-async def test_colour_probe_allows_untransformed_identity_queries_and_power(colour_probe):
-    coordinator, client = colour_probe
+async def test_legacy_colour_allows_untransformed_identity_queries_and_power(legacy_colour):
+    coordinator, client = legacy_colour
     packets = (
         build_firmware_query("H6181"),
         build_hardware_query("H6181"),

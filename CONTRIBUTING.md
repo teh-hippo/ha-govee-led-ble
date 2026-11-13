@@ -40,6 +40,8 @@ Keep real product differences without turning each product into a separate imple
 - Evaluate revision prerequisites together and fail closed when required identity is missing or a prerequisite fails.
   Where identity requires subscription qualification, cached identity is presentation-only; require current-subscription evidence before authorising dependent writes.
   Reconcile expiry at explicit operation boundaries before capturing generations; capability getters must be side-effect free.
+  Acquire missing required identity through shared foreground preparation; a connected client alone is not ready.
+  Keep independent bootstrap controls usable when identity remains unavailable.
 - `tools/ble/kaitai/**/*.ksy` is the only source of BLE wire structure and protocol documentation.
   Files under `speculative/` are unconfirmed hypotheses; the rest are evidence-backed.
   Generated outputs are never edited.

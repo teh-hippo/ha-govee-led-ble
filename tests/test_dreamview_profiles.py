@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from homeassistant.core import ServiceCall
-from homeassistant.exceptions import ServiceValidationError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 
 from custom_components.ha_govee_led_ble.const import (
     DOMAIN,
@@ -377,8 +377,9 @@ async def test_h6199_cached_identity_does_not_block_baseline_reads(hass, pact):
     assert bytes.fromhex("aa600400000000000000000000000000000000ce") not in [
         call.args[1] for call in client.write_gatt_char.await_args_list
     ]
-    with pytest.raises(ValueError):
+    with pytest.raises(HomeAssistantError) as error:
         await c.async_set_dreamview("same_brightness", {"enabled": True})
+    assert error.value.translation_key == "identity_not_ready"
     assert any(entry["parser"] == "h6199_dreamview_frame" for entry in c.packet_log)
 
 

@@ -196,6 +196,8 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
 
         def identity_fields_confirmed(self, fields: frozenset[str] | None = None) -> bool: ...
 
+        async def _async_require_identity(self, client: BleakClient, fields: frozenset[str]) -> None: ...
+
         def _record_packet(
             self,
             direction: str,
@@ -340,10 +342,14 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
 
 
 async def async_prepare_effect_profile(coordinator: _CoordinatorBase, *, intent: ControlIntent) -> ModelProfile:
-    if coordinator.profile.rgbic_scene_v0 is None:
+    if coordinator.profile.rgbic_scene_v0 is None and (
+        coordinator._authorization_profile().supports_rgb or not coordinator.profile.profile_identity_fields
+    ):
         return coordinator.profile
     async with async_control_intent(coordinator, intent):
         async with coordinator._lock:
-            await coordinator._ensure_connected()
+            client = await coordinator._ensure_connected()
+            if not coordinator._authorization_profile().supports_rgb:
+                await coordinator._async_require_identity(client, coordinator.profile.profile_identity_fields)
         coordinator._reconcile_authorization()
         return coordinator.effect_authorization_profile
