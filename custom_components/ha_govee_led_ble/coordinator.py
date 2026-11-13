@@ -2458,15 +2458,17 @@ class GoveeBLECoordinator(
                     baseline[field] = self._field_revisions.get(field, 0)
                     self.boolean_control_state.pop(control, None)
             else:
+
                 def expire() -> None:
-                    nonlocal source_power
                     fields = {field} if type(value) is bool else set()
                     if source_power is not None:
                         fields.update(f"boolean_{name}" for name in source_power)
                     self._expire_optional_observations({name: self._field_revisions.get(name, 0) for name in fields})
-                    source_power = None
 
-                await self.send_command(packet, write_guard=qualified, on_write=expire)
+                try:
+                    await self.send_command(packet, write_guard=qualified, on_write=expire)
+                finally:
+                    source_power = None
             async with self._lock:
                 qualified()
                 client = self._client
