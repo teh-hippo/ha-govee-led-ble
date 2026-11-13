@@ -1,12 +1,17 @@
+import asyncio
 import time
 from dataclasses import replace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from homeassistant.components.light import ColorMode
+from homeassistant.exceptions import HomeAssistantError
+from homeassistant.setup import async_setup_component
 
 from custom_components.ha_govee_led_ble.const import ReadDomain, device_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
+from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.effect_catalogue import MODEL_EFFECT_CATALOGUES
 from custom_components.ha_govee_led_ble.effect_compiler import compile_effect, validate_compiled_geometry
 from custom_components.ha_govee_led_ble.effect_deployments import PriorControlState
@@ -25,10 +30,12 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     parse_a3_effect_envelope,
     parse_command_ack_result,
     require_profile_packet,
+    table_kelvin_rgb,
     upload_ack_mode,
     upload_ack_subtype,
     upload_ack_success,
 )
+from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.light_commands import (
     build_color_rgb,
     build_color_temp,
@@ -50,6 +57,368 @@ PROFILE = device_profile("H60B0", 1, 2)
 def frame(prefix: str) -> bytes:
     content = bytes.fromhex(prefix).ljust(19, b"\x00")
     return content + bytes((xor_checksum(content),))
+
+
+@pytest.mark.parametrize("pact_code", [1, 2, 3])
+@pytest.mark.parametrize("colour", [{"rgb_color": (1, 2, 3)}, {"color_temp_kelvin": 5000}])
+async def test_main_colour_is_rejected_without_changing_sources(mock_coordinator, pact_code, colour):
+    coordinator = mock_coordinator
+    coordinator.model, coordinator.profile = "H60B0", device_profile("H60B0", 1, pact_code)
+    coordinator.source_static_intents = {"top": 2700, "side": (0, 0, 255)}
+    coordinator._expected_state = {}
+    before_segments = list(coordinator.segment_colors)
+    before_expectations = dict(coordinator._expected_state)
+    light = GoveeBLELight(coordinator)
+    assert light.supported_color_modes == {ColorMode.BRIGHTNESS}
+    for key in ("top", "side"):
+        assert GoveeBLESourceLight(coordinator, key).supported_color_modes == {ColorMode.RGB, ColorMode.COLOR_TEMP}
+    assert GoveeBLESourceLight(coordinator, "bottom").supported_color_modes == {ColorMode.COLOR_TEMP}
+    with pytest.raises(HomeAssistantError) as error:
+        await light.async_turn_on(brightness=128, **colour)
+    assert error.value.translation_key == "area_colour_only"
+    coordinator.send_command.assert_not_awaited()
+    assert coordinator.source_static_intents == {"top": 2700, "side": (0, 0, 255)}
+    assert coordinator.segment_colors == before_segments
+    assert coordinator._expected_state == before_expectations
+
+
+async def test_main_ha_service_uses_only_advertised_brightness(hass):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H60B0", configuration_url=None)
+    coordinator.profile, coordinator.is_on = PROFILE, True
+    coordinator._client = MagicMock(is_connected=True)
+    coordinator.send_command = AsyncMock()
+    coordinator.refresh_state = AsyncMock(return_value=True)
+    coordinator.source_static_intents = {"top": 2700, "side": (0, 0, 255)}
+    light = GoveeBLELight(coordinator)
+    light._attr_device_info = None
+    light.async_added_to_hass = AsyncMock()
+    assert await async_setup_component(hass, "light", {})
+    await hass.data["light"].async_add_entities([light])
+    await hass.services.async_call(
+        "light", "turn_on", {"entity_id": light.entity_id, "brightness": 128, "rgb_color": [1, 2, 3]}, blocking=True
+    )
+    assert [call.args[0] for call in coordinator.send_command.await_args_list] == [build_brightness(50)]
+    state = hass.states.get(light.entity_id)
+    assert state.attributes["supported_color_modes"] == ["brightness"]
+    assert "rgb_color" not in state.attributes and "color_temp_kelvin" not in state.attributes
+    assert coordinator.source_static_intents == {"top": 2700, "side": (0, 0, 255)}
+
+
+@pytest.fixture
+def native_sources(hass):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H60B0", configuration_url=None)
+    coordinator.profile = PROFILE
+    coordinator.pact_type, coordinator.pact_code = 1, 2
+    client = MagicMock(is_connected=True, disconnect=AsyncMock())
+    coordinator._client = client
+    coordinator._notification_token = object()
+    coordinator._notify_started_monotonic = time.monotonic() - 1
+    coordinator._ensure_connected = AsyncMock(return_value=client)
+    coordinator._async_supersede_effect_preview = AsyncMock()
+    physical = {}
+
+    def observe(flags=0xE0):
+        physical.update(
+            {
+                control: bool(flags & mask)
+                for control, mask in (("top_enabled", 0x40), ("side_enabled", 0x20), ("bottom_enabled", 0x10))
+            }
+        )
+        coordinator._notify_callback(None, bytearray(frame(f"aa42{flags:02x}0a8c320a8c64")))
+
+    async def write(_client, packet, **kwargs):
+        if guard := kwargs.get("before_write"):
+            guard()
+        if packet[:2] == bytes.fromhex("aa42"):
+            flags = 0x80 | sum(
+                mask
+                for control, mask in (("top_enabled", 0x40), ("side_enabled", 0x20), ("bottom_enabled", 0x10))
+                if physical.get(control)
+            )
+            observe(flags)
+
+    async def send(packet, **kwargs):
+        if guard := kwargs.get("write_guard"):
+            guard()
+        coordinator.control_write_attempts += 1
+        control = {1: "top_enabled", 2: "side_enabled", 3: "bottom_enabled"}[packet[2]]
+        enabled = bool(packet[3])
+        physical[control] = enabled
+        if enabled:
+            for group in coordinator.profile.exclusive_source_groups:
+                if control in group:
+                    physical.update({name: False for name in group if name != control})
+        await asyncio.sleep(0)
+
+    coordinator._async_write_packet = AsyncMock(side_effect=write)
+    coordinator.send_command = AsyncMock(side_effect=send)
+    observe()
+    return coordinator, observe
+
+
+@pytest.mark.parametrize(
+    ("flags", "control", "enabled", "key"),
+    [
+        (0xE0, "bottom_enabled", True, "source_limit"),
+        (0xA0, "side_enabled", False, "last_source"),
+    ],
+)
+async def test_native_source_constraints_reject_before_write(native_sources, flags, control, enabled, key):
+    coordinator, observe = native_sources
+    observe(flags)
+    before = dict(coordinator.boolean_control_state)
+    source = GoveeBLESourceLight(coordinator, control.removesuffix("_enabled"))
+    with pytest.raises(HomeAssistantError) as error:
+        await source._set_source_control(control, enabled)
+    assert error.value.translation_key == key
+    coordinator.send_command.assert_not_awaited()
+    assert coordinator.boolean_control_state == before
+
+
+async def test_concurrent_source_enables_cannot_exceed_native_limit(native_sources):
+    coordinator, observe = native_sources
+    observe(0xA0)
+    results = await asyncio.gather(
+        coordinator.async_set_boolean_control("top_enabled", True),
+        coordinator.async_set_boolean_control("bottom_enabled", True),
+        return_exceptions=True,
+    )
+    assert sum(isinstance(result, HomeAssistantError) for result in results) == 1
+    assert sum(coordinator.boolean_control_state.values()) == 2
+    assert coordinator.send_command.await_count == 1
+
+
+async def test_original_revision_swaps_top_and_bottom_without_disabling_side(native_sources):
+    coordinator, observe = native_sources
+    coordinator.profile = device_profile("H60B0", 1, 1)
+    observe(0xB0)
+    await coordinator.async_set_boolean_control("top_enabled", True)
+    assert coordinator.boolean_control_state == {"top_enabled": True, "side_enabled": True, "bottom_enabled": False}
+    assert [call.args[0] for call in coordinator.send_command.await_args_list] == [frame("33300101")]
+
+
+async def test_source_selection_change_before_physical_write_is_rejected(native_sources):
+    coordinator, observe = native_sources
+    observe(0xA0)
+
+    async def change_before_write(_packet, **kwargs):
+        observe(0xB0)
+        kwargs["write_guard"]()
+
+    coordinator.send_command.side_effect = change_before_write
+    with pytest.raises(ValueError, match="selection changed"):
+        await coordinator.async_set_boolean_control("top_enabled", True)
+    assert coordinator.control_write_attempts == 0
+    assert coordinator.boolean_control_state == {"top_enabled": False, "side_enabled": True, "bottom_enabled": True}
+
+
+@pytest.fixture
+def source_wire(native_sources):
+    coordinator, _observe = native_sources
+    client = coordinator._client
+    coordinator._async_write_packet = GoveeBLECoordinator._async_write_packet.__get__(coordinator)
+    coordinator.send_command = GoveeBLECoordinator.send_command.__get__(coordinator)
+    coordinator.async_prepare_identity_gated_control = AsyncMock(return_value=lambda: None)
+    coordinator._authorization_profile = MagicMock(return_value=PROFILE)
+    state = {
+        "apply": False,
+        "flags": 0xE0,
+        "top": 2700,
+        "colours": [(0, 0, 255)] * 8 + [table_kelvin_rgb(2700)],
+        "levels": [40] * 8 + [60],
+        "ripple": 50,
+        "bottom_brightness": 40,
+        "drop_source_readback": False,
+    }
+
+    async def write(_uuid, packet, **_kwargs):
+        command = packet[1]
+        if packet[0] == 0x33 and state["apply"]:
+            if command == 0x01:
+                state["flags"] = state["flags"] | 0x80 if packet[2] else state["flags"] & ~0x80
+            elif command == 0x30:
+                mask = {1: 0x40, 2: 0x20, 3: 0x10}[packet[2]]
+                state["flags"] = state["flags"] | mask if packet[3] else state["flags"] & ~mask
+            elif command == 0x05 and packet[2:5] == bytes.fromhex("2c0103"):
+                state["ripple"] = packet[5]
+            elif command == 0x05 and packet[2:5] == bytes.fromhex("2c0302"):
+                state["bottom_brightness"] = packet[5]
+            static = parse_static_write(packet, "H60B0", profile=PROFILE)
+            if static is not None:
+                assert packet[2] != 0x0D
+                for index in range(9):
+                    if static.segment_mask & (1 << index):
+                        if static.rgb is not None or static.kelvin is not None:
+                            state["colours"][index] = static.rgb or table_kelvin_rgb(static.kelvin)
+                        if static.brightness_pct is not None:
+                            state["levels"][index] = static.brightness_pct
+                if static.segment_mask & 0x100 and (static.rgb is not None or static.kelvin is not None):
+                    state["top"] = static.kelvin or 0
+        if command in (0x05, 0x42):
+            if command == 0x42 and state["drop_source_readback"]:
+                return
+            prefix = "aa052c" if command == 0x05 else f"aa42{state['flags']:02x}"
+            response = frame(prefix + f"{state['top']:04x}{state['ripple']:02x}0fa0{state['bottom_brightness']:02x}")
+        elif command == 0xA5:
+            group = packet[2]
+            offset = (group - 1) * 4
+            body = "".join(
+                f"{state['levels'][index]:02x}" + bytes(state["colours"][index]).hex()
+                for index in range(offset, min(offset + 4, 9))
+            )
+            response = frame(f"aaa5{group:02x}" + body)
+        elif command == 0x01:
+            response = frame("aa0101")
+        elif command == 0x04:
+            response = frame("aa0432")
+        else:
+            return
+        coordinator._notify_callback(None, bytearray(response))
+
+    client.write_gatt_char = AsyncMock(side_effect=write)
+    coordinator.color_mode = ParsedMode.COLOUR
+    coordinator.source_static_intents = {"top": 2700, "side": (0, 0, 255)}
+    return coordinator, state
+
+
+@pytest.mark.parametrize("operation", ["kelvin", "rgb"])
+async def test_unconfirmed_source_write_reconciles_real_area_state(source_wire, virtual_clock, operation):
+    coordinator, _state = source_wire
+    if operation == "kelvin":
+        request = coordinator.async_set_segment_kelvin(
+            build_segment_color_temp([9], 5000, "H60B0", profile=PROFILE), requested_kelvin=5000
+        )
+    else:
+        request = coordinator.async_paint_segments([(list(range(1, 9)), (255, 0, 0))])
+    with pytest.raises((TimeoutError, RuntimeError)):
+        await request
+    top, side = GoveeBLESourceLight(coordinator, "top"), GoveeBLESourceLight(coordinator, "side")
+    assert top.color_temp_kelvin == 2700
+    assert side.color_mode is ColorMode.RGB
+    assert side.rgb_color == (0, 0, 255)
+    assert "source_kelvin_top" not in coordinator._expected_state
+    assert "source_kelvin_side" not in coordinator._expected_state
+    assert coordinator.segment_state_source == "observed"
+    assert GoveeBLELight(coordinator).color_mode is ColorMode.BRIGHTNESS
+    assert GoveeBLELight(coordinator).brightness is not None
+
+
+@pytest.mark.parametrize("native_setting", [None, ("top", "ripple_speed", 60), ("bottom", "brightness", 50)])
+async def test_effect_stop_restores_mixed_source_capture_without_aggregate_colour(
+    source_wire, virtual_clock, native_setting
+):
+    coordinator, state = source_wire
+    state["apply"] = True
+    assert await coordinator.refresh_state(RefreshRequest(refresh_all=True, query_segments=True))
+    if native_setting is not None:
+        await coordinator.async_set_source_value(*native_setting)
+        assert coordinator.segment_state_source == "observed"
+    before = coordinator.capture_effect_control_state()
+    assert before.top_kelvin == 2700
+    assert before.source_static_intents == {"top": 2700, "side": (0, 0, 255)}
+    assert before.restorable_source_colour(PROFILE)
+    assert PriorControlState.from_dict(before.to_dict()) == before
+    await coordinator.send_command(frame("3305040100"))
+    assert coordinator._pre_mode_snapshot.source_state == before
+    state["apply"] = True
+    state["top"] = 0
+    state["colours"] = [(255, 0, 0)] * 9
+    coordinator.source_static_intents.clear()
+    coordinator.color_mode = ParsedMode.SCENE
+    await GoveeBLELight(coordinator)._async_clear_effect()
+    assert state["colours"] == [(0, 0, 255)] * 8 + [table_kelvin_rgb(2700)]
+    assert coordinator.capture_effect_control_state().source_static_intents == before.source_static_intents
+    assert coordinator._client.write_gatt_char.await_count > 0
+
+
+async def test_music_captures_sources_before_its_mode_guard_runs(source_wire, virtual_clock):
+    coordinator, state = source_wire
+    state["apply"] = True
+    assert await coordinator.refresh_state(RefreshRequest(refresh_all=True, query_segments=True))
+    before = coordinator.capture_effect_control_state()
+
+    async def activate(packets, **kwargs):
+        for index in range(len(packets)):
+            kwargs["packet_write_guard"](index)
+
+    coordinator.async_write_effect_sequence = AsyncMock(side_effect=activate)
+    await coordinator.async_select_music_slug("spectrum")
+    assert coordinator._pre_mode_snapshot.source_state == before
+    assert coordinator.color_mode is ParsedMode.MUSIC
+    state["top"], state["colours"] = 0, [(255, 0, 0)] * 9
+    await GoveeBLELight(coordinator)._async_clear_effect()
+    assert state["colours"] == [(0, 0, 255)] * 8 + [table_kelvin_rgb(2700)]
+
+
+async def test_missing_switch_readback_requires_fresh_flags_before_next_enable(source_wire, virtual_clock):
+    coordinator, state = source_wire
+    client = coordinator._client
+    state["apply"], state["flags"], state["drop_source_readback"] = True, 0xA0, True
+    coordinator._notify_callback(None, bytearray(frame("aa42a00a8c320fa028")))
+    with pytest.raises(ValueError, match="fresh setting readback"):
+        await coordinator.async_set_boolean_control("top_enabled", True)
+    assert coordinator._fresh_source_power() is None
+    with pytest.raises(ValueError, match="complete source power"):
+        await coordinator.async_set_boolean_control("bottom_enabled", True)
+    source_writes = [call.args[1] for call in client.write_gatt_char.await_args_list if call.args[1][:2] == b"\x33\x30"]
+    assert source_writes == [frame("33300101")]
+    assert state["flags"] == 0xE0
+
+
+async def test_reconnected_native_fields_cannot_qualify_cached_segment_layout(source_wire, virtual_clock):
+    coordinator, state = source_wire
+    assert await coordinator.refresh_state(RefreshRequest(refresh_all=True, query_segments=True))
+    assert coordinator.capture_effect_control_state().restorable_source_colour(PROFILE)
+    client = coordinator._client
+    coordinator._clear_client_state(client)
+    await asyncio.sleep(0.1)
+    coordinator._client, coordinator._notification_token = client, object()
+    coordinator._notify_started_monotonic = asyncio.get_running_loop().time()
+    coordinator._notify_callback(None, bytearray(frame("aa052c0a8c320fa028")))
+    coordinator._notify_callback(None, bytearray(frame("aa42e00a8c320fa028")))
+    state["colours"] = [(255, 0, 0)] * 8 + [table_kelvin_rgb(2700)]
+    captured = coordinator.capture_effect_control_state()
+    assert captured.segment_colors is None
+    assert captured.source_static_intents is None
+    with pytest.raises(RuntimeError, match="restor"):
+        await async_prepare_effect_control_state(coordinator, require_restorable_static=True)
+
+
+async def test_source_on_from_master_off_preserves_remembered_siblings(source_wire, virtual_clock):
+    coordinator, state = source_wire
+    state["apply"], state["flags"] = True, 0x60
+    coordinator._notify_callback(None, bytearray(frame("aa42600a8c320fa028")))
+    await GoveeBLESourceLight(coordinator, "top").async_turn_on()
+    assert coordinator.is_on
+    assert coordinator.boolean_control_state == {"top_enabled": True, "side_enabled": True, "bottom_enabled": False}
+    assert not any(
+        call.args[1][:2] == bytes.fromhex("3330") and not call.args[1][3]
+        for call in coordinator._client.write_gatt_char.await_args_list
+    )
+
+
+async def test_partial_source_paint_preserves_success_and_untouched_bottom(source_wire, virtual_clock):
+    coordinator, state = source_wire
+    state["apply"] = True
+    write = coordinator._client.write_gatt_char.side_effect
+    attempted_masks = []
+
+    async def fail_side(uuid, packet, **kwargs):
+        static = parse_static_write(packet, "H60B0", profile=PROFILE) if packet[0] == 0x33 else None
+        if static is not None:
+            attempted_masks.append(static.segment_mask)
+            if static.segment_mask == 0xFF:
+                raise RuntimeError("side write failed")
+        await write(uuid, packet, **kwargs)
+
+    coordinator._client.write_gatt_char.side_effect = fail_side
+    with pytest.raises(RuntimeError, match="side write failed"):
+        await coordinator.async_paint_segments([(list(range(1, 10)), (255, 0, 0))])
+    assert attempted_masks == [0x100, 0xFF]
+    assert GoveeBLESourceLight(coordinator, "top").rgb_color == (255, 0, 0)
+    assert GoveeBLESourceLight(coordinator, "side").rgb_color == (0, 0, 255)
+    assert coordinator.bottom_kelvin == 4000
+    assert coordinator.boolean_control_state["bottom_enabled"] is False
 
 
 @pytest.mark.parametrize(
@@ -254,7 +623,7 @@ async def test_preview_requires_complete_source_values_and_preserves_them_in_sto
     coordinator.capture_effect_control_state = MagicMock(return_value=prior)
     with pytest.raises(RuntimeError, match="restorable source values"):
         await async_prepare_effect_control_state(coordinator, require_restorable_static=True)
-    complete = replace(prior, bottom_kelvin=4000, bottom_brightness=40, ripple_speed=30)
+    complete = replace(prior, top_kelvin=2700, bottom_kelvin=4000, bottom_brightness=40, ripple_speed=30)
     assert PriorControlState.from_dict(complete.to_dict()) == complete
     coordinator.capture_effect_control_state.return_value = complete
     assert await async_prepare_effect_control_state(coordinator, require_restorable_static=True)
