@@ -17,6 +17,47 @@ function installPaintCatalogue(model: PanelModel): void {
   model.customCatalogue!.models.H617A.apply.painted = "supported";
 }
 
+test.each(["manual save", "reload"])("autosave uses the accepted item version after %s", async (transition) => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  model.liveApplyEnabled = false;
+  const { controller, editorController } = panelControllerHarness(model);
+  let server = item(painted());
+  const updateItem = vi.fn(async (base: LibraryItem, name: string, content: PaintedContent) => {
+    if (base.version !== server.version) throw new Error("Stale version");
+    server = { ...server, name, content, version: server.version + 1 };
+    return server;
+  });
+  controller.api = { updateItem } as unknown as EffectStudioApi;
+  editorController.applyLibraryItem(server);
+  model.autoSaveEnabled = true;
+  editorController.updatePaintedContent({ speed: 60 }, "committed");
+  controller.contentCommitted("committed");
+  await vi.waitFor(() => expect(model.autoSaveInProgress).toBe(false));
+  expect(server.version).toBe(3);
+
+  controller.toggleAutoSave();
+  if (transition === "manual save") {
+    editorController.updatePaintedContent({ speed: 70 }, "committed");
+    expect(await controller.save()).toBe(true);
+  } else {
+    server = { ...server, version: 4, content: { ...painted(), speed: 70 } };
+    editorController.applyLibraryItem(server);
+  }
+  controller.toggleAutoSave();
+  editorController.updatePaintedContent({ speed: 80 }, "committed");
+  controller.contentCommitted("committed");
+  await vi.waitFor(() => expect(model.autoSaveInProgress).toBe(false));
+
+  expect(updateItem.mock.calls.map(([base]) => base.version)).toEqual(
+    transition === "manual save" ? [2, 3, 4] : [2, 4],
+  );
+  expect(server.version).toBe(5);
+  expect(model.autoSaveFailed).toBe(false);
+  expect(model.dirty).toBe(false);
+  controller.disconnect();
+});
+
 test("subscription failure disables Live and blocks mutation until reload", () => {
   const model = new PanelModel(() => undefined);
   model.isAdmin = true;

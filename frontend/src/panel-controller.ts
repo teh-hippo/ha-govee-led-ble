@@ -89,7 +89,6 @@ export class PanelController {
     configEntryId: string;
     promise: Promise<DeviceCapabilities>;
   };
-  private readonly latestSavedItems = new Map<string, LibraryItem>();
   private readonly loadRequests = new AsyncRequestController<{ api: EffectStudioApi }>(
     (left, right) => left.api === right.api,
   );
@@ -1783,7 +1782,6 @@ export class PanelController {
     ) {
       return false;
     }
-    const base = this.latestSavedItems.get(target.item.id) ?? target.item;
     this.model.patch({
       saving: true,
       autoSaveFailed: false,
@@ -1797,7 +1795,7 @@ export class PanelController {
         target.content,
       );
       const result = await api.updateItem(
-        base,
+        target.item,
         target.name,
         target.content,
         () =>
@@ -1813,7 +1811,6 @@ export class PanelController {
         throw new Error("The saved effect returned an unsupported definition.");
       }
       const savedContent = result.content;
-      this.latestSavedItems.set(result.id, result);
       this.model.patch({
         library: {
           ...this.model.library,
