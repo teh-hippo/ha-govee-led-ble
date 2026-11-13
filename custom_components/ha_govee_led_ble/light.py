@@ -874,7 +874,6 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 scene_entry=scene,
                 speed_index=scene_default.speed_index if scene_default is not None else None,
                 canonical_body=scene_default.canonical_body if scene_default is not None else None,
-                writer=None,
                 verify=False,
                 intent=ControlIntent.USER,
             )

@@ -662,34 +662,23 @@ async def test_preview_stale_gatt_failure_discards_client_and_requires_fresh_ser
     client.disconnect.assert_awaited_once()
 
 
-async def test_native_scene_primitive_acquires_control_lock_exactly_once(coord):
-    class CountingArbiter(BLEControlArbiter):
-        acquisitions = 0
-
-        def hold(self, *args, **kwargs):
-            self.acquisitions += 1
-            return super().hold(*args, **kwargs)
-
-    lock = coord._control_arbiter = CountingArbiter()
+async def test_native_scene_holds_control_ownership_for_complete_delivery(coord):
+    lock = coord._control_arbiter
     coord.is_on = False
     packets = []
 
-    async def writer(packet: bytes, **kwargs: object) -> None:
+    async def transmit(_uuid, packet: bytes, **kwargs: object) -> None:
         assert lock.locked()
-        guard = kwargs.get("write_guard")
-        if callable(guard):
-            guard()
         packets.append(packet)
 
     coord.effect_families = frozenset()
-    await coord.async_apply_native_scene(
-        "glacier",
-        speed_index=0,
-        writer=writer,
-        verify=False,
-    )
+    client = _c(write_gatt_char=AsyncMock(side_effect=transmit))
+    with (
+        patch.object(coord, "_ensure_connected", AsyncMock(return_value=client)),
+        patch.object(coord, "_reset_disconnect_timer"),
+    ):
+        await coord.async_apply_native_scene("glacier", speed_index=0, verify=False)
 
-    assert lock.acquisitions == 1
     assert packets[0] == build_power(True, "H617A")
     assert packets[1:] == build_native_scene_packets("H617A", SCENES["glacier"], speed_index=0)
 

@@ -1,6 +1,5 @@
 """Active-mode derivation and mode-switching for the Govee BLE coordinator."""
 
-import asyncio
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, Literal
@@ -205,7 +204,6 @@ class _ActiveModeMixin(_CoordinatorBase):
         scene_entry: SceneEntry | None = None,
         speed_index: int | None = None,
         canonical_body: bytes | None = None,
-        writer: ProfileWriter | None = None,
         before_write: Callable[[], Awaitable[None]] | None = None,
         progress: Callable[[int], Awaitable[None]] | None = None,
         verify: bool = True,
@@ -217,7 +215,6 @@ class _ActiveModeMixin(_CoordinatorBase):
                 scene_entry=scene_entry,
                 speed_index=speed_index,
                 canonical_body=canonical_body,
-                writer=writer,
                 before_write=before_write,
                 progress=progress,
                 verify=verify,
@@ -231,7 +228,6 @@ class _ActiveModeMixin(_CoordinatorBase):
         scene_entry: SceneEntry | None = None,
         speed_index: int | None = None,
         canonical_body: bytes | None = None,
-        writer: ProfileWriter | None = None,
         before_write: Callable[[], Awaitable[None]] | None = None,
         progress: Callable[[int], Awaitable[None]] | None = None,
         verify: bool,
@@ -272,11 +268,7 @@ class _ActiveModeMixin(_CoordinatorBase):
         power_in_sequence = False
         if not self.is_on:
             power = build_power(True, self.model)
-            if writer is not None:
-                qualified()
-                await writer(power)
-                qualified()
-            elif verify:
+            if verify:
                 await self.send_command(power, write_guard=qualified)
             else:
                 packets.insert(0, power)
@@ -290,21 +282,12 @@ class _ActiveModeMixin(_CoordinatorBase):
 
         async def apply() -> None:
             require_ack = bool(upload_count and self.profile.diy_requires_upload_ack)
-            if writer is not None and not require_ack:
-                for index, packet in enumerate(packets, start=1):
-                    if index > 1 and self.profile.packet_write_delay > 0:
-                        await asyncio.sleep(self.profile.packet_write_delay)
-                    qualified()
-                    await writer(packet)
-                    qualified()
-                return
             await self.async_write_effect_sequence(
                 packets,
                 intent=intent,
                 before_write=before_write,
                 progress=progress,
                 write_guard=qualified,
-                writer=writer,
                 require_upload_ack=require_ack,
                 upload_ack_index=upload_count - 1 + int(power_in_sequence) if require_ack else None,
             )
