@@ -4,7 +4,7 @@ import { PanelController, restoredCustomEffectCategory } from "../../src/panel-c
 import { PanelEditorController } from "../../src/panel-editor-controller";
 import { PanelModel } from "../../src/panel-model";
 import { PanelPreviewController } from "../../src/panel-preview-controller";
-import { activeStudioContext, synchroniseDeviceSelect } from "../../src/studio-navigation";
+import { activeStudioContext, editorDevicePath, synchroniseDeviceSelect } from "../../src/studio-navigation";
 import { blankCustomEffect, blankPainted } from "../../src/effect-editor-model";
 import { blankAdvancedContent } from "../../src/advanced-effect-model";
 import { cloneBuiltInDefaultBaselines } from "../../src/built-in-default-state";
@@ -61,6 +61,57 @@ function workspaceModel(selected: DeviceCapabilities): PanelModel {
   installFlowCatalogue(model);
   return model;
 }
+
+test.each(["cancel", "subscribe", "remember"])("a superseded device transition stops after %s", async (pause) => {
+  const model = new PanelModel(() => undefined);
+  model.devices = ["entry-a", "entry-b", "entry-c"].map(id => device(id, "H6199"));
+  model.selectedDeviceId = "entry-a";
+  model.liveApplyEnabled = false;
+  const preview = new PanelPreviewController(model);
+  const modal = panelModal(model);
+  const editor = new PanelEditorController(model, preview, modal, {
+    apiReady: () => true, selectItem: () => undefined,
+    editorTransitionStarted: () => undefined, contentCommitted: () => undefined,
+  });
+  const replacePath = vi.fn();
+  const controller = new PanelController(model, editor, preview, modal, {
+    connected: () => true, pathname: () => "/ha-govee-led-ble", replacePath,
+  });
+  let release!: () => void;
+  const blocked = new Promise<void>(resolve => { release = resolve; });
+  let entered!: () => void;
+  const waiting = new Promise<void>(resolve => { entered = resolve; });
+  const wait = async () => { entered(); await blocked; };
+  const unsubscribeB = vi.fn();
+  const unsubscribeC = vi.fn();
+  vi.spyOn(preview, "cancel").mockImplementation(async id => {
+    if (pause === "cancel" && id === "entry-a") await wait();
+  });
+  const subscribeDevice = vi.fn(async id => {
+    if (pause === "subscribe" && id === "entry-b") await wait();
+    return id === "entry-b" ? unsubscribeB : unsubscribeC;
+  });
+  const updateUserState = vi.fn(async (id, navigation) => {
+    if (pause === "remember" && id === "entry-b") await wait();
+    return { owner_id: "user", recent_colours: [], selected_config_entry_id: id, navigation };
+  });
+  controller.api = { subscribeDevice, updateUserState } as unknown as EffectStudioApi;
+  try {
+    const toB = controller.deviceChanged("entry-b");
+    await waiting;
+    await controller.deviceChanged("entry-c");
+    release();
+    await toB;
+    expect(model.selectedDeviceId).toBe("entry-c");
+    expect(replacePath).toHaveBeenLastCalledWith(editorDevicePath("entry-c"));
+    expect(model.userState?.selected_config_entry_id).toBe("entry-c");
+    expect(subscribeDevice.mock.calls.filter(([id]) => id === "entry-c")).toHaveLength(1);
+    expect(unsubscribeC).not.toHaveBeenCalled();
+  } finally {
+    release();
+    controller.disconnect();
+  }
+});
 
 test("subscription failure aborts armed transitions and overwrite confirmation", async () => {
   const model = new PanelModel(() => undefined);
