@@ -110,6 +110,8 @@ def native_sources(hass):
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H60B0", configuration_url=None)
     coordinator.profile = PROFILE
     coordinator.pact_type, coordinator.pact_code = 1, 2
+    coordinator._confirmed_identity_fields.add("pact")
+    coordinator._refresh_h607c_advertisements = lambda: None
     client = MagicMock(is_connected=True, disconnect=AsyncMock())
     coordinator._client = client
     coordinator._notification_token = object()
@@ -157,6 +159,16 @@ def native_sources(hass):
     coordinator.send_command = AsyncMock(side_effect=send)
     observe()
     return coordinator, observe
+
+
+async def test_native_source_power_requires_current_pact_confirmation(native_sources):
+    coordinator, observe = native_sources
+    observe(0xA0)
+    coordinator._confirmed_identity_fields.discard("pact")
+    with pytest.raises(HomeAssistantError) as error:
+        await coordinator.async_set_boolean_control("top_enabled", True)
+    assert error.value.translation_key == "identity_not_ready"
+    coordinator.send_command.assert_not_awaited()
 
 
 @pytest.mark.parametrize(
