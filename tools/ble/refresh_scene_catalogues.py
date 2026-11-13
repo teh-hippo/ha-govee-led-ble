@@ -52,12 +52,13 @@ _SPEED_METADATA_SKUS = frozenset(
         "H619A",
         "H7020",
         "H7025",
+        "H705A",
     }
 )
 
 # These models derive the initial speed selection from metadata and rewrite every
 # configured field before upload, so embedded field values are not the default-speed invariant.
-_METADATA_DEFAULT_SPEED_SKUS = frozenset({"H1771", "H607C", "H60A1", "H60B0", "H60B2", "H7020", "H7025"})
+_METADATA_DEFAULT_SPEED_SKUS = frozenset({"H1771", "H607C", "H60A1", "H60B0", "H60B2", "H7020", "H7025", "H705A"})
 
 # Glacier's application path rewrites its stale stored movement fields.
 _VERIFIED_SPEED_DEFAULT_REWRITES = frozenset({("H617A", 1026, 1088)})

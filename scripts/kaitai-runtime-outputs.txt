@@ -159,3 +159,8 @@ scene_type1_body.py
 status_query.py
 status_reply.py
 workshop_body.py
+h705a_command_write.py
+h705a_status_query.py
+h705a_status_reply.py
+h705a_music_write.py
+h705a_music_body.py

@@ -34,8 +34,9 @@ from tests.coordinator_test_support import _packet
 @pytest.fixture
 async def device(hass, monkeypatch, request):
     c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", getattr(request, "param", "H617A"), configuration_url=None)
-    if c.model == "H7020":
-        c.pact_type = c.pact_code = 1
+    if c.model in {"H7020", "H705A"}:
+        c.pact_type = 1
+        c.pact_code = 2 if c.model == "H705A" else 1
         c._resolve_device_profile()
     c.fw_version, c.hw_version = "3.02.24", "3.01.01"
     client = MagicMock(is_connected=True, start_notify=AsyncMock(), disconnect=AsyncMock())
@@ -182,7 +183,7 @@ async def test_configured_pages_complete_only_current_geometry(device, strings):
             await task
 
 
-@pytest.mark.parametrize("device", ["H7020"], indirect=True)
+@pytest.mark.parametrize("device", ["H7020", "H705A"], indirect=True)
 @pytest.mark.parametrize(("ack", "readback"), [(0, 2), (1, 1), (0, 1), (0, None)])
 async def test_count_setting_needs_ack_and_matching_fresh_readback(device, ack, readback, monkeypatch):
     c, client, receive = device
@@ -192,7 +193,8 @@ async def test_count_setting_needs_ack_and_matching_fresh_readback(device, ack, 
         if packet[0] == 0x33:
             receive(None, bytearray(_packet(0x33, 0x0F, [ack])))
         elif packet == build_configured_strings_query(c.profile) and readback is not None:
-            receive(None, bytearray(_packet(0xAA, 0x0F, [readback])))
+            domain, body = (0x40, [0, readback * 12]) if c.profile.configured_string_ic_count else (0x0F, [readback])
+            receive(None, bytearray(_packet(0xAA, domain, body)))
 
     client.write_gatt_char = AsyncMock(side_effect=write)
     monkeypatch.setattr(c, "async_refresh_segments", AsyncMock(return_value=True))
@@ -208,6 +210,62 @@ async def test_count_setting_needs_ack_and_matching_fresh_readback(device, ack, 
         assert c.configured_strings == 1
         c.async_refresh_segments.assert_not_awaited()
     assert sum(packet.args[1][0] == 0x33 for packet in client.write_gatt_char.await_args_list) == 1
+
+
+@pytest.mark.parametrize("device", ["H705A"], indirect=True)
+@pytest.mark.parametrize("ack", [0, 1])
+async def test_installation_refresh_requires_ack_then_independent_geometry(device, ack, monkeypatch):
+    c, client, receive = device
+    c.pact_code = 1
+    c._resolve_device_profile()
+    sent = []
+
+    async def write(_uuid, packet, **_kwargs):
+        sent.append(packet)
+        if packet[0] == 0x33:
+            assert packet == bytes.fromhex("3342000000000000000000000000000000000071")
+            receive(None, bytearray(_packet(0x33, 0x42, [ack])))
+        elif packet[1] == 0x40:
+            receive(None, bytearray(_packet(0xAA, 0x40, [0, 72])))
+
+    client.write_gatt_char = AsyncMock(side_effect=write)
+    monkeypatch.setattr(c, "async_refresh_segments", AsyncMock(return_value=True))
+    if ack:
+        with pytest.raises(ValueError, match="rejected"):
+            await c.async_refresh_ic()
+        assert c.profile.physical_ic_count is None
+        c._resolve_device_profile()
+        assert c.profile.physical_ic_count is None
+    else:
+        await c.async_refresh_ic()
+        assert (c.profile.physical_ic_count, c.profile.segment_count) == (72, 18)
+        assert sent[1][0:2] == bytes((0xAA, 0x40))
+    assert sum(packet[0] == 0x33 for packet in sent) == 1
+    c.pact_code = 2
+    c._resolve_device_profile()
+    with pytest.raises(ValueError, match="not supported"):
+        await c.async_refresh_ic()
+    assert sum(packet[0] == 0x33 for packet in sent) == 1
+
+
+@pytest.mark.parametrize("device", ["H705A"], indirect=True)
+async def test_unknown_installation_cannot_admit_masks_after_zero_count_reply(device, monkeypatch):
+    c, client, receive = device
+    c.pact_code = 1
+    c._resolve_device_profile()
+    c.profile = replace(c.profile, physical_ic_count=None)
+    baseline = dict(c._field_revisions)
+
+    async def write(_uuid, packet, **_kwargs):
+        receive(None, bytearray(_packet(0xAA, 0x40, [0, 0])))
+
+    client.write_gatt_char = AsyncMock(side_effect=write)
+    monkeypatch.setattr(c, "_wait_for_revisions", AsyncMock(return_value=True))
+    with pytest.raises(ValueError, match="Cannot confirm installed geometry"):
+        async with c.async_mask_transaction():
+            pytest.fail("Unknown installation admitted a masked write")
+    assert c.profile.physical_ic_count is None and c._field_revisions == baseline
+    assert all(call.args[1][0] == 0xAA for call in client.write_gatt_char.await_args_list)
 
 
 @pytest.mark.parametrize("device", ["H7020"], indirect=True)

@@ -51,8 +51,8 @@ def _command_types(model: str, profile: ModelProfile | None = None) -> tuple[Any
         return H1771CommandWrite, H1771CommandWrite.PowerCmd, H1771CommandWrite.BrightnessCmd
     if resolved in {"H6072", "H6072-legacy", "H607C"}:
         return _COMMAND_ROOTS[resolved][1], CommandWrite.PowerCmd, CommandWrite.BrightnessCmd
-    if resolved == "H7020":
-        return H7020CommandWrite, CommandWrite.PowerCmd, CommandWrite.BrightnessCmd
+    if resolved in {"H7020", "H705A"}:
+        return _COMMAND_ROOTS[resolved][1], CommandWrite.PowerCmd, CommandWrite.BrightnessCmd
     if resolved in WHOLE_BULB_GRAMMARS | {"H6046", "H6099", "H6179", "H6199"}:
         root_type = _COMMAND_ROOTS[resolved][1]
         return root_type, root_type.PowerBody, root_type.BrightnessBody
@@ -156,7 +156,7 @@ def _build_h617a_static_colour(
     segment_mask = _child(component.ExtendedSegmentMask if extended else component.SegmentMask, colour)
     segment_mask.bits = mask
     colour.mask = segment_mask
-    if component is CommandWrite:
+    if hasattr(colour, "tail_size"):
         colour.unknown_tail = bytes(colour.tail_size)
     elif root_type is H7020CommandWrite:
         colour.unknown_tail = bytes(3)
@@ -308,7 +308,7 @@ def build_segment_colour(
         root.body = mode
         return _serialize_xor(root)
 
-    if resolved not in {"H1771", "H6072", "H607C", "H617A", "H7020"}:
+    if resolved not in {"H1771", "H6072", "H607C", "H617A", "H7020", "H705A"}:
         raise ValueError(f"{model} has no generated static-colour grammar")
     return _build_h617a_static_colour(
         mask,
@@ -365,11 +365,11 @@ def build_colour_temperature(
         root.body = mode
         return _serialize_xor(root)
 
-    if resolved not in {"H1771", "H6072", "H607C", "H617A", "H7020"}:
+    if resolved not in {"H1771", "H6072", "H607C", "H617A", "H7020", "H705A"}:
         raise ValueError(f"{model} has no generated colour-temperature grammar")
     return _build_h617a_static_colour(
         mask,
-        direct=KELVIN_DIRECT_RGB,
+        direct=tuple(getattr(_COMMAND_ROOTS[resolved][1](), "kelvin_direct_rgb", KELVIN_DIRECT_RGB)),
         kelvin=value,
         preview=preview,
         root_type=(_extended_static_root(profile) or _COMMAND_ROOTS[resolved])[1],
@@ -409,7 +409,7 @@ def build_segment_brightness(
         root.body = mode
         return _serialize_xor(root)
 
-    if resolved not in {"H1771", "H6072", "H607C", "H617A", "H7020"}:
+    if resolved not in {"H1771", "H6072", "H607C", "H617A", "H7020", "H705A"}:
         raise ValueError(f"{model} has no generated segment-brightness grammar")
     root_type = (_extended_static_root(profile) or _COMMAND_ROOTS[resolved])[1]
     root = root_type()
@@ -436,7 +436,7 @@ def build_segment_brightness(
     segment_mask = _child(component.ExtendedSegmentMask if extended else component.SegmentMask, brightness)
     segment_mask.bits = mask
     brightness.mask = segment_mask
-    if component is CommandWrite:
+    if hasattr(brightness, "tail_size"):
         brightness.unknown_tail = bytes(brightness.tail_size)
     elif root_type is H7020CommandWrite:
         brightness.unknown_tail = bytes(10)
@@ -838,7 +838,7 @@ def build_music_mode(
         multi.sub_body = selector
         root.body = multi
         return _serialize_xor(root)
-    if resolved in {"H6097", "H1A42", "H61F5", "H66A0", "H7025"}:
+    if resolved in {"H6097", "H1A42", "H61F5", "H66A0", "H7025", "H705A"}:
         root_cls = _MUSIC_WRITE_ROOTS[resolved][1]
         root = root_cls()
         root.header, root.opcode, root.sub = b"\x33", b"\x05", b"\x13"

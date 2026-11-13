@@ -424,6 +424,11 @@ H7025_DIY_FAMILIES: Final = tuple(
     for family in H7020_DIY_FAMILIES[:6]
 )
 
+H705A_DIY_FAMILIES: Final = tuple(
+    replace(family, rate_min=0, multi_rate_min=0, source_reference="H705A basic and mixed DIY contract")
+    for family in H7020_DIY_FAMILIES[:6]
+)
+
 H6072_DIY_FAMILIES: Final = tuple(
     DiyEffectFamily(
         name,

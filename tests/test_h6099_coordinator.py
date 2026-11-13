@@ -235,7 +235,7 @@ async def test_ic_discovery_is_device_scoped_and_only_initializes_new_defaults(d
     assert device.profile.physical_ic_count == 14 and get_profile("H6099").physical_ic_count is None
     assert device.music_piano_key_count == 11 and device.music_separation_point == 3
     assert device.music_fountain_direction == "two_way"
-    assert device._field_revisions == {}
+    assert device._field_revisions.keys() <= {"physical_ic_count"}
     device.music_piano_key_count = 12
     notify(device, "aa40000e")
     assert device.music_piano_key_count == 12
@@ -245,7 +245,7 @@ async def test_ic_discovery_is_device_scoped_and_only_initializes_new_defaults(d
     assert device.profile.physical_ic_count is None
     assert device.physical_ic_count_source == "unknown"
     notify(device, "aa40003c")
-    assert device.music_piano_key_count == 12 and device._field_revisions == {}
+    assert device.music_piano_key_count == 12 and device._field_revisions.keys() <= {"physical_ic_count"}
     assert device.physical_ic_count_source == "observed"
 
 
@@ -448,7 +448,7 @@ async def test_music_recovery_uses_device_geometry_without_unsupported_colour(de
         RefreshRequest(on=True, brightness=100, music_mode="piano_keys", music_sensitivity=99)
     )
     assert "music_palette" not in device._expected_state
-    assert device._field_revisions == {}
+    assert device._field_revisions.keys() <= {"physical_ic_count"}
 
 
 @pytest.mark.parametrize("missing_policy", [False, True])
@@ -555,7 +555,7 @@ async def test_authored_music_rechecks_geometry_before_every_attempt(device, cha
         await device.async_write_music_sequence(writes, mode_code=52, physical_ic_count=60, intent=ControlIntent.USER)
     assert device.control_write_attempts == client.write_gatt_char.await_count == changed_at
     assert [call.args[1] for call in client.write_gatt_char.await_args_list] == list(packets[:changed_at])
-    assert device.music_mode == "off" and device._field_revisions == {}
+    assert device.music_mode == "off" and device._field_revisions.keys() <= {"physical_ic_count"}
 
 
 @pytest.mark.parametrize("changed", [False, True])
@@ -674,7 +674,9 @@ async def test_ic_rediscovery_preserves_user_parameters_and_validates_new_bounds
     device._clear_client_state(device._client)
     notify(device, f"aa40{count:04x}")
     assert device.music_piano_key_count == 30 and device.music_piano_gradient
-    assert device._initialized_music_parameters == initialized and device._field_revisions == {}
+    assert device._initialized_music_parameters == initialized and device._field_revisions.keys() <= {
+        "physical_ic_count"
+    }
     parameters = capture_music_parameters(device, device.profile, "piano_keys")
     if count == 14:
         with pytest.raises(ValueError, match="key_count"):

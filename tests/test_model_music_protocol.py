@@ -39,7 +39,7 @@ from custom_components.ha_govee_led_ble.music_protocol import (
     music_mode_supports_style,
     music_slug_for,
 )
-from custom_components.ha_govee_led_ble.protocol_core import H60b2MusicBody, H6181MusicBody
+from custom_components.ha_govee_led_ble.protocol_core import H60b2MusicBody, H705aMusicWrite, H6181MusicBody
 
 _H617A_CODES = {
     "energetic": 0x05,
@@ -190,6 +190,7 @@ def test_codebooks_match_generated_kaitai_enums_and_gate_on_effective_profile() 
         "H6199": H6199CommandWrite.MusicMode,
         "H7020": H7020CommandWrite.MusicMode,
         "H7025": H7025MusicWrite.MusicMode,
+        "H705A": H705aMusicWrite.MusicMode,
     }
     assert set(MUSIC_MODE_CODES_BY_MODEL) == set(expected_enums)
     for grammar, enum_type in expected_enums.items():

@@ -86,7 +86,7 @@ def _build_status_query(
         root.body = body
         return _serialize_xor(root)
     root_type = _STATUS_QUERY_ROOTS[grammar][1]
-    body_types = StatusQuery if grammar in {"H6072", "H6072-legacy", "H607C", "H60B0", "H7020"} else root_type
+    body_types = StatusQuery if grammar in {"H6072", "H6072-legacy", "H607C", "H60B0", "H7020", "H705A"} else root_type
     root = root_type()
     root.header = b"\xaa"
     generated_domain = "mode" if grammar == "H6179" and domain == "colour_mode" else domain
@@ -134,6 +134,7 @@ def _build_status_query(
         "H60B0",
         "H617A",
         "H7020",
+        "H705A",
     }:
         body = _child(body_types.ColourModeQueryBody, root)
         body.selector = colour_mode_selector
@@ -277,6 +278,7 @@ def build_boolean_control(
         "H6179",
         "H6181",
         "H7020",
+        "H705A",
     }:
         raise ValueError(f"{model} does not support boolean control {control}")
     if type(enabled) is not bool:
@@ -361,6 +363,7 @@ def build_boolean_control_query(control: str, model: str, *, profile: ModelProfi
         "H6179",
         "H6181",
         "H7020",
+        "H705A",
     }:
         raise ValueError(f"{model} does not support boolean control {control}")
     if profile.setting_grammar == "H60A6" and control in H60a6Control.Zone.__members__:
@@ -666,21 +669,35 @@ def parse_boolean_control(generated: Any, model: str, *, profile: ModelProfile |
 
 
 def build_configured_strings_query(profile: ModelProfile) -> bytes:
-    """Read configured strings, independently of physical IC count."""
-    if not profile.configured_string_counts or profile.command_grammar != "H7020":
+    """Read the product's independent installation observation."""
+    if not profile.configured_string_counts:
         raise ValueError(f"{profile.name} does not support configured strings")
+    if profile.configured_string_ic_count:
+        return build_physical_ic_count_query(profile.name, profile=profile)
     return _build_status_query("configured_strings", profile.command_grammar)
 
 
 def build_configured_strings(count: int, profile: ModelProfile) -> bytes:
-    if type(count) is not int or count not in profile.configured_string_counts or profile.command_grammar != "H7020":
+    if type(count) is not int or count not in profile.configured_string_counts:
         raise ValueError("unsupported configured string count")
-    root = H7020CommandWrite()
+    root_type = _COMMAND_ROOTS[profile.command_grammar or ""][1]
+    root = root_type()
     root.header = b"\x33"
-    root.opcode = H7020CommandWrite.CommandOp.configured_strings
-    root.body = _child(H7020CommandWrite.ConfiguredStringsCmd, root)
+    root.opcode = root_type.CommandOp.configured_strings
+    root.body = _child(root_type.ConfiguredStringsCmd, root)
     root.body.count = count
     root.body.unknown_tail = bytes(16)
+    return _serialize_xor(root)
+
+
+def build_ic_refresh(profile: ModelProfile) -> bytes:
+    if not profile.supports_ic_refresh:
+        raise ValueError("IC refresh is not supported")
+    root_type = _COMMAND_ROOTS[profile.command_grammar or ""][1]
+    root = root_type()
+    root.header, root.opcode = b"\x33", root_type.CommandOp.refresh_ic
+    root.body = _child(root_type.ZeroBody, root)
+    root.body.zeros = [0] * 17
     return _serialize_xor(root)
 
 
@@ -800,7 +817,7 @@ def build_segment_query(group: int, model: str = "H617A", *, profile: ModelProfi
         raise ValueError(f"{model} has no generated segment-query grammar")
     if type(group) is not int:
         raise ValueError("segment query group must be an integer")
-    if resolved in {"H1771", "H60B0"} and not 1 <= group <= profile.segment_group_count:
+    if resolved in {"H1771", "H60B0", "H705A"} and not 1 <= group <= profile.segment_group_count:
         raise ValueError("segment query group is outside the selected geometry")
     try:
         return _build_status_query("segments", resolved, segment_group=group)

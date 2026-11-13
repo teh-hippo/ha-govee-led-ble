@@ -604,35 +604,41 @@ class _NotificationMixin(_CoordinatorBase):
 
     def _apply_physical_ic_count(self, generated: Any) -> None:
         """Adopt a reported physical IC count, resizing segment state and seeding music defaults."""
-        if (count := parse_physical_ic_count(generated)) is not None:
-            self._observed_physical_ic_count = count
-            if self._client is not None and self._client.is_connected:
-                self._physical_ic_count_confirmed = True
-            updated = profile_with_physical_ic_count(
-                self.profile,
-                count,
-                segment_count_ceiling=get_profile(self.model).segment_count_capacity
-                or get_profile(self.model).segment_count,
-            )
-            if updated != self.profile:
-                topology_changed = updated.segment_count != self.profile.segment_count
-                self.profile = updated
-                if topology_changed:
-                    self._advance_profile_generation()
-                    self._segment_query_generation = None
-                    self._expected_state.clear()
-                    self.segment_colors = [(255, 255, 255)] * updated.segment_count
-                    self.segment_brightness = [100] * updated.segment_count
-                    self.segment_state_source = "initial"
-                    self.segment_state_observed_at = None
-                    self.segment_brightness_readable = False
-                    self._segment_groups_observed.clear()
-                    self._segment_query_colors = self._segment_query_brightness = None
-            for variant in self.profile.music_variants:
-                for spec in music_body_params_for_mode(variant.mode_code, self.profile):
-                    if spec.key not in self._initialized_music_parameters:
-                        setattr(self, spec.key, spec.default)
-                        self._initialized_music_parameters.add(spec.key)
+        count = parse_physical_ic_count(generated)
+        if count is None:
+            raise ValueError("Physical IC count is unavailable")
+        updated = profile_with_physical_ic_count(
+            self.profile,
+            count,
+            segment_count_ceiling=get_profile(self.model).segment_count_capacity
+            or get_profile(self.model).segment_count,
+        )
+        self._observed_physical_ic_count = count
+        if self._client is not None and self._client.is_connected:
+            self._physical_ic_count_confirmed = True
+        if self.profile.configured_string_counts and self.profile.configured_string_ic_count:
+            divisor = self.profile.configured_string_ic_count
+            strings = count // divisor if count % divisor == 0 else None
+            self.configured_strings = strings if strings in self.profile.configured_string_counts else None
+        if updated != self.profile:
+            topology_changed = updated.segment_count != self.profile.segment_count
+            self.profile = updated
+            if topology_changed:
+                self._advance_profile_generation()
+                self._segment_query_generation = None
+                self._expected_state.clear()
+                self.segment_colors = [(255, 255, 255)] * updated.segment_count
+                self.segment_brightness = [100] * updated.segment_count
+                self.segment_state_source = "initial"
+                self.segment_state_observed_at = None
+                self.segment_brightness_readable = False
+                self._segment_groups_observed.clear()
+                self._segment_query_colors = self._segment_query_brightness = None
+        for variant in self.profile.music_variants:
+            for spec in music_body_params_for_mode(variant.mode_code, self.profile):
+                if spec.key not in self._initialized_music_parameters:
+                    setattr(self, spec.key, spec.default)
+                    self._initialized_music_parameters.add(spec.key)
 
     def _handle_low_blue_light_notification(self, frame: bytes) -> bool:
         if self.profile.setting_grammar != "H6072":
@@ -925,6 +931,7 @@ class _NotificationMixin(_CoordinatorBase):
                 observed = tuple(control_values)
             elif domain is StatusDomain.PHYSICAL_IC_COUNT:
                 self._apply_physical_ic_count(generated)
+                observed = ("physical_ic_count",)
             self._reply_gate.observe(frame)
             self._mark_received(domain, *observed)
             self._record_parsed_status(frame, decoded, parser)

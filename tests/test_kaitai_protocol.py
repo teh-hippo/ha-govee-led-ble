@@ -1913,6 +1913,33 @@ def test_h7025_basic_controls_reuse_only_the_compatible_command_layout():
     assert generated_protocol_adapter.build_colour_mode_query("H7025") == H6179_MODE_QUERY
 
 
+@pytest.mark.parametrize(
+    "operation,expected",
+    [
+        ("rgb", "330515011122330000000000ffffff07000000dd"),
+        ("kelvin", "330515010000001068ffd9abffffff0700000028"),
+        ("brightness", "33051502250000000400000000000000000000"),
+    ],
+)
+def test_permanent_light_static_controls_preserve_four_byte_masks_and_black_kelvin_rgb(operation, expected):
+    profile = replace(get_profile("H705A"), physical_ic_count=108, segment_count=27)
+    if operation == "rgb":
+        packet = build_color_rgb(17, 34, 51, "H705A", profile=profile)
+    elif operation == "kelvin":
+        packet = build_color_temp(4200, "H705A", profile=profile)
+    else:
+        packet = generated_protocol_adapter.build_segment_brightness(1 << 26, 37, "H705A", profile=profile)
+    payload = bytes.fromhex(expected)[:19]
+    assert packet == payload + bytes([xor_checksum(payload)])
+    expectations = expectations_from_packet(packet, "H705A", profile=profile)
+    assert expectations
+    assert generated_protocol_adapter.build_segment_query(7, "H705A", profile=profile) == bytes.fromhex(
+        "aaa5070000000000000000000000000000000008"
+    )
+    with pytest.raises(ValueError):
+        generated_protocol_adapter.build_segment_query(8, "H705A", profile=profile)
+
+
 def test_command_and_status_fields_are_meaningful() -> None:
     command = _parse(CommandWrite, COMMAND_STATIC)
     assert command.opcode.name == "multi"

@@ -30,6 +30,7 @@ Read and follow [`CONTRIBUTING.md`](../CONTRIBUTING.md) before planning or imple
   Record reusable contributor invariants in `CONTRIBUTING.md`, not named-function recipes or a growing list of past incidents here.
 - Never edit generated protocol or frontend outputs manually.
 - Run focused existing checks while iterating and `make check` before declaring the final tree complete.
+- Keep independent pytest processes serial within one checkout, including audit/review agents; Home Assistant fixtures share test storage.  Use the existing runner's workers for parallel tests.
 - Run `make package` only when a distributable archive is requested.
 - For local rebases, keep recovery refs outside `refs/heads/` and use `--no-update-refs` from the first invocation.  Do not remove `update-ref` commands by hand from an active rebase.
 - Follow `CONTRIBUTING.md` for release policy and `docs/release-candidates.md` for hardware testing.

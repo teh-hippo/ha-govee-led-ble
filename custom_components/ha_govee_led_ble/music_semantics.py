@@ -79,12 +79,53 @@ COMPANION_MUSIC_LAYOUTS = frozenset(
         "h1a42_music_parameters",
         "h61f5_music_parameters",
         "h7025_music_body",
+        "h705a_music_body",
         "h6046_music_body",
         "h1771_music_body",
         "h60b0_music_body",
         "h60b2_music_body",
         "h6181_music_body",
     }
+)
+
+H705A_MUSIC_VARIANTS = (
+    MusicVariant(5, "H705A selector-only onboard response", supports_fixed_colour=False),
+    *(
+        MusicVariant(
+            code,
+            "H705A candidate onboard palette and companion contract",
+            "h705a_music_body",
+            bytes.fromhex(f"{code:02x}07ff0000ff7f00ffff0000ff000000ff00ffff8b00ff{tail}"),
+            (
+                MusicParamSpec(
+                    "music_direction",
+                    "direction",
+                    "direction",
+                    "select",
+                    "clockwise",
+                    options=("clockwise", "counterclockwise"),
+                ),
+            )
+            if code in (74, 113)
+            else (
+                MusicParamSpec("music_hopping_background", "background", "background", "number", 0, 0, 0xFFFFFF),
+                MusicParamSpec(
+                    "music_hopping_brightness", "relative_brightness", "rel_brightness", "number", 15, 0, 50
+                ),
+            )
+            if code == 72
+            else (),
+            palette_bounds=bounds,
+            supports_fixed_colour=False,
+        )
+        for code, bounds, tail in (
+            (49, (1, 8), "0a6408"),
+            (74, (2, 8), "00"),
+            (72, (1, 8), "0000000f"),
+            (81, (4, 8), ""),
+            (113, (1, 8), "00"),
+        )
+    ),
 )
 
 H6181_MUSIC_VARIANTS = (

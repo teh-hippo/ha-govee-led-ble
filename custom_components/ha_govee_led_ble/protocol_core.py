@@ -21,6 +21,22 @@ CommandWrite = cast(
     import_module("custom_components.ha_govee_led_ble.generated_protocol.command_write").CommandWrite,
 )
 
+H705aCommandWrite = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h705a_command_write").H705aCommandWrite
+)
+H705aStatusQuery = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h705a_status_query").H705aStatusQuery
+)
+H705aStatusReply = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h705a_status_reply").H705aStatusReply
+)
+H705aMusicWrite = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h705a_music_write").H705aMusicWrite
+)
+H705aMusicBody = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h705a_music_body").H705aMusicBody
+)
+
 H60b2Control = cast(
     Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h60b2_control").H60b2Control
 )
@@ -776,6 +792,7 @@ H619aStatusReply = cast(
 
 
 _STATUS_ROOTS = {
+    "H705A": ("h705a_status_reply", H705aStatusReply),
     "H6181": ("h6181_status_reply", H6181StatusReply),
     "H6181-modern": ("h6181_modern_status_reply", H6181ModernStatusReply),
     "H619A": ("h619a_status_reply", H619aStatusReply),
@@ -813,6 +830,7 @@ _STATUS_ROOTS = {
 
 
 _COMMAND_ROOTS = {
+    "H705A": ("h705a_command_write", H705aCommandWrite),
     "H6181": ("h6181_command_write", H6181CommandWrite),
     "H60B0": ("h60b0_command_write", H60b0CommandWrite),
     "H1771": ("h1771_command_write", H1771CommandWrite),
@@ -836,6 +854,7 @@ _EXTENDED_STATIC_ROOTS = {
 
 
 _STATUS_QUERY_ROOTS = {
+    "H705A": ("h705a_status_query", H705aStatusQuery),
     "H6181": ("h6181_status_query", H6181StatusQuery),
     "H60B0": ("h60b0_status_query", H60b0StatusQuery),
     "H1771": ("h1771_status_query", H1771StatusQuery),
@@ -861,6 +880,7 @@ _H6076_ACK_ROOTS = {
 
 
 _MUSIC_WRITE_ROOTS = {
+    "H705A": ("h705a_music_write", H705aMusicWrite),
     "H60B2": ("h60b2_music_write", H60b2MusicWrite),
     "H6072": ("h6072_music_write", H6072MusicWrite),
     "H607C": ("h607c_music_write", H607cMusicWrite),
@@ -874,6 +894,7 @@ _MUSIC_WRITE_ROOTS = {
 
 
 _COMMAND_ACK_ROOTS = {
+    "H705A": ("h617a_command_ack", H617aCommandAck),
     "H6181": ("h6181_command_ack", H6181CommandAck),
     "H60B0": ("h60b0_command_ack", H60b0CommandAck),
     "H600A": ("h600a_command_ack", H600aCommandAck),
@@ -898,13 +919,14 @@ def _has_unknown_discriminator(parsed: Any, parser: str) -> bool:
         "h1771_command_write",
         "h60b0_command_write",
         "h7020_command_write",
+        "h705a_command_write",
         "h607c_command_write",
     } and (parsed.opcode.name == "multi"):
         sub = getattr(parsed.body.sub, "name", None)
         return (
             sub is None
             or (
-                parser in {"h1771_command_write", "h7020_command_write", "h607c_command_write"}
+                parser in {"h1771_command_write", "h7020_command_write", "h705a_command_write", "h607c_command_write"}
                 and sub == "static"
                 and not parsed.is_static
             )

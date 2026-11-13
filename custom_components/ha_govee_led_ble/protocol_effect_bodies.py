@@ -488,7 +488,7 @@ def build_scene_activation(
         root.body.sub_body.code = scene_code
         root.body.sub_body.unknown_tail = bytes(14)
         return _serialize_xor(root)
-    if grammar in {"H6072", "H6072-legacy", "H607C", "H617A", "H7020"}:
+    if grammar in {"H6072", "H6072-legacy", "H607C", "H617A", "H7020", "H705A"}:
         return build_h617a_scene(scene_code, scene_type=scene_type, root_type=_COMMAND_ROOTS[grammar][1])
     if grammar == "H6179":
         if music_code or scene_type:
@@ -576,7 +576,7 @@ def build_diy_activation(
         root.body.sub_body.code = diy_code
         root.body.sub_body.unknown_tail = bytes(14)
         return _serialize_xor(root)
-    if grammar in {"H6072", "H6072-legacy", "H617A", "H7020"}:
+    if grammar in {"H6072", "H6072-legacy", "H617A", "H7020", "H705A"}:
         return build_h617a_diy_activation(diy_code, root_type=_COMMAND_ROOTS[grammar][1])
     if grammar in WHOLE_BULB_GRAMMARS | {"H6046"}:
         root_type = _COMMAND_ROOTS[grammar][1]

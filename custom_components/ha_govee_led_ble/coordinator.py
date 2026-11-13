@@ -82,6 +82,7 @@ from .generated_protocol_adapter import (
     build_configured_strings_query,
     build_firmware_query,
     build_hardware_query,
+    build_ic_refresh,
     build_pact_query,
     build_physical_ic_count_query,
     build_power_on_behaviour,
@@ -727,6 +728,8 @@ class GoveeBLECoordinator(
                     self._observed_physical_ic_count,
                     segment_count_ceiling=declared.segment_count_capacity or declared.segment_count,
                 )
+            elif self.profile.segment_count_ic_divisor is not None and self.profile.physical_ic_count is None:
+                profile = replace(profile, physical_ic_count=None, segment_count=self.profile.segment_count)
             elif (
                 profile is get_profile(self.model)
                 and profile.physical_ic_count is None
@@ -2192,7 +2195,8 @@ class GoveeBLECoordinator(
 
     async def _read_configured_strings(self, client: BleakClient, *, deadline: float) -> bool:
         self._configured_strings_confirmed = False
-        baseline = {"configured_strings": self._field_revisions.get("configured_strings", 0)}
+        field = "physical_ic_count" if self.profile.configured_string_ic_count else "configured_strings"
+        baseline = {field: self._field_revisions.get(field, 0)}
         token = self._notification_token
         try:
             async with asyncio.timeout_at(deadline):
@@ -2238,6 +2242,19 @@ class GoveeBLECoordinator(
                     client, deadline=time.monotonic() + STATE_QUERY_TIMEOUT
                 ):
                     raise ValueError("Cannot confirm configured bulb layout; refresh and retry")
+                if self.profile.segment_count_ic_divisor is not None and self.profile.physical_ic_count is None:
+                    deadline = time.monotonic() + STATE_QUERY_TIMEOUT
+                    baseline = {"physical_ic_count": self._field_revisions.get("physical_ic_count", 0)}
+                    await self._async_write_packet(
+                        client,
+                        build_physical_ic_count_query(self.model, profile=self.profile),
+                        cleanup_deadline=deadline,
+                    )
+                    if (
+                        not await self._wait_for_revisions(baseline, {}, deadline)
+                        or self.profile.physical_ic_count is None
+                    ):
+                        raise ValueError("Cannot confirm installed geometry; refresh and retry")
             self._mask_transaction = (asyncio.current_task(), self._notification_token, self._profile_generation)
             try:
                 yield
@@ -2245,10 +2262,15 @@ class GoveeBLECoordinator(
                 self._mask_transaction = None
 
     async def async_set_configured_strings(self, count: int) -> None:
-        packet = build_configured_strings(count, self.profile)
+        await self._async_change_installation(build_configured_strings(count, self.profile), expected_strings=count)
+
+    async def async_refresh_ic(self) -> None:
+        await self._async_change_installation(build_ic_refresh(self.profile))
+
+    async def _async_change_installation(self, packet: bytes, *, expected_strings: int | None = None) -> None:
         command = parse_command_result(packet, self.model, profile=self.profile).parsed
         if command is None:
-            raise ValueError("Invalid configured string command")
+            raise ValueError("Invalid installation command")
         opcode = int(command.opcode)
         async with async_control_intent(self, ControlIntent.USER):
             await self._async_supersede_effect_preview()
@@ -2256,25 +2278,56 @@ class GoveeBLECoordinator(
                 client = await self._ensure_connected()
                 future: asyncio.Future[bool] = asyncio.get_running_loop().create_future()
                 token = self._notification_token
+                attempted = False
 
                 def before_write() -> None:
                     self._configured_strings_confirmed = False
+                    self._physical_ic_count_confirmed = False
+                    self._segment_query_generation = None
+                    self.segment_state_observed_at = None
                     self._setting_ack = (client, token, opcode, future)
+
+                def on_write() -> None:
+                    nonlocal attempted
+                    attempted = True
+                    if self.profile.segment_count_ic_divisor is not None:
+                        self._observed_physical_ic_count = None
+                        self.profile = replace(self.profile, physical_ic_count=None)
 
                 try:
                     async with asyncio.timeout(4.0):
-                        await self._async_write_packet(client, packet, arm_expected=True, before_write=before_write)
+                        try:
+                            await self._async_write_packet(
+                                client, packet, arm_expected=True, before_write=before_write, on_write=on_write
+                            )
+                        finally:
+                            if attempted:
+                                self._advance_profile_generation()
                         if not await future:
-                            raise ValueError("Device rejected configured string count")
-                    if not await self._read_configured_strings(client, deadline=time.monotonic() + STATE_QUERY_TIMEOUT):
-                        raise ValueError("Device did not provide fresh configured string count")
-                    if self.configured_strings != count:
+                            raise ValueError("Device rejected installation change")
+                    deadline = time.monotonic() + STATE_QUERY_TIMEOUT
+                    if self.profile.configured_string_counts:
+                        if not await self._read_configured_strings(client, deadline=deadline):
+                            raise ValueError("Device did not provide fresh configured string count")
+                    else:
+                        baseline = {"physical_ic_count": self._field_revisions.get("physical_ic_count", 0)}
+                        await self._async_write_packet(
+                            client,
+                            build_physical_ic_count_query(self.model, profile=self.profile),
+                            cleanup_deadline=deadline,
+                        )
+                        if (
+                            not await self._wait_for_revisions(baseline, {}, deadline)
+                            or self.profile.physical_ic_count is None
+                        ):
+                            raise ValueError("Device did not provide fresh installed geometry")
+                    if expected_strings is not None and self.configured_strings != expected_strings:
                         raise ValueError("Device did not confirm requested string count")
                 finally:
                     self._setting_ack = None
                     future.cancel()
             if not await self.async_refresh_segments():
-                raise ValueError("Configured strings changed but bulb state could not be read")
+                raise ValueError("Installation changed but segment state could not be read")
 
     async def async_set_boolean_control(self, control: str, enabled: bool) -> None:
         if type(enabled) is not bool:
