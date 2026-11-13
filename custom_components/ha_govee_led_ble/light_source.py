@@ -106,6 +106,8 @@ class GoveeBLESourceLight(GoveeBLEEntity, LightEntity):
     def color_mode(self) -> ColorMode | None:
         modes = self.supported_color_modes
         source = self._source(self.coordinator.profile)
+        if f"source_colour_{self._key}" in self.coordinator._h607c_uncertain_state_fields:
+            return ColorMode.UNKNOWN
         if source is not None and source.native_control:
             return (
                 ColorMode.COLOR_TEMP if getattr(self.coordinator, f"{source.key}_kelvin", None) else ColorMode.UNKNOWN

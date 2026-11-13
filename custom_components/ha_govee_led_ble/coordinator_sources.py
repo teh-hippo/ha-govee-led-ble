@@ -114,12 +114,14 @@ def source_field_fresh(coordinator: GoveeBLECoordinator, field: str) -> bool:
 
 
 async def _async_set_source_control(coordinator: GoveeBLECoordinator, control: str, enabled: bool) -> None:
+    attempts = coordinator.control_write_attempts
     try:
         await coordinator.async_set_boolean_control(control, enabled)
     except BaseException:
-        coordinator.boolean_control_state.pop(control, None)
-        coordinator._field_received_at.pop(f"boolean_{control}", None)
-        coordinator.async_set_updated_data(coordinator.data or {})
+        if coordinator.control_write_attempts != attempts:
+            coordinator.boolean_control_state.pop(control, None)
+            coordinator._field_received_at.pop(f"boolean_{control}", None)
+            coordinator.async_set_updated_data(coordinator.data or {})
         raise
 
 
@@ -227,9 +229,10 @@ class SourceTurnOnTransaction:
                 raise ValueError("The device did not provide fresh master power")
             guard()
         master_off = coordinator.is_on is not True or "is_on" in coordinator._h607c_uncertain_state_fields
+        await coordinator.async_validate_source_power(source.control, True)
         if master_off:
             for sibling in profile.light_sources:
-                if sibling.key != source.key and (
+                if not profile.minimum_enabled_sources and sibling.key != source.key and (
                     coordinator.boolean_control_state.get(sibling.control) is not False
                     or not source_field_fresh(coordinator, f"boolean_{sibling.control}")
                 ):

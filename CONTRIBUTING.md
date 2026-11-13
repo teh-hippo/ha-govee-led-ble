@@ -28,6 +28,7 @@ Keep real product differences without turning each product into a separate imple
 - Identify entities by stable identity and declared role, not enumeration order, enabled-entity counts or display names.
   A source cannot substitute for an absent or disabled primary light.
   Declare sources only for independently addressable power controls, with explicit colour modes and native attributes.
+  Keep the main light's colour modes separate from device-wide colour capabilities; presentation must not select a wire grammar.
 
 ### Capability and protocol authority
 
@@ -66,6 +67,7 @@ Keep real product differences without turning each product into a separate imple
   Equivalent profile resolution preserves observations and transactions.
   Segment partitions must cover each position exactly once and exclude separately addressed sources.
   Require geometry only for operations that address it; preserve siblings only with qualified state and mappings that leave them unchanged.
+  Enforce declared source-selection constraints using current-subscription flags before writes.
 - Distinguish admission, preparation, physical attempt, completed delivery and independent confirmation.
   An executed guard is not a physical attempt; optimistic state and expired expectations are not fresh observations.
   Where no independent readback exists, successful delivery is completed, not confirmed or failed; required acknowledgements must still succeed.

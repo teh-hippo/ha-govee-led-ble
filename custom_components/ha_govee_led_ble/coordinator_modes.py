@@ -3,7 +3,7 @@
 import asyncio
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, replace
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from .const import ReadDomain
 from .control_arbiter import ControlIntent, async_control_intent
@@ -36,6 +36,9 @@ from .native_profile_controls import ProfileWriter
 from .native_scenes import build_native_scene_packets
 from .scenes import MODEL_SCENES, SceneEntry, canonical_scene_key, scene_selector_code, scene_supported
 
+if TYPE_CHECKING:
+    from .effect_deployments import PriorControlState
+
 
 @dataclass(frozen=True)
 class PreModeSnapshot:
@@ -49,6 +52,7 @@ class PreModeSnapshot:
     rgb: tuple[int, int, int] = (255, 255, 255)
     kelvin: int = 0
     level: int = 100
+    source_state: PriorControlState | None = None
 
 
 class _ActiveModeMixin(_CoordinatorBase):
@@ -327,6 +331,8 @@ class _ActiveModeMixin(_CoordinatorBase):
         self.async_set_updated_data(self.data or {})
 
     def _capture_static_state(self) -> PreModeSnapshot:
+        if self.profile.partition_segment_writes:
+            return PreModeSnapshot(source_state=self.capture_effect_control_state())
         if self.color_temp_kelvin is not None:
             return PreModeSnapshot(kind="color_temp", kelvin=self.color_temp_kelvin)
         return PreModeSnapshot(kind="rgb", rgb=self.rgb_color)
@@ -434,12 +440,14 @@ class _ActiveModeMixin(_CoordinatorBase):
             ):
                 raise ValueError("Retained music body changed before edit; refresh and retry")
             if "music_mode" in writes[index][1]:
-                if self.active_mode == "colour":
+                if self.active_mode == "colour" and not self.profile.partition_segment_writes:
                     self._pre_mode_snapshot = self._capture_static_state()
                 self._scene_code = None
                 self.color_mode = ParsedMode.MUSIC
 
         async with async_control_intent(self, intent):
+            if self.profile.partition_segment_writes and self.active_mode == "colour":
+                self._pre_mode_snapshot = self._capture_static_state()
             try:
 
                 def commit(index: int) -> None:
@@ -554,6 +562,12 @@ class _ActiveModeMixin(_CoordinatorBase):
     async def async_restore_pre_mode(self) -> None:
         async with self.async_mask_transaction():
             snap = self._pre_mode_snapshot
+            if self.profile.partition_segment_writes:
+                if snap.source_state is None or not await self.async_restore_effect_control_state(
+                    snap.source_state, overwritten_diy_code=None
+                ):
+                    raise ValueError("No complete source state is available to restore")
+                return
             match snap.kind:
                 case "color_temp":
                     await self.send_command(build_color_temp(snap.kelvin, self.model, profile=self.profile))

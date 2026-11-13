@@ -733,7 +733,12 @@ async def test_source_rejects_unsupported_controls_before_writing(source_coordin
 )
 async def test_failed_source_off_invalidates_state_before_turn_on(source_coordinator, failure, raised):
     coordinator = source_coordinator
-    coordinator.async_set_boolean_control = AsyncMock(side_effect=failure)
+
+    async def fail_write(*_args):
+        coordinator.control_write_attempts += 1
+        raise failure
+
+    coordinator.async_set_boolean_control = AsyncMock(side_effect=fail_write)
     source = GoveeBLESourceLight(coordinator, "left_bar")
     with pytest.raises(raised):
         await source.async_turn_off()

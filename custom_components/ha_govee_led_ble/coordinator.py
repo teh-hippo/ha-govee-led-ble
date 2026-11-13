@@ -160,7 +160,6 @@ _WHITE_BALANCE_GAIN_FIELDS = (
 class _StaticWriteIntent:
     rgb: tuple[int, int, int] | None = None
     sources: frozenset[str] = frozenset()
-    colour_sources: frozenset[str] = frozenset()
 
 
 class GoveeBLECoordinator(
@@ -1328,24 +1327,31 @@ class GoveeBLECoordinator(
             self._require_mask_transaction()
 
     def _apply_static_write_intent(
-        self, static: ParsedStaticWrite | None, requested: Mapping[str, Any]
+        self, static: ParsedStaticWrite | None, requested: Mapping[str, Any], *, mode_confirmed_static: bool
     ) -> _StaticWriteIntent:
         if static is None:
             if requested.get("color_mode", (None,))[0] is ParsedMode.COLOUR:
-                self._static_rgb_known = False
-                self.mark_segment_state_optimistic()
+                native_fields = {
+                    f"{source.key}_{attribute}"
+                    for source in self.profile.light_sources
+                    for attribute in ("kelvin", "brightness")
+                }
+                if self.profile.supports_ripple_speed:
+                    native_fields.add("ripple_speed")
+                native_values = requested.keys() - {"color_mode"}
+                if not (mode_confirmed_static and native_values and native_values <= native_fields):
+                    self._static_rgb_known = False
+                    self.mark_segment_state_optimistic()
                 self._enter_static_mode()
             return _StaticWriteIntent()
         self._static_write_attempts += 1
         mask = static.segment_mask if static.segment_mask is not None else self.profile.whole_device_mask
         sources: set[str] = set()
-        colour_sources: set[str] = set()
         for source in self.profile.light_sources:
             source_mask = sum(1 << (segment - 1) for segment in source.segments)
             if source_mask & mask:
                 sources.add(source.key)
                 if static.rgb is not None or static.kelvin is not None:
-                    colour_sources.add(source.key)
                     self._arm_expected_values(
                         {f"source_kelvin_{source.key}": static.kelvin if static.kelvin is not None else 0}
                     )
@@ -1378,7 +1384,7 @@ class GoveeBLECoordinator(
                 ],
             )
         self._enter_static_mode()
-        return _StaticWriteIntent(rgb_intent, frozenset(sources), frozenset(colour_sources))
+        return _StaticWriteIntent(rgb_intent, frozenset(sources))
 
     async def _async_write_packet(
         self,
@@ -1464,6 +1470,13 @@ class GoveeBLECoordinator(
         if (music_mode := requested.get("music_mode")) is not None and music_mode not in self.profile.music_modes:
             raise ValueError("Device profile does not support the requested music mode")
         previous_mode = self.color_mode
+        if (
+            arm_expected
+            and requested.get("color_mode", (None,))[0] not in (None, ParsedMode.COLOUR)
+            and previous_mode is ParsedMode.COLOUR
+            and self.profile.partition_segment_writes
+        ):
+            self._pre_mode_snapshot = self._capture_static_state()
         mode_revision = self._field_revisions.get("color_mode", 0)
         observed_mode_at = self._field_received_at.get("color_mode")
         mode_confirmed_static = (
@@ -1494,12 +1507,14 @@ class GoveeBLECoordinator(
         intent = _StaticWriteIntent()
         if arm_expected:
             self.control_write_attempts += 1
-            intent = self._apply_static_write_intent(static, requested)
+            intent = self._apply_static_write_intent(static, requested, mode_confirmed_static=mode_confirmed_static)
 
         def invalidate_failed_static() -> None:
-            for key in intent.colour_sources:
-                self.source_static_intents.pop(key, None)
-                self._expected_state.pop(f"source_kelvin_{key}", None)
+            if self._profile_generation != generation or (
+                self._notification_token is not token and self._client is not None
+            ):
+                return
+            self._discard_unconfirmed_source_colours([packet])
             if (
                 intent.sources
                 and not mode_confirmed_static
@@ -1507,6 +1522,8 @@ class GoveeBLECoordinator(
             ):
                 self.color_mode = None
                 self._h607c_uncertain_state_fields.add("color_mode")
+                for source in self.profile.light_sources:
+                    self._h607c_uncertain_state_fields.discard(f"source_colour_{source.key}")
                 for field in ("color_mode", "rgb_color", "color_temp_kelvin"):
                     self._expected_state.pop(field, None)
                 self.async_set_updated_data(self.data or {})
@@ -2265,6 +2282,66 @@ class GoveeBLECoordinator(
         )
         await self._async_set_verified_setting(control, enabled, write_guard=guard)
 
+    def _fresh_source_power(self) -> dict[str, bool] | None:
+        controls = {source.control for source in self.profile.light_sources}
+        if self._client is None or not self._client.is_connected or self._notify_started_monotonic is None:
+            return None
+        if any(
+            type(self.boolean_control_state.get(control)) is not bool
+            or self._field_received_at.get(f"boolean_{control}", -1) < self._notify_started_monotonic
+            or self._source_power_observation_generation.get(f"boolean_{control}")
+            != (self._power_write_generation, self._profile_generation)
+            for control in controls
+        ):
+            return None
+        return {control: self.boolean_control_state[control] for control in controls}
+
+    async def async_validate_source_power(self, control: str, enabled: bool) -> dict[str, bool] | None:
+        profile = self.profile
+        controls = {source.control for source in profile.light_sources}
+        if control not in controls or not (
+            profile.minimum_enabled_sources
+            or profile.maximum_enabled_sources is not None
+            or profile.exclusive_source_groups
+        ):
+            return None
+        async with self._lock:
+            client = await self._ensure_connected()
+            if self.profile != profile:
+                raise ValueError("Source profile changed before validation")
+            values = self._fresh_source_power()
+            if values is None:
+                from .generated_protocol_adapter import build_boolean_control_query
+
+                if not await self._async_read_setting_fields(
+                    client,
+                    build_boolean_control_query(control, self.model, profile=profile),
+                    tuple(f"boolean_{name}" for name in sorted(controls)),
+                    deadline=time.monotonic() + 4.0,
+                ):
+                    raise ValueError("Device did not provide complete source power")
+                values = self._fresh_source_power()
+            if values is None:
+                raise ValueError("Source power is not qualified for this connection")
+            if self.profile != profile:
+                raise ValueError("Source profile changed during validation")
+        requested = dict(values)
+        if enabled:
+            for group in profile.exclusive_source_groups:
+                if control in group:
+                    requested.update({sibling: False for sibling in group if sibling != control})
+        requested[control] = enabled
+        count = sum(requested.values())
+        if count < profile.minimum_enabled_sources:
+            raise HomeAssistantError(translation_domain=DOMAIN, translation_key="last_source")
+        if profile.maximum_enabled_sources is not None and count > profile.maximum_enabled_sources:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="source_limit",
+                translation_placeholders={"maximum": str(profile.maximum_enabled_sources)},
+            )
+        return values
+
     async def async_set_low_blue_light(self, *, enabled: bool | None = None, level: int | None = None) -> None:
         from .low_blue_light import async_set_setting
 
@@ -2328,6 +2405,9 @@ class GoveeBLECoordinator(
             build_power_on_behaviour_query,
         )
 
+        source_power: dict[str, bool] | None = None
+        source_baselines: dict[str, int] = {}
+
         def qualified() -> None:
             if write_guard is not None:
                 write_guard()
@@ -2337,6 +2417,12 @@ class GoveeBLECoordinator(
                 else control in self.profile.boolean_controls
             ):
                 raise ValueError("Device profile does not support this setting")
+            if source_power is not None and self._fresh_source_power() != source_power:
+                raise ValueError("Source selection changed before the write")
+            if source_power is not None:
+                source_baselines.update(
+                    {name: self._field_revisions.get(f"boolean_{name}", 0) for name in source_power}
+                )
 
         qualified()
         if self.profile.setting_grammar == "H6046":
@@ -2356,6 +2442,8 @@ class GoveeBLECoordinator(
             async with self._lock:
                 await self._ensure_connected()
             qualified()
+            if type(value) is bool:
+                source_power = await self.async_validate_source_power(control, value)
             await self._async_supersede_effect_preview()
             generation = self._profile_generation
             field = control if control == "power_on_behaviour" else f"boolean_{control}"
@@ -2371,7 +2459,18 @@ class GoveeBLECoordinator(
                     baseline[field] = self._field_revisions.get(field, 0)
                     self.boolean_control_state.pop(control, None)
             else:
-                await self.send_command(packet, write_guard=qualified)
+                attempts = self.control_write_attempts
+                try:
+                    await self.send_command(packet, write_guard=qualified)
+                finally:
+                    if source_power is not None and self.control_write_attempts != attempts:
+                        for name, revision in source_baselines.items():
+                            field_name = f"boolean_{name}"
+                            if self._field_revisions.get(field_name, 0) <= revision:
+                                self.boolean_control_state.pop(name, None)
+                                self._field_received_at.pop(field_name, None)
+                                self._source_power_observation_generation.pop(field_name, None)
+                    source_power = None
             async with self._lock:
                 qualified()
                 client = self._client
