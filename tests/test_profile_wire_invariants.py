@@ -9,12 +9,13 @@ profile what only hardware used to do.
 
 from collections.abc import Callable
 from dataclasses import replace
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from custom_components.ha_govee_led_ble import generated_protocol_adapter as a
 from custom_components.ha_govee_led_ble import protocol_core, protocol_music_params
+from custom_components.ha_govee_led_ble import switch as switch_platform
 from custom_components.ha_govee_led_ble.const import (
     KELVIN_RANGE_1000_10000,
     MODEL_PROFILES,
@@ -1071,6 +1072,25 @@ def test_static_colour_and_kelvin_status_readback(hass, model: str, profile: Mod
                 assert coordinator.packet_log[-1]["reason"] == "semantic_rejected"
 
 
+async def test_native_sources_without_gradual_do_not_expose_or_write_it(hass, monkeypatch) -> None:
+    model = "H60B2"
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url=None)
+    entry = MagicMock(runtime_data=coordinator)
+    add_entities = MagicMock()
+    await switch_platform.async_setup_entry(hass, entry, add_entities)
+    assert "gradual" not in {entity.translation_key for entity in add_entities.call_args.args[0]}
+
+    connect = AsyncMock()
+    monkeypatch.setattr(coordinator, "_ensure_connected", connect)
+    for enabled in (False, True):
+        with pytest.raises(ValueError, match="does not support"):
+            await coordinator.async_set_boolean_control("gradual", enabled)
+        with pytest.raises(ValueError):
+            a.build_boolean_control("gradual", enabled, model, profile=coordinator.profile)
+    connect.assert_not_awaited()
+    assert coordinator.control_write_attempts == 0
+
+
 @pytest.mark.parametrize(("model", "profile"), _BOOLEAN_CONTROL_PROFILES)
 def test_declared_boolean_controls_round_trip(hass, model: str, profile: ModelProfile) -> None:
     """Every declared boolean control must build valid write and query frames and decode
@@ -1107,7 +1127,7 @@ def test_declared_boolean_controls_round_trip(hass, model: str, profile: ModelPr
                 assert coordinator.boolean_control_state == expected
                 assert coordinator.is_on
                 continue
-            if profile.setting_grammar == "H60B2" and control != "gradual":
+            if profile.setting_grammar == "H60B2":
                 expected = {name: True for name in ("bottom_enabled", "middle_enabled", "top_enabled")} | {
                     control: enabled
                 }
@@ -1182,7 +1202,7 @@ def test_declared_boolean_controls_round_trip(hass, model: str, profile: ModelPr
             continue
         if profile.setting_grammar == "H6046":
             continue
-        if profile.setting_grammar == "H60B2" and control != "gradual":
+        if profile.setting_grammar == "H60B2":
             bad_reply = _status(domain_byte, bytes((1, 2, 1)))
             _consume_status(coordinator, bad_reply)
             assert coordinator.packet_log[-1]["reason"] == "semantic_rejected"
