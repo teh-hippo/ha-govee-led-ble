@@ -302,6 +302,25 @@ async def test_unconfirmed_source_write_reconciles_real_area_state(source_wire, 
     assert GoveeBLELight(coordinator).brightness is not None
 
 
+async def test_cancelled_source_kelvin_write_does_not_query_recovery(source_wire):
+    coordinator, _state = source_wire
+    client = coordinator._client
+    write = client.write_gatt_char.side_effect
+    packet = build_segment_color_temp([9], 5000, "H60B0", profile=PROFILE)
+
+    async def cancel_kelvin(uuid, command, **kwargs):
+        if command == packet:
+            raise asyncio.CancelledError
+        await write(uuid, command, **kwargs)
+
+    client.write_gatt_char.side_effect = cancel_kelvin
+    with pytest.raises(asyncio.CancelledError):
+        await coordinator.async_set_segment_kelvin(packet, requested_kelvin=5000)
+    assert client.write_gatt_char.await_args_list[-1].args[1] == packet
+    assert not coordinator._control_arbiter.locked()
+    assert not coordinator._lock.locked()
+
+
 @pytest.mark.parametrize("native_setting", [None, ("top", "ripple_speed", 60), ("bottom", "brightness", 50)])
 async def test_effect_stop_restores_mixed_source_capture_without_aggregate_colour(
     source_wire, virtual_clock, native_setting
