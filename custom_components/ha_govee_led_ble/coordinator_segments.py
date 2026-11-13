@@ -506,7 +506,7 @@ class _SegmentMixin(_CoordinatorBase):
                     )
                 ):
                     raise RuntimeError(f"Failed to confirm segment {operation}")
-            except BaseException:
+            except BaseException as error:
                 if (
                     attempted_packets
                     and self.profile == profile
@@ -515,7 +515,12 @@ class _SegmentMixin(_CoordinatorBase):
                 ):
                     affected_sources = self._discard_unconfirmed_source_colours(attempted_packets)
                     task = asyncio.current_task()
-                    if affected_sources and task is not None and not task.cancelling():
+                    if (
+                        affected_sources
+                        and not isinstance(error, asyncio.CancelledError)
+                        and task is not None
+                        and not task.cancelling()
+                    ):
                         try:
                             async with asyncio.timeout(_SEGMENT_READ_TIMEOUT):
                                 await self.refresh_state(RefreshRequest(refresh_all=True, query_segments=True))

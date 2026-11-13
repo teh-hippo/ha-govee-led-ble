@@ -11,6 +11,7 @@ from bleak import BleakError
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ReadDomain, device_profile
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_segment_query,
@@ -604,7 +605,14 @@ async def test_multipart_segment_recovery_tracks_physical_attempts(hass, operati
         await original_send(packet, write_guard=write_guard)
 
     refresh = AsyncMock(side_effect=RuntimeError("refresh failed")) if failure == "recovery" else AsyncMock()
-    with patch.object(coord, "send_command", side_effect=send), patch.object(coord, "async_refresh_segments", refresh):
+    source_refresh = (
+        AsyncMock(side_effect=RuntimeError("source refresh failed")) if failure == "recovery" else AsyncMock()
+    )
+    with (
+        patch.object(coord, "send_command", side_effect=send),
+        patch.object(coord, "async_refresh_segments", refresh),
+        patch.object(coord, "refresh_state", source_refresh),
+    ):
         with pytest.raises(type(error)) as raised:
             if operation == "paint":
                 await coord.async_paint_segments(groups)
@@ -616,6 +624,10 @@ async def test_multipart_segment_recovery_tracks_physical_attempts(hass, operati
         refresh.assert_awaited_once_with()
     else:
         refresh.assert_not_awaited()
+    if operation == "paint" and failure in {"later", "recovery"}:
+        source_refresh.assert_awaited_once_with(RefreshRequest(refresh_all=True, query_segments=True))
+    else:
+        source_refresh.assert_not_awaited()
     assert not coord._control_arbiter.locked()
     assert not coord._lock.locked()
 

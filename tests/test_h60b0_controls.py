@@ -167,9 +167,8 @@ async def test_native_source_constraints_reject_before_write(native_sources, fla
     coordinator, observe = native_sources
     observe(flags)
     before = dict(coordinator.boolean_control_state)
-    source = GoveeBLESourceLight(coordinator, control.removesuffix("_enabled"))
     with pytest.raises(HomeAssistantError) as error:
-        await source._set_source_control(control, enabled)
+        await coordinator.async_set_source_enabled(control.removesuffix("_enabled"), enabled)
     assert error.value.translation_key == key
     coordinator.send_command.assert_not_awaited()
     assert coordinator.boolean_control_state == before
@@ -759,7 +758,12 @@ async def test_live_pact_read_qualifies_without_marker_or_connected_advertisemen
         assert coordinator.profile == initial_profile
         assert not coordinator.identity_fields_confirmed()
         with pytest.raises(ValueError):
-            coordinator._require_writable_packet(packet, require_profile_packet, arm_expected=True)
+            coordinator._require_writable_packet(
+                packet,
+                require_profile_packet,
+                arm_expected=True,
+                static=parse_static_write(packet, coordinator.model, profile=coordinator.profile),
+            )
         receive = client.start_notify.await_args.args[1]
         receive(None, bytearray(frame(f"aaef0001{revision:02x}" + "55" * 14)))
 

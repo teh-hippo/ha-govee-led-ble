@@ -232,9 +232,13 @@ class SourceTurnOnTransaction:
         await coordinator.async_validate_source_power(source.control, True)
         if master_off:
             for sibling in profile.light_sources:
-                if not profile.minimum_enabled_sources and sibling.key != source.key and (
-                    coordinator.boolean_control_state.get(sibling.control) is not False
-                    or not source_field_fresh(coordinator, f"boolean_{sibling.control}")
+                if (
+                    not profile.minimum_enabled_sources
+                    and sibling.key != source.key
+                    and (
+                        coordinator.boolean_control_state.get(sibling.control) is not False
+                        or not source_field_fresh(coordinator, f"boolean_{sibling.control}")
+                    )
                 ):
                     guard()
                     await _async_set_source_control(coordinator, sibling.control, False)

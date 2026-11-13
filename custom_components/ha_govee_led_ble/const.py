@@ -2842,7 +2842,9 @@ def profile_with_physical_ic_count(profile: ModelProfile, count: int, *, segment
 
 def _basic_revision_profile(profile: ModelProfile) -> ModelProfile:
     """Grant only independently qualified basic controls, never inherit capability flags."""
-    domains = frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.FIRMWARE, ReadDomain.HARDWARE, ReadDomain.PACT})
+    domains = frozenset(
+        {ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.FIRMWARE, ReadDomain.HARDWARE, ReadDomain.PACT}
+    )
     return ModelProfile(
         profile.name,
         support_quality=profile.support_quality,
