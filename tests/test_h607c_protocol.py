@@ -480,6 +480,7 @@ async def test_native_preview_rejects_incomplete_recovery_state_before_writes(pr
     coordinator = SimpleNamespace(
         profile=get_profile("H607C"),
         capture_effect_control_state=lambda: state,
+        refresh_state=AsyncMock(return_value=True),
         _async_write_packet=AsyncMock(),
     )
     with pytest.raises(RuntimeError, match="restor"):
