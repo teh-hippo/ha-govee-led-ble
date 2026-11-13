@@ -366,6 +366,9 @@ class _SegmentMixin(_CoordinatorBase):
                                 return
                             outcome = "preservation_mismatch" if not preserved else "render_or_mode_mismatch"
                             await asyncio.sleep(0.25)
+                except asyncio.CancelledError:
+                    outcome = "cancelled"
+                    raise
                 finally:
                     self._pending_kelvin = None
                     if (
@@ -377,7 +380,7 @@ class _SegmentMixin(_CoordinatorBase):
                     ):
                         affected_sources = self._discard_unconfirmed_source_colours([packet])
                         task = asyncio.current_task()
-                        if affected_sources and task is not None and not task.cancelling():
+                        if outcome != "cancelled" and affected_sources and task is not None and not task.cancelling():
                             try:
                                 async with asyncio.timeout(_SEGMENT_READ_TIMEOUT):
                                     await read_pages(time.monotonic() + _SEGMENT_READ_TIMEOUT, mode=True)
