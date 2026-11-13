@@ -1044,6 +1044,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     ),
     "H60B2": ModelProfile(
         "H60B2 Tree Floor Lamp",
+        support_quality=SupportQuality.SUPPORTED,
         confirmation_issue=603,
         requires_legacy_encryption=True,
         command_grammar="H617A",
