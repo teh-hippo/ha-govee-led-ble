@@ -92,6 +92,18 @@ export class PanelController {
   private readonly loadRequests = new AsyncRequestController<{ api: EffectStudioApi }>(
     (left, right) => left.api === right.api,
   );
+  private readonly deviceRequests = new AsyncRequestController<{
+    api: EffectStudioApi | undefined;
+    configEntryId: string | undefined;
+  }>((left, right) =>
+    left.api === right.api && left.configEntryId === right.configEntryId,
+  );
+  private readonly deviceSubscriptions = new AsyncRequestController<{
+    api: EffectStudioApi | undefined;
+    configEntryId: string | undefined;
+  }>((left, right) =>
+    left.api === right.api && left.configEntryId === right.configEntryId,
+  );
 
   public constructor(
     private readonly model: PanelModel,
@@ -106,6 +118,7 @@ export class PanelController {
   }
 
   public async load(hass: HomeAssistant, isAdmin: boolean): Promise<void> {
+    this.deviceRequests.invalidate();
     this.stateUpdatesGeneration += 1;
     this.model.patch({
       loading: true,
@@ -192,6 +205,7 @@ export class PanelController {
     this.pendingTransition = undefined;
     this.modal.closeTransition(false);
     this.loadRequests.invalidate();
+    this.deviceRequests.invalidate();
     this.stopSubscriptions();
     this.api = undefined;
   }
@@ -222,24 +236,31 @@ export class PanelController {
     });
     this.openRootCreateView();
     const rootEpoch = this.model.editorTransitionEpoch;
-    await this.preview.cancel(previousDeviceId);
-    if (this.api) {
-      await this.subscribeSelectedDevice(this.api);
-    }
-    if (this.model.stateUpdatesUnavailable) {
-      return;
-    }
-    this.options.replacePath(editorDevicePath(selectedDeviceId));
+    const api = this.api;
     const updatesGeneration = this.stateUpdatesGeneration;
+    const request = this.deviceRequests.begin({ api, configEntryId: selectedDeviceId });
+    const isCurrent = () =>
+      this.deviceRequests.isCurrent(request, {
+        api: this.api,
+        configEntryId: this.model.selectedDeviceId,
+      }) &&
+      !this.model.stateUpdatesUnavailable &&
+      updatesGeneration === this.stateUpdatesGeneration &&
+      rootEpoch === this.model.editorTransitionEpoch;
+    await this.preview.cancel(previousDeviceId);
+    if (!isCurrent()) return;
+    if (api) {
+      await this.subscribeSelectedDevice(api);
+    }
+    if (!isCurrent()) return;
+    this.options.replacePath(editorDevicePath(selectedDeviceId));
     try {
-      const userState = await this.api?.updateUserState(
+      const userState = await api?.updateUserState(
         selectedDeviceId,
         this.navigationPreferences,
       );
       if (
-        userState &&
-        !this.model.stateUpdatesUnavailable &&
-        updatesGeneration === this.stateUpdatesGeneration
+        userState && isCurrent()
       ) {
         this.model.patch({ userState });
       }
@@ -247,10 +268,7 @@ export class PanelController {
       console.warn("Could not remember the selected light", error);
     }
     if (
-      !this.model.stateUpdatesUnavailable &&
-      updatesGeneration === this.stateUpdatesGeneration &&
-      rootEpoch === this.model.editorTransitionEpoch &&
-      selectedDeviceId === this.model.selectedDeviceId
+      isCurrent()
     ) {
       await this.restoreActiveSelection(rootEpoch, true);
     }
@@ -2107,6 +2125,10 @@ export class PanelController {
 
   private async subscribeSelectedDevice(api: EffectStudioApi): Promise<void> {
     const configEntryId = this.model.selectedDeviceId;
+    const request = this.deviceSubscriptions.begin({ api, configEntryId });
+    const isCurrent = () => this.deviceSubscriptions.isCurrent(request, {
+      api: this.api, configEntryId: this.model.selectedDeviceId,
+    });
     this.unsubscribeDevice?.();
     this.unsubscribeDevice = undefined;
     if (!configEntryId) {
@@ -2119,7 +2141,7 @@ export class PanelController {
         configEntryId,
         (device) => {
           if (
-            api !== this.api ||
+            !isCurrent() ||
             this.model.stateUpdatesUnavailable ||
             device.config_entry_id !== this.model.selectedDeviceId
           ) {
@@ -2134,15 +2156,14 @@ export class PanelController {
           });
         },
         (error) => {
-          if (api === this.api) {
+          if (isCurrent()) {
             this.stateUpdatesFailed(error);
           }
         },
       );
     } catch (error) {
       if (
-        api === this.api &&
-        configEntryId === this.model.selectedDeviceId
+        isCurrent()
       ) {
         this.stateUpdatesFailed(
           error instanceof Error
@@ -2153,7 +2174,7 @@ export class PanelController {
       return;
     }
     if (
-      api !== this.api ||
+      !isCurrent() ||
       this.model.stateUpdatesUnavailable ||
       updatesGeneration !== this.stateUpdatesGeneration ||
       configEntryId !== this.model.selectedDeviceId
@@ -2165,6 +2186,7 @@ export class PanelController {
   }
 
   private stopSubscriptions(): void {
+    this.deviceSubscriptions.invalidate();
     this.unsubscribeLibrary?.();
     this.unsubscribeLibrary = undefined;
     this.unsubscribeDevice?.();
