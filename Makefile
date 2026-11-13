@@ -33,7 +33,7 @@ FRONTEND_CONTRACTS := \
 	frontend/src/contracts.ts \
 	tools/generate_frontend_contract_fixtures.py \
 	$(INTEGRATION_DIR)/const.py \
-	$(INTEGRATION_DIR)/effect_catalogue.py \
+	$(wildcard $(INTEGRATION_DIR)/effect_catalogue*.py) \
 	$(INTEGRATION_DIR)/effect_contracts.py \
 	$(INTEGRATION_DIR)/effect_deployments.py \
 	$(INTEGRATION_DIR)/effect_domain.py \

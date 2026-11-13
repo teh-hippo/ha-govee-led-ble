@@ -26,6 +26,10 @@ _BUILD_FILES = (
 _CONTRACT_FILES = (
     "const.py",
     "effect_catalogue.py",
+    "effect_catalogue_families.py",
+    "effect_catalogue_models.py",
+    "effect_catalogue_registry.py",
+    "effect_catalogue_templates.py",
     "effect_contracts.py",
     "effect_deployments.py",
     "effect_domain.py",
@@ -257,6 +261,15 @@ def test_build_is_incremental_and_rebuilds_missing_outputs(build_repo: tuple[Pat
     _make(root, env, "frontend")
     assert bootstrap.read_bytes() != bootstrap_content
     assert manifest.stat().st_mtime_ns > manifest_mtime
+
+    for filename in _CONTRACT_FILES:
+        if not filename.startswith("effect_catalogue"):
+            continue
+        manifest_mtime = manifest.stat().st_mtime_ns
+        contract = root / "custom_components/ha_govee_led_ble" / filename
+        contract.write_text("# Changed catalogue contract\n", encoding="utf-8")
+        _make(root, env, "frontend")
+        assert manifest.stat().st_mtime_ns > manifest_mtime, filename
 
 
 def test_protocol_build_tracks_and_generates_nested_roots(build_repo: tuple[Path, dict[str, str]]) -> None:
