@@ -114,7 +114,6 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     _confirmed_identity_fields: set[str]
     control_write_attempts: int
     _static_write_attempts: int
-    _h607c_uncertain_state_fields: set[str]
     source_static_intents: dict[str, int | tuple[int, int, int]]
     _profile_generation: int
     _authorization_generation: int
