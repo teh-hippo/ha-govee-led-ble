@@ -4,6 +4,7 @@ from dataclasses import replace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from bleak.exc import BleakError
 from homeassistant.components.light import ColorMode
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.setup import async_setup_component
@@ -141,6 +142,8 @@ def native_sources(hass):
         if guard := kwargs.get("write_guard"):
             guard()
         coordinator.control_write_attempts += 1
+        if on_write := kwargs.get("on_write"):
+            on_write()
         control = {1: "top_enabled", 2: "side_enabled", 3: "bottom_enabled"}[packet[2]]
         enabled = bool(packet[3])
         physical[control] = enabled
@@ -278,6 +281,33 @@ def source_wire(native_sources):
     coordinator.color_mode = ParsedMode.COLOUR
     coordinator.source_static_intents = {"top": 2700, "side": (0, 0, 255)}
     return coordinator, state
+
+
+@pytest.mark.parametrize("reconnect_flags", [None, 0xB0])
+async def test_source_retry_rejects_missing_or_changed_selection(source_wire, native_sources, reconnect_flags):
+    coordinator, state = source_wire
+    _, observe = native_sources
+    client = coordinator._client
+    state["flags"] = 0xA0
+    observe(0xA0)
+
+    async def connect():
+        if coordinator._client is None:
+            coordinator._client = client
+            coordinator._notification_token = object()
+            coordinator._notify_started_monotonic = time.monotonic()
+            if reconnect_flags is not None:
+                observe(reconnect_flags)
+        return client
+
+    coordinator._ensure_connected = AsyncMock(side_effect=connect)
+    client.write_gatt_char.side_effect = BleakError("Physical write failed")
+    with pytest.raises(ValueError, match="selection changed"):
+        await coordinator.async_set_boolean_control("top_enabled", True)
+    assert [call.args[1] for call in client.write_gatt_char.await_args_list] == [frame("33300101")]
+    assert coordinator.boolean_control_state == (
+        {} if reconnect_flags is None else {"top_enabled": False, "side_enabled": True, "bottom_enabled": True}
+    )
 
 
 @pytest.mark.parametrize("operation", ["kelvin", "rgb"])
