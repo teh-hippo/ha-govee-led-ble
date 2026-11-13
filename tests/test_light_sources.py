@@ -731,7 +731,7 @@ async def test_source_rejects_unsupported_controls_before_writing(source_coordin
 @pytest.mark.parametrize(
     ("failure", "raised"), [(TimeoutError, HomeAssistantError), (asyncio.CancelledError, asyncio.CancelledError)]
 )
-async def test_failed_source_off_invalidates_state_before_turn_on(source_coordinator, failure, raised):
+async def test_rejected_source_off_preserves_observations_before_turn_on(source_coordinator, failure, raised):
     coordinator = source_coordinator
 
     async def fail_write(*_args):
@@ -742,10 +742,11 @@ async def test_failed_source_off_invalidates_state_before_turn_on(source_coordin
     source = GoveeBLESourceLight(coordinator, "left_bar")
     with pytest.raises(raised):
         await source.async_turn_off()
-    assert source.is_on is None
+    assert source.is_on is True
+    assert coordinator._field_received_at["boolean_left_bar_enabled"] == 2.0
     coordinator.async_set_boolean_control = AsyncMock()
     await source.async_turn_on()
-    coordinator.async_set_boolean_control.assert_awaited_once_with("left_bar_enabled", True)
+    coordinator.async_set_boolean_control.assert_not_awaited()
 
 
 def test_source_availability_tracks_effective_profile(source_coordinator):

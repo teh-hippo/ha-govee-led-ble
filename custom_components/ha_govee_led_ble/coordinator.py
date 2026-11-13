@@ -1280,6 +1280,8 @@ class GoveeBLECoordinator(
                 continue
             if field.startswith("boolean_"):
                 changed |= self.boolean_control_state.pop(field.removeprefix("boolean_"), None) is not None
+                self._field_received_at.pop(field, None)
+                self._source_power_observation_generation.pop(field, None)
             else:
                 value = "unknown" if field in {"camera_health", "camera_status"} else None
                 if getattr(self, field, None) != value:
@@ -2408,7 +2410,6 @@ class GoveeBLECoordinator(
         )
 
         source_power: dict[str, bool] | None = None
-        source_baselines: dict[str, int] = {}
 
         def qualified() -> None:
             if write_guard is not None:
@@ -2421,10 +2422,6 @@ class GoveeBLECoordinator(
                 raise ValueError("Device profile does not support this setting")
             if source_power is not None and self._fresh_source_power() != source_power:
                 raise ValueError("Source selection changed before the write")
-            if source_power is not None:
-                source_baselines.update(
-                    {name: self._field_revisions.get(f"boolean_{name}", 0) for name in source_power}
-                )
 
         qualified()
         if self.profile.setting_grammar == "H6046":
@@ -2461,18 +2458,15 @@ class GoveeBLECoordinator(
                     baseline[field] = self._field_revisions.get(field, 0)
                     self.boolean_control_state.pop(control, None)
             else:
-                attempts = self.control_write_attempts
-                try:
-                    await self.send_command(packet, write_guard=qualified)
-                finally:
-                    if source_power is not None and self.control_write_attempts != attempts:
-                        for name, revision in source_baselines.items():
-                            field_name = f"boolean_{name}"
-                            if self._field_revisions.get(field_name, 0) <= revision:
-                                self.boolean_control_state.pop(name, None)
-                                self._field_received_at.pop(field_name, None)
-                                self._source_power_observation_generation.pop(field_name, None)
+                def expire() -> None:
+                    nonlocal source_power
+                    fields = {field} if type(value) is bool else set()
+                    if source_power is not None:
+                        fields.update(f"boolean_{name}" for name in source_power)
+                    self._expire_optional_observations({name: self._field_revisions.get(name, 0) for name in fields})
                     source_power = None
+
+                await self.send_command(packet, write_guard=qualified, on_write=expire)
             async with self._lock:
                 qualified()
                 client = self._client
@@ -2631,7 +2625,11 @@ class GoveeBLECoordinator(
                     native_mask=self.bar_enable_mask or 0,
                 )
                 expected = {f"boolean_{control}": enabled, f"boolean_{sibling}": sibling_enabled}
-                await self._async_write_packet(client, packet, arm_expected=True, before_write=guard)
+
+                def expire() -> None:
+                    self._expire_optional_observations({field: self._field_revisions[field] for field in expected})
+
+                await self._async_write_packet(client, packet, arm_expected=True, before_write=guard, on_write=expire)
                 if not await self._async_read_bar_flags(
                     client, query, deadline=time.monotonic() + 4.0, write_guard=guard
                 ):

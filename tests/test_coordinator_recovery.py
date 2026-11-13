@@ -6,12 +6,13 @@ from dataclasses import replace
 from unittest.mock import AsyncMock, call, patch
 
 import pytest
+from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, MUSIC_MODE_SLUGS, device_profile
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_refresh import DEFAULT_REFRESH_REQUEST, RefreshRequest
-from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
+from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode, StatusDomain
 from custom_components.ha_govee_led_ble.effect_commands import build_h617a_diy_activation
 from custom_components.ha_govee_led_ble.effect_contracts import CapabilityState
 from custom_components.ha_govee_led_ble.effect_deployments import PriorControlState
@@ -23,6 +24,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     table_kelvin_rgb,
 )
 from custom_components.ha_govee_led_ble.light_commands import build_color_rgb
+from custom_components.ha_govee_led_ble.light_source import GoveeBLESourceLight
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES, scene_selector_code
 from custom_components.ha_govee_led_ble.transport import WRITE_UUID
 from custom_components.ha_govee_led_ble.video_applicability import video_identity_fields
@@ -108,14 +110,29 @@ async def test_relative_brightness_recovery_requires_all_declared_zones(h6199, m
 
 
 @pytest.mark.parametrize(
-    "outcome", ("match", "missing", "verification_missing", "cancelled", "sibling_changed", "subscription_changed")
+    "outcome",
+    (
+        "match",
+        "missing",
+        "verification_missing",
+        "cancelled",
+        "sibling_changed",
+        "subscription_changed",
+        "write_failed",
+        "write_cancelled",
+    ),
 )
-async def test_h6046_bar_write_preserves_fresh_sibling_and_unknown_flags(hass, monkeypatch, virtual_clock, outcome):
+@pytest.mark.parametrize("entrypoint", ("setting", "source"))
+async def test_h6046_bar_write_preserves_fresh_sibling_and_unknown_flags(
+    hass, monkeypatch, virtual_clock, outcome, entrypoint
+):
     coord = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6046", configuration_url=_CONFIGURATION_URL)
     coord.pact_type, coord.pact_code = 2, 1
     coord._resolve_device_profile()
-    coord._notify_started_monotonic = time.monotonic()
+    coord._notify_started_monotonic = virtual_clock.virtual_time()
     coord._notification_token = object()
+    coord.is_on = True
+    coord._mark_received(StatusDomain.POWER, "is_on")
     coord.boolean_control_state = {"left_bar_enabled": False, "right_bar_enabled": False}
     client = _c(write_gatt_char=AsyncMock())
     coord._client = client
@@ -125,6 +142,15 @@ async def test_h6046_bar_write_preserves_fresh_sibling_and_unknown_flags(hass, m
 
     async def respond(_uuid, packet, **kwargs):
         nonlocal queried
+        if packet[:2] == b"\x33\x33":
+            if outcome == "write_failed":
+                assert not coord.boolean_control_state
+                assert not any(field.startswith("boolean_") for field in coord._field_received_at)
+                assert not coord._source_power_observation_generation
+                raise ValueError("Physical write failed")
+            if outcome == "write_cancelled":
+                coord._notify_callback(None, bytearray(_packet(0xAA, 0x33, [0x81])))
+                raise asyncio.CancelledError
         if packet[:2] == b"\xaa\x33":
             queried += 1
             if outcome == "cancelled":
@@ -137,18 +163,37 @@ async def test_h6046_bar_write_preserves_fresh_sibling_and_unknown_flags(hass, m
                 coord._notification_token = object()
 
     client.write_gatt_char.side_effect = respond
+
+    async def set_control():
+        if entrypoint == "source":
+            await GoveeBLESourceLight(coord, "left_bar").async_turn_on()
+        else:
+            await coord.async_set_boolean_control("left_bar_enabled", True)
+
     if outcome == "match":
-        await coord.async_set_boolean_control("left_bar_enabled", True)
+        await set_control()
         assert coord.boolean_control_state == {"left_bar_enabled": True, "right_bar_enabled": True}
-    elif outcome == "cancelled":
+    elif outcome in {"cancelled", "write_cancelled"}:
         with pytest.raises(asyncio.CancelledError):
-            await coord.async_set_boolean_control("left_bar_enabled", True)
+            await set_control()
     else:
-        with pytest.raises(ValueError):
-            await coord.async_set_boolean_control("left_bar_enabled", True)
+        with pytest.raises(HomeAssistantError if entrypoint == "source" else ValueError):
+            await set_control()
+    if outcome in {"sibling_changed", "write_cancelled"}:
+        assert coord.boolean_control_state == {"left_bar_enabled": True, "right_bar_enabled": False}
+        assert coord._field_received_at["boolean_left_bar_enabled"] >= coord._notify_started_monotonic
+        assert coord._source_power_observation_generation["boolean_left_bar_enabled"] == (
+            coord._power_write_generation,
+            coord._profile_generation,
+        )
+    elif outcome == "write_failed":
+        assert not coord.boolean_control_state
+        assert not coord._source_power_observation_generation
     writes = [item.args[1] for item in client.write_gatt_char.await_args_list]
     if outcome in {"missing", "subscription_changed", "cancelled"}:
         assert writes == [_packet(0xAA, 0x33, [])]
+    elif outcome in {"write_failed", "write_cancelled"}:
+        assert writes == [_packet(0xAA, 0x33, []), _packet(0x33, 0x33, [0x91])]
     else:
         assert writes == [_packet(0xAA, 0x33, []), _packet(0x33, 0x33, [0x91]), _packet(0xAA, 0x33, [])]
     if outcome in {"missing", "verification_missing", "subscription_changed", "cancelled"}:
