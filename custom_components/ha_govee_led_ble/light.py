@@ -1041,11 +1041,16 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         await self._async_handle_turn_on(**kwargs)
 
     async def _async_handle_turn_on(self, **kwargs: Any) -> None:
-        if (ATTR_RGB_COLOR in kwargs or ATTR_COLOR_TEMP_KELVIN in kwargs) and not (
+        static_requested = (
+            ATTR_RGB_COLOR in kwargs
+            or ATTR_COLOR_TEMP_KELVIN in kwargs
+            or normalise_effect_name(str(kwargs.get(ATTR_EFFECT, ""))) == EFFECT_OFF
+        )
+        if static_requested and not (
             self.coordinator.profile.brightness_zero_turns_off and kwargs.get(ATTR_BRIGHTNESS) == 0
         ):
             guard = None
-            if self.coordinator.identity_gated_controls:
+            if self.coordinator.identity_gated_controls or self.coordinator.profile.static_identity_fields:
                 self._validate_basic_request(kwargs, profile=self.coordinator.native_presentation_profile)
                 guard = await self.coordinator.async_prepare_identity_gated_control()
             async with self.coordinator.async_mask_transaction():

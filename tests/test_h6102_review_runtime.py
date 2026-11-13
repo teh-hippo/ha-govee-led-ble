@@ -200,8 +200,9 @@ async def test_music_reconnect_revocation_precedes_power_and_upload(radio, missi
     state[missing] = None
     packets.clear()
     attempts = c.control_write_attempts
-    with pytest.raises(ValueError, match="music mode"):
+    with pytest.raises(HomeAssistantError) as error:
         await c.async_write_music_sequence(writes, mode_code=0x30, physical_ic_count=None, intent=ControlIntent.USER)
+    assert error.value.translation_key == "identity_not_ready"
     assert c.control_write_attempts == attempts
     assert all(packet[0] == 0xAA for packet in packets)
 
@@ -222,8 +223,9 @@ async def test_music_retry_rechecks_revision_before_second_control_attempt(radio
 
     clients[-1].write_gatt_char.side_effect = fail
     packets.clear()
-    with pytest.raises(ValueError, match="music mode"):
+    with pytest.raises(HomeAssistantError) as error:
         await c.async_write_music_sequence(writes, mode_code=0x30, physical_ic_count=None, intent=ControlIntent.USER)
+    assert error.value.translation_key == "identity_not_ready"
     assert len(attempted) == 1
     assert all(packet[0] == 0xAA for packet in packets)
 

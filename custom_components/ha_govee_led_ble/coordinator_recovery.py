@@ -904,12 +904,18 @@ class _RecoveryMixin(_CoordinatorBase):
         return restored
 
     async def _restore_static_colour(self, state: PriorControlState, complete: bool) -> bool:
-        await self.send_command(build_power(True, self.model))
-        await self.send_command(build_brightness(state.brightness_pct, self.model))
+        guard = (
+            await self._as_coordinator.async_prepare_identity_gated_control()
+            if self.profile.static_identity_fields
+            else None
+        )
+        control = self._as_coordinator.control_write_request(identity_guard=guard)
+        await control.send(build_power(True, self.model))
+        await control.send(build_brightness(state.brightness_pct, self.model))
         if state.color_temp_kelvin is not None:
-            await self.send_command(build_color_temp(state.color_temp_kelvin, self.model, profile=self.profile))
+            await control.send(build_color_temp(state.color_temp_kelvin, self.model, profile=self.profile))
         else:
-            await self.send_command(build_color_rgb(*state.rgb_color, self.model, profile=self.profile))
+            await control.send(build_color_rgb(*state.rgb_color, self.model, profile=self.profile))
         request = RefreshRequest(
             on=True,
             brightness=state.brightness_pct,
