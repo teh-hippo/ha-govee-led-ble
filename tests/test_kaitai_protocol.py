@@ -1192,6 +1192,8 @@ async def test_clear_effect_preserves_newer_scene_notification(static_coordinato
     coord = static_coordinator
     coord.is_on = True
     light = GoveeBLELight(coord)
+    light.async_write_ha_state = MagicMock()
+    coord.refresh_state = AsyncMock(return_value=True)
 
     async def send(_packet, **_kwargs):
         coord._notify_callback(None, _static_scene_reply())
@@ -1200,10 +1202,10 @@ async def test_clear_effect_preserves_newer_scene_notification(static_coordinato
 
     coord.send_command = AsyncMock(side_effect=send)
     if fail:
-        with pytest.raises(HomeAssistantError), light._rollback():
-            await light._async_clear_effect()
+        with pytest.raises(HomeAssistantError):
+            await light.async_turn_on(effect="off")
     else:
-        await light._async_clear_effect()
+        await light.async_turn_on(effect="off")
     assert coord.color_mode is ParsedMode.SCENE and coord.scene_code == 65000
     assert coord.active_mode == "scene"
 
