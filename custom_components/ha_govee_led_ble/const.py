@@ -232,7 +232,7 @@ class ModelProfile:
     read_domains: frozenset[ReadDomain] = frozenset()
     setup_required_read_domains: frozenset[ReadDomain] = frozenset()
     supports_rgb: bool = False
-    main_color_modes: frozenset[str] | None = None
+    main_colour_sources: tuple[str, ...] = ()
     minimum_enabled_sources: int = 0
     maximum_enabled_sources: int | None = None
     exclusive_source_groups: tuple[frozenset[str], ...] = ()
@@ -374,10 +374,10 @@ class ModelProfile:
             segments = [segment for source in self.light_sources for segment in source.segments]
             if len(segments) != self.segment_count or set(segments) != set(range(1, self.segment_count + 1)):
                 raise ValueError("partitioned sources must cover every segment exactly once")
-        if self.main_color_modes is not None and (
-            not self.main_color_modes or not self.main_color_modes <= {"onoff", "brightness", "rgb", "color_temp"}
-        ):
-            raise ValueError("unknown main light colour modes")
+        if len(set(self.main_colour_sources)) != len(self.main_colour_sources) or not set(self.main_colour_sources) <= {
+            source.key for source in self.light_sources
+        }:
+            raise ValueError("main colour targets require distinct declared sources")
         source_controls = {source.control for source in self.light_sources}
         if (
             type(self.minimum_enabled_sources) is not int
@@ -1153,7 +1153,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         ),
         setup_required_read_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS}),
         supports_rgb=True,
-        main_color_modes=frozenset({"brightness"}),
+        main_colour_sources=("top", "side", "bottom"),
         minimum_enabled_sources=1,
         maximum_enabled_sources=2,
         supports_color_temperature=True,

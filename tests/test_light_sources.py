@@ -267,16 +267,15 @@ async def test_source_controls_only_its_segments_and_does_not_change_sibling(sou
     source = GoveeBLESourceLight(source_coordinator, "left_bar")
     await source.async_turn_on(brightness=128, rgb_color=(10, 20, 30))
     source_coordinator.async_set_segment_brightness.assert_awaited_once_with(list(LEFT.segments), 50, write_guard=ANY)
-    source_coordinator.async_paint_segments.assert_awaited_once_with(
-        [(list(LEFT.segments), (10, 20, 30))], write_guard=ANY
-    )
+    writes = source_coordinator._async_write_segment_batch.await_args.args[0]
+    assert writes == [build_segment_color(LEFT.segments, 10, 20, 30, "H6046", profile=source_coordinator.profile)]
     source_coordinator.async_set_boolean_control.assert_not_awaited()
     source_coordinator.send_command.assert_not_awaited()
 
     await source.async_turn_off()
     source_coordinator.async_set_boolean_control.assert_awaited_once_with("left_bar_enabled", False)
     source_coordinator.send_command.assert_not_awaited()
-    guard = source_coordinator.async_paint_segments.await_args.kwargs["write_guard"]
+    guard = source_coordinator._async_write_segment_batch.await_args.kwargs["write_guard"]
     source_coordinator.profile = replace(source_coordinator.profile, segment_count=11)
     with pytest.raises(ValueError, match="profile changed"):
         guard()
@@ -290,7 +289,8 @@ async def test_h607c_base_writes_only_its_own_segment_mask(source_coordinator):
     source = GoveeBLESourceLight(coordinator, "base")
     await source.async_turn_on(brightness=128, rgb_color=(10, 20, 30))
     coordinator.async_set_segment_brightness.assert_awaited_once_with([9, 10, 11, 12, 13], 50, write_guard=ANY)
-    coordinator.async_paint_segments.assert_awaited_once_with([([9, 10, 11, 12, 13], (10, 20, 30))], write_guard=ANY)
+    writes = coordinator._async_write_segment_batch.await_args.args[0]
+    assert writes == [build_segment_color([9, 10, 11, 12, 13], 10, 20, 30, "H607C", profile=coordinator.profile)]
     coordinator.async_set_boolean_control.assert_not_awaited()
 
 
@@ -345,7 +345,8 @@ async def test_h60a6_panel_colour_uses_only_the_panel_segment(source_coordinator
     coordinator.boolean_control_state = {"panel_enabled": True, "ring_enabled": True}
     panel = GoveeBLESourceLight(coordinator, "panel")
     await panel.async_turn_on(rgb_color=(10, 20, 30))
-    coordinator.async_paint_segments.assert_awaited_once_with([([13], (10, 20, 30))], write_guard=ANY)
+    writes = coordinator._async_write_segment_batch.await_args.args[0]
+    assert writes == [build_segment_color([13], 10, 20, 30, "H60A6", profile=coordinator.profile)]
     coordinator.async_set_boolean_control.assert_not_awaited()
 
 
