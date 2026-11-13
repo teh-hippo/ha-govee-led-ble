@@ -1578,8 +1578,10 @@ class GoveeBLECoordinator(
             raise ValueError("Device profile changed during control write; refresh and retry")
         if arm_expected and authorization_generation != self._authorization_generation:
             raise ValueError("Device identity changed during control write; refresh and retry")
-        if arm_expected and "brightness_pct" in requested and not self.profile.can_read(ReadDomain.BRIGHTNESS):
-            self._h607c_uncertain_state_fields.discard("brightness_pct")
+        if arm_expected:
+            for field, domain in (("is_on", ReadDomain.POWER), ("brightness_pct", ReadDomain.BRIGHTNESS)):
+                if field in requested and not self.profile.can_read(domain):
+                    self._h607c_uncertain_state_fields.discard(field)
         if (
             arm_expected
             and static is not None
@@ -3543,10 +3545,13 @@ class GoveeBLECoordinator(
         *,
         write_guard: Callable[[], None] | None = None,
         state_values: Mapping[str, Any] | None = None,
+        on_write: Callable[[], None] | None = None,
     ) -> None:
         attempts = self._static_write_attempts
         try:
-            await self._async_send_command(packet, write_guard=write_guard, state_values=state_values)
+            await self._async_send_command(
+                packet, write_guard=write_guard, state_values=state_values, on_write=on_write
+            )
         except Exception:
             if self._static_write_attempts != attempts and self.profile.can_read(ReadDomain.SEGMENTS):
                 try:
@@ -3562,6 +3567,7 @@ class GoveeBLECoordinator(
         *,
         write_guard: Callable[[], None] | None = None,
         state_values: Mapping[str, Any] | None = None,
+        on_write: Callable[[], None] | None = None,
     ) -> None:
         if self.hass.is_stopping:
             _LOGGER.debug("Ignoring command during shutdown for %s", self.address)
@@ -3575,7 +3581,12 @@ class GoveeBLECoordinator(
                     try:
                         client = await self._ensure_connected()
                         await self._async_write_packet(
-                            client, packet, arm_expected=True, before_write=write_guard, state_values=state_values
+                            client,
+                            packet,
+                            arm_expected=True,
+                            before_write=write_guard,
+                            state_values=state_values,
+                            on_write=on_write,
                         )
                         self._renew_foreground_lease()
                         return

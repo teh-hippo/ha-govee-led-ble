@@ -4,7 +4,7 @@ from dataclasses import replace
 from hashlib import sha256
 from types import SimpleNamespace
 from typing import cast
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -327,7 +327,7 @@ async def test_h6076_exposes_scenes_and_legacy_music_before_firmware_identity(mo
     await light.async_turn_on(color_temp_kelvin=2000)
     # AA05 never echoes Kelvin on this lamp, so the write is confirmed from its segment pages.
     mock_h6076_coordinator.async_set_segment_kelvin.assert_awaited_once_with(
-        build_color_temp(2700, "H6076"), requested_kelvin=2000
+        build_color_temp(2700, "H6076"), requested_kelvin=2000, write_guard=ANY, on_write=ANY
     )
     mock_h6076_coordinator.send_command.assert_not_awaited()
 
@@ -378,7 +378,7 @@ def test_hidden_scene_family_does_not_project_internal_scene_state(
 @pytest.mark.parametrize("on", [True, False])
 async def test_power(light, mock_coordinator, on):
     await (light.async_turn_on() if on else light.async_turn_off())
-    mock_coordinator.send_command.assert_called_with(build_power(on))
+    assert mock_coordinator.send_command.call_args.args == (build_power(on),)
     assert mock_coordinator.is_on is on
 
 
@@ -407,7 +407,7 @@ async def test_write_only_control_completes_without_confirmation_or_retry(light,
         packet = build_power(on)
         assert mock_coordinator.is_on is on
 
-    mock_coordinator.send_command.assert_awaited_once_with(packet)
+    assert [call.args[0] for call in mock_coordinator.send_command.await_args_list] == [packet]
     mock_coordinator.refresh_state.assert_not_awaited()
     assert mock_coordinator._field_revisions == revisions
     light.async_write_ha_state.assert_called_once_with()
@@ -452,7 +452,7 @@ async def test_readable_control_confirmation_failure_retries_and_rolls_back(ligh
             expected = RefreshRequest(on=on)
             await (light.async_turn_on() if on else light.async_turn_off())
 
-    assert exc.value.translation_key == "device_command_failed"
+    assert exc.value.translation_key == ("device_command_failed" if operation == "power_off" else "partial_command")
     assert (mock_coordinator.is_on, mock_coordinator.brightness_pct) == before
     assert mock_coordinator.send_command.await_count == 2
     assert [call.args[0] for call in mock_coordinator.refresh_state.await_args_list] == [expected, expected]
@@ -474,7 +474,7 @@ async def test_write_only_control_transport_failure_still_rolls_back(light, mock
         else:
             await light.async_turn_off()
 
-    assert exc.value.translation_key == "device_command_failed"
+    assert exc.value.translation_key == ("device_command_failed" if operation == "power_off" else "partial_command")
     assert (mock_coordinator.is_on, mock_coordinator.brightness_pct) == before
     mock_coordinator.send_command.assert_awaited_once()
     mock_coordinator.refresh_state.assert_not_awaited()
@@ -1944,6 +1944,7 @@ async def test_native_profile_identity_changes_only_at_admitted_effect_packet(
     saved_video_light, monkeypatch, attempted
 ):
     entity, coordinator, backend, item, client = saved_video_light
+    monkeypatch.setattr(coordinator, "_async_read_setting_fields", AsyncMock(return_value=False))
     coordinator.is_on = False
     original_validate = coordinator._validate_authorized_packet
     validations = 0
@@ -1959,7 +1960,7 @@ async def test_native_profile_identity_changes_only_at_admitted_effect_packet(
     monkeypatch.setattr(coordinator, "_validate_authorized_packet", validate)
 
     async def fail_mode(_uuid, packet, **kwargs):
-        if packet != build_power(True, "H6097"):
+        if packet == build_video_mode(item.content.mode, True, 63, False, 27, "H6097"):
             observed = backend.engine.reconcile_current(
                 coordinator,
                 config_entry_id="entry-a",
@@ -2714,7 +2715,9 @@ async def test_h6076_restores_static_colour_after_off_state_restart(
 
     await restored.async_turn_on()
 
-    mock_h6076_coordinator.send_command.assert_awaited_once_with(build_power(True, "H6076"))
+    assert [call.args[0] for call in mock_h6076_coordinator.send_command.await_args_list] == [
+        build_power(True, "H6076")
+    ]
     state_attributes = restored.state_attributes
     assert state_attributes is not None
     assert state_attributes["color_mode"] is color_mode
@@ -2842,7 +2845,7 @@ async def test_control_lock_keeps_failed_rollback_before_newer_colour(light, moc
     release_first.set()
     with pytest.raises(HomeAssistantError) as exc:
         await first
-    assert exc.value.translation_key == "device_command_failed"
+    assert exc.value.translation_key == "partial_command"
     await second
 
     assert sent == [red, blue]
@@ -2884,7 +2887,7 @@ async def test_failed_rgb_preserves_newer_observed_music_style(hass):
     coord.is_on = True
     assert coord._music_calm is None
 
-    async def send(_packet):
+    async def send(_packet, **_kwargs):
         coord._notify_callback(None, bytearray.fromhex("aa051303580100000000000000000000000000e6"))
         raise RuntimeError("failed RGB after music notification")
 

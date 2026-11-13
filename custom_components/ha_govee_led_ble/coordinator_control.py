@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Callable, Generator, Mapping
 from contextlib import contextmanager
 from copy import copy
@@ -13,7 +14,7 @@ from bleak.exc import BleakError
 
 from .const import ModelProfile, ReadDomain
 from .control_arbiter import ControlIntent, async_control_intent
-from .coordinator_refresh import RefreshRequest
+from .generated_protocol_adapter import build_brightness_query, build_power_query
 
 if TYPE_CHECKING:
     from .coordinator_base import _CoordinatorBase
@@ -148,9 +149,9 @@ class ControlWriteRequest:
         self._identity_guard = identity_guard
         self._effect_guard = effect_guard
         self._client, self._token = coordinator._client, coordinator._notification_token
-        self._attempted_fields: dict[str, int] = {}
+        self._generation = coordinator._profile_generation
+        self._attempted_fields: dict[str, dict[str, int]] = {}
         self._tracked_field: str | None = None
-        self._tracked_attempts = self._tracked_revision = 0
         self.phase = "power"
 
     @property
@@ -162,38 +163,37 @@ class ControlWriteRequest:
             self._identity_guard()
         if self._effect_guard is not None:
             self._effect_guard()
-        if (
-            self._identity_guard is not None
-            and self._tracked_field is not None
-            and self._coordinator.control_write_attempts == self._tracked_attempts
-        ):
-            self._tracked_revision = self._coordinator._field_revisions.get(self._tracked_field, 0)
+
+    def on_write(self) -> None:
+        if self._tracked_field is not None:
+            self._client, self._token = self._coordinator._client, self._coordinator._notification_token
+            self._generation = self._coordinator._profile_generation
+            self._attempted_fields[self._tracked_field] = dict(self._coordinator._field_revisions)
 
     @contextmanager
     def track(self, field: str) -> Generator[None]:
         self._tracked_field = field
-        self._tracked_attempts = self._coordinator.control_write_attempts
-        self._tracked_revision = self._coordinator._field_revisions.get(field, 0)
         try:
             yield
         finally:
-            if self._identity_guard is not None and self._coordinator.control_write_attempts != self._tracked_attempts:
-                self._attempted_fields[field] = self._tracked_revision
             self._tracked_field = None
 
     async def send(self, packet: bytes) -> None:
         if self._effect_guard is not None:
-            await async_send_guarded_command(self._coordinator, packet, write_guard=self.before_write)
-        elif self._identity_guard is not None:
-            await self._coordinator.send_command(packet, write_guard=self.before_write)
+            await async_send_guarded_command(
+                self._coordinator, packet, write_guard=self.before_write, on_write=self.on_write
+            )
         else:
-            await self._coordinator.send_command(packet)
+            await self._coordinator.send_command(packet, write_guard=self.before_write, on_write=self.on_write)
 
     def mark_interrupted(self) -> None:
         coordinator = self._coordinator
-        for field, revision in self._attempted_fields.items():
-            if coordinator._field_revisions.get(field, 0) <= revision:
-                uncertain = "color" if field in {"rgb_color", "color_temp_kelvin"} else field
+        for field, revisions in self._attempted_fields.items():
+            uncertain = "color" if field in {"rgb_color", "color_temp_kelvin"} else field
+            observed = (
+                ("rgb_color", "color_temp_kelvin", "color_mode", "segment_colors") if uncertain == "color" else (field,)
+            )
+            if all(coordinator._field_revisions.get(key, 0) <= revisions.get(key, 0) for key in observed):
                 coordinator._h607c_uncertain_state_fields.add(uncertain)
                 if uncertain == "color":
                     coordinator._h607c_failed_color_write = True
@@ -202,30 +202,47 @@ class ControlWriteRequest:
 
     async def reconcile(self) -> None:
         coordinator, client = self._coordinator, self._client
-        if (
-            not coordinator._h607c_uncertain_state_fields.intersection({"is_on", "brightness_pct"})
-            or client is None
-            or coordinator._client is not client
-            or not client.is_connected
-            or coordinator._notification_token is not self._token
-            or (coordinator._encryption is not None and not coordinator._encryption.ready)
-        ):
-            return
-        try:
-            await coordinator._refresh_connected_state(
-                RefreshRequest(
-                    refresh_all=True,
-                    query_segments=False,
-                    query_native_settings=False,
-                    required_domains=coordinator.profile.read_domains & {ReadDomain.POWER, ReadDomain.BRIGHTNESS},
-                )
+        queries = [
+            (field, query)
+            for field, domain, query in (
+                ("is_on", ReadDomain.POWER, build_power_query),
+                ("brightness_pct", ReadDomain.BRIGHTNESS, build_brightness_query),
             )
+            if field in self._attempted_fields
+            and field in coordinator._h607c_uncertain_state_fields
+            and coordinator.profile.can_read(domain)
+        ]
+        if not queries or client is None:
+            return
+
+        def guard() -> None:
+            if (
+                coordinator._client is not client
+                or not client.is_connected
+                or coordinator._notification_token is not self._token
+                or coordinator._profile_generation != self._generation
+                or (coordinator._encryption is not None and not coordinator._encryption.ready)
+            ):
+                raise ValueError("Interrupted control context changed")
+
+        try:
+            async with coordinator._lock:
+                for field, query in queries:
+                    guard()
+                    if not await coordinator._async_read_setting_fields(
+                        client,
+                        query(coordinator.model, profile=coordinator.profile),
+                        (field,),
+                        deadline=time.monotonic() + 2.0,
+                        write_guard=guard,
+                    ):
+                        break
         except BleakError, ValueError, TimeoutError:
             _LOGGER.debug("Could not reconcile interrupted Govee %s request", coordinator.model, exc_info=True)
         coordinator.async_set_updated_data(coordinator.data or {})
 
     def complete(self, *, colour_requested: bool) -> None:
-        if self._identity_guard is not None and colour_requested:
+        if colour_requested:
             self._coordinator._h607c_failed_color_write = False
 
 

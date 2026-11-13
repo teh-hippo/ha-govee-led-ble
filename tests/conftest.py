@@ -265,11 +265,20 @@ def _make_coord(**ov) -> MagicMock:
         frozenset(MODEL_SCENES[model]) if "scenes" in effect_families else frozenset(),
     )
     c = MagicMock(spec=GoveeBLECoordinator, **d)
+    c._expected_state = {}
+    c._lock = asyncio.Lock()
+    c._async_read_setting_fields = AsyncMock(return_value=False)
     c._client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
 
-    async def send_command(packet, *, write_guard=None, state_values=None) -> None:
+    async def send_command(packet, *, write_guard=None, state_values=None, on_write=None) -> None:
         await GoveeBLECoordinator._async_write_packet(
-            c, c._client, packet, arm_expected=True, before_write=write_guard, state_values=state_values
+            c,
+            c._client,
+            packet,
+            arm_expected=True,
+            before_write=write_guard,
+            state_values=state_values,
+            on_write=on_write,
         )
 
     c.send_command = AsyncMock(side_effect=send_command)

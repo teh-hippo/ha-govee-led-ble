@@ -439,8 +439,9 @@ async def test_issue310_failed_register_command_does_not_confirm_brightness(radi
     state["brightness_reply_override"] = 235 if fault == "stale_readback" else None
     with pytest.raises(HomeAssistantError) as error:
         await GoveeBLELight(c).async_turn_on(brightness=128)
-    assert error.value.translation_key == "device_command_failed"
-    assert c.brightness_pct == 92 and c._field_revisions["brightness_pct"] == revision
+    assert error.value.translation_key == "partial_command"
+    assert c.brightness_pct == 92
+    assert c._field_revisions["brightness_pct"] == revision + (fault == "stale_readback")
     if fault == "write":
         assert state["brightness"] == 92
         assert not any(entry["dir"] == "tx" and entry["raw"] == frame("330488").hex() for entry in c.packet_log)

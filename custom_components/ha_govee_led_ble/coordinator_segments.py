@@ -238,7 +238,12 @@ class _SegmentMixin(_CoordinatorBase):
             )
 
     async def async_set_segment_kelvin(
-        self, packet: bytes, *, requested_kelvin: int, write_guard: Callable[[], None] | None = None
+        self,
+        packet: bytes,
+        *,
+        requested_kelvin: int,
+        write_guard: Callable[[], None] | None = None,
+        on_write: Callable[[], None] | None = None,
     ) -> None:
         """Confirm settled rendering on the original subscription, without replaying the write."""
         profile = self.profile
@@ -249,10 +254,7 @@ class _SegmentMixin(_CoordinatorBase):
         if not selected or static.segment_mask & ~profile.whole_device_mask:
             raise ValueError("Kelvin mask is outside the current geometry")
         if not profile.can_read(ReadDomain.SEGMENTS):
-            if write_guard is None:
-                await self.send_command(packet)
-            else:
-                await self.send_command(packet, write_guard=write_guard)
+            await self.send_command(packet, write_guard=write_guard, on_write=on_write)
             return
 
         sent_kelvin = static.kelvin
@@ -317,7 +319,12 @@ class _SegmentMixin(_CoordinatorBase):
                     async with asyncio.timeout_at(deadline):
                         try:
                             await self._async_write_packet(
-                                client, packet, arm_expected=True, before_write=guard, cleanup_deadline=deadline
+                                client,
+                                packet,
+                                arm_expected=True,
+                                before_write=guard,
+                                cleanup_deadline=deadline,
+                                on_write=on_write,
                             )
                         except Exception:
                             outcome = "write_failed"

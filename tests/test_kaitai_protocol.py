@@ -1173,7 +1173,7 @@ async def test_static_failure_never_restores_stale_mode_siblings(hass, model, fr
     coord._notify_callback(None, bytearray.fromhex(frame))
     assert coord.active_mode != "colour"
 
-    async def send(_packet):
+    async def send(_packet, **_kwargs):
         coord._notify_callback(None, bytearray.fromhex("aa051501000000000000000000000000000000bb"))
         raise RuntimeError("failed with fresh static mode")
 
@@ -1191,7 +1191,7 @@ async def test_clear_effect_preserves_newer_scene_notification(static_coordinato
     coord.is_on = True
     light = GoveeBLELight(coord)
 
-    async def send(_packet):
+    async def send(_packet, **_kwargs):
         coord._notify_callback(None, _static_scene_reply())
         if fail:
             raise RuntimeError("effect-off write failed")
@@ -1221,7 +1221,7 @@ async def test_static_failure_rolls_back_coherent_state(static_coordinator, mode
     before = (coord.segment_state_observed_at, set(coord._segment_groups_observed), list(coord._segment_query_colors))
     light = GoveeBLELight(coord)
 
-    async def send(_packet):
+    async def send(_packet, **_kwargs):
         if new_reply == "static":
             coord._notify_callback(None, _static_reply(rgb=(1, 2, 3)) if model == "H7001" else _static_reply())
         elif new_reply == "scene":
@@ -1388,7 +1388,7 @@ async def test_static_local_write_keeps_notification_source(static_coordinator, 
     light.async_write_ha_state = MagicMock()
     frame = _static_reply(rgb=(1, 2, 3)) if rgb else _static_reply(kelvin=4200)
 
-    async def send(packet):
+    async def send(packet, **_kwargs):
         coord._arm_expected(packet)
         coord._notify_callback(None, frame)
 
@@ -1485,7 +1485,7 @@ async def test_static_failed_write_rollback_keeps_fresh_notification(static_coor
     coord.is_on = True
     light = GoveeBLELight(coord)
 
-    async def send(_packet):
+    async def send(_packet, **_kwargs):
         coord._notify_callback(None, _static_reply(rgb=(1, 2, 3)))
         raise RuntimeError("write failed after notification")
 

@@ -259,6 +259,7 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
             *,
             write_guard: Callable[[], None] | None = None,
             state_values: Mapping[str, Any] | None = None,
+            on_write: Callable[[], None] | None = None,
         ) -> None: ...
 
         async def async_observe_effect(
@@ -283,6 +284,16 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
 
         async def _async_read_bulk_status(
             self, client: BleakClient, *, deadline: float, domains: tuple[str, ...] | None = None
+        ) -> bool: ...
+
+        async def _async_read_setting_fields(
+            self,
+            client: BleakClient,
+            query: bytes,
+            fields: tuple[str, ...],
+            *,
+            deadline: float,
+            write_guard: Callable[[], None] | None = None,
         ) -> bool: ...
 
         async def async_refresh_segments(self, *, timeout: float = 2.0) -> bool: ...
