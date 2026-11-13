@@ -117,6 +117,7 @@ def _coordinator(*, model: str = "H617A", readable: bool = False) -> SimpleNames
         async_update_listeners=MagicMock(),
     )
     coordinator.async_preview_preflight = AsyncMock()
+    coordinator.refresh_state = AsyncMock(return_value=True)
     coordinator.disconnect = AsyncMock()
 
     async def write(packet: bytes) -> None:
@@ -229,6 +230,9 @@ async def test_h7020_static_preview_rejects_ambiguous_per_bulb_white_intent(hass
         await manager.async_wait_idle("entry-a")
 
         assert events[-1].phase is PreviewPhase.FAILED
+        assert events[-1].error_code == "preparation_failed"
+        assert events[-1].error_message is not None
+        assert "cannot be safely restored" in events[-1].error_message
         assert events[-1].write_disposition is PreviewWriteDisposition.NOT_STARTED
         assert not coordinator.writes
     finally:

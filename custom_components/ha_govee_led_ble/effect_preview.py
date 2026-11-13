@@ -50,6 +50,7 @@ from .effect_domain import (
 from .effect_identity import EffectDeviceCache
 from .effect_limits import MAX_PREVIEW_SEQUENCE
 from .effect_runtime import (
+    EffectPreparationError,
     _active_workspace_content,
     _validate_diy_slot_approval,
     active_workspace_matches,
@@ -1012,17 +1013,21 @@ class EffectPreviewManager:
             )
             return
         except Exception as exc:
+            preparation_failed = isinstance(exc, EffectPreparationError) and (writer is None or not writer.started)
+            error_code = "preparation_failed" if preparation_failed else "transport_failed"
             self._diagnostics.record(
-                DiagnosticStage.PACKET_PROGRESS,
+                DiagnosticStage.RECOVERY if preparation_failed else DiagnosticStage.PACKET_PROGRESS,
                 DiagnosticOutcome.FAILED,
-                "preview_transport_failed",
+                "preview_preparation_failed" if preparation_failed else "preview_transport_failed",
                 correlation_id=request.correlation_id,
                 config_entry_id=request.config_entry_id,
                 details={"error_type": type(exc).__name__, "sequence": request.sequence},
             )
             started = writer is not None and writer.started
             message = (
-                "The connection stopped while writing. The light may have changed."
+                str(exc)
+                if preparation_failed
+                else "The connection stopped while writing. The light may have changed."
                 if started
                 else "The light could not be reached before the Live change started."
             )
@@ -1030,14 +1035,14 @@ class EffectPreviewManager:
             self._publish(
                 request,
                 PreviewPhase.FAILED,
-                error_code="transport_failed",
+                error_code=error_code,
                 error_message=message,
                 write_disposition=disposition,
             )
             self._set_health(
                 request.config_entry_id,
                 PreviewHealthPhase.DEGRADED,
-                error_code="transport_failed",
+                error_code=error_code,
                 error_message=message,
                 write_disposition=disposition,
             )
@@ -1103,29 +1108,30 @@ class EffectPreviewManager:
 
     async def _async_prepare_execution(self, coordinator: Any, compiled: CompiledApplication | None) -> None:
         await coordinator.async_preview_preflight(timeout=self._connect_timeout)
-        inline_brightness = (
-            isinstance(compiled, CompiledVideoProfile)
-            and compiled.relative_brightness_inline
-            and compiled.relative_brightness is not None
-        )
-        inline_revision = coordinator._field_revisions.get("video_parameters", 0) if inline_brightness else 0
-        await async_prepare_effect_control_state(coordinator, require_restorable_static=True)
-        if inline_brightness and coordinator._field_revisions.get("video_parameters", 0) <= inline_revision:
-            await coordinator.refresh_state()
-            if coordinator._field_revisions.get("video_parameters", 0) <= inline_revision and (
-                not await coordinator.async_read_video_setting("video_parameters")
+        async with async_control_intent(coordinator, ControlIntent.PREVIEW):
+            inline_brightness = (
+                isinstance(compiled, CompiledVideoProfile)
+                and compiled.relative_brightness_inline
+                and compiled.relative_brightness is not None
+            )
+            inline_revision = coordinator._field_revisions.get("video_parameters", 0) if inline_brightness else 0
+            await async_prepare_effect_control_state(coordinator, require_restorable_static=True)
+            if inline_brightness and coordinator._field_revisions.get("video_parameters", 0) <= inline_revision:
+                await coordinator.refresh_state()
+                if coordinator._field_revisions.get("video_parameters", 0) <= inline_revision and (
+                    not await coordinator.async_read_video_setting("video_parameters")
+                ):
+                    raise PreviewError("Fresh video brightness observations are required before Preview")
+            if compiled is not None:
+                validate_compiled_geometry(compiled, coordinator.effect_authorization_profile)
+            if (
+                isinstance(compiled, CompiledEffect)
+                and compiled.selector_kind == "diy"
+                and requires_approved_diy_slot(compiled.model)
             ):
-                raise PreviewError("Fresh video brightness observations are required before Preview")
-        if compiled is not None:
-            validate_compiled_geometry(compiled, coordinator.effect_authorization_profile)
-        if (
-            isinstance(compiled, CompiledEffect)
-            and compiled.selector_kind == "diy"
-            and requires_approved_diy_slot(compiled.model)
-        ):
-            if not await coordinator.refresh_state():
-                raise PreviewError("approved disposable DIY code could not be refreshed")
-            _validate_diy_slot_approval(coordinator, compiled)
+                if not await coordinator.refresh_state():
+                    raise PreviewError("approved disposable DIY code could not be refreshed")
+                _validate_diy_slot_approval(coordinator, compiled)
 
     async def _async_transmit_request(
         self,

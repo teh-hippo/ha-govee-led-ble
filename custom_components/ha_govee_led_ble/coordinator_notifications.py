@@ -477,12 +477,17 @@ class _NotificationMixin(_CoordinatorBase):
         return True
 
     async def _async_read_bulk_status(
-        self, client: BleakClient, *, deadline: float, domains: tuple[str, ...] | None = None
+        self,
+        client: BleakClient,
+        *,
+        deadline: float,
+        domains: tuple[str, ...] | None = None,
+        query: bytes | None = None,
     ) -> bool:
         if self._bulk_query_incomplete:
             return False
         self._reconcile_authorization()
-        packet = build_bulk_status_query(self._authorization_profile(), domains=domains)
+        packet = query if query is not None else build_bulk_status_query(self._authorization_profile(), domains=domains)
         baseline = {"bulk_status": self._field_revisions.get("bulk_status", 0)}
         generation, token = self._profile_generation, self._notification_token
         attempted = succeeded = False
