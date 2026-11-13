@@ -25,6 +25,7 @@
 | **H60A1** | ✅ Supported |
 | **H60A6** | ✅ Supported |
 | **H60B0** | [🚧 Experimental](https://github.com/teh-hippo/ha-govee-led-ble/issues/566) |
+| **H60B2** | [🚧 Experimental](https://github.com/teh-hippo/ha-govee-led-ble/issues/603) |
 | **H6102** | ✅ Supported |
 | **H6117** | 🧪 Experimental ([owner feedback](https://github.com/teh-hippo/ha-govee-led-ble/issues/537)) |
 | **H6125** | ✅ Supported |
@@ -49,6 +50,7 @@ H6046 and H607C expose separate source lights on compatible revisions.
 H60A6 exposes panel and ring lights; [ring brightness is not independently supported](https://github.com/teh-hippo/ha-govee-led-ble/issues/402).
 H1771 source switches are numbered until their physical mapping is confirmed.
 H60B0 exposes top, side and bottom lights plus ripple speed.  The bottom is white-only; native DIY features follow the detected protocol revision.
+H60B2 exposes bottom, middle and top lights with independent power, brightness, RGB and colour temperature.
 
 On qualified H6199 revisions, Camera status shows the last report received from the camera and starts unknown until a report arrives.
 Missing replies or brief Bluetooth reconnects do not change that report; this diagnostic is not a real-time connection monitor.

@@ -101,6 +101,8 @@ def status_is_authorized(decoded: ParsedStatusEnvelope, profile: ModelProfile) -
         return profile.setting_grammar == "H607C" and bool(profile.boolean_controls)
     if domain_name == "bar_enable":
         return profile.setting_grammar == "H6046" and bool(profile.boolean_controls)
+    if domain_name == "zone_enable":
+        return profile.setting_grammar == "H60B2" and bool(profile.light_sources)
     if domain_name == "source_info":
         return profile.setting_grammar == "H60B0" and bool(profile.boolean_controls)
     if domain_name == "power_off_memory" and profile.setting_grammar == "H6046":

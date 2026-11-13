@@ -74,12 +74,13 @@ class GoveeEncryptionSession:
         advertised: bool,
         plaintext_evidence: bool = False,
         allows_legacy_plaintext_marker: bool = False,
+        requires_legacy_encryption: bool = False,
     ) -> None:
         self.reset()
         generation = self._generation
         self.version = 0
         self.marker_hex = self.marker_error = None
-        if advertised and not self.required_version:
+        if (advertised or requires_legacy_encryption) and not self.required_version:
             self.required_version = 1
         try:
             # Enumerate discovered services: absence alone never causes a read or probe.
@@ -134,7 +135,7 @@ class GoveeEncryptionSession:
                     )
                     return
                 # Version zero permits plaintext only without positive encryption evidence.
-                self.version = marker.version or self.required_version
+                self.version = max(marker.version, self.required_version)
                 if marker.format == 2:
                     self.marker_pact = (int(marker.pact_type), int(marker.pact_code))
                 self._selection_failed = False

@@ -103,7 +103,7 @@ def test_variant_availability_matches_catalogue_and_compiler(model, mode, ic, av
 
 
 @pytest.mark.parametrize("route", ["native", "studio", "preview"])
-@pytest.mark.parametrize(("model", "mode"), [("H6099", "bloom"), ("H7025", "hopping")])
+@pytest.mark.parametrize(("model", "mode"), [("H6099", "bloom"), ("H7025", "hopping"), ("H60B2", "bloom")])
 async def test_apply_recovery_and_retained_palette_are_not_readback(hass, route, model, mode):
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url=None)
     compiled = compile_music_profile(LibraryItem.new("Palette", MusicProfile(model, mode, 42, palette=PALETTE)), model)

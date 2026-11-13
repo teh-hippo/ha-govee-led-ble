@@ -973,6 +973,7 @@ class GoveeBLECoordinator(
                 advertised=self._advertised_encryption,
                 plaintext_evidence=self._advertised_plaintext and not self._advertised_encryption,
                 allows_legacy_plaintext_marker=self.profile.allows_legacy_plaintext_marker,
+                requires_legacy_encryption=self.profile.requires_legacy_encryption,
             )
             self._require_not_shutdown()
             self._require_not_dreamview_claimed()

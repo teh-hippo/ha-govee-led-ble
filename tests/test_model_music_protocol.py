@@ -39,7 +39,7 @@ from custom_components.ha_govee_led_ble.music_protocol import (
     music_mode_supports_style,
     music_slug_for,
 )
-from custom_components.ha_govee_led_ble.protocol_core import H6181MusicBody
+from custom_components.ha_govee_led_ble.protocol_core import H60b2MusicBody, H6181MusicBody
 
 _H617A_CODES = {
     "energetic": 0x05,
@@ -173,6 +173,7 @@ def test_h6076_codebook_is_its_own_numbering_not_the_h617a_one() -> None:
 def test_codebooks_match_generated_kaitai_enums_and_gate_on_effective_profile() -> None:
     expected_enums = {
         "H60B0": H60b0MusicBody.MusicMode,
+        "H60B2": H60b2MusicBody.MusicMode,
         "H1771": H1771MusicBody.MusicMode,
         "H6046": H6046CommandWrite.MusicMode,
         "H6097": H6097MusicWrite.MusicMode,

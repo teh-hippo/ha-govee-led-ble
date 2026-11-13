@@ -79,7 +79,10 @@ export function buildCustomEffectEntries(
       : []),
     ...(catalogue?.effects
       .filter((effect) => effect.category === "single_layer" &&
-        !catalogue?.templates?.some(template => template.content.kind === "native_effect" && template.content.family === effect.family))
+        !catalogue?.templates?.some(template => template.content.kind === "native_effect" &&
+          (template.content.family === effect.family ||
+            template.content.layers.length === 1 && template.content.layers[0].type !== "paint" &&
+              template.content.layers[0].kind === effect.family)))
       .map(
         (effect): CustomEffectListEntry => ({
           kind: "single",

@@ -561,6 +561,10 @@ def music_body_style(body: bytes, mode: str, *, profile: ModelProfile) -> bool |
             H60b0MusicBody.Style.calm: True,
             H60b0MusicBody.Style.dynamic: False,
         }.get(root.body.tail.style)
+    if variant.layout == "h60b2_music_body":
+        from .protocol_core import H60b2MusicBody
+
+        return {H60b2MusicBody.Style.calm: True, H60b2MusicBody.Style.dynamic: False}.get(root.tail.style)
     if variant.layout == "h1771_music_body":
         return {0: True, 1: False}.get(root.tail.style)
     if hasattr(root.tail, "rhythm_speed") and root.tail.no_rhythm_speed == 10:

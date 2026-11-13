@@ -2,6 +2,7 @@
   "entity": {
     "light": {
       "top": {"name": "Top"},
+      "middle": {"name": "Middle"},
       "side": {"name": "Side"},
       "bottom": {"name": "Bottom"},
       "source_0": {"name": "Light source 1"},

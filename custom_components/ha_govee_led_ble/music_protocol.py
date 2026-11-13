@@ -6,6 +6,7 @@ from types import MappingProxyType
 from typing import Any, Final, cast
 
 from .const import ModelProfile, get_profile
+from .protocol_core import H60b2MusicBody
 
 H1771MusicBody = cast(
     Any,
@@ -141,6 +142,7 @@ MUSIC_MODE_CODES_BY_MODEL: Final[Mapping[str, Mapping[str, int]]] = MappingProxy
     {
         "H1771": MappingProxyType({mode.name: int(mode) for mode in H1771MusicBody.MusicMode}),
         "H60B0": MappingProxyType({mode.name: int(mode) for mode in H60b0MusicBody.MusicMode}),
+        "H60B2": MappingProxyType({mode.name: int(mode) for mode in H60b2MusicBody.MusicMode}),
         "H617A": _H617A_MODE_CODES,
         "H6099": _H6099_MODE_CODES,
         "H6097": MappingProxyType({mode.name: int(mode) for mode in H6097MusicWrite.MusicMode}),
@@ -169,6 +171,7 @@ _MUSIC_STYLE_CODES_BY_MODEL: Final[Mapping[str, frozenset[int]]] = MappingProxyT
     {
         "H617A": _H617A_STYLE_CODES,
         "H60B0": frozenset(),
+        "H60B2": frozenset(),
         "H6099": _H617A_STYLE_CODES,
         "H6097": _H617A_STYLE_CODES,
         "H66A0": frozenset({int(H66a0MusicWrite.MusicMode.rhythm), int(H66a0MusicWrite.MusicMode.bloom)}),
@@ -189,6 +192,7 @@ _MUSIC_PARAMETER_WRITE_CODES_BY_MODEL: Final[Mapping[str, frozenset[int]]] = Map
     {
         "H1771": frozenset(int(mode) for mode in H1771MusicBody.MusicMode),
         "H60B0": frozenset(int(mode) for mode in H60b0MusicBody.MusicMode),
+        "H60B2": frozenset(int(mode) for mode in H60b2MusicBody.MusicMode),
         "H617A": _H617A_PARAMETER_WRITE_CODES,
         "H6099": _H6099_PARAMETER_WRITE_CODES,
         "H6097": frozenset(int(mode) for mode in H6097MusicParameters.CompanionMode),

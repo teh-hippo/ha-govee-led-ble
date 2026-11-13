@@ -12,6 +12,7 @@ from .h6199_calibration import WHITE_BALANCE_POSITIONS
 from .music_semantics import (
     H1A42_MUSIC_VARIANTS,
     H60B0_MUSIC_VARIANTS,
+    H60B2_MUSIC_VARIANTS,
     H61F5_MUSIC_VARIANTS,
     H66A0_MUSIC_VARIANTS,
     H617A_MUSIC_VARIANTS,
@@ -144,6 +145,7 @@ NATIVE_ZONE_CONTROLS = (
     "source_0_enabled",
     "source_1_enabled",
     "top_enabled",
+    "middle_enabled",
     "side_enabled",
     "bottom_enabled",
 )
@@ -189,6 +191,7 @@ class ModelProfile:
     name: str
     support_quality: SupportQuality = SupportQuality.EXPERIMENTAL
     confirmation_issue: int | None = None
+    requires_legacy_encryption: bool = False
     allows_legacy_plaintext_marker: bool = False
     reconciles_marker_pact: bool = False
     command_grammar: str | None = None
@@ -1038,6 +1041,61 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         segment_count=13,
         segment_group_size=4,
         # Pact 1/1 uses whole-device colour; 1/2+ has thirteen logical segments.
+    ),
+    "H60B2": ModelProfile(
+        "H60B2 Tree Floor Lamp",
+        confirmation_issue=603,
+        requires_legacy_encryption=True,
+        command_grammar="H617A",
+        command_ack_grammar="H617A",
+        status_grammar="H60B2",
+        setting_grammar="H60B2",
+        effect_grammar="H60B2",
+        music_grammar="H60B2",
+        command_operations=frozenset({"power", "brightness", "static", "scene", "diy", "music", "effect_upload"}),
+        read_domains=frozenset(
+            {
+                ReadDomain.POWER,
+                ReadDomain.BRIGHTNESS,
+                ReadDomain.COLOUR_MODE,
+                ReadDomain.FIRMWARE,
+                ReadDomain.HARDWARE,
+                ReadDomain.SEGMENTS,
+            }
+        ),
+        setup_required_read_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS}),
+        colour_mode_query_selector=1,
+        supports_rgb=True,
+        supports_color_temperature=True,
+        color_temp_range=KELVIN_RANGE_2700_6500,
+        segment_count=3,
+        physical_ic_count=3,
+        segment_group_size=3,
+        supports_segment_writes=True,
+        supports_segment_brightness=True,
+        supports_segment_color_temperature=True,
+        segment_colour_mode_ambiguous=True,
+        light_sources=(
+            LightSource("bottom", "bottom_enabled", (1,)),
+            LightSource("middle", "middle_enabled", (2,)),
+            LightSource("top", "top_enabled", (3,)),
+        ),
+        boolean_controls=frozenset({"bottom_enabled", "middle_enabled", "top_enabled", "gradual"}),
+        supports_power_on_behaviour=True,
+        supports_scenes=True,
+        scene_catalogue_sku="H60B2",
+        rgbic_scene_v0=False,
+        supports_custom_effects=True,
+        supports_advanced_effects=True,
+        diy_upload_transport="a3",
+        diy_requires_upload_ack=True,
+        workshop_scene_selector=402,
+        advanced_diy_selector=402,
+        music_modes=("spectrum", "rhythm", "hopping", "energetic", "firefly", "rolling", "bloom"),
+        music_variants=H60B2_MUSIC_VARIANTS,
+        music_upload_before_selector=True,
+        music_requires_upload_ack=True,
+        effect_readback="diy_code_only",
     ),
     "H60B0": ModelProfile(
         "H60B0 Uplighter Floor Lamp",

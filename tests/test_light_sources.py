@@ -41,6 +41,8 @@ RIGHT = LightSource("right_bar", "right_bar_enabled", (6, 7, 8, 9, 10))
         ("H6046", (None, None), False, {ColorMode.ONOFF}),
         ("H607C", (1, 1), True, {ColorMode.RGB}),
         ("H607C", (None, None), False, {ColorMode.ONOFF}),
+        ("H60B2", (1, 1), True, {ColorMode.RGB, ColorMode.COLOR_TEMP}),
+        ("H60B2", (None, None), True, {ColorMode.RGB, ColorMode.COLOR_TEMP}),
         ("H60A6", (1, 2), True, {ColorMode.RGB, ColorMode.COLOR_TEMP}),
         ("H60A6", (1, 1), True, {ColorMode.BRIGHTNESS}),
         ("H60A6", (None, None), False, {ColorMode.BRIGHTNESS}),
@@ -67,6 +69,9 @@ def test_h60a1_does_not_invent_independent_power_controls():
         ("H6046", "right_bar", 0x03E0),
         ("H607C", "pole", 0x00FF),
         ("H607C", "base", 0x1F00),
+        ("H60B2", "bottom", 0x0001),
+        ("H60B2", "middle", 0x0002),
+        ("H60B2", "top", 0x0004),
     ],
 )
 def test_real_source_colour_and_brightness_packets_leave_sibling_masked(model, key, mask):

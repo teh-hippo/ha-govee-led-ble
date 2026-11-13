@@ -1856,7 +1856,63 @@ def _h60b0_templates() -> tuple[CatalogueTemplate, ...]:
     return tuple(templates)
 
 
+H60B2_DIY_FAMILIES: Final = tuple(
+    DiyEffectFamily(
+        id=name,
+        label=name.replace("_", " ").capitalize(),
+        family=kind,
+        variations=(
+            (DiyEffectVariation("up", "Up", 13), DiyEffectVariation("down", "Down", 14))
+            if kind in (4, 6, 7)
+            else (DiyEffectVariation("default", "Default", 0),)
+        ),
+        supports_multi=False,
+        rate_min=1,
+        palette_min=1 if kind in (1, 3, 9) else 2,
+        palette_max=8,
+        source_reference="H60B2 candidate native palette contract",
+    )
+    for kind, name in enumerate(
+        ("fade", "breathe", "jump", "blink", "chase", "shimmer", "bloom", "stream", "colour_wall", "drip")
+    )
+)
+
+
 MODEL_EFFECT_CATALOGUES: Final = {
+    "H60B2": ModelEffectCatalogue(
+        sku="H60B2",
+        painted_effects=(),
+        effects=H60B2_DIY_FAMILIES,
+        music_modes=_native_music_modes("H60B2"),
+        video_modes=(),
+        templates=(
+            *(
+                CatalogueTemplate(
+                    id=f"template:native-diy:{family.id}",
+                    label=family.label,
+                    category="single-layer",
+                    rate_min=1,
+                    content=NativeEffect(
+                        model="H60B2",
+                        family=803,
+                        layers=(
+                            NativeDiyLayer(
+                                kind=family.family,
+                                speed=50,
+                                palette=DEFAULT_PALETTE,
+                                parameter=family.variations[0].variant,
+                            ),
+                        ),
+                    ),
+                )
+                for family in H60B2_DIY_FAMILIES
+            ),
+            *(_music_template("H60B2", mode) for mode in _native_music_modes("H60B2")),
+        ),
+        workshop_templates=(),
+        native_zones=(("heads", 3, 3),),
+        temporary_diy_selector=254,
+    ),
     "H60B0": ModelEffectCatalogue(
         sku="H60B0",
         native_zones=(("side", 8, None), ("ripple", 1, None)),
@@ -2445,7 +2501,7 @@ def validate_effect_eligibility(
                     if content.template is None:
                         raise ValueError("native effect speed must be at least one")
             return
-        if content.model != model or profile.effect_grammar != "H607C":
+        if content.model != model or profile.effect_grammar not in {"H607C", "H60B2"}:
             raise ValueError("native zone content does not match the effective profile")
         if not any(isinstance(layer, NativeDiyLayer) and layer.enabled for layer in content.layers):
             raise ValueError("select at least one native effect section")

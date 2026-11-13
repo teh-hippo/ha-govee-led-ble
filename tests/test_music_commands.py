@@ -58,6 +58,33 @@ from tests.storage_test_double import InMemoryVersionedDocumentStore
 H = bytes.fromhex
 
 
+@pytest.mark.parametrize(
+    "mode,code,calm,parameters,tail",
+    [
+        ("spectrum", 131, None, {}, ""),
+        ("rhythm", 75, False, {}, "00"),
+        ("rhythm", 75, True, {}, "01"),
+        ("hopping", 72, None, {"background": 0x123456, "relative_brightness": 100}, "12345664"),
+        ("energetic", 99, None, {}, ""),
+        ("firefly", 81, None, {}, ""),
+        ("rolling", 73, None, {}, ""),
+        ("bloom", 67, True, {}, "01"),
+    ],
+)
+def test_three_head_music_companions_keep_exact_mode_and_tail(mode, code, calm, parameters, tail):
+    palette = ((1, 2, 3), (4, 5, 6), (7, 8, 9), (10, 11, 12))
+    compiled = compile_music_profile(
+        LibraryItem.new("Onboard", MusicProfile("H60B2", mode, 42, calm=calm, parameters=parameters, palette=palette)),
+        "H60B2",
+    )
+    expected_body = bytes((code, 4)) + H("0102030405060708090a0b0c") + H(tail)
+    envelope = reassemble_a3(compiled.packets[1:-1])
+    assert envelope == (H("010241") + expected_body).ljust(34, b"\0")
+    selector = (bytes((0x33, 5, 0x13, code, 42))).ljust(19, b"\0")
+    assert compiled.packets[-1] == selector + bytes([xor_checksum(selector)])
+    assert expectations_from_packet(compiled.packets[-1], "H60B2")["music_mode"] == mode
+
+
 @pytest.mark.parametrize("mode", ["energetic", "rhythm", "impact", "spray"])
 def test_h6046_per_bar_selectors_are_one_ordered_request_with_packet_specific_state(mode):
     writes = prepare_music_profile_writes(

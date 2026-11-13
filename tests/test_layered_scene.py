@@ -12,6 +12,7 @@ from typing import Any, cast
 import pytest
 from kaitaistruct import KaitaiStructError
 
+from custom_components.ha_govee_led_ble.const import ModelProfile
 from custom_components.ha_govee_led_ble.effect_compiler import ActivationMode, compile_effect
 from custom_components.ha_govee_led_ble.effect_domain import LibraryItem
 from custom_components.ha_govee_led_ble.generated_protocol.scene_body import SceneBody
@@ -81,6 +82,32 @@ def _layer() -> EffectLayer:
         unknown_flags=0xFD,
         excess=b"\xaa\xbb",
     )
+
+
+@pytest.mark.parametrize(
+    "ic,kind,width,expected_width,first,second",
+    [
+        (3, SelectionType.SEGMENT, 2, 10, 0, 1),
+        (3, SelectionType.CONTINUOUS, 2, 10, 0, 3),
+        (3, SelectionType.RANDOM, 2, 10, 3, 3),
+        (3, SelectionType.CUSTOM, 2, 10, 3, 1),
+        (15, SelectionType.SEGMENT, 1, 10, 0, 7),
+        (15, SelectionType.CONTINUOUS, 1, 1, 0, 1),
+    ],
+)
+def test_scene_geometry_widens_only_areas_too_small_for_the_selection(ic, kind, width, expected_width, first, second):
+    profile = ModelProfile("Geometry contract", physical_ic_count=ic, rgbic_scene_v0=False)
+    layer = replace(_layer(), area=AppliedArea(2, width), selection=Selection(kind, 25, 24))
+    scene = LayeredScene(CatalogueRef("H60B2", 0, 0), LayeredEffect((layer,)))
+    decoded = decode_layered_scene(scene.template, encode_layered_scene(scene, profile=profile))
+    expected = replace(
+        layer,
+        area=AppliedArea(2, expected_width),
+        selection=Selection(kind, first, second),
+        overall_movement=replace(layer.overall_movement, distance=ic - 2),
+    )
+    assert decoded.effect.layers == (expected,)
+    assert scene.effect.layers == (layer,)
 
 
 def _assert_movement_matches(decoded: Movement, parsed: Any) -> None:

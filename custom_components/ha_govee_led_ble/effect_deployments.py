@@ -128,6 +128,7 @@ class PriorControlState:
     source_0_enabled: bool | None = None
     source_1_enabled: bool | None = None
     top_enabled: bool | None = None
+    middle_enabled: bool | None = None
     side_enabled: bool | None = None
     bottom_enabled: bool | None = None
     bottom_kelvin: int | None = None
@@ -475,6 +476,7 @@ class PriorControlState:
                     ("source_0_enabled", self.source_0_enabled),
                     ("source_1_enabled", self.source_1_enabled),
                     ("top_enabled", self.top_enabled),
+                    ("middle_enabled", self.middle_enabled),
                     ("side_enabled", self.side_enabled),
                     ("bottom_enabled", self.bottom_enabled),
                     ("bottom_kelvin", self.bottom_kelvin),
@@ -611,6 +613,7 @@ class PriorControlState:
             source_0_enabled=_optional_bool(raw, "source_0_enabled"),
             source_1_enabled=_optional_bool(raw, "source_1_enabled"),
             top_enabled=_optional_bool(raw, "top_enabled"),
+            middle_enabled=_optional_bool(raw, "middle_enabled"),
             side_enabled=_optional_bool(raw, "side_enabled"),
             bottom_enabled=_optional_bool(raw, "bottom_enabled"),
             bottom_kelvin=_optional_int(raw, "bottom_kelvin"),

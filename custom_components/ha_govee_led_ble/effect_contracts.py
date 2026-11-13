@@ -419,6 +419,24 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
             (_W.NATIVE_MUSIC, "Music", "music_profile", _R.STUDIO_CUSTOM_APPLY, _S.COORDINATOR_WRITER),
         )
     ),
+    *(
+        _capability("H60B2", workflow, label, kind, route, strategy, _V.UNVERIFIED)
+        for workflow, label, kind, route, strategy in (
+            (_W.NATIVE_SCENES, "Scenes", "scene_builtin", _R.STUDIO_SCENE_APPLY, _S.NATIVE_EFFECT_SELECTION),
+            (
+                _W.EDITED_PALETTE_SCENES,
+                "Palette scenes",
+                "scene_palette",
+                _R.STUDIO_CUSTOM_APPLY,
+                _S.MODEL_SCENE_ENGINE,
+            ),
+            (_W.LAYERED_SCENES, "Layered scenes", "scene_layered", _R.STUDIO_CUSTOM_APPLY, _S.MODEL_SCENE_ENGINE),
+            (_W.SINGLE, "DIY", "native_effect", _R.STUDIO_CUSTOM_APPLY, _S.A3_EFFECT_UPLOAD),
+            (_W.ADVANCED, "Layered effects", "advanced", _R.STUDIO_CUSTOM_APPLY, _S.A3_EFFECT_UPLOAD),
+            (_W.WORKSHOP, "Workshop", "workshop", _R.STUDIO_CUSTOM_APPLY, _S.A3_EFFECT_UPLOAD),
+            (_W.NATIVE_MUSIC, "Music", "music_profile", _R.STUDIO_CUSTOM_APPLY, _S.COORDINATOR_WRITER),
+        )
+    ),
     _capability(
         "H607C",
         _W.WORKSHOP,
@@ -896,6 +914,7 @@ def require_effect_route(
         "H6181",
         "H60A6",
         "H60B0",
+        "H60B2",
         "H607C",
         "H1771",
     ),
