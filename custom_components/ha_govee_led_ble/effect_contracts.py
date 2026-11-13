@@ -493,6 +493,17 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
             (_W.MULTI, "Mixed DIY", "h617a_multi", _R.HOME_ASSISTANT_CONTROL, _S.H617A_CUSTOM_ENGINE),
         )
     ),
+    # H60B2: catalogue scenes only (type-0 selectors and type-2 a3 uploads, hardware-verified);
+    # status reports mode without the active scene, so application is selection-only.
+    _capability(
+        "H60B2",
+        _W.NATIVE_SCENES,
+        "Scenes",
+        "scene_builtin",
+        _R.STUDIO_SCENE_APPLY,
+        _S.NATIVE_EFFECT_SELECTION,
+        _V.SELECTION_ONLY,
+    ),
     *(
         _capability("H6102", workflow, label, kind, route, strategy, _V.SELECTION_ONLY)
         for workflow, label, kind, route, strategy in (

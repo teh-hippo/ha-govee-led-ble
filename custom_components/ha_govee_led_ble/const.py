@@ -1113,7 +1113,8 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         requires_legacy_encryption=True,
         command_grammar="H617A",
         status_grammar="H617A",
-        command_operations=frozenset({"power", "brightness", "static"}),
+        effect_grammar="H617A",
+        command_operations=frozenset({"power", "brightness", "static", "scene", "effect_upload"}),
         read_domains=frozenset(
             {
                 ReadDomain.POWER,
@@ -1129,12 +1130,17 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         # Whole-lamp and per-head RGB use 33 05 15 01 R G B ... LO HI with the
         # three-head mask (0x07 whole, 0x01 bottom, 0x02 middle, 0x04 top).
         supports_segment_writes=True,
+        # Verified 2026-11-13: 33 05 15 02 <pct> <mask> dims single heads.
+        supports_segment_brightness=True,
         segment_count=3,
         segment_group_size=3,
         physical_ic_count=3,
         segment_colour_mode_ambiguous=True,
         # Status reports static mode without RGB/Kelvin, so readback is not authoritative.
         static_readback_echoes_color=False,
+        # Verified 2026-11-13: catalogue type-0 selectors and type-2 a3 uploads both play.
+        supports_scenes=True,
+        scene_catalogue_sku="H60B2",
         connection_idle_timeout=IDLE_TIMEOUT_STANDARD,
     ),
     "H601C": ModelProfile(
