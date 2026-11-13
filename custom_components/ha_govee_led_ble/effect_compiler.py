@@ -973,9 +973,7 @@ def compile_native_effect(
         content_kind="native_effect",
         workflow=_effect_workflow(content),
         diy_code=selector,
-        activation_mode=ActivationMode.SCENE
-        if entry is not None or content.model == "H60B0" and content.family == 81
-        else ActivationMode.CUSTOM,
+        activation_mode=ActivationMode.SCENE if entry is not None else ActivationMode.CUSTOM,
         selector_kind="scene" if entry is not None or content.model == "H60B0" and content.family == 81 else "diy",
         expected_effect=scene_key,
         upload_packets=upload,

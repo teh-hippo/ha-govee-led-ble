@@ -692,6 +692,37 @@ async def test_scene_snapshot_does_not_require_disposable_diy_slot(model: str, n
     assert coordinator.send_command.await_count == len(compiled.packets)
 
 
+@pytest.mark.parametrize("source", ["saved", "snapshot"])
+async def test_authored_combination_applies_as_custom_content_with_a_scene_selector(source):
+    from custom_components.ha_govee_led_ble.h60b0_effects import decode_combined_scene
+    from custom_components.ha_govee_led_ble.native_effect import NativeEffect
+    from tests.test_h60b0_effects import _combined_payloads
+
+    combined = decode_combined_scene(CatalogueRef("H60B0", 0, 510), _combined_payloads()[0][1])
+    item = LibraryItem.new("Combined", NativeEffect(model="H60B0", family=81, layers=(), combined=combined))
+    coordinator = _profile_coordinator("H60B0")
+    coordinator.profile = device_profile("H60B0", 1, 1)
+    coordinator.async_observe_effect = AsyncMock(return_value=True)
+    compiled = compile_application(item, coordinator.model, profile=coordinator.profile)
+    repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
+    workspaces = ActiveEffectWorkspaceRepository(InMemoryVersionedDocumentStore())
+    await repository.async_load()
+    await workspaces.async_load()
+    engine = EffectDeploymentEngine(repository, active_workspaces=workspaces)
+    apply = engine.async_apply_saved if source == "saved" else engine.async_apply_snapshot
+
+    result = await apply(coordinator, item, config_entry_id="entry-a", updated_at="2026-11-14T00:00:00Z")
+
+    assert result.phase is DeploymentPhase.CONFIRMED
+    assert result.target_mode == "custom" and result.target_effect is None
+    assert result.observable_signature == observable_signature_for_compiled(compiled)
+    assert [entry.args[0] for entry in coordinator.send_command.await_args_list] == list(compiled.packets)
+    workspace = workspaces.get("entry-a")
+    assert (workspace is not None) is (source == "snapshot")
+    if workspace is not None:
+        assert workspace.content == item.content
+
+
 @pytest.mark.parametrize("edited", [False, True])
 async def test_h1771_native_scene_deployment_requires_ack_only_for_uploaded_edits(edited):
     from custom_components.ha_govee_led_ble.effect_scenes import _scene_content
