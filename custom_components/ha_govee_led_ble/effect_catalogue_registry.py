@@ -24,6 +24,7 @@ from .effect_catalogue_families import (
     H617E_NATIVE_MUSIC_MODES,
     H619A_DIY_FAMILIES,
     H619A_NATIVE_MUSIC_MODES,
+    H705A_DIY_FAMILIES,
     H6046_DIY_FAMILIES,
     H6072_DIY_FAMILIES,
     H6072_NATIVE_MUSIC_MODES,
@@ -55,6 +56,8 @@ from .effect_catalogue_templates import (
     H617C_NATIVE_DIY_TEMPLATES,
     H617E_CATALOGUE_TEMPLATES,
     H619A_NATIVE_DIY_TEMPLATES,
+    H705A_NATIVE_DIY_CONTRACTS,
+    H705A_NATIVE_DIY_TEMPLATES,
     H6102_NATIVE_DIY_TEMPLATES,
     H6117_NATIVE_DIY_TEMPLATES,
     H6125_NATIVE_DIY_TEMPLATES,
@@ -77,6 +80,27 @@ from .native_effect import NativeDiyLayer
 from .protocol_core import H607cDiyBody, H607cPaintBody
 
 MODEL_EFFECT_CATALOGUES: Final = {
+    "H705A": ModelEffectCatalogue(
+        sku="H705A",
+        painted_addressing="physical_ic",
+        painted_effects=H617A_PAINTED_EFFECTS,
+        effects=H705A_DIY_FAMILIES,
+        music_modes=_native_music_modes("H705A"),
+        native_diy_templates=H705A_NATIVE_DIY_CONTRACTS,
+        video_modes=(),
+        templates=(
+            CatalogueTemplate(
+                "template:paint",
+                "Paint",
+                "single-layer",
+                PaintedEffect("clockwise", 50, 100, (None,), addressing="physical_ic"),
+            ),
+            *(_single_template("H705A", family) for family in H705A_DIY_FAMILIES),
+            *(_music_template("H705A", mode) for mode in _native_music_modes("H705A")),
+            *H705A_NATIVE_DIY_TEMPLATES,
+        ),
+        workshop_templates=(),
+    ),
     "H60B2": ModelEffectCatalogue(
         sku="H60B2",
         painted_effects=(),

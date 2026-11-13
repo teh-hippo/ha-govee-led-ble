@@ -179,6 +179,8 @@ _QUALIFIED_CONTEXTS: tuple[tuple[str, str, int | None, int | None, str | None, s
     ("H6199-pact2-baseline-group", "H6199", 2, 1, None, None),
     ("H6199-unqualified-group", "H6199", None, None, None, None),
     ("H7020-unqualified", "H7020", None, None, None, None),
+    ("H705A-refresh", "H705A", 1, 1, None, None),
+    ("H705A-strings", "H705A", 1, 2, None, None),
 )
 
 
@@ -308,6 +310,8 @@ def _status_music_enum(profile: ModelProfile):
         return protocol_core.H1771MusicBody.MusicMode
     if profile.status_grammar == "H607C":
         return protocol_core.H607cMusicWrite.MusicMode
+    if profile.status_grammar == "H705A":
+        return protocol_core.H705aMusicWrite.MusicMode
     if profile.status_grammar == "H6046":
         return protocol_core.H6046CommandWrite.MusicMode
     if profile.status_grammar == "H6097":

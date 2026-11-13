@@ -727,7 +727,7 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
             model=model,
             verification_confidence=_V.SELECTION_ONLY,
         )
-        for model in ("H6117", "H6125", "H619A")
+        for model in ("H6117", "H6125", "H619A", "H705A")
         for capability in _RELEASE_CAPABILITY_BASE
         if capability.model == "H617A"
         and capability.workflow

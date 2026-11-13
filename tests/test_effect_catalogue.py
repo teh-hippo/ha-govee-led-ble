@@ -110,6 +110,24 @@ def test_h6046_workshop_uses_selector_not_catalogue_identity():
     assert decode_effect_frames(compiled.upload_packets, "H6046", compiled.upload_transport) == content
 
 
+@pytest.mark.parametrize("template_id", [17, 18])
+def test_native_template_identity_does_not_replace_its_activation_selector(template_id):
+    from custom_components.ha_govee_led_ble.effect_compiler import compile_application, validate_compiled_geometry
+
+    profile = MODEL_PROFILES["H705A"]
+    content = resolve_catalogue_template("H705A", f"template:native-diy:{template_id}", profile=profile).content
+    assert isinstance(content, LayeredEffect)
+    compiled = compile_application(LibraryItem.new("Spin", content), "H705A", profile=profile)
+    assert compiled.activation_packet == bytes.fromhex("330504fc01").ljust(19, b"\0") + b"\xcf"
+    assert compiled.body_template_id == template_id and compiled.selector_kind == "scene"
+    validate_compiled_geometry(compiled, profile)
+    generic = compile_application(
+        LibraryItem.new("Advanced", replace(content, native_diy=None)), "H705A", profile=profile
+    )
+    assert generic.activation_packet == bytes.fromhex("3305049201").ljust(19, b"\0") + b"\xa1"
+    validate_compiled_geometry(generic, profile)
+
+
 def test_model_aware_catalogue_includes_supported_models_and_legacy_h617a_view() -> None:
     catalogue = custom_effect_catalogue_payload()
 
@@ -145,6 +163,7 @@ def test_model_aware_catalogue_includes_supported_models_and_legacy_h617a_view()
         "H66A0",
         "H7020",
         "H7025",
+        "H705A",
     }
     assert catalogue["models"] == {sku: model.to_dict() for sku, model in MODEL_EFFECT_CATALOGUES.items()}
     assert catalogue["painted_effects"] == list(H617A_PAINTED_EFFECTS)

@@ -28,6 +28,7 @@ from .effect_catalogue_families import H617C_NATIVE_MUSIC_MODES as H617C_NATIVE_
 from .effect_catalogue_families import H617E_NATIVE_MUSIC_MODES as H617E_NATIVE_MUSIC_MODES
 from .effect_catalogue_families import H619A_DIY_FAMILIES as H619A_DIY_FAMILIES
 from .effect_catalogue_families import H619A_NATIVE_MUSIC_MODES as H619A_NATIVE_MUSIC_MODES
+from .effect_catalogue_families import H705A_DIY_FAMILIES as H705A_DIY_FAMILIES
 from .effect_catalogue_families import H6046_DIY_FAMILIES as H6046_DIY_FAMILIES
 from .effect_catalogue_families import H6072_DIY_FAMILIES as H6072_DIY_FAMILIES
 from .effect_catalogue_families import H6072_NATIVE_MUSIC_MODES as H6072_NATIVE_MUSIC_MODES
@@ -232,7 +233,7 @@ def validate_native_diy(content: LayeredEffect, model: str, profile: ModelProfil
         None,
     )
     if contract is not None:
-        _validate_h7020_native_diy(content, catalogue, contract)
+        _validate_native_diy_template(content, catalogue, contract)
         return False
     template = next(
         (
@@ -349,7 +350,7 @@ def validate_native_diy(content: LayeredEffect, model: str, profile: ModelProfil
     return geometry_edited
 
 
-def _validate_h7020_native_diy(
+def _validate_native_diy_template(
     content: LayeredEffect,
     catalogue: ModelEffectCatalogue,
     contract: NativeDiyTemplateContract,

@@ -152,3 +152,8 @@ scene_type1_body
 status_query
 status_reply
 workshop_body
+speculative/h705a_command_write.ksy
+speculative/h705a_status_query.ksy
+speculative/h705a_status_reply.ksy
+speculative/h705a_music_write.ksy
+speculative/h705a_music_body.ksy

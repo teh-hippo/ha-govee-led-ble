@@ -161,6 +161,7 @@ class NativeDiyTemplateContract:
     rate_min: int
     rate_max: int
     rate_default: int
+    activation_selector: int | None = None
 
     def to_dict(self) -> dict[str, JsonValue]:
         return {

@@ -59,6 +59,30 @@ H = bytes.fromhex
 
 
 @pytest.mark.parametrize(
+    "mode,code,parameters,tail",
+    [
+        ("shiny", 49, {}, "0a6408"),
+        ("jumping", 74, {"direction": "counterclockwise"}, "01"),
+        ("hopping", 72, {"background": 0x123456, "relative_brightness": 37}, "12345625"),
+        ("hopping", 72, {"background": 0, "relative_brightness": 0}, "00000000"),
+        ("firefly", 81, {}, ""),
+        ("rolling", 113, {"direction": "clockwise"}, "00"),
+    ],
+)
+def test_permanent_light_music_companions_keep_palette_direction_and_background(mode, code, parameters, tail):
+    palette = ((1, 2, 3), (4, 5, 6), (7, 8, 9), (10, 11, 12))
+    compiled = compile_music_profile(
+        LibraryItem.new("Onboard", MusicProfile("H705A", mode, 42, parameters=parameters, palette=palette)),
+        "H705A",
+    )
+    expected_body = bytes((code, 4)) + H("0102030405060708090a0b0c") + H(tail)
+    assert reassemble_a3(compiled.packets[1:-1]) == (H("010241") + expected_body).ljust(34, b"\0")
+    selector = bytes((0x33, 5, 0x13, code, 42)).ljust(19, b"\0")
+    assert compiled.packets[-1] == selector + bytes([xor_checksum(selector)])
+    assert expectations_from_packet(compiled.packets[-1], "H705A")["music_mode"] == mode
+
+
+@pytest.mark.parametrize(
     "mode,code,calm,parameters,tail",
     [
         ("spectrum", 131, None, {}, ""),

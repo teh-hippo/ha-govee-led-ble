@@ -41,6 +41,7 @@
 | **H66A0** | ✅ Supported |
 | **H7020** | ✅ Supported |
 | **H7025** | [🚧 Experimental](https://github.com/teh-hippo/ha-govee-led-ble/issues/451) |
+| **H705A** | [🚧 Experimental](https://github.com/teh-hippo/ha-govee-led-ble/issues/607) |
 
 To request another model or suggest a device-specific fix, see [CONTRIBUTING.md](CONTRIBUTING.md).
 

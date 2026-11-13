@@ -388,8 +388,8 @@ def static_write_from_command(generated: Any, profile: ModelProfile) -> ParsedSt
         rgb = (int(body.rgb_direct.red), int(body.rgb_direct.green), int(body.rgb_direct.blue))
         kelvin = int(body.kelvin)
         mask = int(body.mask.bits)
-        if kelvin and rgb != KELVIN_DIRECT_RGB:
-            raise ValueError("Kelvin requires direct white RGB")
+        if kelvin and rgb != tuple(getattr(generated, "kelvin_direct_rgb", KELVIN_DIRECT_RGB)):
+            raise ValueError("Kelvin direct RGB does not match the selected grammar")
         if kelvin:
             return ParsedStaticWrite(
                 operation=operation,

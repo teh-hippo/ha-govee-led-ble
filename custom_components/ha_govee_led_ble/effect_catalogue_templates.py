@@ -259,6 +259,23 @@ H7020_NATIVE_DIY_TEMPLATES: Final = tuple(
     )
     for template_id, _body_effect, label, seed in H7020_NATIVE_DIY_SEEDS
 )
+
+H705A_NATIVE_DIY_CONTRACTS: Final = tuple(
+    NativeDiyTemplateContract(template_id, 89, 2, 5, 1, 8, "selected_movement_speed", 150, 250, 248, 508)
+    for template_id in (17, 18)
+)
+H705A_NATIVE_DIY_TEMPLATES: Final = tuple(
+    CatalogueTemplate(
+        id=f"template:native-diy:{template_id}",
+        label=f"Spin {index}",
+        category="advanced",
+        content=replace(
+            decode_workshop_effect("H617A", base64.b64decode(H7020_NATIVE_DIY_SEEDS[0][3]))[0],
+            native_diy=template_id,
+        ),
+    )
+    for index, template_id in enumerate((17, 18), 1)
+)
 # H6102 presets 504/506 use 60. This is
 # preset construction evidence, not permission to infer runtime physical geometry.
 # The seven-colour defaults are used;

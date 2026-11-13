@@ -218,7 +218,8 @@ def validate_compiled_geometry(compiled: CompiledApplication, profile: ModelProf
                 and contract is not None
                 and compiled.content_kind == "advanced"
                 and compiled.activation_mode is ActivationMode.CUSTOM
-                and compiled.selector_kind == "diy"
+                and compiled.selector_kind == ("scene" if contract.activation_selector is not None else "diy")
+                and (contract.activation_selector is None or compiled.diy_code == contract.activation_selector)
                 and compiled.upload_subtype == contract.upload_subtype
                 and compiled.body_effect_code == contract.body_effect
             )
@@ -769,7 +770,9 @@ def compile_scene_effect(
     ):
         contract = native_diy_template_contract(model, content.native_diy)
         selector = (
-            diy_code
+            contract.activation_selector
+            if contract is not None and contract.activation_selector is not None
+            else diy_code
             if contract is not None and requires_approved_diy_slot(model)
             else content.native_diy
             if content.native_diy is not None

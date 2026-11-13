@@ -64,6 +64,7 @@ from .protocol_settings import build_configured_strings as build_configured_stri
 from .protocol_settings import build_configured_strings_query as build_configured_strings_query
 from .protocol_settings import build_firmware_query as build_firmware_query
 from .protocol_settings import build_hardware_query as build_hardware_query
+from .protocol_settings import build_ic_refresh as build_ic_refresh
 from .protocol_settings import build_installation_direction as build_installation_direction
 from .protocol_settings import build_installation_direction_query as build_installation_direction_query
 from .protocol_settings import build_pact_query as build_pact_query

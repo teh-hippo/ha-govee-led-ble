@@ -253,6 +253,7 @@ async def test_h61f5_pact_changes_retain_cut_geometry_and_update_kelvin_bounds(h
     [
         ("H1A42", [(3, 3), (4, 4), (5, 5), (12, 5), (1, 1)]),
         ("H61F5", [(21, 5), (50, 10), (80, 16), (81, 17), (100, 20), (101, 20), (21, 5)]),
+        ("H705A", [(36, 9), (72, 18), (108, 27), (35, 8), (12, 3)]),
     ],
 )
 async def test_reported_strip_layouts_grow_shrink_and_collect_only_installed_records(hass, model, layouts):
@@ -280,6 +281,28 @@ async def test_reported_strip_layouts_grow_shrink_and_collect_only_installed_rec
         extra = bytes((c.profile.segment_group_count + 1,)) + bytes((37, 1, 2, 3)) * 4
         c._notify_callback(None, bytearray(_h6179_status(0xA5, extra)))
         assert c._field_revisions["segment_colors"] == revision
+
+
+@pytest.mark.parametrize("invalid_count", [0, 112])
+async def test_impossible_installed_geometry_is_rejected_before_updating_either_count(hass, invalid_count):
+    from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H705A", configuration_url=None)
+    coordinator._notify_callback(None, bytearray(_h6179_status(0x40, (72).to_bytes(2, "big"))))
+    before = (
+        coordinator.profile,
+        coordinator._observed_physical_ic_count,
+        coordinator._profile_generation,
+        dict(coordinator._field_revisions),
+    )
+    coordinator._notify_callback(None, bytearray(_h6179_status(0x40, invalid_count.to_bytes(2, "big"))))
+    assert (
+        coordinator.profile,
+        coordinator._observed_physical_ic_count,
+        coordinator._profile_generation,
+        dict(coordinator._field_revisions),
+    ) == before
+    assert coordinator.packet_log[-1]["reason"] == "semantic_rejected"
 
 
 def test_status_envelope_rejects_invalid_frames() -> None:

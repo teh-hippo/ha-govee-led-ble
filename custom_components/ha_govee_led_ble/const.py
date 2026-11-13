@@ -19,6 +19,7 @@ from .music_semantics import (
     H617C_MUSIC_VARIANTS,
     H617E_MUSIC_VARIANTS,
     H619A_MUSIC_VARIANTS,
+    H705A_MUSIC_VARIANTS,
     H1771_MUSIC_VARIANTS,
     H6046_MUSIC_VARIANTS,
     H6072_LEGACY_MUSIC_VARIANTS,
@@ -282,7 +283,9 @@ class ModelProfile:
     # Physical IC count is independent of logical segment_count. None means unknown.
     # Declared product geometry: the installed count read from the device (ReadDomain.PHYSICAL_IC_COUNT) overrides it.
     physical_ic_count: int | None = None
+    physical_ic_capacity: int | None = None
     segment_count_ic_divisor: int | None = None
+    segment_count_ic_round_up: bool = True
     segment_count_capacity: int = 0
     extended_static_grammar: str | None = None
     music_sensitivity_min: int = 0
@@ -303,6 +306,8 @@ class ModelProfile:
     segment_colour_mode_ambiguous: bool = False
     configured_string_counts: tuple[int, ...] = ()
     bulbs_per_string: int = 0
+    configured_string_ic_count: int = 0
+    supports_ic_refresh: bool = False
     supports_segment_writes: bool = False
     partition_segment_writes: bool = False
     supports_segment_brightness: bool = False
@@ -2444,6 +2449,80 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         default_effect_families_override=frozenset({EFFECT_FAMILY_VIDEO}),
         effect_readback="scene_selector_for_user_effects",
     ),
+    "H705A": ModelProfile(
+        "H705A Permanent Outdoor Lights",
+        confirmation_issue=607,
+        command_grammar="H705A",
+        command_ack_grammar="H705A",
+        status_grammar="H705A",
+        effect_grammar="H617A",
+        music_grammar="H705A",
+        colour_mode_query_selector=1,
+        profile_pact_dependent=True,
+        command_operations=frozenset(
+            {
+                "power",
+                "brightness",
+                "static",
+                "scene",
+                "diy",
+                "music",
+                "effect_upload",
+                "configured_strings",
+                "refresh_ic",
+            }
+        ),
+        read_domains=frozenset(
+            {
+                ReadDomain.POWER,
+                ReadDomain.BRIGHTNESS,
+                ReadDomain.COLOUR_MODE,
+                ReadDomain.FIRMWARE,
+                ReadDomain.HARDWARE,
+                ReadDomain.PHYSICAL_IC_COUNT,
+                ReadDomain.SEGMENTS,
+            }
+        ),
+        setup_required_read_domains=frozenset({ReadDomain.POWER, ReadDomain.PHYSICAL_IC_COUNT}),
+        supports_rgb=True,
+        supports_color_temperature=True,
+        color_temp_range=KELVIN_RANGE_2000_9000,
+        physical_ic_count=36,
+        physical_ic_capacity=108,
+        segment_count=9,
+        segment_count_capacity=27,
+        segment_count_ic_divisor=4,
+        segment_count_ic_round_up=False,
+        configured_string_counts=tuple(range(1, 10)),
+        bulbs_per_string=3,
+        configured_string_ic_count=12,
+        supports_ic_refresh=True,
+        segment_group_size=4,
+        supports_segment_writes=True,
+        supports_segment_brightness=True,
+        supports_segment_color_temperature=True,
+        segment_colour_mode_ambiguous=True,
+        static_readback_kelvin=True,
+        static_readback_zero_kelvin_is_rgb=True,
+        static_readback_gradual=True,
+        boolean_controls=frozenset({"gradual"}),
+        supports_custom_effects=True,
+        supports_multi_layered_effects=True,
+        supports_scenes=True,
+        supports_advanced_effects=True,
+        scene_catalogue_sku="H705A",
+        advanced_diy_selector=402,
+        diy_requires_upload_ack=True,
+        effect_retry_after_upload=False,
+        effect_readback="diy_code_only",
+        music_modes=("energetic", "shiny", "jumping", "hopping", "firefly", "rolling"),
+        music_variants=H705A_MUSIC_VARIANTS,
+        music_upload_before_selector=True,
+        music_requires_upload_ack=True,
+        music_retry_after_upload=False,
+        music_params_require_activation=True,
+        connection_idle_timeout=IDLE_TIMEOUT_STANDARD,
+    ),
     "H7025": ModelProfile(
         "H7025 Outdoor String Lights",
         support_quality=SupportQuality.EXPERIMENTAL,
@@ -2518,6 +2597,7 @@ _DIY_ACTIVATION_GRAMMARS = WHOLE_BULB_GRAMMARS | {
     "H607C",
     "H617A",
     "H7020",
+    "H705A",
     "H6046",
     "H6099",
     "H6179",
@@ -2835,9 +2915,18 @@ def _h6076_profile(pact_type: int | None, pact_code: int | None, firmware: str |
 
 def profile_with_physical_ic_count(profile: ModelProfile, count: int, *, segment_count_ceiling: int) -> ModelProfile:
     """Apply installed geometry using the qualified product capacity."""
+    if (
+        type(count) is not int
+        or count <= 0
+        or (profile.physical_ic_capacity is not None and count > profile.physical_ic_capacity)
+    ):
+        raise ValueError("Physical IC count is outside product capacity")
     segments = profile.segment_count
     if profile.segment_count_ic_divisor is not None:
-        segments = min(segment_count_ceiling, max(1, ceil(count / profile.segment_count_ic_divisor)))
+        quotient = count / profile.segment_count_ic_divisor
+        segments = min(
+            segment_count_ceiling, max(1, ceil(quotient) if profile.segment_count_ic_round_up else int(quotient))
+        )
     return replace(profile, physical_ic_count=count, segment_count=segments)
 
 
@@ -2869,8 +2958,10 @@ def _basic_revision_profile(profile: ModelProfile) -> ModelProfile:
         native_zones=profile.native_zones,
         light_sources=profile.light_sources,
         physical_ic_count=profile.physical_ic_count,
+        physical_ic_capacity=profile.physical_ic_capacity,
         segment_count_capacity=profile.segment_count_capacity,
         segment_count_ic_divisor=profile.segment_count_ic_divisor,
+        segment_count_ic_round_up=profile.segment_count_ic_round_up,
         connection_idle_timeout=profile.connection_idle_timeout,
         effect_workflows=frozenset(),
     )
@@ -2932,6 +3023,22 @@ def device_profile(
                 exclusive_source_groups=(frozenset({"top_enabled", "bottom_enabled"}),) if pact_code == 1 else (),
             )
         return _basic_revision_profile(profile)
+    if model == "H705A":
+        profile = get_profile(model)
+        assert profile.command_operations is not None
+        installation = (
+            {"refresh_ic"}
+            if (pact_type, pact_code) == (1, 1)
+            else {"configured_strings"}
+            if (pact_type, pact_code) == (1, 2)
+            else set()
+        )
+        return replace(
+            profile,
+            command_operations=(profile.command_operations - {"configured_strings", "refresh_ic"}) | installation,
+            supports_ic_refresh="refresh_ic" in installation,
+            configured_string_counts=profile.configured_string_counts if "configured_strings" in installation else (),
+        )
     if model == "H605C":
         profile = get_profile(model)
         if (pact_type, pact_code) == (1, 2):
