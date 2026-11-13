@@ -661,7 +661,7 @@ export interface LibrarySummary {
   origin: LibraryOrigin;
   model?: ModelSku;
   template?: CatalogueRef;
-  native_workflow?: "single" | "multi" | "advanced";
+  native_workflow?: "painted" | "single" | "multi" | "advanced" | "layered_scenes";
 }
 
 export interface LibrarySnapshot {

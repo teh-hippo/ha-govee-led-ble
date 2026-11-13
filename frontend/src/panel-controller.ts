@@ -3,7 +3,7 @@ import { AsyncRequestController, type AsyncRequestToken } from "./async-request-
 import { cloneBuiltInDefaultBaselines } from "./built-in-default-state";
 import type { CustomEffectListEntry } from "./custom-effect-list";
 import {
-  cloneEditableEffect, customEffectCategoryForKind, effectContentEligible, isEditableEffectContent,
+  cloneEditableEffect, customEffectCategoryForItem, effectContentEligible, isEditableEffectContent,
   libraryItemSyncResult, sameLibraryItemVersion, serialiseEditable, upsertSummary, type CustomEffectCategory,
   type EditableEffectContent,
 } from "./effect-editor-model";
@@ -26,6 +26,7 @@ import type {
   EffectUserState,
   HomeAssistant,
   LibraryItem,
+  LibrarySummary,
   LibrarySnapshot,
 } from "./types";
 import type { SceneEditSelection } from "./scene-browser-workflow";
@@ -621,7 +622,7 @@ export class PanelController {
       (item.kind === "video_profile" && !this.model.videoAvailable) ||
       (item.kind !== "video_profile" &&
         !this.model.customEffectCategoryAvailable(
-          this.categoryForKind(item.kind),
+          this.categoryForItem(item),
         ))
     ) {
       return;
@@ -636,7 +637,7 @@ export class PanelController {
             }
           : {
               section: "custom",
-              customEffectCategory: this.categoryForKind(item.kind),
+              customEffectCategory: this.categoryForItem(item),
               sceneEditorOpen: false,
               notice: undefined,
             },
@@ -646,7 +647,7 @@ export class PanelController {
       (item.kind === "video_profile" && this.model.section !== "video") ||
       (item.kind !== "video_profile" &&
         (this.model.section !== "custom" ||
-          this.categoryForKind(item.kind) !==
+          this.categoryForItem(item) !==
             this.model.customEffectCategory))
     ) {
       return;
@@ -1449,7 +1450,7 @@ export class PanelController {
                 ? { section: "video" }
                 : {
                     section: "custom",
-                    category: this.categoryForKind(result.content.kind),
+                    category: this.categoryForItem(result),
                   },
             itemId: result.id,
           },
@@ -1460,7 +1461,7 @@ export class PanelController {
           sceneEditorOpen: savingScene ? false : this.model.sceneEditorOpen,
           section: savingScene ? "custom" : this.model.section,
           customEffectCategory: savingScene
-            ? this.categoryForKind(result.content.kind)
+            ? this.categoryForItem(result)
             : this.model.customEffectCategory,
           savedSceneSelection: originatingItem && isSceneContent(savedContent) ? result : this.model.savedSceneSelection,
           autoSaveFailed: false,
@@ -1648,9 +1649,7 @@ export class PanelController {
             ? {}
             : {
                 section: "custom" as const,
-                customEffectCategory: this.categoryForKind(
-                  result.content.kind,
-                ),
+                customEffectCategory: this.categoryForItem(result),
               }),
           autoSaveFailed: false,
         });
@@ -1859,7 +1858,7 @@ export class PanelController {
                   ? { section: "video" }
                   : {
                       section: "custom",
-                      category: this.categoryForKind(result.content.kind),
+                      category: this.categoryForItem(result),
                     },
               itemId: result.id,
             },
@@ -1986,8 +1985,8 @@ export class PanelController {
         });
   }
 
-  private categoryForKind(kind: string): CustomEffectCategory {
-    const category = customEffectCategoryForKind(kind);
+  private categoryForItem(item: LibraryItem | LibrarySummary): CustomEffectCategory {
+    const category = customEffectCategoryForItem(item);
     return this.model.customEffectCategoryAvailable(category)
       ? category
       : this.model.defaultCustomEffectCategory();

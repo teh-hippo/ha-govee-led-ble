@@ -56,6 +56,7 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     LibraryItem,
     MultiEffect,
     MusicProfile,
+    NativeEffect,
     PaintedEffect,
     PaletteDiyEffect,
     SingleEffect,
@@ -67,6 +68,30 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_
 from custom_components.ha_govee_led_ble.layered_scene_decoder import encode_workshop_effect
 from custom_components.ha_govee_led_ble.protocol_h6199 import build_h6199_scene
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES
+
+
+def test_native_summaries_classify_every_model_and_scene():
+    from custom_components.ha_govee_led_ble.effect_scenes import _scene_content
+    from custom_components.ha_govee_led_ble.layered_scene import CatalogueRef
+
+    for catalogue in MODEL_EFFECT_CATALOGUES.values():
+        for template in catalogue.templates:
+            if isinstance(template.content, NativeEffect):
+                item = LibraryItem.new(template.label, template.content)
+                summary = item_summary(item)
+                assert summary["native_workflow"] == item.content.workflow
+                assert summary["model"] == item.content.model
+    for model in ("H1771", "H60A6"):
+        scene = next(entry for entry in MODEL_SCENES[model].values() if entry.scene_type == 5 and entry.param)
+        content = _scene_content(scene, CatalogueRef(model, scene.scene_id, scene.effect_id), None, None)
+        summary = item_summary(LibraryItem.new("Scene", content))
+        assert summary["native_workflow"] == "layered_scenes"
+        assert summary["template"] == {
+            "sku": model,
+            "scene_id": scene.scene_id,
+            "effect_id": scene.effect_id,
+            "catalogue_schema_version": 1,
+        }
 
 
 @pytest.mark.parametrize(

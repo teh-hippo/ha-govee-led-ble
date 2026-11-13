@@ -11,7 +11,7 @@ import {
   cloneOpaqueContent,
   clonePaletteDiy,
   customKindLabel,
-  customEffectCategoryForKind,
+  customEffectCategoryForItem,
   isAdvancedEditableContent,
   isCustomEffectContent,
   isEditableEffectContent,
@@ -453,7 +453,7 @@ export class PanelEditorController {
         ? { section: "video" }
         : {
             section: "custom",
-            category: customEffectCategoryForKind(item.content.kind),
+            category: customEffectCategoryForItem(item),
           };
     const selection = {
       currentItem: item,

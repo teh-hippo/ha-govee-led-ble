@@ -1,12 +1,43 @@
 import { expect, test } from "vitest";
 import { blankLayer, cloneAdvancedContent, cloneLayeredSceneContent, layerBrightness, nativeDiyPalette, selectionQuantity, updateNativeDiy, withLayerBrightness, withSelectionQuantity } from "../../src/advanced-effect-model";
 import { AdvancedEffectEditorController } from "../../src/advanced-effect-editor-controller";
-import { effectContentEligible } from "../../src/effect-editor-model";
+import { customEffectCategoryForItem, effectContentEligible, nativeEffectWorkflow, upsertSummary } from "../../src/effect-editor-model";
 import type { AdvancedContent, LayeredSceneContent, MusicProfileContent, NativeEffectContent, RGB } from "../../src/types";
 import { decodeCatalogueTemplateDefaultDetail, decodeEffectContent } from "../../src/validation";
 import { decodeCustomCataloguePayload } from "../../src/catalogue-validation";
 import { buildCustomEffectEntries } from "../../src/custom-effect-list";
 import backendContracts from "../fixtures/backend-contracts.json";
+import { PanelModel } from "../../src/panel-model";
+import { device, item, painted, panelControllerHarness } from "./panel-test-support";
+import { decodeLibrarySnapshot } from "../../src/validation";
+
+test("native saved items retain workflow through listing, selection and summary adoption", () => {
+  const catalogues = decodeCustomCataloguePayload(backendContracts.responses.custom_catalogue, decodeEffectContent).models;
+  for (const model of ["H607C", "H60B0", "H1771", "H60A6"] as const) {
+    const catalogue = catalogues[model];
+    for (const template of catalogue.templates ?? []) {
+      if (template.content.kind !== "native_effect") continue;
+      const saved = { ...item(painted()), content: template.content, content_hash: "ab".repeat(32) };
+      const summary = upsertSummary([], saved)[0];
+      expect(decodeLibrarySnapshot({ items: [summary] }).items[0]).toEqual(summary);
+      expect(summary.native_workflow).toBe(nativeEffectWorkflow(template.content));
+      const category = customEffectCategoryForItem(saved);
+      const entries = buildCustomEffectEntries({ model, catalogue, libraryItems: [summary] }, "all");
+      expect(entries.find(entry => entry.key === `saved:${saved.id}`)?.category).toBe(category);
+      const panel = new PanelModel(() => undefined);
+      panel.devices = [device("entry-a", model)];
+      panel.selectedDeviceId = "entry-a";
+      panel.patch({ section: "custom", customEffectCategory: category });
+      const { editorController } = panelControllerHarness(panel);
+      expect(editorController.applyLibraryItem(saved)).toBe(true);
+      expect(panel.editorOwnedByActiveView).toBe(true);
+
+      const scene = { ...summary, template: { sku: model, scene_id: 1, effect_id: 2, catalogue_schema_version: 2 }, native_workflow: "layered_scenes" as const };
+      expect(buildCustomEffectEntries({ model, catalogue, libraryItems: [scene] }, "all")
+        .some(entry => entry.key === `saved:${saved.id}`)).toBe(false);
+    }
+  }
+});
 
 test("single-section native palettes use catalogue templates and the single workflow", () => {
   const catalogue = decodeCustomCataloguePayload(backendContracts.responses.custom_catalogue, decodeEffectContent).models.H60B2;
