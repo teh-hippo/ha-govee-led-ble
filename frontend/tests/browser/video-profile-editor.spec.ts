@@ -1,5 +1,25 @@
 import { expect, test } from "@playwright/test";
 
+test("calibration and zone sliders emit intermediate and committed edits", async ({ page }) => {
+  await page.goto("/tests/browser/fixtures/video-profile-editor.html?alternate");
+  await page.evaluate(() => {
+    const editor = document.querySelector("govee-video-profile-editor")!;
+    (window as unknown as { interactions: string[] }).interactions = [];
+    editor.addEventListener("content-changed", (event) => {
+      (window as unknown as { interactions: string[] }).interactions.push(
+        (event as CustomEvent<{ interaction: string }>).detail.interaction,
+      );
+    });
+  });
+  for (const label of ["White balance", "Left", "Top", "Right", "Bottom", "Strip left", "Strip right"]) {
+    await page.getByLabel(label, { exact: true }).dispatchEvent("input");
+    await page.getByLabel(label, { exact: true }).dispatchEvent("change");
+  }
+  expect(await page.evaluate(() =>
+    (window as unknown as { interactions: string[] }).interactions,
+  )).toEqual(Array.from({ length: 7 }, () => ["changing", "committed"]).flat());
+});
+
 test("video editor shows only declared model settings", async ({ page }) => {
   await page.goto("/tests/browser/fixtures/video-profile-editor.html");
 
