@@ -2,6 +2,7 @@
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
+from functools import lru_cache
 from typing import Any, overload
 
 from kaitaistruct import KaitaiStructError
@@ -576,6 +577,11 @@ def music_body_style(body: bytes, mode: str, *, profile: ModelProfile) -> bool |
 
 def music_default_available(model: str, mode: str, *, profile: ModelProfile | None = None) -> bool:
     profile = get_profile(model) if profile is None else profile
+    return _music_default_available(model, mode, profile)
+
+
+@lru_cache(maxsize=256)
+def _music_default_available(model: str, mode: str, profile: ModelProfile) -> bool:
     try:
         resolve_music_profile(model, mode, profile.music_sensitivity_max, None, None, {}, profile=profile)
     except ValueError:
