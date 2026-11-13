@@ -130,6 +130,8 @@ Run `make protocol` after a fresh clone, a new worktree or any `.ksy` change, an
 - Characterise surprising device behaviour before changing it, distinguishing an evidenced device constraint from an integration bug.
   Preserve meaningful characterisation in shared coverage, then remove temporary or duplicate tests.
   Use explicit synchronisation to test asynchronous ordering and ownership rather than timing guesses.
+- A failed command or absent detail-UI control does not establish an unsupported capability.
+  Before removing advertised support, reconcile equivalent individual, combined and service operations across evidenced revisions, and protect the working public workflow rather than the proposed restriction.
 - For refactors, compare complete relevant public payloads and generated wire output, not selected fields alone.
   For fixes, demonstrate the old failure and intended new behaviour without blessing the defect as a compatibility requirement.
   Report software evidence separately from hardware observations; an accepted write or optimistic UI is not physical confirmation.

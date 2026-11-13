@@ -2408,10 +2408,23 @@ class GoveeBLECoordinator(
         await self._async_set_verified_setting("power_on_behaviour", value)
 
     async def async_set_source_value(self, source: str, attribute: str, value: int) -> None:
-        from .generated_protocol_adapter import build_boolean_control_query, build_source_value
+        await self.async_apply_source_value(
+            coordinator_sources.PreparedSourceValue.prepare(source, attribute, value, self.profile)
+        )
 
-        profile = self.profile
-        packet = build_source_value(source, attribute, value, profile)
+    async def async_apply_source_value(
+        self,
+        prepared: coordinator_sources.PreparedSourceValue,
+        *,
+        write_guard: Callable[[], None] | None = None,
+    ) -> None:
+        from .generated_protocol_adapter import build_boolean_control_query
+
+        profile, source, attribute, value = prepared.profile, prepared.source, prepared.attribute, prepared.value
+        if write_guard is not None:
+            write_guard()
+        if self.profile != profile:
+            raise ValueError("The native source profile changed")
         field = "ripple_speed" if attribute == "ripple_speed" else f"{source}_{attribute}"
         async with async_control_intent(self, ControlIntent.USER):
             await self._async_supersede_effect_preview()
@@ -2419,39 +2432,75 @@ class GoveeBLECoordinator(
                 client = await self._ensure_connected()
                 token = self._notification_token
             baseline = {field: self._field_revisions.get(field, 0)}
-            invalidated = False
+            attempts = self.control_write_attempts
+            generation, authorization = self._profile_generation, self._authorization_generation
 
             def guard() -> None:
-                nonlocal invalidated
+                if write_guard is not None:
+                    write_guard()
                 if (
                     self.profile != profile
                     or self._client is not client
                     or self._notification_token is not token
                     or not client.is_connected
+                    or self._profile_generation != generation
+                    or self._authorization_generation != authorization
                 ):
                     raise ValueError("Source profile or subscription changed")
-                if not invalidated:
-                    self._field_received_at.pop(field, None)
-                    invalidated = True
 
-            await self.send_command(packet, write_guard=guard, state_values={field: value})
-            async with self._lock:
-                guard()
-                query = build_boolean_control_query(f"{source}_enabled", self.model, profile=profile)
-                if not await self._async_read_setting_fields(
-                    client, query, (field,), deadline=time.monotonic() + 4.0, write_guard=guard
-                ):
-                    raise ValueError("Device did not provide source readback")
-                if self._field_revisions.get(field, 0) <= baseline[field] or getattr(self, field) != value:
-                    raise ValueError("Device did not confirm the source value")
-                if not await self._async_read_setting_fields(
-                    client,
-                    build_colour_mode_query(self.model, profile=profile),
-                    ("color_mode",),
-                    deadline=time.monotonic() + 4.0,
+            def invalidate_observation() -> None:
+                self._field_received_at.pop(field, None)
+
+            query = build_boolean_control_query(f"{source}_enabled", self.model, profile=profile)
+            try:
+                await self.send_command(
+                    prepared.packet,
                     write_guard=guard,
+                    state_values={field: value},
+                    on_write=invalidate_observation,
+                )
+                async with self._lock:
+                    guard()
+                    self._expected_state.pop(field, None)
+                    if not await self._async_read_setting_fields(
+                        client, query, (field,), deadline=time.monotonic() + 4.0, write_guard=guard
+                    ):
+                        raise ValueError("Device did not provide source readback")
+                    if self._field_revisions.get(field, 0) <= baseline[field] or getattr(self, field) != value:
+                        raise ValueError("Device did not confirm the source value")
+                    if not await self._async_read_setting_fields(
+                        client,
+                        build_colour_mode_query(self.model, profile=profile),
+                        ("color_mode",),
+                        deadline=time.monotonic() + 4.0,
+                        write_guard=guard,
+                    ):
+                        raise ValueError("Device did not provide source mode readback")
+                    guard()
+                    if self.color_mode is not ParsedMode.COLOUR or getattr(self, field) != value:
+                        raise ValueError("Latest source readback contradicts the requested value")
+            except BaseException as error:
+                if (
+                    self.control_write_attempts != attempts
+                    and self.profile == profile
+                    and (self._notification_token is token or self._client is None)
+                    and self._profile_generation == generation
                 ):
-                    raise ValueError("Device did not provide source mode readback")
+                    self._expected_state.pop(field, None)
+                    if self._field_revisions.get(field, 0) <= baseline[field]:
+                        setattr(self, field, None)
+                        self._field_received_at.pop(field, None)
+                        task = asyncio.current_task()
+                        if not isinstance(error, asyncio.CancelledError) and task is not None and not task.cancelling():
+                            try:
+                                async with self._lock:
+                                    await self._async_read_setting_fields(
+                                        client, query, (field,), deadline=time.monotonic() + 2.0, write_guard=guard
+                                    )
+                            except Exception:
+                                _LOGGER.debug("Unconfirmed native source reconciliation failed", exc_info=True)
+                    self.async_set_updated_data(self.data or {})
+                raise
 
     async def _async_set_verified_setting(
         self, control: str, value: bool | str, *, write_guard: Callable[[], None] | None = None

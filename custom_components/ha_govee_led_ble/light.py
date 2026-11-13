@@ -53,6 +53,7 @@ from .coordinator import GoveeBLECoordinator
 from .coordinator_base import async_prepare_effect_profile
 from .coordinator_control import ControlStateSnapshot, ControlWriteRequest
 from .coordinator_refresh import RefreshRequest
+from .coordinator_sources import PreparedSourceColour, SourceTurnOnRequest, main_source_colour, prepare_source_colour
 from .coordinator_status import ParsedMode
 from .effect_backend import EffectBackend
 from .effect_catalogue import MODEL_EFFECT_CATALOGUES
@@ -302,8 +303,6 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
     @property
     def supported_color_modes(self) -> set[ColorMode]:
         profile = self.coordinator.native_presentation_profile
-        if profile.main_color_modes is not None:
-            return {ColorMode(mode) for mode in profile.main_color_modes}
         modes = set()
         if profile.supports_rgb:
             modes.add(ColorMode.RGB)
@@ -339,8 +338,12 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         if coordinator.static_color_unknown():
             return ColorMode.UNKNOWN
         # Colour attributes are hidden while an effect runs; the remembered colour returns when it clears.
-        if coordinator.color_mode not in (None, ParsedMode.COLOUR) and self.effect not in (None, EFFECT_OFF):
+        if coordinator.color_mode not in (None, ParsedMode.COLOUR) and (
+            coordinator.profile.main_colour_sources or self.effect not in (None, EFFECT_OFF)
+        ):
             return ColorMode.BRIGHTNESS
+        if coordinator.profile.main_colour_sources:
+            return ColorMode.COLOR_TEMP if type(main_source_colour(coordinator)) is int else ColorMode.RGB
         if coordinator.color_mode in (None, ParsedMode.COLOUR):
             if coordinator.color_temp_kelvin is not None and coordinator.color_temp_kelvin_source != "initial":
                 return ColorMode.COLOR_TEMP
@@ -352,6 +355,9 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
 
     @property
     def rgb_color(self) -> tuple[int, int, int] | None:
+        if self.coordinator.profile.main_colour_sources:
+            value = main_source_colour(self.coordinator)
+            return value if isinstance(value, tuple) and self.color_mode == ColorMode.RGB else None
         return self.coordinator.rgb_color if self.color_mode == ColorMode.RGB else None
 
     @property
@@ -364,6 +370,9 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
 
     @property
     def color_temp_kelvin(self) -> int | None:
+        if self.coordinator.profile.main_colour_sources:
+            value = main_source_colour(self.coordinator)
+            return value if type(value) is int and self.color_mode == ColorMode.COLOR_TEMP else None
         kelvin = self.coordinator.color_temp_kelvin
         if kelvin is None or self.color_mode != ColorMode.COLOR_TEMP:
             return None
@@ -987,11 +996,6 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
     def _validate_basic_request(self, kwargs: Mapping[str, Any], *, profile: ModelProfile | None = None) -> None:
         profile = self.coordinator.profile if profile is None else profile
         model = self.coordinator.model
-        if profile.main_color_modes is not None and any(
-            attribute in kwargs and mode not in profile.main_color_modes
-            for attribute, mode in ((ATTR_RGB_COLOR, "rgb"), (ATTR_COLOR_TEMP_KELVIN, "color_temp"))
-        ):
-            raise ServiceValidationError(translation_domain=DOMAIN, translation_key="area_colour_only")
         with self._rollback():
             if ATTR_BRIGHTNESS in kwargs:
                 self._require_support("brightness", supported=self.supported_color_modes != {ColorMode.ONOFF})
@@ -999,11 +1003,28 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 require_profile_packet(build_brightness(pct, model, profile=profile), profile)
             if ATTR_RGB_COLOR in kwargs:
                 red, green, blue = kwargs[ATTR_RGB_COLOR]
-                require_profile_packet(build_color_rgb(red, green, blue, model, profile=profile), profile)
-            if ATTR_COLOR_TEMP_KELVIN in kwargs:
+                if not profile.main_colour_sources:
+                    require_profile_packet(build_color_rgb(red, green, blue, model, profile=profile), profile)
+            if ATTR_COLOR_TEMP_KELVIN in kwargs and not profile.main_colour_sources:
                 require_profile_packet(
                     build_color_temp(kwargs[ATTR_COLOR_TEMP_KELVIN], model, profile=profile), profile
                 )
+
+    def _prepare_source_colour_request(self, kwargs: Mapping[str, Any]) -> PreparedSourceColour | None:
+        coordinator = self.coordinator
+        if not coordinator.profile.main_colour_sources or not kwargs.keys() & {ATTR_RGB_COLOR, ATTR_COLOR_TEMP_KELVIN}:
+            return None
+        with self._rollback():
+            return prepare_source_colour(
+                coordinator,
+                coordinator.profile.main_colour_sources,
+                SourceTurnOnRequest(
+                    rgb_color=tuple(kwargs[ATTR_RGB_COLOR]) if ATTR_RGB_COLOR in kwargs else None,
+                    kelvin=normalize_kelvin(kwargs[ATTR_COLOR_TEMP_KELVIN], coordinator.profile)
+                    if ATTR_COLOR_TEMP_KELVIN in kwargs
+                    else None,
+                ),
+            )
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         pending = self._pending_turn_on or {}
@@ -1041,6 +1062,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 await self._async_turn_off(clear_workspace_on_success=active_workspace is not None)
             return
         self._validate_basic_request(kwargs)
+        source_colour = self._prepare_source_colour_request(kwargs)
         custom_requested = (
             ATTR_EFFECT in kwargs
             and normalise_effect_name(str(kwargs[ATTR_EFFECT])) == normalise_effect_name("Custom")
@@ -1056,6 +1078,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 item,
                 turn_on_kwargs=remaining,
                 native_write_guard=native_write_guard,
+                source_colour=source_colour,
             )
             return
         video_guards: list[Callable[[], None]] = []
@@ -1081,6 +1104,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 prepared_effect=prepared_effect,
                 effect_write_guard=video_guards[0] if video_guards else None,
                 native_write_guard=native_write_guard,
+                source_colour=source_colour,
                 **kwargs,
             )
 
@@ -1092,6 +1116,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         turn_on_kwargs: dict[str, Any] | None = None,
         diy_code: int | None = None,
         native_write_guard: Callable[[], None] | None = None,
+        source_colour: PreparedSourceColour | None = None,
     ) -> DeploymentRecord:
         assert self._effect_backend is not None
         assert self._config_entry_id is not None
@@ -1129,6 +1154,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                         await self._async_turn_on(
                             effect_write_guard=guard,
                             native_write_guard=native_write_guard,
+                            source_colour=source_colour,
                             **turn_on_kwargs,
                         )
                     guard()
@@ -1277,10 +1303,12 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         prepared_effect: Callable[[], Awaitable[None]] | None = None,
         effect_write_guard: Callable[[], None] | None = None,
         native_write_guard: Callable[[], None] | None = None,
+        source_colour: PreparedSourceColour | None = None,
         **kwargs: Any,
     ) -> None:
         self._validate_basic_request(kwargs)
         coordinator = self.coordinator
+        source_colour = source_colour or self._prepare_source_colour_request(kwargs)
         request = coordinator.control_write_request(identity_guard=native_write_guard, effect_guard=effect_write_guard)
 
         if ATTR_BRIGHTNESS in kwargs:
@@ -1312,7 +1340,11 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                             expected_brightness=pct,
                             retry_command=None if native_write_guard is not None else apply_brightness,
                         )
-                if ATTR_RGB_COLOR in kwargs:
+                if source_colour is not None:
+                    request.phase = "source colour"
+                    checkpoint()
+                    await source_colour.apply(coordinator, request.before_write)
+                if ATTR_RGB_COLOR in kwargs and source_colour is None:
                     request.phase = "RGB colour"
                     self._require_support(
                         "RGB colour",
@@ -1335,7 +1367,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                                 expected_rgb_color=(r, g, b),
                                 retry_command=partial(request.send, packet),
                             )
-                if ATTR_COLOR_TEMP_KELVIN in kwargs:
+                if ATTR_COLOR_TEMP_KELVIN in kwargs and source_colour is None:
                     request.phase = "colour temperature"
                     self._require_support(
                         "colour temperature",
