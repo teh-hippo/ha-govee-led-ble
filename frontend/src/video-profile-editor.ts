@@ -465,20 +465,14 @@ export class GoveeVideoProfileEditor extends LitElement {
             aria-label="White balance"
             ?disabled=${this.disabled}
             @input=${(event: Event) =>
-              this.updateContent(
-                (content) => {
-                  const next = clampInteger(
-                    Number((event.target as HTMLInputElement).value),
-                    minimum,
-                    maximum,
-                  );
-                  if (this.controls?.white_balance.representation === "scalar") {
-                    content.white_balance_value = next;
-                  } else {
-                    content.white_balance_position = next;
-                  }
-                },
+              this.updateWhiteBalance(
+                Number((event.target as HTMLInputElement).value),
                 "changing",
+              )}
+            @change=${(event: Event) =>
+              this.updateWhiteBalance(
+                Number((event.target as HTMLInputElement).value),
+                "committed",
               )}
           />
           <div class="endpoint-labels" aria-hidden="true">
@@ -488,6 +482,24 @@ export class GoveeVideoProfileEditor extends LitElement {
         </div>
       </label>
     `;
+  }
+
+  private updateWhiteBalance(
+    value: number,
+    interaction: LivePreviewInteraction,
+  ): void {
+    this.updateContent((content) => {
+      const next = clampInteger(
+        value,
+        this.controls?.white_balance.minimum ?? 1,
+        this.controls?.white_balance.maximum ?? 20,
+      );
+      if (this.controls?.white_balance.representation === "scalar") {
+        content.white_balance_value = next;
+      } else {
+        content.white_balance_position = next;
+      }
+    }, interaction);
   }
 
   private renderScreenEdgeControl(
@@ -509,6 +521,13 @@ export class GoveeVideoProfileEditor extends LitElement {
             this.updateRelativeBrightnessEdge(
               edge,
               Number((event.target as HTMLInputElement).value),
+              "changing",
+            )}
+          @change=${(event: Event) =>
+            this.updateRelativeBrightnessEdge(
+              edge,
+              Number((event.target as HTMLInputElement).value),
+              "committed",
             )}
         />
       </label>
@@ -518,6 +537,7 @@ export class GoveeVideoProfileEditor extends LitElement {
   private updateRelativeBrightnessEdge(
     edge: RelativeBrightnessEdge,
     value: number,
+    interaction: LivePreviewInteraction = this.interaction,
   ): void {
     this.updateContent(
       (content) => {
@@ -525,7 +545,7 @@ export class GoveeVideoProfileEditor extends LitElement {
           content.relative_brightness[edge] = clampInteger(value, 1, 100);
         }
       },
-      "changing",
+      interaction,
     );
   }
 
