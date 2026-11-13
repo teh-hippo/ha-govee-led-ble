@@ -2332,11 +2332,7 @@ class GoveeBLECoordinator(
     async def async_set_boolean_control(self, control: str, enabled: bool) -> None:
         if type(enabled) is not bool:
             raise ValueError("Boolean setting requires a boolean")
-        guard = (
-            await self.async_prepare_identity_gated_control()
-            if self.identity_gated_controls and control == "gradual"
-            else None
-        )
+        guard = await self.async_prepare_identity_gated_control() if self.identity_gated_controls else None
         await self._async_set_verified_setting(control, enabled, write_guard=guard)
 
     def _fresh_source_power(self) -> dict[str, bool] | None:
@@ -2405,7 +2401,8 @@ class GoveeBLECoordinator(
         await async_set_setting(self, enabled=enabled, level=level)
 
     async def async_set_power_on_behaviour(self, value: str) -> None:
-        await self._async_set_verified_setting("power_on_behaviour", value)
+        guard = await self.async_prepare_identity_gated_control() if self.identity_gated_controls else None
+        await self._async_set_verified_setting("power_on_behaviour", value, write_guard=guard)
 
     async def async_set_source_value(self, source: str, attribute: str, value: int) -> None:
         await self.async_apply_source_value(

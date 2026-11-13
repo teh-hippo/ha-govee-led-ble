@@ -22,6 +22,7 @@ from homeassistant.helpers.entity_component import EntityComponent
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.ha_govee_led_ble import light as light_platform
+from custom_components.ha_govee_led_ble import select as select_platform
 from custom_components.ha_govee_led_ble import switch as switch_platform
 from custom_components.ha_govee_led_ble.advertisement import parse_govee_advertisement
 from custom_components.ha_govee_led_ble.const import CONF_MODEL, DOMAIN, ReadDomain
@@ -29,8 +30,12 @@ from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
+    build_boolean_control,
+    build_boolean_control_query,
     build_brightness_query,
     build_power,
+    build_power_on_behaviour,
+    build_power_on_behaviour_query,
     build_power_query,
 )
 from custom_components.ha_govee_led_ble.govee_encryption import (
@@ -527,7 +532,7 @@ async def _register_h607c_entities(hass, coordinator):
     entry = MockConfigEntry(domain=DOMAIN, unique_id=coordinator.address, data={CONF_MODEL: "H607C"})
     entry.add_to_hass(hass)
     entry.runtime_data = coordinator
-    for domain, module in (("light", light_platform), ("switch", switch_platform)):
+    for domain, module in (("light", light_platform), ("switch", switch_platform), ("select", select_platform)):
         component = EntityComponent(logging.getLogger(__name__), domain, hass)
         platform = component._async_init_entity_platform(DOMAIN, module)
         assert await platform.async_setup_entry(entry)
@@ -571,6 +576,112 @@ async def test_h607c_registered_entities_present_identity_states(hass, identity,
     else:
         assert gradual is not None
         assert hass.states.get(gradual.entity_id).state == gradual_state
+    for control in ("pole_enabled", "base_enabled", "power_on_behaviour"):
+        setting = next((item for item in entries if item.unique_id.endswith(f"_{control}")), None)
+        if gradual_state is None:
+            assert setting is None
+        else:
+            assert setting is not None
+            assert hass.states.get(setting.entity_id).state == "unknown"
+
+
+@pytest.mark.parametrize("identity_loss", ["advertisement_expiry", "release"])
+async def test_h607c_registered_settings_survive_identity_expiry(hass, identity_loss):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H607C", configuration_url=None)
+    coordinator._state_read_available = coordinator.is_on = True
+    if identity_loss == "advertisement_expiry":
+        coordinator._h607c_advertisement_observations = {"scanner": (time.monotonic(), frozenset({(1, 1)}))}
+        coordinator._prune_h607c_advertisements()
+    else:
+        coordinator._h607c_marker_pact = (1, 1)
+        coordinator._h607c_marker_seen = True
+        coordinator._resolve_h607c_pact()
+    entry = await _register_h607c_entities(hass, coordinator)
+    settings = [
+        item
+        for item in er.async_entries_for_config_entry(er.async_get(hass), entry.entry_id)
+        if item.domain in {"switch", "select"}
+    ]
+    assert len(settings) == 4
+    if identity_loss == "advertisement_expiry":
+        coordinator._h607c_advertisement_observations["scanner"] = (time.monotonic() - 1000, frozenset({(1, 1)}))
+        coordinator._prune_h607c_advertisements()
+    else:
+        device = client()
+        coordinator._client = device
+        coordinator._clear_client_state(device)
+        coordinator.async_update_listeners()
+    await hass.async_block_till_done()
+    assert not coordinator.profile.supports_rgb
+    assert coordinator.available
+    assert all(hass.states.get(item.entity_id).state == "unknown" for item in settings)
+    coordinator._state_read_available = False
+    coordinator.async_update_listeners()
+    await hass.async_block_till_done()
+    assert all(hass.states.get(item.entity_id).state == "unavailable" for item in settings)
+
+
+@pytest.mark.parametrize("control", ["pole_enabled", "base_enabled", "power_on_behaviour"])
+@pytest.mark.parametrize("identity", ["ready", "unsupported", "conflicting", "revoked"])
+async def test_h607c_settings_requalify_after_release(hass, monkeypatch, control, identity):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H607C", configuration_url=None)
+    coordinator._h607c_marker_pact = (1, 1)
+    coordinator._resolve_h607c_pact()
+    previous = client()
+    coordinator._client = previous
+    coordinator._clear_client_state(previous)
+    assert not coordinator.profile.supports_rgb
+    zone_query = build_boolean_control_query("pole_enabled", "H607C", profile=coordinator.native_presentation_profile)
+    power_on_query = build_power_on_behaviour_query(coordinator.native_presentation_profile)
+    device = client(bytes((2, 0, 0, 0, 3 if identity == "unsupported" else 1, 1)))
+    monkeypatch.setattr(coordinator, "_refresh_h607c_advertisements", lambda: None)
+    monkeypatch.setattr(f"{M}.async_establish_ble_connection", AsyncMock(return_value=device))
+    monkeypatch.setattr(coordinator, "_start_keep_alive", lambda: None)
+    if identity == "conflicting":
+        coordinator._h607c_advertised_pacts = {(2, 1)}
+    elif identity == "revoked":
+
+        async def revoke():
+            coordinator._authorization_generation += 1
+
+        monkeypatch.setattr(coordinator, "_async_supersede_effect_preview", revoke)
+
+    async def write(_uuid, packet, **_kwargs):
+        receive = device.start_notify.await_args.args[1]
+        if packet == zone_query:
+            receive(None, bytearray(_packet(0xAA, 7, [8, 37, 7])))
+        elif packet == power_on_query:
+            receive(None, bytearray(_packet(0xAA, 0x41, [1, 1])))
+        elif packet[0] == 0x33:
+            receive(None, bytearray(_packet(0x33, packet[1], [0])))
+
+    device.write_gatt_char.side_effect = write
+    operation = (
+        coordinator.async_set_power_on_behaviour("on")
+        if control == "power_on_behaviour"
+        else coordinator.async_set_boolean_control(control, True)
+    )
+    if identity == "ready":
+        await operation
+        expected = (
+            build_power_on_behaviour("on", coordinator.profile)
+            if control == "power_on_behaviour"
+            else build_boolean_control(control, True, "H607C", profile=coordinator.profile)
+        )
+        assert expected in [call.args[1] for call in device.write_gatt_char.await_args_list]
+        assert (
+            coordinator.power_on_behaviour == "on"
+            if control == "power_on_behaviour"
+            else coordinator.boolean_control_state[control] is True
+        )
+    else:
+        with pytest.raises(HomeAssistantError):
+            await operation
+        assert not any(call.args[1][0] == 0x33 for call in device.write_gatt_char.await_args_list)
+        assert coordinator.power_on_behaviour is None
+        assert control not in coordinator.boolean_control_state
+    device.read_gatt_char.assert_awaited_once()
+    await coordinator.disconnect()
 
 
 async def test_h607c_registered_gradual_tracks_identity_and_release_reconnect(hass):
