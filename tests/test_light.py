@@ -2167,7 +2167,7 @@ async def test_segment_service_preflight_uses_effective_profile(light, mock_coor
 async def test_paint_service_serialization_failure_preserves_preview(light, mock_coordinator):
     with (
         patch(
-            "custom_components.ha_govee_led_ble.generated_protocol_adapter._serialize_xor",
+            "custom_components.ha_govee_led_ble.protocol_commands._serialize_xor",
             side_effect=[b"first packet", ValueError("serialization failed")],
         ) as serialize,
         patch.object(light, "_async_supersede_preview", new_callable=AsyncMock) as preview,

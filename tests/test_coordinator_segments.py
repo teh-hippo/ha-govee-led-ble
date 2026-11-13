@@ -333,7 +333,7 @@ async def test_paint_serialization_failure_precedes_optimistic_state(coord):
     before = list(coord.segment_colors)
     with (
         patch(
-            "custom_components.ha_govee_led_ble.generated_protocol_adapter._serialize_xor",
+            "custom_components.ha_govee_led_ble.protocol_commands._serialize_xor",
             side_effect=[b"first packet", ValueError("serialization failed")],
         ) as serialize,
         patch.object(coord, "mark_segment_state_optimistic") as optimistic,
