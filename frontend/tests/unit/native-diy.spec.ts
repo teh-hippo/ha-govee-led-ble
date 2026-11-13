@@ -8,6 +8,20 @@ import { decodeCustomCataloguePayload } from "../../src/catalogue-validation";
 import { buildCustomEffectEntries } from "../../src/custom-effect-list";
 import backendContracts from "../fixtures/backend-contracts.json";
 
+test("single-section native palettes use catalogue templates and the single workflow", () => {
+  const catalogue = decodeCustomCataloguePayload(backendContracts.responses.custom_catalogue, decodeEffectContent).models.H60B2;
+  const templates = catalogue.templates!.filter(template => template.content.kind === "native_effect");
+  const entries = buildCustomEffectEntries({ model: "H60B2", catalogue, libraryItems: [] }, "all");
+  expect(entries.filter(entry => entry.kind === "native-diy").map(entry => entry.key).sort()).toEqual(templates.map(template => template.id).sort());
+  expect(entries.some(entry => entry.key.startsWith("template:single:"))).toBe(false);
+  for (const template of templates) {
+    expect(effectContentEligible(template.content, catalogue, "H60B2", 3)).toBe(true);
+    expect(effectContentEligible(template.content, { ...catalogue, apply: { ...catalogue.apply, single: "unsupported" } }, "H60B2", 3)).toBe(false);
+  }
+  const content = templates[0].content as NativeEffectContent;
+  expect(() => decodeEffectContent({ ...content, layers: [...content.layers, ...content.layers] })).toThrow("one section");
+});
+
 test("H60B0 native revisions and combined scenes retain their complete content", () => {
   const raw = backendContracts.responses.custom_catalogue.models.H60B0;
   for (const template of raw.templates) expect(decodeEffectContent(template.content)).toEqual(template.content);

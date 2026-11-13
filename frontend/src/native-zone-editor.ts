@@ -96,7 +96,7 @@ export function renderNativeZoneEditor(
   disabled: boolean,
   change: ZoneChange,
 ) {
-  const paired = content.layers.length === catalogue.native_zones?.length;
+  const paired = content.layers.length > 1 && content.layers.length === catalogue.native_zones?.length;
   return html`${content.layers.map((layer, index) => {
     if (layer.type === "paint") return nothing;
     const family = catalogue.effects.find(candidate => candidate.family === layer.kind);

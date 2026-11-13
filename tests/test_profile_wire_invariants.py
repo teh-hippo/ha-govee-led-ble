@@ -301,6 +301,8 @@ def _status_color_mode_enum(profile: ModelProfile):
 def _status_music_enum(profile: ModelProfile):
     if profile.status_grammar == "H60B0":
         return H60b0MusicBody.MusicMode
+    if profile.status_grammar == "H60B2":
+        return protocol_core.H60b2MusicBody.MusicMode
     if profile.status_grammar == "H1771":
         return protocol_core.H1771MusicBody.MusicMode
     if profile.status_grammar == "H607C":
@@ -1105,6 +1107,21 @@ def test_declared_boolean_controls_round_trip(hass, model: str, profile: ModelPr
                 assert coordinator.boolean_control_state == expected
                 assert coordinator.is_on
                 continue
+            if profile.setting_grammar == "H60B2" and control != "gradual":
+                expected = {name: True for name in ("bottom_enabled", "middle_enabled", "top_enabled")} | {
+                    control: enabled
+                }
+                reply = _status(
+                    domain_byte,
+                    bytes(int(expected[name]) for name in ("bottom_enabled", "middle_enabled", "top_enabled")),
+                )
+                decoded = decode_status_frame(reply, model, profile=profile)
+                assert decoded is not None and status_is_authorized(decoded, profile)
+                assert a.parse_boolean_control(decoded.generated, model, profile=profile) == expected
+                _consume_status(coordinator, reply)
+                assert {name: coordinator.boolean_control_state[name] for name in expected} == expected
+                assert all(coordinator._field_revisions[f"boolean_{name}"] > 0 for name in expected)
+                continue
             if profile.setting_grammar == "H1771":
                 if control == "gradual":
                     record = bytes((0xA3, 1, int(enabled)))
@@ -1164,6 +1181,12 @@ def test_declared_boolean_controls_round_trip(hass, model: str, profile: ModelPr
             assert coordinator.boolean_control_state[control] is True
             continue
         if profile.setting_grammar == "H6046":
+            continue
+        if profile.setting_grammar == "H60B2" and control != "gradual":
+            bad_reply = _status(domain_byte, bytes((1, 2, 1)))
+            _consume_status(coordinator, bad_reply)
+            assert coordinator.packet_log[-1]["reason"] == "semantic_rejected"
+            assert coordinator.boolean_control_state[control] is True
             continue
         if profile.setting_grammar == "H1771":
             record = bytes.fromhex("a30102") if control == "gradual" else bytes.fromhex("360101")

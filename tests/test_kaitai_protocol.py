@@ -876,6 +876,55 @@ def test_shared_colour_mode_query_selectors(selector: int) -> None:
     assert parsed.body.zeros == [0] * 16
 
 
+@pytest.mark.parametrize("model,opcode", [("H607C", 0x30), ("H60B2", 0x36)])
+def test_native_source_codec_rejects_unknown_selector(model, opcode) -> None:
+    payload = bytes((0x33, opcode, 0xFF, 1)).ljust(19, b"\0")
+    frame = payload + bytes((xor_checksum(payload),))
+    result = generated_protocol_adapter.parse_command_result(frame, model)
+    assert result.parsed is None and result.rejection is ProtocolParseRejection.SEMANTIC_REJECTED
+    with pytest.raises(ValueError):
+        generated_protocol_adapter.require_profile_packet(frame, get_profile(model))
+
+
+def test_three_head_mode_only_status_does_not_invent_static_colour(hass) -> None:
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H60B2", configuration_url=None)
+    coordinator.install_static_color(kelvin=4000)
+    prior = coordinator.rgb_color
+    mode_only = bytes.fromhex("aa051500000000000000000000000000000000ba")
+    coordinator._notify_callback(None, bytearray(mode_only))
+    assert coordinator.color_mode is ParsedMode.COLOUR
+    assert coordinator.rgb_color == prior and coordinator.color_temp_kelvin == 4000
+    assert coordinator.segment_state_source == "initial"
+    assert "rgb_color" not in coordinator._field_revisions
+    assert "color_temp_kelvin" not in coordinator._field_revisions
+
+
+def test_three_head_power_register_and_notification_are_distinct_observations(hass) -> None:
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H60B2", configuration_url=None)
+    coordinator._notify_started_monotonic = 0.0
+    register = bytes.fromhex("aa360100017f").ljust(19, b"\0")
+    coordinator._notify_callback(None, bytearray(register + bytes([xor_checksum(register)])))
+    assert coordinator.boolean_control_state == {
+        "bottom_enabled": True,
+        "middle_enabled": False,
+        "top_enabled": True,
+    }
+    assert "is_on" not in coordinator._field_revisions
+    notification = bytes.fromhex("ee30017d").ljust(19, b"\0")
+    coordinator._notify_callback(None, bytearray(notification + bytes([xor_checksum(notification)])))
+    assert coordinator.is_on is True
+    assert coordinator.boolean_control_state == {
+        "bottom_enabled": False,
+        "middle_enabled": True,
+        "top_enabled": True,
+    }
+    prior = coordinator.capture_effect_control_state()
+    from custom_components.ha_govee_led_ble.effect_deployments import PriorControlState
+
+    assert prior.middle_enabled is True
+    assert PriorControlState.from_dict(prior.to_dict()).middle_enabled is True
+
+
 def test_h617a_direct_register_replay_not_device_verified(hass) -> None:
     """H617A HW 3.01.01/FW 3.02.24, direct queries on 2026-09-16."""
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H617A", configuration_url=None)

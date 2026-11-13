@@ -143,7 +143,7 @@ export function effectContentEligible(
           candidate.content.kind === "native_effect" && candidate.content.model === model && candidate.content.revision === content.revision) === true);
     }
     return catalogue?.sku === model && content.model === model &&
-      (catalogue.native_zones?.length === content.layers.length
+      (content.layers.length > 1 && catalogue.native_zones?.length === content.layers.length
         ? catalogue.apply.multi === "supported"
         : content.family === 798 ? catalogue.apply.painted === "supported" : catalogue.apply.single === "supported");
   }

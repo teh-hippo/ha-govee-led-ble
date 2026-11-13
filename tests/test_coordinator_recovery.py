@@ -31,6 +31,51 @@ from tests.coordinator_test_support import _CONFIGURATION_URL, _c, _packet
 M = "custom_components.ha_govee_led_ble.coordinator"
 
 
+@pytest.mark.parametrize(
+    "model,query,reply",
+    [("H60B2", b"\xaa\x36", (0x36, [0, 1, 0])), ("H607C", b"\xaa\x07\x08", (0x07, [8, 37, 0x85]))],
+)
+@pytest.mark.parametrize("fresh", [True, False])
+async def test_source_recovery_uses_independent_register_and_requires_fresh_flags(
+    hass, monkeypatch, virtual_clock, model, query, reply, fresh
+):
+    coord = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url=_CONFIGURATION_URL)
+    coord.profile = device_profile(model, 1, 1)
+    coord.is_on = True
+    coord._notification_token = object()
+    coord._notify_started_monotonic = time.monotonic()
+    expected = {source.control: index % 2 == 0 for index, source in enumerate(coord.profile.light_sources)}
+    coord.boolean_control_state.update(expected)
+    coord._field_received_at.update({f"boolean_{control}": -1 for control in expected})
+    client = _c(write_gatt_char=AsyncMock())
+    coord._client = client
+    monkeypatch.setattr(coord, "_ensure_connected", AsyncMock(return_value=client))
+    monkeypatch.setattr(coord, "_renew_foreground_lease", lambda: None)
+    monkeypatch.setattr(coord, "_async_restore_effect_appearance", AsyncMock(return_value=True))
+    bulk = AsyncMock(side_effect=AssertionError("Independent source state is not a bulk observation"))
+    monkeypatch.setattr(coord, "_async_read_bulk_status", bulk)
+
+    async def respond(_uuid, packet, **kwargs):
+        assert packet.startswith(query)
+        if fresh:
+            coord._notify_callback(None, bytearray(_packet(0xAA, reply[0], reply[1])))
+
+    async def set_control(control, enabled):
+        coord.boolean_control_state[control] = enabled
+
+    client.write_gatt_char.side_effect = respond
+    setter = AsyncMock(side_effect=set_control)
+    monkeypatch.setattr(coord, "async_set_boolean_control", setter)
+    state = PriorControlState("colour", True, 50, (1, 2, 3), **expected)
+    assert await coord.async_restore_effect_control_state(state, overwritten_diy_code=None) is fresh
+    bulk.assert_not_awaited()
+    if fresh:
+        assert {item.args for item in setter.await_args_list} == set(expected.items())
+        assert all(coord._field_revisions[f"boolean_{control}"] > 0 for control in expected)
+    else:
+        setter.assert_not_awaited()
+
+
 @pytest.mark.parametrize("six_zones", [False, True])
 @pytest.mark.parametrize("missing", [False, True])
 async def test_relative_brightness_recovery_requires_all_declared_zones(h6199, monkeypatch, six_zones, missing):

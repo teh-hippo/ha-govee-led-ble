@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 from dataclasses import replace
 from typing import Any, cast
 from uuid import UUID
@@ -68,6 +69,7 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     TargetHint,
     UnsupportedEffectSchemaError,
     VideoProfile,
+    WorkshopEffect,
     effect_content_from_dict,
     effect_content_to_dict,
 )
@@ -82,7 +84,48 @@ from custom_components.ha_govee_led_ble.effect_limits import (
 )
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_h617a_scene
 from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_workshop_effect
+from custom_components.ha_govee_led_ble.native_effect import NativeDiyLayer, NativeEffect
 from custom_components.ha_govee_led_ble.protocol_h6199 import build_h6199_scene
+from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
+from custom_components.ha_govee_led_ble.transport import reassemble_a3
+
+
+@pytest.mark.parametrize(
+    "kind,direction,body",
+    [
+        (0, 0, "0900003202ff00000000ff"),
+        (4, 13, "0a00040d3202ff00000000ff"),
+        (4, 14, "0a00040e3202ff00000000ff"),
+    ],
+)
+def test_length_prefixed_native_palette_compiles_through_shared_application(kind, direction, body):
+    content = NativeEffect(
+        model="H60B2",
+        family=803,
+        layers=(NativeDiyLayer(kind, 50, ((255, 0, 0), (0, 0, 255)), parameter=direction),),
+    )
+    compiled = compile_application(LibraryItem.new("Native palette", content), "H60B2")
+    assert reassemble_a3(compiled.packets[:-1]) == (bytes.fromhex("010258") + bytes.fromhex(body)).ljust(34, b"\0")
+    assert compiled.packets[-1] == bytes.fromhex("33050afe000000000000000000000000000000c2")
+    assert effect_content_from_dict(effect_content_to_dict(content)) == content
+    validate_compiled_geometry(compiled, MODEL_PROFILES["H60B2"])
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"speed": 0},
+        {"palette": ((1, 2, 3),)},
+        {"parameter": 15},
+        {"direction": 13},
+        {"enabled": False},
+    ],
+)
+def test_length_prefixed_native_palette_rejects_unqualified_authoring(changes):
+    layer = replace(NativeDiyLayer(4, 50, ((255, 0, 0), (0, 0, 255)), parameter=13), **changes)
+    content = NativeEffect(model="H60B2", family=803, layers=(layer,))
+    with pytest.raises(ValueError):
+        compile_application(LibraryItem.new("Invalid palette", content), "H60B2")
 
 
 @pytest.mark.parametrize(
@@ -756,6 +799,18 @@ def test_workshop_compiler_reproduces_fixture_body_with_evidenced_model_activati
         b"".join(packet[2:19] for packet in compiled.upload_packets)
         == bytes([1, len(compiled.upload_packets), 2]) + content.raw_param
     )
+
+
+def test_explicit_workshop_carrier_uses_native_activation_without_legacy_suffix() -> None:
+    entry = next(scene for scene in SCENE_ENTRIES["H60B2"] if scene.scene_type == 2)
+    payload = base64.b64decode(entry.param)
+    effect, padding = decode_workshop_effect("H60B2", payload)
+    content = WorkshopEffect("H60B2", "native-scene", effect, payload, padding)
+    workshop = compile_effect(LibraryItem.new("Imported", content), "H60B2")
+    authored = compile_effect(LibraryItem.new("Authored", effect), "H60B2")
+    assert workshop.packets == authored.packets
+    assert workshop.activation_packet == bytes.fromhex("33050492010000000000000000000000000000a1")
+    assert reassemble_a3(workshop.upload_packets)[3 : 3 + len(payload)] == payload
 
 
 @pytest.mark.parametrize("model", ["H617A", "H6199"])

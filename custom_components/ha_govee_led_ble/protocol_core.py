@@ -21,6 +21,25 @@ CommandWrite = cast(
     import_module("custom_components.ha_govee_led_ble.generated_protocol.command_write").CommandWrite,
 )
 
+H60b2Control = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h60b2_control").H60b2Control
+)
+H60b2StatusReply = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h60b2_status_reply").H60b2StatusReply
+)
+H60b2MusicBody = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h60b2_music_body").H60b2MusicBody
+)
+H60b2DiyBody = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h60b2_diy_body").H60b2DiyBody
+)
+H60b2MusicWrite = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h60b2_music_write").H60b2MusicWrite
+)
+H60b2EffectUpload = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h60b2_effect_upload").H60b2EffectUpload
+)
+
 H60b0CommandWrite = cast(
     Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h60b0_command_write").H60b0CommandWrite
 )
@@ -761,6 +780,7 @@ _STATUS_ROOTS = {
     "H6181-modern": ("h6181_modern_status_reply", H6181ModernStatusReply),
     "H619A": ("h619a_status_reply", H619aStatusReply),
     "H60B0": ("h60b0_status_reply", H60b0StatusReply),
+    "H60B2": ("h60b2_status_reply", H60b2StatusReply),
     "H605C": ("h605c_status_reply", H605cStatusReply),
     "H1771": ("h1771_status_reply", H1771StatusReply),
     "H600A": ("h600a_status_reply", H600aStatusReply),
@@ -841,6 +861,7 @@ _H6076_ACK_ROOTS = {
 
 
 _MUSIC_WRITE_ROOTS = {
+    "H60B2": ("h60b2_music_write", H60b2MusicWrite),
     "H6072": ("h6072_music_write", H6072MusicWrite),
     "H607C": ("h607c_music_write", H607cMusicWrite),
     "H6097": ("h6097_music_write", H6097MusicWrite),

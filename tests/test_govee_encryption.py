@@ -882,6 +882,41 @@ async def test_selection_without_probe(advertised, marker, version):
             session.encode(build_power(True))
 
 
+@pytest.mark.parametrize("marker,version", [(None, 1), (b"\x01\x00", 1), (b"\x01\x02", 2)])
+async def test_profile_encryption_requirement_precedes_plaintext_evidence(marker, version):
+    session, device = GoveeEncryptionSession(), client(marker)
+    await session.async_select(device, advertised=False, plaintext_evidence=True, requires_legacy_encryption=True)
+    assert session.version == session.required_version == version and not session.ready
+    with pytest.raises(GoveeCryptoError):
+        session.encode(build_power(True))
+    device.write_gatt_char.assert_not_awaited()
+    if marker is None:
+        device.read_gatt_char.assert_not_awaited()
+
+
+async def test_required_legacy_session_negotiates_without_marker_and_cannot_downgrade():
+    session, device = GoveeEncryptionSession(), client()
+    await session.async_select(device, advertised=False, requires_legacy_encryption=True)
+
+    async def write(_uuid, frame, **_kwargs):
+        session.decode(v1_reply(parse_v1_handshake(frame).opcode))
+
+    device.write_gatt_char.side_effect = write
+    await session.async_negotiate(device)
+    packet = build_power(True)
+    assert session.active and session.encode(packet) == v1_transform(packet, KEY, encrypt=True)
+    session.reset()
+    await session.async_select(client(), advertised=False, plaintext_evidence=True)
+    assert session.version == 1 and not session.ready
+
+
+async def test_stronger_prior_session_is_not_downgraded_by_legacy_marker():
+    session = GoveeEncryptionSession()
+    await session.async_select(client(b"\x01\x02"), advertised=False)
+    await session.async_select(client(b"\x01\x01"), advertised=False, requires_legacy_encryption=True)
+    assert session.version == session.required_version == 2
+
+
 @pytest.mark.parametrize("version", [1, 2])
 @pytest.mark.parametrize("marker", [b"\x01\0", b"\x02\0\0\0\0\0"])
 async def test_zero_marker_preserves_previous_encryption_requirement(version, marker):

@@ -1212,13 +1212,14 @@ export function decodeEffectContent(value: unknown): EffectContent {
 }
 
 function nativeEffectContent(content: Record<string, unknown>): NativeEffectContent {
-  const model = enumString(content.model, ["H60A6", "H607C", "H1771", "H60B0"], "native model");
-  const zoned = model === "H607C" || model === "H1771" || model === "H60B0";
+  const model = enumString(content.model, ["H60A6", "H607C", "H1771", "H60B0", "H60B2"], "native model");
+  const zoned = model !== "H60A6";
   const family = integerValue(content.family, "native family", 0, 65535);
   const revision = model === "H60B0" ? integerValue(content.revision, "native revision", 0, 3) : undefined;
   const combined = model === "H60B0" && family === 81;
   if ((model === "H60A6" && family !== 797 && family !== 798) ||
-      (model === "H607C" && family > 255) || (model === "H1771" && family !== 957)) invalid("unsupported native family");
+      (model === "H607C" && family > 255) || (model === "H1771" && family !== 957) ||
+      (model === "H60B2" && family !== 803)) invalid("unsupported native family");
   const layerValues = arrayValue(content.layers, "native layers", 255);
   if (!layerValues.length && !combined) invalid("native effects require at least one layer");
   if (zoned && layerValues.length > (model === "H60B0" ? 3 : 2)) invalid("native zoned effects cannot add layers");
@@ -1228,6 +1229,7 @@ function nativeEffectContent(content: Record<string, unknown>): NativeEffectCont
         : revision !== 3 || ![922, 923].includes(family) || layerValues.length !== 3
   )) invalid("native family does not match its revision");
   if (model === "H1771" && layerValues.length !== 2) invalid("native dual-source effects require two sections");
+  if (model === "H60B2" && layerValues.length !== 1) invalid("native palette effects require one section");
   return {
     kind: "native_effect",
     model,

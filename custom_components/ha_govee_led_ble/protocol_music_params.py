@@ -12,6 +12,7 @@ from kaitaistruct import KaitaiStream
 
 from .music_semantics import COMPANION_MUSIC_LAYOUTS, MusicVariant
 from .protocol_core import (
+    H60b2MusicBody,
     H607cMusicBody,
     H607cMusicWrite,
     H617aControlPayload,
@@ -80,8 +81,9 @@ def parse_music_parameters(variant: MusicVariant, body: bytes) -> Any:
         if int(root.mode) != variant.mode_code or not root._io.is_eof():
             raise ValueError("music body does not match qualified layout")
         return root
-    if variant.layout == "h1771_music_body":
-        root = H1771MusicBody.from_bytes(body)
+    if variant.layout in {"h1771_music_body", "h60b2_music_body"}:
+        root_type = H1771MusicBody if variant.layout == "h1771_music_body" else H60b2MusicBody
+        root = root_type.from_bytes(body)
         root._read()
         if (
             int(root.mode) != variant.mode_code
@@ -190,13 +192,26 @@ def encode_music_parameters(
         return encode_h60b0_music_parameters(
             variant, parameters, palette, calm, physical_ic_count, preserve_companions=preserve_companions
         )
-    if variant.layout == "h1771_music_body":
+    if variant.layout in {"h1771_music_body", "h60b2_music_body"}:
         root = parse_music_parameters(variant, variant.template)
-        if parameters:
-            raise ValueError("unsupported H1771 music parameters")
+        for spec in variant.parameters:
+            if spec.profile_key in parameters:
+                direct_value = int(parameters[spec.profile_key])
+                setattr(
+                    root.tail,
+                    spec.wire_field,
+                    _rgb(root.tail, direct_value >> 16, (direct_value >> 8) & 255, direct_value & 255)
+                    if spec.wire_field == "background"
+                    else direct_value,
+                )
+        if parameters.keys() - {spec.profile_key for spec in variant.parameters}:
+            raise ValueError("unsupported music parameters")
         _set_music_palette(root, variant, palette)
         if variant.supports_style and calm is not None:
-            root.tail.style = int(not calm)
+            style = root.tail.style
+            root.tail.style = (
+                type(style).__members__["calm" if calm else "dynamic"] if isinstance(style, IntEnum) else int(not calm)
+            )
         elif calm:
             raise ValueError("music style is unsupported")
         return serialize_native_body(root)

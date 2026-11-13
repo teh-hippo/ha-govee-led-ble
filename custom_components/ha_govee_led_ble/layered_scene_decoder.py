@@ -134,7 +134,7 @@ def decode_workshop_effect(
 ) -> tuple[LayeredEffect, int]:
     """Decode a Workshop parameter through its model-specific generated structure."""
     grammar = get_profile(model).effect_grammar
-    if grammar in {"H6046", "H617A"}:
+    if grammar in {"H6046", "H617A", "H60B2"}:
         parsed, trailing_padding = parse_workshop_body(raw_param)
         records = parsed.layers
     elif grammar == "H6199":
@@ -157,7 +157,7 @@ def encode_workshop_effect(
     grammar = profile.effect_grammar
     layers = _profile_layers(effect, profile)
     serializer: Callable[[Any], bytes]
-    if grammar in {"H6046", "H617A"}:
+    if grammar in {"H6046", "H617A", "H60B2"}:
         root = WorkshopBody()
         root.a3_type = b"\x02"
         root.num_layers = len(layers)
@@ -196,8 +196,19 @@ def _profile_layers(effect: LayeredEffect, profile: ModelProfile | None) -> tupl
     layers = []
     for layer in effect.layers:
         selection = layer.selection
+        area = layer.area
         width = layer.area.width_tenths or 10
         area_ic = profile.physical_ic_count if width == 10 else profile.physical_ic_count // 10 * width
+        minimum_ic = (
+            2
+            if selection.type == SelectionType.SEGMENT
+            else 1
+            if selection.type in {SelectionType.CONTINUOUS, SelectionType.RANDOM, SelectionType.CUSTOM}
+            else 0
+        )
+        if area_ic < minimum_ic:
+            area = replace(area, width_tenths=10)
+            area_ic = profile.physical_ic_count
         if selection.type in {SelectionType.SEGMENT, SelectionType.CONTINUOUS}:
             maximum = area_ic // 2 if selection.type == SelectionType.SEGMENT else area_ic
             quantity = min(selection.quantity, maximum)
@@ -223,6 +234,7 @@ def _profile_layers(effect: LayeredEffect, profile: ModelProfile | None) -> tupl
         layers.append(
             replace(
                 layer,
+                area=area,
                 selection=selection,
                 unknown_flags=layer.unknown_flags & int(GoveeShared.CompatibilityFlags.v0_brightness_mask)
                 if profile.rgbic_scene_v0

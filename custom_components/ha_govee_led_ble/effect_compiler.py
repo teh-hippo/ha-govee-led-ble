@@ -77,6 +77,7 @@ from .native_scenes import (
 from .protocol_core import (
     H60a6EffectFrame,
     H60b0CommandAck,
+    H60b2DiyBody,
     H607cDiyBody,
     H607cPaintBody,
     H607cSceneBody,
@@ -478,7 +479,7 @@ def _prepare_native_effect(item: LibraryItem, model: str, profile: ModelProfile)
     content = item.content
     if not isinstance(content, NativeEffect):
         raise ValueError("native compiler requires native content")
-    if profile.effect_grammar in {"H60B0", "H607C"}:
+    if profile.effect_grammar in {"H60B0", "H60B2", "H607C"}:
         require_effect_route(model, _effect_workflow(content), (profile.effect_grammar,), profile=profile)
         validate_effect_eligibility(content, model, profile=profile)
     elif profile.effect_grammar == "H1771":
@@ -722,7 +723,8 @@ def _compile_workshop_effect(
         diy_code,
         H6199_WORKSHOP_APPLY_MUSIC_CODE,
         scene_type=H617A_WORKSHOP_SCENE_TYPE
-        if profile.command_grammar in {"H6072", "H6072-legacy", "H607C", "H617A", "H7020"}
+        if profile.workshop_scene_selector is None
+        and profile.command_grammar in {"H6072", "H6072-legacy", "H607C", "H617A", "H7020"}
         else 0,
         profile=profile,
     )
@@ -925,6 +927,8 @@ def compile_native_effect(
         if profile.effect_grammar == "H60B0" and content.family == 81
         else int(H60b0CommandAck.UploadKind.native_diy)
         if profile.effect_grammar == "H60B0"
+        else int(H60b2DiyBody.UploadSubtype.native_diy)
+        if profile.effect_grammar == "H60B2"
         else int(H607cDiyBody.UploadSubtype.native_diy)
         if profile.effect_grammar == "H607C"
         else int(H1771EffectUpload.UploadKind.native_diy)

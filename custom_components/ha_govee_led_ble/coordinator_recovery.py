@@ -122,6 +122,7 @@ class _RecoveryMixin(_CoordinatorBase):
             source_0_enabled=zone_flags.get("source_0_enabled"),
             source_1_enabled=zone_flags.get("source_1_enabled"),
             top_enabled=zone_flags.get("top_enabled"),
+            middle_enabled=zone_flags.get("middle_enabled"),
             side_enabled=zone_flags.get("side_enabled"),
             bottom_enabled=zone_flags.get("bottom_enabled"),
             bottom_kelvin=observed_controls["bottom_kelvin"],
@@ -221,7 +222,7 @@ class _RecoveryMixin(_CoordinatorBase):
                     deadline=time.monotonic() + 4.0,
                 ):
                     return False
-            elif self.profile.setting_grammar in {"H607C", "H60B0"}:
+            elif self.profile.setting_grammar in {"H607C", "H60B0", "H60B2"}:
                 from .generated_protocol_adapter import build_boolean_control_query
 
                 if not await self._as_coordinator._async_read_setting_fields(

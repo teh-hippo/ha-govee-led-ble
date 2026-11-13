@@ -82,6 +82,7 @@ COMPANION_MUSIC_LAYOUTS = frozenset(
         "h6046_music_body",
         "h1771_music_body",
         "h60b0_music_body",
+        "h60b2_music_body",
         "h6181_music_body",
     }
 )
@@ -109,6 +110,36 @@ H6181_MUSIC_VARIANTS = (
         palette_bounds=(1, 8),
         supports_fixed_colour=False,
     ),
+)
+
+_H60B2_PALETTE = "07ff0000ff7f00ffff0000ff000000ff00ffff8b00ff"
+H60B2_MUSIC_VARIANTS = tuple(
+    MusicVariant(
+        code,
+        "H60B2 candidate onboard palette and companion controls",
+        "h60b2_music_body",
+        bytes.fromhex(f"{code:02x}{_H60B2_PALETTE}" + ("00" if code in (75, 67) else "00000019" if code == 72 else "")),
+        (
+            MusicParamSpec("music_hopping_background", "background", "background", "number", 0, 0, 0xFFFFFF),
+            MusicParamSpec(
+                "music_hopping_brightness", "relative_brightness", "relative_brightness", "number", 25, 1, 100
+            ),
+        )
+        if code == 72
+        else (),
+        supports_style=code in (75, 67),
+        palette_bounds=bounds,
+        supports_fixed_colour=False,
+    )
+    for code, bounds in (
+        (131, (1, 8)),
+        (75, (1, 8)),
+        (72, (1, 8)),
+        (99, (2, 8)),
+        (81, (4, 8)),
+        (73, (1, 8)),
+        (67, (2, 8)),
+    )
 )
 
 _H60B0_PALETTE = "07ff0000ff7f00ffff0000ff000000ff00ffff8b00ff"

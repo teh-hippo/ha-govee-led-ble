@@ -1,4 +1,10 @@
 command_write
+speculative/h60b2_control
+speculative/h60b2_status_reply
+speculative/h60b2_music_body
+speculative/h60b2_music_write
+speculative/h60b2_diy_body
+speculative/h60b2_effect_upload
 speculative/h619a_status_reply
 speculative/h60b0_command_write
 speculative/h60b0_command_ack
