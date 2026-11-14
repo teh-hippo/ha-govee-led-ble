@@ -209,6 +209,8 @@ async def test_music_observes_qualified_fields_without_confirming_ambiguous_sett
     coordinator.pact_type, coordinator.pact_code = 10, 2
     coordinator._note_identity(fw_version="2.04.00", hw_version="2.01.01")
     await coordinator._start_notify()
+    coordinator._h607c_marker_pact = (10, 2)
+    coordinator._resolve_h607c_pact(preserve_state=True)
     receive = client.start_notify.call_args.args[1]
     coordinator.music_mode, coordinator.music_sensitivity = "dynamic", 73
     coordinator.music_color, coordinator.music_calm = (12, 34, 56), True

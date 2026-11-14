@@ -76,8 +76,12 @@ async def test_h607c_optional_setting_timeout_preserves_required_setup(
     client = MagicMock(is_connected=True, disconnect=AsyncMock(), start_notify=AsyncMock())
 
     async def connect():
+        if c._client is client and c._notification_token is not None:
+            return client
         c._client = client
         await c._start_notify()
+        c._h607c_marker_pact = (1, 1)
+        c._resolve_h607c_pact(preserve_state=True)
         return client
 
     async def disconnect(_client):
@@ -123,8 +127,12 @@ async def test_h607c_setup_cleans_up_after_optional_exception(hass, monkeypatch,
     client = MagicMock(is_connected=True, disconnect=AsyncMock(), start_notify=AsyncMock())
 
     async def connect():
+        if c._client is client and c._notification_token is not None:
+            return client
         c._client = client
         await c._start_notify()
+        c._h607c_marker_pact = (1, 1)
+        c._resolve_h607c_pact(preserve_state=True)
         return client
 
     async def disconnect(_client):
@@ -192,6 +200,8 @@ async def test_h607c_hold_optional_failure_keeps_basic_read_and_quarantines_repl
     client.disconnect = AsyncMock(side_effect=disconnect)
     c._client = client
     await c._start_notify()
+    c._h607c_marker_pact = (1, 1)
+    c._resolve_h607c_pact(preserve_state=True)
     monkeypatch.setattr(c, "_identity_incomplete", lambda: False)
     monkeypatch.setattr(c, "_receive_is_stale", lambda: False)
     monkeypatch.setattr(f"{M}.asyncio.sleep", AsyncMock())
