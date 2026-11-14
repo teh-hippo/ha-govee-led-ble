@@ -271,7 +271,7 @@ async def test_nonsegment_restore_never_overwrites_notification_after_await(phys
     coordinator.profile = replace(coordinator.profile, segment_count=0)
     prior = PriorControlState("colour", True, 37, (1, 2, 3))
 
-    async def send(packet):
+    async def send(packet, **kwargs):
         if parse_static_write(packet) is not None:
             coordinator.rgb_color = (8, 9, 10)
             coordinator.brightness_pct = 12

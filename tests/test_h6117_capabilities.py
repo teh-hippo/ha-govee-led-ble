@@ -6,7 +6,6 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from bleak import BleakError
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.exceptions import HomeAssistantError
 
@@ -33,6 +32,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_power_query,
     require_profile_packet,
 )
+from custom_components.ha_govee_led_ble.govee_encryption import GoveeTransportError
 from custom_components.ha_govee_led_ble.light_commands import (
     build_color_rgb,
     build_color_temp,
@@ -407,7 +407,7 @@ async def test_identity_refresh_rejects_replaced_subscription(reconnect_identity
         coordinator._notification_token = object()
 
     coordinator._client.write_gatt_char.side_effect = replace_subscription
-    with pytest.raises(BleakError, match="confirming controller identity"):
+    with pytest.raises(GoveeTransportError, match="identity_subscription_changed"):
         await coordinator._ensure_connected()
     assert not any(packet[0] != 0xAA for packet in packets)
 
@@ -463,13 +463,10 @@ async def test_studio_snapshot_qualifies_identity_before_applying(
         )
         assert [packet for packet in packets if packet[0] != 0xAA] == list(compiled.packets)
         assert coordinator.identity_fields_confirmed()
-    elif cold:
+    else:
         with pytest.raises(HomeAssistantError) as error:
             await apply()
         assert error.value.translation_key == "identity_not_ready"
-    else:
-        with pytest.raises(RuntimeError, match="current power, mode and brightness"):
-            await apply()
     if not identity_available:
         assert not any(packet[0] != 0xAA for packet in packets)
         assert coordinator.control_write_attempts == 0

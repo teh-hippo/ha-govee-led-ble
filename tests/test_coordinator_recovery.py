@@ -704,10 +704,10 @@ async def test_h6179_zero_kelvin_rgb_observation_replaces_retained_white_and_res
     ):
         assert await coordinator.async_restore_effect_control_state(state, overwritten_diy_code=None)
 
-    assert send.await_args_list == [
-        call(build_power(True, "H6179")),
-        call(build_brightness(100, "H6179")),
-        call(build_color_rgb(*rgb, "H6179")),
+    assert [call.args[0] for call in send.await_args_list] == [
+        build_power(True, "H6179"),
+        build_brightness(100, "H6179"),
+        build_color_rgb(*rgb, "H6179"),
     ]
     refresh.assert_awaited_once_with(RefreshRequest(on=True, brightness=100, rgb_color=rgb, zero_kelvin=True))
 

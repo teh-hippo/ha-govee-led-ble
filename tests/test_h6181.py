@@ -11,6 +11,9 @@ from custom_components.ha_govee_led_ble.effect_domain import EffectPair, Library
 from custom_components.ha_govee_led_ble.effect_protocol_decoder import decode_effect_frames
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_brightness,
+    build_firmware_query,
+    build_hardware_query,
+    build_power,
     require_profile_packet,
     table_kelvin_rgb,
 )
@@ -36,6 +39,130 @@ def test_ordinary_colour_and_raw_brightness_match_their_distinct_contracts():
     assert profile.outbound_transform is not None
     for percent, raw in ((1, 20), (50, 136), (100, 254)):
         assert profile.outbound_transform(build_brightness(percent, "H6181")) == frame(bytes([0x33, 4, raw]))
+
+
+@pytest.mark.parametrize(
+    "pact,firmware,hardware",
+    [
+        ((None, None), None, None),
+        ((None, None), "1.03.00", None),
+        ((None, None), None, "1.00.03"),
+        ((None, None), "1.03.01", "1.00.03"),
+        ((None, None), "1.03.00", "1.00.04"),
+        ((10, 1), "1.03.00", "1.00.03"),
+        ((10, 2), "1.03.00", "1.00.03"),
+        ((10, 3), "1.03.00", "1.00.03"),
+    ],
+)
+def test_legacy_colour_does_not_change_other_revision_contexts(pact, firmware, hardware):
+    profile = device_profile("H6181", *pact, firmware=firmware, hardware=hardware)
+    for packet in (build_color_rgb(255, 0, 0, "H6181"), build_color_temp(4000, "H6181")):
+        assert (profile.outbound_transform(packet) if profile.outbound_transform else packet) == packet
+
+
+@pytest.fixture
+async def legacy_colour(hass):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6181", configuration_url=None)
+    client = MagicMock(is_connected=True, start_notify=AsyncMock(), write_gatt_char=AsyncMock())
+    coordinator._client = client
+    coordinator._reply_gate.timeout = 0
+    coordinator._note_identity(fw_version="1.03.00", hw_version="1.00.03")
+    await coordinator._start_notify()
+    return coordinator, client
+
+
+def confirm_legacy_identity(client):
+    receive = client.start_notify.call_args.args[1]
+    receive(None, bytearray(frame(b"\xaa\x06" + b"1.03.00")))
+    receive(None, bytearray(frame(b"\xaa\x07\x03" + b"1.00.03")))
+
+
+@pytest.mark.parametrize(
+    "packet,wire,field,value,reply",
+    [
+        (
+            build_color_rgb(255, 0, 0, "H6181"),
+            "330502ff000000000000",
+            "rgb_color",
+            (255, 0, 0),
+            "aa0502ff000000000000",
+        ),
+        (
+            build_color_temp(4000, "H6181"),
+            "330502ffffff01ffd5a1",
+            "color_temp_kelvin",
+            4000,
+            "aa0502ffffff01ffd1a3",
+        ),
+    ],
+)
+async def test_legacy_colour_preserves_logical_expectations_and_strict_readback(
+    legacy_colour, packet, wire, field, value, reply
+):
+    coordinator, client = legacy_colour
+    confirm_legacy_identity(client)
+    await coordinator._async_write_packet(client, packet, arm_expected=True)
+    client.write_gatt_char.assert_awaited_once()
+    assert client.write_gatt_char.call_args.args[1] == frame(bytes.fromhex(wire))
+    assert coordinator._expected_state[field][0] == value
+    receive = client.start_notify.call_args.args[1]
+    receive(None, bytearray(frame(bytes.fromhex("aa050d000000"))))
+    assert field not in coordinator._field_revisions
+    receive(None, bytearray(frame(bytes.fromhex(reply))))
+    assert getattr(coordinator, field) == value
+    assert getattr(coordinator, f"{field}_source") == "observed"
+
+
+@pytest.mark.parametrize("confirmed", [(), ("fw_version",), ("hw_version",), ("reconnect",)])
+@pytest.mark.parametrize("arm_expected", [False, True])
+async def test_legacy_colour_cannot_use_cached_or_partially_confirmed_identity(legacy_colour, confirmed, arm_expected):
+    coordinator, client = legacy_colour
+    if confirmed == ("reconnect",):
+        confirm_legacy_identity(client)
+        coordinator._clear_client_state(client)
+        coordinator._client = client
+        await coordinator._start_notify()
+    else:
+        for field in confirmed:
+            coordinator._observe_identity_field(field, getattr(coordinator, field))
+    with pytest.raises(ValueError, match="current-subscription device identity"):
+        await coordinator._async_write_packet(client, build_color_rgb(255, 0, 0, "H6181"), arm_expected=arm_expected)
+    client.write_gatt_char.assert_not_awaited()
+    assert coordinator._expected_state == {}
+    assert coordinator.control_write_attempts == 0
+
+
+@pytest.mark.parametrize("change", ["identity", "profile", "subscription", "client"])
+async def test_legacy_colour_rechecks_authorisation_after_the_write_guard(legacy_colour, change):
+    coordinator, client = legacy_colour
+    confirm_legacy_identity(client)
+
+    def revoke():
+        if change == "identity":
+            coordinator._confirmed_identity_fields.discard("hw_version")
+        elif change == "profile":
+            coordinator._note_identity(fw_version="1.03.01")
+        elif change == "subscription":
+            coordinator._notification_token = object()
+        else:
+            coordinator._client = MagicMock(is_connected=True)
+
+    with pytest.raises(ValueError, match="current-subscription device identity"):
+        await coordinator._async_write_packet(client, build_color_rgb(255, 0, 0, "H6181"), before_write=revoke)
+    client.write_gatt_char.assert_not_awaited()
+    assert coordinator._expected_state == {}
+
+
+async def test_legacy_colour_allows_untransformed_identity_queries_and_power(legacy_colour):
+    coordinator, client = legacy_colour
+    packets = (
+        build_firmware_query("H6181"),
+        build_hardware_query("H6181"),
+        build_power(True, "H6181"),
+    )
+    for packet in packets:
+        await coordinator._async_write_packet(client, packet)
+    assert [call.args[1] for call in client.write_gatt_char.await_args_list] == list(packets)
 
 
 @pytest.mark.parametrize("selector", [2, 13])

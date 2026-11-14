@@ -537,7 +537,6 @@ def _coordinator(*, readable: bool = True):
         segment_brightness=[100] * 15,
         segment_state_source="initial",
     )
-    coordinator._authorization_profile = lambda: coordinator.profile
 
     async def refresh_segments():
         coordinator.segment_state_source = "observed"

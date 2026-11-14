@@ -222,6 +222,7 @@ class ModelProfile:
     video_firmware_conditions: tuple[VideoFirmwareCondition, ...] = ()
     video_control_exclusions: tuple[tuple[str, str], ...] = ()
     profile_identity_fields: frozenset[str] = frozenset()
+    static_identity_fields: frozenset[str] = frozenset()
     # Set when Pact alone changes capabilities, so the profile also resolves before hardware/firmware replies arrive.
     profile_pact_dependent: bool = False
     # Colour and Kelvin controls are presented before identity resolves, but writes need fresh qualified Pact.
@@ -856,6 +857,12 @@ def _h6181_wire(packet: bytes) -> bytes:
     from .protocol_transforms import h6181_outbound_transform
 
     return h6181_outbound_transform(packet)
+
+
+def _h6181_legacy_colour_wire(packet: bytes) -> bytes:
+    from .protocol_transforms import h6181_outbound_transform
+
+    return h6181_outbound_transform(packet, colour_effect=True)
 
 
 MODEL_PROFILES: dict[str, ModelProfile] = {
@@ -2220,6 +2227,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         effect_workflows=frozenset({"native_scenes", "edited_palette_scenes", "single", "multi", "native_music"}),
         colour_mode_query_selector=1,
         profile_identity_fields=frozenset({"fw_version", "hw_version"}),
+        static_identity_fields=frozenset({"fw_version", "hw_version"}),
         profile_pact_dependent=True,
         read_domains=frozenset(
             {ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE, ReadDomain.FIRMWARE, ReadDomain.HARDWARE}
@@ -2980,11 +2988,12 @@ def device_profile(
         profile = get_profile(model)
         later = pact_type is not None and pact_code is not None and pact_type >= 10 and pact_code >= 1
         if not later:
+            legacy_colour = firmware == "1.03.00" and hardware == "1.00.03"
             return replace(
                 profile,
                 status_grammar="H6181",
                 brightness_wire_range=(20, 254),
-                outbound_transform=_h6181_wire,
+                outbound_transform=_h6181_legacy_colour_wire if legacy_colour else _h6181_wire,
                 diy_upload_transport="a1_02",
                 music_modes=(),
                 music_variants=(),
@@ -3003,6 +3012,7 @@ def device_profile(
         modes = profile.music_modes if palette_music else ("dynamic", "soft")
         return replace(
             profile,
+            static_identity_fields=frozenset(),
             brightness_wire_range=None if percentage else (20, 254),
             outbound_transform=None if percentage else _h6181_wire,
             music_modes=modes if percentage else (),
