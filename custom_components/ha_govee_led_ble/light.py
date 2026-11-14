@@ -343,7 +343,10 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         ):
             return ColorMode.BRIGHTNESS
         if coordinator.profile.main_colour_sources:
-            return ColorMode.COLOR_TEMP if type(main_source_colour(coordinator)) is int else ColorMode.RGB
+            colour = main_source_colour(coordinator)
+            if colour is None:
+                return ColorMode.UNKNOWN
+            return ColorMode.COLOR_TEMP if type(colour) is int else ColorMode.RGB
         if coordinator.color_mode in (None, ParsedMode.COLOUR):
             if coordinator.color_temp_kelvin is not None and coordinator.color_temp_kelvin_source != "initial":
                 return ColorMode.COLOR_TEMP

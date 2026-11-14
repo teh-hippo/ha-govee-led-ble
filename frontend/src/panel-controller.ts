@@ -1176,6 +1176,7 @@ export class PanelController {
     }
     if (this.model.liveApplyEnabled) {
       this.preview.toggle(scene);
+      this.model.rememberLiveApplyChoice();
       if (this.model.autoSaveEnabled) {
         if (
           this.model.builtInDefaultSource &&
@@ -1200,10 +1201,12 @@ export class PanelController {
       !this.model.dirty
     ) {
       this.model.patch({ liveApplyEnabled: true });
+      this.model.rememberLiveApplyChoice();
       await this.applySavedIdentity(currentItem, this.model.editorTransitionEpoch);
       return;
     }
     this.preview.toggle(scene);
+    this.model.rememberLiveApplyChoice();
   }
 
   public async useObservedH6179DiyCode(): Promise<boolean> {

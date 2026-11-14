@@ -84,7 +84,8 @@ async def test_main_colour_uses_area_controls_without_changing_selection(source_
         assert physical_writes == [frame("33052c01010102030000"), frame("33052c02010102030000ff00")]
         assert state["colours"] == [(1, 2, 3)] * 9
         assert state["bottom"] == 4000
-        assert light.rgb_color == (1, 2, 3)
+        assert light.color_mode is ColorMode.UNKNOWN
+        assert light.rgb_color is None
     else:
         preview = bytes(table_kelvin_rgb(5000)).hex()
         assert physical_writes == [
@@ -100,6 +101,32 @@ async def test_main_colour_uses_area_controls_without_changing_selection(source_
     assert state["levels"] == [40] * 8 + [60]
     assert state["bottom_brightness"] == 40
     assert light.brightness is not None
+
+
+@pytest.mark.parametrize(
+    ("flags", "colours", "mode", "rgb", "kelvin"),
+    [
+        (0xA0, [(0, 0, 255)] * 8 + [table_kelvin_rgb(2700)], ColorMode.RGB, (0, 0, 255), None),
+        (0xE0, [(0, 0, 255)] * 8 + [table_kelvin_rgb(2700)], ColorMode.UNKNOWN, None, None),
+        (0xB0, [(0, 0, 255)] * 9, ColorMode.UNKNOWN, None, None),
+        (0x90, [(0, 0, 255)] * 9, ColorMode.COLOR_TEMP, None, 4000),
+        (0x80, [(0, 0, 255)] * 9, ColorMode.UNKNOWN, None, None),
+    ],
+)
+async def test_main_colour_after_reload_uses_only_known_enabled_areas(source_wire, flags, colours, mode, rgb, kelvin):
+    coordinator, state = source_wire
+    coordinator.source_static_intents.clear()
+    state.update(flags=flags, colours=colours)
+    assert await coordinator.refresh_state(RefreshRequest(refresh_all=True, query_segments=True))
+    light = GoveeBLELight(coordinator)
+    assert light.color_mode is mode
+    assert light.rgb_color == rgb
+    assert light.color_temp_kelvin == kelvin
+    assert light.supported_color_modes == {ColorMode.RGB, ColorMode.COLOR_TEMP}
+    coordinator.boolean_control_state.pop("top_enabled")
+    assert light.color_mode is ColorMode.UNKNOWN
+    assert light.rgb_color is None
+    assert light.color_temp_kelvin is None
 
 
 async def test_main_ha_service_delivers_colour_instead_of_filtering_it(hass, source_wire):
@@ -138,6 +165,7 @@ async def test_invalid_main_colour_is_rejected_before_power_brightness_or_previe
 
 async def test_partial_main_kelvin_preserves_confirmed_areas_and_reconciles_bottom(source_wire, virtual_clock):
     coordinator, state = source_wire
+    state["flags"] = 0xB0
     state["apply"] = True
     state["ignore_bottom_kelvin"] = True
     light = GoveeBLELight(coordinator)
@@ -159,6 +187,7 @@ async def test_partial_main_kelvin_preserves_confirmed_areas_and_reconciles_bott
 
 async def test_main_kelvin_rejects_contradictory_final_native_observation(source_wire):
     coordinator, state = source_wire
+    state["flags"] = 0xB0
     state["apply"] = True
     state["mode_bottom"] = 4000
     light = GoveeBLELight(coordinator)
@@ -757,12 +786,64 @@ async def test_preview_requires_complete_source_values_and_preserves_them_in_sto
     coordinator.profile = PROFILE
     prior = PriorControlState("scene", True, 50, (1, 2, 3), top_enabled=True, side_enabled=False, bottom_enabled=True)
     coordinator.capture_effect_control_state = MagicMock(return_value=prior)
+    coordinator.source_field_fresh = MagicMock(return_value=True)
     with pytest.raises(RuntimeError, match="restorable source values"):
         await async_prepare_effect_control_state(coordinator, require_restorable_static=True)
     complete = replace(prior, top_kelvin=2700, bottom_kelvin=4000, bottom_brightness=40, ripple_speed=30)
     assert PriorControlState.from_dict(complete.to_dict()) == complete
     coordinator.capture_effect_control_state.return_value = complete
     assert await async_prepare_effect_control_state(coordinator, require_restorable_static=True)
+
+
+@pytest.mark.parametrize(
+    ("cold", "drop_readback", "error"),
+    [(False, False, None), (True, False, "state_not_restorable"), (False, True, "state_unavailable")],
+)
+async def test_live_acquires_source_state_without_guessing_missing_intent(
+    hass, monkeypatch, source_wire, virtual_clock, cold, drop_readback, error
+):
+    from custom_components.ha_govee_led_ble.effect_preview import PreviewPhase, PreviewWriteDisposition
+    from tests.test_effect_preview import _manager, _open
+
+    coordinator, state = source_wire
+    state["drop_source_readback"] = drop_readback
+    if cold:
+        coordinator.source_static_intents.clear()
+    coordinator._field_received_at.clear()
+    manager, _cache = await _manager(hass, monkeypatch, coordinator)
+    transmit = AsyncMock()
+    monkeypatch.setattr(manager, "_async_transmit_request", transmit)
+    template = next(
+        template
+        for template in MODEL_EFFECT_CATALOGUES["H60B0"].templates
+        if template.id == "template:h60b0:1:single:1"
+    )
+    events = []
+    owner = object()
+    session = _open(manager, owner, events)
+    try:
+        await manager.async_queue_snapshot(
+            session_id=session,
+            owner=owner,
+            config_entry_id="entry-a",
+            sequence=1,
+            updated_at="2026-11-14T00:00:00Z",
+            item=LibraryItem.new("Source preview", template.content),
+        )
+        await manager.async_wait_idle("entry-a")
+        if error is None:
+            transmit.assert_awaited_once()
+            assert events[-1].write_disposition is PreviewWriteDisposition.COMPLETED
+            assert coordinator.capture_effect_control_state().restorable_source_colour(PROFILE)
+        else:
+            transmit.assert_not_awaited()
+            assert events[-1].phase is PreviewPhase.FAILED
+            assert events[-1].error_code == error
+            assert events[-1].write_disposition is PreviewWriteDisposition.NOT_STARTED
+            assert "could not be reached" not in events[-1].error_message
+        assert not any(call.args[1][0] == 0x33 for call in coordinator._client.write_gatt_char.await_args_list)
+    finally:
+        await manager.async_shutdown()
 
 
 async def test_reconnect_revokes_cached_pact_and_qualifies_the_current_marker(hass, monkeypatch):

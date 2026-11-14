@@ -155,13 +155,19 @@ def main_source_colour(coordinator: GoveeBLECoordinator) -> int | tuple[int, int
         return None
     profile = coordinator.profile
     colours: list[int | tuple[int, int, int]] = []
-    native_colours: list[int | None] = []
     for key in profile.main_colour_sources:
         source = _source(profile, key)
-        if source is None or f"source_colour_{key}" in coordinator._h607c_uncertain_state_fields:
+        if source is None or (enabled := source_power_state(coordinator, key)) is None:
+            return None
+        if not enabled:
+            continue
+        if f"source_colour_{key}" in coordinator._h607c_uncertain_state_fields:
             return None
         if source.native_control:
-            native_colours.append(getattr(coordinator, f"{key}_kelvin", None))
+            kelvin = getattr(coordinator, f"{key}_kelvin", None)
+            if not kelvin:
+                return None
+            colours.append(kelvin)
             continue
         if not source_segments_available(source, profile) or len(coordinator.segment_colors) < max(source.segments):
             return None
@@ -177,10 +183,7 @@ def main_source_colour(coordinator: GoveeBLECoordinator) -> int | tuple[int, int
             return None
     if not colours or len(set(colours)) != 1:
         return None
-    value = colours[0]
-    if type(value) is int and any(kelvin != value for kelvin in native_colours):
-        return None
-    return value
+    return colours[0]
 
 
 @dataclass(frozen=True, slots=True)
@@ -256,6 +259,11 @@ def source_field_fresh(coordinator: GoveeBLECoordinator, field: str) -> bool:
         return (
             coordinator._observed_power_write_generation == coordinator._power_write_generation
             and coordinator._observed_power_profile_generation == coordinator._profile_generation
+        )
+    if field == "color_mode":
+        return (
+            coordinator._observed_mode_write_generation == coordinator._mode_write_generation
+            and coordinator._observed_mode_profile_generation == coordinator._profile_generation
         )
     if field.startswith("boolean_"):
         return coordinator._source_power_observation_generation.get(field) == (

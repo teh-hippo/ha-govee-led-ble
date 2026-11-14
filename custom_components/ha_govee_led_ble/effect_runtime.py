@@ -88,6 +88,14 @@ _LOGGER = logging.getLogger(__name__)
 type _PriorEffectOrigin = tuple[ObservedDeviceState | None, ActiveEffectWorkspace | None]
 
 
+class EffectStateReadError(RuntimeError):
+    """Required independent observations could not be acquired."""
+
+
+class EffectRestorationError(RuntimeError):
+    """The observed state cannot be restored without losing its semantics."""
+
+
 @dataclass(slots=True)
 class _DeploymentTransaction:
     repository: EffectDeploymentRepository
@@ -1574,6 +1582,39 @@ async def async_prepare_effect_control_state(
     prior = capture() if require_restorable_static and capture is not None else None
     prior_mode = prior.mode if isinstance(prior, PriorControlState) else _coordinator_mode(coordinator)
     if require_restorable_static:
+        if profile.partition_segment_writes:
+            read_segments = prior_mode in {"colour", "unknown"}
+            fields = (
+                "is_on",
+                "brightness_pct",
+                "color_mode",
+                *(f"boolean_{source.control}" for source in profile.light_sources),
+                *(
+                    ("top_kelvin", "bottom_kelvin", "bottom_brightness", "ripple_speed")
+                    if profile.supports_ripple_speed
+                    else ()
+                ),
+                *(("segment_colors",) if read_segments else ()),
+            )
+            if not all(coordinator.source_field_fresh(field) for field in fields) or (
+                read_segments and (not isinstance(prior, PriorControlState) or prior.segment_colors is None)
+            ):
+                if (
+                    await coordinator.refresh_state(
+                        RefreshRequest(
+                            refresh_all=True,
+                            query_segments=read_segments,
+                            required_domains=profile.read_domains
+                            & {ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE, ReadDomain.MODE},
+                        )
+                    )
+                    is not True
+                    or coordinator.profile != profile
+                    or not all(coordinator.source_field_fresh(field) for field in fields)
+                ):
+                    raise EffectStateReadError("Could not read the current source state before Live")
+                prior = capture() if capture is not None else None
+                prior_mode = prior.mode if isinstance(prior, PriorControlState) else _coordinator_mode(coordinator)
         if profile.supports_ripple_speed and (
             not isinstance(prior, PriorControlState)
             or any(
@@ -1582,7 +1623,7 @@ async def async_prepare_effect_control_state(
             )
             or not prior.bottom_kelvin
         ):
-            raise RuntimeError("Could not read restorable source values before preview")
+            raise EffectRestorationError("Could not read restorable source values before preview")
         if any(
             name in profile.boolean_controls and getattr(prior, name, None) is None for name in NATIVE_ZONE_CONTROLS
         ):
@@ -1593,20 +1634,20 @@ async def async_prepare_effect_control_state(
                 if profile.setting_grammar == "H607C"
                 else "panel and ring"
             )
-            raise RuntimeError(f"Could not read restorable {zones} enablement before preview")
+            raise EffectRestorationError(f"Could not read restorable {zones} enablement before preview")
         if (
             profile.setting_grammar == "H607C"
             and prior_mode == "custom"
             and isinstance(prior, PriorControlState)
             and prior.diy_companion is None
         ):
-            raise RuntimeError("The current native DIY companion cannot be safely restored after preview")
+            raise EffectRestorationError("The current native DIY companion cannot be safely restored after preview")
         if (
             prior_mode == "music"
             and isinstance(prior, PriorControlState)
             and prior.music_mode not in profile.music_modes
         ):
-            raise RuntimeError("The current music mode cannot be safely restored after preview")
+            raise EffectRestorationError("The current music mode cannot be safely restored after preview")
         if prior_mode not in {"colour", "unknown"}:
             return True
         if profile.segment_colour_mode_ambiguous and not (
@@ -1615,7 +1656,9 @@ async def async_prepare_effect_control_state(
                 prior.static_rgb_known or prior.restorable_bar_white(profile) or prior.restorable_source_colour(profile)
             )
         ):
-            raise RuntimeError("The current per-bulb RGB or white intent cannot be safely restored after preview")
+            raise EffectRestorationError(
+                "The current per-bulb RGB or white intent cannot be safely restored after preview"
+            )
         if not profile.configured_string_counts:
             return True
         if (
@@ -1623,7 +1666,7 @@ async def async_prepare_effect_control_state(
             or not profile.can_read(ReadDomain.SEGMENTS)
             or await coordinator.async_refresh_segments() is not True
         ):
-            raise RuntimeError("Could not read a restorable current segment layout before preview")
+            raise EffectStateReadError("Could not read a restorable current segment layout before preview")
         prior = capture() if capture is not None else None
         colours = (
             prior.segment_colors
@@ -1645,7 +1688,9 @@ async def async_prepare_effect_control_state(
             or len(colours) != profile.segment_count
             or len(brightness) != profile.segment_count
         ):
-            raise RuntimeError("The current segment layout is incomplete and cannot be safely restored after preview")
+            raise EffectRestorationError(
+                "The current segment layout is incomplete and cannot be safely restored after preview"
+            )
         return True
     if not profile.state_readable:
         return False
