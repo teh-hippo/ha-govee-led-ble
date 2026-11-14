@@ -10,9 +10,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 from uuid import UUID
 
-from .const import ModelProfile
 from .coordinator import GoveeBLECoordinator
-from .effect_compiler import compile_application, resolve_diy_code
 from .effect_deployments import DeploymentRecord, EffectDeploymentRepository
 from .effect_domain import (
     EffectContent,
@@ -99,10 +97,7 @@ class EffectStudioApplication:
     ) -> DeploymentRecord:
         async with self.saved_effect_for_apply(
             item_id,
-            model=coordinator.model,
-            profile=coordinator.profile,
             expected_version=expected_version,
-            diy_code=diy_code,
         ) as item:
             kwargs: dict[str, Any] = {
                 "config_entry_id": config_entry_id,
@@ -124,18 +119,12 @@ class EffectStudioApplication:
         self,
         item_id: str,
         *,
-        model: str,
-        profile: ModelProfile | None = None,
         expected_version: int | None = None,
-        diy_code: int | None = None,
     ) -> AsyncIterator[LibraryItem]:
         async with self._library_condition:
             item = self.get_saved_effect(item_id)
             if expected_version is not None and item.version != expected_version:
                 raise EffectVersionConflictError(item.version)
-            compile_application(
-                item, model, diy_code=resolve_diy_code(item, diy_code, model=model, profile=profile), profile=profile
-            )
             self._applying_items[item.id] = self._applying_items.get(item.id, 0) + 1
         try:
             yield item

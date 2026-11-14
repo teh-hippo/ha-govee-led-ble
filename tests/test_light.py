@@ -1068,6 +1068,7 @@ async def test_saved_effects_are_compatible_reactive_and_lock_safe(
         saved,
         config_entry_id="entry-a",
         updated_at=apply_saved.await_args.kwargs["updated_at"],
+        compiled=apply_saved.await_args.kwargs["compiled"],
     )
     mock_coordinator.send_command.assert_awaited_once_with(build_power(True))
     assert mock_coordinator.is_on is True

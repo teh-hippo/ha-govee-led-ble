@@ -223,11 +223,9 @@ async def test_saved_scene_reconnects_before_compilation_after_idle_disconnect(h
         return MagicMock(is_connected=True)
 
     monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(side_effect=connect))
-    policies = []
 
     @asynccontextmanager
-    async def saved_effect_for_apply(*args, profile, **kwargs):
-        policies.append(profile.rgbic_scene_v0)
+    async def saved_effect_for_apply(*args, **kwargs):
         yield item
 
     engine = SimpleNamespace(async_apply_saved=AsyncMock())
@@ -242,4 +240,4 @@ async def test_saved_scene_reconnects_before_compilation_after_idle_disconnect(h
     await entity._async_apply_saved_item(item)
     coordinator._ensure_connected.assert_awaited_once()
     engine.async_apply_saved.assert_awaited_once()
-    assert policies == [not fresh_identity]
+    assert engine.async_apply_saved.await_args.kwargs["compiled"].rgbic_scene_v0 is (not fresh_identity)

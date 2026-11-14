@@ -465,6 +465,7 @@ async def test_apply_forwards_expected_item_version(
     response = await client.receive_json()
 
     assert response["success"] is True
+    assert apply_saved.await_args is not None
     apply_saved.assert_awaited_once_with(
         entry.runtime_data,
         item,
@@ -472,6 +473,7 @@ async def test_apply_forwards_expected_item_version(
         updated_at="2026-08-27T00:00:00Z",
         operation_id=None,
         diy_code=None,
+        compiled=apply_saved.await_args.kwargs["compiled"],
     )
 
 

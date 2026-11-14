@@ -1099,10 +1099,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             profile = await async_prepare_effect_profile(self.coordinator, intent=ControlIntent.USER)
             async with self._effect_backend.application.saved_effect_for_apply(
                 str(item.id),
-                model=self.coordinator.model,
                 expected_version=item.version,
-                profile=profile,
-                diy_code=diy_code,
             ) as current:
                 compiled = compile_application(
                     current,
@@ -1138,6 +1135,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                     kwargs: dict[str, Any] = {
                         "config_entry_id": self._config_entry_id,
                         "updated_at": dt_util.utcnow().isoformat(),
+                        "compiled": compiled,
                     }
                     if operation_id is not None:
                         kwargs["operation_id"] = operation_id
