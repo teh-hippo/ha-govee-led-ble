@@ -7,11 +7,13 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID
 
 import pytest
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.ha_govee_led_ble.const import KELVIN_RANGE_1000_10000, ModelProfile, ReadDomain
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
-from custom_components.ha_govee_led_ble.coordinator_refresh import STATE_QUERY_TIMEOUT, RefreshRequest
+from custom_components.ha_govee_led_ble.coordinator_refresh import STATE_QUERY_TIMEOUT
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode, decode_status_frame, parse_color_mode
+from custom_components.ha_govee_led_ble.diagnostics import async_get_config_entry_diagnostics
 from custom_components.ha_govee_led_ble.effect_catalogue import MODEL_EFFECT_CATALOGUES
 from custom_components.ha_govee_led_ble.effect_compiler import DIY_ACK_EVIDENCE, compile_application, compile_effect
 from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, MusicProfile, Origin, SourceKind
@@ -41,6 +43,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
 from custom_components.ha_govee_led_ble.h60a6_effects import decode_native_scene
 from custom_components.ha_govee_led_ble.h1771_effects import decode_h1771_diy, encode_h1771_diy
 from custom_components.ha_govee_led_ble.layered_scene import CatalogueRef
+from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.light_commands import (
     build_color_rgb,
     build_segment_brightness,
@@ -157,8 +160,9 @@ def test_candidate_queries_match_reconstructed_bytes(packet, prefix):
     require_profile_packet(packet, PROFILE)
 
 
-def test_candidate_colour_mode_status_uses_separate_kelvin_observation():
-    decoded = decode_status_frame(frame("aa050d010fa0"), profile=PROFILE)
+@pytest.mark.parametrize("selector", ["0d", "15"])
+def test_candidate_colour_mode_status_uses_separate_kelvin_observation(selector):
+    decoded = decode_status_frame(frame(f"aa05{selector}010fa0"), profile=PROFILE)
     assert decoded is not None and decoded.domain is ReadDomain.COLOUR_MODE
     mode = parse_color_mode(decoded.generated, "H1771", profile=PROFILE)
     assert mode.mode is ParsedMode.COLOUR and mode.color_temp_kelvin == 4000
@@ -294,20 +298,28 @@ async def test_candidate_identity_queries_use_bulk_path(hass, monkeypatch):
     assert coordinator._async_read_bulk_status.await_args.kwargs["domains"] == ()
 
 
-async def test_candidate_kelvin_verification_reads_the_ordinary_mode_reply(hass, monkeypatch):
+@pytest.mark.parametrize("kelvin", [2200, 4000])
+async def test_candidate_kelvin_verification_reads_the_ordinary_mode_reply(hass, monkeypatch, kelvin):
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H1771", configuration_url=None)
+    coordinator.is_on = True
     client = MagicMock(is_connected=True)
     coordinator._client = client
     monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
+    monkeypatch.setattr(coordinator, "_renew_foreground_lease", MagicMock())
+    light = GoveeBLELight(coordinator)
+    monkeypatch.setattr(light, "_async_supersede_preview", AsyncMock())
+    monkeypatch.setattr(light, "_notify_state_changed", MagicMock())
 
     async def write(_uuid, packet, **_kwargs):
         if packet == frame("aa0501"):
-            coordinator._notify_callback(None, bytearray(frame("aa050d010fa0")))
+            coordinator._notify_callback(None, bytearray(frame(f"aa051500{kelvin:04x}")))
 
     client.write_gatt_char = AsyncMock(side_effect=write)
-    assert await coordinator.refresh_state(RefreshRequest(color_temp_kelvin=4000, timeout=1))
-    assert coordinator.color_temp_kelvin == 4000 and coordinator.color_temp_kelvin_source == "observed"
+    await light.async_turn_on(color_temp_kelvin=kelvin)
+    assert coordinator.color_temp_kelvin == kelvin and coordinator.color_temp_kelvin_source == "observed"
+    assert coordinator.color_mode is ParsedMode.COLOUR
     assert client.write_gatt_char.await_args.args[1] == frame("aa0501")
+    assert sum(call.args[1][0] == 0x33 for call in client.write_gatt_char.await_args_list) == 1
 
 
 @pytest.fixture
@@ -326,7 +338,7 @@ def effect_connection(hass, monkeypatch, virtual_clock):
     replies = {
         frame("aa01"): frame("aa0101"),
         frame("aa04"): frame("aa0432"),
-        frame("aa0501"): frame("aa050d000000"),
+        frame("aa0501"): frame("aa0515000000"),
         frame("aaa501"): frame("aaa50164ff000064ff000064ff000064ff0000"),
         frame("ac030236a3"): frame("ac000100060300360107a30101"),
     }
@@ -435,7 +447,7 @@ async def test_effect_preparation_rejects_replaced_subscription(effect_connectio
     assert all(packet[0] != 0x33 for packet in writes)
 
 
-@pytest.mark.parametrize("source", ["saved", "preview"])
+@pytest.mark.parametrize("source", ["saved", "preview", "preview_rgb"])
 async def test_music_effect_uses_fresh_preparation_without_replaying_upload(
     hass, monkeypatch, effect_connection, source
 ):
@@ -446,6 +458,18 @@ async def test_music_effect_uses_fresh_preparation_without_replaying_upload(
     from tests.test_effect_preview import _manager, _open
 
     coordinator, writes, replies = effect_connection
+    if source == "preview_rgb":
+        coordinator.is_on = True
+        coordinator.color_mode = ParsedMode.MUSIC
+        coordinator._static_rgb_known = False
+        coordinator.segment_state_source = "initial"
+        light = GoveeBLELight(coordinator)
+        monkeypatch.setattr(light, "_async_supersede_preview", AsyncMock())
+        monkeypatch.setattr(light, "_notify_state_changed", MagicMock())
+        monkeypatch.setattr(coordinator, "_renew_foreground_lease", MagicMock())
+        await light.async_turn_on(rgb_color=(255, 0, 0))
+        assert coordinator.segment_state_source == "optimistic"
+        writes.clear()
     item = LibraryItem.new("Saved Flowing", MusicProfile("H1771", "flowing", 0))
     compiled = compile_application(item, "H1771")
     write = coordinator._client.write_gatt_char.side_effect
@@ -487,6 +511,85 @@ async def test_music_effect_uses_fresh_preparation_without_replaying_upload(
     assert [packet for packet in writes if packet[0] in (0x33, 0xA3)] == list(compiled.packets)
     assert coordinator.music_mode == "flowing"
     assert coordinator.music_sensitivity == 0
+
+
+@pytest.mark.parametrize(
+    ("selector", "kelvin", "reason"), [("7f", 2200, "unknown_selector"), ("15", 4000, "expectation_mismatch")]
+)
+async def test_failed_kelvin_retains_causal_diagnostics_after_packet_history_moves_on(
+    hass, monkeypatch, effect_connection, selector, kelvin, reason
+):
+    coordinator, writes, replies = effect_connection
+    coordinator.is_on = True
+    replies[frame("aa0501")] = frame(f"aa05{selector}00{kelvin:04x}")
+    light = GoveeBLELight(coordinator)
+    monkeypatch.setattr(light, "_async_supersede_preview", AsyncMock())
+    monkeypatch.setattr(light, "_notify_state_changed", MagicMock())
+    monkeypatch.setattr(coordinator, "_renew_foreground_lease", MagicMock())
+    await light.async_turn_on(color_temp_kelvin=2200)
+    failure = coordinator._last_control_failure
+    assert failure["reason"] == "verification_unavailable"
+    assert failure["requested"] == {"color_temp_kelvin": 2200}
+    assert failure["mode_observation"]["selector"] == int(selector, 16)
+    assert failure["mode_observation"]["reason"] == reason
+    assert failure["mode_observation"]["kelvin"] == (None if selector == "7f" else kelvin)
+    assert failure["profile"]["status_grammar"] == "H1771"
+
+    coordinator.color_temp_kelvin = 9000
+    coordinator._last_mode_observation = {}
+    for _ in range(60):
+        coordinator._notify_callback(None, bytearray(frame("aa0101")))
+    count = len(writes)
+    entry = MockConfigEntry(domain="ha_govee_led_ble", data={})
+    entry.runtime_data = coordinator
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+    assert diagnostics["coordinator"]["last_control_failure"] == failure
+    assert len(writes) == count
+    assert "11:22:33:44:55:66" not in json.dumps(diagnostics)
+
+
+async def test_live_rejection_keeps_qualified_recovery_context_without_writing(hass, monkeypatch, effect_connection):
+    from custom_components.ha_govee_led_ble.effect_preview import PreviewPhase
+    from tests.test_effect_preview import _manager, _open
+
+    coordinator, writes, _replies = effect_connection
+    coordinator._static_rgb_known = False
+    manager, _cache = await _manager(hass, monkeypatch, coordinator)
+    owner = object()
+    events = []
+    session = _open(manager, owner, events)
+    try:
+        await manager.async_queue_snapshot(
+            session_id=session,
+            owner=owner,
+            config_entry_id="entry-a",
+            sequence=1,
+            updated_at="2026-11-14T00:00:00Z",
+            item=LibraryItem.new("Flowing", MusicProfile("H1771", "flowing", 0)),
+        )
+        await manager.async_wait_idle("entry-a")
+        assert events[-1].phase is PreviewPhase.FAILED
+        history = manager._diagnostics.snapshot(config_entry_id="entry-a")["events"]
+        failure = next(event for event in history if event["code"] == "preview_preparation_failed")
+        context = failure["details"]["control_state"]
+        assert context["reason"] == "ambiguous_static_intent"
+        assert context["mode_observation"] == {
+            "selector": 0x15,
+            "mode": "colour",
+            "kelvin": None,
+            "accepted": True,
+            "reason": "accepted",
+        }
+        assert context["state"]["static_rgb_known"] is False
+        assert context["observations"]["color_mode"]["current_subscription"] is True
+        assert context["sources"]["source_0_enabled"] is True
+        assert context["source_generations"]["source_0_enabled"] == [
+            coordinator._power_write_generation,
+            coordinator._profile_generation,
+        ]
+        assert not any(packet[0] in (0x33, 0xA3) for packet in writes)
+    finally:
+        await manager.async_shutdown()
 
 
 async def test_candidate_full_refresh_reads_mode_and_native_settings(hass):

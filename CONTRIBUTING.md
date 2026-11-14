@@ -135,6 +135,9 @@ Run `make protocol` after a fresh clone, a new worktree or any `.ksy` change, an
 - For refactors, compare complete relevant public payloads and generated wire output, not selected fields alone.
   For fixes, demonstrate the old failure and intended new behaviour without blessing the defect as a compatibility requirement.
   Report software evidence separately from hardware observations; an accepted write or optimistic UI is not physical confirmation.
+- Retain bounded, redacted failure-time context for control verification and recovery decisions.
+  Later state or packet-history changes must not replace the evidence explaining the failure.
+  Diagnostic export is passive; do not query devices, retain private payloads or upload automatically.
 - Review both the exception and the proposed abstraction.
   Justify any remaining special treatment with evidence, check that equivalent capability combinations use the same core, and remove superseded branches, adapters, state and tests.
   Prefer a smaller implementation, but do not trade away explicit product declarations or safety boundaries to meet a line-count target.

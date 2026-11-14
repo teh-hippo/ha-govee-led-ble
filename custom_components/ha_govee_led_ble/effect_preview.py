@@ -1021,7 +1021,11 @@ class EffectPreviewManager:
                 "preview_preparation_failed" if preparation_failed else "preview_transport_failed",
                 correlation_id=request.correlation_id,
                 config_entry_id=request.config_entry_id,
-                details={"error_type": type(exc).__name__, "sequence": request.sequence},
+                details={
+                    "error_type": type(exc).__name__,
+                    "sequence": request.sequence,
+                    "control_state": exc.diagnostics if isinstance(exc, EffectPreparationError) else None,
+                },
             )
             started = writer is not None and writer.started
             message = (

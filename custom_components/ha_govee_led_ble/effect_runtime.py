@@ -1566,8 +1566,29 @@ def _coordinator_mode(coordinator: GoveeBLECoordinator) -> str:
 class EffectPreparationError(RuntimeError):
     """Required observations or lossless recovery are unavailable before a write."""
 
+    def __init__(self, message: str, *, reason: str = "required_state_unavailable") -> None:
+        super().__init__(message)
+        self.reason = reason
+        self.diagnostics: dict[str, Any] | None = None
+
 
 async def async_prepare_effect_control_state(
+    coordinator: GoveeBLECoordinator,
+    *,
+    require_restorable_static: bool,
+) -> bool:
+    from .effect_diagnostics import record_control_failure
+
+    try:
+        return await _async_prepare_effect_control_state(
+            coordinator, require_restorable_static=require_restorable_static
+        )
+    except EffectPreparationError as exc:
+        exc.diagnostics = record_control_failure(coordinator, exc.reason)
+        raise
+
+
+async def _async_prepare_effect_control_state(
     coordinator: GoveeBLECoordinator,
     *,
     require_restorable_static: bool,
@@ -1600,7 +1621,9 @@ async def async_prepare_effect_control_state(
                 and hasattr(coordinator, "_field_revisions")
                 and coordinator._field_revisions.get("color_mode", 0) <= mode_baseline
             ):
-                raise EffectPreparationError("Could not read the resident mode before preparing effect recovery")
+                raise EffectPreparationError(
+                    "Could not read the resident mode before preparing effect recovery", reason="missing_resident_mode"
+                )
             resident = capture() if capture is not None else None
             resident_mode = resident.mode if isinstance(resident, PriorControlState) else _coordinator_mode(coordinator)
             prepared_token = getattr(coordinator, "_notification_token", None)
@@ -1638,15 +1661,21 @@ async def async_prepare_effect_control_state(
             coordinator._field_revisions.get(field, 0) <= baseline for field, baseline in baselines.items()
         ):
             raise EffectPreparationError(
-                "Could not read current power, mode, brightness and source states before applying the effect"
+                "Could not read current power, mode, brightness and source states before applying the effect",
+                reason="missing_required_observations",
             )
         if require_restorable_static and coordinator.profile != profile:
-            raise EffectPreparationError("The device profile changed while preparing the effect")
+            raise EffectPreparationError(
+                "The device profile changed while preparing the effect", reason="profile_changed"
+            )
         if resident_mode is not None:
             resident = capture() if capture is not None else None
             current_mode = resident.mode if isinstance(resident, PriorControlState) else _coordinator_mode(coordinator)
             if current_mode != resident_mode or getattr(coordinator, "_notification_token", None) is not prepared_token:
-                raise EffectPreparationError("The device mode or subscription changed while preparing effect recovery")
+                raise EffectPreparationError(
+                    "The device mode or subscription changed while preparing effect recovery",
+                    reason="mode_or_subscription_changed",
+                )
     prior = capture() if require_restorable_static and capture is not None else None
     prior_mode = prior.mode if isinstance(prior, PriorControlState) else _coordinator_mode(coordinator)
     if require_restorable_static:
@@ -1658,24 +1687,33 @@ async def async_prepare_effect_control_state(
             )
             or not prior.bottom_kelvin
         ):
-            raise EffectPreparationError("Could not read restorable source values before preview")
+            raise EffectPreparationError(
+                "Could not read restorable source values before preview", reason="missing_source_values"
+            )
         if any(
             name in profile.boolean_controls and getattr(prior, name, None) is None for name in NATIVE_ZONE_CONTROLS
         ):
-            raise EffectPreparationError("Could not read restorable source enablement before preview")
+            raise EffectPreparationError(
+                "Could not read restorable source enablement before preview", reason="missing_source_power"
+            )
         if (
             profile.setting_grammar == "H607C"
             and prior_mode == "custom"
             and isinstance(prior, PriorControlState)
             and prior.diy_companion is None
         ):
-            raise EffectPreparationError("The current native DIY companion cannot be safely restored after preview")
+            raise EffectPreparationError(
+                "The current native DIY companion cannot be safely restored after preview",
+                reason="missing_diy_companion",
+            )
         if (
             prior_mode == "music"
             and isinstance(prior, PriorControlState)
             and prior.music_mode not in profile.music_modes
         ):
-            raise EffectPreparationError("The current music mode cannot be safely restored after preview")
+            raise EffectPreparationError(
+                "The current music mode cannot be safely restored after preview", reason="unsupported_music_recovery"
+            )
         if prior_mode not in {"colour", "unknown"}:
             return True
         requires_segment_refresh = bool(profile.configured_string_counts or profile.light_sources)
@@ -1690,7 +1728,8 @@ async def async_prepare_effect_control_state(
             )
         ):
             raise EffectPreparationError(
-                "The current per-bulb RGB or white intent cannot be safely restored after preview"
+                "The current per-bulb RGB or white intent cannot be safely restored after preview",
+                reason="ambiguous_static_intent",
             )
         if not requires_segment_refresh:
             return True
@@ -1699,7 +1738,10 @@ async def async_prepare_effect_control_state(
             or not profile.can_read(ReadDomain.SEGMENTS)
             or await coordinator.async_refresh_segments() is not True
         ):
-            raise EffectPreparationError("Could not read a restorable current segment layout before preview")
+            raise EffectPreparationError(
+                "Could not read a restorable current segment layout before preview",
+                reason="missing_segment_observations",
+            )
         prior = capture() if capture is not None else None
         if profile.segment_colour_mode_ambiguous and not (
             isinstance(prior, PriorControlState)
@@ -1708,7 +1750,8 @@ async def async_prepare_effect_control_state(
             )
         ):
             raise EffectPreparationError(
-                "The current per-bulb RGB or white intent cannot be safely restored after preview"
+                "The current per-bulb RGB or white intent cannot be safely restored after preview",
+                reason="ambiguous_static_intent",
             )
         colours = (
             prior.segment_colors
@@ -1731,7 +1774,8 @@ async def async_prepare_effect_control_state(
             or len(brightness) != profile.segment_count
         ):
             raise EffectPreparationError(
-                "The current segment layout is incomplete and cannot be safely restored after preview"
+                "The current segment layout is incomplete and cannot be safely restored after preview",
+                reason="incomplete_segment_layout",
             )
         return True
     if not profile.state_readable:
@@ -1744,7 +1788,10 @@ async def async_prepare_effect_control_state(
         and await coordinator.async_refresh_segments() is not True
         and not profile.configured_string_counts
     ):
-        raise EffectPreparationError("Could not read the current segment layout before applying the effect")
+        raise EffectPreparationError(
+            "Could not read the current segment layout before applying the effect",
+            reason="missing_segment_observations",
+        )
     return True
 
 

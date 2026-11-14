@@ -65,7 +65,7 @@ from .effect_compiler import (
 )
 from .effect_contracts import CapabilityWorkflow, require_effect_route
 from .effect_deployments import DeploymentRecord
-from .effect_diagnostics import DiagnosticOutcome, DiagnosticStage
+from .effect_diagnostics import DiagnosticOutcome, DiagnosticStage, record_control_failure
 from .effect_domain import EffectValidationError, LibraryItem, effect_content_to_dict
 from .effect_runtime import (
     active_workspace_matches,
@@ -765,11 +765,15 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             return
         confirm = partial(self.coordinator.refresh_state, request)
         confirmed = await confirm()
-        if confirmed is not False:
-            return
-        if retry_command is not None:
-            await retry_command()
-        if await confirm() is False:
+        if confirmed is False:
+            if retry_command is not None:
+                await retry_command()
+            confirmed = await confirm()
+        if confirmed is None:
+            record_control_failure(
+                self.coordinator, "verification_unavailable", requested=request.field_expectations(profile)
+            )
+        if confirmed is False:
             raise RuntimeError(f"Failed to confirm state for {self.coordinator.model}")
 
     def _notify_state_changed(self) -> None:
@@ -1380,6 +1384,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         except Exception as err:
             if not request.has_attempted_writes:
                 raise
+            record_control_failure(coordinator, "control_failed_after_write", requested=kwargs)
             self._mark_interrupted_request(request)
             await request.reconcile()
             raise HomeAssistantError(translation_domain=DOMAIN, translation_key="partial_command") from err

@@ -877,7 +877,31 @@ class _NotificationMixin(_CoordinatorBase):
                 if not self.profile.supports_color_mode_readback:
                     self._record_parsed_status(frame, decoded, parser)
                     return
-                observed = self._apply_color_mode_payload(parse_color_mode(generated, self.model, profile=self.profile))
+                parsed_mode = parse_color_mode(generated, self.model, profile=self.profile)
+                selector = (
+                    generated.values.get("raw_mode")
+                    if isinstance(generated, ParsedH6179Status)
+                    else getattr(generated.body, "mode", None)
+                )
+                self._last_mode_observation = {
+                    "selector": int(selector) if selector is not None else None,
+                    "mode": parsed_mode.mode.name.lower(),
+                    "kelvin": parsed_mode.color_temp_kelvin,
+                }
+                observed = self._apply_color_mode_payload(parsed_mode)
+                accepted = "color_mode" in observed and not (
+                    parsed_mode.color_temp_kelvin is not None
+                    and self.profile.static_readback_kelvin
+                    and "color_temp_kelvin" not in observed
+                )
+                self._last_mode_observation["accepted"] = accepted
+                self._last_mode_observation["reason"] = (
+                    "unknown_selector"
+                    if parsed_mode.mode is ParsedMode.UNKNOWN
+                    else "accepted"
+                    if accepted
+                    else "expectation_mismatch"
+                )
             elif domain is StatusDomain.DISPLAY_SETTING:
                 observed = self._apply_display_setting(generated, observed)
             elif domain is StatusDomain.RELATIVE_BRIGHTNESS:
