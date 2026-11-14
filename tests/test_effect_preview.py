@@ -963,6 +963,58 @@ async def test_scene_default_storage_failure_is_reported_after_transport(
     await manager.async_shutdown()
 
 
+@pytest.mark.parametrize("failure", ["capacity", "save"])
+async def test_workspace_failures_preserve_delivery_status_and_release_worker(hass, monkeypatch, failure):
+    from custom_components.ha_govee_led_ble.effect_active_workspace import ActiveEffectWorkspace
+    from custom_components.ha_govee_led_ble.effect_domain import Origin
+    from custom_components.ha_govee_led_ble.effect_limits import MAX_ACTIVE_WORKSPACE_ENTRIES
+
+    coordinator = _coordinator()
+    manager, _cache = await _manager(hass, monkeypatch, coordinator)
+    workspaces = manager._active_workspaces
+    assert workspaces is not None
+    item = _item("Workspace")
+    if failure == "capacity":
+        for index in range(MAX_ACTIVE_WORKSPACE_ENTRIES):
+            workspaces.set(
+                ActiveEffectWorkspace(
+                    config_entry_id=f"occupied-{index}",
+                    model="H617A",
+                    selector_label=item.name,
+                    content=item.content,
+                    origin=Origin(),
+                    observable_signature="custom:24",
+                    updated_at="2026-08-17T00:00:00Z",
+                    generation=index + 1,
+                )
+            )
+    else:
+        monkeypatch.setattr(workspaces, "set", MagicMock(side_effect=OSError("storage failed")))
+    owner = object()
+    events: list[PreviewStatus] = []
+    session_id = _open(manager, owner, events)
+    try:
+        await manager.async_queue_snapshot(
+            session_id=session_id,
+            owner=owner,
+            config_entry_id="entry-a",
+            sequence=1,
+            updated_at="2026-08-17T00:00:00Z",
+            item=item,
+        )
+        await manager.async_wait_idle("entry-a")
+        assert events[-1].phase is PreviewPhase.FAILED
+        assert events[-1].error_code == "storage_failed"
+        assert events[-1].write_disposition is (
+            PreviewWriteDisposition.NOT_STARTED if failure == "capacity" else PreviewWriteDisposition.COMPLETED
+        )
+        assert bool(coordinator.writes) is (failure == "save")
+        assert workspaces.get("entry-a") is None
+        assert manager._devices["entry-a"].active is None
+    finally:
+        await manager.async_shutdown()
+
+
 async def test_selector_only_scene_preview_never_creates_a_default(
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,
