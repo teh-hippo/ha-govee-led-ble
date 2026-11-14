@@ -878,13 +878,14 @@ class EffectPreviewManager:
                         return
                     worker.pending = None
                     worker.active = request
-                await self._async_execute_request(request)
-                async with self._lock:
-                    worker = self._devices.get(config_entry_id)
-                    if worker is None:
-                        return
-                    worker.active = None
-                    worker.cancelled_generations.discard(request.generation)
+                try:
+                    await self._async_execute_request(request)
+                finally:
+                    async with self._lock:
+                        worker = self._devices.get(config_entry_id)
+                        if worker is not None and worker.active is request:
+                            worker.active = None
+                            worker.cancelled_generations.discard(request.generation)
         finally:
             async with self._lock:
                 worker = self._devices.get(config_entry_id)
@@ -948,6 +949,33 @@ class EffectPreviewManager:
             else None
         )
         writer: _PreviewWriter | None = None
+        workspace: ActiveEffectWorkspace | None = None
+        try:
+            if request.item is not None and self._active_workspaces is not None:
+                assert compiled is not None
+                signature = observable_signature_for_compiled(compiled)
+                if signature is not None:
+                    workspace = ActiveEffectWorkspace(
+                        config_entry_id=request.config_entry_id,
+                        model=coordinator.model,
+                        selector_label=request.item.name,
+                        content=_active_workspace_content(request.item.content, compiled),
+                        origin=request.item.origin,
+                        observable_signature=signature,
+                        updated_at=request.updated_at,
+                        generation=self._active_workspaces.next_generation(),
+                    )
+                    self._active_workspaces.validate(workspace)
+        except Exception:
+            self._publish(
+                request,
+                PreviewPhase.FAILED,
+                error_code="storage_failed",
+                error_message="The Live workspace could not be prepared. The light was not changed.",
+                write_disposition=PreviewWriteDisposition.NOT_STARTED,
+            )
+            self._degrade_checking_health(request.config_entry_id)
+            return
         try:
             await self._async_prepare_execution(coordinator, compiled)
             writer = _PreviewWriter(self, request, coordinator, health_target)
@@ -1015,49 +1043,32 @@ class EffectPreviewManager:
             )
             return
 
-        if request.item is not None and self._active_workspaces is not None:
-            assert compiled is not None
-            signature = observable_signature_for_compiled(compiled)
-            if signature is not None:
-                self._active_workspaces.set(
-                    ActiveEffectWorkspace(
-                        config_entry_id=request.config_entry_id,
-                        model=coordinator.model,
-                        selector_label=request.item.name,
-                        content=_active_workspace_content(
-                            request.item.content,
-                            compiled,
-                        ),
-                        origin=request.item.origin,
-                        observable_signature=signature,
-                        updated_at=request.updated_at,
-                        generation=self._active_workspaces.next_generation(),
-                    )
-                )
         self._invalidate_observed_match(request)
         coordinator.async_update_listeners()
 
-        if request.persist_default:
-            try:
+        try:
+            if workspace is not None and self._active_workspaces is not None:
+                self._active_workspaces.set(workspace)
+            if request.persist_default:
                 await self._async_persist_built_in_default(request)
-            except Exception as exc:
-                self._diagnostics.record(
-                    DiagnosticStage.API_SERVICE,
-                    DiagnosticOutcome.FAILED,
-                    "built_in_default_storage_failed",
-                    correlation_id=request.correlation_id,
-                    config_entry_id=request.config_entry_id,
-                    details={"error_type": type(exc).__name__, "sequence": request.sequence},
-                )
-                self._publish(
-                    request,
-                    PreviewPhase.FAILED,
-                    error_code="storage_failed",
-                    error_message="The light changed, but its built-in default could not be saved.",
-                    write_disposition=PreviewWriteDisposition.COMPLETED,
-                )
-                self._degrade_checking_health(request.config_entry_id)
-                return
+        except Exception as exc:
+            self._diagnostics.record(
+                DiagnosticStage.API_SERVICE,
+                DiagnosticOutcome.FAILED,
+                "preview_storage_failed",
+                correlation_id=request.correlation_id,
+                config_entry_id=request.config_entry_id,
+                details={"error_type": type(exc).__name__, "sequence": request.sequence},
+            )
+            self._publish(
+                request,
+                PreviewPhase.FAILED,
+                error_code="storage_failed",
+                error_message="The light changed, but its workspace or built-in default could not be saved.",
+                write_disposition=PreviewWriteDisposition.COMPLETED,
+            )
+            self._degrade_checking_health(request.config_entry_id)
+            return
 
         if await self._async_request_status_is_live(request):
             self._publish(

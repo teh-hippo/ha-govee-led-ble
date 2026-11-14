@@ -332,6 +332,12 @@ async def async_apply_compiled_profile(
             await progress(completed)
 
 
+@dataclass(frozen=True, slots=True)
+class _LibraryApplicationResult:
+    record: DeploymentRecord
+    workspace: ActiveEffectWorkspace | None
+
+
 class EffectDeploymentEngine:
     """Apply immutable definitions through one coordinator transaction."""
 
@@ -364,7 +370,7 @@ class EffectDeploymentEngine:
         diy_code: int | None,
         operation_id: UUID | None,
         source_kind: str,
-    ) -> tuple[CompiledApplication, DeploymentRecord]:
+    ) -> _LibraryApplicationResult:
         profile = await async_prepare_effect_profile(coordinator, intent=ControlIntent.APPLY)
         resolved_diy_code = resolve_diy_code(item, diy_code, model=coordinator.model, profile=profile)
         compiled = compile_application(item, coordinator.model, diy_code=resolved_diy_code, profile=profile)
@@ -381,8 +387,23 @@ class EffectDeploymentEngine:
             source_item=item,
             source_kind=source_kind,
         )
+        workspace = None
+        if source_kind == "snapshot" and self._active_workspaces is not None:
+            signature = observable_signature_for_compiled(compiled)
+            if signature is not None:
+                workspace = ActiveEffectWorkspace(
+                    config_entry_id=config_entry_id,
+                    model=coordinator.model,
+                    selector_label=item.name,
+                    content=_active_workspace_content(item.content, compiled),
+                    origin=item.origin,
+                    observable_signature=signature,
+                    updated_at=updated_at,
+                    generation=self._active_workspaces.next_generation(),
+                )
+                self._active_workspaces.validate(workspace)
         result = await self._async_apply(coordinator, compiled, record)
-        return compiled, result
+        return _LibraryApplicationResult(result, workspace)
 
     async def async_apply_saved(
         self,
@@ -394,7 +415,7 @@ class EffectDeploymentEngine:
         diy_code: int | None = None,
         operation_id: UUID | None = None,
     ) -> DeploymentRecord:
-        _compiled, result = await self._apply_library_item(
+        applied = await self._apply_library_item(
             coordinator,
             item,
             config_entry_id=config_entry_id,
@@ -403,6 +424,7 @@ class EffectDeploymentEngine:
             operation_id=operation_id,
             source_kind="saved_effect",
         )
+        result = applied.record
         write_only_completed = (
             not coordinator.profile.supports_color_mode_readback
             and result.phase is DeploymentPhase.UNCERTAIN
@@ -432,7 +454,7 @@ class EffectDeploymentEngine:
         diy_code: int | None = None,
         operation_id: UUID | None = None,
     ) -> DeploymentRecord:
-        compiled, result = await self._apply_library_item(
+        applied = await self._apply_library_item(
             coordinator,
             item,
             config_entry_id=config_entry_id,
@@ -441,6 +463,7 @@ class EffectDeploymentEngine:
             operation_id=operation_id,
             source_kind="snapshot",
         )
+        result, workspace = applied.record, applied.workspace
         write_only_completed = (
             not coordinator.profile.supports_color_mode_readback
             and result.phase is DeploymentPhase.UNCERTAIN
@@ -451,22 +474,11 @@ class EffectDeploymentEngine:
             and result.verification_confidence is ObservationConfidence.WRITE_COMPLETED
         )
         if result.phase is DeploymentPhase.CONFIRMED or write_only_completed:
-            if self._active_workspaces is not None:
-                signature = observable_signature_for_compiled(compiled)
-                if signature is not None:
+            if self._active_workspaces is not None and workspace is not None:
+                try:
                     self._active_workspaces.set(
-                        ActiveEffectWorkspace(
-                            config_entry_id=config_entry_id,
-                            model=coordinator.model,
-                            selector_label=item.name,
-                            content=_active_workspace_content(
-                                item.content,
-                                compiled,
-                            ),
-                            origin=item.origin,
-                            observable_signature=signature,
-                            updated_at=updated_at,
-                            generation=self._active_workspaces.next_generation(),
+                        replace(
+                            workspace,
                             confidence=(
                                 ObservationConfidence.WRITE_COMPLETED
                                 if write_only_completed
@@ -474,6 +486,10 @@ class EffectDeploymentEngine:
                             ),
                         )
                     )
+                except Exception:
+                    completed = result
+                    result = replace(result, error_code="workspace_storage_failed")
+                    await self._deployments.async_put(result, expected_version=None, expected_record=completed)
             if write_only_completed:
                 self._reconcile_observation(
                     coordinator,

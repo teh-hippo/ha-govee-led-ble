@@ -723,6 +723,45 @@ async def test_authored_combination_applies_as_custom_content_with_a_scene_selec
         assert workspace.content == item.content
 
 
+@pytest.mark.parametrize("failure", ["capacity", "save"])
+async def test_snapshot_workspace_failure_does_not_replay_delivered_content(monkeypatch, failure):
+    from custom_components.ha_govee_led_ble.effect_limits import MAX_ACTIVE_WORKSPACE_ENTRIES
+    from custom_components.ha_govee_led_ble.effect_persistence_validation import EffectLimitError
+
+    coordinator = _coordinator()
+    coordinator.async_observe_effect = AsyncMock(return_value=True)
+    coordinator.async_restore_effect_control_state = AsyncMock()
+    repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
+    workspaces = ActiveEffectWorkspaceRepository(InMemoryVersionedDocumentStore())
+    await repository.async_load()
+    await workspaces.async_load()
+    if failure == "capacity":
+        for index in range(MAX_ACTIVE_WORKSPACE_ENTRIES):
+            workspaces.set(replace(_flow_workspace(), config_entry_id=f"occupied-{index}", generation=index + 1))
+    else:
+        monkeypatch.setattr(workspaces, "set", MagicMock(side_effect=OSError("storage failed")))
+    engine = EffectDeploymentEngine(repository, active_workspaces=workspaces)
+    if failure == "capacity":
+        with pytest.raises(EffectLimitError):
+            await engine.async_apply_snapshot(
+                coordinator, _item(), config_entry_id="entry-a", updated_at="2026-11-14T00:00:00Z"
+            )
+        coordinator.send_command.assert_not_awaited()
+        assert repository.snapshot().records == ()
+    else:
+        result = await engine.async_apply_snapshot(
+            coordinator, _item(), config_entry_id="entry-a", updated_at="2026-11-14T00:00:00Z"
+        )
+        assert result.phase is DeploymentPhase.CONFIRMED
+        assert result.error_code == "workspace_storage_failed"
+        assert repository.get_optional(result.operation_id) == result
+        assert coordinator.send_command.await_count == len(
+            compile_application(_item(), "H617A", diy_code=result.diy_code).packets
+        )
+    coordinator.async_restore_effect_control_state.assert_not_awaited()
+    assert workspaces.get("entry-a") is None
+
+
 @pytest.mark.parametrize("edited", [False, True])
 async def test_h1771_native_scene_deployment_requires_ack_only_for_uploaded_edits(edited):
     from custom_components.ha_govee_led_ble.effect_scenes import _scene_content

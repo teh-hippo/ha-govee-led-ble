@@ -168,20 +168,29 @@ class ActiveEffectWorkspaceRepository:
         )
         return max(values, default=0) + 1
 
-    def set(self, value: ActiveEffectWorkspace) -> bool:
+    def _candidate(self, value: ActiveEffectWorkspace) -> dict[str, Any] | None:
         candidate = copy.deepcopy(self._require_loaded())
         devices = cast(dict[str, Any], candidate["devices"])
         current_raw = devices.get(value.config_entry_id)
         if isinstance(current_raw, Mapping):
             current = ActiveEffectWorkspace.from_dict(current_raw)
             if current.generation > value.generation:
-                return False
+                return None
         elif len(devices) >= MAX_ACTIVE_WORKSPACE_ENTRIES:
             raise EffectLimitError(f"active-workspace store must not exceed {MAX_ACTIVE_WORKSPACE_ENTRIES} devices")
         devices[value.config_entry_id] = value.to_dict()
         _validate_store(candidate)
-        self._data = candidate
+        return candidate
+
+    def validate(self, value: ActiveEffectWorkspace) -> None:
+        self._candidate(value)
+
+    def set(self, value: ActiveEffectWorkspace) -> bool:
+        candidate = self._candidate(value)
+        if candidate is None:
+            return False
         self._store.async_delay_save(lambda: copy.deepcopy(self._require_loaded()), delay=1)
+        self._data = candidate
         return True
 
     def update_confidence(
