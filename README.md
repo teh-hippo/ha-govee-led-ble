@@ -27,7 +27,7 @@
 | **H60B0** | ✅ Supported |
 | **H60B2** | ✅ Supported |
 | **H6102** | ✅ Supported |
-| **H6117** | 🧪 Experimental ([owner feedback](https://github.com/teh-hippo/ha-govee-led-ble/issues/537)) |
+| **H6117** | [🚧 Experimental](https://github.com/teh-hippo/ha-govee-led-ble/issues/537) |
 | **H6125** | ✅ Supported |
 | **H6179** | [🚧 Experimental](https://github.com/teh-hippo/ha-govee-led-ble/issues/448) |
 | **H617A** | ✅ Supported |
@@ -45,18 +45,6 @@
 
 To request another model or suggest a device-specific fix, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
-H607C exposes candidate RGB, colour-temperature and Gradual controls.  If its Bluetooth protocol identity is unavailable or conflicting, colour and Gradual writes require a compatible identity before they can proceed.
-
-H6046 and H607C expose separate source lights on compatible revisions.
-H60A6 exposes panel and ring lights; [ring brightness is not independently supported](https://github.com/teh-hippo/ha-govee-led-ble/issues/402).
-H1771 source switches are numbered until their physical mapping is confirmed.
-H60B0's main light controls power, brightness and effects.  Set colour and colour temperature on its top, side and bottom lights; the bottom is white-only.
-Source selection follows the detected protocol revision, including the two-area limit and separate master-off control.  Native DIY features also follow that revision.
-H60B2 exposes bottom, middle and top lights with independent power, brightness, RGB and colour temperature.
-
-On qualified H6199 revisions, Camera status shows the last report received from the camera and starts unknown until a report arrives.
-Missing replies or brief Bluetooth reconnects do not change that report; this diagnostic is not a real-time connection monitor.
-
 ## Effect Studio
 
 Effect Studio is a Home Assistant sidebar panel that gives you full control of supported devices' effect capabilities.  Explore built-in scenes, create custom effects with colours and layers, tune music and camera/video settings, and preview changes live before saving.  The panel shows the controls available for your device.
@@ -64,32 +52,6 @@ Effect Studio is a Home Assistant sidebar panel that gives you full control of s
 ![Effect Studio custom effect editor](docs/images/effect-studio-effects.png)
 
 ![Effect Studio scene browser](docs/images/effect-studio-scenes.png)
-
-## DreamView
-
-On compatible revisions, H6097, H6099, H6199 and H66A0 expose DreamView group actions separately from the backlight's standalone video effects.
-H6097 and H6099 support up to seven members; H66A0 supports up to ten.  Set both DreamView choices explicitly:
-
-H607C has candidate Music DreamView membership, switch, brightness and connection controls for up to ten members.
-Its group-effect recipes are not yet qualified; ordinary onboard music and paired pole/base editing are separate and available.
-H607C does not expose the camera/video settings below.
-
-```yaml
-action: ha_govee_led_ble.set_dreamview_video_settings
-target:
-  entity_id: light.tv_backlight
-data:
-  apply_area: part
-  content_mode: movie
-```
-
-`apply_area` accepts `all` or `part`; `content_mode` accepts `game` or `movie`.  Neither field has a default, and this action does not change group membership.
-
-**DreamView Game/Movie is not the light's `Video: Game` / `Video: Movie` effect.**  Selecting a standalone video effect can switch off a running DreamView group.  You do not need to select that effect before enabling DreamView.
-
-H6199 uses its own legacy group protocol and a candidate limit of five members.  Same brightness additionally requires main hardware 3.02.01 or newer and firmware 1.09.00 or newer, confirmed on the current connection.  Other group controls remain available if version queries time out, provided the advertised Pact is supported.
-
-H6199 group replacement and deletion require a matching device acceptance reply before Home Assistant releases member ownership.  An attempted upload is not retried automatically.  A failed or unanswered change retains private recovery intent and member claims; do not assume that the old hardware group is unchanged.  `read_dreamview_group` separates locally authored metadata from anonymous device observations, and reports identity-gated reads in `unavailable_reads`.  Acceptance does not confirm membership or visible synchronisation.  These new H6199 group paths still need owner qualification.
 
 ## Installation
 
