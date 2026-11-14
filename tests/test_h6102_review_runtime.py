@@ -437,16 +437,21 @@ async def test_issue310_failed_register_command_does_not_confirm_brightness(radi
     revision = c._field_revisions["brightness_pct"]
     state["fault_brightness"] = fault == "write"
     state["brightness_reply_override"] = 235 if fault == "stale_readback" else None
-    with pytest.raises(HomeAssistantError) as error:
-        await GoveeBLELight(c).async_turn_on(brightness=128)
-    assert error.value.translation_key == "partial_command"
-    assert c.brightness_pct == 92
-    assert c._field_revisions["brightness_pct"] == revision + (fault == "stale_readback")
+    light = GoveeBLELight(c)
+    light.async_write_ha_state = MagicMock()
     if fault == "write":
+        with pytest.raises(HomeAssistantError) as error:
+            await light.async_turn_on(brightness=128)
+        assert error.value.translation_key == "partial_command"
+        assert c.brightness_pct == 92
         assert state["brightness"] == 92
         assert not any(entry["dir"] == "tx" and entry["raw"] == frame("330488").hex() for entry in c.packet_log)
     else:
+        await light.async_turn_on(brightness=128)
+        assert c.brightness_pct == 50
+        assert c._field_revisions["brightness_pct"] == revision
         assert state["brightness"] == 50
+        assert packets.count(frame("330488")) == 1
 
 
 async def test_pact1_static_recovery_preserves_register_transport_without_confirming_unknown_controls(radio):

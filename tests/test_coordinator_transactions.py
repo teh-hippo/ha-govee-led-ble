@@ -9,7 +9,8 @@ from bleak import BleakError
 from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ReadDomain
-from custom_components.ha_govee_led_ble.control_arbiter import BLEControlArbiter, ControlIntent
+from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
+from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
 from custom_components.ha_govee_led_ble.effect_compiler import compile_effect
 from custom_components.ha_govee_led_ble.effect_deployments import (
     DeploymentPhase,
@@ -736,6 +737,33 @@ async def test_preview_observation_stays_read_only_when_device_is_silent(coord, 
     assert not coord._control_arbiter.locked()
 
 
+@pytest.mark.parametrize("reply", [True, False, None], ids=["match", "contradiction", "silence"])
+@pytest.mark.parametrize("missing_companion", [False, True])
+async def test_connected_refresh_distinguishes_fresh_observations_from_silence(
+    coord, virtual_clock, reply, missing_companion
+):
+    client = coord._client = _c(write_gatt_char=AsyncMock())
+    coord.is_on = True
+
+    async def query(**kwargs):
+        if reply is not None:
+            coord._notify_callback(None, bytearray(_packet(0xAA, 0x01, [int(reply)])))
+        return True
+
+    with (
+        patch.object(coord, "_ensure_connected", AsyncMock(return_value=client)),
+        patch.object(coord, "_send_state_queries", AsyncMock(side_effect=query)),
+        patch.object(coord, "_disconnect_if_current_locked", AsyncMock()) as disconnect,
+    ):
+        result = await coord.refresh_state(
+            RefreshRequest(on=True, brightness=50 if missing_companion else None, timeout=0.05)
+        )
+
+    assert result is (None if missing_companion and reply is True else reply)
+    disconnect.assert_not_awaited()
+    client.write_gatt_char.assert_not_awaited()
+
+
 @pytest.mark.parametrize("connected", [False, True])
 async def test_preview_preflight_retries_one_failed_connection_path(coord, virtual_clock, connected):
     partial = _c()
@@ -969,7 +997,7 @@ async def test_deployment_retries_activation_after_fresh_wrong_mode(
         [] if actual is None else ([False, True, True] if final_desired else [False, True, False, True])
     )
     assert accepted_revisions == expected_revisions
-    assert confirmed is final_desired
+    assert confirmed is (None if actual is None else final_desired)
     assert confidence is (ObservationConfidence.ACTIVATION_MATCH if final_desired else ObservationConfidence.UNKNOWN)
     assert sent.await_count == observe.await_count == (2 if actual is None else len(expected_revisions))
     assert all(observation.kwargs == {"timeout": 4.0} for observation in observe.await_args_list)

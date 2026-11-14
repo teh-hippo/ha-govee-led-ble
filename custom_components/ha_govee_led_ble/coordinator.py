@@ -2782,19 +2782,19 @@ class GoveeBLECoordinator(
                 return False
         return True
 
-    async def refresh_state(self, request: RefreshRequest = DEFAULT_REFRESH_REQUEST) -> bool:
-        """Resolve connection identity before constructing queries and freshness baselines."""
+    async def refresh_state(self, request: RefreshRequest = DEFAULT_REFRESH_REQUEST) -> bool | None:
+        """Return True for fresh matches, False for fresh contradictions, or None without qualified readback."""
         if not self.profile.state_readable:
-            return False
+            return None
         if request.unsupported_static_readback(self.profile):
-            return False
+            return None
         if (
             request.black_border is not None
             and video_control_states(self.profile, self)["black_border"] is not CapabilityState.SUPPORTED
         ):
-            return False
+            return None
         if not self.profile.supports_color_mode_readback and request.expects_color_readback:
-            return False
+            return None
         current_intent = self._control_arbiter.current_task_intent
         async with async_control_intent(self, ControlIntent.USER if current_intent is None else current_intent):
             async with self._lock:
@@ -2867,17 +2867,17 @@ class GoveeBLECoordinator(
         queried_domains.update(required_domains & profile.read_domains & _OPTIONAL_CONTROL_DOMAINS)
         return queried_domains & required_domains
 
-    async def _refresh_connected_state(self, request: RefreshRequest = DEFAULT_REFRESH_REQUEST) -> bool:
+    async def _refresh_connected_state(self, request: RefreshRequest = DEFAULT_REFRESH_REQUEST) -> bool | None:
         self._reconcile_authorization()
         if not self.profile.state_readable:
-            return False
+            return None
         generation = self._profile_generation
         expected = request
         if expected.unsupported_static_readback(self.profile):
-            return False
+            return None
         expectations = expected.field_expectations(self.profile)
         if not self.profile.supports_color_mode_readback and expected.expects_color_readback:
-            return False
+            return None
         query_power = expected.on is not None
         query_brightness = expected.brightness is not None
         query_color = self.profile.supports_color_mode_readback and expected.expects_color_readback
@@ -2891,7 +2891,7 @@ class GoveeBLECoordinator(
             query_black_border
             and video_control_states(self.profile, self)["black_border"] is not CapabilityState.SUPPORTED
         ):
-            return False
+            return None
         query_relative_brightness = expected.expects_relative_brightness or request.refresh_relative_brightness
         if request.refresh_all:
             query_power = query_brightness = True
@@ -2915,7 +2915,7 @@ class GoveeBLECoordinator(
             self._reconcile_authorization()
             client = self._client
             if client is None or not client.is_connected or generation != self._profile_generation:
-                return False
+                return None
             authorization_generation = self._authorization_generation
             profile = self._authorization_profile()
             states = video_control_states(self.profile, self)
@@ -2936,9 +2936,9 @@ class GoveeBLECoordinator(
                 if requested
             }
             if any(states[control] is not CapabilityState.SUPPORTED for control in requested_registers):
-                return False
+                return None
             if requested_registers - confirmed_controls:
-                return False
+                return None
             if request.refresh_all:
                 query_white_balance = (
                     "white_balance" in confirmed_controls and states["white_balance"] is CapabilityState.SUPPORTED
@@ -2965,7 +2965,6 @@ class GoveeBLECoordinator(
                 query_relative_brightness=query_relative_brightness,
                 required_domains=request.required_domains,
             )
-            initial_domain_baselines = {domain: self._domain_revisions.get(domain, 0) for domain in awaited_domains}
             deadline = time.monotonic() + request.timeout
             optional_baselines: dict[str, int] = {}
             domain_scoped = request.refresh_all or request.required_domains is not None
@@ -2983,6 +2982,7 @@ class GoveeBLECoordinator(
             explicit_settings = any(
                 (query_white_balance, query_blank_screen, query_black_border, query_relative_brightness)
             )
+            contradicted = False
             for attempt in range(2):
                 if time.monotonic() >= deadline:
                     break
@@ -2998,7 +2998,7 @@ class GoveeBLECoordinator(
                 domain_baselines = {domain: self._domain_revisions.get(domain, 0) for domain in awaited_domains}
                 async with self._lock:
                     if self._client is not client:
-                        return False
+                        return None
                     ok = await self._send_state_queries(
                         query_power=query_power,
                         query_brightness=query_brightness,
@@ -3019,9 +3019,11 @@ class GoveeBLECoordinator(
                         and authorization_generation == self._authorization_generation
                     ):
                         await self._disconnect_if_current_locked(client)
-                    return False
+                    return None
                 attempt_deadline = deadline if attempt else min(deadline, (time.monotonic() + deadline) / 2)
-                if await self._wait_for_revisions(field_baselines, domain_baselines, attempt_deadline):
+                if await self._wait_for_revisions(
+                    field_baselines, domain_baselines, attempt_deadline, expectations=expectations
+                ):
                     if not expectations or all(
                         getattr(self, field) == expected for field, expected in expectations.items()
                     ):
@@ -3030,24 +3032,23 @@ class GoveeBLECoordinator(
                         if optional_baselines and not await self._wait_for_revisions(optional_baselines, {}, deadline):
                             self._expire_optional_observations(optional_baselines)
                         return (
-                            generation == self._profile_generation
-                            and authorization_generation == self._authorization_generation
-                            and self._client is client
-                            and client.is_connected
+                            True
+                            if (
+                                generation == self._profile_generation
+                                and authorization_generation == self._authorization_generation
+                                and self._client is client
+                                and client.is_connected
+                            )
+                            else None
                         )
+                    contradicted = True
                 if generation != self._profile_generation or authorization_generation != self._authorization_generation:
-                    return False
+                    return None
                 if time.monotonic() >= deadline:
                     break
             if optional_baselines:
                 self._expire_optional_observations(optional_baselines)
-            if any(
-                self._domain_revisions.get(domain, 0) <= baseline
-                for domain, baseline in initial_domain_baselines.items()
-                if domain not in _OPTIONAL_CONTROL_DOMAINS
-            ):
-                await self._disconnect_if_current_locked(client)
-            return False
+            return False if contradicted else None
 
     async def async_preview_preflight(self, *, timeout: float = 2 * CONNECTION_SETUP_TIMEOUT) -> None:
         if self.hass.is_stopping:

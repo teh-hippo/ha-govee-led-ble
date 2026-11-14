@@ -166,9 +166,11 @@ async def test_refresh_and_observe_require_exact_reply(device, virtual_clock, se
             "blank_screen_policy": (1, 300, 600),
         }
     )
-    assert await device.refresh_state(RefreshRequest(**kwargs, timeout=0.01)) is fresh
+    assert await device.refresh_state(RefreshRequest(**kwargs, timeout=0.01)) is (True if fresh else None)
     assert await device.async_observe_effect(expected, timeout=0.01) is (True if fresh else None)
-    assert await device.refresh_state(RefreshRequest(display_settings=frozenset({setting}), timeout=0.01)) is fresh
+    assert await device.refresh_state(RefreshRequest(display_settings=frozenset({setting}), timeout=0.01)) is (
+        True if fresh else None
+    )
 
 
 @pytest.mark.parametrize("version", [None, "1.00.10", "1.00.11"])
@@ -211,10 +213,10 @@ async def test_border_query_gate_and_optional_setup(device, monkeypatch, version
     refreshed = await device.refresh_state(
         RefreshRequest(refresh_all=True, required_domains=device.profile.setup_required_read_domains, timeout=60),
     )
-    assert refreshed is (missing_reply is None)
+    assert refreshed is (True if missing_reply is None else None)
     packets = [call.args[1] for call in client.write_gatt_char.await_args_list]
     assert packets[:3] == list(replies)
-    assert (device._client is client) is (missing_reply is None)
+    assert device._client is client
     assert clock[0] > start + 60  # Optional silence actually exhausted the budget.
     assert device.control_write_attempts == 0
     assert device.profile.physical_ic_count is None

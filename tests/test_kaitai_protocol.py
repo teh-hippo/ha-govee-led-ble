@@ -1089,7 +1089,9 @@ async def test_static_verification_rejects_newer_mode(static_coordinator, virtua
     coord._client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(side_effect=write))
     coord._ensure_connected = AsyncMock(return_value=coord._client)
     if method == "refresh":
-        assert await coord.refresh_state(RefreshRequest(**{field: value}, timeout=0.01)) is False
+        assert await coord.refresh_state(RefreshRequest(**{field: value}, timeout=0.01)) is (
+            None if return_static else False
+        )
     else:
         assert await coord.async_observe_effect({field: value}, timeout=0.01) is not True
     assert not coord._expected_state
@@ -1460,7 +1462,7 @@ async def test_direct_rgb_verification_rejects_segment_only_evidence(
     coord._client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(side_effect=write))
     coord._ensure_connected = AsyncMock(return_value=coord._client)
     if method == "refresh":
-        assert await coord.refresh_state(RefreshRequest(rgb_color=(1, 2, 3), timeout=0.01)) is False
+        assert await coord.refresh_state(RefreshRequest(rgb_color=(1, 2, 3), timeout=0.01)) is None
     else:
         assert await coord.async_observe_effect({"rgb_color": (1, 2, 3)}, timeout=0.01) is None
     assert coord.rgb_color == segment_rgb and coord.rgb_color_source == "segment"

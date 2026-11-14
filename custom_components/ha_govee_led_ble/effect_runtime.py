@@ -736,7 +736,7 @@ class EffectDeploymentEngine:
                         compiled,
                         transaction,
                     )
-                    if not confirmed:
+                    if confirmed is False:
                         return await self._async_finish_failure(
                             coordinator,
                             transaction.current,
@@ -746,16 +746,16 @@ class EffectDeploymentEngine:
                         )
                     completed = replace(
                         transaction.current,
-                        phase=DeploymentPhase.CONFIRMED,
+                        phase=DeploymentPhase.CONFIRMED if confirmed else DeploymentPhase.APPLIED,
                         error_code=None,
-                        verification_confidence=confidence,
+                        verification_confidence=confidence if confirmed else ObservationConfidence.WRITE_COMPLETED,
                     )
                     await transaction.store(completed)
                     self._reconcile_observation(
                         coordinator,
                         config_entry_id=record.config_entry_id,
                         observed_at=record.updated_at,
-                        refreshed=True,
+                        refreshed=confirmed is True,
                         matched_record=completed,
                     )
                     return completed
@@ -846,10 +846,10 @@ class EffectDeploymentEngine:
         coordinator: GoveeBLECoordinator,
         compiled: CompiledApplication,
         transaction: _DeploymentTransaction,
-    ) -> tuple[bool, ObservationConfidence]:
+    ) -> tuple[bool | None, ObservationConfidence]:
         expectations, confidence = compiled_observation(compiled, profile=coordinator.profile)
         if expectations is None:
-            return False, ObservationConfidence.UNKNOWN
+            return None, ObservationConfidence.UNKNOWN
         if not isinstance(compiled, CompiledEffect):
             return await self._async_verify_profile(coordinator, compiled, transaction)
         if compiled.activation_packet is None:
@@ -873,20 +873,24 @@ class EffectDeploymentEngine:
             await transaction.store(replace(transaction.current, phase=DeploymentPhase.ACTIVATING))
             await self._async_activate(coordinator, compiled)
             await transaction.store(replace(transaction.current, phase=DeploymentPhase.VERIFYING))
-        return False, ObservationConfidence.UNKNOWN
+        return refreshed, ObservationConfidence.UNKNOWN
 
     async def _async_verify_profile(
         self,
         coordinator: GoveeBLECoordinator,
         compiled: CompiledMusicProfile | CompiledVideoProfile,
         transaction: _DeploymentTransaction,
-    ) -> tuple[bool, ObservationConfidence]:
+    ) -> tuple[bool | None, ObservationConfidence]:
         expectations, confidence = compiled_observation(compiled, profile=coordinator.profile)
         if expectations is None:
-            return False, ObservationConfidence.UNKNOWN
+            return None, ObservationConfidence.UNKNOWN
+        refreshed = None
         for attempt in range(VERIFICATION_ATTEMPTS):
-            if await coordinator.async_observe_effect(expectations, timeout=4.0) is True:
+            refreshed = await coordinator.async_observe_effect(expectations, timeout=4.0)
+            if refreshed is True:
                 return True, confidence
+            if refreshed is None:
+                continue
             if (
                 isinstance(compiled, CompiledMusicProfile)
                 and len(compiled.packets) > 2
@@ -906,7 +910,7 @@ class EffectDeploymentEngine:
                 )
                 await self._async_apply_profile(coordinator, compiled, transaction)
                 await transaction.store(replace(transaction.current, phase=DeploymentPhase.VERIFYING))
-        return False, ObservationConfidence.UNKNOWN
+        return refreshed, ObservationConfidence.UNKNOWN
 
     async def _async_finish_failure(
         self,
@@ -1064,7 +1068,7 @@ class EffectDeploymentEngine:
         if not coordinator.profile.state_readable:
             return False
         try:
-            return await coordinator.refresh_state()
+            return await coordinator.refresh_state() is True
         except Exception:
             _LOGGER.debug(
                 "Could not refresh %s before Effect Studio reconciliation",

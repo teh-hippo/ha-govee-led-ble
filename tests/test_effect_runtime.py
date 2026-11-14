@@ -503,7 +503,8 @@ async def test_partial_observation_does_not_confirm_or_repeat_activation(hass: H
         config_entry_id="entry-a",
         updated_at="2026-08-11T00:00:00Z",
     )
-    assert result.phase is DeploymentPhase.UNCERTAIN
+    assert result.phase is DeploymentPhase.APPLIED
+    assert result.verification_confidence is ObservationConfidence.WRITE_COMPLETED
     assert coordinator.async_observe_effect.await_count == 2
     assert coordinator.send_command.await_args_list == [call(packet) for packet in compile_h617a(item, 800).packets]
 
@@ -2804,9 +2805,31 @@ async def test_music_verification_reapplies_only_when_upload_replay_is_admitted(
 
     assert result.phase is DeploymentPhase.CONFIRMED
     packets = [call.args[0] for call in coordinator.send_command.await_args_list]
-    assert len(packets) == (8 if allow_replay else 4)
-    if allow_replay:
+    replayed = allow_replay and first_observation is False
+    assert len(packets) == (8 if replayed else 4)
+    if replayed:
         assert packets[:4] == packets[4:]
+
+
+async def test_profile_delivery_without_readback_does_not_replay_or_restore(hass):
+    repository, cache = await _repositories(hass)
+    coordinator = _profile_coordinator("H617A")
+    coordinator.profile = replace(coordinator.profile, effect_retry_after_upload=True, music_retry_after_upload=True)
+    coordinator.async_observe_effect = AsyncMock(return_value=None)
+    coordinator.async_restore_effect_control_state = AsyncMock(return_value=True)
+    item = _music_item()
+    compiled = compile_application(item, coordinator.model, profile=coordinator.profile)
+    result = await EffectDeploymentEngine(repository, cache).async_apply_saved(
+        coordinator,
+        item,
+        config_entry_id="entry-a",
+        updated_at="2026-11-14T00:00:00Z",
+    )
+    assert result.phase is DeploymentPhase.APPLIED
+    assert result.verification_confidence is ObservationConfidence.WRITE_COMPLETED
+    assert result.error_code is None
+    assert [entry.args[0] for entry in coordinator.send_command.await_args_list] == list(compiled.packets)
+    coordinator.async_restore_effect_control_state.assert_not_awaited()
 
 
 async def test_h6199_video_profile_uses_native_writers_in_profile_order(
