@@ -216,32 +216,32 @@ def test_speed_position_writes_the_overall_movement_byte():
     assert [original.effect.layers[page.page].overall_movement.speed for page in scene.speed.pages] == [243, 248]
 
 
-def test_speed_position_writes_colour_and_brightness_fields():
-    """Christmas position zero changes all eight fields named by its three config blocks."""
-    scene = SCENES["christmas"]
+@pytest.mark.parametrize(
+    "model,scene",
+    [
+        pytest.param(model, scene, id=f"{model}-{scene.scene_id}-{scene.effect_id}")
+        for model, scenes in SCENE_ENTRIES.items()
+        for scene in scenes
+        if scene.scene_type == 2 and scene.speed is not None
+    ],
+)
+def test_catalogue_speed_positions_write_the_declared_fields(model, scene):
     assert scene.speed is not None
-    stored = base64.b64decode(scene.param)
-    uploaded = apply_scene_speed(stored, scene.speed, 0)
-    decoded = _decode_layered(uploaded)
-    changed = 0
-    for page in scene.speed.pages:
-        if page.move_in:
-            assert decoded.effect.layers[page.page].selected_movement.speed == page.move_in[0]
-            changed += 1
-        if page.move_all:
-            assert decoded.effect.layers[page.page].overall_movement.speed == page.move_all[0]
-            changed += 1
-        if page.colour_speed:
-            assert decoded.effect.layers[page.page].colour_speed == page.colour_speed[0]
-            changed += 1
-        for brightness in page.brightness_speeds:
-            assert (
-                decoded.effect.layers[page.page].brightness_patterns[brightness.block].change_speed
-                == brightness.values[0]
-            )
-            changed += 1
-
-    assert changed == 8
+    stored = base64.b64decode(scene.param, validate=True)
+    template = CatalogueRef(model, scene.scene_id, scene.effect_id)
+    for index in range(scene.speed.option_count):
+        uploaded = apply_scene_speed(stored, scene.speed, index)
+        decoded = decode_layered_scene(template, uploaded)
+        for page in scene.speed.pages:
+            layer = decoded.effect.layers[page.page]
+            if page.move_in:
+                assert layer.selected_movement.speed == page.move_in[index]
+            if page.move_all:
+                assert layer.overall_movement.speed == page.move_all[index]
+            if page.colour_speed:
+                assert layer.colour_speed == page.colour_speed[index]
+            for brightness in page.brightness_speeds:
+                assert layer.brightness_patterns[brightness.block].change_speed == brightness.values[index]
 
 
 def test_speed_metadata_includes_colour_and_brightness_only_scenes():
