@@ -1,5 +1,4 @@
 import base64
-import hashlib
 import json
 from types import SimpleNamespace
 
@@ -459,91 +458,6 @@ def test_h6102_candidate_uses_complete_exact_snapshot():
     assert MODEL_PROFILES["H6102"].supports_scenes
     assert "scenes" in supported_effect_categories("H6102")
     assert len(SCENE_ENTRIES["H6102"]) == 240
-
-
-@pytest.mark.parametrize(
-    ("sku", "categories", "effects", "digest"),
-    [
-        (
-            "H60A1",
-            5,
-            79,
-            "dfcf82121c2ca2ec446eb4ab72e798a32a612011229de9488c49992d91910529",
-        ),
-        (
-            "H60A6",
-            5,
-            86,
-            "be6a65d128cc68ee26e43df3dbfdcec4bcdee20638a9c287f1681ee0d29fa43c",
-        ),
-        (
-            "H601C",
-            6,
-            66,
-            "ef2a741a2adb962b299af393fda1c767898ca3097c5362cab574e7da70d1d07a",
-        ),
-        (
-            "H6076",
-            6,
-            110,
-            "a2fe1e022e8eb96c5786ebc380e4f3dcfff6fcc99b8644ab28a6ebae0cf9e8c3",
-        ),
-        (
-            "H607C",
-            8,
-            104,
-            "304196bb11fb73e3c1054ff0ff2515a425df159d7b1d79032e970acc1cb4c612",
-        ),
-        (
-            "H6102",
-            12,
-            240,
-            "f0e6a21684b4a901e02298f3cfc016825a41b515ff8ab871e4926af590c6872b",
-        ),
-        (
-            "H617A",
-            5,
-            83,
-            "234f1a697106e4551a45e472b410910481ac15438f93470176be81a1bd4d2a81",
-        ),
-        (
-            "H7020",
-            4,
-            51,
-            "b757b37f971212b57510f5630eb6d20006cb9556b52cb267391e61a88551786e",
-        ),
-        (
-            "H7025",
-            7,
-            114,
-            "98df5e6f817b8f7a17d0126d9ee49cdbdfa3a3fdc04558ef62b150e6f9e174f0",
-        ),
-        (
-            "H617E",
-            12,
-            240,
-            "e1e33e70e6e41301d09189f52bd307f9fd2ace3483de87f92280666f87674657",
-        ),
-        (
-            "H6199",
-            12,
-            240,
-            "f3f8622a5b3f7aba0ab257c7377fea2f7a9b42f5bed5ce4918b2e4e502f6d8b5",
-        ),
-    ],
-)
-def test_committed_snapshot_scope(
-    sku: str,
-    categories: int,
-    effects: int,
-    digest: str,
-):
-    path = SNAPSHOT_DIR / f"{sku}.json"
-    data = json.loads(path.read_text(encoding="utf-8"))
-
-    assert len(data["categories"]) == categories
-    assert len(data["effects"]) == effects
-    assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
 
 
 def test_h7020_snapshot_preserves_the_scene_2983_default_rewrite_contract():

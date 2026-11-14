@@ -135,6 +135,8 @@ Keep virtual event-loop clocks out of real HTTP/WebSocket tests; use them only a
 - Extend existing contract suites with representative capability partitions and boundary conditions.
   Prove the intended behaviour and safety invariant through the normal entry point, including relevant state and recovery effects.
   Avoid assertions about helper layout or duplicated constants, and keep test doubles faithful to public boundary contracts.
+  Validate mutable catalogues through identity, loading and protocol behaviour, not whole-file hashes or incidental inventory counts.
+  Keep exact-byte expectations only where they protect an encoding or rewrite contract.
 - Characterise surprising device behaviour before changing it, distinguishing an evidenced device constraint from an integration bug.
   Preserve meaningful characterisation in shared coverage, then remove temporary or duplicate tests.
   Use explicit synchronisation to test asynchronous ordering and ownership rather than timing guesses.
