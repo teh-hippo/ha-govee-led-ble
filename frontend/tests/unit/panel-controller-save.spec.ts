@@ -58,6 +58,57 @@ test.each(["manual save", "reload"])("autosave uses the accepted item version af
   controller.disconnect();
 });
 
+test.each([false, true])("explicit Live choices survive reopening, including saved items (%s)", async (savedItem) => {
+  const values = new Map<string, string>();
+  vi.stubGlobal("localStorage", {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => values.set(key, value),
+  });
+  try {
+    const model = new PanelModel(() => undefined);
+    const selected = device("entry-a", "H617A");
+    model.isAdmin = true;
+    model.devices = [selected];
+    model.selectedDeviceId = selected.config_entry_id;
+    installPaintCatalogue(model);
+    const { controller, editorController } = panelControllerHarness(model);
+    controller.api = {
+      applySavedEffect: vi.fn().mockResolvedValue(undefined),
+      device: vi.fn().mockResolvedValue(selected),
+    } as unknown as EffectStudioApi;
+    expect(model.liveApplyEnabled).toBe(true);
+    await controller.toggleLive();
+    expect(new PanelModel(() => undefined).liveApplyEnabled).toBe(false);
+    if (savedItem) editorController.applyLibraryItem(item(painted()));
+    await controller.toggleLive();
+    expect(new PanelModel(() => undefined).liveApplyEnabled).toBe(true);
+    controller.stateUpdatesFailed(new Error("Connection lost."));
+    expect(model.liveApplyEnabled).toBe(false);
+    expect(new PanelModel(() => undefined).liveApplyEnabled).toBe(true);
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+test.each([null, "invalid", "true", "false"])("Live preference storage failures never block toggling (%s)", async (stored) => {
+  vi.stubGlobal("localStorage", {
+    getItem: () => {
+      if (stored === null) throw new Error("Storage unavailable");
+      return stored;
+    },
+    setItem: () => { throw new Error("Storage unavailable"); },
+  });
+  try {
+    const model = new PanelModel(() => undefined);
+    expect(model.liveApplyEnabled).toBe(stored !== "false");
+    const { controller } = panelControllerHarness(model);
+    await expect(controller.toggleLive()).resolves.toBeUndefined();
+    expect(model.liveApplyEnabled).toBe(stored === "false");
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
 test("subscription failure disables Live and blocks mutation until reload", () => {
   const model = new PanelModel(() => undefined);
   model.isAdmin = true;

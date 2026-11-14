@@ -50,6 +50,8 @@ from .effect_domain import (
 from .effect_identity import EffectDeviceCache
 from .effect_limits import MAX_PREVIEW_SEQUENCE
 from .effect_runtime import (
+    EffectRestorationError,
+    EffectStateReadError,
     _active_workspace_content,
     _validate_diy_slot_approval,
     active_workspace_matches,
@@ -1012,17 +1014,27 @@ class EffectPreviewManager:
             )
             return
         except Exception as exc:
+            preparation_error = isinstance(exc, EffectStateReadError | EffectRestorationError)
+            error_code = (
+                "state_unavailable"
+                if isinstance(exc, EffectStateReadError)
+                else "state_not_restorable"
+                if isinstance(exc, EffectRestorationError)
+                else "transport_failed"
+            )
             self._diagnostics.record(
-                DiagnosticStage.PACKET_PROGRESS,
+                DiagnosticStage.RECOVERY if preparation_error else DiagnosticStage.PACKET_PROGRESS,
                 DiagnosticOutcome.FAILED,
-                "preview_transport_failed",
+                f"preview_{error_code}",
                 correlation_id=request.correlation_id,
                 config_entry_id=request.config_entry_id,
                 details={"error_type": type(exc).__name__, "sequence": request.sequence},
             )
             started = writer is not None and writer.started
             message = (
-                "The connection stopped while writing. The light may have changed."
+                str(exc)
+                if preparation_error
+                else "The connection stopped while writing. The light may have changed."
                 if started
                 else "The light could not be reached before the Live change started."
             )
@@ -1030,14 +1042,14 @@ class EffectPreviewManager:
             self._publish(
                 request,
                 PreviewPhase.FAILED,
-                error_code="transport_failed",
+                error_code=error_code,
                 error_message=message,
                 write_disposition=disposition,
             )
             self._set_health(
                 request.config_entry_id,
                 PreviewHealthPhase.DEGRADED,
-                error_code="transport_failed",
+                error_code=error_code,
                 error_message=message,
                 write_disposition=disposition,
             )

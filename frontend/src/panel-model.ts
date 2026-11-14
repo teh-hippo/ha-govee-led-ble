@@ -34,6 +34,16 @@ import type {
   LibrarySummary, HomeAssistant, ModelEffectCatalogue, ModelSku, PreviewStatus, RGB,
 } from "./types";
 
+const LIVE_APPLY_STORAGE_KEY = "ha_govee_led_ble/effect_studio/live_apply";
+
+function restoredLiveApply(): boolean {
+  try {
+    return localStorage.getItem(LIVE_APPLY_STORAGE_KEY) !== "false";
+  } catch {
+    return true;
+  }
+}
+
 export type DeleteCandidate = Pick<LibrarySummary, "id" | "version" | "updated_at" | "name"> & {
   discardsOpenEdits?: boolean;
 };
@@ -118,7 +128,7 @@ export class PanelModel {
   public saveNameValue = "";
   public saveNameError?: string;
   public deletingItemId?: string;
-  public liveApplyEnabled = true;
+  public liveApplyEnabled = restoredLiveApply();
   public autoSaveEnabled = false;
   public autoSaveInProgress = false;
   public autoSaveFailed = false;
@@ -140,6 +150,14 @@ export class PanelModel {
   private errorSequence = 0;
 
   public constructor(private readonly changed: () => void) {}
+
+  public rememberLiveApplyChoice(): void {
+    try {
+      localStorage.setItem(LIVE_APPLY_STORAGE_KEY, String(this.liveApplyEnabled));
+    } catch {
+      return;
+    }
+  }
 
   public update(change: (model: PanelModel) => void): void {
     change(this);
