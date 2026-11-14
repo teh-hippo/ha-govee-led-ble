@@ -1779,7 +1779,7 @@ async def test_failed_negotiation_never_sends_control_plaintext(hass, monkeypatc
 async def test_ha_bluez_cached_mtu_is_acquired_from_dbus(negotiated_mtu):
     session = GoveeEncryptionSession()
     await session.async_select(client(b"\x01\x02"), advertised=False)
-    backend = BleakClientBlueZDBus("11:22:33:44:55:66", bluez={}, timeout=10)
+    backend = BleakClientBlueZDBus("11:22:33:44:55:66", disconnected_callback=None, bluez={}, timeout=10)
     backend._is_connected = True
     backend.services = SimpleNamespace(
         characteristics={

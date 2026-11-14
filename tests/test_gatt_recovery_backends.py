@@ -149,7 +149,7 @@ async def test_esphome_native_clear_limits(native_proxy, remote_clear, caplog):
             name="test-proxy",
             bluetooth_proxy_feature_flags=BluetoothProxyFeature.REMOTE_CACHING,
         )
-    backend = ESPHomeClient(device, client_data=data)
+    backend = ESPHomeClient(device, disconnected_callback=None, client_data=data)
     await backend.connect(pair=False, dangerous_use_bleak_cache=False)
     try:
         if remote_clear == "disconnected":
