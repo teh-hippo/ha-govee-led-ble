@@ -425,6 +425,36 @@ def test_h60a6_snapshot_speed_rows_match_generated_native_layers():
         assert _snapshot_speed(effect, entry["name"]) == speed
 
 
+def test_combined_snapshot_speed_pages_match_both_generated_engines():
+    data = json.loads((SNAPSHOT_DIR / "H60B0.json").read_text(encoding="utf-8"))
+    names = (
+        ("move_in", "moveIn"),
+        ("move_all", "moveAll"),
+        ("colour_speed", "color"),
+        ("ripple_colour_speed", "shuiBoWenColorSpeed"),
+        ("ripple_movement_speed", "shuiBoWenLiudongSpeed"),
+    )
+    for entry in data["effects"]:
+        if "speed" not in entry:
+            continue
+        speed = entry["speed"]
+        pages = []
+        for page in speed["pages"]:
+            raw = {"page": page["page"], "defaultIndex": speed["default_index"]}
+            raw.update({target: page[source] for source, target in names if source in page})
+            if "brightness" in page:
+                raw["bright"] = [
+                    {"brightPage": block["block"], "brightValue": block["values"]} for block in page["brightness"]
+                ]
+            pages.append(raw)
+        effect = {
+            "sceneType": 6,
+            "scenceParam": entry["param"],
+            "speedInfo": {"supSpeed": True, "config": json.dumps(pages)},
+        }
+        assert _snapshot_speed(effect, entry["name"], model="H60B0", metadata_default_applied=True) == speed
+
+
 def test_h6102_candidate_uses_complete_exact_snapshot():
     assert MODEL_PROFILES["H6102"].supports_scenes
     assert "scenes" in supported_effect_categories("H6102")

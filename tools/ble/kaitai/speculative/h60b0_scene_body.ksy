@@ -32,10 +32,28 @@ enums:
   activation_selector:
     510: temporary
 types:
+  upload:
+    seq:
+      - id: len_rgbic
+        type: u2
+      - id: rgbic
+        size: len_rgbic
+        type: rgbic_content
+      - id: len_ripple
+        type: u2
+      - id: ripple
+        size: len_ripple
+        type: ripple_section
+      - id: unknown_tail
+        size-eos: true
   rgbic_section:
     seq:
       - id: marker
         contents: [0x0a]
+      - id: body
+        type: rgbic_content
+  rgbic_content:
+    seq:
       - id: num_records
         type: u1
       - id: records

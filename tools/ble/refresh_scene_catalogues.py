@@ -134,7 +134,7 @@ def _parse_scene_v2_records(param: str) -> list[Any]:
     if payload[:1] == b"\x51":
         from custom_components.ha_govee_led_ble.h60b0_effects import parse_combined_scene
 
-        return cast(list[Any], parse_combined_scene(payload).rgbic.records)
+        return cast(list[Any], parse_combined_scene(payload).rgbic.body.records)
     parsed, _padding = parse_scene_body(
         payload,
         scene_type=int(H607cSceneBody.CatalogueType.layered_scene),

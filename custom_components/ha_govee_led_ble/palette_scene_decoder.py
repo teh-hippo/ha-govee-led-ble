@@ -6,7 +6,6 @@ import base64
 from typing import Any, cast
 
 from .effect_domain import (
-    PALETTE_CONFIG_RESERVED_MASK,
     CatalogueRef,
     EffectValidationError,
     PaletteScene,
@@ -22,8 +21,6 @@ __all__ = [
     "encode_palette_scene",
 ]
 
-_CONFIG_BRIGHTNESS_BIT = 0x80
-_CONFIG_LAYOUT_SHIFT = 4
 _CONFIG_COLOUR_STRIDE = 3
 _CONFIG_INLINE_EXTRA_STRIDE = 5
 
@@ -45,7 +42,7 @@ def decode_palette_scene(
         steps=tuple(_decode_step(step, layout, colour_stride) for step in parsed.steps),
         palette=(tuple(_decode_colour(colour) for colour in parsed.palette) if layout == 0 else ()),
         speed_index=speed_index,
-        config_flags=int(parsed.config) & PALETTE_CONFIG_RESERVED_MASK,
+        config_flags=int(parsed.content.reserved_flags),
         trailing_padding=trailing_padding,
     )
 
@@ -68,17 +65,12 @@ def encode_palette_scene(scene: PaletteScene) -> bytes:
     root = SceneType1Body()
     root.scene_type = 1
     content = new_child(GoveeShared.SceneType1Content, root)
-    colour_stride = (
-        _CONFIG_INLINE_EXTRA_STRIDE
-        if scene.layout == 1 and scene.steps and scene.steps[0].inline_extra is not None
-        else _CONFIG_COLOUR_STRIDE
-    )
-    content.config = (
-        (_CONFIG_BRIGHTNESS_BIT if scene.brightness_flag else 0)
-        | (scene.layout << _CONFIG_LAYOUT_SHIFT)
-        | (scene.config_flags & PALETTE_CONFIG_RESERVED_MASK)
-        | colour_stride
-    )
+    content.config = GoveeShared.PaletteConfigValue(
+        scene.brightness_flag,
+        scene.layout,
+        scene.config_flags,
+        bool(scene.layout == 1 and scene.steps and scene.steps[0].inline_extra is not None),
+    ).value
     content.num_steps = len(scene.steps)
     content.steps = [_encode_step(content, step, scene.layout) for step in scene.steps]
     if scene.layout == 0:
