@@ -60,6 +60,8 @@ Keep real product differences without turning each product into a separate imple
   Validate the whole operation before its first state-changing device write, compile once, and retain the metadata required to revalidate it.
   Check semantic eligibility directly rather than constructing dummy packets or encoding content merely to authorise an operation.
   Recover omitted mandatory values through qualified independent observations, not successful writes or retained cache alone.
+  Preparation reads retain the submitting operation's intent; acquiring state must not invalidate that same request.
+  Scope preparation ownership to the required work, not unrelated connection or persistence stages.
 - Bind prepared work and observations to their actual lifetime: device, effective profile, layout, subscription and operation generation as applicable.
   Revalidate at physical boundaries, and invalidate dependent knowledge when its authority changes.
   Older work must not invalidate newer preparation, restore over newer observations or mutate a replacement session.

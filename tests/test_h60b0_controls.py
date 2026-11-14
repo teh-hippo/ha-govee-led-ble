@@ -811,7 +811,11 @@ async def test_live_acquires_source_state_without_guessing_missing_intent(
         coordinator.source_static_intents.clear()
     coordinator._field_received_at.clear()
     manager, _cache = await _manager(hass, monkeypatch, coordinator)
-    transmit = AsyncMock()
+
+    async def begin_transmission(_request, _coordinator, _compiled, writer):
+        await writer.begin()
+
+    transmit = AsyncMock(side_effect=begin_transmission)
     monkeypatch.setattr(manager, "_async_transmit_request", transmit)
     template = next(
         template

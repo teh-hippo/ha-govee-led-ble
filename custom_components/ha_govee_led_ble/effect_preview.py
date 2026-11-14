@@ -1121,7 +1121,8 @@ class EffectPreviewManager:
             and compiled.relative_brightness is not None
         )
         inline_revision = coordinator._field_revisions.get("video_parameters", 0) if inline_brightness else 0
-        await async_prepare_effect_control_state(coordinator, require_restorable_static=True)
+        async with async_control_intent(coordinator, ControlIntent.PREVIEW):
+            await async_prepare_effect_control_state(coordinator, require_restorable_static=True)
         if inline_brightness and coordinator._field_revisions.get("video_parameters", 0) <= inline_revision:
             await coordinator.refresh_state()
             if coordinator._field_revisions.get("video_parameters", 0) <= inline_revision and (
