@@ -500,7 +500,7 @@ async def test_refresh_without_colour_readback_requires_power_and_brightness_onl
 
 async def test_profile_without_colour_readback_rejects_colour_expectations(limited_readback_coord):
     with patch.object(limited_readback_coord, "_ensure_connected", new_callable=AsyncMock) as ensure:
-        assert await limited_readback_coord.refresh_state(RefreshRequest(effect="candy")) is False
+        assert await limited_readback_coord.refresh_state(RefreshRequest(effect="candy")) is None
     ensure.assert_not_awaited()
 
 
@@ -647,9 +647,9 @@ async def test_refresh_state_rejects_optimistic_value_without_fresh_reply(coord,
         patch.object(coord, "_send_state_queries", new=AsyncMock(return_value=True)) as queries,
         patch.object(coord, "_disconnect_if_current_locked", new_callable=AsyncMock) as disconnect,
     ):
-        assert await coord.refresh_state(RefreshRequest(on=True, timeout=0.01)) is False
+        assert await coord.refresh_state(RefreshRequest(on=True, timeout=0.01)) is None
     assert queries.await_count == 2
-    disconnect.assert_awaited_once_with(client)
+    disconnect.assert_not_awaited()
 
 
 async def test_refresh_state_ignored_stale_reply_does_not_confirm(coord, virtual_clock):
@@ -669,7 +669,7 @@ async def test_refresh_state_ignored_stale_reply_does_not_confirm(coord, virtual
         patch.object(coord, "_send_state_queries", new=AsyncMock(side_effect=_stale_reply)),
         patch.object(coord, "_disconnect_if_current_locked", new_callable=AsyncMock) as disconnect,
     ):
-        assert await coord.refresh_state(RefreshRequest(music_mode="rhythm", timeout=0.01)) is False
+        assert await coord.refresh_state(RefreshRequest(music_mode="rhythm", timeout=0.01)) is None
     disconnect.assert_not_awaited()
 
 
@@ -687,8 +687,8 @@ async def test_refresh_state_requires_fresh_power_and_video_replies(coord, virtu
         patch.object(coord, "_send_state_queries", new=AsyncMock(side_effect=_video_only)),
         patch.object(coord, "_disconnect_if_current_locked", new_callable=AsyncMock) as disconnect,
     ):
-        assert await coord.refresh_state(RefreshRequest(on=True, video_mode="game", timeout=0.01)) is False
-    disconnect.assert_awaited_once_with(client)
+        assert await coord.refresh_state(RefreshRequest(on=True, video_mode="game", timeout=0.01)) is None
+    disconnect.assert_not_awaited()
 
 
 async def test_refresh_state_rejects_wrong_video_parameters(coord, virtual_clock):
@@ -719,7 +719,7 @@ async def test_refresh_state_rejects_wrong_video_parameters(coord, virtual_clock
                     timeout=0.01,
                 ),
             )
-            is False
+            is None
         )
     disconnect.assert_not_awaited()
 
@@ -737,7 +737,7 @@ async def test_refresh_state_does_not_disconnect_replacement_client(coord, virtu
         patch.object(coord, "_ensure_connected", new=AsyncMock(return_value=original)),
         patch.object(coord, "_send_state_queries", new=AsyncMock(side_effect=_replace)),
     ):
-        assert await coord.refresh_state(RefreshRequest(on=True, timeout=0.01)) is False
+        assert await coord.refresh_state(RefreshRequest(on=True, timeout=0.01)) is None
 
     assert coord._client is replacement
     original.disconnect.assert_not_awaited()

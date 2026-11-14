@@ -764,11 +764,12 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         if not request.field_expectations(profile):
             return
         confirm = partial(self.coordinator.refresh_state, request)
-        if await confirm():
+        confirmed = await confirm()
+        if confirmed is not False:
             return
         if retry_command is not None:
             await retry_command()
-        if not await confirm():
+        if await confirm() is False:
             raise RuntimeError(f"Failed to confirm state for {self.coordinator.model}")
 
     def _notify_state_changed(self) -> None:

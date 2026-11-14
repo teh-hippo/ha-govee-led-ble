@@ -414,7 +414,7 @@ async def test_write_only_control_completes_without_confirmation_or_retry(light,
 
 
 @pytest.mark.parametrize("domain", [ReadDomain.POWER, ReadDomain.BRIGHTNESS])
-@pytest.mark.parametrize("replies", [(True,), (False, True), (False, False)])
+@pytest.mark.parametrize("replies", [(True,), (None,), (False, True), (False, None), (False, False)])
 async def test_mixed_confirmation_keeps_readable_expectation_strict(light, mock_coordinator, domain, replies):
     mock_coordinator.profile = ModelProfile(
         "Synthetic mixed confirmation",
@@ -426,7 +426,7 @@ async def test_mixed_confirmation_keeps_readable_expectation_strict(light, mock_
     retry = AsyncMock()
     kwargs = {"expected_on": False, "expected_brightness": 50, "retry_command": retry}
 
-    if replies[-1]:
+    if replies[-1] is not False:
         await light._refresh_with_retry(**kwargs)
     else:
         with pytest.raises(RuntimeError, match="Failed to confirm state"):
@@ -435,6 +435,22 @@ async def test_mixed_confirmation_keeps_readable_expectation_strict(light, mock_
     expected = RefreshRequest(on=False) if domain is ReadDomain.POWER else RefreshRequest(brightness=50)
     assert [call.args[0] for call in mock_coordinator.refresh_state.await_args_list] == [expected] * len(replies)
     assert retry.await_count == len(replies) - 1
+
+
+@pytest.mark.parametrize("operation", ["brightness", "power_on", "power_off"])
+async def test_delivered_control_without_confirmation_is_not_replayed(light, mock_coordinator, operation):
+    mock_coordinator.is_on = operation != "power_on"
+    mock_coordinator.refresh_state.return_value = None
+    if operation == "brightness":
+        await light.async_turn_on(brightness=128)
+        assert mock_coordinator.brightness_pct == 50
+    else:
+        on = operation == "power_on"
+        await (light.async_turn_on() if on else light.async_turn_off())
+        assert mock_coordinator.is_on is on
+    assert mock_coordinator.send_command.await_count == 1
+    assert mock_coordinator.refresh_state.await_count == 1
+    light.async_write_ha_state.assert_called_once()
 
 
 @pytest.mark.parametrize("operation", ["brightness", "power_on", "power_off"])

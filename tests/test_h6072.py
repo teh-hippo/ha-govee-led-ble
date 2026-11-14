@@ -213,8 +213,8 @@ async def test_h6072_basic_setup_survives_optional_setting_failure_and_quarantin
     monkeypatch.setattr(c, "_renew_foreground_lease", lambda: None)
     wait = c._wait_for_revisions
 
-    async def wait_for_fields(fields, domains, deadline):
-        return False if "low_blue_light" in fields else await wait(fields, domains, deadline)
+    async def wait_for_fields(fields, domains, deadline, *, expectations=None):
+        return False if "low_blue_light" in fields else await wait(fields, domains, deadline, expectations=expectations)
 
     monkeypatch.setattr(c, "_wait_for_revisions", wait_for_fields)
     pages = (

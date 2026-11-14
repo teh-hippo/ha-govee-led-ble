@@ -386,7 +386,7 @@ class _RecoveryMixin(_CoordinatorBase):
                     _LOGGER.debug("Power-off cleanup failed during effect recovery", exc_info=True)
             raise
         await self.send_command(build_power(False, self.model), state_values={"is_on": False})
-        return await self.refresh_state(RefreshRequest(on=False)) and appearance_restored
+        return await self.refresh_state(RefreshRequest(on=False)) is True and appearance_restored
 
     def _prepare_music_restore(self, state: PriorControlState) -> tuple[Any, MusicWriteSequence] | None:
         """Return (variant, writes) for a music snapshot, or None when it cannot be recovered."""
@@ -923,7 +923,7 @@ class _RecoveryMixin(_CoordinatorBase):
         )
         return (
             self.profile.state_readable
-            and await self.refresh_state(request)
+            and await self.refresh_state(request) is True
             and self.active_mode == "colour"
             and self.color_mode is ParsedMode.COLOUR
             and request.expects_color_readback

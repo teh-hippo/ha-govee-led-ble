@@ -308,7 +308,7 @@ async def apply_active_video_mode(
         )
         if not verify:
             return True
-        if await coordinator.refresh_state(request):
+        if await coordinator.refresh_state(request) is not False:
             return True
     raise RuntimeError("Video-mode write was not confirmed by the device")
 
@@ -430,7 +430,7 @@ async def apply_white_balance(
             if scalar
             else await coordinator.refresh_state(RefreshRequest(white_balance=expected, white_balance_flag=flag))
         )
-        if confirmed:
+        if confirmed is not False:
             check_defaults()
             return True
     raise RuntimeError("White-balance write was not confirmed by the device")
@@ -471,7 +471,7 @@ async def apply_relative_brightness(
         )
         if not verify:
             return True
-        if await coordinator.refresh_state(RefreshRequest(relative_brightness=expected)):
+        if await coordinator.refresh_state(RefreshRequest(relative_brightness=expected)) is not False:
             return True
     raise RuntimeError("Relative-brightness write was not confirmed by the device")
 
@@ -556,7 +556,7 @@ async def apply_blank_screen(
             if policy is None
             else await coordinator.refresh_state(RefreshRequest(blank_screen=expected, blank_screen_policy=policy))
         )
-        if confirmed:
+        if confirmed is not False:
             return True
     raise RuntimeError("Blank-screen write was not confirmed by the device")
 
@@ -579,6 +579,6 @@ async def apply_black_border(
             state_values=fields,
             expected_values=fields if verify else None,
         )
-        if not verify or await coordinator.refresh_state(RefreshRequest(black_border=expected)):
+        if not verify or await coordinator.refresh_state(RefreshRequest(black_border=expected)) is not False:
             return True
     raise RuntimeError("Black-border write was not confirmed by the device")
