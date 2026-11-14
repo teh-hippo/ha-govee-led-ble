@@ -16,7 +16,7 @@ from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ReadDomain,
 from custom_components.ha_govee_led_ble.control_arbiter import BLEControlArbiter, ControlIntent, async_control_intent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_refresh import DEFAULT_REFRESH_REQUEST, RefreshRequest
-from custom_components.ha_govee_led_ble.coordinator_status import parse_color_mode
+from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode, parse_color_mode
 from custom_components.ha_govee_led_ble.effect_active_workspace import (
     ActiveEffectWorkspace,
     ActiveEffectWorkspaceRepository,
@@ -312,6 +312,20 @@ async def test_preview_rejects_h7020_static_state_with_ambiguous_white_intent():
     coordinator.async_refresh_segments.assert_not_awaited()
 
 
+async def test_preview_rejects_delivered_rgb_without_observed_recovery_segments(hass):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H7020", configuration_url=None)
+    coordinator.profile = replace(get_profile("H7020"), configured_string_counts=())
+    coordinator.color_mode = ParsedMode.COLOUR
+    coordinator._static_rgb_known = True
+    coordinator.segment_state_source = "optimistic"
+    prior = coordinator.capture_effect_control_state()
+    assert prior.mode == "colour"
+    assert not prior.static_rgb_known
+
+    with pytest.raises(RuntimeError, match="RGB or white intent"):
+        await async_prepare_effect_control_state(coordinator, require_restorable_static=True)
+
+
 @pytest.mark.parametrize("model", ["H7020", "H60A1", "H60A6"])
 async def test_topology_independent_apply_does_not_require_ambiguous_segment_snapshot(model):
     coordinator = _coordinator()
@@ -511,6 +525,8 @@ async def test_partial_observation_does_not_confirm_or_repeat_activation(hass: H
 
 def _coordinator(*, readable: bool = True):
     coordinator = _EffectCoordinator(
+        _lock=asyncio.Lock(),
+        _ensure_connected=AsyncMock(),
         _control_arbiter=BLEControlArbiter(),
         address="AA:BB:CC:DD:EE:FF",
         model="H617A",
@@ -612,8 +628,11 @@ def _profile_coordinator(model: str):
     coordinator._field_revisions = {}
 
     async def refresh(request=DEFAULT_REFRESH_REQUEST):
+        if request.required_domains is not None and not request.refresh_all:
+            coordinator._field_revisions["color_mode"] = coordinator._field_revisions.get("color_mode", 0) + 1
         if request.refresh_all:
-            for field in ("is_on", "brightness_pct", "color_mode"):
+            native = request.query_native_settings if isinstance(request.query_native_settings, frozenset) else ()
+            for field in ("is_on", "brightness_pct", "color_mode", *native):
                 coordinator._field_revisions[field] = coordinator._field_revisions.get(field, 0) + 1
         if "blank_screen" in request.display_settings:
             for field in (

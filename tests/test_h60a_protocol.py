@@ -218,6 +218,16 @@ async def test_native_preview_requires_fresh_zone_flags_even_for_scene_mode(hass
     c._resolve_device_profile()
     c.color_mode, c._scene_code = ParsedMode.SCENE, 99
     c._notify_started_monotonic = time.monotonic()
+
+    async def refresh(request):
+        c._mark_received(ReadDomain.POWER, "is_on")
+        c._mark_received(ReadDomain.BRIGHTNESS, "brightness_pct")
+        c._mark_received(ReadDomain.COLOUR_MODE, "color_mode")
+        if flags == "fresh":
+            c._mark_received(ReadDomain.OTHER, *request.query_native_settings)
+        return True
+
+    c.refresh_state = AsyncMock(side_effect=refresh)
     if flags is not None:
         c._notify_callback(None, bytearray(frame("ee3001010001")))
         if flags == "retained":
@@ -228,7 +238,7 @@ async def test_native_preview_requires_fresh_zone_flags_even_for_scene_mode(hass
         with pytest.raises(RuntimeError, match="music mode"):
             await async_prepare_effect_control_state(c, require_restorable_static=True)
     else:
-        with pytest.raises(RuntimeError, match="panel and ring"):
+        with pytest.raises(RuntimeError, match="source states"):
             await async_prepare_effect_control_state(c, require_restorable_static=True)
 
 

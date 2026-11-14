@@ -49,7 +49,7 @@ class RefreshRequest:
     display_settings: frozenset[str] = frozenset()
     refresh_relative_brightness: bool = False
     refresh_all: bool = False
-    query_native_settings: bool = True
+    query_native_settings: bool | frozenset[str] = True
     query_segments: bool | None = None
     required_domains: frozenset[ReadDomain] | None = None
     timeout: float = STATE_QUERY_TIMEOUT

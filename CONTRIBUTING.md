@@ -57,6 +57,8 @@ Keep real product differences without turning each product into a separate imple
 
 ### State, ownership and execution
 
+- Prepare effect recovery from fresh required observations before checking restorable source state.
+  Query only the native settings needed by the operation, and distinguish unsafe restoration from a Bluetooth connection failure.
 - Entities adapt Home Assistant inputs and presentation; the coordinator owns admission, state qualification, physical attempts and recovery.
   Ordinary entity controls send the first request immediately and coalesce later requests to the newest per control.
   A light's power and attribute requests share one control stream, merging queued attributes; services, Studio and background work bypass this coalescing.
@@ -145,6 +147,9 @@ Keep virtual event-loop clocks out of real HTTP/WebSocket tests; use them only a
 - For refactors, compare complete relevant public payloads and generated wire output, not selected fields alone.
   For fixes, demonstrate the old failure and intended new behaviour without blessing the defect as a compatibility requirement.
   Report software evidence separately from hardware observations; an accepted write or optimistic UI is not physical confirmation.
+- Retain bounded, redacted failure-time context for control verification and recovery decisions.
+  Later state or packet-history changes must not replace the evidence explaining the failure.
+  Diagnostic export is passive; do not query devices, retain private payloads or upload automatically.
 - Review both the exception and the proposed abstraction.
   Justify any remaining special treatment with evidence, check that equivalent capability combinations use the same core, and remove superseded branches, adapters, state and tests.
   Prefer a smaller implementation, but do not trade away explicit product declarations or safety boundaries to meet a line-count target.

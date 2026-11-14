@@ -142,6 +142,8 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     _expected_state: dict[str, tuple[Any, float]]
     _field_revisions: dict[str, int]
     _field_received_at: dict[str, float]
+    _last_mode_observation: dict[str, Any] | None = None
+    _last_control_failure: dict[str, Any] | None = None
     _observed_physical_ic_count: int | None
     _bulk_collector: BulkStatusCollector | None
     _bulk_query_deadline: float | None
