@@ -1,115 +1,40 @@
 """Model-specific music mode protocol metadata."""
 
 from collections.abc import Mapping
-from importlib import import_module
 from types import MappingProxyType
-from typing import Any, Final, cast
+from typing import Final
 
 from .const import ModelProfile, get_profile
 from .protocol_core import H60b2MusicBody, H705aMusicWrite
+from .protocol_imports import load_generated_class
 
-H1771MusicBody = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h1771_music_body").H1771MusicBody,
-)
-GoveeCommon = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.govee_common").GoveeCommon,
-)
-H6099CommandWrite = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6099_command_write").H6099CommandWrite,
-)
-H6179CommandWrite = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6179_command_write").H6179CommandWrite,
-)
-H6181CommandWrite = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6181_command_write").H6181CommandWrite,
-)
-H6199CommandWrite = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6199_command_write").H6199CommandWrite,
-)
-H6046CommandWrite = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6046_command_write").H6046CommandWrite,
-)
-H6046MusicBody = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6046_music_body").H6046MusicBody,
-)
-H7020CommandWrite = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h7020_command_write").H7020CommandWrite,
-)
+H1771MusicBody = load_generated_class("h1771_music_body", "H1771MusicBody")
+GoveeCommon = load_generated_class("govee_common", "GoveeCommon")
+H6099CommandWrite = load_generated_class("h6099_command_write", "H6099CommandWrite")
+H6179CommandWrite = load_generated_class("h6179_command_write", "H6179CommandWrite")
+H6181CommandWrite = load_generated_class("h6181_command_write", "H6181CommandWrite")
+H6199CommandWrite = load_generated_class("h6199_command_write", "H6199CommandWrite")
+H6046CommandWrite = load_generated_class("h6046_command_write", "H6046CommandWrite")
+H6046MusicBody = load_generated_class("h6046_music_body", "H6046MusicBody")
+H7020CommandWrite = load_generated_class("h7020_command_write", "H7020CommandWrite")
 
-H6076MusicBody = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6076_music_body").H6076MusicBody,
-)
-H6076MusicWrite = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6076_music_write").H6076MusicWrite,
-)
-H607cMusicWrite = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h607c_music_write").H607cMusicWrite,
-)
-H7025MusicBody = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h7025_music_body").H7025MusicBody,
-)
-H7025MusicWrite = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h7025_music_write").H7025MusicWrite,
-)
+H6076MusicBody = load_generated_class("h6076_music_body", "H6076MusicBody")
+H6076MusicWrite = load_generated_class("h6076_music_write", "H6076MusicWrite")
+H607cMusicWrite = load_generated_class("h607c_music_write", "H607cMusicWrite")
+H7025MusicBody = load_generated_class("h7025_music_body", "H7025MusicBody")
+H7025MusicWrite = load_generated_class("h7025_music_write", "H7025MusicWrite")
 
-H6099MusicParameters = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6099_music_parameters").H6099MusicParameters,
-)
-H6097MusicParameters = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6097_music_parameters").H6097MusicParameters,
-)
-H6097MusicWrite = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6097_music_write").H6097MusicWrite,
-)
-H66a0MusicParameters = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h66a0_music_parameters").H66a0MusicParameters,
-)
-H66a0MusicWrite = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h66a0_music_write").H66a0MusicWrite,
-)
-H1a42MusicParameters = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h1a42_music_parameters").H1a42MusicParameters,
-)
-H1a42MusicWrite = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h1a42_music_write").H1a42MusicWrite,
-)
-H61f5MusicParameters = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h61f5_music_parameters").H61f5MusicParameters,
-)
-H61f5MusicWrite = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h61f5_music_write").H61f5MusicWrite,
-)
-MusicBody = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.music_body").MusicBody,
-)
-H60b0MusicBody = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h60b0_music_body").H60b0MusicBody,
-)
+H6099MusicParameters = load_generated_class("h6099_music_parameters", "H6099MusicParameters")
+H6097MusicParameters = load_generated_class("h6097_music_parameters", "H6097MusicParameters")
+H6097MusicWrite = load_generated_class("h6097_music_write", "H6097MusicWrite")
+H66a0MusicParameters = load_generated_class("h66a0_music_parameters", "H66a0MusicParameters")
+H66a0MusicWrite = load_generated_class("h66a0_music_write", "H66a0MusicWrite")
+H1a42MusicParameters = load_generated_class("h1a42_music_parameters", "H1a42MusicParameters")
+H1a42MusicWrite = load_generated_class("h1a42_music_write", "H1a42MusicWrite")
+H61f5MusicParameters = load_generated_class("h61f5_music_parameters", "H61f5MusicParameters")
+H61f5MusicWrite = load_generated_class("h61f5_music_write", "H61f5MusicWrite")
+MusicBody = load_generated_class("music_body", "MusicBody")
+H60b0MusicBody = load_generated_class("h60b0_music_body", "H60b0MusicBody")
 
 _H617A_MODE_CODES: Final[Mapping[str, int]] = MappingProxyType({mode.name: int(mode) for mode in GoveeCommon.MusicMode})
 _H6099_MODE_CODES: Final[Mapping[str, int]] = MappingProxyType(

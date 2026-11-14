@@ -5,10 +5,11 @@ from __future__ import annotations
 import copy
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
-from importlib import import_module
 from math import ceil
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Literal, Self
+
+from .protocol_imports import load_generated_class
 
 if TYPE_CHECKING:
     from .const import ModelProfile
@@ -987,9 +988,7 @@ H619A_MUSIC_VARIANTS = tuple(
     for variant in _dreamcolor_music_variants("H619A")
 )
 
-_H6076_MODE = import_module(
-    "custom_components.ha_govee_led_ble.generated_protocol.h6076_music_write"
-).H6076MusicWrite.MusicMode
+_H6076_MODE = load_generated_class("h6076_music_write", "H6076MusicWrite").MusicMode
 # The default seven-colour palette; the evidence-backed Torch body carries it unchanged.
 _H6076_PALETTE = "ff0000ff7f00ffff0000ff000000ff00ffff8b00ff"
 

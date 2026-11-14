@@ -20,18 +20,15 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import IntEnum
-from importlib import import_module
 from typing import Any, cast
 
 from .protocol_core import MAX_SCENE_PARAM_BYTES
+from .protocol_imports import load_generated_class
 
 type RGB = tuple[int, int, int]
 type JsonValue = str | int | float | bool | None | list["JsonValue"] | dict[str, "JsonValue"]
 
-GoveeShared = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.govee_shared").GoveeShared,
-)
+GoveeShared = load_generated_class("govee_shared", "GoveeShared")
 
 __all__ = [
     "AppliedArea",

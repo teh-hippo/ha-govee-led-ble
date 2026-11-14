@@ -67,7 +67,7 @@ M = "custom_components.ha_govee_led_ble.coordinator"
 
 async def test_wire_parsing_does_not_import_on_event_loop():
     with patch(
-        "custom_components.ha_govee_led_ble.govee_encryption.import_module",
+        "custom_components.ha_govee_led_ble.protocol_imports.import_module",
         side_effect=AssertionError("Runtime protocol import blocks the event loop"),
     ):
         assert parse_wire("Marker", b"\x01\x01").version == 1

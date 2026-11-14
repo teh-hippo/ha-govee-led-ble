@@ -6,7 +6,6 @@ messaging. The vendor-global constants are not per-device secrets.
 
 import io
 import os
-from importlib import import_module
 from typing import Any
 
 from cryptography.exceptions import InvalidTag
@@ -15,11 +14,10 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from kaitaistruct import KaitaiStream
 
+from ..protocol_imports import load_generated_class
 from ..transport import xor_checksum
 
-GoveeEncryption = import_module(
-    "custom_components.ha_govee_led_ble.generated_protocol.govee_encryption"
-).GoveeEncryption
+GoveeEncryption = load_generated_class("govee_encryption", "GoveeEncryption")
 
 KEY_COMMUNICATION = bytes.fromhex("4d616b696e674c696665536d61727465")
 KEY_HANDSHAKE = bytes.fromhex("fc03783c7c42cb83e202a1643648aff6")

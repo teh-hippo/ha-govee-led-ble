@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import io
 from enum import IntEnum
-from importlib import import_module
 from math import ceil
 from typing import Any
 
@@ -27,6 +26,7 @@ from .protocol_core import (
     _serialize_a3_scene_param,
     serialize_native_body,
 )
+from .protocol_imports import load_generated_class
 
 
 def music_default_palette(variant: MusicVariant | None) -> tuple[tuple[int, int, int], ...]:
@@ -115,25 +115,15 @@ def parse_music_parameters(variant: MusicVariant, body: bytes) -> Any:
         "h61f5_music_parameters",
     }:
         root_type = (
-            import_module(
-                "custom_components.ha_govee_led_ble.generated_protocol.h6097_music_parameters"
-            ).H6097MusicParameters
+            load_generated_class("h6097_music_parameters", "H6097MusicParameters")
             if variant.layout == "h6097_music_parameters"
-            else import_module(
-                "custom_components.ha_govee_led_ble.generated_protocol.h61f5_music_parameters"
-            ).H61f5MusicParameters
+            else load_generated_class("h61f5_music_parameters", "H61f5MusicParameters")
             if variant.layout == "h61f5_music_parameters"
-            else import_module(
-                "custom_components.ha_govee_led_ble.generated_protocol.h1a42_music_parameters"
-            ).H1a42MusicParameters
+            else load_generated_class("h1a42_music_parameters", "H1a42MusicParameters")
             if variant.layout == "h1a42_music_parameters"
-            else import_module(
-                "custom_components.ha_govee_led_ble.generated_protocol.h66a0_music_parameters"
-            ).H66a0MusicParameters
+            else load_generated_class("h66a0_music_parameters", "H66a0MusicParameters")
             if variant.layout == "h66a0_music_parameters"
-            else import_module(
-                "custom_components.ha_govee_led_ble.generated_protocol.h6099_music_parameters"
-            ).H6099MusicParameters
+            else load_generated_class("h6099_music_parameters", "H6099MusicParameters")
         )
         root = root_type.from_bytes(body)
     elif variant.layout in COMPANION_MUSIC_LAYOUTS:

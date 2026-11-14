@@ -1,15 +1,13 @@
 """Revision-qualified H60B0 native DIY semantics."""
 
-from importlib import import_module
 from typing import Any, cast
 
 from .native_effect import NativeDiyLayer, NativeEffect, NativeOpaqueLayer
 from .protocol_core import new_child, new_rgb, serialize_native_body
+from .protocol_imports import load_generated_class
 
-H60b0DiyBody = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h60b0_diy_body").H60b0DiyBody
-)
-H60b0DiyV3 = cast(Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h60b0_diy_v3").H60b0DiyV3)
+H60b0DiyBody = load_generated_class("h60b0_diy_body", "H60b0DiyBody")
+H60b0DiyV3 = load_generated_class("h60b0_diy_v3", "H60b0DiyV3")
 
 
 def _palette(parent: Any, colours: tuple[tuple[int, int, int], ...]) -> Any:

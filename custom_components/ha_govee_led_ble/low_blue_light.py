@@ -4,20 +4,17 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from importlib import import_module
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 from .const import ModelProfile
 from .control_arbiter import ControlIntent, async_control_intent
 from .protocol_core import ProtocolParseResult, _parse_xor_frame, _serialize_xor, new_child
+from .protocol_imports import load_generated_class
 
 if TYPE_CHECKING:
     from .coordinator import GoveeBLECoordinator
 
-Setting = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6072_low_blue_light").H6072LowBlueLight,
-)
+Setting = load_generated_class("h6072_low_blue_light", "H6072LowBlueLight")
 
 
 @dataclass(frozen=True)

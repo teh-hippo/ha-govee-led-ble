@@ -6,574 +6,268 @@ import io
 import math
 from dataclasses import dataclass
 from enum import StrEnum
-from importlib import import_module
 from typing import Any, cast
 
 from kaitaistruct import ConsistencyError, KaitaiStream, KaitaiStructError, ReadWriteKaitaiStruct
 
+from .protocol_imports import load_generated_class
 from .transport import (
     A3_CHUNK_SIZE,
     xor_checksum,
 )
 
-CommandWrite = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.command_write").CommandWrite,
-)
-
-H705aCommandWrite = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h705a_command_write").H705aCommandWrite
-)
-H705aStatusQuery = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h705a_status_query").H705aStatusQuery
-)
-H705aStatusReply = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h705a_status_reply").H705aStatusReply
-)
-H705aMusicWrite = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h705a_music_write").H705aMusicWrite
-)
-H705aMusicBody = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h705a_music_body").H705aMusicBody
-)
-
-H60b2Control = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h60b2_control").H60b2Control
-)
-H60b2StatusReply = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h60b2_status_reply").H60b2StatusReply
-)
-H60b2MusicBody = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h60b2_music_body").H60b2MusicBody
-)
-H60b2DiyBody = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h60b2_diy_body").H60b2DiyBody
-)
-H60b2MusicWrite = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h60b2_music_write").H60b2MusicWrite
-)
-H60b2EffectUpload = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h60b2_effect_upload").H60b2EffectUpload
-)
-
-H60b0CommandWrite = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h60b0_command_write").H60b0CommandWrite
-)
-H60b0CommandAck = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h60b0_command_ack").H60b0CommandAck
-)
-H60b0EffectUpload = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h60b0_effect_upload").H60b0EffectUpload
-)
-H60b0StatusQuery = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h60b0_status_query").H60b0StatusQuery
-)
-H60b0StatusReply = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h60b0_status_reply").H60b0StatusReply
-)
-
-H61f5ExtendedStaticWrite = cast(
-    Any,
-    import_module(
-        "custom_components.ha_govee_led_ble.generated_protocol.h61f5_extended_static_write"
-    ).H61f5ExtendedStaticWrite,
-)
-
-H1771CommandWrite = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h1771_command_write").H1771CommandWrite,
-)
-H1771Bulk = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h1771_bulk").H1771Bulk,
-)
-H1771MusicBody = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h1771_music_body").H1771MusicBody,
-)
-H1771MusicAck = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h1771_music_ack").H1771MusicAck,
-)
-H1771DiyBody = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h1771_diy_body").H1771DiyBody,
-)
-H1771EffectUpload = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h1771_effect_upload").H1771EffectUpload,
-)
-H1771StatusQuery = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h1771_status_query").H1771StatusQuery,
-)
-H1771StatusReply = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h1771_status_reply").H1771StatusReply,
-)
-
-
-H6099CommandWrite = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6099_command_write").H6099CommandWrite,
-)
-
-
-H6099StatusQuery = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6099_status_query").H6099StatusQuery,
-)
-
-
-H6099StatusReply = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6099_status_reply").H6099StatusReply,
-)
-H605cStatusReply = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h605c_status_reply").H605cStatusReply,
-)
-H605cVideoCommand = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h605c_video_command").H605cVideoCommand,
-)
-H605cVideoSettings = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h605c_video_settings").H605cVideoSettings,
-)
-H6097StatusReply = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6097_status_reply").H6097StatusReply,
-)
-H6097Control = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6097_control").H6097Control,
-)
-H6097MusicWrite = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6097_music_write").H6097MusicWrite,
-)
-
-
-H6099EffectUpload = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6099_effect_upload").H6099EffectUpload,
-)
-
-
-H6099CommandAck = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6099_command_ack").H6099CommandAck,
-)
-
-
-H617aCommandAck = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h617a_command_ack").H617aCommandAck,
-)
-
-
-H617aControlPayload = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h617a_control_payload").H617aControlPayload,
-)
-
-
-H6199CommandWrite = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6199_command_write").H6199CommandWrite,
-)
-
-
-H6199Pact1WireWrite = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6199_pact1_wire_write").H6199Pact1WireWrite,
-)
-
-
-H6179CommandWrite = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6179_command_write").H6179CommandWrite,
-)
-
-
-H6179DiyBody = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6179_diy_body").H6179DiyBody,
-)
-
-H6181CommandWrite = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6181_command_write").H6181CommandWrite,
-)
-H6181CommandAck = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6181_command_ack").H6181CommandAck,
-)
-H6181MusicBody = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6181_music_body").H6181MusicBody,
-)
-H6181StatusQuery = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6181_status_query").H6181StatusQuery,
-)
-H6181StatusReply = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6181_status_reply").H6181StatusReply,
-)
-H6181DiyBody = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6181_diy_body").H6181DiyBody,
-)
-H6181ModernStatusReply = cast(
-    Any,
-    import_module(
-        "custom_components.ha_govee_led_ble.generated_protocol.h6181_modern_status_reply"
-    ).H6181ModernStatusReply,
-)
-
-
-H6199CommandAck = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6199_command_ack").H6199CommandAck,
-)
-
-
-H6199ControlPayload = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6199_control_payload").H6199ControlPayload,
-)
-
-
-H6199EffectUpload = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6199_effect_upload").H6199EffectUpload,
-)
-
-
-StatusQuery = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.status_query").StatusQuery,
-)
-
-
-H6199StatusQuery = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6199_status_query").H6199StatusQuery,
-)
-
-
-H6179StatusQuery = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6179_status_query").H6179StatusQuery,
-)
-
-
-GoveeShared = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.govee_shared").GoveeShared,
-)
-
-
-GoveeCommon = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.govee_common").GoveeCommon,
-)
-
-
-StatusReply = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.status_reply").StatusReply,
-)
-
-
-H6102WireWrite = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6102_wire_write").H6102WireWrite,
-)
-
-H6117WireWrite = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6117_wire_write").H6117WireWrite,
-)
-H6117StatusReply = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6117_status_reply").H6117StatusReply,
-)
-H6117LegacyStatusReply = cast(
-    Any,
-    import_module(
-        "custom_components.ha_govee_led_ble.generated_protocol.h6117_legacy_status_reply"
-    ).H6117LegacyStatusReply,
-)
+CommandWrite = load_generated_class("command_write", "CommandWrite")
 
-H66a0StatusReply = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h66a0_status_reply").H66a0StatusReply,
-)
+H705aCommandWrite = load_generated_class("h705a_command_write", "H705aCommandWrite")
+H705aStatusQuery = load_generated_class("h705a_status_query", "H705aStatusQuery")
+H705aStatusReply = load_generated_class("h705a_status_reply", "H705aStatusReply")
+H705aMusicWrite = load_generated_class("h705a_music_write", "H705aMusicWrite")
+H705aMusicBody = load_generated_class("h705a_music_body", "H705aMusicBody")
 
+H60b2Control = load_generated_class("h60b2_control", "H60b2Control")
+H60b2StatusReply = load_generated_class("h60b2_status_reply", "H60b2StatusReply")
+H60b2MusicBody = load_generated_class("h60b2_music_body", "H60b2MusicBody")
+H60b2DiyBody = load_generated_class("h60b2_diy_body", "H60b2DiyBody")
+H60b2MusicWrite = load_generated_class("h60b2_music_write", "H60b2MusicWrite")
+H60b2EffectUpload = load_generated_class("h60b2_effect_upload", "H60b2EffectUpload")
 
-H6199StatusReply = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6199_status_reply").H6199StatusReply,
-)
+H60b0CommandWrite = load_generated_class("h60b0_command_write", "H60b0CommandWrite")
+H60b0CommandAck = load_generated_class("h60b0_command_ack", "H60b0CommandAck")
+H60b0EffectUpload = load_generated_class("h60b0_effect_upload", "H60b0EffectUpload")
+H60b0StatusQuery = load_generated_class("h60b0_status_query", "H60b0StatusQuery")
+H60b0StatusReply = load_generated_class("h60b0_status_reply", "H60b0StatusReply")
 
+H61f5ExtendedStaticWrite = load_generated_class("h61f5_extended_static_write", "H61f5ExtendedStaticWrite")
 
-H6179StatusReply = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6179_status_reply").H6179StatusReply,
-)
+H1771CommandWrite = load_generated_class("h1771_command_write", "H1771CommandWrite")
+H1771Bulk = load_generated_class("h1771_bulk", "H1771Bulk")
+H1771MusicBody = load_generated_class("h1771_music_body", "H1771MusicBody")
+H1771MusicAck = load_generated_class("h1771_music_ack", "H1771MusicAck")
+H1771DiyBody = load_generated_class("h1771_diy_body", "H1771DiyBody")
+H1771EffectUpload = load_generated_class("h1771_effect_upload", "H1771EffectUpload")
+H1771StatusQuery = load_generated_class("h1771_status_query", "H1771StatusQuery")
+H1771StatusReply = load_generated_class("h1771_status_reply", "H1771StatusReply")
 
 
-H7020CommandWrite = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h7020_command_write").H7020CommandWrite,
-)
+H6099CommandWrite = load_generated_class("h6099_command_write", "H6099CommandWrite")
 
 
-H7020StatusQuery = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h7020_status_query").H7020StatusQuery,
-)
+H6099StatusQuery = load_generated_class("h6099_status_query", "H6099StatusQuery")
 
 
-H7020StatusReply = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h7020_status_reply").H7020StatusReply,
-)
+H6099StatusReply = load_generated_class("h6099_status_reply", "H6099StatusReply")
+H605cStatusReply = load_generated_class("h605c_status_reply", "H605cStatusReply")
+H605cVideoCommand = load_generated_class("h605c_video_command", "H605cVideoCommand")
+H605cVideoSettings = load_generated_class("h605c_video_settings", "H605cVideoSettings")
+H6097StatusReply = load_generated_class("h6097_status_reply", "H6097StatusReply")
+H6097Control = load_generated_class("h6097_control", "H6097Control")
+H6097MusicWrite = load_generated_class("h6097_music_write", "H6097MusicWrite")
 
 
-H6102StatusReply = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6102_status_reply").H6102StatusReply,
-)
+H6099EffectUpload = load_generated_class("h6099_effect_upload", "H6099EffectUpload")
 
 
-H617cStatusReply = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h617c_status_reply").H617cStatusReply,
-)
+H6099CommandAck = load_generated_class("h6099_command_ack", "H6099CommandAck")
 
 
-H600aCommandWrite = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h600a_command_write").H600aCommandWrite,
-)
+H617aCommandAck = load_generated_class("h617a_command_ack", "H617aCommandAck")
 
-H600aStatusReply = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h600a_status_reply").H600aStatusReply,
-)
 
-H600aCommandAck = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h600a_command_ack").H600aCommandAck,
-)
+H617aControlPayload = load_generated_class("h617a_control_payload", "H617aControlPayload")
 
-H601cCommandWrite = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h601c_command_write").H601cCommandWrite,
-)
 
+H6199CommandWrite = load_generated_class("h6199_command_write", "H6199CommandWrite")
 
-H601cStatusReply = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h601c_status_reply").H601cStatusReply,
-)
 
+H6199Pact1WireWrite = load_generated_class("h6199_pact1_wire_write", "H6199Pact1WireWrite")
 
-H60a1StatusReply = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h60a1_status_reply").H60a1StatusReply,
-)
 
+H6179CommandWrite = load_generated_class("h6179_command_write", "H6179CommandWrite")
 
-H60a6StatusReply = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h60a6_status_reply").H60a6StatusReply,
-)
 
+H6179DiyBody = load_generated_class("h6179_diy_body", "H6179DiyBody")
 
-H60aBulk = cast(Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h60a_bulk").H60aBulk)
+H6181CommandWrite = load_generated_class("h6181_command_write", "H6181CommandWrite")
+H6181CommandAck = load_generated_class("h6181_command_ack", "H6181CommandAck")
+H6181MusicBody = load_generated_class("h6181_music_body", "H6181MusicBody")
+H6181StatusQuery = load_generated_class("h6181_status_query", "H6181StatusQuery")
+H6181StatusReply = load_generated_class("h6181_status_reply", "H6181StatusReply")
+H6181DiyBody = load_generated_class("h6181_diy_body", "H6181DiyBody")
+H6181ModernStatusReply = load_generated_class("h6181_modern_status_reply", "H6181ModernStatusReply")
 
 
-H60a6Control = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h60a6_control").H60a6Control
-)
+H6199CommandAck = load_generated_class("h6199_command_ack", "H6199CommandAck")
 
 
-H60a6LegacyWrite = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h60a6_legacy_write").H60a6LegacyWrite
-)
+H6199ControlPayload = load_generated_class("h6199_control_payload", "H6199ControlPayload")
 
 
-H60a6EffectFrame = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h60a6_effect_frame").H60a6EffectFrame
-)
+H6199EffectUpload = load_generated_class("h6199_effect_upload", "H6199EffectUpload")
 
 
-H60a6CommandAck = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h60a6_command_ack").H60a6CommandAck
-)
+StatusQuery = load_generated_class("status_query", "StatusQuery")
 
 
-H60a6DiyBody = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h60a6_diy_body").H60a6DiyBody
-)
+H6199StatusQuery = load_generated_class("h6199_status_query", "H6199StatusQuery")
 
 
-H60a6PaintBody = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h60a6_paint_body").H60a6PaintBody
-)
+H6179StatusQuery = load_generated_class("h6179_status_query", "H6179StatusQuery")
 
 
-DiyType03 = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.diy_type03").DiyType03,
-)
+GoveeShared = load_generated_class("govee_shared", "GoveeShared")
 
 
-DiyType04 = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.diy_type04").DiyType04,
-)
+GoveeCommon = load_generated_class("govee_common", "GoveeCommon")
 
 
-SceneBody = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.scene_body").SceneBody,
-)
+StatusReply = load_generated_class("status_reply", "StatusReply")
 
 
-SceneType1Body = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.scene_type1_body").SceneType1Body,
-)
+H6102WireWrite = load_generated_class("h6102_wire_write", "H6102WireWrite")
 
+H6117WireWrite = load_generated_class("h6117_wire_write", "H6117WireWrite")
+H6117StatusReply = load_generated_class("h6117_status_reply", "H6117StatusReply")
+H6117LegacyStatusReply = load_generated_class("h6117_legacy_status_reply", "H6117LegacyStatusReply")
 
-WorkshopBody = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.workshop_body").WorkshopBody,
-)
+H66a0StatusReply = load_generated_class("h66a0_status_reply", "H66a0StatusReply")
 
 
-MusicBody = cast(Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.music_body").MusicBody)
+H6199StatusReply = load_generated_class("h6199_status_reply", "H6199StatusReply")
 
 
-H6076MusicAck = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h6076_music_ack").H6076MusicAck
-)
+H6179StatusReply = load_generated_class("h6179_status_reply", "H6179StatusReply")
 
 
-H6076MusicBody = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h6076_music_body").H6076MusicBody
-)
+H7020CommandWrite = load_generated_class("h7020_command_write", "H7020CommandWrite")
 
 
-H6076MusicWrite = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h6076_music_write").H6076MusicWrite
-)
+H7020StatusQuery = load_generated_class("h7020_status_query", "H7020StatusQuery")
 
 
-H6076StatusReply = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h6076_status_reply").H6076StatusReply
-)
+H7020StatusReply = load_generated_class("h7020_status_reply", "H7020StatusReply")
 
 
-H7025MusicBody = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h7025_music_body").H7025MusicBody
-)
+H6102StatusReply = load_generated_class("h6102_status_reply", "H6102StatusReply")
 
 
-H7025MusicWrite = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h7025_music_write").H7025MusicWrite
-)
+H617cStatusReply = load_generated_class("h617c_status_reply", "H617cStatusReply")
 
 
-H66a0MusicWrite = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h66a0_music_write").H66a0MusicWrite
-)
+H600aCommandWrite = load_generated_class("h600a_command_write", "H600aCommandWrite")
 
+H600aStatusReply = load_generated_class("h600a_status_reply", "H600aStatusReply")
 
-H1a42MusicWrite = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h1a42_music_write").H1a42MusicWrite
-)
+H600aCommandAck = load_generated_class("h600a_command_ack", "H600aCommandAck")
 
+H601cCommandWrite = load_generated_class("h601c_command_write", "H601cCommandWrite")
 
-H1a42StatusReply = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h1a42_status_reply").H1a42StatusReply
-)
 
+H601cStatusReply = load_generated_class("h601c_status_reply", "H601cStatusReply")
 
-H61f5MusicWrite = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h61f5_music_write").H61f5MusicWrite
-)
 
+H60a1StatusReply = load_generated_class("h60a1_status_reply", "H60a1StatusReply")
 
-H61f5StatusReply = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h61f5_status_reply").H61f5StatusReply
-)
 
+H60a6StatusReply = load_generated_class("h60a6_status_reply", "H60a6StatusReply")
 
-H7025StatusReply = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h7025_status_reply").H7025StatusReply
-)
 
+H60aBulk = load_generated_class("h60a_bulk", "H60aBulk")
 
-H6125StatusReply = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6125_status_reply").H6125StatusReply,
-)
 
+H60a6Control = load_generated_class("h60a6_control", "H60a6Control")
 
-H6125ModernStatusReply = cast(
-    Any,
-    import_module(
-        "custom_components.ha_govee_led_ble.generated_protocol.h6125_modern_status_reply"
-    ).H6125ModernStatusReply,
-)
 
+H60a6LegacyWrite = load_generated_class("h60a6_legacy_write", "H60a6LegacyWrite")
 
-H6125IntermediateStatusReply = cast(
-    Any,
-    import_module(
-        "custom_components.ha_govee_led_ble.generated_protocol.h6125_intermediate_status_reply"
-    ).H6125IntermediateStatusReply,
-)
 
+H60a6EffectFrame = load_generated_class("h60a6_effect_frame", "H60a6EffectFrame")
 
-H6125CommandAck = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6125_command_ack").H6125CommandAck,
-)
 
+H60a6CommandAck = load_generated_class("h60a6_command_ack", "H60a6CommandAck")
 
-H6125LegacyStatusReply = cast(
-    Any,
-    import_module(
-        "custom_components.ha_govee_led_ble.generated_protocol.h6125_legacy_status_reply"
-    ).H6125LegacyStatusReply,
-)
 
+H60a6DiyBody = load_generated_class("h60a6_diy_body", "H60a6DiyBody")
 
-H6125LegacySegmentQuery = cast(
-    Any,
-    import_module(
-        "custom_components.ha_govee_led_ble.generated_protocol.h6125_legacy_segment_query"
-    ).H6125LegacySegmentQuery,
-)
 
+H60a6PaintBody = load_generated_class("h60a6_paint_body", "H60a6PaintBody")
 
-H6125WireWrite = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6125_wire_write").H6125WireWrite,
-)
 
+DiyType03 = load_generated_class("diy_type03", "DiyType03")
 
-H66a0VideoCommand = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h66a0_video_command").H66a0VideoCommand
-)
+
+DiyType04 = load_generated_class("diy_type04", "DiyType04")
+
+
+SceneBody = load_generated_class("scene_body", "SceneBody")
+
+
+SceneType1Body = load_generated_class("scene_type1_body", "SceneType1Body")
+
+
+WorkshopBody = load_generated_class("workshop_body", "WorkshopBody")
+
+
+MusicBody = load_generated_class("music_body", "MusicBody")
+
+
+H6076MusicAck = load_generated_class("h6076_music_ack", "H6076MusicAck")
+
+
+H6076MusicBody = load_generated_class("h6076_music_body", "H6076MusicBody")
+
+
+H6076MusicWrite = load_generated_class("h6076_music_write", "H6076MusicWrite")
+
+
+H6076StatusReply = load_generated_class("h6076_status_reply", "H6076StatusReply")
+
+
+H7025MusicBody = load_generated_class("h7025_music_body", "H7025MusicBody")
+
+
+H7025MusicWrite = load_generated_class("h7025_music_write", "H7025MusicWrite")
+
+
+H66a0MusicWrite = load_generated_class("h66a0_music_write", "H66a0MusicWrite")
+
+
+H1a42MusicWrite = load_generated_class("h1a42_music_write", "H1a42MusicWrite")
+
+
+H1a42StatusReply = load_generated_class("h1a42_status_reply", "H1a42StatusReply")
+
+
+H61f5MusicWrite = load_generated_class("h61f5_music_write", "H61f5MusicWrite")
+
+
+H61f5StatusReply = load_generated_class("h61f5_status_reply", "H61f5StatusReply")
+
+
+H7025StatusReply = load_generated_class("h7025_status_reply", "H7025StatusReply")
+
+
+H6125StatusReply = load_generated_class("h6125_status_reply", "H6125StatusReply")
+
+
+H6125ModernStatusReply = load_generated_class("h6125_modern_status_reply", "H6125ModernStatusReply")
+
+
+H6125IntermediateStatusReply = load_generated_class("h6125_intermediate_status_reply", "H6125IntermediateStatusReply")
+
+
+H6125CommandAck = load_generated_class("h6125_command_ack", "H6125CommandAck")
+
+
+H6125LegacyStatusReply = load_generated_class("h6125_legacy_status_reply", "H6125LegacyStatusReply")
+
+
+H6125LegacySegmentQuery = load_generated_class("h6125_legacy_segment_query", "H6125LegacySegmentQuery")
+
+
+H6125WireWrite = load_generated_class("h6125_wire_write", "H6125WireWrite")
+
+
+H66a0VideoCommand = load_generated_class("h66a0_video_command", "H66a0VideoCommand")
 
 
 _U1_MAX = 0xFF
@@ -711,84 +405,33 @@ def _serialize_xor(root: Any, length: int = 20) -> bytes:
     return _write(root, length)
 
 
-H6046CommandWrite = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h6046_command_write").H6046CommandWrite
-)
-H6046StatusQuery = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h6046_status_query").H6046StatusQuery
-)
-H6046StatusReply = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h6046_status_reply").H6046StatusReply
-)
-H6046CommandAck = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h6046_command_ack").H6046CommandAck
-)
-H6046EffectUpload = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h6046_effect_upload").H6046EffectUpload
-)
-H6046MusicBody = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h6046_music_body").H6046MusicBody
-)
+H6046CommandWrite = load_generated_class("h6046_command_write", "H6046CommandWrite")
+H6046StatusQuery = load_generated_class("h6046_status_query", "H6046StatusQuery")
+H6046StatusReply = load_generated_class("h6046_status_reply", "H6046StatusReply")
+H6046CommandAck = load_generated_class("h6046_command_ack", "H6046CommandAck")
+H6046EffectUpload = load_generated_class("h6046_effect_upload", "H6046EffectUpload")
+H6046MusicBody = load_generated_class("h6046_music_body", "H6046MusicBody")
 
-H6072CommandWrite = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h6072_command_write").H6072CommandWrite
-)
-H607cSceneBody = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h607c_scene_body").H607cSceneBody
-)
-H607cCommandWrite = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h607c_command_write").H607cCommandWrite
-)
-H607cControl = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h607c_control").H607cControl
-)
-H607cStatusQuery = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h607c_status_query").H607cStatusQuery
-)
-H607cStatusReply = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h607c_status_reply").H607cStatusReply
-)
-H607cCommandAck = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h607c_command_ack").H607cCommandAck
-)
-H607cMusicWrite = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h607c_music_write").H607cMusicWrite
-)
-H607cMusicBody = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h607c_music_body").H607cMusicBody
-)
-H607cEffectUpload = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h607c_effect_upload").H607cEffectUpload
-)
-H607cDiyBody = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h607c_diy_body").H607cDiyBody
-)
-H607cPaintBody = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h607c_paint_body").H607cPaintBody
-)
-H6072StatusReply = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h6072_status_reply").H6072StatusReply
-)
-H6072StatusQuery = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h6072_status_query").H6072StatusQuery
-)
-H6072LegacyQuery = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h6072_legacy_query").H6072LegacyQuery
-)
-H6072MusicWrite = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h6072_music_write").H6072MusicWrite
-)
-H6072MusicBody = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h6072_music_body").H6072MusicBody
-)
-H6072MusicAck = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h6072_music_ack").H6072MusicAck
-)
+H6072CommandWrite = load_generated_class("h6072_command_write", "H6072CommandWrite")
+H607cSceneBody = load_generated_class("h607c_scene_body", "H607cSceneBody")
+H607cCommandWrite = load_generated_class("h607c_command_write", "H607cCommandWrite")
+H607cControl = load_generated_class("h607c_control", "H607cControl")
+H607cStatusQuery = load_generated_class("h607c_status_query", "H607cStatusQuery")
+H607cStatusReply = load_generated_class("h607c_status_reply", "H607cStatusReply")
+H607cCommandAck = load_generated_class("h607c_command_ack", "H607cCommandAck")
+H607cMusicWrite = load_generated_class("h607c_music_write", "H607cMusicWrite")
+H607cMusicBody = load_generated_class("h607c_music_body", "H607cMusicBody")
+H607cEffectUpload = load_generated_class("h607c_effect_upload", "H607cEffectUpload")
+H607cDiyBody = load_generated_class("h607c_diy_body", "H607cDiyBody")
+H607cPaintBody = load_generated_class("h607c_paint_body", "H607cPaintBody")
+H6072StatusReply = load_generated_class("h6072_status_reply", "H6072StatusReply")
+H6072StatusQuery = load_generated_class("h6072_status_query", "H6072StatusQuery")
+H6072LegacyQuery = load_generated_class("h6072_legacy_query", "H6072LegacyQuery")
+H6072MusicWrite = load_generated_class("h6072_music_write", "H6072MusicWrite")
+H6072MusicBody = load_generated_class("h6072_music_body", "H6072MusicBody")
+H6072MusicAck = load_generated_class("h6072_music_ack", "H6072MusicAck")
 
-H619aStatusReply = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h619a_status_reply").H619aStatusReply,
-)
+H619aStatusReply = load_generated_class("h619a_status_reply", "H619aStatusReply")
 
 
 _STATUS_ROOTS = {

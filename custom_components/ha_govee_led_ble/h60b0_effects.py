@@ -1,20 +1,17 @@
 """Semantic encoding for combined RGBIC and ripple effects."""
 
-from importlib import import_module
 from math import ceil
-from typing import Any, cast
+from typing import Any
 
 from kaitaistruct import KaitaiStructError
 
 from .layered_scene import CatalogueRef, LayeredEffect, LayeredScene, RippleLayer
 from .music_semantics import H60B0_ZONE_MUSIC_MODES, MusicVariant, MusicZone
 from .protocol_core import adopt_native_body, native_body_length, new_child, new_rgb, serialize_native_body
+from .protocol_imports import load_generated_class
 from .scenes import SceneSpeed
 
-H60b0SceneBody = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h60b0_scene_body").H60b0SceneBody,
-)
+H60b0SceneBody = load_generated_class("h60b0_scene_body", "H60b0SceneBody")
 
 
 def parse_combined_scene(payload: bytes) -> Any:
