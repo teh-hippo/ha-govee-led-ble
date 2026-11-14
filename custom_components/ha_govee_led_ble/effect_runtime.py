@@ -332,6 +332,22 @@ async def async_apply_compiled_profile(
             await progress(completed)
 
 
+async def async_prepare_application(
+    coordinator: GoveeBLECoordinator,
+    item: LibraryItem,
+    *,
+    diy_code: int | None = None,
+    intent: ControlIntent = ControlIntent.APPLY,
+) -> CompiledApplication:
+    profile = await async_prepare_effect_profile(coordinator, intent=intent)
+    resolved = resolve_diy_code(item, diy_code, model=coordinator.model, profile=profile)
+    compiled = compile_application(item, coordinator.model, diy_code=resolved, profile=profile)
+    if isinstance(compiled, CompiledVideoProfile):
+        await async_require_video_controls(coordinator, requested_video_controls(compiled), intent=intent)
+        require_video_mode(coordinator.profile, coordinator)
+    return compiled
+
+
 @dataclass(frozen=True, slots=True)
 class _LibraryApplicationResult:
     record: DeploymentRecord
@@ -370,15 +386,15 @@ class EffectDeploymentEngine:
         diy_code: int | None,
         operation_id: UUID | None,
         source_kind: str,
+        compiled: CompiledApplication | None,
     ) -> _LibraryApplicationResult:
-        profile = await async_prepare_effect_profile(coordinator, intent=ControlIntent.APPLY)
-        resolved_diy_code = resolve_diy_code(item, diy_code, model=coordinator.model, profile=profile)
-        compiled = compile_application(item, coordinator.model, diy_code=resolved_diy_code, profile=profile)
-        if isinstance(compiled, CompiledVideoProfile):
-            await async_require_video_controls(
-                coordinator, requested_video_controls(compiled), intent=ControlIntent.APPLY
-            )
-            require_video_mode(coordinator.profile, coordinator)
+        if compiled is None:
+            compiled = await async_prepare_application(coordinator, item, diy_code=diy_code)
+        if (compiled.item_id, compiled.item_version, compiled.model) != (str(item.id), item.version, coordinator.model):
+            raise ValueError("Prepared application does not match its item and device")
+        if diy_code is not None and compiled.diy_code != diy_code:
+            raise ValueError("Prepared application does not match its requested selector")
+        validate_compiled_geometry(compiled, coordinator.effect_authorization_profile)
         record = self._new_record(
             compiled,
             config_entry_id=config_entry_id,
@@ -414,6 +430,7 @@ class EffectDeploymentEngine:
         updated_at: str,
         diy_code: int | None = None,
         operation_id: UUID | None = None,
+        compiled: CompiledApplication | None = None,
     ) -> DeploymentRecord:
         applied = await self._apply_library_item(
             coordinator,
@@ -423,6 +440,7 @@ class EffectDeploymentEngine:
             diy_code=diy_code,
             operation_id=operation_id,
             source_kind="saved_effect",
+            compiled=compiled,
         )
         result = applied.record
         write_only_completed = (
@@ -453,6 +471,7 @@ class EffectDeploymentEngine:
         updated_at: str,
         diy_code: int | None = None,
         operation_id: UUID | None = None,
+        compiled: CompiledApplication | None = None,
     ) -> DeploymentRecord:
         applied = await self._apply_library_item(
             coordinator,
@@ -462,6 +481,7 @@ class EffectDeploymentEngine:
             diy_code=diy_code,
             operation_id=operation_id,
             source_kind="snapshot",
+            compiled=compiled,
         )
         result, workspace = applied.record, applied.workspace
         write_only_completed = (

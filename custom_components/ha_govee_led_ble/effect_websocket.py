@@ -24,14 +24,12 @@ from homeassistant.loader import async_get_integration
 from homeassistant.util import dt as dt_util
 
 from .const import CONF_SHOW_EXPERIMENTAL_FEEDBACK, DOMAIN, ModelProfile, light_unique_id, supported_effect_categories
-from .control_arbiter import ControlIntent
 from .effect_backend import EffectBackend
 from .effect_catalogue import (
     custom_effect_catalogue_payload,
     resolve_catalogue_template,
     validate_catalogue_template_identity,
 )
-from .effect_compiler import compile_application, resolve_diy_code
 from .effect_contracts import EditorApiInfo, device_effect_capabilities
 from .effect_deployments import DeploymentSnapshot
 from .effect_domain import (
@@ -39,7 +37,6 @@ from .effect_domain import (
     OpaqueContent,
     Origin,
     SourceKind,
-    VideoProfile,
     effect_content_from_dict,
     effect_content_hash,
     effect_content_to_dict,
@@ -58,7 +55,7 @@ from .effect_preview import (
     PreviewStatus,
     PreviewTargetUnavailableError,
 )
-from .effect_runtime import active_workspace_matches
+from .effect_runtime import active_workspace_matches, async_prepare_application
 from .effect_scenes import (
     async_apply_scene,
     async_reset_scene_default,
@@ -134,9 +131,8 @@ from .effect_websocket_schema import (
 from .govee_encryption import GoveeCryptoError
 from .music_commands import music_body_style
 from .music_protocol import music_code_for
-from .native_profile_controls import async_require_video_controls
 from .schema_compat import vol
-from .video_applicability import requested_video_controls, video_profile_control_states
+from .video_applicability import video_profile_control_states
 
 BACKEND_DATA_KEY = "effect_backend"
 PREVIEW_SESSION_NOT_FOUND_CODE = "preview_session_not_found"
@@ -1392,15 +1388,9 @@ async def ws_apply(
     try:
         async with backend.application.saved_effect_for_apply(
             msg["item_id"],
-            model=entry.runtime_data.model,
             expected_version=msg["expected_version"],
-            profile=entry.runtime_data.profile,
-            diy_code=msg.get("diy_code"),
         ) as item:
-            if isinstance(item.content, VideoProfile):
-                await async_require_video_controls(
-                    entry.runtime_data, requested_video_controls(item.content), intent=ControlIntent.APPLY
-                )
+            compiled = await async_prepare_application(entry.runtime_data, item, diy_code=msg.get("diy_code"))
             await backend.preview.async_supersede_device(entry.entry_id, reason="committed_apply")
             result = await backend.engine.async_apply_saved(
                 entry.runtime_data,
@@ -1409,6 +1399,7 @@ async def ws_apply(
                 updated_at=msg["updated_at"],
                 operation_id=operation_id,
                 diy_code=msg.get("diy_code"),
+                compiled=compiled,
             )
     except EffectNotFoundError as exc:
         connection.send_error(msg["id"], "not_found", str(exc))
@@ -1472,19 +1463,7 @@ async def ws_apply_snapshot(
             ),
         )
         operation_id = UUID(msg["operation_id"]) if "operation_id" in msg else None
-        diy_code = resolve_diy_code(
-            item, msg.get("diy_code"), model=entry.runtime_data.model, profile=entry.runtime_data.profile
-        )
-        compile_application(
-            item,
-            entry.runtime_data.model,
-            diy_code=diy_code,
-            profile=entry.runtime_data.profile,
-        )
-        if isinstance(item.content, VideoProfile):
-            await async_require_video_controls(
-                entry.runtime_data, requested_video_controls(item.content), intent=ControlIntent.APPLY
-            )
+        compiled = await async_prepare_application(entry.runtime_data, item, diy_code=msg.get("diy_code"))
         await backend.preview.async_supersede_device(entry.entry_id, reason="committed_apply")
         result = await backend.engine.async_apply_snapshot(
             entry.runtime_data,
@@ -1492,7 +1471,8 @@ async def ws_apply_snapshot(
             config_entry_id=entry.entry_id,
             updated_at=msg["updated_at"],
             operation_id=operation_id,
-            diy_code=diy_code,
+            diy_code=msg.get("diy_code"),
+            compiled=compiled,
         )
     except EffectValidationError as exc:
         connection.send_error(msg["id"], "invalid_format", str(exc))

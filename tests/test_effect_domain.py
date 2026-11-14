@@ -382,6 +382,23 @@ def test_advanced_and_scene_content_round_trips(content) -> None:
     assert LibraryItem.from_dict(item.to_dict()) == item
 
 
+def test_native_scene_eligibility_does_not_encode_before_compilation(monkeypatch):
+    from unittest.mock import Mock
+
+    from custom_components.ha_govee_led_ble import effect_compiler
+    from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
+
+    scene = next(entry for entry in SCENE_ENTRIES["H617A"] if entry.scene_type == 2 and entry.param)
+    item = LibraryItem.new(scene.name, BuiltinScene(CatalogueRef("H617A", scene.scene_id, scene.effect_id)))
+    build = Mock(wraps=effect_compiler.build_native_scene_packets)
+    monkeypatch.setattr(effect_compiler, "build_native_scene_packets", build)
+    assert compatibility(item, "H617A").state is CompatibilityState.COMPATIBLE
+    build.assert_not_called()
+    compiled = compile_application(item, "H617A")
+    build.assert_called_once()
+    assert list(compiled.packets) == effect_compiler.build_native_scene_packets("H617A", scene)
+
+
 def test_advanced_effect_compiles_through_the_model_scene_engine() -> None:
     item = LibraryItem.new("Advanced", _layered_effect())
 

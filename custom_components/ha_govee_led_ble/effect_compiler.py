@@ -387,12 +387,22 @@ def compatibility(item: LibraryItem, model: str, *, profile: ModelProfile | None
         try:
             require_native_scenes(model, profile)
             _scene_key, entry = _resolve_scene(model, content.template)
-            build_native_scene_packets(
-                model,
-                entry,
-                speed_index=content.speed_index,
-                profile=profile,
-            )
+            entry = scene_for_profile(entry, profile)
+            from .native_scenes import native_scene_upload_route
+
+            native_scene_upload_route(entry, profile)
+            scene_selector_code(model, entry, profile=profile)
+            if content.speed_index is not None:
+                if (
+                    entry.selector_only
+                    or profile.command_grammar == "H6179"
+                    or profile.selector_only_scene_bits is not None
+                ):
+                    raise ValueError(f"{model} selector-only native scenes do not accept speed_index")
+                if entry.speed is None:
+                    raise ValueError("This scene does not expose a documented Speed control")
+                if not 0 <= content.speed_index < entry.speed.option_count:
+                    raise ValueError("Scene speed index is outside its documented options")
         except ValueError as error:
             return CompatibilityResult(CompatibilityState.INCOMPATIBLE, (str(error),))
         return CompatibilityResult(CompatibilityState.COMPATIBLE)

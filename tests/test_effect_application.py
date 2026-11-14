@@ -465,7 +465,7 @@ async def test_hard_delete_waits_for_saved_effect_application() -> None:
         application.async_create_library_item(name="Unrelated", content=CONTENT), timeout=1
     )
     async with asyncio.timeout(1):
-        async with application.saved_effect_for_apply(str(created.item.id), model="H617A") as concurrent:
+        async with application.saved_effect_for_apply(str(created.item.id)) as concurrent:
             assert concurrent == created.item
 
     release.set()
@@ -482,7 +482,7 @@ async def test_cancelled_saved_application_releases_its_item_reservation() -> No
     entered = asyncio.Event()
 
     async def apply():
-        async with application.saved_effect_for_apply(str(created.item.id), model="H617A"):
+        async with application.saved_effect_for_apply(str(created.item.id)):
             entered.set()
             await asyncio.Event().wait()
 
@@ -497,6 +497,42 @@ async def test_cancelled_saved_application_releases_its_item_reservation() -> No
             expected_version=created.item.version,
             expected_updated_at=created.item.updated_at,
         )
+
+
+@pytest.mark.parametrize("entry_point", ["application", "entity"])
+async def test_saved_application_compiles_once_while_its_item_is_reserved(monkeypatch, entry_point):
+    from custom_components.ha_govee_led_ble import effect_compiler
+    from tests.test_effect_runtime import _coordinator
+
+    application = await _application()
+    created = await application.async_create_library_item(name="Effect", content=CONTENT)
+    coordinator = _coordinator()
+    coordinator.async_observe_effect = AsyncMock(return_value=True)
+    compile = MagicMock(wraps=effect_compiler.compile_h617a)
+    monkeypatch.setattr(effect_compiler, "compile_h617a", compile)
+    engine = EffectDeploymentEngine(application.deployments)
+    if entry_point == "application":
+        result = await application.async_apply_saved_effect(
+            engine,
+            coordinator,
+            item_id=str(created.item.id),
+            config_entry_id="entry-a",
+            expected_version=created.item.version,
+            updated_at="2026-11-14T00:00:00Z",
+        )
+    else:
+        from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
+        from custom_components.ha_govee_led_ble.light import GoveeBLELight
+
+        coordinator.device_info = {}
+        backend = cast(EffectBackend, SimpleNamespace(application=application, engine=engine))
+        entity = GoveeBLELight(coordinator, config_entry_id="entry-a", effect_backend=backend)
+        monkeypatch.setattr(entity, "_async_supersede_preview", AsyncMock())
+        result = await entity._async_apply_saved_item(created.item)
+    assert result.phase is DeploymentPhase.CONFIRMED
+    compile.assert_called_once()
+    expected = effect_compiler.compile_application(created.item, "H617A", diy_code=result.diy_code)
+    assert [entry.args[0] for entry in coordinator.send_command.await_args_list] == list(expected.packets)
 
 
 async def test_name_based_apply_rejects_a_concurrently_changed_version() -> None:
