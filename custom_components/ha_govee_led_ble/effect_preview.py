@@ -51,6 +51,7 @@ from .effect_domain import (
 from .effect_identity import EffectDeviceCache
 from .effect_limits import MAX_PREVIEW_SEQUENCE
 from .effect_runtime import (
+    EffectPreparationError,
     EffectRestorationError,
     EffectStateReadError,
     _active_workspace_content,
@@ -1034,7 +1035,11 @@ class EffectPreviewManager:
                 f"preview_{error_code}",
                 correlation_id=request.correlation_id,
                 config_entry_id=request.config_entry_id,
-                details={"error_type": type(exc).__name__, "sequence": request.sequence},
+                details={
+                    "error_type": type(exc).__name__,
+                    "sequence": request.sequence,
+                    "control_state": exc.diagnostics if isinstance(exc, EffectPreparationError) else None,
+                },
             )
             started = writer is not None and writer.started
             message = (

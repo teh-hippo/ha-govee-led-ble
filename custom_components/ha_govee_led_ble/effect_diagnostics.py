@@ -5,11 +5,12 @@ from __future__ import annotations
 import copy
 import math
 import re
+import time
 from collections import deque
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from enum import StrEnum
+from enum import Enum, StrEnum
 from hashlib import sha256
 from threading import RLock
 from typing import Any, Final
@@ -220,6 +221,98 @@ def normalise_correlation_id(value: str | UUID | None) -> str:
 
 def empty_effect_diagnostic_snapshot() -> dict[str, Any]:
     return _snapshot(MAX_DIAGNOSTIC_EVENTS, False, ())
+
+
+def record_control_failure(
+    coordinator: Any, reason: str, *, requested: Mapping[str, object] | None = None
+) -> dict[str, DiagnosticValue]:
+    profile = coordinator.profile
+    now = time.monotonic()
+    started = getattr(coordinator, "_notify_started_monotonic", None)
+    received = getattr(coordinator, "_field_received_at", {})
+    revisions = getattr(coordinator, "_field_revisions", {})
+    controls = sorted(profile.boolean_controls)
+    fields = ("is_on", "brightness_pct", "color_mode", "segment_colors", "segment_brightness") + tuple(
+        f"boolean_{name}" for name in controls
+    )
+    mode_generation = getattr(coordinator, "_mode_write_generation", None)
+    profile_generation = getattr(coordinator, "_profile_generation", None)
+    expectations = getattr(coordinator, "_expected_state", {})
+    context = _sanitise_mapping(
+        {
+            "reason": reason,
+            "timestamp": _timestamp(_utcnow()),
+            "model": coordinator.model,
+            "profile": {
+                "command_grammar": profile.command_grammar,
+                "status_grammar": profile.status_grammar,
+                "setting_grammar": profile.setting_grammar,
+                "segment_count": profile.segment_count,
+                "physical_ic_count": profile.physical_ic_count,
+                "ambiguous_static_intent": profile.segment_colour_mode_ambiguous,
+                "static_readback_kelvin": profile.static_readback_kelvin,
+                "zero_kelvin_is_rgb": profile.static_readback_zero_kelvin_is_rgb,
+            },
+            "state": {
+                field.removeprefix("_"): _control_diagnostic_value(getattr(coordinator, field, None))
+                for field in (
+                    "is_on",
+                    "brightness_pct",
+                    "color_mode",
+                    "color_temp_kelvin",
+                    "color_temp_kelvin_source",
+                    "rgb_color",
+                    "rgb_color_source",
+                    "segment_state_source",
+                    "_static_rgb_known",
+                )
+            },
+            "mode_observation": getattr(coordinator, "_last_mode_observation", {}),
+            "requested": {
+                field: _control_diagnostic_value(value)
+                for field, value in (requested or {}).items()
+                if field in {"is_on", "color_temp_kelvin", "rgb_color", "brightness", "brightness_pct"}
+            },
+            "sources": {name: getattr(coordinator, "boolean_control_state", {}).get(name) for name in controls},
+            "observations": {
+                field: {
+                    "revision": revisions.get(field, 0),
+                    "age_seconds": round(max(0, now - received[field]), 3) if field in received else None,
+                    "current_subscription": (received.get(field, -1) >= started if started is not None else False),
+                }
+                for field in fields
+            },
+            "generations": {
+                "profile": profile_generation,
+                "mode_write": mode_generation,
+                "observed_mode_write": getattr(coordinator, "_observed_mode_write_generation", None),
+                "observed_mode_profile": getattr(coordinator, "_observed_mode_profile_generation", None),
+                "power_write": getattr(coordinator, "_power_write_generation", None),
+            },
+            "source_generations": {
+                name: _control_diagnostic_value(
+                    getattr(coordinator, "_source_power_observation_generation", {}).get(f"boolean_{name}")
+                )
+                for name in controls
+            },
+            "expectations": {
+                field: _control_diagnostic_value(expectations[field][0])
+                for field in ("is_on", "brightness_pct", "color_mode", "color_temp_kelvin", "rgb_color")
+                if field in expectations and expectations[field][1] > now
+            },
+        },
+        include_packet_details=False,
+    )
+    coordinator._last_control_failure = context
+    return context
+
+
+def _control_diagnostic_value(value: object) -> object:
+    if isinstance(value, Enum):
+        return value.name.lower()
+    if isinstance(value, tuple):
+        return [_control_diagnostic_value(item) for item in value]
+    return value
 
 
 def _snapshot(
