@@ -10,20 +10,20 @@ import io
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from importlib import import_module
 from typing import Any, cast
 
 from kaitaistruct import KaitaiStream, KaitaiStructError
 
 from .const import ModelProfile
 from .protocol_core import H607cCommandAck, H607cEffectUpload, _check_tree, _serialize_xor, _serialized_length, _write
+from .protocol_imports import load_generated_class
 from .transport import A3_CHUNK_SIZE, fragment_a3, xor_checksum
 
-Frame = cast(Any, import_module(f"{__package__}.generated_protocol.h6099_dreamview_frame").H6099DreamviewFrame)
-LegacyFrame = cast(Any, import_module(f"{__package__}.generated_protocol.h6199_dreamview_frame").H6199DreamviewFrame)
-Group = cast(Any, import_module(f"{__package__}.generated_protocol.h6099_dreamview_group").H6099DreamviewGroup)
-MusicFrame = cast(Any, import_module(f"{__package__}.generated_protocol.h607c_dreamview_frame").H607cDreamviewFrame)
-MusicGroup = cast(Any, import_module(f"{__package__}.generated_protocol.h607c_dreamview_group").H607cDreamviewGroup)
+Frame = load_generated_class("h6099_dreamview_frame", "H6099DreamviewFrame")
+LegacyFrame = load_generated_class("h6199_dreamview_frame", "H6199DreamviewFrame")
+Group = load_generated_class("h6099_dreamview_group", "H6099DreamviewGroup")
+MusicFrame = load_generated_class("h607c_dreamview_frame", "H607cDreamviewFrame")
+MusicGroup = load_generated_class("h607c_dreamview_group", "H607cDreamviewGroup")
 _FRAMES = {"H6099": Frame, "H6199": LegacyFrame, "H607C": MusicFrame}
 DREAMVIEW_READ_SETTINGS = tuple(command.name for command in Frame.Command if command != Frame.Command.delete_group)
 DREAMVIEW_VIDEO_FIELDS = {"apply_area": Frame.ApplyArea, "content_mode": Frame.ContentMode}
