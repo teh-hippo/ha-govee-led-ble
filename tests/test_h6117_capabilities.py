@@ -18,7 +18,7 @@ from custom_components.ha_govee_led_ble.effect_catalogue import H617A_TYPE04_APP
 from custom_components.ha_govee_led_ble.effect_compiler import compile_application
 from custom_components.ha_govee_led_ble.effect_deployments import DeploymentPhase, EffectDeploymentRepository
 from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, SingleEffect, effect_content_to_dict
-from custom_components.ha_govee_led_ble.effect_runtime import EffectDeploymentEngine
+from custom_components.ha_govee_led_ble.effect_runtime import EffectDeploymentEngine, EffectStateReadError
 from custom_components.ha_govee_led_ble.effect_scenes import resolve_scene
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_boolean_control,
@@ -468,7 +468,7 @@ async def test_studio_snapshot_qualifies_identity_before_applying(
             await apply()
         assert error.value.translation_key == "identity_not_ready"
     else:
-        with pytest.raises(RuntimeError, match="current power, mode and brightness"):
+        with pytest.raises(EffectStateReadError):
             await apply()
     if not identity_available:
         assert not any(packet[0] != 0xAA for packet in packets)
