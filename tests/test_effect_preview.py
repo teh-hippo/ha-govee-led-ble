@@ -230,7 +230,7 @@ async def test_h7020_static_preview_rejects_ambiguous_per_bulb_white_intent(hass
         await manager.async_wait_idle("entry-a")
 
         assert events[-1].phase is PreviewPhase.FAILED
-        assert events[-1].error_code == "preparation_failed"
+        assert events[-1].error_code == "state_not_restorable"
         assert events[-1].error_message is not None
         assert "cannot be safely restored" in events[-1].error_message
         assert events[-1].write_disposition is PreviewWriteDisposition.NOT_STARTED

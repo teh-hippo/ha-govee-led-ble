@@ -184,6 +184,7 @@ async def async_get_config_entry_diagnostics(
         "expected_brightness_pct": expected_brightness[0] if expected_brightness is not None else None,
         "packet_log": packet_log,
         "last_rx_aa05_raw": last_rx_aa05_raw,
+        "last_control_failure": coordinator._last_control_failure,
     }
     if coordinator.model == "H6102":
         coordinator_data["capability_resolution"] = _h6102_capability_resolution(entry, coordinator)
