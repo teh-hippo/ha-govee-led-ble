@@ -992,7 +992,7 @@ class GoveeBLECoordinator(
                     token = self._notification_token
                     await self._async_read_identity()
                     if self._client is not client or not client.is_connected or self._notification_token is not token:
-                        raise BleakError("Device disconnected while confirming controller identity")
+                        raise GoveeTransportError("identity_subscription_changed")
                 self._renew_foreground_lease()
                 return client
             _LOGGER.debug("Reconnecting stale notification stream for %s", self.address)
@@ -3380,6 +3380,7 @@ class GoveeBLECoordinator(
         packets = tuple(packets)
         if not packets:
             raise ValueError("effect sequence must contain at least one packet")
+        preparation_packets = packets if final_packet is None else (*packets, final_packet)
         if packet_state_values is not None and len(packet_state_values) != len(packets):
             raise ValueError("packet state must match the effect sequence length")
         subtype, ack_mode, protocol = self._upload_ack_expectation(packets, require_upload_ack, upload_ack_index)
@@ -3397,13 +3398,17 @@ class GoveeBLECoordinator(
                         if writer is None:
                             async with asyncio.timeout(CONNECTION_SETUP_TIMEOUT):
                                 client = await self._ensure_connected()
-                                await self._async_prepare_control_identity(client, packets, packet_validator)
+                                await self._async_prepare_control_identity(
+                                    client, preparation_packets, packet_validator
+                                )
                         else:
                             if self._client is None or not self._client.is_connected:
                                 raise BleakError("Device disconnected during preview")
                             client = self._client
                             async with self._lock:
-                                await self._async_prepare_control_identity(client, packets, packet_validator)
+                                await self._async_prepare_control_identity(
+                                    client, preparation_packets, packet_validator
+                                )
                         token, generation = self._notification_token, self._profile_generation
                         self._require_not_dreamview_claimed()
 

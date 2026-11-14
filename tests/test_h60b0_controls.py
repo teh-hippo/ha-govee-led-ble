@@ -502,7 +502,9 @@ async def test_effect_stop_restores_mixed_source_capture_without_aggregate_colou
     state["colours"] = [(255, 0, 0)] * 9
     coordinator.source_static_intents.clear()
     coordinator.color_mode = ParsedMode.SCENE
-    await GoveeBLELight(coordinator)._async_clear_effect()
+    light = GoveeBLELight(coordinator)
+    light.async_write_ha_state = MagicMock()
+    await light.async_turn_on(effect="off")
     assert state["colours"] == [(0, 0, 255)] * 8 + [table_kelvin_rgb(2700)]
     assert coordinator.capture_effect_control_state().source_static_intents == before.source_static_intents
     assert coordinator._client.write_gatt_char.await_count > 0
@@ -523,7 +525,9 @@ async def test_music_captures_sources_before_its_mode_guard_runs(source_wire, vi
     assert coordinator._pre_mode_snapshot.source_state == before
     assert coordinator.color_mode is ParsedMode.MUSIC
     state["top"], state["colours"] = 0, [(255, 0, 0)] * 9
-    await GoveeBLELight(coordinator)._async_clear_effect()
+    light = GoveeBLELight(coordinator)
+    light.async_write_ha_state = MagicMock()
+    await light.async_turn_on(effect="off")
     assert state["colours"] == [(0, 0, 255)] * 8 + [table_kelvin_rgb(2700)]
 
 

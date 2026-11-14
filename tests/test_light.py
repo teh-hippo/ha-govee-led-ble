@@ -1611,7 +1611,7 @@ async def test_turn_on_effect_off_returns_to_static_colour(light, mock_coordinat
 
     await light.async_turn_on(effect="off")
 
-    mock_coordinator.send_command.assert_awaited_once_with(build_color_rgb(12, 34, 56))
+    assert [call.args[0] for call in mock_coordinator.send_command.await_args_list] == [build_color_rgb(12, 34, 56)]
     assert mock_coordinator.effect is None
     assert mock_coordinator.unknown_scene_code is None
     assert mock_coordinator.segment_colors == [(12, 34, 56)] * 15
@@ -1626,7 +1626,7 @@ async def test_turn_on_effect_off_restores_colour_temperature(light, mock_coordi
 
     await light.async_turn_on(effect="off")
 
-    mock_coordinator.send_command.assert_awaited_once_with(build_color_temp(4000))
+    assert [call.args[0] for call in mock_coordinator.send_command.await_args_list] == [build_color_temp(4000)]
     assert mock_coordinator.segment_colors == [table_kelvin_rgb(4000)] * 15
     assert light.color_mode is ColorMode.COLOR_TEMP
 

@@ -256,7 +256,9 @@ async def test_unresolved_colour_identity_does_not_partially_apply_light_request
 
 
 @pytest.mark.parametrize("packet", [build_power(False, "H6181"), build_brightness(50, "H6181")])
-async def test_identity_independent_controls_do_not_wait_for_optional_revision(revision_control, packet, virtual_clock):
+async def test_identity_independent_controls_remain_usable_without_optional_revision(
+    revision_control, packet, virtual_clock
+):
     coordinator, _, packets, replies = revision_control
     await coordinator._ensure_connected()
     replies.clear()
@@ -264,7 +266,9 @@ async def test_identity_independent_controls_do_not_wait_for_optional_revision(r
 
     await coordinator.send_command(packet)
 
-    assert packets[previous_queries:] == [coordinator.profile.outbound_transform(packet)]
+    assert [sent for sent in packets[previous_queries:] if sent[0] == 0x33] == [
+        coordinator.profile.outbound_transform(packet)
+    ]
     assert not coordinator.identity_fields_confirmed()
 
 
@@ -358,8 +362,9 @@ async def test_static_recovery_qualifies_identity_before_its_first_control(
 
 
 @pytest.mark.parametrize("identity_available", [False, True])
+@pytest.mark.parametrize("final_activation", [False, True])
 async def test_injected_sequence_qualifies_identity_before_any_control(
-    revision_control, identity_available, virtual_clock
+    revision_control, identity_available, final_activation, virtual_clock
 ):
     coordinator, client, packets, replies = revision_control
     await coordinator._ensure_connected()
@@ -373,13 +378,19 @@ async def test_injected_sequence_qualifies_identity_before_any_control(
             )
 
     sequence = (build_power(True, "H6181"), build_color_rgb(255, 0, 0, "H6181"))
+    options = {"final_packet": sequence[-1]} if final_activation else {}
+    transaction = sequence[:-1] if final_activation else sequence
     if identity_available:
-        await coordinator.async_write_effect_sequence(sequence, intent=ControlIntent.PREVIEW, writer=writer)
+        await coordinator.async_write_effect_sequence(
+            transaction, intent=ControlIntent.PREVIEW, writer=writer, **options
+        )
         assert [packet[:4] for packet in packets if packet[0] == 0x33] == [b"\x33\x01\x01\x00", b"\x33\x05\x02\xff"]
         assert coordinator.identity_fields_confirmed()
     else:
         with pytest.raises(HomeAssistantError) as error:
-            await coordinator.async_write_effect_sequence(sequence, intent=ControlIntent.PREVIEW, writer=writer)
+            await coordinator.async_write_effect_sequence(
+                transaction, intent=ControlIntent.PREVIEW, writer=writer, **options
+            )
         assert error.value.translation_key == "identity_not_ready"
         assert not any(packet[0] == 0x33 for packet in packets)
         assert coordinator.control_write_attempts == 0
