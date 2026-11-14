@@ -988,7 +988,8 @@ async def test_live_pact_read_qualifies_without_marker_or_connected_advertisemen
 
     async def write(_uuid, query, **kwargs):
         assert query == frame("aaef")
-        assert source.available is cached
+        assert source.available
+        assert source.is_on is None
         assert coordinator.profile == initial_profile
         assert not coordinator.identity_fields_confirmed()
         with pytest.raises(ValueError):

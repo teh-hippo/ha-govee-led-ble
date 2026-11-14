@@ -208,6 +208,7 @@ async def test_h6046_mixed_native_white_revokes_known_rgb_even_when_rendering_is
     coord = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6046", configuration_url=_CONFIGURATION_URL)
     coord.pact_type, coord.pact_code = 1, 1
     coord._resolve_device_profile()
+    coord._client = _c()
     coord._notify_started_monotonic = time.monotonic()
     coord.color_mode = ParsedMode.COLOUR
     coord.segment_colors = [table_kelvin_rgb(2700)] * 10

@@ -274,8 +274,9 @@ def source_field_fresh(coordinator: GoveeBLECoordinator, field: str) -> bool:
 
 
 async def async_set_source_enabled(coordinator: GoveeBLECoordinator, key: str, enabled: bool) -> None:
-    source = _source(coordinator.profile, key)
-    if source is None or source.control not in coordinator.profile.boolean_controls:
+    profile = coordinator.native_presentation_profile
+    source = _source(profile, key)
+    if source is None or source.control not in profile.boolean_controls:
         raise HomeAssistantError(translation_domain=DOMAIN, translation_key="device_command_failed")
     try:
         await coordinator.async_set_boolean_control(source.control, enabled)
@@ -298,8 +299,7 @@ class SourceTurnOnTransaction:
         source = _source(profile, self._key)
         if source is None or source.control not in profile.boolean_controls:
             raise ValueError("This source is unavailable")
-        presentation = coordinator.native_presentation_profile
-        modes = source_color_modes(_source(presentation, self._key), presentation)
+        modes = source_color_modes(source, profile)
         values = self._request
         segments = list(source.segments)
         brightness_packet = None
@@ -426,12 +426,12 @@ class SourceTurnOnTransaction:
         coordinator = self._coordinator
         partial = False
         try:
-            prepared = self._prepare()
             identity_guard = (
                 await coordinator.async_prepare_identity_gated_control()
                 if coordinator.identity_gated_controls
                 else None
             )
+            prepared = self._prepare()
 
             def guard() -> None:
                 if identity_guard is not None:

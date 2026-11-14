@@ -55,6 +55,7 @@ from custom_components.ha_govee_led_ble.govee_encryption import session as sessi
 from custom_components.ha_govee_led_ble.govee_encryption.session import GoveeEncryptionSession
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.light_commands import build_color_rgb, build_segment_color
+from custom_components.ha_govee_led_ble.light_source import GoveeBLESourceLight
 from custom_components.ha_govee_led_ble.music_commands import prepare_music_request
 from custom_components.ha_govee_led_ble.transport import (
     ENCRYPTION_UUID,
@@ -168,40 +169,31 @@ async def test_h607c_live_equal_timestamp_cannot_be_overwritten_by_cached_pact(h
     assert not coordinator.profile.supports_rgb
 
 
-async def test_h607c_advertisement_expiry_during_preflight_rejects_colour(hass, monkeypatch):
+async def test_h607c_advertisement_expiry_during_preflight_rejects_colour(hass, monkeypatch, virtual_clock):
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H607C", configuration_url=None)
     info = SimpleNamespace(
         name="Govee_H607C",
         address=coordinator.address,
         source="scanner-a",
-        time=time.monotonic(),
-        manufacturer_data={0x8843: bytes.fromhex("ec00010100")},
+        time=virtual_clock.virtual_time() - 899,
+        manufacturer_data={0x8801: bytes.fromhex("ec00010100")},
     )
     monkeypatch.setattr(f"{M}.bluetooth.async_last_service_info", lambda *args, **kwargs: info)
-    device = client()
-    coordinator._client = device
-    coordinator._notification_token = object()
+    device = client(b"\x01\x00")
 
-    async def ensure_connected():
-        coordinator._h607c_advertisement_observations["scanner-a"] = (
-            time.monotonic() - 1000,
-            frozenset({(1, 1)}),
-        )
+    async def establish(*_args, **_kwargs):
+        await asyncio.sleep(2)
         return device
 
-    async def disconnect(_client):
-        device.is_connected = False
-        coordinator._clear_client_state(device)
-
-    monkeypatch.setattr(coordinator, "_ensure_connected", ensure_connected)
-    monkeypatch.setattr(coordinator, "_disconnect_if_current_locked", disconnect)
+    monkeypatch.setattr(f"{M}.async_establish_ble_connection", establish)
+    monkeypatch.setattr(coordinator, "_start_keep_alive", lambda: None)
     light = GoveeBLELight(coordinator)
     light.hass = hass
     light.entity_id = "light.h607c"
     light._async_supersede_preview = AsyncMock()
     with pytest.raises(HomeAssistantError):
         await light.async_turn_on(rgb_color=(12, 34, 56))
-    device.write_gatt_char.assert_not_awaited()
+    assert not any(call.args[1][0] == 0x33 for call in device.write_gatt_char.await_args_list)
     light._async_supersede_preview.assert_not_awaited()
     assert not coordinator.profile.supports_rgb
 
@@ -248,6 +240,77 @@ async def test_authorization_reads_are_pure_and_operations_reconcile_expired_ide
     assert not coordinator.profile.supports_rgb
     assert coordinator._authorization_generation > generation
     listeners.assert_called_once()
+
+
+@pytest.mark.parametrize("invalidation", ["disconnect", "subscription", "conflict"])
+async def test_advertisement_qualified_subscription_survives_scanner_expiry(
+    hass, monkeypatch, virtual_clock, invalidation
+):
+    coordinator = GoveeBLECoordinator(
+        hass, "11:22:33:44:55:66", "H607C", configuration_url=None, connection_mode="hold"
+    )
+    info = SimpleNamespace(
+        name="Govee_H607C",
+        source="scanner",
+        time=virtual_clock.virtual_time(),
+        manufacturer_data={0x8801: bytes.fromhex("ec00010100")},
+    )
+    monkeypatch.setattr(f"{M}.bluetooth.async_last_service_info", lambda *args, **kwargs: info)
+    coordinator._refresh_h607c_advertisements()
+    profile = coordinator.profile
+    device = client(b"\x01\x00")
+    monkeypatch.setattr(f"{M}.async_establish_ble_connection", AsyncMock(return_value=device))
+    gradual = True
+
+    async def write(_uuid, packet, **_kwargs):
+        nonlocal gradual
+        if packet[0] == 0x33:
+            if packet == build_boolean_control("gradual", False, coordinator.model, profile=profile):
+                gradual = False
+            reply = _packet(0x33, packet[1], [0])
+        elif packet[1] == 7:
+            reply = _packet(0xAA, 7, [3, *b"3.04.01"] if packet[2] == 3 else [8, 100, 7])
+        else:
+            payloads = {
+                1: [1],
+                4: [100],
+                5: [0x15, 1, 0x0B, 0xB8],
+                6: list(b"1.01.06"),
+                0xA3: [int(gradual)],
+                0x41: [2],
+            }
+            reply = _packet(0xAA, packet[1], payloads[packet[1]])
+        device.start_notify.await_args.args[1](None, bytearray(reply))
+
+    device.write_gatt_char.side_effect = write
+    await coordinator._ensure_connected()
+    assert await coordinator._send_state_queries()
+    before = coordinator._profile_generation
+    await asyncio.sleep(901)
+    device.write_gatt_char.reset_mock()
+    assert await coordinator._send_state_queries()
+    assert [call.args[1][1] for call in device.write_gatt_char.await_args_list] == [1, 4, 5, 7, 0xA3, 0x41]
+    assert coordinator._profile_generation == before
+    assert GoveeBLESourceLight(coordinator, "pole").available
+    assert coordinator.boolean_control_state == {"pole_enabled": True, "base_enabled": True, "gradual": True}
+    await coordinator.async_set_boolean_control("gradual", False)
+    assert coordinator.boolean_control_state["gradual"] is False
+    assert coordinator._client is device
+    device.disconnect.assert_not_awaited()
+    guard = await coordinator.async_prepare_identity_gated_control()
+    if invalidation == "disconnect":
+        await coordinator.disconnect()
+    elif invalidation == "subscription":
+        await coordinator._start_notify()
+    else:
+        info.time = virtual_clock.virtual_time()
+        info.manufacturer_data = {0x8801: bytes.fromhex("ec00030100")}
+        coordinator._async_on_h607c_advertisement(info)
+    with pytest.raises(HomeAssistantError):
+        guard()
+    assert not coordinator._authorization_profile().supports_rgb
+    await coordinator.disconnect()
+    assert not coordinator._authorization_profile().supports_rgb
 
 
 @pytest.mark.parametrize("all_advertisements_api", [True, False])
@@ -600,9 +663,9 @@ async def test_h607c_registered_settings_survive_identity_expiry(hass, identity_
     settings = [
         item
         for item in er.async_entries_for_config_entry(er.async_get(hass), entry.entry_id)
-        if item.domain in {"switch", "select"}
+        if item.domain in {"switch", "select"} or item.unique_id.endswith(("_pole", "_base"))
     ]
-    assert len(settings) == 4
+    assert len(settings) == 6
     if identity_loss == "advertisement_expiry":
         coordinator._h607c_advertisement_observations["scanner"] = (time.monotonic() - 1000, frozenset({(1, 1)}))
         coordinator._prune_h607c_advertisements()
@@ -621,7 +684,9 @@ async def test_h607c_registered_settings_survive_identity_expiry(hass, identity_
     assert all(hass.states.get(item.entity_id).state == "unavailable" for item in settings)
 
 
-@pytest.mark.parametrize("control", ["pole_enabled", "base_enabled", "power_on_behaviour"])
+@pytest.mark.parametrize(
+    "control", ["pole_enabled", "base_enabled", "power_on_behaviour", "pole_light_on", "pole_light_off"]
+)
 @pytest.mark.parametrize("identity", ["ready", "unsupported", "conflicting", "revoked"])
 async def test_h607c_settings_requalify_after_release(hass, monkeypatch, control, identity):
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H607C", configuration_url=None)
@@ -638,7 +703,7 @@ async def test_h607c_settings_requalify_after_release(hass, monkeypatch, control
     monkeypatch.setattr(f"{M}.async_establish_ble_connection", AsyncMock(return_value=device))
     monkeypatch.setattr(coordinator, "_start_keep_alive", lambda: None)
     if identity == "conflicting":
-        coordinator._h607c_advertised_pacts = {(2, 1)}
+        coordinator._h607c_advertisement_observations["scanner"] = (time.monotonic(), frozenset({(2, 1)}))
     elif identity == "revoked":
 
         async def revoke():
@@ -646,18 +711,33 @@ async def test_h607c_settings_requalify_after_release(hass, monkeypatch, control
 
         monkeypatch.setattr(coordinator, "_async_supersede_effect_preview", revoke)
 
+    zone_flags = 5 if control == "pole_light_on" else 7
+
     async def write(_uuid, packet, **_kwargs):
+        nonlocal zone_flags
         receive = device.start_notify.await_args.args[1]
         if packet == zone_query:
-            receive(None, bytearray(_packet(0xAA, 7, [8, 37, 7])))
+            receive(None, bytearray(_packet(0xAA, 7, [8, 37, zone_flags])))
         elif packet == power_on_query:
             receive(None, bytearray(_packet(0xAA, 0x41, [1, 1])))
+        elif packet == build_power_query("H607C"):
+            receive(None, bytearray(_packet(0xAA, 1, [1])))
         elif packet[0] == 0x33:
+            if control.startswith("pole_light"):
+                zone_flags = 5 if control == "pole_light_off" else 7
             receive(None, bytearray(_packet(0x33, packet[1], [0])))
+        elif packet[1] in (4, 5, 0xA3):
+            payloads = {4: [37], 5: [0x15, 1, 0x0B, 0xB8], 0xA3: [1]}
+            receive(None, bytearray(_packet(0xAA, packet[1], payloads[packet[1]])))
 
     device.write_gatt_char.side_effect = write
+    source = GoveeBLESourceLight(coordinator, "pole")
     operation = (
-        coordinator.async_set_power_on_behaviour("on")
+        source.async_turn_on()
+        if control == "pole_light_on"
+        else source.async_turn_off()
+        if control == "pole_light_off"
+        else coordinator.async_set_power_on_behaviour("on")
         if control == "power_on_behaviour"
         else coordinator.async_set_boolean_control(control, True)
     )
@@ -666,13 +746,19 @@ async def test_h607c_settings_requalify_after_release(hass, monkeypatch, control
         expected = (
             build_power_on_behaviour("on", coordinator.profile)
             if control == "power_on_behaviour"
-            else build_boolean_control(control, True, "H607C", profile=coordinator.profile)
+            else build_boolean_control(
+                "pole_enabled" if control.startswith("pole_light") else control,
+                control != "pole_light_off",
+                "H607C",
+                profile=coordinator.profile,
+            )
         )
         assert expected in [call.args[1] for call in device.write_gatt_char.await_args_list]
         assert (
             coordinator.power_on_behaviour == "on"
             if control == "power_on_behaviour"
-            else coordinator.boolean_control_state[control] is True
+            else coordinator.boolean_control_state["pole_enabled" if control.startswith("pole_light") else control]
+            is (control != "pole_light_off")
         )
     else:
         with pytest.raises(HomeAssistantError):

@@ -41,6 +41,7 @@ def profile():
 def coordinator(hass, monkeypatch, profile):
     c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H617A", configuration_url=None)
     c.profile = profile
+    c.fw_version = "2.04.10"
     c._confirmed_identity_fields.add("fw_version")
     c._client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(), start_notify=AsyncMock())
     c._notification_token = object()
@@ -198,12 +199,14 @@ async def test_fresh_firmware_and_subscription_required_at_physical_boundary(coo
         await c._async_write_packet(c._client, query)
     c._notify_callback(None, bytearray(frame("aaba0101646464")))
     assert c.low_blue_light is None
-    c._confirmed_identity_fields.add("fw_version")
     await c._start_notify()
+    c._observe_identity_field("fw_version", c.fw_version)
     previous_receive = c._client.start_notify.await_args.args[1]
     await c._start_notify()
+    assert not c.identity_fields_confirmed(frozenset({"fw_version"}))
     previous_receive(None, bytearray(frame("aaba0101646464")))
     assert c.low_blue_light is None
+    c._observe_identity_field("fw_version", c.fw_version)
     c._client.start_notify.await_args.args[1](None, bytearray(frame("aaba0101646464")))
     assert c.low_blue_light == LowBlueLightState(True, 100, 100, 100)
     c._clear_client_state(c._client)
@@ -236,11 +239,12 @@ async def test_polling_requires_fresh_firmware_but_not_hardware(coordinator, mon
 
 async def test_unanswered_poll_cannot_supply_stale_siblings_to_a_later_setting_change(coordinator, monkeypatch):
     c = coordinator
-    c.profile = replace(c.profile, profile_identity_fields=frozenset())
+    c.profile = replace(c.profile, profile_identity_fields=frozenset({"fw_version"}))
     old_client = c._client
     old_client.disconnect = AsyncMock()
     old_client.stop_notify = AsyncMock()
     await c._start_notify()
+    c._observe_identity_field("fw_version", c.fw_version)
     old_receive = old_client.start_notify.await_args.args[1]
     wait = c._wait_for_revisions
     monkeypatch.setattr(c, "_wait_for_revisions", AsyncMock(return_value=False))
@@ -252,8 +256,8 @@ async def test_unanswered_poll_cannot_supply_stale_siblings_to_a_later_setting_c
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(), start_notify=AsyncMock())
     c._client = client
     c._ensure_connected.return_value = client
-    c._confirmed_identity_fields.add("fw_version")
     await c._start_notify()
+    c._observe_identity_field("fw_version", c.fw_version)
     monkeypatch.setattr(c, "_wait_for_revisions", wait)
     query = build_query(c.profile)
     expected = LowBlueLightState(True, 99, 22, 60)

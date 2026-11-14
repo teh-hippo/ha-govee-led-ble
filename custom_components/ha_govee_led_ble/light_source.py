@@ -39,8 +39,9 @@ class GoveeBLESourceLight(GoveeBLEEntity, LightEntity):
 
     @property
     def available(self) -> bool:
-        source = self._source(self.coordinator.profile)
-        return source is not None and source.control in self.coordinator.profile.boolean_controls and super().available
+        profile = self.coordinator.native_presentation_profile
+        source = self._source(profile)
+        return source is not None and source.control in profile.boolean_controls and super().available
 
     @property
     def is_on(self) -> bool | None:
