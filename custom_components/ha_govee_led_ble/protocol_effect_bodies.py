@@ -402,9 +402,7 @@ def build_h617a_diy_painted_body(
         group.segment_indices = segments
         root.groups.append(group)
     root.padding = []
-    length = 10 + sum(4 + len(segments) for _, segments in groups)
-    check_generated_tree(root)
-    return _write(root, length)[3:]
+    return _serialize_a3_scene_param(root)
 
 
 def _diy_type04_palette(parent: Any, colours: list[tuple[int, int, int]]) -> Any:
@@ -431,9 +429,7 @@ def build_h617a_diy_single_body(
     body.palette = _diy_type04_palette(body, palette)
     body.padding = []
     root.body = body
-    length = 7 + body.len_palette
-    check_generated_tree(root)
-    return _write(root, length)[3:]
+    return _serialize_a3_scene_param(root)
 
 
 def build_h617a_diy_multi_body(
@@ -460,9 +456,7 @@ def build_h617a_diy_multi_body(
         body.pairs.append(pair)
     body.padding = []
     root.body = body
-    length = 8 + body.len_palette + body.seqlen
-    check_generated_tree(root)
-    return _write(root, length)[3:]
+    return _serialize_a3_scene_param(root)
 
 
 def build_scene_activation(

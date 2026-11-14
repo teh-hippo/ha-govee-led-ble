@@ -21,7 +21,7 @@ def parse_combined_scene(payload: bytes) -> Any:
     try:
         root = H60b0SceneBody.from_bytes(payload)
         root._read()
-        if not root.rgbic.num_records or not root.ripple.num_records:
+        if not root.rgbic.body.num_records or not root.ripple.num_records:
             raise ValueError("Combined scene requires both effect engines")
         return root
     except (KaitaiStructError, EOFError, ValueError) as error:
@@ -31,9 +31,13 @@ def parse_combined_scene(payload: bytes) -> Any:
 def combined_upload_body(payload: bytes) -> bytes:
     """Convert a canonical body without changing its input or section contents."""
     root = parse_combined_scene(payload)
-    if root.len_rgbic < 2:
-        raise ValueError("Combined scene has no RGBIC container")
-    return (int(root.len_rgbic) - 1).to_bytes(2, "big") + payload[4:]
+    upload = H60b0SceneBody.Upload()
+    upload.rgbic = adopt_native_body(root.rgbic.body, upload)
+    upload.ripple = adopt_native_body(root.ripple, upload)
+    upload.len_rgbic = native_body_length(upload.rgbic)
+    upload.len_ripple = native_body_length(upload.ripple)
+    upload.unknown_tail = root.unknown_tail
+    return serialize_native_body(upload)
 
 
 def decode_combined_scene(template: CatalogueRef, payload: bytes, *, speed_index: int | None = None) -> LayeredScene:
@@ -42,7 +46,7 @@ def decode_combined_scene(template: CatalogueRef, payload: bytes, *, speed_index
     root = parse_combined_scene(payload)
     return LayeredScene(
         template=template,
-        effect=LayeredEffect(tuple(_decode_layer(record.body) for record in root.rgbic.records)),
+        effect=LayeredEffect(tuple(_decode_layer(record.body) for record in root.rgbic.body.records)),
         ripple_layers=tuple(
             RippleLayer(
                 effect=int(body.effect),
@@ -74,14 +78,16 @@ def encode_combined_scene(scene: LayeredScene) -> bytes:
     root.marker = b"\x51"
     if not scene.raw_param:
         root.rgbic = new_child(H60b0SceneBody.RgbicSection, root)
-        root.rgbic.marker, root.rgbic.unknown_tail = b"\x0a", b""
+        root.rgbic.marker = b"\x0a"
+        root.rgbic.body = new_child(H60b0SceneBody.RgbicContent, root.rgbic)
+        root.rgbic.body.unknown_tail = b""
         root.ripple = new_child(H60b0SceneBody.RippleSection, root)
         root.ripple.unknown_tail = root.unknown_tail = b""
-    root.rgbic.num_records = len(scene.effect.layers)
-    root.rgbic.records = [
-        _encode_record(H60b0SceneBody.RgbicRecord, root.rgbic, layer) for layer in scene.effect.layers
+    root.rgbic.body.num_records = len(scene.effect.layers)
+    root.rgbic.body.records = [
+        _encode_record(H60b0SceneBody.RgbicRecord, root.rgbic.body, layer) for layer in scene.effect.layers
     ]
-    for record in root.rgbic.records:
+    for record in root.rgbic.body.records:
         record.len_body = len(serialize_native_body(record.body))
         if record.len_body > 255:
             raise ValueError("Combined RGBIC record exceeds its length field")
@@ -115,9 +121,9 @@ def apply_combined_speed(payload: bytes, speed: SceneSpeed, index: int) -> bytes
     for page in speed.pages:
         if not (page.move_in or page.move_all or page.colour_speed or page.brightness_speeds):
             continue
-        if not 0 <= page.page < len(root.rgbic.records):
+        if not 0 <= page.page < len(root.rgbic.body.records):
             raise ValueError("Speed targets a missing RGBIC page")
-        body = root.rgbic.records[page.page].body
+        body = root.rgbic.body.records[page.page].body
         for values, target, field in (
             (page.move_in, body.selected_area_movement, "speed"),
             (page.move_all, body.overall_movement, "speed"),

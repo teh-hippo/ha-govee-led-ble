@@ -15,8 +15,6 @@ from .generated_protocol_adapter import (
     serialize_workshop_body_param,
 )
 from .layered_scene import (
-    _LAYER_UNKNOWN_FLAGS_MASK,
-    _MOVEMENT_UNKNOWN_FLAGS_MASK,
     AppliedArea,
     BrightnessPattern,
     CatalogueRef,
@@ -49,14 +47,6 @@ __all__ = [
     "encode_layered_scene",
     "encode_workshop_effect",
 ]
-
-_APPLIED_AREA_WIDTH_SHIFT = 4
-_LAYER_FLAG_BRIGHTNESS_GRADIENT = 0x02
-_DIRECTION_BACKWARD_BIT = 0x80
-_DIRECTION_METHOD_MASK = 0x0F
-_MOVEMENT_ENABLED_BIT = 0x10
-_MOVEMENT_ENTER_EXIT_BIT = 0x04
-_MOVEMENT_DIRECTION_MASK = 0x03
 
 
 def decode_layered_scene(
@@ -259,20 +249,16 @@ def _encode_record(record_type: Any, parent: Any, layer: EffectLayer) -> Any:
 
 def _encode_layer(record: Any, layer: EffectLayer) -> Any:
     body = new_child(GoveeShared.EffectLayer, record)
-    body.applied_area = (layer.area.width_tenths << _APPLIED_AREA_WIDTH_SHIFT) | (layer.area.start_tenths & 0x0F)
+    body.applied_area = GoveeShared.AppliedAreaValue(layer.area.width_tenths, layer.area.start_tenths).value
     body.select_type = layer.selection.type
     body.select_param_1 = layer.selection.param_1
     body.select_param_2 = layer.selection.param_2
-    body.layer_flags = (_LAYER_FLAG_BRIGHTNESS_GRADIENT if layer.brightness_gradient else 0) | (
-        layer.unknown_flags & _LAYER_UNKNOWN_FLAGS_MASK
-    )
+    body.layer_flags = GoveeShared.LayerFlagsValue(layer.brightness_gradient, layer.unknown_flags).value
     body.num_brightness_blocks = len(layer.brightness_patterns)
     body.brightness_blocks = [_encode_brightness_block(body, pattern) for pattern in layer.brightness_patterns]
-    body.direction_distribution = (
-        (_DIRECTION_BACKWARD_BIT if layer.distribution.backwards else 0)
-        | (layer.distribution.method & _DIRECTION_METHOD_MASK)
-        | layer.distribution.extensions
-    )
+    body.direction_distribution = GoveeShared.DistributionValue(
+        layer.distribution.backwards, layer.distribution.method, layer.distribution.extensions
+    ).value
     body.colour_speed = layer.colour_speed
     body.colour_retention = layer.colour_retention
     body.num_palette = len(layer.palette)
@@ -297,12 +283,9 @@ def _encode_brightness_block(body: Any, pattern: BrightnessPattern) -> Any:
 
 def _encode_movement(body: Any, movement: Movement) -> Any:
     node = new_child(GoveeShared.Movement, body)
-    node.packed = (
-        (_MOVEMENT_ENABLED_BIT if movement.enabled else 0)
-        | (_MOVEMENT_ENTER_EXIT_BIT if movement.enter_exit else 0)
-        | (movement.direction & _MOVEMENT_DIRECTION_MASK)
-        | (movement.unknown_flags & _MOVEMENT_UNKNOWN_FLAGS_MASK)
-    )
+    node.packed = GoveeShared.MovementValue(
+        movement.enabled, movement.enter_exit, movement.direction, movement.unknown_flags
+    ).value
     node.interval = movement.distance
     node.speed = movement.speed
     return node

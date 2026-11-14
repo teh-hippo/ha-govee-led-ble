@@ -113,7 +113,7 @@ def test_combined_speed_edits_both_engines_and_retains_extensions():
         ),
     )
     updated = parse_combined_scene(apply_scene_speed(payload, speed, 1, scene_type=6))
-    assert updated.rgbic.records[0].body.overall_movement.speed == 34
+    assert updated.rgbic.body.records[0].body.overall_movement.speed == 34
     assert [record.body.colour_speed for record in updated.ripple.records] == [70, 77]
     assert [record.body.movement_speed for record in updated.ripple.records] == [80, 88]
     assert updated.unknown_tail == b"\x80\x91"

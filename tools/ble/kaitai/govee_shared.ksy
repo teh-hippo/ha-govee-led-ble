@@ -3,6 +3,61 @@ meta:
   title: Shared Govee BLE wire datatypes
   endian: le
 types:
+  applied_area_value:
+    params:
+      - id: width_tenths
+        type: u1
+      - id: start_tenths
+        type: u1
+    instances:
+      value:
+        value: (width_tenths << 4) | (start_tenths & 0x0f)
+  layer_flags_value:
+    params:
+      - id: gradient
+        type: bool
+      - id: unknown_flags
+        type: u1
+    instances:
+      value:
+        value: '(gradient ? 0x02 : 0) | (unknown_flags & 0xfd)'
+  distribution_value:
+    params:
+      - id: backwards
+        type: bool
+      - id: method
+        type: u1
+      - id: extensions
+        type: u1
+    instances:
+      value:
+        value: '(backwards ? 0x80 : 0) | (method & 0x0f) | extensions'
+  movement_value:
+    params:
+      - id: enabled
+        type: bool
+      - id: enter_exit
+        type: bool
+      - id: direction
+        type: u1
+      - id: unknown_flags
+        type: u1
+    instances:
+      value:
+        value: '(enabled ? 0x10 : 0) | (enter_exit ? 0x04 : 0) | (direction & 0x03) | (unknown_flags & 0xe8)'
+  palette_config_value:
+    params:
+      - id: brightness
+        type: bool
+      - id: layout
+        type: u1
+      - id: reserved_flags
+        type: u1
+      - id: inline_extra
+        type: bool
+    instances:
+      value:
+        value: '(brightness ? 0x80 : 0) | (layout << 4) | (reserved_flags & 0x08) | (inline_extra ? 5 : 3)'
   brightness_flags_with_algorithm:
     params:
       - id: original
@@ -191,6 +246,8 @@ types:
         value: '(config >> 4) & 0x07'
       brightness_flag:
         value: '(config & 0x80) != 0'
+      reserved_flags:
+        value: 'config & 0x08'
   scene_type1_step:
     seq:
       - id: colour
