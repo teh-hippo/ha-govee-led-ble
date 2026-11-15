@@ -551,6 +551,7 @@ def _coordinator(*, readable: bool = True):
         intent,
         before_write=None,
         attempt_started=None,
+        retry_allowed=None,
         progress=None,
         write_guard=None,
         packet_state_values=None,
@@ -2786,7 +2787,7 @@ async def test_unsaved_music_profile_persists_the_applied_snapshot(
 
 @pytest.mark.parametrize("allow_replay", [False, True])
 @pytest.mark.parametrize("first_observation", [False, None])
-async def test_music_verification_reapplies_only_when_upload_replay_is_admitted(
+async def test_music_verification_never_replays_profile_to_obtain_readback(
     hass: HomeAssistant,
     allow_replay: bool,
     first_observation: bool | None,
@@ -2805,10 +2806,7 @@ async def test_music_verification_reapplies_only_when_upload_replay_is_admitted(
 
     assert result.phase is DeploymentPhase.CONFIRMED
     packets = [call.args[0] for call in coordinator.send_command.await_args_list]
-    replayed = allow_replay and first_observation is False
-    assert len(packets) == (8 if replayed else 4)
-    if replayed:
-        assert packets[:4] == packets[4:]
+    assert len(packets) == 4
 
 
 async def test_profile_delivery_without_readback_does_not_replay_or_restore(hass):

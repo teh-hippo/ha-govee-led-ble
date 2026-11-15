@@ -48,7 +48,9 @@ Keep real product differences without turning each product into a separate imple
   Bind qualified protocol evidence to its live subscription, not scanner-cache age; advertisement expiry alone must not revoke it or clear independently observed state.
   Release that authority when its subscription ends, without using retained presentation identity to authorise a replacement.
   Reconcile expiry at explicit operation boundaries before capturing generations; capability getters must be side-effect free.
-  Re-query missing profile identity before reusing a connected client and qualify restricted bootstrap profiles before effect compilation.
+  Re-query missing control-profile identity before reusing a connected client and qualify restricted bootstrap profiles before effect compilation.
+  Optional scene identity belongs to scene preparation and admission, not ordinary control readiness or observation lifetimes.
+  Scene-policy changes preserve unrelated state; revalidate dependent transfers and pending acknowledgements against their actual preparation and current authority.
   Missing identity is temporary readiness, not evidence that the hardware lacks a workflow; preserve safe bootstrap controls and final-write authorisation.
 - `tools/ble/kaitai/**/*.ksy` is the only source of BLE wire structure and protocol documentation.
   Files under `speculative/` are unconfirmed hypotheses; the rest are evidence-backed.
@@ -66,12 +68,15 @@ Keep real product differences without turning each product into a separate imple
   A light's power and attribute requests share one control stream, merging queued attributes; services, Studio and background work bypass this coalescing.
 - Use complete typed requests and prepared results, not expanding keyword lists, positional tuples, string-matched intent or private sentinels in public state.
   Validate the whole operation before its first state-changing device write, compile once, and retain the metadata required to revalidate it.
+  Keep authoring intent separate from profile-prepared wire values; do not reconstruct editable content from an irreversible preparation.
   Check semantic eligibility directly rather than constructing dummy packets or encoding content merely to authorise an operation.
   Recover omitted mandatory values through qualified independent observations, not successful writes or retained cache alone.
   Preparation reads retain the submitting operation's intent; acquiring state must not invalidate that same request.
   Scope preparation ownership to the required work, not unrelated connection or persistence stages.
   Keep API identity preparation under background ownership until validation succeeds, so invalid requests cannot invalidate active previews.
 - Bind prepared work and observations to their actual lifetime: device, effective profile, layout, subscription and operation generation as applicable.
+  Capture static restoration intent before an effect operation's first state-changing attempt, including leading power, and publish it only at the physical mode transition.
+  Enter task-owned operation contexts after acquiring device ownership, and release them before releasing that ownership.
   Revalidate at physical boundaries, and invalidate dependent knowledge when its authority changes.
   Older work must not invalidate newer preparation, restore over newer observations or mutate a replacement session.
 - Update physical geometry and derived logical counts together against declared product capacity.
@@ -102,6 +107,7 @@ Keep real product differences without turning each product into a separate imple
   Attribute partial failure while holding operation ownership, reconcile actual earlier attempts when later work is rejected, and never replay a batch as recovery.
   Rollback preserves fresh observations and newer ownership, retains the original error and handles cancellation without leaking reservations or tasks.
 - Preserve transport-failure classification through wrappers without converting protocol rejection, ownership failures or programming errors into retries.
+  An absent upload verdict is an unconfirmed transfer, not a failed connection; it must not spend a connection retry.
   Background availability handling must not silently enable foreground retransmission.
 - Initialise owners before registering lifecycle callbacks.
   Track and drain tasks, acknowledgements and retired native clients through cancellation and teardown, even when the link already reports disconnected.
@@ -131,6 +137,7 @@ Decode-only Kaitai documentation of these is fine; runtime control is not.
 
 Run `make protocol` after a fresh clone, a new worktree or any `.ksy` change, and `make check` before finishing.
 Keep virtual event-loop clocks out of real HTTP/WebSocket tests; use them only around simulated transport work.
+Invalidate the editor asset generation when its imported module contract changes, not just the backend compiler version.
 
 ### Change and test design
 

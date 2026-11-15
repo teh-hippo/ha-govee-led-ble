@@ -1855,7 +1855,7 @@ async def test_mtu_acquisition_failure_cannot_send_handshake(monkeypatch, failur
 @pytest.mark.parametrize("version", [1, 2])
 @pytest.mark.parametrize("multipart", [False, True])
 async def test_encrypted_write_retries_reconnect_with_fresh_session(hass, version, multipart):
-    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H617A", configuration_url=None)
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H617F", configuration_url=None)
     transformed = []
     coordinator.profile = replace(
         coordinator.profile,

@@ -138,7 +138,7 @@ async def test_body_known_only_after_complete_sequence_and_positive_ack(hass, mo
         packets,
         *,
         packet_state_values,
-        packet_write_guard,
+        write_guard,
         packet_on_write,
         require_upload_ack,
         upload_ack_index,
@@ -150,7 +150,7 @@ async def test_body_known_only_after_complete_sequence_and_positive_ack(hass, mo
         for index, packet in enumerate(packets):
             if failure == 0 and index == 0:
                 raise ValueError("before attempt")
-            packet_write_guard(index)
+            write_guard()
             if failure == "guard" and index == writes.first_upload:
                 raise ValueError("before upload attempt")
             for key, value in packet_state_values[index].items():
@@ -207,8 +207,8 @@ async def test_per_parameter_guard_runs_before_physical_write(hass, monkeypatch)
     profile = replace(coordinator.profile, physical_ic_count=60)
     writes = prepare_music_profile_writes("H617A", "piano_keys", 42, None, False, {}, profile=profile)
 
-    async def sequence(*args, packet_write_guard, **kwargs):
-        packet_write_guard(0)
+    async def sequence(*args, write_guard, **kwargs):
+        write_guard()
         pytest.fail("guard allowed stale geometry")
 
     monkeypatch.setattr(coordinator, "async_write_effect_sequence", sequence)
@@ -223,9 +223,9 @@ async def test_edit_rejects_body_invalidated_while_waiting_for_control(hass, mon
     coordinator.music_mode = "hopping"
     coordinator._music_body = ("hopping", BODY)
 
-    async def sequence(*args, packet_write_guard, **kwargs):
+    async def sequence(*args, write_guard, **kwargs):
         coordinator._music_body = None
-        packet_write_guard(0)
+        write_guard()
         pytest.fail("edited stale body")
 
     monkeypatch.setattr(coordinator, "async_write_effect_sequence", sequence)
@@ -391,8 +391,8 @@ async def test_raw_replay_display_values_do_not_gate_on_reconnect_geometry(hass,
     writes = prepare_music_body_writes("H6099", "piano_keys", 42, body, profile=known)
     assert writes[-2][1]["music_piano_key_count"] == 18
 
-    async def sequence(*args, packet_write_guard, **kwargs):
-        packet_write_guard(0)
+    async def sequence(*args, write_guard, **kwargs):
+        write_guard()
 
     monkeypatch.setattr(c, "async_write_effect_sequence", sequence)
     await c.async_write_music_sequence(writes, mode_code=52, physical_ic_count=60, intent=ControlIntent.USER)

@@ -241,9 +241,10 @@ async def test_known_music_body_replayed_exactly_but_ack_never_proves_settings(p
         assert kwargs["require_upload_ack"] is True
         assert [packet for packet in packets if packet[0] == 0xA3] == fragment_a3(0x41, body)
         for index, values in enumerate(kwargs["packet_state_values"]):
-            kwargs["packet_write_guard"](index)
+            kwargs["write_guard"]()
             for key, value in values.items():
                 setattr(coordinator, key, value)
+            kwargs["packet_on_write"](index)
 
     monkeypatch.setattr(coordinator, "async_write_effect_sequence", AsyncMock(side_effect=accepted_sequence))
     assert await coordinator.async_restore_effect_control_state(prior, overwritten_diy_code=None) is False

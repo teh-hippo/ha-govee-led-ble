@@ -4,7 +4,7 @@
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable, Generator, Mapping
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from functools import partial
 from typing import Any
@@ -1100,9 +1100,12 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         clear_workspace = active_workspace is not None and (
             ATTR_RGB_COLOR in kwargs or ATTR_COLOR_TEMP_KELVIN in kwargs or ATTR_EFFECT in kwargs
         )
-        async with async_control_intent(
-            self.coordinator,
-            ControlIntent.USER,
+        async with (
+            async_control_intent(
+                self.coordinator,
+                ControlIntent.USER,
+            ),
+            self.coordinator.async_mode_transition() if prepared_effect is not None else nullcontext(),
         ):
             await self._async_turn_on(
                 clear_workspace_on_success=clear_workspace,
@@ -1126,7 +1129,9 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         assert self._effect_backend is not None
         assert self._config_entry_id is not None
         try:
-            profile = await async_prepare_effect_profile(self.coordinator, intent=ControlIntent.USER)
+            profile = await async_prepare_effect_profile(
+                self.coordinator, intent=ControlIntent.USER, content=item.content
+            )
             async with self._effect_backend.application.saved_effect_for_apply(
                 str(item.id),
                 expected_version=item.version,
@@ -1149,9 +1154,12 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                     validate_compiled_geometry(compiled, self.coordinator.effect_authorization_profile)
                     validate_video_request(self.coordinator, current.content)
 
-                async with async_control_intent(
-                    self.coordinator,
-                    ControlIntent.USER,
+                async with (
+                    async_control_intent(
+                        self.coordinator,
+                        ControlIntent.USER,
+                    ),
+                    self.coordinator.async_mode_transition(),
                 ):
                     guard()
                     await self._async_supersede_preview()

@@ -39,6 +39,7 @@ from .effect_compiler import (
 from .effect_deployments import ObservationConfidence
 from .effect_diagnostics import DiagnosticOutcome, DiagnosticStage, EffectDiagnosticHistory
 from .effect_domain import (
+    BuiltinScene,
     JsonValue,
     LayeredScene,
     LibraryItem,
@@ -73,6 +74,7 @@ from .effect_scenes import (
 from .effect_template_defaults import CatalogueTemplateDefault, CatalogueTemplateDefaultRepository
 from .generated_protocol_adapter import build_power
 from .govee_encryption import GoveeCryptoError
+from .layered_scene import CatalogueRef
 from .native_profile_controls import async_require_video_controls
 from .native_scenes import build_native_scene_packets, encode_authored_scene_body, resolve_native_scene_body
 from .scenes import canonical_scene_key, scene_code_is_ambiguous, scene_selector_code
@@ -524,7 +526,9 @@ class EffectPreviewManager:
         coordinator = self._loaded_coordinator(config_entry_id)
         preparation_generation = coordinator._control_arbiter.foreground_generation
         try:
-            profile = await async_prepare_effect_profile(coordinator, intent=ControlIntent.PREVIEW)
+            profile = await async_prepare_effect_profile(
+                coordinator, intent=ControlIntent.PREVIEW, content=item.content
+            )
             diy_code = resolve_diy_code(item, diy_code, model=coordinator.model, profile=profile)
             compiled = compile_application(item, coordinator.model, diy_code=diy_code, profile=profile)
         except GoveeCryptoError:
@@ -596,7 +600,11 @@ class EffectPreviewManager:
             resolved.entry,
         )
         try:
-            profile = await async_prepare_effect_profile(coordinator, intent=ControlIntent.PREVIEW)
+            profile = await async_prepare_effect_profile(
+                coordinator,
+                intent=ControlIntent.PREVIEW,
+                content=BuiltinScene(CatalogueRef(coordinator.model, scene_id, effect_id)),
+            )
             canonical_body, resolved_speed = resolve_scene_application_body(
                 resolved.entry,
                 scene_default=scene_default,

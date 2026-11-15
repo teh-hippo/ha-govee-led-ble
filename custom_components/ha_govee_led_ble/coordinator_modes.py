@@ -1,10 +1,12 @@
 """Active-mode derivation and mode-switching for the Govee BLE coordinator."""
 
-from collections.abc import Awaitable, Callable, Mapping
+import asyncio
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, Literal
 
-from .const import ReadDomain
+from .const import ModelProfile, ReadDomain
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator_base import _CoordinatorBase, async_prepare_effect_profile
 from .coordinator_refresh import RefreshRequest
@@ -33,7 +35,14 @@ from .music_semantics import (
 )
 from .native_profile_controls import ProfileWriter
 from .native_scenes import build_native_scene_packets
-from .scenes import MODEL_SCENES, SceneEntry, canonical_scene_key, scene_selector_code, scene_supported
+from .scenes import (
+    MODEL_SCENES,
+    SceneEntry,
+    canonical_scene_key,
+    scene_for_profile,
+    scene_selector_code,
+    scene_supported,
+)
 
 if TYPE_CHECKING:
     from .effect_deployments import PriorControlState
@@ -52,6 +61,16 @@ class PreModeSnapshot:
     kelvin: int = 0
     level: int = 100
     source_state: PriorControlState | None = None
+
+
+@dataclass
+class _ModeTransition:
+    owner: asyncio.Task[Any] | None
+    captured: bool = False
+    installed: bool = False
+    snapshot: PreModeSnapshot | None = None
+    profile: ModelProfile | None = None
+    foreground_generation: int = 0
 
 
 class _ActiveModeMixin(_CoordinatorBase):
@@ -79,6 +98,7 @@ class _ActiveModeMixin(_CoordinatorBase):
         self._source_power_observation_generation: dict[str, tuple[int, int]] = {}
         self._scene_code = None
         self._pre_mode_snapshot = PreModeSnapshot(kind="rgb", rgb=(255, 255, 255))
+        self._mode_transition: _ModeTransition | None = None
         self.music_sensitivity = 99
         self.music_color: tuple[int, int, int] | None = None
         self.music_fixed_colour: bool | None = None
@@ -197,6 +217,21 @@ class _ActiveModeMixin(_CoordinatorBase):
             return "video"
         return "colour"
 
+    @asynccontextmanager
+    async def async_mode_transition(self) -> AsyncIterator[None]:
+        previous = self._mode_transition
+        owner = asyncio.current_task()
+        if previous is not None and previous.owner is owner:
+            yield
+            return
+        transition = _ModeTransition(owner)
+        self._mode_transition = transition
+        try:
+            yield
+        finally:
+            if self._mode_transition is transition:
+                self._mode_transition = previous
+
     async def async_apply_native_scene(
         self,
         scene_name: str,
@@ -209,7 +244,7 @@ class _ActiveModeMixin(_CoordinatorBase):
         verify: bool = True,
         intent: ControlIntent = ControlIntent.USER,
     ) -> None:
-        async with async_control_intent(self, intent):
+        async with async_control_intent(self, intent), self.async_mode_transition():
             await self._async_apply_native_scene_locked(
                 scene_name,
                 scene_entry=scene_entry,
@@ -234,20 +269,9 @@ class _ActiveModeMixin(_CoordinatorBase):
         intent: ControlIntent,
     ) -> None:
         from .effect_compiler import require_native_scenes
+        from .effect_domain import BuiltinScene
+        from .layered_scene import CatalogueRef
 
-        profile = await async_prepare_effect_profile(self, intent=intent)
-        generation = self._profile_generation
-
-        def qualified() -> None:
-            self._reconcile_authorization()
-            current = self.effect_authorization_profile
-            require_native_scenes(self.model, current)
-            if generation != self._profile_generation:
-                raise ValueError("Device profile changed during scene preparation")
-            if profile.rgbic_scene_v0 != current.rgbic_scene_v0:
-                raise ValueError("RGBIC scene format changed during scene preparation")
-
-        qualified()
         if scene_entry is None:
             scene_name = canonical_scene_key(self.model, scene_name)
             scene = MODEL_SCENES[self.model].get(scene_name)
@@ -255,6 +279,24 @@ class _ActiveModeMixin(_CoordinatorBase):
             scene = scene_entry
         if scene is None:
             raise ValueError(f"unknown native scene {scene_name!r}")
+        content = BuiltinScene(CatalogueRef(self.model, scene.scene_id, scene.effect_id))
+        profile = await async_prepare_effect_profile(self, intent=intent, content=content)
+        route = (profile.command_grammar, profile.effect_grammar, profile.selector_only_scene_bits)
+        prepared_body = scene.scene_type == 2 and profile.rgbic_scene_v0 is not None
+
+        def qualified() -> None:
+            self._reconcile_authorization()
+            current = self.effect_authorization_profile
+            require_native_scenes(self.model, current)
+            scene_for_profile(scene, current)
+            if route != (current.command_grammar, current.effect_grammar, current.selector_only_scene_bits):
+                raise ValueError("Device scene route changed during scene preparation")
+            if prepared_body and profile.rgbic_scene_v0 != current.rgbic_scene_v0:
+                raise ValueError("RGBIC scene format changed during scene preparation")
+            if prepared_body and profile.physical_ic_count != current.physical_ic_count:
+                raise ValueError("RGBIC scene geometry changed during scene preparation")
+
+        qualified()
         selector = scene_selector_code(self.model, scene, profile=profile)
         packets = build_native_scene_packets(
             self.model,
@@ -296,15 +338,12 @@ class _ActiveModeMixin(_CoordinatorBase):
         qualified()
         if power_in_sequence:
             self.is_on = True
-        if (
-            verify
-            and self.profile.supports_color_mode_readback
-            and await self.refresh_state(RefreshRequest(scene_code=selector)) is False
-        ):
-            if upload_count and not self.profile.effect_retry_after_upload:
-                raise RuntimeError(f"Failed to confirm scene {scene_name!r}")
-            await apply()
-            if await self.refresh_state(RefreshRequest(scene_code=selector)) is False:
+        if verify and self.profile.supports_color_mode_readback:
+            observed = await self.async_observe_effect({"scene_code": selector})
+            if observed is False:
+                await self.send_command(packets[-1], write_guard=qualified)
+                observed = await self.async_observe_effect({"scene_code": selector})
+            if observed is False:
                 raise RuntimeError(f"Failed to confirm scene {scene_name!r}")
         self.color_mode = ParsedMode.SCENE
         self.effect = scene_name
@@ -409,7 +448,7 @@ class _ActiveModeMixin(_CoordinatorBase):
         attempted_upload = False
         revision = self._music_body_revision
 
-        def guard(index: int) -> None:
+        def guard() -> None:
             self._reconcile_authorization()
             profile = self._authorization_profile()
             if mode_code not in (music_code_for(self.model, slug, profile=profile) for slug in profile.music_modes):
@@ -422,15 +461,8 @@ class _ActiveModeMixin(_CoordinatorBase):
                 revision if attempted_upload else retained_body_revision
             ):
                 raise ValueError("Retained music body changed before edit; refresh and retry")
-            if "music_mode" in writes[index][1]:
-                if self.active_mode == "colour" and not self.profile.partition_segment_writes:
-                    self._pre_mode_snapshot = self._capture_static_state()
-                self._scene_code = None
-                self.color_mode = ParsedMode.MUSIC
 
         async with async_control_intent(self, intent):
-            if self.profile.partition_segment_writes and self.active_mode == "colour":
-                self._pre_mode_snapshot = self._capture_static_state()
             try:
 
                 def commit(index: int) -> None:
@@ -445,6 +477,9 @@ class _ActiveModeMixin(_CoordinatorBase):
                             self._music_palette = writes.palette
                         if writes.unknown_style:
                             self._music_calm = None
+                    if "music_mode" in writes[index][1]:
+                        self._scene_code = None
+                        self.color_mode = ParsedMode.MUSIC
                     if on_write is not None and (
                         "music_mode" in writes[index][1] or index in (first_upload, last_upload)
                     ):
@@ -459,10 +494,10 @@ class _ActiveModeMixin(_CoordinatorBase):
                     tuple(packet for packet, _ in writes),
                     intent=intent,
                     packet_state_values=states,
-                    packet_write_guard=guard,
+                    write_guard=guard,
                     writer=writer,
                     **sequence_options,
-                    packet_on_write=commit if first_upload is not None or on_write is not None else None,
+                    packet_on_write=commit,
                 )
                 if retained_body_revision is not None and self._music_body_revision != revision:
                     raise ValueError("Retained music body changed during edit; refresh and retry")

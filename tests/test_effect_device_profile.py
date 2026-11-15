@@ -251,7 +251,7 @@ async def test_selector_only_request_is_not_silently_expanded_after_aa40(hass):
         physical.assert_not_awaited()
 
 
-async def test_new_music_snapshot_is_captured_at_selector_not_companion(hass):
+async def test_music_does_not_invent_static_intent_from_power_or_companion_state(hass):
     coordinator = _device(hass)
     coordinator._pre_mode_snapshot = None
     compiled = compile_application(
@@ -269,7 +269,7 @@ async def test_new_music_snapshot_is_captured_at_selector_not_companion(hass):
 
         physical.side_effect = transmit
         await async_apply_compiled_profile(coordinator, compiled)
-    assert coordinator._pre_mode_snapshot.rgb == (10, 20, 30)
+    assert coordinator._pre_mode_snapshot is None
     assert coordinator._field_revisions == {} and coordinator._domain_revisions == {}
 
 

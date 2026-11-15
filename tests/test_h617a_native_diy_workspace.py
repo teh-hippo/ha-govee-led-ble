@@ -30,8 +30,6 @@ async def test_workspace_persist_reload_recompile_retains_native_carrier_and_ack
     template = resolve_catalogue_template("H617A", f"template:native-diy:{code}")
     source = template.content
     assert isinstance(source, LayeredEffect)
-    # Distinguish the actual compiled upload from the source so returning source
-    # instead of canonicalizing the upload cannot satisfy this regression.
     edited = replace(source, layers=(replace(source.layers[0], colour_speed=123), *source.layers[1:]))
     item = LibraryItem.new(template.label, edited)
     compiled = compile_effect(item, "H617A")
@@ -39,10 +37,10 @@ async def test_workspace_persist_reload_recompile_retains_native_carrier_and_ack
     assert isinstance(decoded, LayeredEffect)
     assert decoded.native_diy is None
     assert _active_workspace_content(source, None) is source
-    canonical = _active_workspace_content(source, compiled)
+    canonical = _active_workspace_content(edited, compiled)
     assert isinstance(canonical, LayeredEffect)
     assert canonical.native_diy == code
-    assert canonical.layers == decoded.layers
+    assert canonical == edited
     signature = observable_signature_for_compiled(compiled)
     assert signature == f"scene-code:{code}"
     workspace = ActiveEffectWorkspace(

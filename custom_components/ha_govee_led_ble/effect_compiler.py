@@ -208,9 +208,22 @@ CompiledApplication = CompiledEffect | CompiledMusicProfile | CompiledVideoProfi
 
 def validate_compiled_geometry(compiled: CompiledApplication, profile: ModelProfile) -> None:
     """Reject prepared work after incompatible permission, encoding or geometry changes."""
+    profiled_layers = False
     if isinstance(compiled, CompiledEffect):
-        if compiled.rgbic_scene_v0 is not None and compiled.rgbic_scene_v0 != profile.rgbic_scene_v0:
+        profiled_layers = (compiled.rgbic_scene_v0 is not None or profile.rgbic_scene_v0 is not None) and (
+            compiled.content_kind in {"advanced", "workshop", "scene_layered"}
+            or (compiled.scene_entry is not None and compiled.scene_entry.scene_type == 2)
+        )
+        if (
+            profiled_layers or compiled.rgbic_scene_v0 is not None
+        ) and compiled.rgbic_scene_v0 != profile.rgbic_scene_v0:
             raise ValueError("RGBIC scene format changed since compilation; refresh and retry")
+        if (
+            compiled.upload_packets
+            and profile.diy_requires_upload_ack
+            and DIY_ACK_EVIDENCE not in compiled.evidence_codes
+        ):
+            raise ValueError("Upload acknowledgement contract changed since compilation; refresh and retry")
         if compiled.body_template_id is not None:
             contract = native_diy_template_contract(compiled.model, compiled.body_template_id)
             supported = (
@@ -268,7 +281,7 @@ def validate_compiled_geometry(compiled: CompiledApplication, profile: ModelProf
         ):
             raise ValueError("Video brightness transport changed since compilation; refresh and retry")
         return
-    dependent = compiled.physical_ic_count is not None
+    dependent = compiled.physical_ic_count is not None or profiled_layers
     if isinstance(compiled, CompiledMusicProfile):
         if compiled.mode not in profile.music_modes:
             raise ValueError("Device profile no longer supports the compiled music mode")
@@ -759,6 +772,7 @@ def _compile_workshop_effect(
         ),
         upload_subtype=body_kind,
         rgbic_scene_v0=profile.rgbic_scene_v0,
+        physical_ic_count=profile.physical_ic_count if profile.rgbic_scene_v0 is not None else None,
     )
 
 
@@ -819,7 +833,8 @@ def compile_scene_effect(
                 "native_diy_rendering_unqualified",
             ),
             physical_ic_count=profile.physical_ic_count
-            if content.native_diy is not None and validate_native_diy(content, model, profile)
+            if profile.rgbic_scene_v0 is not None
+            or (content.native_diy is not None and validate_native_diy(content, model, profile))
             else None,
             upload_subtype=subtype,
             body_template_id=content.native_diy if contract is not None else None,
@@ -870,7 +885,8 @@ def compile_scene_effect(
             LayeredScene(
                 template=CatalogueRef(model, entry.scene_id, entry.effect_id),
                 effect=content,
-            )
+            ),
+            profile=profile,
         )
         evidence_codes.extend(
             (
@@ -905,7 +921,13 @@ def compile_scene_effect(
         evidence_codes=tuple(evidence_codes),
         scene_entry=entry,
         scene_route=(profile.command_grammar, profile.effect_grammar, profile.selector_only_scene_bits),
-        rgbic_scene_v0=profile.rgbic_scene_v0,
+        rgbic_scene_v0=profile.rgbic_scene_v0
+        if content_kind in {"advanced", "scene_layered"} or entry.scene_type == 2
+        else None,
+        physical_ic_count=profile.physical_ic_count
+        if profile.rgbic_scene_v0 is not None
+        and (content_kind in {"advanced", "scene_layered"} or entry.scene_type == 2)
+        else None,
         upload_subtype=_builtin_upload_route(entry, profile)[1] if upload else None,
         upload_transport=_builtin_upload_route(entry, profile)[0] if upload else "a3",
     )

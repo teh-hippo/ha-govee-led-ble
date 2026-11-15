@@ -110,9 +110,13 @@ async def test_real_coordinator_ack_and_restricted_writer_use_effective_profile(
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
     coordinator._client = client
     future = asyncio.get_running_loop().create_future()
-    coordinator._upload_ack = PendingUploadAck(client, None, coordinator._profile_generation, 4, None, 0xA3, future)
+    profile_guard = MagicMock()
+    coordinator._upload_ack = PendingUploadAck(
+        client, None, coordinator._profile_generation, 4, None, 0xA3, future, profile_guard
+    )
     coordinator._notify_callback(None, bytearray(frame("a30400")))
     assert future.done() and future.result() is True
+    profile_guard.assert_called_once()
     packet = build_boolean_control("limit", True, "H6102")
     with pytest.raises(ValueError, match="boolean control"):
         await coordinator._async_write_packet(client, packet)

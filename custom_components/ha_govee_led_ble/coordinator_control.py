@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 from bleak.exc import BleakError
 
-from .const import ModelProfile, ReadDomain
+from .const import ModelProfile, ReadDomain, same_control_profile
 from .control_arbiter import ControlIntent, async_control_intent
 from .generated_protocol_adapter import build_brightness_query, build_power_query
 
@@ -268,7 +268,7 @@ async def async_send_guarded_command(
 
     def check() -> None:
         if (
-            coordinator.profile != profile
+            not same_control_profile(coordinator.profile, profile)
             or coordinator._client is not client
             or coordinator._notification_token is not token
             or coordinator._authorization_generation != generation

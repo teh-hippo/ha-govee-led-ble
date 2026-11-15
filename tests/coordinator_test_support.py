@@ -17,3 +17,9 @@ def _packet(header: int, action: int, params: list[int]) -> bytes:
 def _c(**kw):
     kw.setdefault("disconnect", AsyncMock())
     return MagicMock(is_connected=True, **kw)
+
+
+def _confirm_identity(coordinator, firmware="3.02.24", hardware="3.01.01"):
+    coordinator._note_identity(fw_version=firmware, hw_version=hardware)
+    coordinator._observe_identity_field("fw_version", firmware)
+    coordinator._observe_identity_field("hw_version", hardware)

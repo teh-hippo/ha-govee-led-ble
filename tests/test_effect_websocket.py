@@ -61,6 +61,7 @@ from custom_components.ha_govee_led_ble.effect_websocket import (
 )
 from custom_components.ha_govee_led_ble.govee_encryption import GoveeCryptoError, GoveeTransportError
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
+from tests.test_effect_preview import _EffectCoordinator
 
 
 async def _setup_backend(hass: HomeAssistant) -> EffectBackend:
@@ -135,7 +136,7 @@ async def test_invalid_studio_parameters_preserve_preview_during_preparation(has
     assert not response["success"]
     assert response["error"]["code"] == ("unsupported_model" if case == "unsupported-snapshot" else "invalid_format")
     assert preview.is_current
-    assert connect.await_count == int(case == "unsupported-snapshot")
+    connect.assert_not_awaited()
 
 
 @pytest.mark.parametrize("sources_first", [False, True])
@@ -372,7 +373,7 @@ async def test_template_default_get_is_readable_but_mutations_require_admin(
         entry_id="entry-a",
         domain=DOMAIN,
         state=ConfigEntryState.LOADED,
-        runtime_data=SimpleNamespace(model="H617A", profile=get_profile("H617A")),
+        runtime_data=_EffectCoordinator(model="H617A", profile=get_profile("H617A")),
     )
     monkeypatch.setattr(hass.config_entries, "async_get_entry", lambda _entry_id: entry)
     client = await hass_ws_client(hass, access_token=hass_read_only_access_token)
@@ -417,7 +418,7 @@ async def test_template_default_set_rejects_mismatched_identity(
         entry_id="entry-a",
         domain=DOMAIN,
         state=ConfigEntryState.LOADED,
-        runtime_data=SimpleNamespace(model="H617A", profile=get_profile("H617A")),
+        runtime_data=_EffectCoordinator(model="H617A", profile=get_profile("H617A")),
     )
     monkeypatch.setattr(hass.config_entries, "async_get_entry", lambda _entry_id: entry)
     client = await hass_ws_client(hass)
@@ -448,7 +449,7 @@ async def test_scene_default_websocket_persists_full_content_without_ble(
         for item in SCENE_ENTRIES["H617A"]
         if item.scene_type == 2 and item.speed is not None and item.speed.option_count > 1
     )
-    coordinator = SimpleNamespace(model="H617A", profile=get_profile("H617A"), async_apply_native_scene=AsyncMock())
+    coordinator = _EffectCoordinator(model="H617A", profile=get_profile("H617A"), async_apply_native_scene=AsyncMock())
     entry = SimpleNamespace(
         entry_id="entry-a",
         domain=DOMAIN,
@@ -508,7 +509,7 @@ async def test_apply_forwards_expected_item_version(
         entry_id="entry-a",
         domain=DOMAIN,
         state=ConfigEntryState.LOADED,
-        runtime_data=SimpleNamespace(model="H617A", profile=get_profile("H617A")),
+        runtime_data=_EffectCoordinator(model="H617A", profile=get_profile("H617A")),
     )
     monkeypatch.setattr(
         hass.config_entries,
@@ -553,7 +554,7 @@ async def test_apply_surfaces_item_version_conflict(
         entry_id="entry-a",
         domain=DOMAIN,
         state=ConfigEntryState.LOADED,
-        runtime_data=SimpleNamespace(model="H617A", profile=get_profile("H617A")),
+        runtime_data=_EffectCoordinator(model="H617A", profile=get_profile("H617A")),
     )
     monkeypatch.setattr(
         hass.config_entries,
@@ -587,7 +588,7 @@ async def test_apply_distinguishes_session_failure_from_invalid_request(
 
     backend = await _setup_backend(hass)
     monkeypatch.setattr(backend.preview, "async_supersede_device", AsyncMock())
-    coordinator = SimpleNamespace(model="H617A", profile=get_profile("H617A"))
+    coordinator = _EffectCoordinator(model="H617A", profile=get_profile("H617A"))
     entry = SimpleNamespace(entry_id="entry-a", domain=DOMAIN, state=ConfigEntryState.LOADED, runtime_data=coordinator)
     monkeypatch.setattr(hass.config_entries, "async_get_entry", lambda _entry_id: entry)
     apply = AsyncMock(side_effect=error_type("operation_failed"))
@@ -644,7 +645,9 @@ async def test_preview_preparation_reports_session_failure_without_queueing(
                 "sequence": 1,
                 "config_entry_id": entry.entry_id,
                 "name": "Snapshot",
-                "content": _content(),
+                "content": effect_content_to_dict(
+                    resolve_catalogue_template("H619A", "template:native-diy:501").content
+                ),
                 "updated_at": "2026-08-27T00:00:00Z",
                 "diy_code": 24,
             }
@@ -674,7 +677,7 @@ async def test_ineligible_apply_preserves_preview(hass, hass_ws_client, monkeypa
         entry_id="entry-a",
         domain=DOMAIN,
         state=ConfigEntryState.LOADED,
-        runtime_data=SimpleNamespace(model=narrow, profile=get_profile(narrow)),
+        runtime_data=_EffectCoordinator(model=narrow, profile=get_profile(narrow)),
     )
     monkeypatch.setattr(hass.config_entries, "async_get_entry", lambda _entry_id: entry)
     content = effect_content_to_dict(SingleEffect(0, 1, 50, ((255, 0, 0), (0, 0, 255))))

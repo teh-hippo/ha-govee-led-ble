@@ -73,7 +73,7 @@ def test_segment_colors_initial_state(coord, h6199):
 
 
 def test_segment_colors_empty_for_unsupported(hass):
-    flat = replace(MODEL_PROFILES["H617A"], segment_count=0)
+    flat = replace(MODEL_PROFILES["H617A"], segment_count=0, scene_identity_fields=frozenset())
     with patch(f"{M}.get_profile", return_value=flat):
         c = GoveeBLECoordinator(
             hass,

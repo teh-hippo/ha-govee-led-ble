@@ -607,7 +607,7 @@ async def test_restore_effect_control_state_reapplies_complete_music_profile(coo
     sequence.assert_awaited_once_with(
         prepare_music_body_writes("H617A", "separation", 50, body, profile=coord.profile),
         mode_code=MUSIC_MODE_SLUGS["separation"],
-        physical_ic_count=None,
+        physical_ic_count=coord.profile.physical_ic_count,
         intent=ControlIntent.APPLY,
     )
     send.assert_awaited_once()

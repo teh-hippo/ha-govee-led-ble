@@ -49,6 +49,7 @@ from .const import (
     get_profile,
     model_from_ble_name,
     profile_with_physical_ic_count,
+    same_control_profile,
     supported_effect_categories,
 )
 from .control_arbiter import BLEControlArbiter, ControlIntent, LatestRequests, PreviewAdmission, async_control_intent
@@ -70,7 +71,7 @@ from .coordinator_status import (
     ParsedMode,
     StatusDomain,
 )
-from .coordinator_upload import PendingUploadAck
+from .coordinator_upload import PendingUploadAck, UploadAckTimeoutError
 from .effect_contracts import CapabilityState
 from .generated_protocol_adapter import (
     A3Sequence,
@@ -355,7 +356,7 @@ class GoveeBLECoordinator(
     @callback
     def _note_identity(self, *, fw_version: str | None = None, hw_version: str | None = None) -> None:
         # Entities snapshot device_info at construction, before the first identity reply lands.
-        authorization_fields = self._authorization_identity_fields()
+        authorization_fields = self._control_identity_fields()
         changed_fields: set[str] = set()
         if fw_version is not None and identity_version(fw_version) is not None and fw_version != self.fw_version:
             self.fw_version = fw_version
@@ -368,13 +369,15 @@ class GoveeBLECoordinator(
         if changed_fields:
             if changed_fields & authorization_fields:
                 self._authorization_generation += 1
-            if self.profile.profile_identity_fields:
+            if self.profile.profile_identity_fields or self.profile.scene_identity_fields:
                 self._resolve_device_profile()
             if self.config_entry is not None:
                 registry = dr.async_get(self.hass)
                 device = registry.async_get_device_by_identifier((DOMAIN, self.address), self.config_entry.entry_id)
                 if device is not None:
                     registry.async_update_device(device.id, sw_version=self.fw_version, hw_version=self.hw_version)
+        if changed_fields & self.profile.scene_identity_fields:
+            self._revalidate_upload_ack()
 
     @callback
     def _observe_identity_field(self, field: str, value: str | None) -> bool:
@@ -387,9 +390,11 @@ class GoveeBLECoordinator(
                 self._confirmed_identity_fields.add(field)
             else:
                 self._confirmed_identity_fields.discard(field)
-        if confirmed != (field in self._confirmed_identity_fields):
+        if field in self._control_identity_fields() and confirmed != (field in self._confirmed_identity_fields):
             self._authorization_generation += 1
         if not parseable or value is None:
+            if field in self.profile.scene_identity_fields:
+                self._revalidate_upload_ack()
             return False
         previous = getattr(self, field)
         if field == "fw_version":
@@ -398,8 +403,10 @@ class GoveeBLECoordinator(
             self._note_identity(hw_version=value)
         elif previous != value:
             setattr(self, field, value)
-            if field in self._authorization_identity_fields():
+            if field in self._control_identity_fields():
                 self._authorization_generation += 1
+        if field in self.profile.scene_identity_fields:
+            self._revalidate_upload_ack()
         return bool(previous != value)
 
     def identity_fields_confirmed(self, fields: frozenset[str] | None = None) -> bool:
@@ -724,6 +731,7 @@ class GoveeBLECoordinator(
         declared = get_profile(self.model)
         if (
             not declared.profile_identity_fields
+            and not declared.scene_identity_fields
             and not declared.profile_pact_dependent
             and declared.video_revision_policy is None
             and not declared.configured_string_counts
@@ -768,7 +776,13 @@ class GoveeBLECoordinator(
             and self._field_revisions.get("brightness_pct", 0) > 0
             and "brightness_pct" not in self._expected_state
         )
+        scene_only_change = bool(
+            profile.scene_identity_fields and not context_changed and same_control_profile(profile, self.profile)
+        )
         self.profile = profile
+        if scene_only_change:
+            self._revalidate_upload_ack()
+            return
         for variant in profile.music_variants:
             for spec in variant.selector_parameters:
                 setattr(self, spec.key, None)
@@ -796,7 +810,7 @@ class GoveeBLECoordinator(
         self.music_sensitivity = 99
         self.music_color = self._music_palette = self._music_body = None
         self.music_fixed_colour = self.music_left_colour = self.music_right_colour = None
-        self.music_calm = False
+        self._music_calm = None
         self.video_saturation = self.video_sound_effects_softness = 100
         self.video_full_screen, self.video_sound_effects = True, False
         self.video_parameters = None
@@ -1491,13 +1505,29 @@ class GoveeBLECoordinator(
         if (music_mode := requested.get("music_mode")) is not None and music_mode not in self.profile.music_modes:
             raise ValueError("Device profile does not support the requested music mode")
         previous_mode = self.color_mode
-        if (
-            arm_expected
-            and requested.get("color_mode", (None,))[0] not in (None, ParsedMode.COLOUR)
-            and previous_mode is ParsedMode.COLOUR
-            and self.profile.partition_segment_writes
-        ):
-            self._pre_mode_snapshot = self._capture_static_state()
+        transition = self._mode_transition
+        if transition is not None and transition.owner is not asyncio.current_task():
+            transition = None
+        static_mode = self.active_mode == "colour" or (not self.is_on and previous_mode is ParsedMode.COLOUR)
+        if arm_expected and transition is not None and not transition.captured:
+            transition.snapshot = self._capture_static_state() if static_mode else None
+            transition.profile = self.profile
+            transition.foreground_generation = self._control_arbiter.foreground_generation
+            transition.captured = True
+        mode_change = arm_expected and requested.get("color_mode", (None,))[0] not in (None, ParsedMode.COLOUR)
+        pre_mode_snapshot = None
+        if mode_change:
+            if transition is not None:
+                if not transition.installed:
+                    if (
+                        transition.profile is None
+                        or not same_control_profile(transition.profile, self.profile)
+                        or transition.foreground_generation != self._control_arbiter.foreground_generation
+                    ):
+                        raise ValueError("Static restoration context changed before mode transition")
+                    pre_mode_snapshot = transition.snapshot
+            elif static_mode:
+                pre_mode_snapshot = self._capture_static_state()
         mode_revision = self._field_revisions.get("color_mode", 0)
         observed_mode_at = self._field_received_at.get("color_mode")
         mode_confirmed_static = (
@@ -1549,6 +1579,10 @@ class GoveeBLECoordinator(
                     self._expected_state.pop(field, None)
                 self.async_set_updated_data(self.data or {})
 
+        if pre_mode_snapshot is not None:
+            self._pre_mode_snapshot = pre_mode_snapshot
+        if mode_change and transition is not None:
+            transition.installed = True
         if on_write is not None:
             on_write()
         if self._a3_sequence is not None and self._a3_sequence[0] is asyncio.current_task():
@@ -1657,7 +1691,7 @@ class GoveeBLECoordinator(
                 profile, token = self.profile, self._notification_token
 
                 def check() -> None:
-                    if self.profile != profile or self._notification_token is not token:
+                    if not same_control_profile(self.profile, profile) or self._notification_token is not token:
                         raise ValueError("Video read profile or subscription changed")
                     if control != "video_parameters":
                         require_video_controls(self.profile, self, (control,))
@@ -2082,8 +2116,10 @@ class GoveeBLECoordinator(
                 if not fresh or getattr(self, observation, None) != value:
                     raise ValueError("Device did not confirm the requested H6199 control")
 
-    async def _async_read_identity(self) -> None:
+    async def _async_read_identity(self, required_fields: frozenset[str] | None = None) -> None:
         """Refresh missing identity without making basic setup depend on its replies."""
+        if required_fields is None:
+            required_fields = self.profile.profile_identity_fields | frozenset(video_identity_fields(self.profile))
         identity_baselines = {
             domain: self._domain_revisions.get(domain, 0)
             for domain, field in (
@@ -2094,9 +2130,7 @@ class GoveeBLECoordinator(
                 (ReadDomain.WIRELESS_FIRMWARE, "wireless_firmware_version"),
                 (ReadDomain.WIRELESS_HARDWARE, "wireless_hardware_version"),
             )
-            if field in self._authorization_identity_fields()
-            and self.profile.can_read(domain)
-            and self._identity_field_incomplete(field)
+            if field in required_fields and self.profile.can_read(domain) and self._identity_field_incomplete(field)
         }
         await self._send_identity_queries()
         self._require_not_shutdown()
@@ -2161,6 +2195,9 @@ class GoveeBLECoordinator(
         return value is None
 
     def _authorization_identity_fields(self) -> frozenset[str]:
+        return self._control_identity_fields() | self.profile.scene_identity_fields
+
+    def _control_identity_fields(self) -> frozenset[str]:
         return self.profile.profile_identity_fields | frozenset(video_identity_fields(self.profile))
 
     def _reconcile_authorization(self) -> None:
@@ -2176,7 +2213,7 @@ class GoveeBLECoordinator(
             frozenset({"pact"})
         ):
             return device_profile(self.model, None, None)
-        fields = self.profile.profile_identity_fields
+        fields = self.profile.profile_identity_fields | self.profile.scene_identity_fields
         if not fields or self.identity_fields_confirmed(fields):
             return self.profile
         if self.model == "H6102":
@@ -2400,7 +2437,7 @@ class GoveeBLECoordinator(
             return None
         async with self._lock:
             client = await self._ensure_connected()
-            if self.profile != profile:
+            if not same_control_profile(self.profile, profile):
                 raise ValueError("Source profile changed before validation")
             values = self._fresh_source_power()
             if values is None:
@@ -2416,7 +2453,7 @@ class GoveeBLECoordinator(
                 values = self._fresh_source_power()
             if values is None:
                 raise ValueError("Source power is not qualified for this connection")
-            if self.profile != profile:
+            if not same_control_profile(self.profile, profile):
                 raise ValueError("Source profile changed during validation")
         requested = dict(values)
         if enabled:
@@ -2460,7 +2497,7 @@ class GoveeBLECoordinator(
         profile, source, attribute, value = prepared.profile, prepared.source, prepared.attribute, prepared.value
         if write_guard is not None:
             write_guard()
-        if self.profile != profile:
+        if not same_control_profile(self.profile, profile):
             raise ValueError("The native source profile changed")
         field = "ripple_speed" if attribute == "ripple_speed" else f"{source}_{attribute}"
         async with async_control_intent(self, ControlIntent.USER):
@@ -2476,7 +2513,7 @@ class GoveeBLECoordinator(
                 if write_guard is not None:
                     write_guard()
                 if (
-                    self.profile != profile
+                    not same_control_profile(self.profile, profile)
                     or self._client is not client
                     or self._notification_token is not token
                     or not client.is_connected
@@ -2519,7 +2556,7 @@ class GoveeBLECoordinator(
             except BaseException as error:
                 if (
                     self.control_write_attempts != attempts
-                    and self.profile == profile
+                    and same_control_profile(self.profile, profile)
                     and (self._notification_token is token or self._client is None)
                     and self._profile_generation == generation
                 ):
@@ -2741,7 +2778,7 @@ class GoveeBLECoordinator(
 
                 def guard() -> None:
                     if (
-                        self.profile != profile
+                        not same_control_profile(self.profile, profile)
                         or self._profile_generation != generation
                         or self._notification_token is not token
                         or self._client is not client
@@ -3222,6 +3259,14 @@ class GoveeBLECoordinator(
         if self._upload_ack is not None:
             self._upload_ack.invalidate(error)
 
+    def _revalidate_upload_ack(self) -> None:
+        pending = self._upload_ack
+        if pending is not None and not pending.future.done():
+            try:
+                pending.profile_guard()
+            except Exception as err:
+                pending.invalidate(err)
+
     def _advance_profile_generation(self) -> None:
         self._profile_generation += 1
         self._invalidate_upload_ack(ValueError("Device profile changed during effect upload"))
@@ -3230,8 +3275,11 @@ class GoveeBLECoordinator(
         """Wait for the device's verdict on the upload whose final packet was just written."""
         if pending is None:
             raise RuntimeError("Upload writer did not run the physical-write guard")
-        async with asyncio.timeout(UPLOAD_ACK_TIMEOUT):
-            accepted = await pending.future
+        try:
+            async with asyncio.timeout(UPLOAD_ACK_TIMEOUT):
+                accepted = await pending.future
+        except TimeoutError as err:
+            raise UploadAckTimeoutError("Device did not acknowledge effect upload") from err
         check_connection()
         if not accepted:
             raise RuntimeError(f"Device rejected {pending.protocol:02X} upload")
@@ -3243,7 +3291,6 @@ class GoveeBLECoordinator(
         final_packet: bytes,
         *,
         check_connection: Callable[[], None],
-        write_guard: Callable[[], None] | None,
         expected_values: Mapping[str, Any] | None,
         packet_validator: Callable[[bytes, ModelProfile], None],
         writer: ProfileWriter | None,
@@ -3252,8 +3299,6 @@ class GoveeBLECoordinator(
 
         def final_guard() -> None:
             check_connection()
-            if write_guard is not None:
-                write_guard()
 
         if writer is None:
             await self._async_write_packet(
@@ -3314,7 +3359,11 @@ class GoveeBLECoordinator(
         if packet_state_values is not None and len(packet_state_values) != len(packets):
             raise ValueError("packet state must match the effect sequence length")
         subtype, ack_mode, protocol = self._upload_ack_expectation(packets, require_upload_ack, upload_ack_index)
-        async with async_control_intent(self, intent), self._a3_upload_transaction(packets) as sequence:
+        async with (
+            async_control_intent(self, intent),
+            self.async_mode_transition(),
+            self._a3_upload_transaction(packets) as sequence,
+        ):
             # Preview writers acquire _lock themselves. The existing control intent
             # still owns the entire upload/ACK/selector transaction.
             async with self._lock if writer is None else nullcontext():
@@ -3333,12 +3382,23 @@ class GoveeBLECoordinator(
                                 raise BleakError("Device disconnected during preview")
                             client = self._client
                         token, generation = self._notification_token, self._profile_generation
+                        prepared_profile = self.effect_authorization_profile
                         self._require_not_dreamview_claimed()
+
+                        def check_profile(
+                            generation: int = generation,
+                            prepared_profile: ModelProfile = prepared_profile,
+                        ) -> None:
+                            if self._profile_generation != generation:
+                                raise ValueError("Device profile changed during effect upload")
+                            if write_guard is not None:
+                                write_guard()
+                            elif self.effect_authorization_profile != prepared_profile:
+                                raise ValueError("Device profile changed during effect upload")
 
                         def check_connection(
                             client: BleakClient = client,
                             token: object | None = token,
-                            generation: int = generation,
                         ) -> None:
                             self._require_not_dreamview_claimed()
                             if (
@@ -3347,8 +3407,7 @@ class GoveeBLECoordinator(
                                 or self._notification_token is not token
                             ):
                                 raise BleakError("Device disconnected during effect upload")
-                            if self._profile_generation != generation:
-                                raise ValueError("Device profile changed during effect upload")
+                            check_profile()
 
                         if attempt_started is not None:
                             await attempt_started(attempt)
@@ -3369,18 +3428,14 @@ class GoveeBLECoordinator(
                                 token: object | None = token,
                                 generation: int = generation,
                             ) -> None:
-                                nonlocal pending_ack, upload_attempted
+                                nonlocal pending_ack
                                 self._require_not_dreamview_claimed()
-                                if self._profile_generation != generation:
-                                    raise ValueError("Device profile changed during effect upload")
                                 if require_upload_ack or writer is not None:
                                     check_connection()
-                                if write_guard is not None:
-                                    write_guard()
+                                else:
+                                    check_profile()
                                 if packet_write_guard is not None:
                                     packet_write_guard(index - 1)
-                                if require_upload_ack and packets[index - 1][0] == protocol:
-                                    upload_attempted = True
                                 if subtype is not None and index - 1 == upload_ack_index:
                                     # After transforms and guards, immediately before the
                                     # final physical attempt: synchronous replies are valid.
@@ -3392,14 +3447,20 @@ class GoveeBLECoordinator(
                                         ack_mode,
                                         protocol,
                                         asyncio.get_running_loop().create_future(),
+                                        check_profile,
                                     )
                                     self._upload_ack = pending_ack
 
                             values = state_values if packet_state_values is None else packet_state_values[index - 1]
 
                             def commit(index: int = index) -> None:
+                                nonlocal upload_attempted
                                 if packet_on_write is not None:
                                     packet_on_write(index - 1)
+                                if sequence.is_frame(packets[index - 1]) or (
+                                    require_upload_ack and packets[index - 1][0] == protocol
+                                ):
+                                    upload_attempted = True
 
                             if writer is None:
                                 await self._async_write_packet(
@@ -3410,7 +3471,7 @@ class GoveeBLECoordinator(
                                     state_values=values,
                                     expected_values=expected_values,
                                     packet_validator=packet_validator,
-                                    on_write=commit if packet_on_write is not None else None,
+                                    on_write=commit,
                                 )
                             else:
                                 await writer(
@@ -3418,7 +3479,7 @@ class GoveeBLECoordinator(
                                     write_guard=guard,
                                     state_values=values,
                                     expected_values=expected_values,
-                                    **({"on_write": commit} if packet_on_write is not None else {}),
+                                    on_write=commit,
                                 )
                             self._renew_foreground_lease()
                             if require_upload_ack and index - 1 == upload_ack_index:
@@ -3441,6 +3502,7 @@ class GoveeBLECoordinator(
                             raise RuntimeError("Home Assistant is stopping") from err
                         if (
                             attempt == attempts
+                            or isinstance(err, UploadAckTimeoutError)
                             or (upload_attempted and not self.profile.effect_retry_after_upload)
                             or (retry_allowed is not None and not retry_allowed())
                         ):
@@ -3460,7 +3522,6 @@ class GoveeBLECoordinator(
                         client,
                         final_packet,
                         check_connection=check_connection,
-                        write_guard=write_guard,
                         expected_values=expected_values,
                         packet_validator=packet_validator,
                         writer=writer,

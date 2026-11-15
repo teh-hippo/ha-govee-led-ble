@@ -7,7 +7,7 @@ from collections.abc import Callable
 from datetime import datetime
 from typing import Any
 
-from .const import ReadDomain, get_profile
+from .const import ReadDomain, get_profile, same_control_profile
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator_base import _CoordinatorBase
 from .coordinator_refresh import RefreshRequest
@@ -286,7 +286,7 @@ class _SegmentMixin(_CoordinatorBase):
                         self._client is not client
                         or not client.is_connected
                         or self._notification_token is not token
-                        or self.profile != profile
+                        or not same_control_profile(self.profile, profile)
                         or self._profile_generation != generation
                         or self._authorization_generation != authorization
                     ):
@@ -381,7 +381,7 @@ class _SegmentMixin(_CoordinatorBase):
                     if (
                         outcome not in {"confirmed", "confirmed_rendering"}
                         and self._static_write_attempts != attempts
-                        and self.profile == profile
+                        and same_control_profile(self.profile, profile)
                         and self._profile_generation == generation
                         and self._mode_write_generation == write_generation
                     ):
@@ -397,7 +397,7 @@ class _SegmentMixin(_CoordinatorBase):
                         outcome not in {"confirmed", "confirmed_rendering"}
                         and static.whole_strip
                         and (not profile.kelvin_renders_device_white or not profile.static_readback_kelvin)
-                        and self.profile == profile
+                        and same_control_profile(self.profile, profile)
                         and self.segment_state_source == "observed"
                         and self.color_temp_kelvin_source != "observed"
                         and not rendering_matches(set(self.segment_colors))
@@ -519,7 +519,7 @@ class _SegmentMixin(_CoordinatorBase):
             except BaseException as error:
                 if (
                     attempted_packets
-                    and self.profile == profile
+                    and same_control_profile(self.profile, profile)
                     and self._profile_generation == generation
                     and self._mode_write_generation == write_generation
                 ):

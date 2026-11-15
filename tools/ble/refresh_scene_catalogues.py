@@ -87,6 +87,7 @@ def _resolved_effect(effect: dict[str, Any], sku: str) -> dict[str, Any]:
         return effect
 
     resolved = dict(effect)
+    resolved["cmdVersion"] = special.get("cmdVersion", 0)
     if special.get("sceneCode", 0) > 0:
         resolved["sceneCode"] = special["sceneCode"]
     if special.get("scenceParam"):
@@ -329,6 +330,8 @@ def build_snapshot(raw: dict[str, Any], sku: str) -> dict[str, Any]:
                 }
                 if sku == "H6199":
                     entry["music_code"] = 0
+                if command_version := int(effect.get("cmdVersion", 0)):
+                    entry["command_version"] = command_version
                 variant = str(effect.get("scenceName") or "")
                 if variant or len(light_effects) > 1:
                     entry["variant"] = variant or f"#{index}"

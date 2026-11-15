@@ -35,6 +35,7 @@ from .effect_catalogue import (
 from .effect_contracts import EditorApiInfo, device_effect_capabilities
 from .effect_deployments import DeploymentSnapshot
 from .effect_domain import (
+    BuiltinScene,
     EffectValidationError,
     OpaqueContent,
     Origin,
@@ -132,6 +133,7 @@ from .effect_websocket_schema import (
     WS_USER_STATE_UPDATE,
 )
 from .govee_encryption import GoveeCryptoError
+from .layered_scene import CatalogueRef
 from .music_commands import music_body_style
 from .music_protocol import music_code_for
 from .schema_compat import vol
@@ -439,7 +441,13 @@ async def ws_scene_apply(
         resolved = resolve_scene(entry.runtime_data.model, msg["scene_id"], msg["effect_id"])
         if "speed_index" in msg:
             resolve_scene_application_body(resolved.entry, scene_default=None, speed_index=msg["speed_index"])
-        profile = await async_prepare_effect_profile(entry.runtime_data, intent=ControlIntent.BACKGROUND)
+        profile = await async_prepare_effect_profile(
+            entry.runtime_data,
+            intent=ControlIntent.BACKGROUND,
+            content=BuiltinScene(
+                CatalogueRef(entry.runtime_data.model, resolved.entry.scene_id, resolved.entry.effect_id)
+            ),
+        )
         if not profile.supports_scenes:
             connection.send_error(msg["id"], "unsupported_model", "Device profile supports no scenes")
             return

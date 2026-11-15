@@ -364,7 +364,7 @@ async def test_initial_state_and_update(coord, h6199):
     assert coord.effect is None and coord.address == "AA:BB:CC:DD:EE:FF" and coord.model == "H617A"
     assert (coord.music_mode, coord.video_mode, coord.diy_code) == ("off", "off", None)
     assert coord.color_mode is None
-    assert coord.profile == MODEL_PROFILES["H617A"] and coord.profile.state_readable
+    assert coord.profile == device_profile("H617A", None, None) and coord.profile.state_readable
     assert coord.profile.supports_music_mode and not coord.profile.supports_video_mode
     assert h6199.profile == device_profile("H6199", None, None) and h6199.profile.state_readable
     assert h6199.profile.supports_video_mode and not h6199.profile.supports_white_brightness
@@ -522,7 +522,10 @@ async def test_gatt_cleanup_disconnect_failure_preserves_original_outcome(coord,
 
 async def test_background_connection_use_does_not_renew_foreground_lease(coord):
     coord._client = _c()
-    with patch.object(coord, "_reset_disconnect_timer") as reset:
+    with (
+        patch.object(coord, "_reset_disconnect_timer") as reset,
+        patch.object(coord, "_async_read_identity", new=AsyncMock()),
+    ):
         async with coord._control_arbiter.hold(ControlIntent.BACKGROUND):
             await coord._ensure_connected()
         reset.assert_not_called()
@@ -589,6 +592,7 @@ async def test_background_refresh_keeps_background_intent_and_preview_admission(
             new=AsyncMock(side_effect=reply),
         ),
         patch.object(coord, "_reset_disconnect_timer") as reset,
+        patch.object(coord, "_async_read_identity", new=AsyncMock()),
     ):
         await coord._async_update_data()
 
@@ -806,7 +810,8 @@ async def test_disconnect_does_not_clear_replacement_client(coord):
 
 async def test_ensure_connected(coord):
     coord._client = (c := _c())
-    assert await coord._ensure_connected() is c
+    with patch.object(coord, "_async_read_identity", new=AsyncMock()):
+        assert await coord._ensure_connected() is c
     coord._client = None
     with (
         patch(f"{M}.BLEDeviceResolver.async_resolve", new_callable=AsyncMock, return_value=None) as resolve,
@@ -828,7 +833,7 @@ async def test_ensure_connected_retries_cache_resolution_with_wrapped_client(coo
         patch(f"{M}.asyncio.sleep", new_callable=AsyncMock) as sleep,
         patch(f"{M}.establish_connection", return_value=client) as connect,
         patch.object(coord, "_start_notify", new_callable=AsyncMock),
-        patch.object(coord, "_send_identity_queries", new_callable=AsyncMock),
+        patch.object(coord, "_async_read_identity", new_callable=AsyncMock),
         patch.object(coord, "_send_state_queries", new_callable=AsyncMock, return_value=True),
     ):
         assert await coord._ensure_connected() is client
@@ -857,7 +862,7 @@ async def test_resolution_reuses_selected_client_after_disconnect(coord):
     with (
         patch(f"{M}.establish_connection", side_effect=[first, second]) as connect,
         patch.object(coord, "_start_notify", new_callable=AsyncMock),
-        patch.object(coord, "_send_identity_queries", new_callable=AsyncMock),
+        patch.object(coord, "_async_read_identity", new_callable=AsyncMock),
         patch.object(coord, "_send_state_queries", new_callable=AsyncMock, return_value=True),
     ):
         assert await coord._ensure_connected() is first
@@ -903,7 +908,7 @@ async def test_gatt_failure_reconnects_new_client_with_fresh_services(coord):
         patch(f"{M}.establish_connection", side_effect=[first, bootstrap, fresh, normal]) as connect,
         patch(f"{M}.asyncio.sleep", new_callable=AsyncMock),
         patch.object(coord, "_start_notify", new_callable=AsyncMock),
-        patch.object(coord, "_send_identity_queries", new_callable=AsyncMock),
+        patch.object(coord, "_async_read_identity", new_callable=AsyncMock),
     ):
         await coord.send_command(build_power(True))
         assert coord.fresh_services_required is False
@@ -936,7 +941,7 @@ async def test_stale_gatt_connection_failure_forces_next_connection_fresh(coord)
     with (
         patch(f"{M}.establish_connection", side_effect=BleakError("GATT service not found")) as connect,
         patch.object(coord, "_start_notify", new_callable=AsyncMock),
-        patch.object(coord, "_send_identity_queries", new_callable=AsyncMock),
+        patch.object(coord, "_async_read_identity", new_callable=AsyncMock),
         pytest.raises(BleakError, match="GATT service not found"),
     ):
         await coord._ensure_connected()
@@ -947,7 +952,7 @@ async def test_stale_gatt_connection_failure_forces_next_connection_fresh(coord)
     with (
         patch(f"{M}.establish_connection", side_effect=[bootstrap, client]) as fresh_connect,
         patch.object(coord, "_start_notify", new_callable=AsyncMock),
-        patch.object(coord, "_send_identity_queries", new_callable=AsyncMock),
+        patch.object(coord, "_async_read_identity", new_callable=AsyncMock),
     ):
         assert await coord._ensure_connected() is client
 
@@ -1063,7 +1068,7 @@ async def test_recovery_identity_failure_only_rejects_discarded_client(coord, st
 
 
 @pytest.mark.parametrize("stale", [False, True], ids=["ordinary-optional", "stale-gatt"])
-async def test_optional_state_query_failure_only_tolerated_on_current_client(coord, stale):
+async def test_optional_state_query_failure_only_tolerated_on_current_client(coord, stale, virtual_clock):
     optional = build_colour_mode_query()
 
     async def write(_uuid, packet, **_kwargs):
@@ -1081,12 +1086,13 @@ async def test_optional_state_query_failure_only_tolerated_on_current_client(coo
     ):
         await coord._ensure_connected()
     client.write_gatt_char.reset_mock()
-    assert (
-        await coord._send_state_queries(
-            required_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS}),
+    async with coord._control_arbiter.hold(ControlIntent.USER), coord._lock:
+        assert (
+            await coord._send_state_queries(
+                required_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS}),
+            )
+            is not stale
         )
-        is not stale
-    )
     packets = [item.args[1] for item in client.write_gatt_char.await_args_list]
     assert packets[:3] == [build_power_query(), build_brightness_query(), optional]
     assert coord.fresh_services_required is stale
@@ -1289,13 +1295,12 @@ async def test_background_refresh_disconnects_replacement_connection(coord):
     assert coord._client is None
 
 
-async def test_ensure_connected_replaces_receive_stale_client(coord):
+async def test_ensure_connected_replaces_receive_stale_client(coord, virtual_clock):
     old = _c()
     new = _c(start_notify=AsyncMock(), write_gatt_char=AsyncMock(), disconnect=AsyncMock())
     coord._client = old
-    coord._notify_started_monotonic = 1.0
+    coord._notify_started_monotonic = virtual_clock.virtual_time() - RX_STALE_TIMEOUT - 1
     with (
-        patch(f"{M}.time.monotonic", return_value=RX_STALE_TIMEOUT + 2),
         patch(f"{M}.BLEDeviceResolver.async_resolve", new_callable=AsyncMock, return_value=_resolution()),
         patch(f"{M}.establish_connection", return_value=new),
     ):
@@ -1496,11 +1501,10 @@ def test_notify_callback_pushes_identity_to_own_registry_device(hass, coord):
         patch.object(registry, "async_update_device", wraps=registry.async_update_device) as update,
     ):
         coord._notify_callback(None, bytearray(fw))
+        assert registry.async_get(device.id).sw_version == "3.02.24"
+        assert registry.async_get(device.id).hw_version is None
         coord._notify_callback(None, bytearray(hw))
-        assert update.call_args_list == [
-            call(device.id, sw_version="3.02.24", hw_version=None),
-            call(device.id, sw_version="3.02.24", hw_version="3.01.01"),
-        ]
+        assert all(item.args == (device.id,) for item in update.call_args_list)
         update.reset_mock()
         coord._notify_callback(None, bytearray(fw))
         coord._notify_callback(None, bytearray(hw))
@@ -1699,9 +1703,10 @@ async def test_keep_alive_retries_missing_hw_when_fw_known(coord):
     assert coord._client is None
 
 
-async def test_keep_alive_skips_identity_when_versions_known(coord):
+async def test_keep_alive_skips_identity_when_versions_confirmed(coord):
     coord._client = client = _c(write_gatt_char=AsyncMock(), disconnect=AsyncMock())
-    coord.fw_version, coord.hw_version = "3.02.24", "3.01.01"
+    coord._observe_identity_field("fw_version", "3.02.24")
+    coord._observe_identity_field("hw_version", "3.01.01")
     with (
         patch.object(coord, "_send_identity_queries", new_callable=AsyncMock) as ident,
         patch.object(coord, "_send_state_queries", new_callable=AsyncMock, return_value=False),
@@ -1746,6 +1751,8 @@ async def test_first_refresh_non_readable_requires_presence(hass):
         MODEL_PROFILES["H617A"],
         read_domains=frozenset(),
         setup_required_read_domains=frozenset(),
+        profile_identity_fields=frozenset(),
+        scene_identity_fields=frozenset(),
     )
     with patch(f"{M}.get_profile", return_value=flat):
         c = GoveeBLECoordinator(

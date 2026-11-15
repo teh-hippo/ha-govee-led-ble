@@ -54,6 +54,10 @@ async def connected(hass, monkeypatch, request):
     client = MagicMock(is_connected=True, start_notify=AsyncMock(), write_gatt_char=AsyncMock())
     c._client = client
     await c._start_notify()
+    if c.model == "H617A":
+        c._note_identity(fw_version="3.02.24", hw_version="3.01.01")
+        c._observe_identity_field("fw_version", c.fw_version)
+        c._observe_identity_field("hw_version", c.hw_version)
     monkeypatch.setattr(c, "_ensure_connected", AsyncMock(return_value=client))
     monkeypatch.setattr(c, "_renew_foreground_lease", MagicMock())
     monkeypatch.setattr(coordinator_module, "UPLOAD_ACK_TIMEOUT", 0.02)
@@ -80,6 +84,62 @@ async def connected(hass, monkeypatch, request):
 
 def receive(client, data):
     client.start_notify.call_args.args[1](None, bytearray(data))
+
+
+@pytest.mark.parametrize("scene_type", [0, 1])
+async def test_identity_independent_native_scene_survives_scene_policy_change(connected, scene_type):
+    c, client = connected
+    c.is_on = False
+    c.brightness_pct = 23
+    c._music_body = b"resident music"
+    c._music_calm = None
+    generation, authorization = c._profile_generation, c._authorization_generation
+    scene = next(scene for scene in SCENE_ENTRIES[c.model] if scene.scene_type == scene_type)
+    content = BuiltinScene(CatalogueRef(c.model, scene.scene_id, scene.effect_id))
+    compiled = compile_effect(
+        LibraryItem.new("Independent scene", content), c.model, profile=c.effect_authorization_profile
+    )
+    power = build_power(True, c.model)
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet == power:
+            c._observe_identity_field("hw_version", "1.00.01")
+            c._observe_identity_field("fw_version", "1.00.01")
+            assert c.brightness_pct == 23 and c._music_body == b"resident music" and c._music_calm is None
+        elif compiled.upload_packets and packet == compiled.upload_packets[-1]:
+            receive(client, frame(f"a3{scene_type:02x}00"))
+
+    client.write_gatt_char.side_effect = write
+    await c.async_apply_native_scene(scene.display_name, scene_entry=scene, verify=False)
+    assert [call.args[1] for call in client.write_gatt_char.call_args_list] == [power, *compiled.packets]
+    assert c.profile.rgbic_scene_v0 is True
+    assert (c._profile_generation, c._authorization_generation) == (generation, authorization)
+
+
+@pytest.mark.parametrize("change", ["policy", "authority"])
+async def test_scene_ack_revalidates_dependent_policy_and_authority(connected, change):
+    c, client = connected
+    c.is_on = True
+    scene = next(scene for scene in SCENE_ENTRIES[c.model] if scene.command_version == 1)
+    content = BuiltinScene(CatalogueRef(c.model, scene.scene_id, scene.effect_id))
+    compiled = compile_effect(
+        LibraryItem.new("Dependent scene", content), c.model, profile=c.effect_authorization_profile
+    )
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet == compiled.upload_packets[-1]:
+            if change == "policy":
+                c._observe_identity_field("hw_version", "1.00.01")
+            else:
+                c._observe_identity_field("hw_version", None)
+            receive(client, DIY_OK)
+
+    client.write_gatt_char.side_effect = write
+    with pytest.raises(ValueError):
+        await c.async_apply_native_scene(scene.display_name, scene_entry=scene, verify=False)
+    assert [call.args[1] for call in client.write_gatt_char.call_args_list] == list(compiled.upload_packets)
+    assert c._upload_ack is None
+    assert c._ensure_connected.await_count == 1
 
 
 @pytest.mark.parametrize("connected", ["H600A"], indirect=True)
@@ -193,15 +253,16 @@ async def test_diy_upload_requires_result_without_uncertain_replay(connected, fa
     assert c._ensure_connected.await_count == 1
 
 
-@pytest.mark.parametrize("connected", ["H6097", "H600A"], indirect=True)
-async def test_missing_scene_readback_does_not_repeat_accepted_upload(connected, monkeypatch):
+@pytest.mark.parametrize("connected", ["H6097", "H600A", "H617A", "H617C"], indirect=True)
+@pytest.mark.parametrize("observations", [(None,), (False, False), (False, True)])
+async def test_scene_verification_does_not_repeat_accepted_upload(connected, monkeypatch, observations):
     c, client = connected
     c.is_on = True
     scene = next(scene for scene in SCENE_ENTRIES[c.model] if scene.scene_type == (1 if c.model == "H600A" else 2))
     compiled = compile_effect(
         LibraryItem.new("Scene", BuiltinScene(CatalogueRef(c.model, scene.scene_id, scene.effect_id))), c.model
     )
-    monkeypatch.setattr(c, "refresh_state", AsyncMock(return_value=False))
+    monkeypatch.setattr(c, "async_observe_effect", AsyncMock(side_effect=observations))
 
     async def write(_uuid, packet, **kwargs):
         if packet == compiled.upload_packets[-1]:
@@ -209,10 +270,59 @@ async def test_missing_scene_readback_does_not_repeat_accepted_upload(connected,
             receive(client, frame(f"a3{subtype:02x}00"))
 
     client.write_gatt_char.side_effect = write
-    with pytest.raises(RuntimeError, match="Failed to confirm scene"):
+    if observations[-1] is False:
+        with pytest.raises(RuntimeError, match="Failed to confirm scene"):
+            await c.async_apply_native_scene(scene.display_name, scene_entry=scene)
+    else:
         await c.async_apply_native_scene(scene.display_name, scene_entry=scene)
-    assert [call.args[1] for call in client.write_gatt_char.await_args_list] == list(compiled.packets)
+    expected = [*compiled.packets, *([compiled.activation_packet] if observations[0] is False else [])]
+    assert [call.args[1] for call in client.write_gatt_char.await_args_list] == expected
+    assert c._ensure_connected.await_count == len(observations)
+
+
+@pytest.mark.parametrize("connected", ["H617A", "H617C"], indirect=True)
+async def test_missing_upload_ack_cannot_spend_transport_retries(connected, monkeypatch):
+    c, client = connected
+    packets, index = sequence()
+    monkeypatch.setattr(coordinator_module, "EFFECT_SEQUENCE_ATTEMPTS", 2)
+    with pytest.raises(TimeoutError, match="did not acknowledge"):
+        await write_sequence(c, packets, index)
     assert c._ensure_connected.await_count == 1
+    assert [call.args[1] for call in client.write_gatt_char.await_args_list] == packets[: index + 1]
+    assert c._upload_ack is None
+
+
+async def test_native_scene_revalidates_command_version_after_subscription_replacement(connected):
+    c, first = connected
+    c.is_on = True
+    c._note_identity(fw_version="1.06.00", hw_version="1.00.02")
+    scene = next(scene for scene in SCENE_ENTRIES[c.model] if scene.command_version == 1)
+    compiled = compile_effect(
+        LibraryItem.new("Scene", BuiltinScene(CatalogueRef(c.model, scene.scene_id, scene.effect_id))),
+        c.model,
+        profile=c.effect_authorization_profile,
+    )
+    generation = c._profile_generation
+    second = MagicMock(is_connected=True, start_notify=AsyncMock(), write_gatt_char=AsyncMock())
+
+    async def reconnect():
+        c._clear_client_state(first)
+        c._client = second
+        await c._start_notify()
+        assert c._profile_generation == generation
+        assert c.effect_authorization_profile.rgbic_scene_v0 is compiled.rgbic_scene_v0
+        return second
+
+    async def write(_uuid, packet, **kwargs):
+        if packet == compiled.upload_packets[-1]:
+            receive(second, frame("a30200"))
+
+    c._ensure_connected.side_effect = reconnect
+    second.write_gatt_char.side_effect = write
+    with pytest.raises(ValueError, match="Scene is not supported"):
+        await c.async_apply_native_scene(scene.display_name, scene_entry=scene, verify=False)
+    second.write_gatt_char.assert_not_awaited()
+    assert c.control_write_attempts == 0
 
 
 @pytest.mark.parametrize("connected", ["H600A"], indirect=True)
@@ -571,6 +681,7 @@ async def test_stale_early_disconnected_and_cancelled_uploads(connected, fault):
 
 
 @pytest.mark.parametrize("ack_on_retry", [False, True])
+@pytest.mark.parametrize("connected", ["H617F", "H617C"], indirect=True)
 async def test_failed_final_attempt_discards_ack_and_retries_entire_upload(connected, monkeypatch, ack_on_retry):
     c, first = connected
     packets, index = sequence()

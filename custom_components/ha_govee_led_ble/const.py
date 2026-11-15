@@ -222,6 +222,7 @@ class ModelProfile:
     video_firmware_conditions: tuple[VideoFirmwareCondition, ...] = ()
     video_control_exclusions: tuple[tuple[str, str], ...] = ()
     profile_identity_fields: frozenset[str] = frozenset()
+    scene_identity_fields: frozenset[str] = frozenset()
     # Set when Pact alone changes capabilities, so the profile also resolves before hardware/firmware replies arrive.
     profile_pact_dependent: bool = False
     # Colour and Kelvin controls are presented before identity resolves, but writes need fresh qualified Pact.
@@ -320,6 +321,7 @@ class ModelProfile:
     selector_only_scene_bits: int | None = None
     # scene_codes limits selector eligibility per revision; local_scenes use scene_id 0, effect_id = selector.
     scene_codes: frozenset[int] | None = None
+    scene_command_versions: frozenset[int] | None = None
     local_scenes: tuple[tuple[int, str], ...] = ()
     advanced_scene_carrier: tuple[int, int] | None = None
     workshop_scene_selector: int | None = None
@@ -637,6 +639,7 @@ _H617A_PROFILE = ModelProfile(
     command_grammar="H617A",
     status_grammar="H617A",
     effect_grammar="H617A",
+    scene_identity_fields=frozenset({"fw_version", "hw_version"}),
     read_domains=frozenset(
         {
             ReadDomain.POWER,
@@ -671,7 +674,16 @@ _H617A_PROFILE = ModelProfile(
         "bloom",
         "shiny",
     ),
-    music_variants=H617A_MUSIC_VARIANTS,
+    music_variants=tuple(
+        replace(
+            variant,
+            parameters=tuple(
+                replace(parameter, max_value=100) if parameter.key == "music_daynight_speed" else parameter
+                for parameter in variant.parameters
+            ),
+        )
+        for variant in H617A_MUSIC_VARIANTS
+    ),
     music_upload_before_selector=True,
     music_requires_upload_ack=True,
     supports_music_color=True,
@@ -684,6 +696,13 @@ _H617A_PROFILE = ModelProfile(
     supports_segment_writes=True,
     # Preserve the existing qualified segment operations independently of RGB writes.
     supports_segment_brightness=True,
+    supports_segment_color_temperature=True,
+    physical_ic_count=15,
+    rgbic_scene_v0=False,
+    scene_command_versions=frozenset({0, 1}),
+    diy_requires_upload_ack=True,
+    effect_retry_after_upload=False,
+    music_retry_after_upload=False,
     connection_idle_timeout=IDLE_TIMEOUT_STANDARD,
     scene_catalogue_sku="H617A",
     advanced_scene_carrier=(1013, 11836),
@@ -1831,16 +1850,28 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         boolean_controls=frozenset({"gradual"}),
     ),
     "H617A": _H617A_PROFILE,
-    "H617E": replace(
-        _H617A_PROFILE,
-        name="H617E LED Strip",
+    "H617E": ModelProfile(
+        "H617E LED Strip",
         color_temp_range=KELVIN_RANGE_2000_9000,
-        confirmation_issue=None,
-        music_variants=H617E_MUSIC_VARIANTS,
-        music_upload_before_selector=False,
-        music_requires_upload_ack=False,
         support_quality=SupportQuality.SUPPORTED,
+        command_grammar="H617A",
+        status_grammar="H617A",
         effect_grammar="H617A",
+        read_domains=frozenset(
+            {
+                ReadDomain.POWER,
+                ReadDomain.BRIGHTNESS,
+                ReadDomain.COLOUR_MODE,
+                ReadDomain.FIRMWARE,
+                ReadDomain.HARDWARE,
+                ReadDomain.SEGMENTS,
+            }
+        ),
+        setup_required_read_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE}),
+        supports_rgb=True,
+        supports_color_temperature=True,
+        supports_custom_effects=True,
+        supports_scenes=True,
         music_modes=(
             "energetic",
             "rhythm",
@@ -1854,9 +1885,21 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
             "bloom",
             "shiny",
         ),
+        music_variants=H617E_MUSIC_VARIANTS,
+        music_upload_before_selector=False,
+        music_requires_upload_ack=False,
+        supports_music_color=True,
+        supports_advanced_effects=True,
+        supports_multi_layered_effects=True,
+        segment_count=15,
+        segment_group_size=3,
+        supports_segment_writes=True,
+        supports_segment_brightness=True,
+        connection_idle_timeout=IDLE_TIMEOUT_STANDARD,
         scene_catalogue_sku="H617E",
         legacy_scene_catalogue_sku="H617A",
         advanced_scene_carrier=(29884, 41599),
+        effect_readback="diy_code_only",
     ),
     "H617C": ModelProfile(
         "H617C LED Strip",
@@ -1922,16 +1965,55 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         boolean_controls=frozenset({"gradual"}),
         effect_readback="diy_code_only",
     ),
-    "H617F": replace(
-        _H617A_PROFILE,
-        name="H617F LED Strip",
+    "H617F": ModelProfile(
+        "H617F LED Strip",
         color_temp_range=KELVIN_RANGE_2000_9000,
-        confirmation_issue=None,
         support_quality=SupportQuality.SUPPORTED,
         command_grammar="H617A",
         status_grammar="H617A",
         effect_grammar="H617A",
+        read_domains=frozenset(
+            {
+                ReadDomain.POWER,
+                ReadDomain.BRIGHTNESS,
+                ReadDomain.COLOUR_MODE,
+                ReadDomain.FIRMWARE,
+                ReadDomain.HARDWARE,
+                ReadDomain.SEGMENTS,
+            }
+        ),
+        setup_required_read_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE}),
+        supports_rgb=True,
+        supports_color_temperature=True,
+        supports_custom_effects=True,
+        supports_scenes=True,
+        music_modes=(
+            "energetic",
+            "rhythm",
+            "spectrum",
+            "rolling",
+            "separation",
+            "hopping",
+            "piano_keys",
+            "fountain",
+            "day_and_night",
+            "bloom",
+            "shiny",
+        ),
+        music_variants=H617A_MUSIC_VARIANTS,
+        music_upload_before_selector=True,
+        music_requires_upload_ack=True,
+        supports_music_color=True,
+        supports_advanced_effects=True,
+        supports_multi_layered_effects=True,
+        segment_count=15,
+        segment_group_size=3,
+        supports_segment_writes=True,
+        supports_segment_brightness=True,
+        connection_idle_timeout=IDLE_TIMEOUT_STANDARD,
         scene_catalogue_sku="H617F",
+        advanced_scene_carrier=(1013, 11836),
+        effect_readback="diy_code_only",
     ),
     "H6076": _H6076_MUSIC_PROFILE,
     "H6072": _H6072_PROFILE,
@@ -2342,7 +2424,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         status_grammar="H619A",
         effect_grammar="H617A",
         colour_mode_query_selector=1,
-        profile_identity_fields=frozenset({"fw_version", "hw_version"}),
+        scene_identity_fields=frozenset({"fw_version", "hw_version"}),
         static_readback_kelvin=True,
         static_readback_zero_kelvin_is_rgb=True,
         static_readback_gradual=True,
@@ -2951,6 +3033,18 @@ def _h6076_profile(pact_type: int | None, pact_code: int | None, firmware: str |
     )
 
 
+def same_control_profile(first: ModelProfile, second: ModelProfile) -> bool:
+    return first == second or bool(
+        first.scene_identity_fields
+        and replace(
+            first,
+            rgbic_scene_v0=second.rgbic_scene_v0,
+            scene_command_versions=second.scene_command_versions,
+        )
+        == second
+    )
+
+
 def profile_with_physical_ic_count(profile: ModelProfile, count: int, *, segment_count_ceiling: int) -> ModelProfile:
     """Apply installed geometry using the qualified product capacity."""
     if (
@@ -2987,6 +3081,7 @@ def _basic_revision_profile(profile: ModelProfile) -> ModelProfile:
         outbound_transform=profile.outbound_transform,
         brightness_wire_range=profile.brightness_wire_range,
         profile_identity_fields=profile.profile_identity_fields,
+        scene_identity_fields=profile.scene_identity_fields,
         profile_pact_dependent=profile.profile_pact_dependent,
         requires_qualified_identity=profile.requires_qualified_identity,
         requires_pact_confirmation=profile.requires_pact_confirmation,
@@ -3141,6 +3236,16 @@ def device_profile(
         profile = get_profile(model)
         return (
             replace(profile, color_temp_range=KELVIN_RANGE_1000_10000) if (pact_type, pact_code) == (4, 1) else profile
+        )
+    if model == "H617A":
+        fw, hw = FirmwareVersion.parse(firmware), FirmwareVersion.parse(hardware)
+        modern_firmware = fw is not None and fw >= FirmwareVersion((1, 6))
+        return replace(
+            get_profile(model),
+            rgbic_scene_v0=not modern_firmware or hw is None or hw < FirmwareVersion((1, 0, 3)),
+            scene_command_versions=frozenset({0, 1})
+            if modern_firmware and hw is not None and hw >= FirmwareVersion((1, 0, 2))
+            else frozenset({0}),
         )
     if model == "H619A":
         fw, hw = FirmwareVersion.parse(firmware), FirmwareVersion.parse(hardware)

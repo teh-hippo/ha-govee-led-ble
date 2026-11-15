@@ -37,7 +37,7 @@ async def test_optional_count_is_diagnostic_only(hass, value):
         "received_at": coordinator.packet_log[-1]["ts"],
     }
     assert coordinator.profile is before
-    assert coordinator.profile.physical_ic_count is None
+    assert coordinator.profile.physical_ic_count == before.physical_ic_count == 15
     assert coordinator.profile.segment_count == 15
     assert coordinator.control_write_attempts == 0
     assert all(item["dir"] == "rx" for item in coordinator.packet_log)

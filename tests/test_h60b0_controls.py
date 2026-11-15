@@ -13,10 +13,11 @@ from custom_components.ha_govee_led_ble.const import ReadDomain, device_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
+from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
 from custom_components.ha_govee_led_ble.effect_catalogue import MODEL_EFFECT_CATALOGUES
 from custom_components.ha_govee_led_ble.effect_compiler import compile_effect, validate_compiled_geometry
 from custom_components.ha_govee_led_ble.effect_deployments import PriorControlState
-from custom_components.ha_govee_led_ble.effect_domain import LibraryItem
+from custom_components.ha_govee_led_ble.effect_domain import BuiltinScene, CatalogueRef, LibraryItem
 from custom_components.ha_govee_led_ble.effect_runtime import async_prepare_effect_control_state
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_boolean_control,
@@ -50,6 +51,7 @@ from custom_components.ha_govee_led_ble.light_commands import (
 from custom_components.ha_govee_led_ble.light_source import GoveeBLESourceLight
 from custom_components.ha_govee_led_ble.music_commands import prepare_music_request
 from custom_components.ha_govee_led_ble.protocol_core import serialize_native_body
+from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES
 from custom_components.ha_govee_led_ble.transport import reassemble_a3, xor_checksum
 
 PROFILE = device_profile("H60B0", 1, 2)
@@ -399,7 +401,7 @@ def source_wire(native_sources):
             )
             response = frame(f"aaa5{group:02x}" + body)
         elif command == 0x01:
-            response = frame("aa0101")
+            response = frame(f"aa01{int(bool(state['flags'] & 0x80)):02x}")
         elif command == 0x04:
             response = frame("aa0432")
         else:
@@ -508,23 +510,76 @@ async def test_effect_stop_restores_mixed_source_capture_without_aggregate_colou
     assert coordinator._client.write_gatt_char.await_count > 0
 
 
-async def test_music_captures_sources_before_its_mode_guard_runs(source_wire, virtual_clock):
+async def test_music_captures_sources_at_its_physical_mode_transition(source_wire, virtual_clock):
     coordinator, state = source_wire
     state["apply"] = True
     assert await coordinator.refresh_state(RefreshRequest(refresh_all=True, query_segments=True))
     before = coordinator.capture_effect_control_state()
 
-    async def activate(packets, **kwargs):
-        for index in range(len(packets)):
-            kwargs["packet_write_guard"](index)
+    write = coordinator._client.write_gatt_char.side_effect
 
-    coordinator.async_write_effect_sequence = AsyncMock(side_effect=activate)
+    async def with_music_ack(*args, **kwargs):
+        await write(*args, **kwargs)
+        pending = coordinator._upload_ack
+        if pending is not None and not pending.future.done():
+            assert pending.mode is not None
+            coordinator._notify_callback(
+                None, bytearray(frame(f"{pending.protocol:02x}{pending.subtype:02x}{pending.mode:02x}00"))
+            )
+
+    coordinator._client.write_gatt_char.side_effect = with_music_ack
     await coordinator.async_select_music_slug("spectrum")
     assert coordinator._pre_mode_snapshot.source_state == before
     assert coordinator.color_mode is ParsedMode.MUSIC
     state["top"], state["colours"] = 0, [(255, 0, 0)] * 9
     await GoveeBLELight(coordinator)._async_clear_effect()
     assert state["colours"] == [(0, 0, 255)] * 8 + [table_kelvin_rgb(2700)]
+
+
+@pytest.mark.parametrize("route", ["native", "saved"])
+@pytest.mark.parametrize("power_failure", [False, True])
+async def test_entity_effect_owns_source_restoration_before_leading_power(
+    hass, source_wire, virtual_clock, route, power_failure
+):
+    coordinator, state = source_wire
+    state.update(apply=True, flags=0x60)
+    assert await coordinator.refresh_state(RefreshRequest(refresh_all=True, query_segments=True))
+    assert not coordinator.is_on
+    before = coordinator.capture_effect_control_state()
+    before_flags = state["flags"]
+    original_snapshot = coordinator._pre_mode_snapshot
+    backend = await EffectBackend.async_create(hass)
+    light = GoveeBLELight(coordinator, config_entry_id="source-device", effect_backend=backend)
+    light.async_write_ha_state = MagicMock()
+    scene = MODEL_SCENES["H60B0"]["rainbow"]
+    item = LibraryItem.new("Saved rainbow", BuiltinScene(CatalogueRef("H60B0", scene.scene_id, scene.effect_id)))
+    await backend.library.async_create(item)
+    light._library_snapshot = backend.application.library_snapshot()
+    coordinator.async_observe_effect = AsyncMock(return_value=True)
+    write = coordinator._client.write_gatt_char.side_effect
+
+    async def transmit(uuid, packet, **kwargs):
+        if power_failure and packet[:3] == bytes.fromhex("330101"):
+            raise RuntimeError("power failed")
+        await write(uuid, packet, **kwargs)
+
+    coordinator._client.write_gatt_char.side_effect = transmit
+    try:
+        if power_failure:
+            with pytest.raises(HomeAssistantError):
+                await light.async_turn_on(effect="Rainbow" if route == "native" else item.name)
+            assert coordinator._pre_mode_snapshot is original_snapshot
+        else:
+            await light.async_turn_on(effect="Rainbow" if route == "native" else item.name)
+            assert coordinator._pre_mode_snapshot.source_state == before
+            state["top"], state["colours"] = 0, [(255, 0, 0)] * 9
+            coordinator.color_mode = ParsedMode.SCENE
+            await light._async_clear_effect()
+            assert state["colours"] == [(0, 0, 255)] * 8 + [table_kelvin_rgb(2700)]
+            assert state["flags"] & 0x70 == before_flags & 0x70
+        assert coordinator._mode_transition is None
+    finally:
+        await backend.preview.async_shutdown()
 
 
 async def test_missing_switch_readback_requires_fresh_flags_before_next_enable(source_wire, virtual_clock):

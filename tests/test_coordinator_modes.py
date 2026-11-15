@@ -108,7 +108,7 @@ async def test_h6179_native_scene_uses_wire_selector_for_verification_and_state(
     coordinator.is_on = True
     with (
         _music_transport(coordinator) as transport,
-        patch.object(coordinator, "refresh_state", new_callable=AsyncMock, return_value=True) as refresh,
+        patch.object(coordinator, "async_observe_effect", new_callable=AsyncMock, return_value=True) as observe,
     ):
         await coordinator.async_apply_native_scene(
             "karst cave",
@@ -117,7 +117,7 @@ async def test_h6179_native_scene_uses_wire_selector_for_verification_and_state(
         )
 
     assert [entry.args[1] for entry in transport.await_args_list] == [build_scene_activation("H6179", selector)]
-    refresh.assert_awaited_once_with(RefreshRequest(scene_code=selector))
+    observe.assert_awaited_once_with({"scene_code": selector})
     assert coordinator._scene_code == selector
 
 
@@ -141,7 +141,7 @@ async def test_select_music_slug_sends_power_then_music_and_sets_state(coord):
         sc.side_effect = transmit
         await coord.async_select_music_slug("rhythm")
     sequence.assert_awaited_once()
-    assert callable(sequence.await_args.kwargs["packet_write_guard"])
+    assert callable(sequence.await_args.kwargs["write_guard"])
     assert sequence.await_args.kwargs["packet_state_values"][0] == {"is_on": True}
     assert [entry.args[1] for entry in sc.await_args_list] == [
         build_power(True),
@@ -190,6 +190,19 @@ async def test_entering_music_from_active_mode_preserves_snapshot(coord):
     with _music_transport(coord):
         await coord.async_select_music_slug("spectrum")
     assert coord._pre_mode_snapshot is original
+
+
+async def test_failed_music_power_attempt_does_not_publish_transition_snapshot(coord):
+    coord.is_on, coord.color_temp_kelvin = True, 4000
+    original = PreModeSnapshot(kind="color_temp", kelvin=6000)
+    coord._pre_mode_snapshot = original
+    with _music_transport(coord) as physical:
+        physical.side_effect = RuntimeError("failed power attempt")
+        with pytest.raises(RuntimeError, match="failed power attempt"):
+            await coord.async_select_music_slug("rhythm")
+    assert coord._pre_mode_snapshot is original
+    assert coord._mode_transition is None
+    assert coord.music_mode == "off"
 
 
 async def test_music_style_applies_to_rhythm_bloom_and_shiny(coord):

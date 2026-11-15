@@ -121,10 +121,7 @@ async def test_bloom_last_fragment_failure_restarts_all_packets(hass, route, ver
                 expected_state["_music_palette"] = writes.palette
             assert coordinator._music_body is None
             assert all(getattr(coordinator, field) == value for field, value in expected_state.items())
-            if index < 3:
-                assert coordinator._pre_mode_snapshot is snapshot
-            else:
-                assert coordinator._pre_mode_snapshot.rgb == (10, 20, 30)
+            assert coordinator._pre_mode_snapshot is snapshot
             attempts[connection].append(plain)
             if connection == 0 and index == 2:
                 raise BleakError("last companion fragment failed")
