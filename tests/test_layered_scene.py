@@ -12,9 +12,14 @@ from typing import Any, cast
 import pytest
 from kaitaistruct import KaitaiStructError
 
-from custom_components.ha_govee_led_ble.const import ModelProfile
-from custom_components.ha_govee_led_ble.effect_compiler import ActivationMode, compile_effect
-from custom_components.ha_govee_led_ble.effect_domain import LibraryItem
+from custom_components.ha_govee_led_ble.const import ModelProfile, device_profile, get_profile
+from custom_components.ha_govee_led_ble.effect_compiler import (
+    ActivationMode,
+    compile_application,
+    compile_effect,
+    validate_compiled_geometry,
+)
+from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, SingleEffect
 from custom_components.ha_govee_led_ble.generated_protocol.scene_body import SceneBody
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_h617a_scene, parse_scene_body_param
 from custom_components.ha_govee_led_ble.layered_scene import (
@@ -50,7 +55,7 @@ from custom_components.ha_govee_led_ble.protocol_core import (
     _write,
 )
 from custom_components.ha_govee_led_ble.protocol_h6199 import build_h6199_scene
-from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
+from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES, scene_supported
 from custom_components.ha_govee_led_ble.transport import fragment_a3
 
 # The parameter drops the marker, line-count and scene-type bytes the A3 header carries.
@@ -108,6 +113,50 @@ def test_scene_geometry_widens_only_areas_too_small_for_the_selection(ic, kind, 
     )
     assert decoded.effect.layers == (expected,)
     assert scene.effect.layers == (layer,)
+
+
+@pytest.mark.parametrize(
+    "hardware,firmware,modern,admits_version_one",
+    [
+        (None, None, False, False),
+        ("1.00.01", "1.06.00", False, False),
+        ("1.00.02", "1.06.00", False, True),
+        ("1.00.03", "1.06.00", True, True),
+        ("3.01.01", "1.05.99", False, False),
+        ("3.01.01", "3.02.24", True, True),
+    ],
+)
+def test_revision_scene_admission_and_geometry_are_independent(hardware, firmware, modern, admits_version_one):
+    profile = device_profile("H617A", 10, 1, hardware=hardware, firmware=firmware)
+    entry = next(scene for scene in SCENE_ENTRIES["H617A"] if scene.command_version == 1)
+    assert scene_supported(entry, profile) is admits_version_one
+    assert scene_supported(replace(entry, command_version=0), profile)
+    assert not scene_supported(replace(entry, scene_type=1), profile)
+    assert not scene_supported(replace(entry, command_version=2), profile)
+    scene = LayeredScene(CatalogueRef("H617A", 0, 0), LayeredEffect((_layer(),)))
+    prepared = decode_layered_scene(scene.template, encode_layered_scene(scene, profile=profile)).effect.layers[0]
+    assert prepared.selection == (
+        Selection(SelectionType.CUSTOM, 0, 13) if modern else Selection(SelectionType.SEGMENT, 0, 1)
+    )
+    assert prepared.distribution.backwards is modern
+    assert prepared.overall_movement.distance == 13
+    assert prepared.unknown_flags == (0xFD if modern else 0x0D)
+    assert scene.effect.layers == (_layer(),)
+
+
+@pytest.mark.parametrize("missing_metadata", ["physical_ic_count", "rgbic_scene_v0"])
+def test_stale_layered_metadata_cannot_bypass_prepared_geometry(missing_metadata):
+    profile = get_profile("H617A")
+    compiled = compile_effect(LibraryItem.new("Advanced", LayeredEffect((_layer(),))), "H617A")
+    validate_compiled_geometry(compiled, profile)
+    with pytest.raises(ValueError, match="changed since compilation"):
+        validate_compiled_geometry(replace(compiled, **{missing_metadata: None}), profile)
+    basic = compile_application(
+        LibraryItem.new("Basic", SingleEffect(0, 0, 50, ((32, 96, 160),))), "H617A", diy_code=24
+    )
+    validate_compiled_geometry(basic, profile)
+    with pytest.raises(ValueError, match="acknowledgement contract changed"):
+        validate_compiled_geometry(replace(basic, evidence_codes=()), profile)
 
 
 def _assert_movement_matches(decoded: Movement, parsed: Any) -> None:
@@ -181,7 +230,8 @@ def test_advanced_layers_compile_with_byte_exact_model_framing() -> None:
             LayeredScene(
                 CatalogueRef(model, entry.scene_id, entry.effect_id),
                 effect,
-            )
+            ),
+            profile=get_profile(model),
         )
         activation = (
             build_h6199_scene(entry.code, entry.music_code) if model == "H6199" else build_h617a_scene(entry.code)
@@ -195,6 +245,7 @@ def test_advanced_layers_compile_with_byte_exact_model_framing() -> None:
             "scene_payload_readback_unavailable",
             "layered_field_semantics_uncalibrated",
             "layered_activation_carrier_uncalibrated",
+            *(("native_diy_positive_ack_required",) if get_profile(model).diy_requires_upload_ack else ()),
         )
 
 

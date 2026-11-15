@@ -347,7 +347,7 @@ async def async_prepare_application(
     diy_code: int | None = None,
     intent: ControlIntent = ControlIntent.APPLY,
 ) -> CompiledApplication:
-    profile = await async_prepare_effect_profile(coordinator, intent=intent)
+    profile = await async_prepare_effect_profile(coordinator, intent=intent, content=item.content)
     resolved = resolve_diy_code(item, diy_code, model=coordinator.model, profile=profile)
     compiled = compile_application(item, coordinator.model, diy_code=resolved, profile=profile)
     if isinstance(compiled, CompiledVideoProfile):
@@ -637,9 +637,9 @@ class EffectDeploymentEngine:
         lock_acquired = False
         prior_origin: _PriorEffectOrigin | None = None
         try:
-            async with async_control_intent(
-                coordinator,
-                ControlIntent.APPLY,
+            async with (
+                async_control_intent(coordinator, ControlIntent.APPLY),
+                coordinator.async_mode_transition(),
             ):
                 lock_acquired = True
                 # APPLY excludes other control owners; queries never increment this counter.
@@ -919,14 +919,7 @@ class EffectDeploymentEngine:
                 return True, confidence
             if refreshed is None:
                 continue
-            if (
-                isinstance(compiled, CompiledMusicProfile)
-                and len(compiled.packets) > 2
-                and (
-                    not coordinator.profile.effect_retry_after_upload
-                    or not coordinator.profile.music_retry_after_upload
-                )
-            ):
+            if isinstance(compiled, CompiledMusicProfile):
                 continue
             if attempt + 1 < VERIFICATION_ATTEMPTS:
                 await transaction.store(
@@ -1471,6 +1464,8 @@ def _active_workspace_content(
     compiled: CompiledApplication | None,
 ) -> EffectContent:
     if not isinstance(compiled, CompiledEffect) or not compiled.upload_packets:
+        return source
+    if isinstance(source, LayeredEffect) and compiled.rgbic_scene_v0 is not None:
         return source
     try:
         decoded = decode_effect_frames(compiled.upload_packets, compiled.model, compiled.upload_transport)

@@ -61,6 +61,8 @@ def _reply_to_state_query(client, packet):
         0x01: [1],
         0x04: [42],
         0x05: [0x04, 0x9D, 0x08],
+        0x06: list(b"3.02.24"),
+        0x07: [0x03, *b"3.01.01"],
         0xA5: [packet[2], *([100, 10, 20, 30] * 3)],
     }
     if packet[1] in values:

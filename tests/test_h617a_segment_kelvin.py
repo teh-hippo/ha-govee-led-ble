@@ -87,6 +87,14 @@ async def test_out_of_range_kelvin_is_rejected_with_the_device_range_before_any_
     assert coordinator.control_write_attempts == 0
 
 
+def test_exact_profile_masked_kelvin_preserves_sibling_permissions():
+    packet = build_segment_color_temp([1, 3], 4100, "H617A")
+    assert packet.hex() == "33051501ffffff1004ffd7a60500000000000042"
+    for model in ("H617E", "H617F"):
+        with pytest.raises(ValueError, match="temperature"):
+            build_segment_color_temp([1, 3], 4100, model)
+
+
 def test_schema_and_effective_profile_validation():
     schema = vol.Schema(_SET_SEGMENT_COLOR_TEMP_SCHEMA)
     assert schema({"segments": ["1"], "color_temp_kelvin": "3000"}) == {

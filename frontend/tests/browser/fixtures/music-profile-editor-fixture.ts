@@ -23,6 +23,7 @@ catalogue.music_settings.separation.colour = false;
 if (new URLSearchParams(location.search).has("unknown")) {
   catalogue.music_settings.separation.parameters = {};
   delete catalogue.music_settings.separation.palette;
+  delete catalogue.music_settings.piano_keys.parameters.key_count;
 }
 editor.content = {
   kind: "music_profile", model: "H617A", mode: "separation", sensitivity: 50,

@@ -205,7 +205,9 @@ async def test_native_scene_uses_subscription_identity_and_rechecks_after_reply_
     else:
         await coordinator.async_apply_native_scene("Candidate", scene_entry=entry, verify=False)
         assert coordinator.effect_authorization_profile.rgbic_scene_v0 is True
-    client.write_gatt_char.assert_not_awaited()
+    assert [call.args[1] for call in client.write_gatt_char.await_args_list] == (
+        [] if revoke_during_pacing else [_frame("aa0703"), _frame("aa06")]
+    )
 
 
 @pytest.mark.parametrize("fresh_identity", [False, True])
@@ -216,11 +218,14 @@ async def test_saved_scene_reconnects_before_compilation_after_idle_disconnect(h
     coordinator.is_on = True
     entry = next(entry for entry in SCENE_ENTRIES["H619A"] if entry.scene_type == 2)
     item = LibraryItem.new("Saved", BuiltinScene(CatalogueRef("H619A", entry.scene_id, entry.effect_id)))
+    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
 
     async def connect():
+        coordinator._client = client
         if fresh_identity:
-            coordinator._confirmed_identity_fields.update({"fw_version", "hw_version"})
-        return MagicMock(is_connected=True)
+            coordinator._observe_identity_field("fw_version", coordinator.fw_version)
+            coordinator._observe_identity_field("hw_version", coordinator.hw_version)
+        return client
 
     monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(side_effect=connect))
 

@@ -331,7 +331,10 @@ async def test_container_process_contract_uses_production_panel_websocket_storag
     assert catalogue["success"] is True
     assert catalogue["result"]["catalogue"]["sku"] == "H617A"
     assert catalogue["result"]["catalogue"]["enabled"] is True
-    assert len(catalogue["result"]["catalogue"]["scenes"]) == len(SCENE_ENTRIES["H617A"])
+    assert coordinator.fw_version is None and coordinator.hw_version is None
+    assert {(scene["scene_id"], scene["effect_id"]) for scene in catalogue["result"]["catalogue"]["scenes"]} == {
+        (scene.scene_id, scene.effect_id) for scene in SCENE_ENTRIES["H617A"] if scene.command_version == 0
+    }
 
 
 def test_manifest_selects_stable_advanced_asset() -> None:

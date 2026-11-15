@@ -35,7 +35,7 @@ from custom_components.ha_govee_led_ble.protocol_core import StatusReply
 from custom_components.ha_govee_led_ble.reply_pacing import ReplyGate
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES, SCENES
 from custom_components.ha_govee_led_ble.transport import WRITE_UUID, fragment_a3
-from tests.coordinator_test_support import _c, _packet
+from tests.coordinator_test_support import _c, _confirm_identity, _packet
 from tests.storage_test_double import InMemoryVersionedDocumentStore
 from tests.test_govee_encryption import client
 
@@ -199,6 +199,8 @@ async def test_outbound_workflows_share_profile_transform(coord, h6199, model, w
 
     client = _c(write_gatt_char=AsyncMock(side_effect=write))
     coordinator._client = client
+    if workflow == "identity" and model == "H617A":
+        coordinator._observe_identity_field("fw_version", coordinator.fw_version)
     with (
         patch.object(coordinator, "_ensure_connected", new=AsyncMock(return_value=client)),
         patch.object(coordinator, "_arm_expected", wraps=coordinator._arm_expected) as arm,
@@ -671,9 +673,13 @@ async def test_native_scene_holds_control_ownership_for_complete_delivery(coord)
     async def transmit(_uuid, packet: bytes, **kwargs: object) -> None:
         assert lock.locked()
         packets.append(packet)
+        if packet[0] == 0xA3 and packet[1] == 0xFF:
+            coord._notify_callback(None, bytearray(_packet(0xA3, SCENES["glacier"].scene_type, [0])))
 
     coord.effect_families = frozenset()
     client = _c(write_gatt_char=AsyncMock(side_effect=transmit))
+    coord._client = client
+    _confirm_identity(coord)
     with (
         patch.object(coord, "_ensure_connected", AsyncMock(return_value=client)),
         patch.object(coord, "_reset_disconnect_timer"),
@@ -687,6 +693,8 @@ async def test_native_scene_holds_control_ownership_for_complete_delivery(coord)
 async def test_native_scene_power_state_waits_for_atomic_sequence(coord):
     coord.is_on = False
     coord.effect_families = frozenset()
+    coord._client = _c()
+    _confirm_identity(coord)
     with (
         patch.object(
             coord,
@@ -940,7 +948,12 @@ async def test_deployment_retries_activation_after_fresh_wrong_mode(
         if selector == "diy_code"
         else BuiltinScene(CatalogueRef(coord.model, scene.scene_id, scene.effect_id)),
     )
-    compiled = compile_effect(item, coord.model, diy_code=24 if selector == "diy_code" else None)
+    compiled = compile_effect(
+        item,
+        coord.model,
+        diy_code=24 if selector == "diy_code" else None,
+        profile=coord.effect_authorization_profile,
+    )
     assert compiled.upload_packets
     assert compiled.diy_code is not None
     repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())

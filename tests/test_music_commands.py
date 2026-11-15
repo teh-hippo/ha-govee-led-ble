@@ -539,7 +539,8 @@ async def test_music_apply_partial_failure_installs_only_attempted_packet_state(
         physical.side_effect = transmit
         with pytest.raises(BleakError, match="write failed"):
             await async_apply_compiled_profile(coordinator, compiled)
-        assert [call.args[1] for call in physical.await_args_list] == list(packets[: failed_index + 1]) * 3
+        attempts = 3 if failed_index == 0 else 1
+        assert [call.args[1] for call in physical.await_args_list] == list(packets[: failed_index + 1]) * attempts
     for key in (
         "is_on",
         "music_mode",
@@ -556,7 +557,7 @@ async def test_music_apply_partial_failure_installs_only_attempted_packet_state(
     ):
         previous = before_hopping_brightness if key == "music_hopping_brightness" else getattr(before, key)
         assert getattr(coordinator, key) == attempted_state.get(key, previous), key
-    assert coordinator.control_write_attempts == (failed_index + 1) * 3
+    assert coordinator.control_write_attempts == (failed_index + 1) * attempts
     assert coordinator._field_revisions == coordinator._domain_revisions == {}
     assert coordinator._pre_mode_snapshot is snapshot
     assert "music_hopping_brightness" not in coordinator._expected_state
@@ -601,7 +602,7 @@ async def test_music_notification_during_write_survives_return(hass, operation):
 
 
 @pytest.mark.parametrize("fail_at", [None, "power", "selector"])
-async def test_music_static_snapshot_is_captured_at_selector_attempt(hass, fail_at):
+async def test_music_static_intent_precedes_power_but_is_published_at_selector(hass, fail_at):
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H617A", configuration_url="test")
     coordinator.is_on = True
     coordinator.color_mode = ParsedMode.COLOUR
@@ -619,7 +620,7 @@ async def test_music_static_snapshot_is_captured_at_selector_attempt(hass, fail_
                 _notify(coordinator, bytes([0xAA, 0xA5, group, *([100, 10, 20, 30] * 3)]))
             assert coordinator.rgb_color == (10, 20, 30)
         if packet == packets[-1]:
-            assert coordinator._pre_mode_snapshot.rgb == (10, 20, 30)
+            assert coordinator._pre_mode_snapshot.rgb == (1, 2, 3)
             assert coordinator.music_mode == "separation"
             if fail_at == "selector":
                 raise RuntimeError("selector failed")
@@ -635,7 +636,8 @@ async def test_music_static_snapshot_is_captured_at_selector_attempt(hass, fail_
         assert coordinator._pre_mode_snapshot is snapshot
     else:
         assert coordinator._pre_mode_snapshot.kind == "rgb"
-        assert coordinator._pre_mode_snapshot.rgb == (10, 20, 30)
+        assert coordinator._pre_mode_snapshot.rgb == (1, 2, 3)
+        assert coordinator.rgb_color == (10, 20, 30)
 
 
 async def test_music_preview_guard_failure_does_not_install_selector_state(hass):

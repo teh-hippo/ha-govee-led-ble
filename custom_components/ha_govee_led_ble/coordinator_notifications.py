@@ -536,7 +536,9 @@ class _NotificationMixin(_CoordinatorBase):
                 and self._profile_generation == pending.profile_generation
                 and not pending.future.done()
             ):
-                pending.future.set_result(ack_success)
+                self._revalidate_upload_ack()
+                if not pending.future.done():
+                    pending.future.set_result(ack_success)
 
     def _apply_display_setting(self, generated: Any, observed: tuple[str, ...]) -> tuple[str, ...]:
         """Apply a display-setting reply; ``observed`` is returned unchanged when it sets nothing."""

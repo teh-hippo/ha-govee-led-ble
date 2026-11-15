@@ -62,7 +62,9 @@ def test_only_exact_model_and_positive_pact_select_restriction(model):
         profile = device_profile(model, *pact)
         assert profile.command_operations == MODEL_PROFILES[model].command_operations
         assert profile.supports_video_mode == MODEL_PROFILES[model].supports_video_mode
-    assert device_profile(model, 1, 1) is (H6199_PACT1_PROFILE if model == "H6199" else MODEL_PROFILES[model])
+    assert device_profile(model, 1, 1) == (
+        H6199_PACT1_PROFILE if model == "H6199" else device_profile(model, None, None)
+    )
 
 
 @pytest.mark.parametrize(

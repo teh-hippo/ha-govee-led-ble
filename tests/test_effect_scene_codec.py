@@ -13,7 +13,7 @@ import pytest
 from kaitaistruct import KaitaiStream
 
 from custom_components.ha_govee_led_ble import effect_contracts
-from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ModelProfile
+from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ModelProfile, get_profile
 from custom_components.ha_govee_led_ble.effect_compiler import (
     ActivationMode,
     CompatibilityState,
@@ -485,6 +485,7 @@ def test_decoded_layered_scenes_compile_to_byte_exact_model_frames() -> None:
         assert compiled.evidence_codes == (
             "scene_payload_readback_unavailable",
             "layered_field_semantics_uncalibrated",
+            *(("native_diy_positive_ack_required",) if get_profile(model).diy_requires_upload_ack else ()),
         )
 
 

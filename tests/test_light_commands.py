@@ -306,6 +306,11 @@ def test_normalize_kelvin_rounds_ties_up_and_clamps_to_the_profile(model: str, k
 
 
 def test_normalize_kelvin_does_not_substitute_a_range_for_an_undeclared_profile() -> None:
-    profile = replace(MODEL_PROFILES["H617A"], supports_color_temperature=False, color_temp_range=None)
+    profile = replace(
+        MODEL_PROFILES["H617A"],
+        supports_color_temperature=False,
+        supports_segment_color_temperature=False,
+        color_temp_range=None,
+    )
     with pytest.raises(ValueError, match="no declared Kelvin range"):
         normalize_kelvin(3000, profile)

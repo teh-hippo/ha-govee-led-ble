@@ -111,18 +111,38 @@ def test_exact_h617a_contract_and_dependent_controls():
     assert not settings["energetic"]["colour"]
     with pytest.raises(ValueError, match="fixed music colour"):
         resolve_music_profile("H617A", "energetic", 50, (32, 96, 160), None, {})
-    assert PROFILE.physical_ic_count is None
+    assert PROFILE.physical_ic_count == 15
     for mode in NEW_MODES:
         slug = next(slug for slug, code in MUSIC_MODE_SLUGS.items() if code == mode)
         assert settings[slug]["palette"]["min"] == 1 and settings[slug]["palette"]["max"] == 8
         assert not settings[slug]["colour"]
-    assert set(settings["piano_keys"]["parameters"]) == {"gradient"}
+    assert set(settings["piano_keys"]["parameters"]) == {"gradient", "key_count"}
     assert set(settings["hopping"]["parameters"]) == {"background", "relative_brightness"}
     for mode, parameter in ((0x32, "gradient"), (0x34, "key_count"), (0x35, "direction"), (0x37, "segment_count")):
-        assert parameter not in {spec.profile_key for spec in music_params_for_mode(mode, PROFILE)}
+        assert parameter in {spec.profile_key for spec in music_params_for_mode(mode, PROFILE)}
         assert parameter in {
             spec.profile_key for spec in music_params_for_mode(mode, replace(PROFILE, physical_ic_count=60))
         }
+        assert parameter not in {
+            spec.profile_key for spec in music_params_for_mode(mode, replace(PROFILE, physical_ic_count=None))
+        }
+
+
+@pytest.mark.parametrize("speed", [1, 50, 51, 100])
+def test_daynight_extended_speed_preserves_the_legacy_range_without_granting_siblings(speed):
+    upload = build_music_params(0x37, {"speed": speed}, profile=PROFILE)
+    assert parse_body(reassemble_a3(upload)).tail.speed == speed
+    sibling = get_profile("H617F")
+    if speed > 50:
+        with pytest.raises(ValueError):
+            build_music_params(0x37, {"speed": speed}, profile=sibling)
+    else:
+        assert (
+            parse_body(reassemble_a3(build_music_params(0x37, {"speed": speed}, profile=sibling))).tail.speed == speed
+        )
+    for invalid in (0, 101):
+        with pytest.raises(ValueError):
+            build_music_params(0x37, {"speed": invalid}, profile=PROFILE)
 
 
 def test_background_gradient_and_unexposed_companions_survive_palette_resize():

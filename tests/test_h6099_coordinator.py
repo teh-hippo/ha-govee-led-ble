@@ -293,7 +293,7 @@ async def test_declared_product_ic_queries_installed_aa40_and_retains_cut_strip_
 
     h617a = GoveeBLECoordinator(hass, "11:22:33:44:55:77", "H617A", configuration_url=None)
     notify(h617a, "aa400032")
-    assert h617a.profile.physical_ic_count is None
+    assert h617a.profile.physical_ic_count == 15
     assert h617a.packet_log[-1]["reason"] == "unsupported_domain"
 
 

@@ -183,7 +183,7 @@ test("Hopping background uses RGB picker and exact no-colour sentinel without dr
 });
 
 test("Piano gradient remains editable with unknown IC count", async ({ page }) => {
-  await page.goto("/tests/browser/fixtures/music-profile-editor.html?mode=piano_keys");
+  await page.goto("/tests/browser/fixtures/music-profile-editor.html?mode=piano_keys&unknown");
   await expect(page.getByRole("slider", {name: "Key count", exact: true})).toBeHidden();
   await page.getByRole("checkbox", {name: "Gradient", exact: true}).check();
   expect(await page.locator("govee-music-profile-editor").evaluate(el => (el as GoveeMusicProfileEditor).content!.parameters.gradient)).toBe(true);

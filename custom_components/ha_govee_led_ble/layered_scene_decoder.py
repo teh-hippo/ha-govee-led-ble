@@ -143,9 +143,9 @@ def encode_workshop_effect(
     profile: ModelProfile | None = None,
 ) -> bytes:
     """Serialize Workshop layers through the model-specific generated structure."""
+    layers = _profile_layers(effect, profile)
     profile = get_profile(model) if profile is None else profile
     grammar = profile.effect_grammar
-    layers = _profile_layers(effect, profile)
     serializer: Callable[[Any], bytes]
     if grammar in {"H6046", "H617A", "H60B2"}:
         root = WorkshopBody()

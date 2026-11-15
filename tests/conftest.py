@@ -183,6 +183,7 @@ def _coord_defaults() -> dict[str, Any]:
         _static_write_attempts=0,
         source_static_intents={},
         _scene_code=None,
+        _mode_transition=None,
         _segment_groups_observed=set(),
         _segment_query_colors=None,
         _segment_query_brightness=None,
@@ -269,6 +270,7 @@ def _make_coord(**ov) -> MagicMock:
     c._lock = asyncio.Lock()
     c._async_read_setting_fields = AsyncMock(return_value=False)
     c._client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
+    c.async_mode_transition = GoveeBLECoordinator.async_mode_transition.__get__(c)
 
     async def send_command(packet, *, write_guard=None, state_values=None, on_write=None) -> None:
         await GoveeBLECoordinator._async_write_packet(

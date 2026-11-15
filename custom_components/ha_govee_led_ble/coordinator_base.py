@@ -16,9 +16,10 @@ from .coordinator_status import ParsedMode, StatusDomain
 from .coordinator_upload import PendingUploadAck
 
 if TYPE_CHECKING:
-    from .coordinator_modes import PreModeSnapshot
+    from .coordinator_modes import PreModeSnapshot, _ModeTransition
     from .coordinator_refresh import RefreshRequest
     from .effect_deployments import PriorControlState
+    from .effect_domain import EffectContent
     from .generated_protocol_adapter import BulkStatusCollector
     from .govee_encryption.session import GoveeEncryptionSession
     from .low_blue_light import LowBlueLightState
@@ -40,6 +41,7 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     top_kelvin: int | None
     ripple_speed: int | None
     profile: ModelProfile
+    _mode_transition: _ModeTransition | None
     address: str
     model: str
     effect_families: frozenset[str]
@@ -202,6 +204,10 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
 
         def _advance_profile_generation(self) -> None: ...
 
+        def async_mode_transition(self) -> AbstractAsyncContextManager[None]: ...
+
+        def _revalidate_upload_ack(self) -> None: ...
+
         def identity_fields_confirmed(self, fields: frozenset[str] | None = None) -> bool: ...
 
         def _record_packet(
@@ -283,6 +289,8 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
 
         async def _ensure_connected(self) -> BleakClient: ...
 
+        async def _async_read_identity(self, required_fields: frozenset[str] | None = None) -> None: ...
+
         async def _async_read_bulk_status(
             self, client: BleakClient, *, deadline: float, domains: tuple[str, ...] | None = None
         ) -> bool: ...
@@ -360,16 +368,58 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
         def scene_name_set(self) -> frozenset[str]: ...
 
 
-async def async_prepare_effect_profile(coordinator: _CoordinatorBase, *, intent: ControlIntent) -> ModelProfile:
-    if coordinator.profile.rgbic_scene_v0 is None and (
-        not coordinator.profile.profile_identity_fields
-        or coordinator.profile.supports_rgb
-        or coordinator.identity_fields_confirmed(coordinator.profile.profile_identity_fields)
+async def async_prepare_effect_profile(
+    coordinator: _CoordinatorBase, *, intent: ControlIntent, content: EffectContent | None = None
+) -> ModelProfile:
+    from .effect_domain import BuiltinScene, LayeredEffect, LayeredScene, PaletteScene, WorkshopEffect
+    from .scenes import resolve_scene_identity
+
+    scene_required = content is None or isinstance(content, LayeredEffect | WorkshopEffect)
+    if isinstance(content, BuiltinScene | LayeredScene | PaletteScene):
+        reference = content.template
+        resolved = resolve_scene_identity(coordinator.model, reference.scene_id, reference.effect_id)
+        scene_required = (
+            reference.sku == coordinator.model
+            and resolved is not None
+            and (
+                resolved[1].command_version != 0
+                or (resolved[1].scene_type == 2 and coordinator.profile.rgbic_scene_v0 is not None)
+            )
+        )
+
+    if content is not None and coordinator.profile.supports_rgb and not scene_required:
+        return coordinator.effect_authorization_profile
+    fields = coordinator.profile.profile_identity_fields
+    if scene_required:
+        fields |= coordinator.profile.scene_identity_fields
+    if fields and coordinator.identity_fields_confirmed(fields):
+        return coordinator.effect_authorization_profile
+    if (
+        not (scene_required and coordinator.profile.scene_identity_fields)
+        and coordinator.profile.rgbic_scene_v0 is None
+        and (
+            not coordinator.profile.profile_identity_fields
+            or coordinator.profile.supports_rgb
+            or coordinator.identity_fields_confirmed(coordinator.profile.profile_identity_fields)
+        )
     ):
         return coordinator.profile
     async with async_control_intent(coordinator, intent):
         async with coordinator._lock:
-            await coordinator._ensure_connected()
+            client = await coordinator._ensure_connected()
+            if (
+                scene_required
+                and coordinator.profile.scene_identity_fields
+                and not coordinator.identity_fields_confirmed(fields)
+            ):
+                token = coordinator._notification_token
+                await coordinator._async_read_identity(fields)
+                if (
+                    coordinator._client is not client
+                    or not client.is_connected
+                    or coordinator._notification_token is not token
+                ):
+                    raise HomeAssistantError(translation_domain=DOMAIN, translation_key="identity_not_ready")
         coordinator._reconcile_authorization()
         if not coordinator.profile.supports_rgb and not coordinator.identity_fields_confirmed(
             coordinator.profile.profile_identity_fields

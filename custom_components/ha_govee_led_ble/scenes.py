@@ -88,6 +88,7 @@ class SceneEntry:
     selector_only: bool = False
     local_only: bool = False
     diy_effect_codes: tuple[int, ...] = ()
+    command_version: int = 0
 
     @property
     def display_name(self) -> str:
@@ -147,6 +148,7 @@ def _load_catalogue(sku: str) -> tuple[SceneEntry, ...]:
             music_code=int(effect.get("music_code", 0)),
             selector_only=profile.selector_only_scene_bits is not None,
             diy_effect_codes=tuple(int(code) for code in effect.get("diy_effect_codes", [])),
+            command_version=int(effect.get("command_version", 0)),
         )
         for effect in data["effects"]
     )
@@ -222,6 +224,11 @@ def scene_supported(scene: SceneEntry, profile: ModelProfile) -> bool:
     if not profile.supports_scenes:
         return False
     if profile.effect_workflows is not None and "native_scenes" not in profile.effect_workflows:
+        return False
+    if profile.scene_command_versions is not None and (
+        scene.command_version not in profile.scene_command_versions
+        or (scene.command_version != 0 and scene.scene_type != 2)
+    ):
         return False
     if profile.scene_codes is None:
         return not scene.local_only

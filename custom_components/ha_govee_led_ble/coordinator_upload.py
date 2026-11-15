@@ -1,9 +1,14 @@
 """Subscription-bound completion of a physical effect upload."""
 
 import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from bleak import BleakClient
+
+
+class UploadAckTimeoutError(TimeoutError):
+    """A physically sent upload has no verdict and must not be replayed."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -15,6 +20,7 @@ class PendingUploadAck:
     mode: int | None
     protocol: int
     future: asyncio.Future[bool]
+    profile_guard: Callable[[], None]
 
     def invalidate(self, error: Exception) -> None:
         if not self.future.done():

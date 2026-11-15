@@ -3,7 +3,6 @@
 import asyncio
 from contextlib import suppress
 from dataclasses import replace
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -28,7 +27,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
 from custom_components.ha_govee_led_ble.govee_encryption.session import GoveeEncryptionSession
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.light_commands import build_color_rgb, build_segment_brightness
-from tests.coordinator_test_support import _packet
+from tests.coordinator_test_support import _confirm_identity, _packet
 
 
 @pytest.fixture
@@ -38,10 +37,10 @@ async def device(hass, monkeypatch, request):
         c.pact_type = 1
         c.pact_code = 2 if c.model == "H705A" else 1
         c._resolve_device_profile()
-    c.fw_version, c.hw_version = "3.02.24", "3.01.01"
     client = MagicMock(is_connected=True, start_notify=AsyncMock(), disconnect=AsyncMock())
     c._client = client
     await c._start_notify()
+    _confirm_identity(c)
     receive = client.start_notify.call_args.args[1]
     monkeypatch.setattr(c, "_renew_foreground_lease", MagicMock())
     yield c, client, receive
@@ -53,6 +52,32 @@ def pages(levels):
         _packet(0xAA, 0xA5, [group, *(v for i in range((group - 1) * 3, group * 3) for v in (levels[i], i, 96, 160))])
         for group in range(1, len(levels) // 3 + 1)
     ]
+
+
+async def test_segment_collection_keeps_non_scene_observations_during_scene_identity_change(device):
+    c, client, receive = device
+    c._observe_identity_field("fw_version", "1.00.01")
+    c._observe_identity_field("hw_version", "1.00.01")
+    c.is_on = True
+    c.brightness_pct = 23
+    c._music_calm = True
+    generation, authorization = c._profile_generation, c._authorization_generation
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet == build_segment_query(5):
+            c._observe_identity_field("fw_version", "3.02.24")
+            c._observe_identity_field("hw_version", "3.01.01")
+            for reply in pages([50] * 15):
+                receive(None, bytearray(reply))
+
+    client.write_gatt_char = AsyncMock(side_effect=write)
+    assert await c.async_refresh_segments()
+    assert [call.args[1] for call in client.write_gatt_char.call_args_list] == [
+        build_segment_query(group) for group in range(1, 6)
+    ]
+    assert c.segment_brightness == [50] * 15 and c.segment_state_source == "observed"
+    assert c.is_on is True and c.brightness_pct == 23 and c._music_calm is True
+    assert (c._profile_generation, c._authorization_generation) == (generation, authorization)
 
 
 @pytest.mark.parametrize("device", ["H7020"], indirect=True)
@@ -541,13 +566,9 @@ async def test_optional_segment_timeout_keeps_basic_poll_but_not_connection_reus
 
 @pytest.mark.parametrize("producer", ["segments", "refresh", "observe", "background"])
 @pytest.mark.parametrize("phase", ["collection", "write", "healthy"])
-async def test_one_deadline_rejects_late_pages_even_before_timeout_waiter(
-    device, monkeypatch, virtual_clock, producer, phase
-):
+async def test_one_deadline_rejects_late_pages_even_before_timeout_waiter(device, virtual_clock, producer, phase):
     c, client, receive = device
     start = asyncio.get_running_loop().time()
-    clock = [start]
-    monkeypatch.setattr(coordinator_module, "time", SimpleNamespace(monotonic=lambda: clock[0]))
     basic = {
         build_power_query(): _packet(0xAA, 1, [1]),
         build_brightness_query(): _packet(0xAA, 4, [15]),
@@ -558,7 +579,7 @@ async def test_one_deadline_rejects_late_pages_even_before_timeout_waiter(
     def complete():
         # Model an event-loop stall: callbacks deliver the complete batch before
         # asyncio gets to run its expired timer. No real settling delay is needed.
-        clock[0] = start + (0.005 if phase == "healthy" else 0.043)
+        virtual_clock.vtime = start + (0.005 if phase == "healthy" else 0.043)
         for reply in replies:
             receive(None, bytearray(reply))
 
@@ -637,8 +658,6 @@ async def test_stalled_segment_query_write_is_bounded_and_releases_locks(device,
 async def test_observation_does_not_restart_timeout_after_segment_collection(device, monkeypatch, virtual_clock):
     c, client, receive = device
     start = asyncio.get_running_loop().time()
-    clock = [start]
-    monkeypatch.setattr(coordinator_module, "time", SimpleNamespace(monotonic=lambda: clock[0]))
     replies = pages([50] * 15)
 
     async def write(_uuid, packet, **kwargs):
@@ -647,7 +666,7 @@ async def test_observation_does_not_restart_timeout_after_segment_collection(dev
         elif packet == build_colour_mode_query():
             receive(None, bytearray(_packet(0xAA, 5, [0x15])))
         elif packet == build_segment_query(5):
-            clock[0] = start + 0.03
+            virtual_clock.vtime = start + 0.03
             for reply in replies:
                 receive(None, bytearray(reply))
 
@@ -657,7 +676,7 @@ async def test_observation_does_not_restart_timeout_after_segment_collection(dev
     async def wait_with_late_power(fields, domains, deadline, **kwargs):
         deadlines.append(deadline)
         if "is_on" in fields:
-            clock[0] = start + 0.05
+            virtual_clock.vtime = start + 0.05
             receive(None, bytearray(_packet(0xAA, 1, [1])))
         return await wait(fields, domains, deadline, **kwargs)
 
@@ -677,8 +696,6 @@ async def test_observation_does_not_restart_timeout_after_segment_collection(dev
 async def test_transmission_time_is_subtracted_from_collection_budget(device, monkeypatch, virtual_clock, producer):
     c, client, receive = device
     start = asyncio.get_running_loop().time()
-    clock = [start]
-    monkeypatch.setattr(coordinator_module, "time", SimpleNamespace(monotonic=lambda: clock[0]))
     replies = pages([50] * 15)
     basic = {
         build_power_query(): _packet(0xAA, 1, [1]),
@@ -690,7 +707,7 @@ async def test_transmission_time_is_subtracted_from_collection_budget(device, mo
         if packet in basic:
             receive(None, bytearray(basic[packet]))
         elif packet == build_segment_query(5):
-            clock[0] = start + 0.03
+            virtual_clock.vtime = start + 0.03
 
     wait = c._wait_for_revisions
     deadlines = []
@@ -698,7 +715,7 @@ async def test_transmission_time_is_subtracted_from_collection_budget(device, mo
     async def collect(fields, domains, deadline, **kwargs):
         deadlines.append(deadline)
         if "segment_colors" in fields:
-            clock[0] = start + 0.05  # beyond original .04, inside a restarted .03+.04
+            virtual_clock.vtime = start + 0.05  # beyond original .04, inside a restarted .03+.04
             for reply in replies:
                 receive(None, bytearray(reply))
         return await wait(fields, domains, deadline, **kwargs)

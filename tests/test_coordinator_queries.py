@@ -300,6 +300,7 @@ def limited_readback_coord(hass):
         MODEL_PROFILES["H617A"],
         read_domains=MODEL_PROFILES["H617A"].read_domains - {ReadDomain.COLOUR_MODE, ReadDomain.SEGMENTS},
         setup_required_read_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS}),
+        scene_identity_fields=frozenset(),
         segment_count=0,
         supports_segment_writes=False,
     )
@@ -790,12 +791,12 @@ async def test_send_identity_queries_only_unknown(coord):
         build_firmware_query(),
     ]
     # Only the still-unknown value is re-queried.
-    coord.fw_version, coord.hw_version = "3.02.24", None
+    coord._observe_identity_field("fw_version", "3.02.24")
     c.write_gatt_char.reset_mock()
     await coord._send_identity_queries()
     c.write_gatt_char.assert_awaited_once_with(WRITE_UUID, build_hardware_query(), response=False)
     # Both known -> nothing sent.
-    coord.hw_version = "3.01.01"
+    coord._observe_identity_field("hw_version", "3.01.01")
     c.write_gatt_char.reset_mock()
     await coord._send_identity_queries()
     c.write_gatt_char.assert_not_awaited()

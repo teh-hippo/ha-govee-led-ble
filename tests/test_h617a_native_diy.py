@@ -36,7 +36,8 @@ def test_native_seed_identity_upload_and_own_selector(index: int) -> None:
     assert restored == item
     validate_catalogue_template_identity("H617A", template.id, restored.content)
     compiled = compile_effect(restored, "H617A")
-    assert compiled.upload_packets == tuple(fragment_a3(2, raw))
+    prepared = encode_workshop_effect("H617A", content, profile=get_profile("H617A"))
+    assert compiled.upload_packets == tuple(fragment_a3(2, prepared))
     assert compiled.activation_packet == build_scene_activation("H617A", code)
     assert compiled.selector_kind == "scene"
     assert compiled.diy_code == code
@@ -78,15 +79,19 @@ def test_packed_fields_and_extensions_round_trip_without_sibling_loss() -> None:
 
 
 @pytest.mark.parametrize("code,index", [(502, 0), (504, 0), (506, 2)])
-def test_unknown_physical_count_gates_only_dependent_edits(code: int, index: int) -> None:
+@pytest.mark.parametrize("conversion", [None, False])
+def test_unknown_physical_count_gates_complete_body_preparation(code: int, index: int, conversion: bool | None) -> None:
     content = resolve_catalogue_template("H617A", f"template:native-diy:{code}").content
     assert isinstance(content, LayeredEffect)
-    profile = replace(get_profile("H617A"), physical_ic_count=None)
+    profile = replace(get_profile("H617A"), physical_ic_count=None, rgbic_scene_v0=conversion)
     layers = list(content.layers)
     layers[index] = replace(layers[index], colour_speed=123)
-    compile_effect(
-        LibraryItem.new("Palette-independent speed", replace(content, layers=tuple(layers))), "H617A", profile=profile
-    )
+    item = LibraryItem.new("Palette-independent speed", replace(content, layers=tuple(layers)))
+    if conversion is None:
+        compile_effect(item, "H617A", profile=profile)
+    else:
+        with pytest.raises(ValueError, match="physical IC"):
+            compile_effect(item, "H617A", profile=profile)
     layers[index] = replace(layers[index], selection=Selection(1, 1, 4))
     with pytest.raises(ValueError, match="physical IC count"):
         compile_effect(LibraryItem.new("Geometry", replace(content, layers=tuple(layers))), "H617A", profile=profile)

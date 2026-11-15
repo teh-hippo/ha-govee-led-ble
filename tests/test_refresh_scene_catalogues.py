@@ -73,6 +73,7 @@ def test_snapshot_preserves_scene_effect_and_category_identity():
 
 def test_snapshot_resolves_the_requested_sku_override():
     effect = _effect(30, 1)
+    effect["cmdVersion"] = 1
     effect["specialEffect"] = [
         {
             "supportSku": ["H6199"],
@@ -80,6 +81,7 @@ def test_snapshot_resolves_the_requested_sku_override():
             "sceneCode": 123,
             "sceneType": 2,
             "scenceParam": "payload",
+            "cmdVersion": 2,
         }
     ]
     raw = {
@@ -111,6 +113,8 @@ def test_snapshot_resolves_the_requested_sku_override():
         "payload",
     )
     assert entry["music_code"] == 0
+    assert entry["command_version"] == 2
+    assert build_snapshot(raw, "H617A")["effects"][0]["command_version"] == 1
 
 
 def test_snapshot_rejects_duplicate_vendor_identity():

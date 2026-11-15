@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import nullcontext
 from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any
@@ -92,6 +93,12 @@ def _h6179_item(name: str = "H6179 DIY") -> LibraryItem:
 
 
 class _EffectCoordinator(SimpleNamespace):
+    def async_mode_transition(self):
+        return nullcontext()
+
+    def identity_fields_confirmed(self, fields=None):
+        return True
+
     def _reconcile_authorization(self):
         pass
 
@@ -134,6 +141,7 @@ def _coordinator(*, model: str = "H617A", readable: bool = False) -> SimpleNames
         write_guard=None,
         final_packet=None,
         before_final=None,
+        retry_allowed=None,
         require_upload_ack=False,
         upload_ack_index=None,
         writer=None,
@@ -1856,7 +1864,7 @@ async def test_shutdown_marks_active_sequence_incomplete_and_rejects_new_session
     assert any(
         event.phase is PreviewPhase.FAILED
         and event.error_code == "shutdown_incomplete"
-        and event.write_disposition is PreviewWriteDisposition.COMPLETED
+        and event.write_disposition is PreviewWriteDisposition.MAY_HAVE_STARTED
         for event in events
     )
     with pytest.raises(PreviewShutdownError):
