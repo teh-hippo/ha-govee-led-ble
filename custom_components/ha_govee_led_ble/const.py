@@ -187,6 +187,7 @@ class LightSource:
     color_modes: frozenset[str] | None = None
     native_control: bool = False
     kelvin_hint_source: str | None = None
+    palette_restore: bool = False
 
 
 @dataclass(frozen=True)
@@ -375,6 +376,9 @@ class ModelProfile:
                 or source.control not in NATIVE_ZONE_CONTROLS
                 or type(source.master_brightness) is not bool
                 or type(source.native_control) is not bool
+                or type(source.palette_restore) is not bool
+                or source.palette_restore
+                and not source.segments
                 or source.kelvin_hint_source is not None
                 and (
                     not source.segments
@@ -1222,7 +1226,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         static_readback_zero_kelvin_is_rgb=True,
         light_sources=(
             LightSource("top", "top_enabled", (9,)),
-            LightSource("side", "side_enabled", tuple(range(1, 9)), kelvin_hint_source="top"),
+            LightSource("side", "side_enabled", tuple(range(1, 9)), kelvin_hint_source="top", palette_restore=True),
             LightSource("bottom", "bottom_enabled", (), color_modes=frozenset({"color_temp"}), native_control=True),
         ),
         boolean_controls=frozenset({"top_enabled", "side_enabled", "bottom_enabled"}),

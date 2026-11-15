@@ -126,7 +126,11 @@ class _NotificationMixin(_CoordinatorBase):
             if self.profile.setting_grammar == "H607C":
                 self._field_received_at.pop("diy_companion", None)
             if expectations["color_mode"][0] is not ParsedMode.COLOUR:
-                self.source_static_intents.clear()
+                self.segment_kelvin = [None] * self.profile.segment_count
+                self.segment_brightness_known = [False] * self.profile.segment_count
+                for field in tuple(self._expected_state):
+                    if field.startswith("segment_colour_"):
+                        self._expected_state.pop(field, None)
                 for source in self.profile.light_sources:
                     self._expected_state.pop(f"source_kelvin_{source.key}", None)
                 if self.rgb_color_source == "observed":
@@ -204,7 +208,8 @@ class _NotificationMixin(_CoordinatorBase):
         self._observed_mode_profile_generation = self._profile_generation
         if parsed.mode is not ParsedMode.COLOUR or self.color_mode is not ParsedMode.COLOUR:
             if parsed.mode is not ParsedMode.COLOUR:
-                self.source_static_intents.clear()
+                self.segment_kelvin = [None] * self.profile.segment_count
+                self.segment_brightness_known = [False] * self.profile.segment_count
                 for source in self.profile.light_sources:
                     self._expected_state.pop(f"source_kelvin_{source.key}", None)
             self._static_rgb_known = False
@@ -220,10 +225,11 @@ class _NotificationMixin(_CoordinatorBase):
                 reported = (parsed.source_values or {}).get(field, getattr(parsed, field, None))
                 if type(reported) is not int or not self._accept_expected(f"source_kelvin_{source.key}", reported):
                     continue
-                if reported == 0:
-                    self.source_static_intents.pop(source.key, None)
-                else:
-                    self.source_static_intents[source.key] = reported
+                if len(self.segment_kelvin) != self.profile.segment_count:
+                    self.segment_kelvin = [None] * self.profile.segment_count
+                for index in source.segments:
+                    if index <= len(self.segment_kelvin):
+                        self.segment_kelvin[index - 1] = reported
         self.color_mode = parsed.mode
         if parsed.mode is not ParsedMode.SCENE:
             self._scene_code = None

@@ -16,6 +16,7 @@ from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator import GoveeBLECoordinator
 from .coordinator_base import async_prepare_effect_profile
 from .coordinator_refresh import RefreshRequest
+from .coordinator_sources import has_segmented_sources
 from .coordinator_status import ParsedMode
 from .effect_active_workspace import (
     ActiveEffectWorkspace,
@@ -1577,11 +1578,13 @@ async def async_prepare_effect_control_state(
     prior = capture() if require_restorable_static and capture is not None else None
     prior_mode = prior.mode if isinstance(prior, PriorControlState) else _coordinator_mode(coordinator)
     if require_restorable_static:
-        if profile.partition_segment_writes:
+        if has_segmented_sources(profile) and (prior_mode in {"colour", "unknown"} or profile.supports_ripple_speed):
             read_segments = prior_mode in {"colour", "unknown"}
+            if read_segments and not profile.can_read(ReadDomain.SEGMENTS):
+                raise EffectRestorationError("Cannot observe a complete source layout before preview")
             fields = (
                 "is_on",
-                "brightness_pct",
+                *(("brightness_pct",) if profile.can_read(ReadDomain.BRIGHTNESS) else ()),
                 "color_mode",
                 *(f"boolean_{source.control}" for source in profile.light_sources),
                 *(

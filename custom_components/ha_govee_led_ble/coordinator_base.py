@@ -117,7 +117,10 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     _confirmed_identity_fields: set[str]
     control_write_attempts: int
     _static_write_attempts: int
-    source_static_intents: dict[str, int | tuple[int, int, int]]
+    segment_kelvin: list[int | None]
+    segment_brightness_known: list[bool]
+    _brightness_pct_known: bool
+
     _profile_generation: int
     _authorization_generation: int
     _pre_mode_snapshot: PreModeSnapshot
@@ -221,6 +224,7 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
             domain: int | None = None,
         ) -> dict[str, Any]: ...
 
+        def source_field_fresh(self, field: str) -> bool: ...
         def _mark_received(self, domain: StatusDomain, *fields: str) -> None: ...
 
         def _observe_identity_field(self, field: str, value: str | None) -> bool: ...

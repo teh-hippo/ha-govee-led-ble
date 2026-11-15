@@ -10,6 +10,7 @@ from .const import ModelProfile, ReadDomain
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator_base import _CoordinatorBase, async_prepare_effect_profile
 from .coordinator_refresh import RefreshRequest
+from .coordinator_sources import has_segmented_sources
 from .coordinator_status import ParsedMode
 from .generated_protocol_adapter import build_power
 from .light_commands import (
@@ -353,7 +354,7 @@ class _ActiveModeMixin(_CoordinatorBase):
         self.async_set_updated_data(self.data or {})
 
     def _capture_static_state(self) -> PreModeSnapshot:
-        if self.profile.partition_segment_writes:
+        if has_segmented_sources(self.profile):
             return PreModeSnapshot(source_state=self.capture_effect_control_state())
         if self.color_temp_kelvin is not None:
             return PreModeSnapshot(kind="color_temp", kelvin=self.color_temp_kelvin)
@@ -580,7 +581,7 @@ class _ActiveModeMixin(_CoordinatorBase):
     async def async_restore_pre_mode(self) -> None:
         async with self.async_mask_transaction():
             snap = self._pre_mode_snapshot
-            if self.profile.partition_segment_writes:
+            if has_segmented_sources(self.profile):
                 if snap.source_state is None or not await self.async_restore_effect_control_state(
                     snap.source_state, overwritten_diy_code=None
                 ):

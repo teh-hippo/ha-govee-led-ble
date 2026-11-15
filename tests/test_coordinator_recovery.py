@@ -3,12 +3,12 @@
 import asyncio
 import time
 from dataclasses import replace
-from unittest.mock import AsyncMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 from homeassistant.exceptions import HomeAssistantError
 
-from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, MUSIC_MODE_SLUGS, device_profile
+from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, MUSIC_MODE_SLUGS, ReadDomain, device_profile
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_refresh import DEFAULT_REFRESH_REQUEST, RefreshRequest
@@ -23,6 +23,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_scene_activation,
     table_kelvin_rgb,
 )
+from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.light_commands import build_color_rgb, normalize_kelvin, parse_static_write
 from custom_components.ha_govee_led_ble.light_source import GoveeBLESourceLight
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES, scene_selector_code
@@ -31,6 +32,159 @@ from custom_components.ha_govee_led_ble.video_applicability import video_identit
 from tests.coordinator_test_support import _CONFIGURATION_URL, _c, _packet
 
 M = "custom_components.ha_govee_led_ble.coordinator"
+
+
+async def test_whole_device_revision_keeps_its_scalar_effect_stop(hass, monkeypatch, virtual_clock):
+    coord = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H60A6", configuration_url=_CONFIGURATION_URL)
+    coord.pact_type, coord.pact_code = 1, 1
+    coord._resolve_device_profile()
+    client = _c(write_gatt_char=AsyncMock())
+    coord._client = client
+    monkeypatch.setattr(coord, "_ensure_connected", AsyncMock(return_value=client))
+    monkeypatch.setattr(coord, "_renew_foreground_lease", lambda: None)
+    monkeypatch.setattr(coord, "_authorization_profile", MagicMock(return_value=coord.profile))
+    physical = None
+
+    async def radio(_uuid, packet, **_kwargs):
+        nonlocal physical
+        if packet[:3] == b"\x33\x05\x0d":
+            physical = tuple(packet[3:6])
+
+    client.write_gatt_char.side_effect = radio
+    original = (36, 72, 108)
+    await coord.send_command(build_color_rgb(*original, coord.model, profile=coord.profile))
+    for stop in (coord.async_restore_pre_mode, GoveeBLELight(coord)._async_clear_effect):
+        await coord.send_command(build_scene_activation(coord.model, 1, profile=coord.profile))
+        physical = (255, 0, 0)
+        await stop()
+        assert physical == original
+        assert coord.color_mode is ParsedMode.COLOUR
+
+
+@pytest.mark.parametrize(
+    ("model", "fail_colour"), [("H6046", False), ("H607C", False), ("H607C", True), ("H60B2", False), ("H60A6", False)]
+)
+async def test_source_scene_stop_preserves_authored_layout_over_actual_read_domains(
+    hass, monkeypatch, virtual_clock, model, fail_colour
+):
+    from tests.test_h60a_protocol import bulk_frames
+
+    coord = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url=_CONFIGURATION_URL)
+    coord.profile = device_profile(model, 1, 2 if model == "H60A6" else 1)
+    coord.pact_type, coord.pact_code = 1, 2 if model == "H60A6" else 1
+    coord._confirmed_identity_fields.add("pact")
+    if model == "H607C":
+        coord._h607c_marker_seen = True
+        coord._h607c_marker_pact = (1, 1)
+        monkeypatch.setattr(coord, "_refresh_h607c_advertisements", lambda: None)
+    coord._resolve_device_profile()
+    coord._notification_token = object()
+    coord._notify_started_monotonic = time.monotonic() - 1
+    client = _c(write_gatt_char=AsyncMock())
+    coord._client = client
+    monkeypatch.setattr(coord, "_ensure_connected", AsyncMock(return_value=client))
+    monkeypatch.setattr(coord, "_renew_foreground_lease", lambda: None)
+    monkeypatch.setattr(coord, "_authorization_profile", MagicMock(return_value=coord.profile))
+    monkeypatch.setattr(coord, "_async_supersede_effect_preview", AsyncMock())
+    colours = [(0, 0, 0)] * coord.profile.segment_count
+    levels = [50] * coord.profile.segment_count
+    master = 50
+    powered = True
+    packets = []
+
+    async def radio(_uuid, packet, **_kwargs):
+        nonlocal master, powered
+        packets.append(packet)
+        if packet[0] == 0x33:
+            if packet[1] == 0x01:
+                powered = bool(packet[2])
+            elif packet[1] == 0x04:
+                master = packet[2]
+            static = parse_static_write(packet, model, profile=coord.profile)
+            if static is not None:
+                if fail_colour and static.rgb == (2, 20, 40):
+                    raise RuntimeError("Injected delivery failure")
+                mask = static.segment_mask if static.segment_mask is not None else coord.profile.whole_device_mask
+                for index in range(len(colours)):
+                    if mask & (1 << index):
+                        if static.rgb is not None:
+                            colours[index] = static.rgb
+                        if static.brightness_pct is not None:
+                            levels[index] = static.brightness_pct
+            return
+        if packet[0] == 0xAC:
+            for response in bulk_frames(bytes.fromhex(f"0101{int(powered):02x}05041500000030020101")):
+                coord._notify_callback(None, bytearray(response))
+            return
+        command = packet[1]
+        if command == 0xA5:
+            assert coord.profile.can_read(ReadDomain.SEGMENTS)
+            offset = (packet[2] - 1) * coord.profile.segment_group_size
+            records = [
+                value
+                for index in range(offset, min(offset + coord.profile.segment_group_size, len(colours)))
+                for value in (levels[index], *colours[index])
+            ]
+            response = _packet(0xAA, command, [packet[2], *records])
+        elif command == 0x05:
+            response = _packet(0xAA, command, [0x15, int(model == "H607C"), 0, 0, 0, 0])
+        elif command == 0x01:
+            response = _packet(0xAA, command, [int(powered)])
+        elif command == 0x04:
+            response = _packet(0xAA, command, [master])
+        elif command == 0x33:
+            response = _packet(0xAA, command, [0x11])
+        elif command == 0x36:
+            response = _packet(0xAA, command, [1, 1, 1])
+        elif command == 0x07:
+            response = _packet(0xAA, command, [8, 37, 7])
+        elif command == 0xA3:
+            response = _packet(0xAA, command, [1])
+        elif command == 0x41:
+            response = _packet(0xAA, command, [1, 2])
+        else:
+            return
+        coord._notify_callback(None, bytearray(response))
+
+    client.write_gatt_char.side_effect = radio
+    await coord.send_command(build_brightness(40, model, profile=coord.profile))
+    authored = [(index + 1, 20, 40) for index in range(len(colours))]
+    if fail_colour:
+        with pytest.raises(RuntimeError, match="Injected delivery failure"):
+            await coord.async_paint_segments([([index], rgb) for index, rgb in enumerate(authored, 1)])
+        assert coord.capture_effect_control_state().segment_colors is None
+        fail_colour = False
+    await coord.async_paint_segments([([index], rgb) for index, rgb in enumerate(authored, 1)])
+    if not coord.profile.can_read(ReadDomain.SEGMENTS):
+        assert await coord.refresh_state(RefreshRequest(refresh_all=True, query_segments=False))
+        incomplete = coord.capture_effect_control_state()
+        assert incomplete.segment_colors == tuple(authored)
+        assert incomplete.segment_brightness is None
+        attempts = len(packets)
+        assert not await coord.async_restore_effect_control_state(incomplete, overwritten_diy_code=None)
+        assert len(packets) == attempts
+    if coord.profile.supports_segment_brightness:
+        await coord.async_set_segment_brightness(list(range(1, len(colours) + 1)), 60)
+    result = await coord.refresh_state(
+        RefreshRequest(refresh_all=True, query_segments=coord.profile.can_read(ReadDomain.SEGMENTS))
+    )
+    assert result
+    before = coord.capture_effect_control_state()
+    assert before.segment_colors == tuple(authored)
+    assert before.restorable_source_colour(coord.profile)
+    await coord.send_command(build_scene_activation(model, 1, profile=coord.profile))
+    colours[:] = [(255, 0, 0)] * len(colours)
+    await GoveeBLELight(coord)._async_clear_effect()
+    assert colours == authored
+    assert tuple(levels) == before.segment_brightness
+    assert master == 40
+    assert coord.segment_state_source == ("observed" if coord.profile.can_read(ReadDomain.SEGMENTS) else "optimistic")
+    if not coord.profile.can_read(ReadDomain.SEGMENTS):
+        assert not any(packet[:2] == b"\xaa\xa5" for packet in packets)
+        from custom_components.ha_govee_led_ble.effect_runtime import async_prepare_effect_control_state
+
+        with pytest.raises(RuntimeError, match="observe"):
+            await async_prepare_effect_control_state(coord, require_restorable_static=True)
 
 
 @pytest.mark.parametrize(
@@ -68,7 +222,7 @@ async def test_source_recovery_uses_independent_register_and_requires_fresh_flag
     client.write_gatt_char.side_effect = respond
     setter = AsyncMock(side_effect=set_control)
     monkeypatch.setattr(coord, "async_set_boolean_control", setter)
-    state = PriorControlState("colour", True, 50, (1, 2, 3), **expected)
+    state = PriorControlState("scene", True, 50, (1, 2, 3), **expected)
     assert await coord.async_restore_effect_control_state(state, overwritten_diy_code=None) is fresh
     bulk.assert_not_awaited()
     if fresh:
@@ -208,7 +362,7 @@ async def test_h6046_mixed_native_white_revokes_known_rgb_even_when_rendering_is
     coord = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6046", configuration_url=_CONFIGURATION_URL)
     coord.pact_type, coord.pact_code = 1, 1
     coord._resolve_device_profile()
-    coord._client = _c()
+    coord._client = _c(write_gatt_char=AsyncMock())
     coord._notify_started_monotonic = time.monotonic()
     coord.color_mode = ParsedMode.COLOUR
     coord.segment_colors = [table_kelvin_rgb(2700)] * 10
@@ -221,7 +375,7 @@ async def test_h6046_mixed_native_white_revokes_known_rgb_even_when_rendering_is
     assert not coord._static_rgb_known
     assert coord._field_revisions.get("color_temp_kelvin", 0) == baseline
     assert coord.color_temp_kelvin_source != "observed"
-    with pytest.raises(RuntimeError, match="white intent"):
+    with pytest.raises(RuntimeError, match="current source state"):
         await async_prepare_effect_control_state(coord, require_restorable_static=True)
 
 
@@ -277,6 +431,8 @@ async def test_segmented_kelvin_recovery_normalises_writes_and_expectations_with
 ):
     coord = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6046", configuration_url=_CONFIGURATION_URL)
     coord.profile = device_profile("H6046", 1, 1)
+    coord._client = _c()
+    coord._notify_started_monotonic = time.monotonic() - 1
     colours = (table_kelvin_rgb(2000),) * 5 + (table_kelvin_rgb(3100),) * 5
     state = PriorControlState(
         "colour",
@@ -294,14 +450,21 @@ async def test_segmented_kelvin_recovery_normalises_writes_and_expectations_with
     async def refresh(_request):
         coord.is_on = True
         coord.brightness_pct = 20
+        coord._mark_received(StatusDomain.BRIGHTNESS, "brightness_pct")
         coord.color_mode = ParsedMode.COLOUR
         coord._field_revisions["color_mode"] = coord._field_revisions.get("color_mode", 0) + 1
         coord.left_bar_kelvin, coord.right_bar_kelvin = 2000, 3100
+        coord._observed_mode_write_generation = coord._mode_write_generation
+        coord._observed_mode_profile_generation = coord._profile_generation
+        coord._field_received_at["color_mode"] = time.monotonic()
+        coord._field_received_at["left_bar_kelvin"] = coord._field_received_at["right_bar_kelvin"] = time.monotonic()
         return True
 
     async def segments():
         coord.segment_colors = list(colours)
         coord.segment_brightness = [50] * 10
+        coord.segment_state_source = "observed"
+        coord._field_received_at["segment_colors"] = time.monotonic()
         return True
 
     monkeypatch.setattr(coord, "refresh_state", refresh)
@@ -330,13 +493,13 @@ async def test_native_source_recovery_normalises_its_write_target_not_the_captur
     monkeypatch.setattr(coord, "_async_restore_effect_appearance", AsyncMock(return_value=True))
     monkeypatch.setattr(coord, "_async_read_setting_fields", AsyncMock(return_value=True))
 
-    async def set_value(source, attribute, value):
-        setattr(coord, f"{source}_{attribute}", value)
+    async def set_value(prepared, **_kwargs):
+        setattr(coord, f"{prepared.source}_{prepared.attribute}", prepared.value)
 
     setter = AsyncMock(side_effect=set_value)
-    monkeypatch.setattr(coord, "async_set_source_value", setter)
+    monkeypatch.setattr(coord, "async_apply_source_value", setter)
     state = PriorControlState(
-        "colour",
+        "scene",
         True,
         20,
         (1, 2, 3),
@@ -347,7 +510,12 @@ async def test_native_source_recovery_normalises_its_write_target_not_the_captur
         **flags,
     )
     assert await coord.async_restore_effect_control_state(state, overwritten_diy_code=None)
-    setter.assert_awaited_once_with("bottom", "kelvin", 2700)
+    setter.assert_awaited_once()
+    assert (setter.await_args.args[0].source, setter.await_args.args[0].attribute, setter.await_args.args[0].value) == (
+        "bottom",
+        "kelvin",
+        2700,
+    )
     assert (state.top_kelvin, state.bottom_kelvin) == (3123, 1999)
 
 
@@ -377,6 +545,7 @@ async def test_source_colour_recovery_normalises_intents_without_mutating_the_ca
 
     async def refresh(_request):
         coord.is_on, coord.brightness_pct = True, 20
+        coord._mark_received(StatusDomain.BRIGHTNESS, "brightness_pct")
         coord._notify_callback(None, bytearray(_packet(0xAA, 0x05, [0x2C, 0x0C, 0x1C, 30, 0x0A, 0x8C, 50])))
         return True
 
@@ -384,7 +553,7 @@ async def test_source_colour_recovery_normalises_intents_without_mutating_the_ca
         coord.segment_colors = list(colours)
         coord.segment_brightness = list(levels) if levels is not None else [100] * coord.profile.segment_count
         coord.segment_state_source = "observed"
-        coord.source_static_intents = {"top": 3100, "side": (1, 2, 3)}
+        coord.segment_kelvin = [0] * 8 + [3100]
         coord._field_received_at["segment_colors"] = time.monotonic()
         return True
 

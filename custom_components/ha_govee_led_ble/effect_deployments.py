@@ -133,6 +133,8 @@ class PriorControlState:
     bottom_enabled: bool | None = None
     top_kelvin: int | None = None
     source_static_intents: Mapping[str, int | tuple[int, int, int]] | None = None
+    # Zero is known RGB; null retains unknown authorship without losing the observed palette.
+    segment_kelvin: tuple[int | None, ...] | None = None
     bottom_kelvin: int | None = None
     bottom_brightness: int | None = None
     ripple_speed: int | None = None
@@ -206,6 +208,8 @@ class PriorControlState:
         self._validate_optional_readbacks()
 
     def _validate_flags_and_bars(self) -> None:
+        if self.segment_kelvin is not None and self.source_static_intents is not None:
+            raise EffectStorageError("prior source colour cannot have two intent authorities")
         if type(self.static_rgb_known) is not bool:
             raise EffectStorageError("prior static RGB intent must be a boolean")
         if self.static_gradual is not None and type(self.static_gradual) is not bool:
@@ -234,6 +238,8 @@ class PriorControlState:
             )
         ):
             raise EffectStorageError("invalid prior source colour intent")
+        if self.source_static_intents is not None:
+            object.__setattr__(self, "source_static_intents", MappingProxyType(dict(self.source_static_intents)))
         for value in (self.bottom_brightness, self.ripple_speed):
             if value is not None and (type(value) is not int or not 0 <= value <= 100):
                 raise EffectStorageError("prior source level must be from 0 to 100 or null")
@@ -270,6 +276,16 @@ class PriorControlState:
                 raise EffectStorageError("invalid prior music body") from error
 
     def _validate_segment_layout(self) -> None:
+        if self.segment_kelvin is not None and (
+            self.segment_colors is None
+            or not isinstance(self.segment_kelvin, tuple)
+            or len(self.segment_kelvin) != len(self.segment_colors)
+            or any(
+                value is not None and (type(value) is not int or value != 0 and not 1000 <= value <= 10000)
+                for value in self.segment_kelvin
+            )
+        ):
+            raise EffectStorageError("prior segment Kelvin must match the colour layout")
         if self.segment_colors is not None or self.segment_brightness is not None:
             if not isinstance(self.segment_colors, tuple) or not 1 <= len(self.segment_colors) <= MAX_PRIOR_SEGMENTS:
                 raise EffectStorageError(f"prior segment layout must contain 1 to {MAX_PRIOR_SEGMENTS} colours")
@@ -465,28 +481,45 @@ class PriorControlState:
             for start, kelvin in ((0, self.left_bar_kelvin), (half, self.right_bar_kelvin))
         )
 
-    def restorable_source_colour(self, profile: ModelProfile) -> bool:
+    def source_segment_kelvin(self, profile: ModelProfile) -> tuple[int, ...] | None:
         from .light_commands import kelvin_rendering_matches, normalize_kelvin
 
-        if self.source_static_intents is None or self.segment_colors is None:
-            return False
-        if len(self.segment_colors) != profile.segment_count:
-            return False
+        if self.segment_colors is None or len(self.segment_colors) != profile.segment_count:
+            return None
+        intents = list(self.segment_kelvin or ((0 if self.static_rgb_known else None),) * profile.segment_count)
+        covered: set[int] = set()
         for source in profile.light_sources:
             if not source.segments:
                 continue
-            intent = self.source_static_intents.get(source.key)
-            kelvin = getattr(self, f"{source.key}_kelvin", None)
-            if kelvin is not None and kelvin != (intent if type(intent) is int else 0):
-                return False
-            if intent is None or not all(
-                kelvin_rendering_matches(self.segment_colors[index - 1], normalize_kelvin(intent), profile)
-                if type(intent) is int
-                else self.segment_colors[index - 1] == intent
-                for index in source.segments
-            ):
-                return False
-        return bool(profile.light_sources)
+            native = getattr(self, f"{source.key}_kelvin", None)
+            legacy = (self.source_static_intents or {}).get(source.key)
+            for position in source.segments:
+                index = position - 1
+                if index >= len(intents):
+                    return None
+                covered.add(index)
+                intent = intents[index]
+                if self.segment_kelvin is None and legacy is not None:
+                    if isinstance(legacy, tuple) and self.segment_colors[index] != legacy:
+                        return None
+                    intent = legacy if type(legacy) is int else 0
+                if intent is None:
+                    intent = native
+                if intent is None and (source.palette_restore or not profile.supports_color_temperature):
+                    intent = 0
+                if intent is None or native is not None and native != intent:
+                    return None
+                if intent and not kelvin_rendering_matches(
+                    self.segment_colors[index], normalize_kelvin(intent, profile), profile
+                ):
+                    return None
+                intents[index] = normalize_kelvin(intent, profile) if intent else 0
+        if covered != set(range(profile.segment_count)) or any(value is None for value in intents):
+            return None
+        return tuple(value for value in intents if value is not None)
+
+    def restorable_source_colour(self, profile: ModelProfile) -> bool:
+        return self.source_segment_kelvin(profile) is not None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -499,6 +532,7 @@ class PriorControlState:
             "is_on": self.is_on,
             "brightness_pct": self.brightness_pct,
             "rgb_color": list(self.rgb_color),
+            **({"segment_kelvin": list(self.segment_kelvin)} if self.segment_kelvin is not None else {}),
             "color_temp_kelvin": self.color_temp_kelvin,
             **(
                 {
@@ -646,6 +680,8 @@ class PriorControlState:
             raise EffectStorageError("invalid video restoration controls")
         if raw.get("source_static_intents") is not None and not isinstance(raw["source_static_intents"], dict):
             raise EffectStorageError("invalid prior source colour intent")
+        if raw.get("segment_kelvin") is not None and not isinstance(raw["segment_kelvin"], list):
+            raise EffectStorageError("invalid prior segment Kelvin")
         return cls(
             mode=_required_str(raw, "mode"),
             video_restore_controls=tuple(raw["video_restore_controls"]) if "video_restore_controls" in raw else None,
@@ -668,6 +704,7 @@ class PriorControlState:
             side_enabled=_optional_bool(raw, "side_enabled"),
             bottom_enabled=_optional_bool(raw, "bottom_enabled"),
             top_kelvin=_optional_int(raw, "top_kelvin"),
+            segment_kelvin=tuple(raw["segment_kelvin"]) if raw.get("segment_kelvin") is not None else None,
             source_static_intents=(
                 {
                     key: tuple(value) if isinstance(value, list) else value

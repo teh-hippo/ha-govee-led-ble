@@ -158,11 +158,14 @@ def prepare_source_colour(
 
 def source_color_temp_kelvin(coordinator: GoveeBLECoordinator, source: LightSource) -> int | None:
     profile = coordinator.profile
-    if not source_segments_available(source, profile) or len(coordinator.segment_colors) < max(source.segments):
+    if not source_segments_available(source, profile) or min(
+        len(coordinator.segment_colors), len(coordinator.segment_kelvin)
+    ) < max(source.segments):
         return None
     rendered = [coordinator.segment_colors[segment - 1] for segment in source.segments]
-    intent = coordinator.source_static_intents.get(source.key)
-    if type(intent) is int:
+    intents = [coordinator.segment_kelvin[index - 1] for index in source.segments]
+    intent = intents[0] if len(set(intents)) == 1 else None
+    if type(intent) is int and intent > 0:
         field = f"{source.key}_kelvin"
         if (
             getattr(coordinator, field, None) == intent
@@ -171,8 +174,20 @@ def source_color_temp_kelvin(coordinator: GoveeBLECoordinator, source: LightSour
         ):
             return intent
         return None
+    own_field = f"{source.key}_kelvin"
+    native = getattr(coordinator, own_field, None)
     if (
-        intent is not None
+        all(value is None for value in intents)
+        and type(native) is int
+        and native > 0
+        and coordinator.color_mode is ParsedMode.COLOUR
+        and coordinator.segment_state_source == "observed"
+        and coordinator.source_field_fresh(own_field)
+        and all(kelvin_rendering_matches(rgb, native, profile) for rgb in rendered)
+    ):
+        return native
+    if (
+        any(value is not None for value in intents)
         or source.kelvin_hint_source is None
         or coordinator.color_mode is not ParsedMode.COLOUR
         or coordinator.segment_state_source != "observed"
@@ -193,7 +208,7 @@ def source_color_temp_kelvin(coordinator: GoveeBLECoordinator, source: LightSour
     return None
 
 
-def main_source_colour(coordinator: GoveeBLECoordinator) -> int | tuple[int, int, int] | None:
+def main_source_colours(coordinator: GoveeBLECoordinator) -> tuple[int | tuple[int, int, int], ...] | None:
     if coordinator.color_mode is not ParsedMode.COLOUR:
         return None
     profile = coordinator.profile
@@ -215,18 +230,18 @@ def main_source_colour(coordinator: GoveeBLECoordinator) -> int | tuple[int, int
         if not source_segments_available(source, profile) or len(coordinator.segment_colors) < max(source.segments):
             return None
         rendered = [coordinator.segment_colors[segment - 1] for segment in source.segments]
-        intent = coordinator.source_static_intents.get(key)
         if (kelvin := source_color_temp_kelvin(coordinator, source)) is not None:
             colours.append(kelvin)
-        elif type(intent) is int:
-            return None
-        elif coordinator.segment_state_source != "initial" and len(set(rendered)) == 1:
-            colours.append(rendered[0])
+        elif coordinator.segment_state_source != "initial":
+            colours.extend(rendered)
         else:
             return None
-    if not colours or len(set(colours)) != 1:
-        return None
-    return colours[0]
+    return tuple(colours)
+
+
+def main_source_colour(coordinator: GoveeBLECoordinator) -> int | tuple[int, int, int] | None:
+    colours = main_source_colours(coordinator)
+    return colours[0] if colours and len(set(colours)) == 1 else None
 
 
 @dataclass(frozen=True, slots=True)
@@ -247,6 +262,13 @@ def source_segments_available(source: LightSource, profile: ModelProfile) -> boo
         bool(source.segments)
         and profile.supports_segments
         and all(segment <= profile.segment_count for segment in source.segments)
+    )
+
+
+def has_segmented_sources(profile: ModelProfile) -> bool:
+    return any(
+        source.control in profile.boolean_controls and source_segments_available(source, profile)
+        for source in profile.light_sources
     )
 
 
