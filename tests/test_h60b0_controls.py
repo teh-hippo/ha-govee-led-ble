@@ -26,6 +26,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_colour_mode_query,
     build_hardware_query,
     build_pact_query,
+    build_power,
     build_power_on_behaviour,
     build_segment_query,
     build_source_value,
@@ -82,7 +83,7 @@ async def test_main_colour_uses_area_controls_without_changing_selection(source_
         assert physical_writes == [frame("33052c01010102030000"), frame("33052c02010102030000ff00")]
         assert state["colours"] == [(1, 2, 3)] * 9
         assert state["bottom"] == 4000
-        assert light.color_mode is ColorMode.UNKNOWN
+        assert light.color_mode is ColorMode.RGB
         assert light.rgb_color is None
     else:
         preview = bytes(table_kelvin_rgb(5000)).hex()
@@ -105,15 +106,15 @@ async def test_main_colour_uses_area_controls_without_changing_selection(source_
     ("flags", "colours", "mode", "rgb", "kelvin"),
     [
         (0xA0, [(0, 0, 255)] * 8 + [table_kelvin_rgb(2700)], ColorMode.RGB, (0, 0, 255), None),
-        (0xE0, [(0, 0, 255)] * 8 + [table_kelvin_rgb(2700)], ColorMode.UNKNOWN, None, None),
-        (0xB0, [(0, 0, 255)] * 9, ColorMode.UNKNOWN, None, None),
+        (0xE0, [(0, 0, 255)] * 8 + [table_kelvin_rgb(2700)], ColorMode.RGB, None, None),
+        (0xB0, [(0, 0, 255)] * 9, ColorMode.RGB, None, None),
         (0x90, [(0, 0, 255)] * 9, ColorMode.COLOR_TEMP, None, 4000),
         (0x80, [(0, 0, 255)] * 9, ColorMode.UNKNOWN, None, None),
     ],
 )
 async def test_main_colour_after_reload_uses_only_known_enabled_areas(source_wire, flags, colours, mode, rgb, kelvin):
     coordinator, state = source_wire
-    coordinator.source_static_intents.clear()
+    coordinator.segment_kelvin = [None] * 9
     state.update(flags=flags, colours=colours)
     assert await coordinator.refresh_state(RefreshRequest(refresh_all=True, query_segments=True))
     light = GoveeBLELight(coordinator)
@@ -132,7 +133,7 @@ async def test_main_colour_after_reload_uses_only_known_enabled_areas(source_wir
 )
 async def test_shared_kelvin_hint_after_reload_requires_matching_complete_source(source_wire, side_colours):
     coordinator, state = source_wire
-    coordinator.source_static_intents.clear()
+    coordinator.segment_kelvin = [None] * 9
     state.update(flags=0xB0, top=6500, bottom=6500, colours=side_colours + [table_kelvin_rgb(6500)])
     assert await coordinator.refresh_state(RefreshRequest(refresh_all=True, query_segments=True))
     side = GoveeBLESourceLight(coordinator, "side")
@@ -140,17 +141,17 @@ async def test_shared_kelvin_hint_after_reload_requires_matching_complete_source
     white = side_colours == [table_kelvin_rgb(6500)] * 8
     assert side.color_mode is (ColorMode.COLOR_TEMP if white else ColorMode.RGB)
     assert side.color_temp_kelvin == (6500 if white else None)
-    assert main.color_mode is (ColorMode.COLOR_TEMP if white else ColorMode.UNKNOWN)
+    assert main.color_mode is (ColorMode.COLOR_TEMP if white else ColorMode.RGB)
     assert main.color_temp_kelvin == (6500 if white else None)
     captured = coordinator.capture_effect_control_state()
-    assert captured.source_static_intents.get("side") == (6500 if white else None)
+    assert captured.segment_kelvin[:8] == (None,) * 8
     assert all(call.args[1][0] == 0xAA for call in coordinator._client.write_gatt_char.await_args_list)
 
 
 @pytest.mark.parametrize("segments_first", [False, True])
 async def test_shared_kelvin_hint_needs_current_mode_and_complete_segment_observation(source_wire, segments_first):
     coordinator, _state = source_wire
-    coordinator.source_static_intents.clear()
+    coordinator.segment_kelvin = [None] * 9
     coordinator._field_received_at.clear()
     coordinator.segment_state_source = "initial"
     side = GoveeBLESourceLight(coordinator, "side")
@@ -175,14 +176,140 @@ async def test_shared_kelvin_hint_needs_current_mode_and_complete_segment_observ
 async def test_explicit_source_rgb_is_not_reclassified_by_shared_kelvin_hint(source_wire):
     coordinator, state = source_wire
     state.update(apply=True, flags=0xA0, top=6500, colours=[table_kelvin_rgb(6500)] * 9)
-    coordinator.source_static_intents.clear()
+    coordinator.segment_kelvin = [None] * 9
     assert await coordinator.refresh_state(RefreshRequest(refresh_all=True, query_segments=True))
     side = GoveeBLESourceLight(coordinator, "side")
     await side.async_turn_on(rgb_color=table_kelvin_rgb(6500))
     assert side.color_mode is ColorMode.RGB
     assert side.color_temp_kelvin is None
     assert GoveeBLELight(coordinator).rgb_color == table_kelvin_rgb(6500)
-    assert coordinator.capture_effect_control_state().source_static_intents["side"] == table_kelvin_rgb(6500)
+    assert coordinator.capture_effect_control_state().segment_kelvin[:8] == (0,) * 8
+
+
+@pytest.mark.parametrize("previous_kelvin", [False, True])
+async def test_external_source_colour_supersedes_contradicted_intent(source_wire, virtual_clock, previous_kelvin):
+    coordinator, state = source_wire
+    state.update(apply=True, flags=0xA0)
+    side = GoveeBLESourceLight(coordinator, "side")
+    await side.async_turn_on(**({"color_temp_kelvin": 5000} if previous_kelvin else {"rgb_color": (0, 0, 255)}))
+    await asyncio.sleep(10)
+    colour = (0, 0, 255) if previous_kelvin else table_kelvin_rgb(6500)
+    state.update(top=6500, colours=[colour] * 9)
+    assert await coordinator.refresh_state(RefreshRequest(refresh_all=True, query_segments=True))
+    main = GoveeBLELight(coordinator)
+    assert side.rgb_color == main.rgb_color
+    assert side.color_temp_kelvin == main.color_temp_kelvin
+    assert main.color_mode is (ColorMode.RGB if previous_kelvin else ColorMode.COLOR_TEMP)
+    assert (main.rgb_color if previous_kelvin else main.color_temp_kelvin) == ((0, 0, 255) if previous_kelvin else 6500)
+
+
+@pytest.mark.parametrize(("paint_segment", "powered_off"), [(False, False), (True, False), (True, True)])
+async def test_complete_source_rgb_layout_survives_scene_after_reload(
+    source_wire, virtual_clock, paint_segment, powered_off
+):
+    coordinator, state = source_wire
+    state["apply"] = True
+    coordinator.segment_kelvin = [None] * 9
+    assert await coordinator.refresh_state(RefreshRequest(refresh_all=True, query_segments=True))
+    if paint_segment:
+        await GoveeBLESourceLight(coordinator, "side").async_turn_on(rgb_color=(0, 0, 255))
+        await coordinator.async_paint_segments([([1], (0, 255, 0))])
+    if powered_off:
+        await coordinator.send_command(build_power(False, "H60B0"))
+        assert await coordinator.refresh_state(RefreshRequest(refresh_all=True, query_segments=True))
+    expected_colours, expected_levels = list(state["colours"]), list(state["levels"])
+    before = coordinator.capture_effect_control_state()
+    assert before.restorable_source_colour(PROFILE)
+    assert PriorControlState.from_dict(before.to_dict()) == before
+    await async_prepare_effect_control_state(coordinator, require_restorable_static=True)
+    await coordinator.send_command(frame("3305040100"))
+    state.update(top=0, colours=[(255, 0, 0)] * 9)
+    coordinator.segment_kelvin = [None] * 9
+    coordinator.color_mode = ParsedMode.SCENE
+    await GoveeBLELight(coordinator)._async_clear_effect()
+    assert state["colours"] == expected_colours
+    assert state["levels"] == expected_levels
+    assert (state["flags"], state["bottom"], state["bottom_brightness"]) == (0x60 if powered_off else 0xE0, 4000, 40)
+
+
+@pytest.mark.parametrize("pact_code", [1, 2, 3])
+async def test_partial_kelvin_preserves_per_position_semantics_through_scene(source_wire, virtual_clock, pact_code):
+    coordinator, state = source_wire
+    coordinator.profile = device_profile("H60B0", 1, pact_code)
+    coordinator._authorization_profile.return_value = coordinator.profile
+    state["apply"] = True
+    await GoveeBLESourceLight(coordinator, "side").async_turn_on(rgb_color=table_kelvin_rgb(4000))
+    await coordinator.async_set_segment_kelvin(
+        build_segment_color_temp([1, 3], 4000, "H60B0", profile=coordinator.profile), requested_kelvin=4000
+    )
+    assert await coordinator.refresh_state(RefreshRequest(refresh_all=True, query_segments=True))
+    before = coordinator.capture_effect_control_state()
+    assert before.segment_kelvin == (4000, 0, 4000, 0, 0, 0, 0, 0, 2700)
+    assert PriorControlState.from_dict(before.to_dict()) == before
+    await coordinator.send_command(frame("3305040100"))
+    state.update(top=0, colours=[(255, 0, 0)] * 9)
+    coordinator.color_mode = ParsedMode.SCENE
+    await GoveeBLELight(coordinator)._async_clear_effect()
+    assert coordinator.capture_effect_control_state().segment_kelvin == before.segment_kelvin
+    assert tuple(state["colours"]) == before.segment_colors
+    assert tuple(state["levels"]) == before.segment_brightness
+    assert (state["bottom"], state["bottom_brightness"], state["ripple"]) == (4000, 40, 50)
+
+
+@pytest.mark.parametrize("prior_on", [False, True])
+async def test_incomplete_colour_snapshot_cannot_mutate_native_sources(source_wire, prior_on):
+    coordinator, state = source_wire
+    assert await coordinator.refresh_state(RefreshRequest(refresh_all=True, query_segments=True))
+    before = coordinator.capture_effect_control_state()
+    invalid = replace(
+        before,
+        is_on=prior_on,
+        segment_colors=None,
+        segment_brightness=None,
+        segment_kelvin=None,
+        bottom_kelvin=6500,
+        bottom_brightness=100,
+    )
+    coordinator._client.write_gatt_char.reset_mock()
+    assert not await coordinator.async_restore_effect_control_state(invalid, overwritten_diy_code=None)
+    writes = [call.args[1] for call in coordinator._client.write_gatt_char.await_args_list if call.args[1][0] == 0x33]
+    assert writes == ([] if prior_on else [build_power(False, "H60B0")])
+    assert (state["bottom"], state["bottom_brightness"]) == (4000, 40)
+
+
+async def test_guarded_old_palette_cannot_authorise_fallback_recovery(source_wire):
+    coordinator, state = source_wire
+    state["apply"] = True
+    await GoveeBLESourceLight(coordinator, "side").async_turn_on(rgb_color=(0, 255, 0))
+    assert await coordinator.refresh_state(RefreshRequest(refresh_all=True, query_segments=True))
+    await coordinator.send_command(build_segment_color(range(1, 9), 0, 255, 0, "H60B0", profile=PROFILE))
+    coordinator._notify_callback(None, bytearray(frame("aa052c0a8c320fa028")))
+    for group in range(1, 4):
+        body = "28640000" * 4 if group < 3 else "3c" + bytes(table_kelvin_rgb(2700)).hex()
+        coordinator._notify_callback(None, bytearray(frame(f"aaa5{group:02x}" + body)))
+    assert coordinator.segment_state_source == "observed"
+    prior = coordinator.capture_effect_control_state()
+    assert prior.segment_colors is None
+    assert not prior.restorable_source_colour(PROFILE)
+    coordinator._client.write_gatt_char.reset_mock()
+    assert await async_prepare_effect_control_state(coordinator, require_restorable_static=True)
+    assert coordinator.capture_effect_control_state().segment_colors[:8] == ((0, 255, 0),) * 8
+    assert all(call.args[1][0] == 0xAA for call in coordinator._client.write_gatt_char.await_args_list)
+
+
+async def test_mixed_source_layout_keeps_brightness_in_ha_state(hass, source_wire):
+    coordinator, physical = source_wire
+    physical.update(apply=True, flags=0xE0)
+    assert await coordinator.refresh_state(RefreshRequest(refresh_all=True, query_segments=True))
+    light = GoveeBLELight(coordinator)
+    light._attr_device_info = None
+    light.async_added_to_hass = AsyncMock()
+    assert await async_setup_component(hass, "light", {})
+    await hass.data["light"].async_add_entities([light])
+    state = hass.states.get(light.entity_id)
+    assert state.attributes["brightness"] == 128
+    assert state.attributes["rgb_color"] is None
+    assert state.attributes["color_temp_kelvin"] is None
 
 
 async def test_main_ha_service_delivers_colour_instead_of_filtering_it(hass, source_wire):
@@ -464,7 +591,8 @@ def source_wire(native_sources):
 
     client.write_gatt_char = AsyncMock(side_effect=write)
     coordinator.color_mode = ParsedMode.COLOUR
-    coordinator.source_static_intents = {"top": 2700, "side": (0, 0, 255)}
+    coordinator.segment_kelvin = [0] * 8 + [2700]
+    coordinator.segment_colors = list(state["colours"])
     return coordinator, state
 
 
@@ -547,16 +675,14 @@ async def test_effect_stop_restores_mixed_source_capture_without_aggregate_colou
     state["apply"] = True
     if white:
         state.update(flags=0xB0, top=6500, bottom=6500, colours=[table_kelvin_rgb(6500)] * 9)
-        coordinator.source_static_intents.clear()
+        coordinator.segment_kelvin = [None] * 9
     assert await coordinator.refresh_state(RefreshRequest(refresh_all=True, query_segments=True))
     if native_setting is not None:
         await coordinator.async_set_source_value(*native_setting)
         assert coordinator.segment_state_source == "observed"
     before = coordinator.capture_effect_control_state()
     assert before.top_kelvin == (6500 if white else 2700)
-    assert before.source_static_intents == (
-        {"top": 6500, "side": 6500} if white else {"top": 2700, "side": (0, 0, 255)}
-    )
+    assert before.segment_kelvin == ((None,) * 8 + (6500,) if white else (0,) * 8 + (2700,))
     assert before.restorable_source_colour(PROFILE)
     assert PriorControlState.from_dict(before.to_dict()) == before
     await coordinator.send_command(frame("3305040100"))
@@ -564,11 +690,13 @@ async def test_effect_stop_restores_mixed_source_capture_without_aggregate_colou
     state["apply"] = True
     state["top"] = 0
     state["colours"] = [(255, 0, 0)] * 9
-    coordinator.source_static_intents.clear()
+    coordinator.segment_kelvin = [None] * 9
     coordinator.color_mode = ParsedMode.SCENE
     await coordinator.async_restore_pre_mode()
     assert state["colours"] == ([table_kelvin_rgb(6500)] * 9 if white else [(0, 0, 255)] * 8 + [table_kelvin_rgb(2700)])
-    assert coordinator.capture_effect_control_state().source_static_intents == before.source_static_intents
+    assert coordinator.capture_effect_control_state().source_segment_kelvin(PROFILE) == before.source_segment_kelvin(
+        PROFILE
+    )
     assert coordinator._client.write_gatt_char.await_count > 0
 
 
@@ -673,9 +801,10 @@ async def test_reconnected_native_fields_cannot_qualify_cached_segment_layout(so
     state["colours"] = [(255, 0, 0)] * 8 + [table_kelvin_rgb(2700)]
     captured = coordinator.capture_effect_control_state()
     assert captured.segment_colors is None
-    assert captured.source_static_intents is None
-    with pytest.raises(RuntimeError, match="restor"):
-        await async_prepare_effect_control_state(coordinator, require_restorable_static=True)
+    assert captured.segment_kelvin is None
+    assert await async_prepare_effect_control_state(coordinator, require_restorable_static=True)
+    assert coordinator.capture_effect_control_state().segment_colors == tuple(state["colours"])
+    assert coordinator.segment_colors[0] == (255, 0, 0)
 
 
 async def test_source_on_from_master_off_preserves_remembered_siblings(source_wire, virtual_clock):
@@ -930,7 +1059,7 @@ async def test_preview_requires_complete_source_values_and_preserves_them_in_sto
 
 @pytest.mark.parametrize(
     ("cold", "drop_readback", "error"),
-    [(False, False, None), (True, False, "state_not_restorable"), (False, True, "state_unavailable")],
+    [(False, False, None), (True, False, None), (False, True, "state_unavailable")],
 )
 async def test_live_acquires_source_state_without_guessing_missing_intent(
     hass, monkeypatch, source_wire, virtual_clock, cold, drop_readback, error
@@ -941,7 +1070,7 @@ async def test_live_acquires_source_state_without_guessing_missing_intent(
     coordinator, state = source_wire
     state["drop_source_readback"] = drop_readback
     if cold:
-        coordinator.source_static_intents.clear()
+        coordinator.segment_kelvin = [None] * 9
     coordinator._field_received_at.clear()
     manager, _cache = await _manager(hass, monkeypatch, coordinator)
 

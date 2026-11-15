@@ -10,6 +10,7 @@ from .const import ModelProfile, ReadDomain, same_control_profile
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator_base import _CoordinatorBase, async_prepare_effect_profile
 from .coordinator_refresh import RefreshRequest
+from .coordinator_sources import has_segmented_sources
 from .coordinator_status import ParsedMode
 from .generated_protocol_adapter import build_power
 from .music_commands import (

@@ -97,7 +97,7 @@ def source_coordinator(mock_coordinator):
     coordinator.segment_brightness = [40] * 5 + [80] * 5
     coordinator.segment_state_source = "observed"
     coordinator.last_update_success = True
-    coordinator.source_static_intents = {}
+    coordinator.segment_kelvin = [None] * coordinator.profile.segment_count
     coordinator._async_supersede_effect_preview = AsyncMock()
     coordinator._notify_started_monotonic = 1.0
     coordinator._field_revisions["is_on"] = 1
@@ -547,7 +547,7 @@ async def test_stale_kelvin_status_cannot_override_new_source_rgb(hass):
     await coordinator._async_write_packet(client, packet, arm_expected=True)
     payload = bytes.fromhex("aa0515000fa00fa0").ljust(19, b"\x00")
     coordinator._notify_callback(None, bytearray(payload + bytes((xor_checksum(payload),))))
-    assert coordinator.source_static_intents["left_bar"] == colour
+    assert coordinator.segment_kelvin[:5] == [0] * 5
     assert GoveeBLESourceLight(coordinator, "left_bar").color_mode is ColorMode.RGB
     coordinator._arm_expected(build_scene_activation("H6046", 1, profile=coordinator.profile))
     assert "source_kelvin_left_bar" not in coordinator._expected_state
@@ -565,7 +565,7 @@ async def test_failed_source_colour_write_releases_source_expectations(hass):
     assert "source_kelvin_left_bar" not in coordinator._expected_state
     payload = bytes.fromhex("aa0515000fa00fa0").ljust(19, b"\x00")
     coordinator._notify_callback(None, bytearray(payload + bytes((xor_checksum(payload),))))
-    assert coordinator.source_static_intents["left_bar"] == 4000
+    assert coordinator.segment_kelvin[:5] == [4000] * 5
 
 
 @pytest.mark.parametrize("failure", [TimeoutError, asyncio.CancelledError])
@@ -582,14 +582,14 @@ async def test_failed_masked_colour_write_preserves_untouched_source_intent(hass
     coordinator._observed_mode_profile_generation = coordinator._profile_generation
     coordinator._notify_started_monotonic = 1.0
     coordinator._field_received_at["color_mode"] = 2.0
-    coordinator.source_static_intents = {"panel": 4000, "ring": (1, 2, 3)}
+    coordinator.segment_kelvin = [0] * 12 + [4000]
     coordinator._arm_expected_values({"source_kelvin_panel": 4000, "source_kelvin_ring": 0})
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(side_effect=failure))
     coordinator._client = client
     packet = build_segment_color((1,), 1, 2, 3, "H60A6", profile=coordinator.profile)
     with pytest.raises(failure):
         await coordinator._async_write_packet(client, packet, arm_expected=True)
-    assert coordinator.source_static_intents == {"panel": 4000}
+    assert coordinator.segment_kelvin == [None] + [0] * 11 + [4000]
     assert "source_kelvin_panel" in coordinator._expected_state
     assert "source_kelvin_ring" not in coordinator._expected_state
     assert GoveeBLESourceLight(coordinator, "panel").color_temp_kelvin == 4000
@@ -675,13 +675,13 @@ async def test_failed_segment_brightness_keeps_source_colour_intents(hass):
     coordinator.pact_type, coordinator.pact_code = 1, 1
     coordinator._resolve_device_profile()
     coordinator.color_mode = ParsedMode.COLOUR
-    coordinator.source_static_intents = {"left_bar": 4000, "right_bar": 2700}
+    coordinator.segment_kelvin = [4000] * 5 + [2700] * 5
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(side_effect=TimeoutError))
     coordinator._client = client
     packet = build_segment_brightness(LEFT.segments, 50, "H6046", profile=coordinator.profile)
     with pytest.raises(TimeoutError):
         await coordinator._async_write_packet(client, packet, arm_expected=True)
-    assert coordinator.source_static_intents == {"left_bar": 4000, "right_bar": 2700}
+    assert coordinator.segment_kelvin == [4000] * 5 + [2700] * 5
 
 
 async def test_successful_retry_after_failed_source_write_is_optimistic(hass):

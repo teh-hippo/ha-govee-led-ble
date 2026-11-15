@@ -54,7 +54,14 @@ from .coordinator import GoveeBLECoordinator
 from .coordinator_base import async_prepare_effect_profile
 from .coordinator_control import ControlStateSnapshot, ControlWriteRequest
 from .coordinator_refresh import RefreshRequest
-from .coordinator_sources import PreparedSourceColour, SourceTurnOnRequest, main_source_colour, prepare_source_colour
+from .coordinator_sources import (
+    PreparedSourceColour,
+    SourceTurnOnRequest,
+    has_segmented_sources,
+    main_source_colour,
+    main_source_colours,
+    prepare_source_colour,
+)
 from .coordinator_status import ParsedMode
 from .effect_backend import EffectBackend
 from .effect_catalogue import MODEL_EFFECT_CATALOGUES
@@ -344,10 +351,10 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         ):
             return ColorMode.BRIGHTNESS
         if coordinator.profile.main_colour_sources:
-            colour = main_source_colour(coordinator)
-            if colour is None:
+            colours = main_source_colours(coordinator)
+            if not colours:
                 return ColorMode.UNKNOWN
-            return ColorMode.COLOR_TEMP if type(colour) is int else ColorMode.RGB
+            return ColorMode.COLOR_TEMP if len(set(colours)) == 1 and type(colours[0]) is int else ColorMode.RGB
         if coordinator.color_mode in (None, ParsedMode.COLOUR):
             if coordinator.color_temp_unknown:
                 return ColorMode.COLOR_TEMP
