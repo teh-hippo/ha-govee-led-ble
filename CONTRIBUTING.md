@@ -84,6 +84,8 @@ Keep real product differences without turning each product into a separate imple
   Segment partitions must cover each position exactly once and exclude separately addressed sources.
   Require geometry only for operations that address it; preserve siblings only with qualified state and mappings that leave them unchanged.
   Enforce declared source-selection constraints using current-subscription flags before writes.
+- Shared colour-temperature hints are not independent source readback.
+  Qualify them against complete, current source colours without overriding explicit source intent, and use the same qualification for presentation and recovery.
 - Distinguish admission, preparation, physical attempt, completed delivery and independent confirmation.
   An executed guard is not a physical attempt; optimistic state and expired expectations are not fresh observations.
   Where no independent readback exists, successful delivery is completed, not confirmed or failed; required acknowledgements must still succeed.

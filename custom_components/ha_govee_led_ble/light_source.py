@@ -14,12 +14,14 @@ from homeassistant.util.color import brightness_to_value
 
 from .const import DOMAIN, LightSource, ModelProfile, ReadDomain, light_unique_id
 from .coordinator import GoveeBLECoordinator
-from .coordinator_sources import SourceTurnOnRequest, source_color_modes, source_segments_available
+from .coordinator_sources import (
+    SourceTurnOnRequest,
+    source_color_modes,
+    source_color_temp_kelvin,
+    source_segments_available,
+)
 from .coordinator_status import ParsedMode
 from .entity import GoveeBLEEntity
-from .light_commands import (
-    kelvin_rendering_matches,
-)
 
 
 class GoveeBLESourceLight(GoveeBLEEntity, LightEntity):
@@ -128,17 +130,12 @@ class GoveeBLESourceLight(GoveeBLEEntity, LightEntity):
             return ColorMode.BRIGHTNESS
         if self.coordinator.color_mode not in (None, ParsedMode.COLOUR):
             return ColorMode.UNKNOWN
-        intent = self.coordinator.source_static_intents.get(self._key)
-        if type(intent) is int and ColorMode.COLOR_TEMP in modes:
-            if getattr(self.coordinator, f"{self._key}_kelvin", None) == intent and self.coordinator.source_field_fresh(
-                f"{self._key}_kelvin"
-            ):
-                return ColorMode.COLOR_TEMP
-            colours = self._values(self.coordinator.segment_colors)
-            if colours and all(
-                kelvin_rendering_matches(colour, intent, self.coordinator.profile) for colour in colours
-            ):
-                return ColorMode.COLOR_TEMP
+        if (
+            source is not None
+            and ColorMode.COLOR_TEMP in modes
+            and source_color_temp_kelvin(self.coordinator, source) is not None
+        ):
+            return ColorMode.COLOR_TEMP
         return ColorMode.RGB if ColorMode.RGB in modes else None
 
     @property
@@ -161,8 +158,11 @@ class GoveeBLESourceLight(GoveeBLEEntity, LightEntity):
         source = self._source(self.coordinator.profile)
         if source is not None and source.native_control:
             return getattr(self.coordinator, f"{source.key}_kelvin", None) or None
-        intent = self.coordinator.source_static_intents.get(self._key)
-        return intent if type(intent) is int and self.color_mode is ColorMode.COLOR_TEMP else None
+        return (
+            source_color_temp_kelvin(self.coordinator, source)
+            if source is not None and self.color_mode is ColorMode.COLOR_TEMP
+            else None
+        )
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         pending = self._pending_turn_on or {}
