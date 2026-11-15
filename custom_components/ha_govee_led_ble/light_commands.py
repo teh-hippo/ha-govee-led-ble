@@ -166,6 +166,10 @@ def kelvin_rendering_matches(rgb: tuple[int, int, int], kelvin: int, profile: Mo
     return rgb == table_kelvin_rgb(kelvin)
 
 
+def static_colour_matches(rgb: tuple[int, int, int], intent: int | tuple[int, int, int], profile: ModelProfile) -> bool:
+    return kelvin_rendering_matches(rgb, intent, profile) if type(intent) is int else rgb == intent
+
+
 def normalize_kelvin(kelvin: int, profile: ModelProfile | None = None) -> int:
     """Round to the 100 K step (ties upward) before building, presenting or verifying a request.
 

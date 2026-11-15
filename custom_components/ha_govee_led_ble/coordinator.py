@@ -285,7 +285,8 @@ class GoveeBLECoordinator(
         self.power_on_open_flag: int | None = None
         self.control_write_attempts = 0
         self._static_write_attempts = 0
-        self.source_static_intents: dict[str, int | tuple[int, int, int]] = {}
+        self.segment_kelvin: list[int | None] = [None] * self.profile.segment_count
+        self._brightness_pct_known = False
         self._init_mode_state()
         self._init_video_state()
         self._init_segment_state()
@@ -774,7 +775,9 @@ class GoveeBLECoordinator(
             if context_changed:
                 self._advance_profile_generation()
                 self._expected_state.clear()
-                self.source_static_intents.clear()
+                self.segment_kelvin = [None] * self.profile.segment_count
+                self.segment_brightness_known = [False] * self.profile.segment_count
+                self._brightness_pct_known = False
             return
         preserve_brightness = (
             self.model == "H607C"
@@ -807,7 +810,9 @@ class GoveeBLECoordinator(
             self.low_blue_light = None
         self._advance_profile_generation()
         self._expected_state.clear()
-        self.source_static_intents.clear()
+        self.segment_kelvin = [None] * self.profile.segment_count
+        self.segment_brightness_known = [False] * self.profile.segment_count
+        self._brightness_pct_known = False
         self._sync_device_configuration_url()
         if preserve_state:
             return
@@ -1233,6 +1238,9 @@ class GoveeBLECoordinator(
         self._last_rx_monotonic = None
         self._reply_gate.reset()
         self._expected_state.clear()
+        self.segment_kelvin = [None] * self.profile.segment_count
+        self.segment_brightness_known = [False] * self.profile.segment_count
+        self._brightness_pct_known = False
         self._segment_query_incomplete = False
         self._bulk_query_incomplete = False
         self._bulk_collector = None
@@ -1300,6 +1308,8 @@ class GoveeBLECoordinator(
             if field == "is_on":
                 self._observed_power_write_generation = self._power_write_generation
                 self._observed_power_profile_generation = self._profile_generation
+            elif field == "brightness_pct":
+                self._brightness_pct_known = True
             elif field.startswith("boolean_"):
                 self._source_power_observation_generation[field] = (
                     self._power_write_generation,
@@ -1393,6 +1403,25 @@ class GoveeBLECoordinator(
             return _StaticWriteIntent()
         self._static_write_attempts += 1
         mask = static.segment_mask if static.segment_mask is not None else self.profile.whole_device_mask
+        if len(self.segment_kelvin) != self.profile.segment_count:
+            self.segment_kelvin = [None] * self.profile.segment_count
+        if len(self.segment_brightness_known) != self.profile.segment_count:
+            self.segment_brightness_known = [False] * self.profile.segment_count
+        if static.brightness_pct is not None and not self.profile.can_read(ReadDomain.SEGMENTS):
+            for index in range(self.profile.segment_count):
+                if mask & (1 << index):
+                    self.segment_brightness_known[index] = False
+        if static.rgb is not None or static.kelvin is not None:
+            for index in range(self.profile.segment_count):
+                if mask & (1 << index):
+                    self.segment_kelvin[index] = (
+                        (static.kelvin if static.kelvin is not None else 0)
+                        if self.profile.can_read(ReadDomain.SEGMENTS)
+                        else None
+                    )
+                    self._arm_expected_values(
+                        {f"segment_colour_{index}": static.kelvin if static.kelvin is not None else static.rgb}
+                    )
         sources: set[str] = set()
         for source in self.profile.light_sources:
             source_mask = sum(1 << (segment - 1) for segment in source.segments)
@@ -1402,12 +1431,6 @@ class GoveeBLECoordinator(
                     self._arm_expected_values(
                         {f"source_kelvin_{source.key}": static.kelvin if static.kelvin is not None else 0}
                     )
-                    if source_mask & mask == source_mask:
-                        value = static.kelvin if static.kelvin is not None else static.rgb
-                        if value is not None:
-                            self.source_static_intents[source.key] = value
-                    else:
-                        self.source_static_intents.pop(source.key, None)
         rgb_intent = None
         if static.kelvin is not None:
             self._static_rgb_known = False
@@ -1587,6 +1610,8 @@ class GoveeBLECoordinator(
             for field in ("is_on", "brightness_pct"):
                 if field in requested:
                     setattr(self, field, requested[field])
+            if "brightness_pct" in requested:
+                self._brightness_pct_known = False
         if state_values is not None:
             for field, value in state_values.items():
                 setattr(self, field, value)
@@ -1673,6 +1698,23 @@ class GoveeBLECoordinator(
             raise ValueError("Device profile changed during control write; refresh and retry")
         if arm_expected and authorization_generation != self._authorization_generation:
             raise ValueError("Device identity changed during control write; refresh and retry")
+        if arm_expected and "brightness_pct" in requested:
+            self._brightness_pct_known = True
+        if (
+            arm_expected
+            and static is not None
+            and (static.rgb is not None or static.kelvin is not None)
+            and not self.profile.can_read(ReadDomain.SEGMENTS)
+        ):
+            mask = static.segment_mask if static.segment_mask is not None else self.profile.whole_device_mask
+            for index in range(len(self.segment_kelvin)):
+                if mask & (1 << index):
+                    self.segment_kelvin[index] = static.kelvin if static.kelvin is not None else 0
+        if arm_expected and static is not None and static.brightness_pct is not None:
+            mask = static.segment_mask if static.segment_mask is not None else self.profile.whole_device_mask
+            for index in range(len(self.segment_brightness_known)):
+                if mask & (1 << index):
+                    self.segment_brightness_known[index] = True
         if arm_expected:
             for field, domain in (("is_on", ReadDomain.POWER), ("brightness_pct", ReadDomain.BRIGHTNESS)):
                 if field in requested and not self.profile.can_read(domain):

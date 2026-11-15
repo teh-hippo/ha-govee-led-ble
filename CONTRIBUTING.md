@@ -90,7 +90,13 @@ Keep real product differences without turning each product into a separate imple
   Require geometry only for operations that address it; preserve siblings only with qualified state and mappings that leave them unchanged.
   Enforce declared source-selection constraints using current-subscription flags before writes.
 - Shared colour-temperature hints are not independent source readback.
-  Qualify them against complete, current source colours without overriding explicit source intent, and use the same qualification for presentation and recovery.
+  Qualify them against complete, current source colours without overriding explicit intent.
+  Keep presentation inference distinct from exact restoration intent.
+  Preserve colour semantics at the granularity of the supported writes, independently of the complete RGB and brightness palette.
+  Mixed sources and mixed segments are not incomplete state, and a main-light colour projection must never replace their recovery snapshot.
+  Reconstruct unknown intent only through an evidenced, declared operation; do not infer native emitter semantics from matching RGB alone.
+  Ordinary recovery may retain fully delivered, explicit write-only colours and levels without labelling them observed or filling gaps with defaults.
+  Preview still requires qualified independent observations.
 - Distinguish admission, preparation, physical attempt, completed delivery and independent confirmation.
   An executed guard is not a physical attempt; optimistic state and expired expectations are not fresh observations.
   Where no independent readback exists, successful delivery is completed, not confirmed or failed; required acknowledgements must still succeed.

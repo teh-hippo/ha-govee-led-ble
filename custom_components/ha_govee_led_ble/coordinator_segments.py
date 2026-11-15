@@ -18,6 +18,7 @@ from .light_commands import (
     build_segment_paint,
     kelvin_rendering_matches,
     parse_static_write,
+    static_colour_matches,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -33,6 +34,7 @@ class _SegmentMixin(_CoordinatorBase):
         self._segment_query_generation: int | None = None
         self.segment_colors: list[tuple[int, int, int]] = [self.rgb_color] * self.profile.segment_count
         self.segment_brightness: list[int] = [100] * self.profile.segment_count
+        self.segment_brightness_known = [False] * self.profile.segment_count
         self.segment_brightness_readable = False
         self.segment_state_source = "initial"
         self.segment_state_observed_at: str | None = None
@@ -43,30 +45,39 @@ class _SegmentMixin(_CoordinatorBase):
 
     def _discard_unconfirmed_source_colours(self, packets: list[bytes]) -> bool:
         mask = 0
-        affected = False
         for packet in packets:
             static = parse_static_write(packet, self.model, profile=self.profile)
             if static is not None and (static.rgb is not None or static.kelvin is not None):
-                mask |= static.segment_mask if static.segment_mask is not None else self.profile.whole_device_mask
+                selected = static.segment_mask if static.segment_mask is not None else self.profile.whole_device_mask
+                mask |= selected
+                for index in range(min(len(self.segment_kelvin), len(self.segment_colors))):
+                    if not selected & (1 << index):
+                        continue
+                    confirmed = self.segment_state_source == "observed" and (
+                        kelvin_rendering_matches(self.segment_colors[index], static.kelvin, self.profile)
+                        if static.kelvin is not None
+                        else self.segment_colors[index] == static.rgb
+                    )
+                    intent = self.segment_kelvin[index]
+                    confirmed |= (
+                        self.segment_state_source == "observed"
+                        and intent is not None
+                        and (not intent or kelvin_rendering_matches(self.segment_colors[index], intent, self.profile))
+                        and any(
+                            index + 1 in source.segments
+                            and getattr(self, f"{source.key}_kelvin", None) == intent
+                            and self.source_field_fresh(f"{source.key}_kelvin")
+                            for source in self.profile.light_sources
+                        )
+                    )
+                    if not confirmed:
+                        self.segment_kelvin[index] = None
+                    self._expected_state.pop(f"segment_colour_{index}", None)
+        affected = False
         for source in self.profile.light_sources:
             if not any(mask & (1 << (index - 1)) for index in source.segments):
                 continue
             affected = True
-            intent = self.source_static_intents.get(source.key)
-            confirmed = (
-                intent is not None
-                and self.segment_state_source == "observed"
-                and all(
-                    kelvin_rendering_matches(self.segment_colors[index - 1], intent, self.profile)
-                    if type(intent) is int
-                    else self.segment_colors[index - 1] == intent
-                    for index in source.segments
-                )
-                and getattr(self, f"{source.key}_kelvin", None) in (None, intent if type(intent) is int else 0)
-            )
-            if confirmed:
-                continue
-            self.source_static_intents.pop(source.key, None)
             self._expected_state.pop(f"source_kelvin_{source.key}", None)
             if self.segment_state_source != "observed" and not self._h607c_uncertain_state_fields.intersection(
                 {"color", "color_mode"}
@@ -163,15 +174,35 @@ class _SegmentMixin(_CoordinatorBase):
         self._segment_groups_observed.add(group)
         if len(self._segment_groups_observed) != self._segment_group_count:
             return ()
+        self._segment_query_colors = None
+        self._segment_query_brightness = None
+        self._segment_groups_observed.clear()
+        if len(self.segment_kelvin) != self.profile.segment_count:
+            self.segment_kelvin = [None] * self.profile.segment_count
+        if self.color_mode is ParsedMode.COLOUR:
+            for index, (previous, rendered) in enumerate(zip(self.segment_colors, colours, strict=True)):
+                intent = self.segment_kelvin[index]
+                expectation = self._expected_state.get(f"segment_colour_{index}")
+                if expectation is not None:
+                    expected, deadline = expectation
+                    if static_colour_matches(rendered, expected, self.profile) or time.monotonic() < deadline:
+                        continue
+                    self._expected_state.pop(f"segment_colour_{index}", None)
+                if (
+                    intent == 0
+                    and (previous != rendered or expectation is not None)
+                    or intent is not None
+                    and intent > 0
+                    and not kelvin_rendering_matches(rendered, intent, self.profile)
+                ):
+                    self.segment_kelvin[index] = None
         if self._static_rgb_known and self.segment_colors != colours:
             self._static_rgb_known = False
         self.segment_colors = colours
         if page_brightness is not None:
             self.segment_brightness = brightness
+            self.segment_brightness_known = [True] * self.profile.segment_count
         self.segment_brightness_readable = page_brightness is not None
-        self._segment_query_colors = None
-        self._segment_query_brightness = None
-        self._segment_groups_observed.clear()
         self.segment_state_source = "observed"
         for source in self.profile.light_sources:
             self._h607c_uncertain_state_fields.discard(f"source_colour_{source.key}")

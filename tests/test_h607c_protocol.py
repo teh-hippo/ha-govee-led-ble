@@ -476,9 +476,11 @@ async def test_native_preview_rejects_incomplete_recovery_state_before_writes(pr
     coordinator = SimpleNamespace(
         profile=get_profile("H607C"),
         capture_effect_control_state=lambda: state,
+        source_field_fresh=lambda _field: False,
+        refresh_state=AsyncMock(return_value=False),
         _async_write_packet=AsyncMock(),
     )
-    with pytest.raises(RuntimeError, match="restor"):
+    with pytest.raises(RuntimeError, match="restor|current source state|complete source layout"):
         await async_prepare_effect_control_state(coordinator, require_restorable_static=True)
     coordinator._async_write_packet.assert_not_awaited()
 
