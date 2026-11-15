@@ -1062,10 +1062,7 @@ def test_static_colour_and_kelvin_status_readback(hass, model: str, profile: Mod
 
         if profile.status_grammar == "H6181":
             return
-        for out_of_range, clamped in (
-            (min_kelvin - 1, min_kelvin),
-            (profile.max_color_temp_kelvin + 1, profile.max_color_temp_kelvin),
-        ):
+        for out_of_range in (min_kelvin - 1, profile.max_color_temp_kelvin + 1):
             bad_bytes = out_of_range.to_bytes(2, "big")
             bad_body = (
                 bytes([static_byte, 255, 255, 255]) + bad_bytes
@@ -1077,7 +1074,7 @@ def test_static_colour_and_kelvin_status_readback(hass, model: str, profile: Mod
             bad_reply = _status(0x05, bad_body)
             coordinator._notify_callback(None, bytearray(bad_reply))
             if KELVIN_RANGE_1000_10000[0] <= out_of_range <= KELVIN_RANGE_1000_10000[1]:
-                assert coordinator.color_temp_kelvin == clamped
+                assert coordinator.color_temp_kelvin == out_of_range
             else:  # no device range contains it, so it is not a Kelvin reading
                 assert coordinator.packet_log[-1]["reason"] == "semantic_rejected"
 

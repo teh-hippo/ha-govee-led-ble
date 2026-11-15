@@ -239,7 +239,7 @@ class ModelProfile:
     supports_installation_direction: bool = False
     supports_color_temperature: bool = False
     supports_low_blue_light: bool = False
-    color_temp_range: tuple[int, int] = KELVIN_RANGE_2000_9000
+    color_temp_range: tuple[int, int] | None = None
     # Whole-lamp Kelvin is confirmed from a settled read that must also report colour mode, not just matching colours.
     kelvin_verification_reads_colour_mode: bool = False
     supports_custom_effects: bool = False
@@ -351,6 +351,16 @@ class ModelProfile:
         return operations if self.command_operations is None else operations & self.command_operations
 
     def __post_init__(self) -> None:
+        if self.color_temp_range is not None:
+            if (
+                not isinstance(self.color_temp_range, tuple)
+                or len(self.color_temp_range) != 2
+                or any(type(value) is not int for value in self.color_temp_range)
+            ):
+                raise ValueError("Kelvin range must contain two integer bounds")
+            low, high = self.color_temp_range
+            if not 1000 <= low < high <= 10000 or low % KELVIN_STEP or high % KELVIN_STEP:
+                raise ValueError("Kelvin range must lie on the supported companion-colour grid")
         if self.requires_pact_confirmation and not (self.requires_qualified_identity and self.profile_pact_dependent):
             raise ValueError("Pact confirmation requires identity-qualified, Pact-dependent controls")
         if (
@@ -370,6 +380,15 @@ class ModelProfile:
             )
         ):
             raise ValueError("light sources require unique keys and controls and positive segment indices")
+        if self.color_temp_range is None and (
+            self.supports_color_temperature
+            or self.supports_segment_color_temperature
+            or any(
+                source.control in self.boolean_controls and "color_temp" in (source.color_modes or ())
+                for source in self.light_sources
+            )
+        ):
+            raise ValueError("colour temperature support requires an explicit Kelvin range")
         if self.partition_segment_writes:
             segments = [segment for source in self.light_sources for segment in source.segments]
             if len(segments) != self.segment_count or set(segments) != set(range(1, self.segment_count + 1)):
@@ -562,10 +581,14 @@ class ModelProfile:
 
     @property
     def min_color_temp_kelvin(self) -> int:
+        if self.color_temp_range is None:
+            raise ValueError("device has no declared Kelvin range")
         return self.color_temp_range[0]
 
     @property
     def max_color_temp_kelvin(self) -> int:
+        if self.color_temp_range is None:
+            raise ValueError("device has no declared Kelvin range")
         return self.color_temp_range[1]
 
     @property
@@ -608,6 +631,7 @@ _H6199_MUSIC_MODES = ("energetic", "rhythm", "spectrum", "rolling")
 
 _H617A_PROFILE = ModelProfile(
     "H617A LED Strip",
+    color_temp_range=KELVIN_RANGE_2000_9000,
     support_quality=SupportQuality.SUPPORTED,
     confirmation_issue=443,
     command_grammar="H617A",
@@ -947,6 +971,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     ),
     "H6046": ModelProfile(
         "H6046 TV Light Bars",
+        color_temp_range=KELVIN_RANGE_2000_9000,
         support_quality=SupportQuality.SUPPORTED,
         confirmation_issue=481,
         command_grammar="H6046",
@@ -1210,6 +1235,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     ),
     "H6097": ModelProfile(
         "H6097 TV Backlight 3 Lite (40-50 inch)",
+        color_temp_range=KELVIN_RANGE_2000_9000,
         support_quality=SupportQuality.SUPPORTED,
         confirmation_issue=445,
         command_grammar="H6099",
@@ -1320,6 +1346,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     ),
     "H605C": ModelProfile(
         "H605C Envisual TV Backlight T2",
+        color_temp_range=KELVIN_RANGE_2000_9000,
         confirmation_issue=571,
         command_grammar="H6099",
         status_grammar="H605C",
@@ -1459,6 +1486,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     ),
     "H6099": ModelProfile(
         "H6099 TV Backlight 3 Lite",
+        color_temp_range=KELVIN_RANGE_2000_9000,
         support_quality=SupportQuality.SUPPORTED,
         confirmation_issue=446,
         command_grammar="H6099",
@@ -1806,6 +1834,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     "H617E": replace(
         _H617A_PROFILE,
         name="H617E LED Strip",
+        color_temp_range=KELVIN_RANGE_2000_9000,
         confirmation_issue=None,
         music_variants=H617E_MUSIC_VARIANTS,
         music_upload_before_selector=False,
@@ -1831,6 +1860,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     ),
     "H617C": ModelProfile(
         "H617C LED Strip",
+        color_temp_range=KELVIN_RANGE_2000_9000,
         support_quality=SupportQuality.SUPPORTED,
         command_grammar="H617A",
         status_grammar="H617C",
@@ -1895,6 +1925,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     "H617F": replace(
         _H617A_PROFILE,
         name="H617F LED Strip",
+        color_temp_range=KELVIN_RANGE_2000_9000,
         confirmation_issue=None,
         support_quality=SupportQuality.SUPPORTED,
         command_grammar="H617A",
@@ -1982,6 +2013,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     ),
     "H6102": ModelProfile(
         "H6102 LED Strip",
+        color_temp_range=KELVIN_RANGE_2000_9000,
         support_quality=SupportQuality.SUPPORTED,
         brightness_zero_turns_off=True,
         command_grammar="H617A",
@@ -2040,6 +2072,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     ),
     "H6117": ModelProfile(
         "H6117 LED Strip",
+        color_temp_range=KELVIN_RANGE_2000_9000,
         support_quality=SupportQuality.EXPERIMENTAL,
         confirmation_issue=537,
         command_grammar="H617A",
@@ -2095,6 +2128,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     ),
     "H6125": ModelProfile(
         "H6125 LED Strip",
+        color_temp_range=KELVIN_RANGE_2000_9000,
         support_quality=SupportQuality.SUPPORTED,
         confirmation_issue=447,
         command_grammar="H617A",
@@ -2209,6 +2243,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     ),
     "H6181": ModelProfile(
         "H6181 RGB TV Backlight",
+        color_temp_range=KELVIN_RANGE_2000_9000,
         confirmation_issue=580,
         allows_legacy_plaintext_marker=True,
         reconciles_marker_pact=True,
@@ -2258,6 +2293,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     ),
     "H6179": ModelProfile(
         "H6179 RGB TV Backlight",
+        color_temp_range=KELVIN_RANGE_2000_9000,
         support_quality=SupportQuality.EXPERIMENTAL,
         confirmation_issue=448,
         command_grammar="H6179",
@@ -2299,6 +2335,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     ),
     "H619A": ModelProfile(
         "H619A RGBIC Pro Strip",
+        color_temp_range=KELVIN_RANGE_2000_9000,
         confirmation_issue=567,
         command_grammar="H617A",
         command_ack_grammar="H617A",
@@ -2359,6 +2396,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     ),
     "H6199": ModelProfile(
         "H6199 DreamView T1",
+        color_temp_range=KELVIN_RANGE_2000_9000,
         support_quality=SupportQuality.SUPPORTED,
         command_grammar="H6199",
         status_grammar="H6199",

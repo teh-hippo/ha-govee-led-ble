@@ -41,7 +41,7 @@ def connected(hass, monkeypatch):
     return create
 
 
-@pytest.mark.parametrize(("kelvin", "expected"), [(0, None), (4000, 4000), (6500, 6500), (3123, 3100), (4100, 4100)])
+@pytest.mark.parametrize(("kelvin", "expected"), [(0, None), (4000, 4000), (6500, 6500), (3123, 3123), (4100, 4100)])
 def test_static_reply_is_accepted_and_temperature_is_parsed(kelvin, expected):
     packet = frame(f"aa051500{kelvin:04x}")
     assert len(packet) == 20 and xor_checksum(packet[:-1]) == packet[-1]

@@ -381,7 +381,7 @@ def test_limit_and_pact1_static_conditions_are_independent():
     new = device_profile("H6102", 10, 1, hardware="1.00.02")
     assert old.boolean_controls == {"gradual"} and new.boolean_controls == {"gradual", "limit"}
     extended = device_profile("H6102", 1, 1, hardware="1.00.03", firmware="1.06.00")
-    assert extended.supports_rgb and not extended.supports_color_temperature and not extended.supports_segments
+    assert extended.supports_rgb and extended.supports_color_temperature and not extended.supports_segments
     assert extended.supports_scenes and extended.supports_custom_effects and extended.supports_advanced_effects
     assert len(extended.music_modes) == 4 and extended.a1_diy_selector == 0xFE
     assert extended.packet_write_delay == 0.1 and not extended.diy_requires_upload_ack
@@ -392,7 +392,8 @@ def test_limit_and_pact1_static_conditions_are_independent():
     assert intermediate.selector_only_scene_bits == 16 and intermediate.scene_codes is not None
     assert not intermediate.supports_advanced_effects
     from custom_components.ha_govee_led_ble.generated_protocol_adapter import require_profile_packet
-    from custom_components.ha_govee_led_ble.light_commands import build_color_rgb
+    from custom_components.ha_govee_led_ble.light_commands import build_color_rgb, build_color_temp
 
     require_profile_packet(build_color_rgb(1, 2, 3, "H6102", profile=extended), extended)
+    require_profile_packet(build_color_temp(3123, "H6102", profile=extended), extended)
     require_profile_packet(build_scene_activation("H6102", 402), extended)

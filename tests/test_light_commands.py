@@ -303,3 +303,9 @@ def test_static_write_semantics_round_trip(model: str) -> None:
 )
 def test_normalize_kelvin_rounds_ties_up_and_clamps_to_the_profile(model: str, kelvin: int, expected: int) -> None:
     assert normalize_kelvin(kelvin, MODEL_PROFILES[model]) == expected
+
+
+def test_normalize_kelvin_does_not_substitute_a_range_for_an_undeclared_profile() -> None:
+    profile = replace(MODEL_PROFILES["H617A"], supports_color_temperature=False, color_temp_range=None)
+    with pytest.raises(ValueError, match="no declared Kelvin range"):
+        normalize_kelvin(3000, profile)

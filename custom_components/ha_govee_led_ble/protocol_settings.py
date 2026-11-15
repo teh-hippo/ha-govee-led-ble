@@ -638,7 +638,7 @@ def parse_boolean_control(generated: Any, model: str, *, profile: ModelProfile |
     if profile.setting_grammar == "H60B0" and domain == "source_info":
         from .h60b0_controls import source_readback
 
-        source_readback(generated.body.operation, profile)
+        source_readback(generated.body.operation)
         return {name: bool(getattr(generated.body, name)) for name in profile.boolean_controls}
     if profile.setting_grammar == "H607C" and domain in {"zone_enable", "hw_version"}:
         flags = (

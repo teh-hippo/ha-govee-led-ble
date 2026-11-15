@@ -679,7 +679,10 @@ def test_unqualified_sources_masks_and_levels_are_rejected(prefix):
         require_profile_packet(frame(prefix), PROFILE)
 
 
-async def test_source_readback_is_independent_and_invalid_state_cannot_update_flags(hass, monkeypatch):
+@pytest.mark.parametrize(("top_kelvin", "bottom_kelvin"), [(3000, 4000), (3123, 1999)])
+async def test_source_readback_is_independent_and_invalid_state_cannot_update_flags(
+    hass, monkeypatch, top_kelvin, bottom_kelvin
+):
     from custom_components.ha_govee_led_ble import coordinator_notifications, h60b0_controls
 
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H60B0", configuration_url=None)
@@ -687,16 +690,17 @@ async def test_source_readback_is_independent_and_invalid_state_cannot_update_fl
     decode = MagicMock(wraps=h60b0_controls.source_readback)
     monkeypatch.setattr(h60b0_controls, "source_readback", decode)
     monkeypatch.setattr(coordinator_notifications, "source_readback", decode)
-    coordinator._notify_callback(None, bytearray(frame("aa42d00bb81e0fa028")))
+    coordinator._notify_callback(None, bytearray(frame(f"aa42d0{top_kelvin:04x}1e{bottom_kelvin:04x}28")))
     decode.assert_called_once()
     assert coordinator.boolean_control_state == {"top_enabled": True, "side_enabled": False, "bottom_enabled": True}
-    assert (coordinator.bottom_kelvin, coordinator.bottom_brightness, coordinator.ripple_speed) == (4000, 40, 30)
+    assert (coordinator.top_kelvin, coordinator.bottom_kelvin) == (top_kelvin, bottom_kelvin)
+    assert (coordinator.bottom_brightness, coordinator.ripple_speed) == (40, 30)
     coordinator._notify_callback(None, bytearray(frame("aa42200bb81e0fa065")))
     assert coordinator.boolean_control_state["top_enabled"] is True
     assert coordinator.bottom_brightness == 40
     bottom = GoveeBLESourceLight(coordinator, "bottom")
     assert bottom.supported_color_modes == {ColorMode.COLOR_TEMP}
-    assert bottom.color_temp_kelvin == 4000 and bottom.brightness == 102
+    assert bottom.color_temp_kelvin == bottom_kelvin and bottom.brightness == 102
     assert bottom.rgb_color is None
 
 

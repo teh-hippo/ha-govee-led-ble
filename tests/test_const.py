@@ -299,6 +299,35 @@ def test_register_range_requires_the_transform_that_encodes_it():
         ModelProfile("x", brightness_wire_range=(0, 254), outbound_transform=lambda packet: packet)
 
 
+@pytest.mark.parametrize(
+    "bounds", [None, (9000, 2000), (2000, 2000), (999, 6500), (2000, 10001), (2050, 6500), (True, 6500)]
+)
+def test_colour_temperature_requires_explicit_valid_kelvin_bounds(bounds):
+    with pytest.raises(ValueError, match="Kelvin range"):
+        ModelProfile("Synthetic temperature light", supports_color_temperature=True, color_temp_range=bounds)
+
+
+@pytest.mark.parametrize(
+    ("segment_temperature", "sources"),
+    [
+        (True, ()),
+        (False, (const.LightSource("pole", "pole_enabled", (), color_modes=frozenset({"color_temp"})),)),
+    ],
+)
+def test_non_main_temperature_controls_also_require_explicit_kelvin_bounds(segment_temperature, sources):
+    capabilities = {
+        "supports_segment_color_temperature": segment_temperature,
+        "light_sources": sources,
+        "boolean_controls": frozenset({"pole_enabled"}) if sources else frozenset(),
+        "command_grammar": "H607C",
+        "status_grammar": "H607C",
+    }
+    with pytest.raises(ValueError, match="explicit Kelvin range"):
+        ModelProfile("Synthetic source temperature light", **capabilities)
+    profile = ModelProfile("Synthetic source temperature light", color_temp_range=(2200, 6500), **capabilities)
+    assert not profile.supports_color_temperature
+
+
 def test_h7020_candidate_is_qualified_by_pact_not_guessed_firmware():
     profile = MODEL_PROFILES["H7020"]
     assert profile.support_quality is SupportQuality.SUPPORTED
@@ -618,7 +647,11 @@ def test_every_colour_temperature_range_lies_on_the_kelvin_table_grid() -> None:
             [None, "1.00.00", "1.04.03", "3.01.00"],
             [None, "1.00.00", "1.02.00", "2.03.00"],
         ):
-            low, high = device_profile(model, *pact, firmware=firmware, hardware=hardware).color_temp_range
+            profile = device_profile(model, *pact, firmware=firmware, hardware=hardware)
+            if profile.color_temp_range is None:
+                assert not profile.supports_color_temperature, model
+                continue
+            low, high = profile.color_temp_range
             assert 1000 <= low <= high <= 10000 and low % const.KELVIN_STEP == high % const.KELVIN_STEP == 0, model
 
 

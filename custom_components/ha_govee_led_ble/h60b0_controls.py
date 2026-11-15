@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from .const import ModelProfile
+from .const import KELVIN_RANGE_1000_10000, ModelProfile
 from .protocol_core import H60b0CommandWrite as Command
 from .protocol_core import _serialize_xor, new_child, new_rgb
 
@@ -161,7 +161,7 @@ def source_values(root: Any) -> dict[str, int]:
     return {}
 
 
-def source_readback(operation: Any, profile: ModelProfile) -> dict[str, int]:
+def source_readback(operation: Any) -> dict[str, int]:
     values = {
         "top_kelvin": int(operation.top_kelvin),
         "bottom_kelvin": int(operation.bottom_kelvin),
@@ -171,10 +171,10 @@ def source_readback(operation: Any, profile: ModelProfile) -> dict[str, int]:
     if (
         not 0 <= values["bottom_brightness"] <= 100
         or not 0 <= values["ripple_speed"] <= 100
-        or values["bottom_kelvin"]
-        and not profile.min_color_temp_kelvin <= values["bottom_kelvin"] <= profile.max_color_temp_kelvin
-        or values["top_kelvin"]
-        and not profile.min_color_temp_kelvin <= values["top_kelvin"] <= profile.max_color_temp_kelvin
+        or any(
+            kelvin and not KELVIN_RANGE_1000_10000[0] <= kelvin <= KELVIN_RANGE_1000_10000[1]
+            for kelvin in (values["bottom_kelvin"], values["top_kelvin"])
+        )
     ):
         raise ValueError("Invalid native source state")
     return values

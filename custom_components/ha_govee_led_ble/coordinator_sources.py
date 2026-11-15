@@ -174,7 +174,10 @@ def main_source_colour(coordinator: GoveeBLECoordinator) -> int | tuple[int, int
         rendered = [coordinator.segment_colors[segment - 1] for segment in source.segments]
         intent = coordinator.source_static_intents.get(key)
         if type(intent) is int:
-            if not all(kelvin_rendering_matches(rgb, intent, profile) for rgb in rendered):
+            observed = getattr(coordinator, f"{key}_kelvin", None) == intent and coordinator.source_field_fresh(
+                f"{key}_kelvin"
+            )
+            if not observed and not all(kelvin_rendering_matches(rgb, intent, profile) for rgb in rendered):
                 return None
             colours.append(intent)
         elif coordinator.segment_state_source != "initial" and len(set(rendered)) == 1:
@@ -208,27 +211,24 @@ def source_segments_available(source: LightSource, profile: ModelProfile) -> boo
 
 
 def source_color_modes(source: LightSource | None, profile: ModelProfile) -> frozenset[str]:
-    if source is not None and source.color_modes is not None:
+    if source is None or source.control not in profile.boolean_controls:
+        return frozenset({"onoff"})
+    if source.color_modes is not None:
         return source.color_modes
     modes: set[str] = set()
-    if (
-        source is not None
-        and source.master_brightness
+    segments_available = source_segments_available(source, profile)
+    if segments_available:
+        if profile.supports_rgb:
+            modes.add("rgb")
+        if profile.supports_segment_color_temperature:
+            modes.add("color_temp")
+    brightness = (
+        source.master_brightness
         and (profile.command_operations is None or "brightness" in profile.command_operations)
-    ):
-        if source_segments_available(source, profile):
-            if profile.supports_rgb:
-                modes.add("rgb")
-            if profile.supports_color_temperature and profile.supports_segment_color_temperature:
-                modes.add("color_temp")
-        return frozenset(modes or {"brightness"})
-    if source is None or not source_segments_available(source, profile) or not profile.supports_segment_brightness:
-        return frozenset({"onoff"})
-    if profile.supports_rgb:
-        modes.add("rgb")
-    if profile.supports_color_temperature and profile.supports_segment_color_temperature:
-        modes.add("color_temp")
-    return frozenset(modes or {"brightness"})
+        or segments_available
+        and profile.supports_segment_brightness
+    )
+    return frozenset(modes or {"brightness" if brightness else "onoff"})
 
 
 def source_power_state(coordinator: GoveeBLECoordinator, key: str) -> bool | None:

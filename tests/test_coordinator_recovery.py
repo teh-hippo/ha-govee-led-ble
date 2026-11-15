@@ -23,7 +23,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_scene_activation,
     table_kelvin_rgb,
 )
-from custom_components.ha_govee_led_ble.light_commands import build_color_rgb
+from custom_components.ha_govee_led_ble.light_commands import build_color_rgb, normalize_kelvin, parse_static_write
 from custom_components.ha_govee_led_ble.light_source import GoveeBLESourceLight
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES, scene_selector_code
 from custom_components.ha_govee_led_ble.transport import WRITE_UUID
@@ -243,10 +243,11 @@ async def test_h6072_optional_nonzero_kelvin_revokes_rgb_only_preview_recovery(h
     assert coord.color_temp_kelvin == 3200 and not coord._static_rgb_known
 
 
-def test_h6046_recovery_persists_both_white_points_and_native_power_flags():
+@pytest.mark.parametrize(("left", "right"), [(2700, 6500), (1999, 3123)])
+def test_h6046_recovery_persists_both_white_points_and_native_power_flags(left, right):
 
     profile = device_profile("H6046", 1, 1)
-    colours = (table_kelvin_rgb(2700),) * 5 + (table_kelvin_rgb(6500),) * 5
+    colours = (table_kelvin_rgb(normalize_kelvin(left)),) * 5 + (table_kelvin_rgb(normalize_kelvin(right)),) * 5
     state = PriorControlState(
         mode="colour",
         is_on=False,
@@ -254,8 +255,8 @@ def test_h6046_recovery_persists_both_white_points_and_native_power_flags():
         rgb_color=(1, 2, 3),
         left_bar_enabled=False,
         right_bar_enabled=True,
-        left_bar_kelvin=2700,
-        right_bar_kelvin=6500,
+        left_bar_kelvin=left,
+        right_bar_kelvin=right,
         segment_colors=colours,
         segment_brightness=(50,) * 10,
     )
@@ -269,6 +270,137 @@ def test_h6046_recovery_persists_both_white_points_and_native_power_flags():
     prior = PriorControlState.from_dict(legacy)
     assert prior.left_bar_enabled is None and prior.right_bar_kelvin is None
     assert not prior.restorable_bar_white(profile)
+
+
+async def test_segmented_kelvin_recovery_normalises_writes_and_expectations_without_rewriting_capture(
+    hass, monkeypatch
+):
+    coord = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6046", configuration_url=_CONFIGURATION_URL)
+    coord.profile = device_profile("H6046", 1, 1)
+    colours = (table_kelvin_rgb(2000),) * 5 + (table_kelvin_rgb(3100),) * 5
+    state = PriorControlState(
+        "colour",
+        True,
+        20,
+        (1, 2, 3),
+        left_bar_kelvin=1999,
+        right_bar_kelvin=3123,
+        segment_colors=colours,
+        segment_brightness=(50,) * 10,
+    )
+    send = AsyncMock()
+    monkeypatch.setattr(coord, "send_command", send)
+
+    async def refresh(_request):
+        coord.is_on = True
+        coord.brightness_pct = 20
+        coord.color_mode = ParsedMode.COLOUR
+        coord._field_revisions["color_mode"] = coord._field_revisions.get("color_mode", 0) + 1
+        coord.left_bar_kelvin, coord.right_bar_kelvin = 2000, 3100
+        return True
+
+    async def segments():
+        coord.segment_colors = list(colours)
+        coord.segment_brightness = [50] * 10
+        return True
+
+    monkeypatch.setattr(coord, "refresh_state", refresh)
+    monkeypatch.setattr(coord, "async_refresh_segments", segments)
+    assert await coord._restore_segmented_colour(state, True)
+    writes = [
+        parsed
+        for item in send.await_args_list
+        if (parsed := parse_static_write(item.args[0], "H6046", profile=coord.profile)) is not None
+        and parsed.kelvin is not None
+    ]
+    assert [(write.segment_mask, write.kelvin) for write in writes] == [(0x001F, 2000), (0x03E0, 3100)]
+    assert (state.left_bar_kelvin, state.right_bar_kelvin) == (1999, 3123)
+
+
+async def test_native_source_recovery_normalises_its_write_target_not_the_capture(hass, monkeypatch):
+    coord = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H60B0", configuration_url=_CONFIGURATION_URL)
+    coord.profile = device_profile("H60B0", 1, 1)
+    flags = {"top_enabled": True, "side_enabled": False, "bottom_enabled": False}
+    coord.boolean_control_state.update(flags)
+    coord.top_kelvin, coord.bottom_kelvin = 3100, 4000
+    coord.bottom_brightness, coord.ripple_speed = 50, 30
+    client = _c()
+    coord._client = client
+    monkeypatch.setattr(coord, "_ensure_connected", AsyncMock(return_value=client))
+    monkeypatch.setattr(coord, "_async_restore_effect_appearance", AsyncMock(return_value=True))
+    monkeypatch.setattr(coord, "_async_read_setting_fields", AsyncMock(return_value=True))
+
+    async def set_value(source, attribute, value):
+        setattr(coord, f"{source}_{attribute}", value)
+
+    setter = AsyncMock(side_effect=set_value)
+    monkeypatch.setattr(coord, "async_set_source_value", setter)
+    state = PriorControlState(
+        "colour",
+        True,
+        20,
+        (1, 2, 3),
+        top_kelvin=3123,
+        bottom_kelvin=1999,
+        bottom_brightness=50,
+        ripple_speed=30,
+        **flags,
+    )
+    assert await coord.async_restore_effect_control_state(state, overwritten_diy_code=None)
+    setter.assert_awaited_once_with("bottom", "kelvin", 2700)
+    assert (state.top_kelvin, state.bottom_kelvin) == (3123, 1999)
+
+
+async def test_source_colour_recovery_normalises_intents_without_mutating_the_capture(hass, monkeypatch):
+    coord = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H60B0", configuration_url=_CONFIGURATION_URL)
+    coord.profile = device_profile("H60B0", 1, 1)
+    coord._client = _c()
+    coord._notify_started_monotonic = time.monotonic() - 1
+    intents = {"top": 3123, "side": (1, 2, 3)}
+    colours = [(1, 2, 3)] * coord.profile.segment_count
+    top = next(source for source in coord.profile.light_sources if source.key == "top")
+    for index in top.segments:
+        colours[index - 1] = table_kelvin_rgb(3100)
+    levels = (50,) * coord.profile.segment_count if coord.profile.supports_segment_brightness else None
+    state = PriorControlState(
+        "colour",
+        True,
+        20,
+        (1, 2, 3),
+        top_kelvin=3123,
+        source_static_intents=intents,
+        segment_colors=tuple(colours),
+        segment_brightness=levels,
+    )
+    send = AsyncMock()
+    monkeypatch.setattr(coord, "send_command", send)
+
+    async def refresh(_request):
+        coord.is_on, coord.brightness_pct = True, 20
+        coord._notify_callback(None, bytearray(_packet(0xAA, 0x05, [0x2C, 0x0C, 0x1C, 30, 0x0A, 0x8C, 50])))
+        return True
+
+    async def segments():
+        coord.segment_colors = list(colours)
+        coord.segment_brightness = list(levels) if levels is not None else [100] * coord.profile.segment_count
+        coord.segment_state_source = "observed"
+        coord.source_static_intents = {"top": 3100, "side": (1, 2, 3)}
+        coord._field_received_at["segment_colors"] = time.monotonic()
+        return True
+
+    monkeypatch.setattr(coord, "refresh_state", refresh)
+    monkeypatch.setattr(coord, "async_refresh_segments", segments)
+    assert await coord._restore_segmented_colour(state, True)
+    writes = [
+        parsed
+        for item in send.await_args_list
+        if (parsed := parse_static_write(item.args[0], "H60B0", profile=coord.profile)) is not None
+        and parsed.kelvin is not None
+    ]
+    assert [(write.segment_mask, write.kelvin) for write in writes] == [
+        (sum(1 << (index - 1) for index in top.segments), 3100)
+    ]
+    assert state.top_kelvin == 3123 and state.source_static_intents == intents
 
 
 async def test_h6046_swap_is_not_replayed_after_ambiguous_write(hass, monkeypatch):

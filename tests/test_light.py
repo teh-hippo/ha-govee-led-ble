@@ -2921,12 +2921,13 @@ def test_restored_kelvin_is_quantised_to_the_table_grid(stored: int, expected: i
     assert restored is not None and restored.color_temp_kelvin == expected
 
 
-def test_restored_kelvin_is_presented_inside_the_current_device_range(light, mock_coordinator):
+@pytest.mark.parametrize(("source", "expected"), [("restored", 2000), ("observed", 1500)])
+def test_kelvin_presentation_preserves_observations_but_bounds_restoration(light, mock_coordinator, source, expected):
     mock_coordinator.color_temp_kelvin = 1500
     light._attr_color_mode = ColorMode.COLOR_TEMP
     mock_coordinator.color_mode = None
-    mock_coordinator.color_temp_kelvin_source = "restored"
-    assert light.color_temp_kelvin == mock_coordinator.profile.min_color_temp_kelvin
+    mock_coordinator.color_temp_kelvin_source = source
+    assert light.color_temp_kelvin == expected
 
 
 async def test_queued_light_requests_merge_into_the_newest_state(light):

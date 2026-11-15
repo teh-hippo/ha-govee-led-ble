@@ -45,7 +45,7 @@ RIGHT = LightSource("right_bar", "right_bar_enabled", (6, 7, 8, 9, 10))
         ("H60B2", (None, None), True, {ColorMode.RGB, ColorMode.COLOR_TEMP}),
         ("H60A6", (1, 2), True, {ColorMode.RGB, ColorMode.COLOR_TEMP}),
         ("H60A6", (1, 1), True, {ColorMode.BRIGHTNESS}),
-        ("H60A6", (None, None), False, {ColorMode.BRIGHTNESS}),
+        ("H60A6", (None, None), False, {ColorMode.ONOFF}),
     ],
 )
 def test_real_source_controls_follow_effective_revision(source_coordinator, model, pact, available, modes):
@@ -304,12 +304,15 @@ async def test_h60a6_panel_brightness_does_not_invent_ring_brightness(source_coo
     ring = GoveeBLESourceLight(coordinator, "ring")
     assert panel.supported_color_modes == {ColorMode.RGB, ColorMode.COLOR_TEMP}
     assert panel.brightness == 191 and panel.assumed_state
-    assert ring.supported_color_modes == {ColorMode.ONOFF}
+    assert ring.supported_color_modes == {ColorMode.RGB, ColorMode.COLOR_TEMP}
+    assert ring.brightness is None
     await panel.async_turn_on(brightness=128)
     packet = coordinator.send_command.await_args.args[0]
     assert packet[:3] == bytes.fromhex("330432")
     coordinator.async_set_segment_brightness.assert_not_awaited()
     coordinator.async_set_boolean_control.assert_not_awaited()
+    with pytest.raises(HomeAssistantError):
+        await ring.async_turn_on(brightness=128)
 
 
 async def test_h60a6_failed_panel_brightness_is_unknown_until_a_new_write(hass):
@@ -350,16 +353,17 @@ async def test_h60a6_panel_colour_uses_only_the_panel_segment(source_coordinator
     coordinator.async_set_boolean_control.assert_not_awaited()
 
 
-async def test_h60a6_panel_kelvin_keeps_the_ring_out_of_the_write_mask(source_coordinator):
+@pytest.mark.parametrize(("key", "mask"), [("panel", 0x1000), ("ring", 0x0FFF)])
+async def test_h60a6_source_kelvin_keeps_the_sibling_out_of_the_write_mask(source_coordinator, key, mask):
     coordinator = source_coordinator
     coordinator.model = "H60A6"
     coordinator.profile = device_profile("H60A6", 1, 2)
     coordinator.boolean_control_state = {"panel_enabled": True, "ring_enabled": True}
-    panel = GoveeBLESourceLight(coordinator, "panel")
-    await panel.async_turn_on(color_temp_kelvin=4000)
+    source = GoveeBLESourceLight(coordinator, key)
+    await source.async_turn_on(color_temp_kelvin=4000)
     packet = coordinator.async_set_segment_kelvin.await_args.args[0]
     parsed = parse_static_write(packet, "H60A6", profile=coordinator.profile)
-    assert parsed is not None and parsed.segment_mask == 0x1000 and parsed.kelvin == 4000
+    assert parsed is not None and parsed.segment_mask == mask and parsed.kelvin == 4000
     coordinator.async_set_boolean_control.assert_not_awaited()
 
 
@@ -592,7 +596,8 @@ async def test_failed_masked_colour_write_preserves_untouched_source_intent(hass
 
 
 @pytest.mark.parametrize("profile_changed", [False, True])
-async def test_expired_mode_guard_does_not_hide_confirmed_sibling_kelvin(hass, profile_changed):
+@pytest.mark.parametrize("kelvin", [4000, 3123])
+async def test_expired_mode_guard_does_not_hide_confirmed_sibling_kelvin(hass, profile_changed, kelvin):
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6046", configuration_url=None)
     coordinator.pact_type, coordinator.pact_code = 1, 1
     coordinator._resolve_device_profile()
@@ -601,7 +606,7 @@ async def test_expired_mode_guard_does_not_hide_confirmed_sibling_kelvin(hass, p
     coordinator.segment_state_source = "observed"
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(side_effect=TimeoutError))
     coordinator._client = client
-    payload = bytes.fromhex("aa0515000fa00fa0").ljust(19, b"\x00")
+    payload = bytes.fromhex(f"aa051500{kelvin:04x}{kelvin:04x}").ljust(19, b"\x00")
     coordinator._notify_callback(None, bytearray(payload + bytes((xor_checksum(payload),))))
     coordinator._expected_state["color_mode"] = ((ParsedMode.COLOUR, None), 0.0)
     if profile_changed:
@@ -613,7 +618,7 @@ async def test_expired_mode_guard_does_not_hide_confirmed_sibling_kelvin(hass, p
         assert coordinator.color_mode is None
     else:
         assert coordinator.color_mode is ParsedMode.COLOUR
-        assert GoveeBLESourceLight(coordinator, "right_bar").color_temp_kelvin == 4000
+        assert GoveeBLESourceLight(coordinator, "right_bar").color_temp_kelvin == kelvin
 
 
 async def test_expired_mode_guard_does_not_confirm_optimistic_static_mode(hass):
@@ -721,7 +726,8 @@ async def test_source_rejects_unsupported_controls_before_writing(source_coordin
     coordinator = source_coordinator
     coordinator.profile = replace(coordinator.profile, supports_segment_brightness=False)
     source = GoveeBLESourceLight(coordinator, "left_bar")
-    assert source.supported_color_modes == {ColorMode.ONOFF}
+    assert source.supported_color_modes == {ColorMode.RGB, ColorMode.COLOR_TEMP}
+    assert source.brightness is None
     with pytest.raises(HomeAssistantError):
         await source.async_turn_on(brightness=128)
     coordinator.send_command.assert_not_awaited()

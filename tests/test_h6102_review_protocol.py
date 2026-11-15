@@ -55,7 +55,7 @@ def test_status_semantics_use_effective_grammar_roster_and_bounds() -> None:
     assert static is not None
     assert parse_color_mode(static.generated, "H9908", profile=profile).color_temp_kelvin == 4000
     narrow = replace(profile, color_temp_range=(3000, 3500))
-    assert parse_color_mode(static.generated, "H9908", profile=narrow).color_temp_kelvin == 3500
+    assert parse_color_mode(static.generated, "H9908", profile=narrow).color_temp_kelvin == 4000
 
 
 async def test_real_coordinator_uses_effective_status_not_static_sku(hass, monkeypatch) -> None:

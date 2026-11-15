@@ -460,14 +460,13 @@ class PriorControlState:
             return False
         return all(
             kelvin is not None
-            and profile.min_color_temp_kelvin <= kelvin <= profile.max_color_temp_kelvin
-            and self.segment_colors[start : start + half]
-            == (table_kelvin_rgb(normalize_kelvin(kelvin, profile)),) * half
+            and KELVIN_RANGE_1000_10000[0] <= kelvin <= KELVIN_RANGE_1000_10000[1]
+            and self.segment_colors[start : start + half] == (table_kelvin_rgb(normalize_kelvin(kelvin)),) * half
             for start, kelvin in ((0, self.left_bar_kelvin), (half, self.right_bar_kelvin))
         )
 
     def restorable_source_colour(self, profile: ModelProfile) -> bool:
-        from .light_commands import kelvin_rendering_matches
+        from .light_commands import kelvin_rendering_matches, normalize_kelvin
 
         if self.source_static_intents is None or self.segment_colors is None:
             return False
@@ -481,7 +480,7 @@ class PriorControlState:
             if kelvin is not None and kelvin != (intent if type(intent) is int else 0):
                 return False
             if intent is None or not all(
-                kelvin_rendering_matches(self.segment_colors[index - 1], intent, profile)
+                kelvin_rendering_matches(self.segment_colors[index - 1], normalize_kelvin(intent), profile)
                 if type(intent) is int
                 else self.segment_colors[index - 1] == intent
                 for index in source.segments
