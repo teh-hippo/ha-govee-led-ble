@@ -10,6 +10,7 @@ from .const import NATIVE_ZONE_CONTROLS
 from .control_arbiter import ControlIntent
 from .coordinator_base import _CoordinatorBase
 from .coordinator_refresh import RefreshRequest
+from .coordinator_sources import source_color_temp_kelvin
 from .coordinator_status import (
     ParsedMode,
 )
@@ -98,15 +99,18 @@ class _RecoveryMixin(_CoordinatorBase):
                 if source.segments and source.key in self.source_static_intents
             }
             for source in self.profile.light_sources:
+                if not source.segments:
+                    continue
+                if (kelvin := source_color_temp_kelvin(self._as_coordinator, source)) is not None:
+                    source_intents[source.key] = kelvin
+                    continue
                 field = f"{source.key}_kelvin"
-                kelvin = getattr(self, field, None)
                 if (
-                    source.segments
-                    and kelvin is not None
+                    getattr(self, field, None) == 0
                     and self._notify_started_monotonic is not None
                     and self._field_received_at.get(field, -1) >= self._notify_started_monotonic
                 ):
-                    source_intents[source.key] = kelvin or self.segment_colors[source.segments[0] - 1]
+                    source_intents[source.key] = self.segment_colors[source.segments[0] - 1]
         zone_flags = {
             name: value
             for name, value in self.boolean_control_state.items()

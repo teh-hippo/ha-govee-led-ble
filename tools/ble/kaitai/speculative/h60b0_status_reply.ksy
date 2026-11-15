@@ -12,6 +12,8 @@ doc: |
   Source state carries top Kelvin/ripple speed before bottom Kelvin/brightness,
   as corroborated by recorded AA42 and AA05 replies. A5 records cover eight
   side colours and the top colour only.
+  The first Kelvin value also seeds side colour temperature when every side
+  position matches its rendered companion; it is not independent side readback.
   The candidate EF identity reply carries Pact type BE16 and Pact code.
   Captured EE30 source notifications carry an opaque prefix then the same
   high-nibble power flags; their suffix does not confirm native attributes.

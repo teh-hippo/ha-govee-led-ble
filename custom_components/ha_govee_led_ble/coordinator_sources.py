@@ -13,7 +13,13 @@ from .const import DOMAIN, LightSource, ModelProfile, ReadDomain
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator_refresh import RefreshRequest
 from .coordinator_status import ParsedMode
-from .generated_protocol_adapter import build_brightness, build_power, build_source_value, require_profile_packet
+from .generated_protocol_adapter import (
+    build_brightness,
+    build_power,
+    build_source_value,
+    require_profile_packet,
+    table_kelvin_rgb,
+)
 from .light_commands import (
     build_segment_brightness,
     build_segment_color_temp,
@@ -150,6 +156,43 @@ def prepare_source_colour(
     return PreparedSourceColour(profile, tuple(writes))
 
 
+def source_color_temp_kelvin(coordinator: GoveeBLECoordinator, source: LightSource) -> int | None:
+    profile = coordinator.profile
+    if not source_segments_available(source, profile) or len(coordinator.segment_colors) < max(source.segments):
+        return None
+    rendered = [coordinator.segment_colors[segment - 1] for segment in source.segments]
+    intent = coordinator.source_static_intents.get(source.key)
+    if type(intent) is int:
+        field = f"{source.key}_kelvin"
+        if (
+            getattr(coordinator, field, None) == intent
+            and coordinator.source_field_fresh(field)
+            or all(kelvin_rendering_matches(rgb, intent, profile) for rgb in rendered)
+        ):
+            return intent
+        return None
+    if (
+        intent is not None
+        or source.kelvin_hint_source is None
+        or coordinator.color_mode is not ParsedMode.COLOUR
+        or coordinator.segment_state_source != "observed"
+        or not coordinator.source_field_fresh("color_mode")
+        or not coordinator.source_field_fresh("segment_colors")
+    ):
+        return None
+    field = f"{source.kelvin_hint_source}_kelvin"
+    hint = getattr(coordinator, field, None)
+    # A shared register is not independent source readback; every observed position must corroborate it.
+    if (
+        type(hint) is int
+        and profile.min_color_temp_kelvin <= hint <= profile.max_color_temp_kelvin
+        and coordinator.source_field_fresh(field)
+        and all(rgb == table_kelvin_rgb(hint) for rgb in rendered)
+    ):
+        return hint
+    return None
+
+
 def main_source_colour(coordinator: GoveeBLECoordinator) -> int | tuple[int, int, int] | None:
     if coordinator.color_mode is not ParsedMode.COLOUR:
         return None
@@ -173,13 +216,10 @@ def main_source_colour(coordinator: GoveeBLECoordinator) -> int | tuple[int, int
             return None
         rendered = [coordinator.segment_colors[segment - 1] for segment in source.segments]
         intent = coordinator.source_static_intents.get(key)
-        if type(intent) is int:
-            observed = getattr(coordinator, f"{key}_kelvin", None) == intent and coordinator.source_field_fresh(
-                f"{key}_kelvin"
-            )
-            if not observed and not all(kelvin_rendering_matches(rgb, intent, profile) for rgb in rendered):
-                return None
-            colours.append(intent)
+        if (kelvin := source_color_temp_kelvin(coordinator, source)) is not None:
+            colours.append(kelvin)
+        elif type(intent) is int:
+            return None
         elif coordinator.segment_state_source != "initial" and len(set(rendered)) == 1:
             colours.append(rendered[0])
         else:
