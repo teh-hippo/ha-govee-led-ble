@@ -634,6 +634,8 @@ async def test_h607c_registered_entities_present_identity_states(hass, identity,
     assert state is not None and state.state == "on"
     assert set(state.attributes["supported_color_modes"]) == modes
     assert state.attributes["color_mode"] == ("rgb" if "rgb" in modes else "brightness")
+    if "color_temp" in modes:
+        assert (state.attributes["min_color_temp_kelvin"], state.attributes["max_color_temp_kelvin"]) == (2200, 6500)
     if gradual_state is None:
         assert gradual is None
     else:

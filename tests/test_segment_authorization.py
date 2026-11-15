@@ -39,6 +39,7 @@ def profile(request, monkeypatch):
         read_domains=frozenset({ReadDomain.SEGMENTS}),
         supports_rgb=True,
         supports_color_temperature=True,
+        color_temp_range=(2000, 9000),
         supports_segment_writes=True,
         supports_segment_brightness=True,
         supports_segment_color_temperature=True,

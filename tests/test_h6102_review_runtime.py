@@ -315,7 +315,7 @@ async def test_authored_selector_recovery_is_selection_only(radio, code):
     assert not packets
 
 
-async def test_qualified_pact1_static_is_owner_confirmed_whole_strip_rgb(radio):
+async def test_qualified_pact1_keeps_confirmed_rgb_and_exposes_candidate_kelvin(radio):
     c, state, packets, _ = radio
     c.pact_type, c.pact_code = 1, 1
     state.update(hw="1.00.03", fw="1.06.00", register_brightness=True)
@@ -326,12 +326,20 @@ async def test_qualified_pact1_static_is_owner_confirmed_whole_strip_rgb(radio):
     assert not {bytes(packet[:2]) for packet in packets} & {bytes.fromhex("aa05"), bytes.fromhex("aaa5")}
     red = build_color_rgb(255, 0, 0, c.model, profile=c.profile)
     assert red == bytes.fromhex("33051501ff00000000000000ff7f00000000005d")
-    with pytest.raises(ValueError, match="colour temperature"):
-        build_color_temp(4000, c.model, profile=c.profile)
+    white = build_color_temp(3123, c.model, profile=c.profile)
+    packets.clear()
+    light = GoveeBLELight(c)
+    light.async_write_ha_state = MagicMock()
+    await light.async_turn_on(color_temp_kelvin=3123)
+    assert white in packets and c.color_temp_kelvin == 3100
+    assert not c.profile.static_readback_kelvin
+    assert not {bytes(packet[:2]) for packet in packets} & {bytes.fromhex("aa05"), bytes.fromhex("aaa5")}
     c.fw_version = "1.05.00"
     c._resolve_device_profile()
     assert c.profile.outbound_transform is not None
     assert c.profile.outbound_transform(red) == frame("33050bff0000ff7f")
+    with pytest.raises(ValueError, match="colour temperature"):
+        build_color_temp(4000, c.model, profile=c.profile)
 
 
 @pytest.mark.parametrize("identity", [None, "ble", "configured", "configured_fw", "configured_hw"])

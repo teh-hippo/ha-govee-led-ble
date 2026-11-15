@@ -20,7 +20,6 @@ from .generated_protocol_adapter import (
     table_rgb_kelvin,
     video_parameters_from_detail,
 )
-from .light_commands import normalize_kelvin
 from .protocol_core import ProtocolParseResult
 from .protocol_h6179 import ParsedH6179Status, parse_h6179_status_result
 from .scenes import scene_key_for_code
@@ -163,11 +162,11 @@ class ParsedColorModeResponse:
     gradient: int | None = None
 
 
-def _readback_kelvin(reported: int, profile: ModelProfile) -> int:
-    """Zero means no Kelvin; a value no device range contains is not a Kelvin reading, so it rejects the frame."""
+def _readback_kelvin(reported: int) -> int:
+    """Preserve observations independently of declared write bounds; reject impossible wire values."""
     if not KELVIN_RANGE_1000_10000[0] <= reported <= KELVIN_RANGE_1000_10000[1]:
         raise ValueError("Kelvin outside any device range")
-    return normalize_kelvin(reported, profile)
+    return reported
 
 
 def parse_color_mode(generated: Any, model: str, *, profile: ModelProfile | None = None) -> ParsedColorModeResponse:
@@ -181,7 +180,7 @@ def parse_color_mode(generated: Any, model: str, *, profile: ModelProfile | None
             if kelvin := int(values["kelvin"]):
                 return ParsedColorModeResponse(
                     mode=ParsedMode.COLOUR,
-                    color_temp_kelvin=_readback_kelvin(kelvin, profile),
+                    color_temp_kelvin=_readback_kelvin(kelvin),
                     raw_mode=int(values["raw_mode"]),
                 )
             red, green, blue = values["rgb"]
@@ -224,7 +223,7 @@ def parse_color_mode(generated: Any, model: str, *, profile: ModelProfile | None
     if profile.status_grammar == "H60B0" and mode_name == "source_control":
         from .h60b0_controls import source_readback
 
-        return ParsedColorModeResponse(mode=ParsedMode.COLOUR, source_values=source_readback(detail, profile))
+        return ParsedColorModeResponse(mode=ParsedMode.COLOUR, source_values=source_readback(detail))
     if mode_name in {"legacy_static", "legacy_colour", "whole_device_colour"}:
         mode_name = "static"
     elif mode_name == "legacy_music":
@@ -326,8 +325,7 @@ def _parse_static_mode(detail: Any, profile: ModelProfile) -> ParsedColorModeRes
         raise ValueError("Static status has no details")
     if profile.status_grammar == "H6046":
         left, right = (
-            _readback_kelvin(value, profile) if value else 0
-            for value in (int(detail.left_kelvin), int(detail.right_kelvin))
+            _readback_kelvin(value) if value else 0 for value in (int(detail.left_kelvin), int(detail.right_kelvin))
         )
         return ParsedColorModeResponse(
             mode=ParsedMode.COLOUR,
@@ -345,7 +343,7 @@ def _parse_static_mode(detail: Any, profile: ModelProfile) -> ParsedColorModeRes
             return ParsedColorModeResponse(mode=ParsedMode.COLOUR, color_temp_kelvin=kelvin)
         return ParsedColorModeResponse(mode=ParsedMode.COLOUR, rgb_color=_rgb_values(detail.rgb))
     reported = getattr(detail, "kelvin", None)
-    kelvin = _readback_kelvin(int(reported), profile) if reported else None
+    kelvin = _readback_kelvin(int(reported)) if reported else None
     rgb = getattr(detail, "rgb", None)
     return ParsedColorModeResponse(
         mode=ParsedMode.COLOUR,

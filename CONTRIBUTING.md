@@ -35,6 +35,10 @@ Keep real product differences without turning each product into a separate imple
 - `const.py` holds one complete, explicit profile per exact SKU; compatible products may share codecs but never inherit a whole profile.
   Select command, status and effect grammars independently.
   Aim for complete in-scope support on every evidenced revision, not discovery or capability flags alone.
+- Every temperature-capable SKU declares its own Kelvin range explicitly, including evidenced revision differences; there is no default device range.
+  Use Home Assistant's native colour-temperature mode and Kelvin bounds, keeping product limits independent of compatible wire grammars.
+  Normalise requests and restoration writes against the effective range, but preserve valid native Kelvin observations rather than clamping them to the write limits.
+  Required BLE companion colours remain protocol data, not Home Assistant RGB approximations.
 - Give each fact one authority.
   Derive catalogue support and apply projections from the release contract, narrowed by the effective profile, rather than maintaining parallel capability flags.
   Preserve distinctions between unknown, unsupported and explicitly disabled.

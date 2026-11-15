@@ -365,11 +365,11 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
 
     @property
     def min_color_temp_kelvin(self) -> int:
-        return self.coordinator.profile.min_color_temp_kelvin
+        return self.coordinator.native_presentation_profile.min_color_temp_kelvin
 
     @property
     def max_color_temp_kelvin(self) -> int:
-        return self.coordinator.profile.max_color_temp_kelvin
+        return self.coordinator.native_presentation_profile.max_color_temp_kelvin
 
     @property
     def color_temp_kelvin(self) -> int | None:
@@ -379,7 +379,9 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         kelvin = self.coordinator.color_temp_kelvin
         if kelvin is None or self.color_mode != ColorMode.COLOR_TEMP:
             return None
-        return normalize_kelvin(kelvin, self.coordinator.profile)
+        if self.coordinator.color_temp_kelvin_source == "observed":
+            return kelvin
+        return normalize_kelvin(kelvin, self.coordinator.native_presentation_profile)
 
     @property
     def effect(self) -> str | None:

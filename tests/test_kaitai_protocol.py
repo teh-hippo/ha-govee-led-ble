@@ -1035,6 +1035,7 @@ def static_coordinator(hass, monkeypatch):
         "H7001",
         ModelProfile(
             "Synthetic static colour fixture",
+            color_temp_range=(2000, 9000),
             command_grammar="H617A",
             status_grammar="test-static",
             read_domains=frozenset({ReadDomain.COLOUR_MODE, ReadDomain.SEGMENTS}),

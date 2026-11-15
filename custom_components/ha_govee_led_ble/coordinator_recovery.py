@@ -246,6 +246,10 @@ class _RecoveryMixin(_CoordinatorBase):
             }
             if any(value is None for value in source_values.values()) or not source_values["bottom_kelvin"]:
                 return False
+            source_values = {
+                field: normalize_kelvin(value, self.profile) if field.endswith("_kelvin") and value else value
+                for field, value in source_values.items()
+            }
             for source, attribute, field in (
                 ("bottom", "kelvin", "bottom_kelvin"),
                 ("bottom", "brightness", "bottom_brightness"),
@@ -784,16 +788,10 @@ class _RecoveryMixin(_CoordinatorBase):
             or (state.segment_brightness is None) == self.profile.supports_segment_brightness
         ):
             return False
-        colour_groups: dict[tuple[int, int, int], list[int]] = {}
-        brightness_groups: dict[int, list[int]] = {}
-        for index, rgb in enumerate(state.segment_colors, 1):
-            colour_groups.setdefault(rgb, []).append(index)
-        if state.segment_brightness is not None:
-            for index, brightness in enumerate(state.segment_brightness, 1):
-                brightness_groups.setdefault(brightness, []).append(index)
         source_restore = self.profile.partition_segment_writes
         if source_restore and not state.restorable_source_colour(self.profile):
             return False
+        bar_restore = state.restorable_bar_white(self.profile)
         kelvin_restore = (
             not source_restore and state.color_temp_kelvin is not None and self.profile.static_readback_kelvin
         )
@@ -803,13 +801,52 @@ class _RecoveryMixin(_CoordinatorBase):
             and (
                 self.profile.kelvin_renders_device_white
                 or state.segment_colors
-                != (table_kelvin_rgb(normalize_kelvin(state.color_temp_kelvin, self.profile)),)
-                * self.profile.segment_count
+                != (table_kelvin_rgb(normalize_kelvin(state.color_temp_kelvin)),) * self.profile.segment_count
             )
         ):
             # Whole-device Kelvin cannot reproduce a simultaneously captured
             # different RGB layout. Preserve it instead of overwriting it.
             return False
+        target_colours = list(state.segment_colors)
+        target_intents = dict(state.source_static_intents) if state.source_static_intents is not None else None
+        if source_restore and target_intents is not None:
+            for source in self.profile.light_sources:
+                intent = target_intents.get(source.key)
+                if source.segments and type(intent) is int:
+                    target = normalize_kelvin(intent, self.profile)
+                    target_intents[source.key] = target
+                    if not self.profile.kelvin_renders_device_white:
+                        for index in source.segments:
+                            target_colours[index - 1] = table_kelvin_rgb(target)
+        left, right = state.left_bar_kelvin, state.right_bar_kelvin
+        if bar_restore:
+            assert left is not None and right is not None
+            left, right = normalize_kelvin(left, self.profile), normalize_kelvin(right, self.profile)
+            half = self.profile.segment_count // 2
+            target_colours = [table_kelvin_rgb(left)] * half + [table_kelvin_rgb(right)] * half
+        whole = state.color_temp_kelvin
+        if kelvin_restore and whole is not None:
+            whole = normalize_kelvin(whole, self.profile)
+            target_colours = [table_kelvin_rgb(whole)] * self.profile.segment_count
+        state = replace(
+            state,
+            color_temp_kelvin=whole,
+            left_bar_kelvin=left,
+            right_bar_kelvin=right,
+            top_kelvin=normalize_kelvin(state.top_kelvin, self.profile)
+            if source_restore and state.top_kelvin
+            else state.top_kelvin,
+            source_static_intents=target_intents,
+            segment_colors=tuple(target_colours),
+        )
+        assert state.segment_colors is not None
+        colour_groups: dict[tuple[int, int, int], list[int]] = {}
+        brightness_groups: dict[int, list[int]] = {}
+        for index, rgb in enumerate(state.segment_colors, 1):
+            colour_groups.setdefault(rgb, []).append(index)
+        if state.segment_brightness is not None:
+            for index, brightness in enumerate(state.segment_brightness, 1):
+                brightness_groups.setdefault(brightness, []).append(index)
         packets = (
             [build_color_temp(state.color_temp_kelvin, self.model, profile=self.profile)]
             if kelvin_restore and state.color_temp_kelvin is not None
@@ -840,7 +877,7 @@ class _RecoveryMixin(_CoordinatorBase):
                 for brightness, segments in brightness_groups.items()
                 for packet in build_segment_brightness_packets(segments, brightness, self.model, profile=self.profile)
             )
-        if self.profile.setting_grammar == "H6046" and state.restorable_bar_white(self.profile):
+        if bar_restore:
             half = self.profile.segment_count // 2
             packets = [
                 build_segment_color_temp(range(start + 1, start + half + 1), kelvin, self.model, profile=self.profile)
@@ -872,7 +909,7 @@ class _RecoveryMixin(_CoordinatorBase):
                     self.profile.static_readback_zero_kelvin_is_rgb
                     and not source_restore
                     and not kelvin_restore
-                    and not state.restorable_bar_white(self.profile)
+                    and not bar_restore
                 ),
             ),
         )

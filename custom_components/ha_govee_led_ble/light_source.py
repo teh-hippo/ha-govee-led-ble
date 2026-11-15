@@ -98,7 +98,11 @@ class GoveeBLESourceLight(GoveeBLEEntity, LightEntity):
             return None
         if source is not None and source.master_brightness and self.supported_color_modes != {ColorMode.ONOFF}:
             return round(self.coordinator.brightness_pct * 255 / 100)
-        if self.supported_color_modes == {ColorMode.ONOFF} or self.coordinator.segment_state_source == "initial":
+        if (
+            not self.coordinator.profile.supports_segment_brightness
+            or self.supported_color_modes == {ColorMode.ONOFF}
+            or self.coordinator.segment_state_source == "initial"
+        ):
             return None
         values = self._values(self.coordinator.segment_brightness)
         return round(values[0] * 255 / 100) if values and len(set(values)) == 1 else None
@@ -126,6 +130,10 @@ class GoveeBLESourceLight(GoveeBLEEntity, LightEntity):
             return ColorMode.UNKNOWN
         intent = self.coordinator.source_static_intents.get(self._key)
         if type(intent) is int and ColorMode.COLOR_TEMP in modes:
+            if getattr(self.coordinator, f"{self._key}_kelvin", None) == intent and self.coordinator.source_field_fresh(
+                f"{self._key}_kelvin"
+            ):
+                return ColorMode.COLOR_TEMP
             colours = self._values(self.coordinator.segment_colors)
             if colours and all(
                 kelvin_rendering_matches(colour, intent, self.coordinator.profile) for colour in colours
@@ -142,11 +150,11 @@ class GoveeBLESourceLight(GoveeBLEEntity, LightEntity):
 
     @property
     def min_color_temp_kelvin(self) -> int:
-        return self.coordinator.profile.min_color_temp_kelvin
+        return self.coordinator.native_presentation_profile.min_color_temp_kelvin
 
     @property
     def max_color_temp_kelvin(self) -> int:
-        return self.coordinator.profile.max_color_temp_kelvin
+        return self.coordinator.native_presentation_profile.max_color_temp_kelvin
 
     @property
     def color_temp_kelvin(self) -> int | None:

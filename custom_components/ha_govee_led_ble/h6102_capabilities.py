@@ -124,7 +124,7 @@ def resolve_h6102_capabilities(
                 setup_required_read_domains=_BOOTSTRAP_PROFILE.setup_required_read_domains,
                 effect_workflows=workflows,
                 supports_rgb=True,
-                supports_color_temperature=False,
+                supports_color_temperature=extended_colour,
                 static_readback_kelvin=False,
                 static_readback_zero_kelvin_is_rgb=False,
                 static_readback_gradual=False,

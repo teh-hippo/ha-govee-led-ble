@@ -172,7 +172,11 @@ def normalize_kelvin(kelvin: int, profile: ModelProfile | None = None) -> int:
     Persisted off-grid values use the same normalisation for restoration writes and their expectations.
     Without a profile the value is bounded by the shared table only.
     """
-    low, high = profile.color_temp_range if profile else KELVIN_RANGE_1000_10000
+    low, high = (
+        (profile.min_color_temp_kelvin, profile.max_color_temp_kelvin)
+        if profile is not None
+        else KELVIN_RANGE_1000_10000
+    )
     value = _clamp(kelvin, low, high)
     return _clamp((value + KELVIN_STEP // 2) // KELVIN_STEP * KELVIN_STEP, low, high)
 

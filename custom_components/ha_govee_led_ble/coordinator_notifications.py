@@ -686,7 +686,7 @@ class _NotificationMixin(_CoordinatorBase):
 
     def _apply_source_info(self, generated: Any) -> tuple[str, ...]:
         body = generated.body
-        native_values = source_readback(body.operation, self.profile)
+        native_values = source_readback(body.operation)
         flags = {name: bool(getattr(body, name)) for name in self.profile.boolean_controls}
         self.boolean_control_state.update(flags)
         observed = [f"boolean_{name}" for name in flags]
