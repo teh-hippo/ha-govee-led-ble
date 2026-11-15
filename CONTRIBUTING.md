@@ -76,6 +76,8 @@ Keep real product differences without turning each product into a separate imple
   Keep API identity preparation under background ownership until validation succeeds, so invalid requests cannot invalidate active previews.
 - Bind prepared work and observations to their actual lifetime: device, effective profile, layout, subscription and operation generation as applicable.
   Capture static restoration intent before an effect operation's first state-changing attempt, including leading power, and publish it only at the physical mode transition.
+  Preserve complete static appearance, including segment colours and relative brightness, through every mode-exit entry point.
+  An unavailable restoration target rejects before lighting writes; never substitute aggregate colour or an invented default.
   Enter task-owned operation contexts after acquiring device ownership, and release them before releasing that ownership.
   Revalidate at physical boundaries, and invalidate dependent knowledge when its authority changes.
   Older work must not invalidate newer preparation, restore over newer observations or mutate a replacement session.

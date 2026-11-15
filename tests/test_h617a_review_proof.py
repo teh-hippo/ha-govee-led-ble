@@ -45,7 +45,8 @@ def coordinator(hass):
 
 
 @pytest.mark.parametrize("accept_colour", [True, False])
-async def test_restoration_preserves_segments_and_rejects_wrong_readback(coordinator, accept_colour):
+@pytest.mark.parametrize("exit_path", ["recovery", "light", "music"])
+async def test_restoration_preserves_segments_and_rejects_wrong_readback(coordinator, accept_colour, exit_path):
     coordinator.is_on = True
     coordinator.color_mode = ParsedMode.COLOUR
     coordinator.brightness_pct = 37
@@ -92,9 +93,30 @@ async def test_restoration_preserves_segments_and_rejects_wrong_readback(coordin
         patch.object(coordinator, "_ensure_connected", AsyncMock(return_value=client)),
         patch.object(coordinator, "_renew_foreground_lease"),
     ):
-        assert await coordinator.async_restore_effect_control_state(prior, overwritten_diy_code=None) is accept_colour
+        if exit_path == "recovery":
+            assert (
+                await coordinator.async_restore_effect_control_state(prior, overwritten_diy_code=None) is accept_colour
+            )
+        else:
+            from tests.test_music_commands import _music_transport
+
+            coordinator.is_on = True
+            coordinator.color_mode = ParsedMode.COLOUR
+            coordinator.brightness_pct = prior.brightness_pct
+            observe_segments(coordinator, original, brightness)
+            with _music_transport(coordinator):
+                await coordinator.async_select_music_slug("rhythm")
+            if exit_path == "light":
+                light = GoveeBLELight(coordinator)
+                light.async_write_ha_state = MagicMock()
+                await light.async_turn_on(effect="off")
+            else:
+                await coordinator.async_select_music_slug("off")
     assert any(packet[:2] == b"\xaa\xa5" for packet in writes)
     assert any(packet[:2] == b"\xaa\x04" for packet in writes)
+    static_writes = [parsed for packet in writes if (parsed := parse_static_write(packet)) is not None]
+    assert sum(write.rgb is not None for write in static_writes) == 2
+    assert sum(write.brightness_pct is not None for write in static_writes) == 2
     assert physical_brightness == brightness
     if accept_colour:
         assert physical == original
@@ -136,9 +158,7 @@ async def test_whole_colour_failure_reconciles_uncertain_segments(coordinator):
     refresh.assert_awaited_once()
 
 
-@pytest.mark.parametrize(
-    "colour_request", [{"rgb_color": (90, 80, 70)}, {"color_temp_kelvin": 5000}, {"effect": "off"}]
-)
+@pytest.mark.parametrize("colour_request", [{"rgb_color": (90, 80, 70)}, {"color_temp_kelvin": 5000}])
 @pytest.mark.parametrize("fresh_notification", [False, True])
 async def test_static_connection_failure_preserves_observed_state(coordinator, colour_request, fresh_notification):
     coordinator.is_on = True
@@ -181,9 +201,7 @@ async def test_static_connection_failure_preserves_observed_state(coordinator, c
         assert coordinator._field_revisions == revisions
 
 
-@pytest.mark.parametrize(
-    "colour_request", [{"rgb_color": (90, 80, 70)}, {"color_temp_kelvin": 5000}, {"effect": "off"}]
-)
+@pytest.mark.parametrize("colour_request", [{"rgb_color": (90, 80, 70)}, {"color_temp_kelvin": 5000}])
 @pytest.mark.parametrize("mixed", [False, True])
 async def test_static_attempt_failure_keeps_new_segment_notification(coordinator, colour_request, mixed):
     coordinator.is_on = True

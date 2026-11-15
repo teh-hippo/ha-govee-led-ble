@@ -166,7 +166,11 @@ async def test_failed_deployment_restores_fresh_mixed_layout_and_persists_truth(
     repository = EffectDeploymentRepository(store)
     await repository.async_load()
 
-    async def failed_upload(*_args, **_kwargs):
+    sequence = coordinator.async_write_effect_sequence
+
+    async def failed_upload(packets, **kwargs):
+        if not any(packet[0] == 0xA3 for packet in packets):
+            return await sequence(packets, **kwargs)
         await coordinator.send_command(build_power(True))
         physical_state.update(brightness=99, colours=[(2, 3, 4)] * 15, relative=[100] * 15, fault=fault)
         raise RuntimeError("simulated effect failure after writes")
@@ -269,17 +273,19 @@ async def test_unknown_observed_mode_stays_unknown_in_capture(physical):
 
 async def test_nonsegment_restore_never_overwrites_notification_after_await(physical, monkeypatch):
     coordinator, _ = physical
-    coordinator.profile = replace(coordinator.profile, segment_count=0)
+    coordinator.profile = replace(coordinator.profile, segment_count=0, whole_device_mask_override=0x7FFF)
     prior = PriorControlState("colour", True, 37, (1, 2, 3))
 
-    async def send(packet):
-        if parse_static_write(packet) is not None:
-            coordinator.rgb_color = (8, 9, 10)
-            coordinator.brightness_pct = 12
-            coordinator.is_on = False
-            coordinator.color_mode = ParsedMode.UNKNOWN
+    async def send(packets, *, write_guard, **_kwargs):
+        for packet in packets:
+            write_guard()
+            if parse_static_write(packet) is not None:
+                coordinator.rgb_color = (8, 9, 10)
+                coordinator.brightness_pct = 12
+                coordinator.is_on = False
+                coordinator.color_mode = ParsedMode.UNKNOWN
 
-    monkeypatch.setattr(coordinator, "send_command", send)
+    monkeypatch.setattr(coordinator, "async_write_effect_sequence", send)
     monkeypatch.setattr(coordinator, "refresh_state", AsyncMock(return_value=False))
     assert not await coordinator.async_restore_effect_control_state(prior, overwritten_diy_code=None)
     assert coordinator.rgb_color == (8, 9, 10)
@@ -292,14 +298,14 @@ async def test_power_off_is_attempted_even_when_hidden_restoration_raises(physic
     prior = PriorControlState(
         "colour", False, 37, (1, 2, 3), segment_colors=((1, 2, 3),) * 15, segment_brightness=(30,) * 15
     )
-    send = coordinator.send_command
+    send = coordinator._client.write_gatt_char.side_effect
 
-    async def fail_colour(packet, **kwargs):
+    async def fail_colour(uuid, packet, **kwargs):
         if parse_static_write(packet) is not None:
             raise RuntimeError("colour write failed")
-        await send(packet, **kwargs)
+        await send(uuid, packet, **kwargs)
 
-    monkeypatch.setattr(coordinator, "send_command", fail_colour)
+    coordinator._client.write_gatt_char.side_effect = fail_colour
     with pytest.raises(RuntimeError, match="colour write failed"):
         await coordinator.async_restore_effect_control_state(prior, overwritten_diy_code=None)
     assert state["on"] is False

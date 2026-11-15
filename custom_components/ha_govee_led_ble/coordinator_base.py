@@ -120,7 +120,7 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     source_static_intents: dict[str, int | tuple[int, int, int]]
     _profile_generation: int
     _authorization_generation: int
-    _pre_mode_snapshot: PreModeSnapshot
+    _pre_mode_snapshot: PreModeSnapshot | None
     segment_colors: list[tuple[int, int, int]]
     segment_brightness: list[int]
     segment_brightness_readable: bool
@@ -188,7 +188,7 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
         def capture_effect_control_state(self) -> PriorControlState: ...
 
         async def async_restore_effect_control_state(
-            self, state: PriorControlState, *, overwritten_diy_code: int | None
+            self, state: PriorControlState, *, overwritten_diy_code: int | None, require_static: bool = False
         ) -> bool: ...
 
         @property

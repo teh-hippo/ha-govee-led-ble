@@ -9,8 +9,11 @@ from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_modes import PreModeSnapshot
 from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
+from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.effect_contracts import CapabilityWorkflow, release_capability
+from custom_components.ha_govee_led_ble.effect_deployments import PriorControlState
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
+    build_brightness,
     build_music_mode,
     build_power,
     build_scene_activation,
@@ -19,7 +22,6 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
 from custom_components.ha_govee_led_ble.light_commands import (
     build_color_rgb,
     build_color_temp,
-    build_white_brightness,
 )
 from custom_components.ha_govee_led_ble.light_services import apply_active_video_mode
 from custom_components.ha_govee_led_ble.music_commands import build_music_params
@@ -171,21 +173,23 @@ async def test_h6199_music_reapply_preserves_fixed_colour(h6199):
 
 async def test_entering_music_from_color_temp_captures_color_temp_snapshot(coord):
     coord.is_on, coord.color_temp_kelvin = True, 4000
+    before = coord.capture_effect_control_state()
     with _music_transport(coord):
         await coord.async_select_music_slug("spectrum")
-    assert coord._pre_mode_snapshot == PreModeSnapshot(kind="color_temp", kelvin=4000)
+    assert coord._pre_mode_snapshot.state == before
 
 
 async def test_entering_music_from_rgb_captures_rgb_snapshot(coord):
     coord.is_on, coord.color_temp_kelvin, coord.rgb_color = True, None, (7, 8, 9)
+    before = coord.capture_effect_control_state()
     with _music_transport(coord):
         await coord.async_select_music_slug("bloom")
-    assert coord._pre_mode_snapshot == PreModeSnapshot(kind="rgb", rgb=(7, 8, 9))
+    assert coord._pre_mode_snapshot.state == before
 
 
 async def test_entering_music_from_active_mode_preserves_snapshot(coord):
     coord.is_on, coord.music_mode = True, "rhythm"
-    original = PreModeSnapshot(kind="color_temp", kelvin=6000)
+    original = PreModeSnapshot(PriorControlState("colour", True, 50, (1, 2, 3), color_temp_kelvin=6000), coord.profile)
     coord._pre_mode_snapshot, coord.color_temp_kelvin = original, 4000
     with _music_transport(coord):
         await coord.async_select_music_slug("spectrum")
@@ -194,7 +198,7 @@ async def test_entering_music_from_active_mode_preserves_snapshot(coord):
 
 async def test_failed_music_power_attempt_does_not_publish_transition_snapshot(coord):
     coord.is_on, coord.color_temp_kelvin = True, 4000
-    original = PreModeSnapshot(kind="color_temp", kelvin=6000)
+    original = PreModeSnapshot(PriorControlState("colour", True, 50, (1, 2, 3), color_temp_kelvin=6000), coord.profile)
     coord._pre_mode_snapshot = original
     with _music_transport(coord) as physical:
         physical.side_effect = RuntimeError("failed power attempt")
@@ -255,42 +259,160 @@ async def test_music_style_applies_to_rhythm_bloom_and_shiny(coord):
     ]
 
 
-@pytest.mark.parametrize(
-    ("snapshot", "expected"),
-    [
-        (PreModeSnapshot(kind="rgb", rgb=(1, 2, 3)), build_color_rgb(1, 2, 3)),
-        (PreModeSnapshot(kind="color_temp", kelvin=3500), build_color_temp(3500)),
-        (PreModeSnapshot(kind="white", level=42), build_white_brightness(42)),
-    ],
-)
-async def test_restore_pre_mode_re_emits_matching_builder(coord, snapshot, expected):
-    coord._pre_mode_snapshot = snapshot
-    coord.music_mode, coord.video_mode = "rhythm", "movie"
-    coord.effect = "leftover"
-    coord.diy_code = 0xF0
-    with patch.object(coord, "send_command", new_callable=AsyncMock) as sc:
-        await coord.async_restore_pre_mode()
-    assert _sent(sc) == [expected]
-    assert (coord.music_mode, coord.video_mode) == ("off", "off")
-    assert coord.effect is None
-    assert coord.diy_code is None
-
-
-async def test_select_off_routes_to_restore_and_clears_music_mode(coord):
+@pytest.mark.parametrize("confirmed", [False, True])
+async def test_select_off_delegates_complete_state_without_replaying_unconfirmed_delivery(coord, confirmed):
     coord.music_mode = "rhythm"
-    coord._pre_mode_snapshot = PreModeSnapshot(kind="color_temp", kelvin=5000)
-    with patch.object(coord, "send_command", new_callable=AsyncMock) as sc:
+    prior = PriorControlState("colour", True, 50, (1, 2, 3), color_temp_kelvin=5000)
+    coord._pre_mode_snapshot = PreModeSnapshot(prior, coord.profile)
+    with patch.object(coord, "async_restore_effect_control_state", AsyncMock(return_value=confirmed)) as restore:
         await coord.async_select_music_slug("off")
-    assert _sent(sc) == [build_color_temp(5000)]
-    assert coord.music_mode == "off"
+    restore.assert_awaited_once_with(prior, overwritten_diy_code=None, require_static=True)
 
 
-async def test_fresh_off_falls_back_to_white_rgb(coord):
-    assert coord._pre_mode_snapshot == PreModeSnapshot(kind="rgb", rgb=(255, 255, 255))
+@pytest.mark.parametrize("entrypoint", ["light", "music"])
+@pytest.mark.parametrize("target", ["missing", "incomplete", "profile_changed"])
+async def test_unavailable_restoration_rejects_before_power_or_brightness(coord, entrypoint, target):
+    from custom_components.ha_govee_led_ble.light import GoveeBLELight
+
+    coord.is_on = False
+    coord.music_mode = "rhythm"
+    if target != "missing":
+        coord._pre_mode_snapshot = PreModeSnapshot(
+            replace(coord.capture_effect_control_state(), mode="colour"), coord.profile
+        )
+        if target == "profile_changed":
+            coord.profile = replace(coord.profile, segment_count=12)
     with patch.object(coord, "send_command", new_callable=AsyncMock) as sc:
+        with pytest.raises(ValueError, match="complete static state"):
+            if entrypoint == "light":
+                await GoveeBLELight(coord).async_turn_on(effect="off", brightness=100)
+            else:
+                await coord.async_select_music_slug("off")
+    sc.assert_not_awaited()
+
+
+async def test_already_static_off_does_not_restore_stale_snapshot(coord):
+    coord.is_on = True
+    coord.color_mode = ParsedMode.COLOUR
+    coord._pre_mode_snapshot = PreModeSnapshot(coord.capture_effect_control_state(), coord.profile)
+    with patch.object(coord, "send_command", new_callable=AsyncMock) as send:
         await coord.async_select_music_slug("off")
-    assert _sent(sc) == [build_color_rgb(255, 255, 255)]
-    assert (coord.music_mode, coord.video_mode) == ("off", "off")
+    send.assert_not_awaited()
+
+
+@pytest.mark.parametrize("kelvin", [None, 4200])
+@pytest.mark.parametrize("known", [False, True])
+async def test_unsegmented_mode_exit_preserves_known_native_intent_without_segment_reads(hass, kelvin, known):
+    coord = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6179", configuration_url=None)
+    coord.is_on, coord.color_mode, coord.brightness_pct = True, ParsedMode.COLOUR, 37
+    if known:
+        coord.install_static_color(rgb=(12, 34, 56), kelvin=kelvin)
+    else:
+        coord._pre_mode_snapshot = PreModeSnapshot(PriorControlState("colour", True, 50, (200, 100, 50)), coord.profile)
+    with _music_transport(coord) as physical:
+        await coord.async_select_music_slug("mode_0")
+        physical.reset_mock()
+        if known:
+            await coord.async_select_music_slug("off")
+            colour = build_color_temp(kelvin, "H6179") if kelvin else build_color_rgb(12, 34, 56, "H6179")
+            assert [entry.args[1] for entry in physical.await_args_list] == [
+                build_power(True, "H6179"),
+                build_brightness(37, "H6179"),
+                colour,
+            ]
+        else:
+            with pytest.raises(ValueError, match="complete static state"):
+                await coord.async_select_music_slug("off")
+            physical.assert_not_awaited()
+
+
+@pytest.mark.parametrize("change", ["profile", "subscription", "owner", "observation"])
+async def test_mode_exit_revalidates_before_first_physical_attempt(coord, change):
+    from tests.test_h617a_review_proof import frame, observe_segments
+
+    coord.is_on, coord.color_mode = True, ParsedMode.COLOUR
+    observe_segments(coord, [(1, 2, 3)] * 15, [30] * 15)
+    coord._notification_token = object()
+    with _music_transport(coord) as physical:
+        await coord.async_select_music_slug("rhythm")
+        coord._expected_state.clear()
+        physical.reset_mock()
+
+        async def connect():
+            if change == "profile":
+                coord.profile = replace(coord.profile, segment_count=12)
+            elif change == "subscription":
+                coord._notification_token = object()
+            elif change == "owner":
+                coord._control_arbiter.invalidate_previews()
+            else:
+                coord._notify_callback(None, frame(5, [0x15, 0]))
+                observe_segments(coord, [(4, 5, 6)] * 15, [70] * 15)
+            return coord._client
+
+        with patch.object(coord, "_ensure_connected", AsyncMock(side_effect=connect)):
+            with pytest.raises(ValueError, match="Static restoration"):
+                await coord.async_select_music_slug("off")
+        physical.assert_not_awaited()
+    if change == "observation":
+        assert coord.segment_colors == [(4, 5, 6)] * 15
+        assert coord.segment_brightness == [70] * 15
+        assert coord.color_mode is ParsedMode.COLOUR
+
+
+async def test_restoration_does_not_replay_a_partially_delivered_static_batch(coord):
+    from bleak import BleakError
+
+    from tests.test_h617a_review_proof import observe_segments
+
+    coord.is_on, coord.color_mode = True, ParsedMode.COLOUR
+    observe_segments(coord, [(1, 2, 3)] * 15, [30] * 15)
+    with _music_transport(coord) as physical:
+        await coord.async_select_music_slug("rhythm")
+        physical.reset_mock()
+        physical.side_effect = [None, None, BleakError("static command may have applied")]
+        with pytest.raises(BleakError, match="may have applied"):
+            await coord.async_select_music_slug("off")
+        assert physical.await_count == 3
+
+
+async def test_restoration_preserves_new_static_observation_after_leading_power(coord):
+    from tests.test_h617a_review_proof import frame, observe_segments
+
+    coord.is_on, coord.color_mode = True, ParsedMode.COLOUR
+    observe_segments(coord, [(1, 2, 3)] * 15, [30] * 15)
+    with _music_transport(coord) as physical:
+        await coord.async_select_music_slug("rhythm")
+        physical.reset_mock()
+
+        async def transmit(*_args, **_kwargs):
+            coord._expected_state.clear()
+            coord._notify_callback(None, frame(5, [0x15, 0]))
+            observe_segments(coord, [(4, 5, 6)] * 15, [70] * 15)
+
+        physical.side_effect = transmit
+        with pytest.raises(ValueError, match="Static restoration"):
+            await coord.async_select_music_slug("off")
+        physical.assert_awaited_once()
+    assert coord.segment_colors == [(4, 5, 6)] * 15
+    assert coord.segment_brightness == [70] * 15
+    assert coord.color_mode is ParsedMode.COLOUR
+
+
+async def test_new_subscription_does_not_capture_retained_segment_observations(coord):
+    from tests.test_h617a_review_proof import frame, observe_segments
+
+    coord.is_on, coord.color_mode = True, ParsedMode.COLOUR
+    coord._notify_callback(None, frame(5, [0x15, 0]))
+    observe_segments(coord, [(1, 2, 3)] * 15, [30] * 15)
+    with _music_transport(coord) as physical:
+        coord._client.start_notify = AsyncMock()
+        await coord._start_notify()
+        await coord.async_select_music_slug("rhythm")
+        physical.reset_mock()
+        with pytest.raises(ValueError, match="complete static state"):
+            await coord.async_select_music_slug("off")
+        physical.assert_not_awaited()
 
 
 async def test_apply_active_video_mode_noop_when_video_off(coord):

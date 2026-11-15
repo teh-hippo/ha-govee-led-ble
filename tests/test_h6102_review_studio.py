@@ -15,6 +15,7 @@ from custom_components.ha_govee_led_ble.effect_catalogue import resolve_catalogu
 from custom_components.ha_govee_led_ble.effect_compiler import compile_music_profile
 from custom_components.ha_govee_led_ble.effect_domain import LayeredEffect, LibraryItem, MusicProfile
 from custom_components.ha_govee_led_ble.effect_websocket_payloads import retained_music_edit
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_music_mode
 from custom_components.ha_govee_led_ble.layered_scene import AppliedArea, Selection
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
 from custom_components.ha_govee_led_ble.transport import fragment_a3
@@ -202,9 +203,14 @@ def test_bloom_rejects_inconsistent_direction_topology(change):
 
 
 @pytest.mark.parametrize("failure", [None, "stale", "unknown", "geometry", "during_write"])
-async def test_retained_music_actual_endpoint_preserves_companions(hass, hass_ws_client, monkeypatch, failure):
+@pytest.mark.parametrize("model", ["H6102", "H617A"])
+async def test_retained_music_actual_endpoint_preserves_companions(hass, hass_ws_client, monkeypatch, failure, model):
     await _setup_backend(hass)
-    coordinator = _coordinator(hass)
+    coordinator = (
+        _coordinator(hass)
+        if model == "H6102"
+        else GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url=None)
+    )
     coordinator.profile = replace(coordinator.profile, physical_ic_count=None)
     _entry(hass, monkeypatch, coordinator)
     coordinator.music_mode = "hopping"
@@ -238,7 +244,10 @@ async def test_retained_music_actual_endpoint_preserves_companions(hass, hass_ws
         if failure is None:
             assert response["success"], response
             changed = bytes.fromhex("3302010203040506aabbcc116104050708")
-            assert [call.args[1] for call in physical.await_args_list] == fragment_a3(0x41, changed)
+            assert [call.args[1] for call in physical.await_args_list] == [
+                *fragment_a3(0x41, changed),
+                *([build_music_mode(0x33, coordinator.music_sensitivity, None, False)] if model == "H617A" else []),
+            ]
             assert coordinator.music_body == changed
             assert response["result"]["retained_music_edit"]["parameters"]["relative_brightness"] == 17
         else:

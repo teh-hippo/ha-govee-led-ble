@@ -138,11 +138,14 @@ async def test_admission_recheck_omission_and_recovery(hass: HomeAssistant, monk
     # Recovery does not rewrite unrequested or newly unavailable registers.
     send = AsyncMock()
     monkeypatch.setattr(coordinator, "send_command", send)
+    sequence = AsyncMock()
+    monkeypatch.setattr(coordinator, "async_write_effect_sequence", sequence)
     monkeypatch.setattr(coordinator, "refresh_state", AsyncMock(return_value=True))
     prior = replace(before, white_balance_scalar=100, video_restore_controls=("white_balance",))
     assert PriorControlState.from_dict(prior.to_dict()) == prior
     assert not await coordinator.async_restore_effect_control_state(prior, overwritten_diy_code=None)
-    assert [call.args[0] for call in send.await_args_list] == [
+    assert sequence.await_args is not None
+    assert [*sequence.await_args.args[0], *(call.args[0] for call in send.await_args_list)] == [
         build_power(True, "H7000"),
         build_brightness(prior.brightness_pct, "H7000"),
         build_color_rgb(*prior.rgb_color, "H7000"),
@@ -150,10 +153,12 @@ async def test_admission_recheck_omission_and_recovery(hass: HomeAssistant, monk
     ]
     confirm_firmware(coordinator)
     send.reset_mock()
+    sequence.reset_mock()
     await coordinator.async_restore_effect_control_state(
         replace(prior, video_restore_controls=()), overwritten_diy_code=None
     )
-    assert [call.args[0] for call in send.await_args_list] == [
+    assert sequence.await_args is not None
+    assert [*sequence.await_args.args[0], *(call.args[0] for call in send.await_args_list)] == [
         build_power(True, "H7000"),
         build_brightness(prior.brightness_pct, "H7000"),
         build_color_rgb(*prior.rgb_color, "H7000"),
