@@ -4,19 +4,14 @@ import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any
 
-from .const import ModelProfile, ReadDomain
+from .const import ModelProfile, ReadDomain, same_control_profile
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator_base import _CoordinatorBase, async_prepare_effect_profile
 from .coordinator_refresh import RefreshRequest
 from .coordinator_status import ParsedMode
 from .generated_protocol_adapter import build_power
-from .light_commands import (
-    build_color_rgb,
-    build_color_temp,
-    build_white_brightness,
-)
 from .music_commands import (
     MusicWriteSequence,
     edit_music_body,
@@ -50,17 +45,10 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class PreModeSnapshot:
-    """The typed static state to re-apply when leaving a music or video mode.
+    """Complete static intent and the control profile that qualified it."""
 
-    ``kind`` selects which payload is meaningful; the others carry inert defaults so a fresh
-    coordinator always has a defined state to restore.
-    """
-
-    kind: Literal["rgb", "color_temp", "white"] = "rgb"
-    rgb: tuple[int, int, int] = (255, 255, 255)
-    kelvin: int = 0
-    level: int = 100
-    source_state: PriorControlState | None = None
+    state: PriorControlState
+    profile: ModelProfile
 
 
 @dataclass
@@ -68,6 +56,7 @@ class _ModeTransition:
     owner: asyncio.Task[Any] | None
     captured: bool = False
     installed: bool = False
+    static_origin: bool = False
     snapshot: PreModeSnapshot | None = None
     profile: ModelProfile | None = None
     foreground_generation: int = 0
@@ -97,7 +86,7 @@ class _ActiveModeMixin(_CoordinatorBase):
         self._observed_power_profile_generation = -1
         self._source_power_observation_generation: dict[str, tuple[int, int]] = {}
         self._scene_code = None
-        self._pre_mode_snapshot = PreModeSnapshot(kind="rgb", rgb=(255, 255, 255))
+        self._pre_mode_snapshot: PreModeSnapshot | None = None
         self._mode_transition: _ModeTransition | None = None
         self.music_sensitivity = 99
         self.music_color: tuple[int, int, int] | None = None
@@ -352,12 +341,21 @@ class _ActiveModeMixin(_CoordinatorBase):
         self.music_mode = self.video_mode = "off"
         self.async_set_updated_data(self.data or {})
 
-    def _capture_static_state(self) -> PreModeSnapshot:
-        if self.profile.partition_segment_writes:
-            return PreModeSnapshot(source_state=self.capture_effect_control_state())
-        if self.color_temp_kelvin is not None:
-            return PreModeSnapshot(kind="color_temp", kelvin=self.color_temp_kelvin)
-        return PreModeSnapshot(kind="rgb", rgb=self.rgb_color)
+    def _capture_static_state(self) -> PreModeSnapshot | None:
+        state = self.capture_effect_control_state()
+        if state.mode != "colour":
+            return None
+        if self.profile.supports_segments:
+            if self._notify_started_monotonic is not None and any(
+                self._field_received_at.get(field, -1) < self._notify_started_monotonic
+                for field in ("color_mode", "segment_colors")
+            ):
+                return None
+        else:
+            source = self.color_temp_kelvin_source if state.color_temp_kelvin is not None else self.rgb_color_source
+            if source == "initial":
+                return None
+        return PreModeSnapshot(state, self.profile)
 
     def _enter_static_mode(self) -> None:
         """Clear every non-static mode so exactly one operating mode is active."""
@@ -366,6 +364,7 @@ class _ActiveModeMixin(_CoordinatorBase):
         self.effect = None
         self.diy_code = None
         self.music_mode = self.video_mode = "off"
+        self._pre_mode_snapshot = None
 
     async def async_select_music_slug(
         self,
@@ -578,19 +577,10 @@ class _ActiveModeMixin(_CoordinatorBase):
         )
 
     async def async_restore_pre_mode(self) -> None:
-        async with self.async_mask_transaction():
-            snap = self._pre_mode_snapshot
-            if self.profile.partition_segment_writes:
-                if snap.source_state is None or not await self.async_restore_effect_control_state(
-                    snap.source_state, overwritten_diy_code=None
-                ):
-                    raise ValueError("No complete source state is available to restore")
+        async with async_control_intent(self, ControlIntent.USER), self.async_mask_transaction():
+            if self.color_mode is ParsedMode.COLOUR and self.capture_effect_control_state().mode == "colour":
                 return
-            match snap.kind:
-                case "color_temp":
-                    await self.send_command(build_color_temp(snap.kelvin, self.model, profile=self.profile))
-                case "white":
-                    await self.send_command(build_white_brightness(snap.level, self.model))
-                case _:
-                    await self.send_command(build_color_rgb(*snap.rgb, self.model, profile=self.profile))
-            self._enter_static_mode()
+            snap = self._pre_mode_snapshot
+            if snap is None or not same_control_profile(snap.profile, self.profile):
+                raise ValueError("No complete static state is available to restore")
+            await self.async_restore_effect_control_state(snap.state, overwritten_diy_code=None, require_static=True)

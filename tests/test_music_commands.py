@@ -607,6 +607,13 @@ async def test_music_static_intent_precedes_power_but_is_published_at_selector(h
     coordinator.is_on = True
     coordinator.color_mode = ParsedMode.COLOUR
     coordinator.rgb_color = (1, 2, 3)
+    original = [(1, 2, 3)] * 14 + [(4, 5, 6)]
+    brightness = [30] * 14 + [70]
+    for offset in range(0, 15, 3):
+        body = [offset // 3 + 1]
+        for index in range(offset, offset + 3):
+            body.extend([brightness[index], *original[index]])
+        _notify(coordinator, bytes([0xAA, 0xA5, *body]))
     snapshot = coordinator._pre_mode_snapshot
     compiled = compile_music_profile(LibraryItem.new("Music", MusicProfile("H617A", "separation", 50)), "H617A")
     packets = prepare_music_request("H617A", "separation", 50, None, False, compiled.parameters)
@@ -620,7 +627,9 @@ async def test_music_static_intent_precedes_power_but_is_published_at_selector(h
                 _notify(coordinator, bytes([0xAA, 0xA5, group, *([100, 10, 20, 30] * 3)]))
             assert coordinator.rgb_color == (10, 20, 30)
         if packet == packets[-1]:
-            assert coordinator._pre_mode_snapshot.rgb == (1, 2, 3)
+            assert coordinator._pre_mode_snapshot.state.rgb_color == (1, 2, 3)
+            assert coordinator._pre_mode_snapshot.state.segment_colors == tuple(original)
+            assert coordinator._pre_mode_snapshot.state.segment_brightness == tuple(brightness)
             assert coordinator.music_mode == "separation"
             if fail_at == "selector":
                 raise RuntimeError("selector failed")
@@ -635,8 +644,8 @@ async def test_music_static_intent_precedes_power_but_is_published_at_selector(h
     if fail_at == "power":
         assert coordinator._pre_mode_snapshot is snapshot
     else:
-        assert coordinator._pre_mode_snapshot.kind == "rgb"
-        assert coordinator._pre_mode_snapshot.rgb == (1, 2, 3)
+        assert coordinator._pre_mode_snapshot.state.mode == "colour"
+        assert coordinator._pre_mode_snapshot.state.rgb_color == (1, 2, 3)
         assert coordinator.rgb_color == (10, 20, 30)
 
 
@@ -1340,6 +1349,8 @@ async def test_alternate_fountain_direction_survives_capture_and_recovery(hass, 
         LibraryItem.new("Fountain", MusicProfile("TEST-FOUNTAIN", "fountain", 50)), "TEST-FOUNTAIN"
     )
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "TEST-FOUNTAIN", configuration_url="test")
+    coordinator.install_static_color(rgb=(1, 2, 3))
+    coordinator.is_on, coordinator.color_mode = True, ParsedMode.COLOUR
     with _music_transport(coordinator) as send:
         await async_apply_compiled_profile(coordinator, compiled)
         packets = [call.args[1] for call in send.await_args_list]

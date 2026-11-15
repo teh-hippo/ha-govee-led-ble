@@ -564,13 +564,13 @@ async def test_effect_stop_restores_mixed_source_capture_without_aggregate_colou
     assert before.restorable_source_colour(PROFILE)
     assert PriorControlState.from_dict(before.to_dict()) == before
     await coordinator.send_command(frame("3305040100"))
-    assert coordinator._pre_mode_snapshot.source_state == before
+    assert coordinator._pre_mode_snapshot.state == before
     state["apply"] = True
     state["top"] = 0
     state["colours"] = [(255, 0, 0)] * 9
     coordinator.source_static_intents.clear()
     coordinator.color_mode = ParsedMode.SCENE
-    await GoveeBLELight(coordinator)._async_clear_effect()
+    await coordinator.async_restore_pre_mode()
     assert state["colours"] == ([table_kelvin_rgb(6500)] * 9 if white else [(0, 0, 255)] * 8 + [table_kelvin_rgb(2700)])
     assert coordinator.capture_effect_control_state().source_static_intents == before.source_static_intents
     assert coordinator._client.write_gatt_char.await_count > 0
@@ -595,10 +595,10 @@ async def test_music_captures_sources_at_its_physical_mode_transition(source_wir
 
     coordinator._client.write_gatt_char.side_effect = with_music_ack
     await coordinator.async_select_music_slug("spectrum")
-    assert coordinator._pre_mode_snapshot.source_state == before
+    assert coordinator._pre_mode_snapshot.state == before
     assert coordinator.color_mode is ParsedMode.MUSIC
     state["top"], state["colours"] = 0, [(255, 0, 0)] * 9
-    await GoveeBLELight(coordinator)._async_clear_effect()
+    await coordinator.async_restore_pre_mode()
     assert state["colours"] == [(0, 0, 255)] * 8 + [table_kelvin_rgb(2700)]
 
 
@@ -637,10 +637,10 @@ async def test_entity_effect_owns_source_restoration_before_leading_power(
             assert coordinator._pre_mode_snapshot is original_snapshot
         else:
             await light.async_turn_on(effect="Rainbow" if route == "native" else item.name)
-            assert coordinator._pre_mode_snapshot.source_state == before
+            assert coordinator._pre_mode_snapshot.state == before
             state["top"], state["colours"] = 0, [(255, 0, 0)] * 9
             coordinator.color_mode = ParsedMode.SCENE
-            await light._async_clear_effect()
+            await coordinator.async_restore_pre_mode()
             assert state["colours"] == [(0, 0, 255)] * 8 + [table_kelvin_rgb(2700)]
             assert state["flags"] & 0x70 == before_flags & 0x70
         assert coordinator._mode_transition is None

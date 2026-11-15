@@ -211,11 +211,6 @@ def build_segment_color_temp(
     return build_colour_temperature(value, mask, model, profile=profile)
 
 
-def build_white_brightness(percent: int, model: str = "H617A", *, profile: ModelProfile | None = None) -> bytes:
-    profile = profile or get_profile(model)
-    return build_segment_brightness_mask(profile.whole_device_mask, percent, model, profile=profile)
-
-
 @dataclass(frozen=True)
 class ParsedStaticWrite:
     """Static-command fields used by optimistic state and the BLE simulator."""

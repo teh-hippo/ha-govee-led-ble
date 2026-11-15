@@ -693,6 +693,7 @@ _H617A_PROFILE = ModelProfile(
     ),
     music_upload_before_selector=True,
     music_requires_upload_ack=True,
+    music_params_require_activation=True,
     supports_music_color=True,
     supports_advanced_effects=True,
     supports_multi_layered_effects=True,

@@ -430,41 +430,63 @@ async def test_h7025_connection_failure_before_upload_can_retry(connected):
     assert c.music_body is not None
 
 
-@pytest.mark.parametrize("connected", ["H7025"], indirect=True)
 @pytest.mark.parametrize(
-    ("mode", "code", "body", "parameters", "edited"),
+    ("connected", "mode", "code", "body", "parameters", "edited"),
     [
-        ("flow", 0x59, "5902010203040506000205", {"direction": "counterclockwise"}, "5902010203040506010205"),
-        ("hopping", 0x48, "480201020304050601020319aabb", {"relative_brightness": 17}, "480201020304050601020311aabb"),
+        ("H7025", "flow", 0x59, "5902010203040506000205", {"direction": "counterclockwise"}, "5902010203040506010205"),
+        (
+            "H7025",
+            "hopping",
+            0x48,
+            "480201020304050601020319aabb",
+            {"relative_brightness": 17},
+            "480201020304050601020311aabb",
+        ),
+        (
+            "H617A",
+            "hopping",
+            0x33,
+            "3302010203040506aabbcc196104050708",
+            {"relative_brightness": 17},
+            "3302010203040506aabbcc116104050708",
+        ),
     ],
+    indirect=["connected"],
 )
 @pytest.mark.parametrize("accepted", [False, True])
 @pytest.mark.parametrize("preview", [False, True])
-async def test_h7025_retained_edit_uploads_acknowledges_then_activates(
+async def test_retained_edit_uploads_acknowledges_then_activates(
     connected, mode, code, body, parameters, edited, accepted, preview
 ):
     c, client = connected
     c.music_mode, c.music_sensitivity = mode, 42
     c._music_body = (mode, bytes.fromhex(body))
     upload = fragment_a3(0x41, bytes.fromhex(edited))
-    selector = build_music_mode(code, 42, None, False, "H7025")
+    selector = build_music_mode(code, 42, None, False, c.model)
     events = []
+    uploaded = asyncio.Event()
 
     async def write(_uuid, packet, **_kwargs):
         events.append(packet)
         if packet == upload[-1]:
-            events.append("positive ACK" if accepted else "negative ACK")
-            receive(client, frame(f"a341{code:02x}" + ("00" if accepted else "01")))
+            uploaded.set()
 
     client.write_gatt_char.side_effect = write
     options = {"writer": lambda *args, **kwargs: preview_writer(c, *args, **kwargs)} if preview else {}
+    task = asyncio.create_task(c.async_apply_music_params(code, parameters=parameters, **options))
+    await asyncio.wait_for(uploaded.wait(), 1)
+    assert events == upload
+    assert not task.done()
+    assert c._upload_ack is not None and not c._upload_ack.future.done()
+    events.append("positive ACK" if accepted else "negative ACK")
+    receive(client, frame(f"a341{code:02x}" + ("00" if accepted else "01")))
     if accepted:
-        await c.async_apply_music_params(code, parameters=parameters, **options)
+        await task
         assert events == [*upload, "positive ACK", selector]
         assert c.music_body == bytes.fromhex(edited)
     else:
         with pytest.raises(RuntimeError, match="Device rejected A3 upload"):
-            await c.async_apply_music_params(code, parameters=parameters, **options)
+            await task
         assert events == [*upload, "negative ACK"]
         assert c.music_body is None
 

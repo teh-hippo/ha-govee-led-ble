@@ -12,6 +12,7 @@ from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.effect_compiler import compile_music_profile, validate_compiled_geometry
 from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, MusicProfile
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_music_mode
 from custom_components.ha_govee_led_ble.music_commands import (
     edit_music_body,
     music_body_parameters,
@@ -198,8 +199,11 @@ async def test_lowlevel_edit_requires_body_and_retains_unknown_companions(hass, 
     monkeypatch.setattr(coordinator, "async_write_music_sequence", sequence)
     await coordinator.async_apply_music_params(51, parameters={"relative_brightness": 17}, writer=writer)
     writes = sequence.call_args.args[0]
-    assert [packet for packet, _ in writes] == fragment_a3(0x41, bytes.fromhex("3302010203040506aabbcc116104050708"))
-    assert writes[-1][1]["music_hopping_brightness"] == 17
+    assert [packet for packet, _ in writes] == [
+        *fragment_a3(0x41, bytes.fromhex("3302010203040506aabbcc116104050708")),
+        build_music_mode(51, coordinator.music_sensitivity, None, False),
+    ]
+    assert writes[writes.last_upload][1]["music_hopping_brightness"] == 17
 
 
 async def test_per_parameter_guard_runs_before_physical_write(hass, monkeypatch):
@@ -286,7 +290,10 @@ async def test_verbatim_restore_updates_retained_display_and_followup_edit_is_no
                 }[mode],
             ).mode_code
         )
-        assert [call.args[1] for call in physical.await_args_list] == fragment_a3(0x41, body)
+        assert [call.args[1] for call in physical.await_args_list] == [
+            *fragment_a3(0x41, body),
+            prepare_music_body_writes(c.model, mode, c.music_sensitivity, body, profile=c.profile)[-1][0],
+        ]
         assert c.music_body == body
 
 

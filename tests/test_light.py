@@ -613,9 +613,7 @@ async def test_failed_power_off_preserves_segment_colour_observation(hass, model
         assert coord._segment_query_colors[:size] == [rgb] * size
 
 
-@pytest.mark.parametrize(
-    "colour_request", [{"rgb_color": (200, 100, 50)}, {"color_temp_kelvin": 5000}, {"effect": "off"}]
-)
+@pytest.mark.parametrize("colour_request", [{"rgb_color": (200, 100, 50)}, {"color_temp_kelvin": 5000}])
 @pytest.mark.parametrize("mode_reply", [False, True])
 @pytest.mark.parametrize("observed_kelvin", [None, 4200])
 async def test_failed_colour_after_brightness_preserves_latest_observation(
@@ -1602,7 +1600,7 @@ async def test_turn_on_scene_applies_and_clears_sticky(light, mock_coordinator):
     assert co.music_mode == "off" and co.video_mode == "off"
 
 
-async def test_turn_on_effect_off_returns_to_static_colour(light, mock_coordinator):
+async def test_turn_on_effect_off_delegates_complete_restoration(light, mock_coordinator):
     mock_coordinator.is_on = True
     mock_coordinator.effect = "rainbow"
     mock_coordinator.rgb_color = (12, 34, 56)
@@ -1611,24 +1609,22 @@ async def test_turn_on_effect_off_returns_to_static_colour(light, mock_coordinat
 
     await light.async_turn_on(effect="off")
 
-    mock_coordinator.send_command.assert_awaited_once_with(build_color_rgb(12, 34, 56))
-    assert mock_coordinator.effect is None
-    assert mock_coordinator.unknown_scene_code is None
-    assert mock_coordinator.segment_colors == [(12, 34, 56)] * 15
-    assert mock_coordinator.segment_state_source == "optimistic"
-    assert light.effect == "off"
+    mock_coordinator.async_restore_pre_mode.assert_awaited_once_with()
+    mock_coordinator.send_command.assert_not_awaited()
 
 
-async def test_turn_on_effect_off_restores_colour_temperature(light, mock_coordinator):
+@pytest.mark.parametrize("colour", [{"rgb_color": (12, 34, 56)}, {"color_temp_kelvin": 4000}])
+async def test_turn_on_effect_off_with_explicit_colour_does_not_restore_over_new_intent(
+    light, mock_coordinator, colour
+):
     mock_coordinator.is_on = True
     mock_coordinator.effect = "rainbow"
-    mock_coordinator.color_temp_kelvin = 4000
+    await light.async_turn_on(effect="off", **colour)
 
-    await light.async_turn_on(effect="off")
-
-    mock_coordinator.send_command.assert_awaited_once_with(build_color_temp(4000))
-    assert mock_coordinator.segment_colors == [table_kelvin_rgb(4000)] * 15
-    assert light.color_mode is ColorMode.COLOR_TEMP
+    mock_coordinator.async_restore_pre_mode.assert_not_awaited()
+    expected = build_color_temp(4000) if "color_temp_kelvin" in colour else build_color_rgb(12, 34, 56)
+    mock_coordinator.send_command.assert_awaited_once()
+    assert mock_coordinator.send_command.await_args.args[0] == expected
 
 
 async def test_turn_on_scene_uses_the_device_stored_default(mock_coordinator):

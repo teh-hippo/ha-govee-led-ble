@@ -1191,20 +1191,25 @@ async def test_static_failure_never_restores_stale_mode_siblings(hass, model, fr
 @pytest.mark.parametrize("fail", [False, True])
 async def test_clear_effect_preserves_newer_scene_notification(static_coordinator, fail):
     coord = static_coordinator
+    coord.profile = replace(coord.profile, supports_segment_brightness=True)
     coord.is_on = True
-    light = GoveeBLELight(coord)
+    coord._notify_callback(None, _static_reply(rgb=(1, 2, 3)))
+    _static_segments(coord, (1, 2, 3))
+    coord._pre_mode_snapshot = coord._capture_static_state()
+    coord.color_mode, coord.music_mode = ParsedMode.MUSIC, "rhythm"
+    coord._client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
+    coord._ensure_connected = AsyncMock(return_value=coord._client)
 
-    async def send(_packet, **_kwargs):
-        coord._notify_callback(None, _static_scene_reply())
-        if fail:
-            raise RuntimeError("effect-off write failed")
+    async def send(packets, *, write_guard, **_kwargs):
+        for _packet in packets:
+            write_guard()
+            coord._notify_callback(None, _static_scene_reply())
+            if fail:
+                raise RuntimeError("effect-off write failed")
 
-    coord.send_command = AsyncMock(side_effect=send)
-    if fail:
-        with pytest.raises(HomeAssistantError), light._rollback():
-            await light._async_clear_effect()
-    else:
-        await light._async_clear_effect()
+    coord.async_write_effect_sequence = AsyncMock(side_effect=send)
+    with pytest.raises((RuntimeError, ValueError), match="effect-off write failed|Static restoration context changed"):
+        await coord.async_restore_pre_mode()
     assert coord.color_mode is ParsedMode.SCENE and coord.scene_code == 65000
     assert coord.active_mode == "scene"
 
@@ -1422,6 +1427,7 @@ async def test_static_command_restoration_is_not_observation(static_coordinator,
     monkeypatch.setattr(coord, "_renew_foreground_lease", lambda: None)
     coord.refresh_state = AsyncMock(return_value=True)
     if restore == "pre_mode":
+        coord.music_mode = "rhythm"
         await coord.async_restore_pre_mode()
     else:
         assert await coord.async_restore_effect_control_state(prior, overwritten_diy_code=None)

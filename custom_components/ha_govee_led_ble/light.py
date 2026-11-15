@@ -853,7 +853,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         key = normalise_effect_name(effect_name)
         coordinator = self.coordinator
         if key == EFFECT_OFF:
-            return self._async_clear_effect
+            return coordinator.async_restore_pre_mode
         try:
             selected = resolve_effect_selector(self._selector_entries(), effect_name)
         except EffectValidationError as exc:
@@ -977,27 +977,6 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             translation_placeholders={"effect": key},
         )
 
-    async def _async_clear_effect(self) -> None:
-        coordinator = self.coordinator
-        if coordinator.profile.partition_segment_writes:
-            await coordinator.async_restore_pre_mode()
-            return
-        async with coordinator.async_mask_transaction():
-            with self._rollback():
-                if coordinator.color_temp_kelvin is not None:
-                    packet = build_color_temp(
-                        coordinator.color_temp_kelvin, coordinator.model, profile=coordinator.profile
-                    )
-                    self._attr_color_mode = ColorMode.COLOR_TEMP
-                else:
-                    packet = build_color_rgb(
-                        *coordinator.rgb_color,
-                        coordinator.model,
-                        profile=coordinator.profile,
-                    )
-                    self._attr_color_mode = ColorMode.RGB
-                await coordinator.send_command(packet)
-
     def _validate_basic_request(self, kwargs: Mapping[str, Any], *, profile: ModelProfile | None = None) -> None:
         profile = self.coordinator.profile if profile is None else profile
         model = self.coordinator.model
@@ -1067,6 +1046,12 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 await self._async_turn_off(clear_workspace_on_success=active_workspace is not None)
             return
         self._validate_basic_request(kwargs)
+        if (
+            ATTR_EFFECT in kwargs
+            and normalise_effect_name(str(kwargs[ATTR_EFFECT])) == EFFECT_OFF
+            and kwargs.keys() & {ATTR_RGB_COLOR, ATTR_COLOR_TEMP_KELVIN}
+        ):
+            kwargs = {key: value for key, value in kwargs.items() if key != ATTR_EFFECT}
         source_colour = self._prepare_source_colour_request(kwargs)
         custom_requested = (
             ATTR_EFFECT in kwargs
@@ -1322,6 +1307,9 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         self._validate_basic_request(kwargs)
         coordinator = self.coordinator
         source_colour = source_colour or self._prepare_source_colour_request(kwargs)
+        if ATTR_EFFECT in kwargs and normalise_effect_name(str(kwargs[ATTR_EFFECT])) == EFFECT_OFF:
+            await coordinator.async_restore_pre_mode()
+            prepared_effect = None
         request = coordinator.control_write_request(identity_guard=native_write_guard, effect_guard=effect_write_guard)
 
         if ATTR_BRIGHTNESS in kwargs:

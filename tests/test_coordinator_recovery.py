@@ -289,7 +289,7 @@ async def test_segmented_kelvin_recovery_normalises_writes_and_expectations_with
         segment_brightness=(50,) * 10,
     )
     send = AsyncMock()
-    monkeypatch.setattr(coord, "send_command", send)
+    monkeypatch.setattr(coord, "async_write_effect_sequence", send)
 
     async def refresh(_request):
         coord.is_on = True
@@ -309,8 +309,8 @@ async def test_segmented_kelvin_recovery_normalises_writes_and_expectations_with
     assert await coord._restore_segmented_colour(state, True)
     writes = [
         parsed
-        for item in send.await_args_list
-        if (parsed := parse_static_write(item.args[0], "H6046", profile=coord.profile)) is not None
+        for packet in send.await_args.args[0]
+        if (parsed := parse_static_write(packet, "H6046", profile=coord.profile)) is not None
         and parsed.kelvin is not None
     ]
     assert [(write.segment_mask, write.kelvin) for write in writes] == [(0x001F, 2000), (0x03E0, 3100)]
@@ -373,7 +373,7 @@ async def test_source_colour_recovery_normalises_intents_without_mutating_the_ca
         segment_brightness=levels,
     )
     send = AsyncMock()
-    monkeypatch.setattr(coord, "send_command", send)
+    monkeypatch.setattr(coord, "async_write_effect_sequence", send)
 
     async def refresh(_request):
         coord.is_on, coord.brightness_pct = True, 20
@@ -393,8 +393,8 @@ async def test_source_colour_recovery_normalises_intents_without_mutating_the_ca
     assert await coord._restore_segmented_colour(state, True)
     writes = [
         parsed
-        for item in send.await_args_list
-        if (parsed := parse_static_write(item.args[0], "H60B0", profile=coord.profile)) is not None
+        for packet in send.await_args.args[0]
+        if (parsed := parse_static_write(packet, "H60B0", profile=coord.profile)) is not None
         and parsed.kelvin is not None
     ]
     assert [(write.segment_mask, write.kelvin) for write in writes] == [
@@ -831,16 +831,16 @@ async def test_h6179_zero_kelvin_rgb_observation_replaces_retained_white_and_res
     assert state.color_temp_kelvin is None and state.rgb_color == rgb
 
     with (
-        patch.object(coordinator, "send_command", new_callable=AsyncMock) as send,
+        patch.object(coordinator, "async_write_effect_sequence", new_callable=AsyncMock) as send,
         patch.object(coordinator, "refresh_state", new_callable=AsyncMock, return_value=True) as refresh,
     ):
         assert await coordinator.async_restore_effect_control_state(state, overwritten_diy_code=None)
 
-    assert send.await_args_list == [
-        call(build_power(True, "H6179")),
-        call(build_brightness(100, "H6179")),
-        call(build_color_rgb(*rgb, "H6179")),
-    ]
+    assert send.await_args.args[0] == (
+        build_power(True, "H6179"),
+        build_brightness(100, "H6179"),
+        build_color_rgb(*rgb, "H6179"),
+    )
     refresh.assert_awaited_once_with(RefreshRequest(on=True, brightness=100, rgb_color=rgb, zero_kelvin=True))
 
 
