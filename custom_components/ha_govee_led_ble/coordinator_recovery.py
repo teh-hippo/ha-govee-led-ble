@@ -7,7 +7,7 @@ from contextlib import nullcontext
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, cast
 
-from .const import NATIVE_ZONE_CONTROLS, ModelProfile, same_control_profile
+from .const import NATIVE_ZONE_CONTROLS, ModelProfile, get_profile, same_control_profile
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator_base import _CoordinatorBase
 from .coordinator_refresh import RefreshRequest
@@ -136,7 +136,7 @@ class _RecoveryMixin(_CoordinatorBase):
         # active_mode hides the resident mode while powered off and maps unknown to colour.
         mode = (
             "unknown"
-            if self.color_mode is ParsedMode.UNKNOWN
+            if self.color_mode is ParsedMode.UNKNOWN or self.color_mode is ParsedMode.COLOUR and self.color_temp_unknown
             else "custom"
             if self.diy_code is not None
             else "scene"
@@ -242,6 +242,8 @@ class _RecoveryMixin(_CoordinatorBase):
         overwritten_diy_code: int | None,
         require_static: bool = False,
     ) -> bool:
+        if state.mode == "colour" and get_profile(self.model).static_identity_fields:
+            await self._as_coordinator.async_prepare_identity_gated_control()
         static_restore = None
         if require_static:
             static_restore = self._prepare_static_restore(state)
@@ -1094,6 +1096,8 @@ class _RecoveryMixin(_CoordinatorBase):
     async def _restore_static_colour(
         self, state: PriorControlState, complete: bool, *, prepared: _StaticRestore | None = None
     ) -> bool:
+        if get_profile(self.model).static_identity_fields:
+            await self._as_coordinator.async_prepare_identity_gated_control()
         prepared = prepared or self._prepare_static_restore(state)
         if prepared is None:
             return False

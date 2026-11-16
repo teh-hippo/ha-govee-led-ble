@@ -24,12 +24,26 @@ from .protocol_core import (
 )
 
 
-def h6181_outbound_transform(packet: bytes) -> bytes:
+def h6181_outbound_transform(packet: bytes, *, colour_effect: bool = False) -> bytes:
     parsed = _parse_xor_frame(packet, "H6181", {"H6181": ("h6181_command_write", H6181CommandWrite)}).parsed
-    if parsed is None or getattr(parsed.opcode, "name", None) != "brightness":
+    if parsed is None:
         return packet
-    parsed.body.percent = encode_wire_brightness(int(parsed.body.percent), (20, 254))
-    return _serialize_xor(parsed)
+    if getattr(parsed.opcode, "name", None) == "brightness":
+        parsed.body.percent = encode_wire_brightness(int(parsed.body.percent), (20, 254))
+        return _serialize_xor(parsed)
+    if colour_effect and parsed.is_static:
+        static = parsed.body.detail
+        detail = _child(H6181CommandWrite.ColourEffectBody, parsed.body)
+        detail.rgb = _rgb(detail, static.rgb.red, static.rgb.green, static.rgb.blue)
+        detail.temperature_flag = int(bool(static.kelvin))
+        detail.companion_rgb = _rgb(
+            detail, static.companion_rgb.red, static.companion_rgb.green, static.companion_rgb.blue
+        )
+        detail.unknown_tail = bytes(9)
+        parsed.body.sub_mode = H6181CommandWrite.ModeSel.colour_effect
+        parsed.body.detail = detail
+        return _serialize_xor(parsed)
+    return packet
 
 
 def h6199_pact1_outbound_transform(packet: bytes) -> bytes:

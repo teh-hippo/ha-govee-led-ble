@@ -6,7 +6,6 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from bleak import BleakError
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.exceptions import HomeAssistantError
 
@@ -33,6 +32,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_power_query,
     require_profile_packet,
 )
+from custom_components.ha_govee_led_ble.govee_encryption import GoveeTransportError
 from custom_components.ha_govee_led_ble.light_commands import (
     build_color_rgb,
     build_color_temp,
@@ -407,7 +407,7 @@ async def test_identity_refresh_rejects_replaced_subscription(reconnect_identity
         coordinator._notification_token = object()
 
     coordinator._client.write_gatt_char.side_effect = replace_subscription
-    with pytest.raises(BleakError, match="confirming controller identity"):
+    with pytest.raises(GoveeTransportError, match="identity_subscription_changed"):
         await coordinator._ensure_connected()
     assert not any(packet[0] != 0xAA for packet in packets)
 

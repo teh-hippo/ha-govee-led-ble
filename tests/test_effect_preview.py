@@ -102,6 +102,9 @@ class _EffectCoordinator(SimpleNamespace):
     def _reconcile_authorization(self):
         pass
 
+    def _authorization_profile(self):
+        return self.profile
+
     @property
     def effect_authorization_profile(self):
         return self.profile

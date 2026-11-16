@@ -160,6 +160,7 @@ def _coord_defaults() -> dict[str, Any]:
         brightness_pct=100,
         rgb_color=(255, 255, 255),
         color_temp_kelvin=None,
+        color_temp_unknown=False,
         rgb_color_source="initial",
         color_temp_kelvin_source="initial",
         _static_rgb_known=False,
