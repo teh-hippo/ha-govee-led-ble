@@ -1681,6 +1681,24 @@ async def _async_prepare_effect_control_state(
                     "The device mode or subscription changed while preparing effect recovery",
                     reason="mode_or_subscription_changed",
                 )
+    inline_fields = ("is_on", "brightness_pct", "color_mode")
+    if (
+        require_restorable_static
+        and profile.diy_upload_transport == "single"
+        and not all(coordinator.source_field_fresh(field) for field in inline_fields)
+    ):
+        if (
+            await coordinator.refresh_state(
+                RefreshRequest(
+                    refresh_all=True,
+                    required_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE}),
+                )
+            )
+            is not True
+            or not same_control_profile(coordinator.profile, profile)
+            or not all(coordinator.source_field_fresh(field) for field in inline_fields)
+        ):
+            raise EffectStateReadError("Could not read the current state before preview")
     prior = capture() if capture is not None else None
     prior_mode = prior.mode if isinstance(prior, PriorControlState) else _coordinator_mode(coordinator)
     preparation_token = getattr(coordinator, "_notification_token", None)
@@ -1712,24 +1730,6 @@ async def _async_prepare_effect_control_state(
         return current if isinstance(current, PriorControlState) else None
 
     if require_restorable_static:
-        inline_fields = ("is_on", "brightness_pct", "color_mode")
-        if profile.diy_upload_transport == "single" and not all(
-            coordinator.source_field_fresh(field) for field in inline_fields
-        ):
-            if (
-                await coordinator.refresh_state(
-                    RefreshRequest(
-                        refresh_all=True,
-                        required_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE}),
-                    )
-                )
-                is not True
-                or coordinator.profile != profile
-                or not all(coordinator.source_field_fresh(field) for field in inline_fields)
-            ):
-                raise EffectStateReadError("Could not read the current state before preview")
-            prior = capture() if capture is not None else None
-            prior_mode = prior.mode if isinstance(prior, PriorControlState) else _coordinator_mode(coordinator)
         if profile.partition_segment_writes:
             read_segments = prior_mode in {"colour", "unknown"}
             fields = (
@@ -1799,7 +1799,8 @@ async def _async_prepare_effect_control_state(
         if prior_mode == "music" and isinstance(prior, PriorControlState):
             if prior.music_mode not in profile.music_modes:
                 raise EffectRestorationError(
-                    "The current music mode cannot be safely restored after preview", reason="unsupported_music_recovery"
+                    "The current music mode cannot be safely restored after preview",
+                    reason="unsupported_music_recovery",
                 )
             variant = music_variant(profile, music_code_for(coordinator.model, prior.music_mode, profile=profile))
             if variant and variant.fixed_colour_default is not None and prior.music_color is None:
