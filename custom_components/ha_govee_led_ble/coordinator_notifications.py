@@ -359,6 +359,12 @@ class _NotificationMixin(_CoordinatorBase):
                     self.color_temp_unknown = False
                 if static_values.get("color_temp_kelvin") is not None:
                     self._static_rgb_known = False
+                    if (
+                        self.profile.supports_segments
+                        and not self.profile.supports_segment_color_temperature
+                        and not any(source.segments for source in self.profile.light_sources)
+                    ):
+                        self.segment_kelvin = [static_values["color_temp_kelvin"]] * self.profile.segment_count
                 if (
                     self.profile.status_grammar in WHOLE_BULB_GRAMMARS | {"H6181-modern"}
                     and parsed.color_temp_kelvin is not None
