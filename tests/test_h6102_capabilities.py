@@ -1,5 +1,6 @@
 """Exact H6102 candidate, independent revision gates and runtime admission."""
 
+import time
 from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -319,7 +320,15 @@ async def test_saved_apply_requires_fresh_exact_h6102_readback(hass, monkeypatch
 
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(side_effect=transmit))
     coordinator._client = client
-    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
+
+    async def connected():
+        if coordinator._client is not client or coordinator._notification_token is None:
+            coordinator._client = client
+            coordinator._notification_token = object()
+            coordinator._notify_started_monotonic = time.monotonic() - 1
+        return client
+
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(side_effect=connected))
     monkeypatch.setattr(coordinator, "_renew_foreground_lease", lambda: None)
     # Exercise the real setup refresh and the same engine used by saved Apply.
     await coordinator._async_update_data()

@@ -21,6 +21,7 @@ from .ble_connection import CONNECTION_SETUP_TIMEOUT
 from .const import DOMAIN, ModelProfile, ReadDomain
 from .control_arbiter import ControlIntent, PreviewAdmission, async_control_intent
 from .coordinator_base import async_prepare_effect_profile
+from .coordinator_modes import ModeTransitionPurpose
 from .coordinator_status import ParsedMode
 from .effect_active_workspace import ActiveEffectWorkspace, ActiveEffectWorkspaceRepository
 from .effect_catalogue import (
@@ -985,9 +986,14 @@ class EffectPreviewManager:
             self._degrade_checking_health(request.config_entry_id)
             return
         try:
-            await self._async_prepare_execution(coordinator, compiled)
-            writer = _PreviewWriter(self, request, coordinator, health_target)
-            await self._async_transmit_request(request, coordinator, compiled, writer)
+            await coordinator.async_preview_preflight(timeout=self._connect_timeout)
+            async with (
+                async_control_intent(coordinator, ControlIntent.PREVIEW),
+                coordinator.async_mode_transition(purpose=ModeTransitionPurpose.PREVIEW),
+            ):
+                await self._async_prepare_execution(coordinator, compiled)
+                writer = _PreviewWriter(self, request, coordinator, health_target)
+                await self._async_transmit_request(request, coordinator, compiled, writer)
             writer.completed = True
             if not await self._async_request_is_current(request):
                 raise _PreviewSupersededError
@@ -1120,7 +1126,6 @@ class EffectPreviewManager:
             self._mark_write_unverified(request)
 
     async def _async_prepare_execution(self, coordinator: Any, compiled: CompiledApplication | None) -> None:
-        await coordinator.async_preview_preflight(timeout=self._connect_timeout)
         inline_brightness = (
             isinstance(compiled, CompiledVideoProfile)
             and compiled.relative_brightness_inline

@@ -45,6 +45,9 @@ def device(hass, monkeypatch):
     coordinator._notify_callback(None, bytearray(frame("aa0500000b3e01a537")))
     coordinator._client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
     monkeypatch.setattr(coordinator, "refresh_state", AsyncMock(return_value=True))
+    monkeypatch.setattr(
+        coordinator, "async_prepare_static_baseline", AsyncMock(return_value=_known_static_baseline(coordinator))
+    )
     return coordinator
 
 
@@ -209,6 +212,9 @@ async def test_cold_connection_precedes_subscription_guard_capture(hass, monkeyp
     monkeypatch.setattr(coordinator, "_renew_foreground_lease", lambda: None)
     assert coordinator._client is None
     if operation == "mode":
+        monkeypatch.setattr(
+            coordinator, "async_prepare_static_baseline", AsyncMock(return_value=_known_static_baseline(coordinator))
+        )
         await apply_active_video_mode(
             coordinator,
             mode="movie",

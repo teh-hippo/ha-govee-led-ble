@@ -651,6 +651,8 @@ test("saved item selection applies identity only while Live is enabled", async (
   expect(applySavedEffect).toHaveBeenCalledWith(
     "entry-a",
     saved,
+    undefined,
+    true,
   );
 });
 
@@ -677,6 +679,8 @@ test("enabling Live on a clean saved item applies its stable identity", async ()
   expect(applySavedEffect).toHaveBeenCalledWith(
     selected.config_entry_id,
     saved,
+    undefined,
+    true,
   );
 });
 
@@ -737,6 +741,8 @@ test("new saves promote stable identity only while Live remains enabled", async 
   expect(applySavedEffect).toHaveBeenCalledWith(
     selected.config_entry_id,
     created,
+    undefined,
+    true,
   );
 
   model.liveApplyEnabled = false;
@@ -866,6 +872,8 @@ test("scene saves follow strict Live semantics", async () => {
   expect(applySavedEffect).toHaveBeenCalledWith(
     selected.config_entry_id,
     saved,
+    undefined,
+    true,
   );
 
   applySavedEffect.mockClear();
@@ -1191,6 +1199,8 @@ test("automatic save flushes before navigation and exposes failures to the trans
       id: saved.id,
       version: 3,
     }),
+    undefined,
+    true,
   );
   expect(loadDevice).toHaveBeenCalledWith(selected.config_entry_id);
 

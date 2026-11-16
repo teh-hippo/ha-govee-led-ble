@@ -1,5 +1,6 @@
 """H617A review regressions and remaining findings; never connect to a real radio."""
 
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -87,8 +88,7 @@ async def test_restoration_preserves_segments_and_rejects_wrong_readback(coordin
         elif packet[1] == 0xA5 and packet[2] == 5:
             observe_segments(coordinator, physical, physical_brightness)
 
-    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(side_effect=transmit))
-    coordinator._client = client
+    client.write_gatt_char.side_effect = transmit
     with (
         patch.object(coordinator, "_ensure_connected", AsyncMock(return_value=client)),
         patch.object(coordinator, "_renew_foreground_lease"),

@@ -3,10 +3,13 @@
 import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
-from .const import ModelProfile, ReadDomain, same_control_profile
+from homeassistant.exceptions import HomeAssistantError
+
+from .const import DOMAIN, ModelProfile, ReadDomain, same_control_profile
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator_base import _CoordinatorBase, async_prepare_effect_profile
 from .coordinator_refresh import RefreshRequest
@@ -41,15 +44,14 @@ from .scenes import (
 )
 
 if TYPE_CHECKING:
+    from .coordinator_recovery import PreparedStaticRecovery
     from .effect_deployments import PriorControlState
 
 
-@dataclass(frozen=True)
-class PreModeSnapshot:
-    """Complete static intent and the control profile that qualified it."""
-
-    state: PriorControlState
-    profile: ModelProfile
+class ModeTransitionPurpose(StrEnum):
+    SELECTION = "selection"
+    PREVIEW = "preview"
+    RECOVERY = "recovery"
 
 
 @dataclass
@@ -57,10 +59,14 @@ class _ModeTransition:
     owner: asyncio.Task[Any] | None
     captured: bool = False
     installed: bool = False
-    static_origin: bool = False
-    snapshot: PreModeSnapshot | None = None
+    snapshot: PriorControlState | None = None
     profile: ModelProfile | None = None
     foreground_generation: int = 0
+    purpose: ModeTransitionPurpose | None = None
+    profile_generation: int = 0
+    subscription: object | None = None
+    field_baselines: dict[str, int] = field(default_factory=dict)
+    write_baseline: int = 0
 
 
 class _ActiveModeMixin(_CoordinatorBase):
@@ -87,7 +93,7 @@ class _ActiveModeMixin(_CoordinatorBase):
         self._observed_power_profile_generation = -1
         self._source_power_observation_generation: dict[str, tuple[int, int]] = {}
         self._scene_code = None
-        self._pre_mode_snapshot: PreModeSnapshot | None = None
+        self._pre_mode_snapshot: PriorControlState | None = None
         self._mode_transition: _ModeTransition | None = None
         self.music_sensitivity = 99
         self.music_color: tuple[int, int, int] | None = None
@@ -208,19 +214,81 @@ class _ActiveModeMixin(_CoordinatorBase):
         return "colour"
 
     @asynccontextmanager
-    async def async_mode_transition(self) -> AsyncIterator[None]:
+    async def async_mode_transition(self, *, purpose: ModeTransitionPurpose | None = None) -> AsyncIterator[None]:
         previous = self._mode_transition
         owner = asyncio.current_task()
-        if previous is not None and previous.owner is owner:
+        if (
+            previous is not None
+            and previous.owner is owner
+            and not (purpose is ModeTransitionPurpose.RECOVERY and previous.purpose is not purpose)
+        ):
+            if purpose is ModeTransitionPurpose.PREVIEW and previous.purpose is None:
+                previous.purpose = purpose
+            if purpose is ModeTransitionPurpose.SELECTION:
+                await self.async_admit_effect_selection()
             yield
             return
-        transition = _ModeTransition(owner)
+        transition = _ModeTransition(
+            owner,
+            purpose=purpose,
+            captured=purpose is ModeTransitionPurpose.RECOVERY,
+            installed=purpose is ModeTransitionPurpose.RECOVERY,
+            field_baselines=dict(self._field_revisions),
+        )
         self._mode_transition = transition
         try:
+            if purpose is ModeTransitionPurpose.SELECTION:
+                await self.async_admit_effect_selection()
             yield
         finally:
             if self._mode_transition is transition:
                 self._mode_transition = previous
+
+    async def async_admit_effect_selection(self) -> None:
+        transition = self._mode_transition
+        if transition is None or transition.owner is not asyncio.current_task():
+            raise RuntimeError("Effect selection requires an owned mode transition")
+        if transition.purpose is ModeTransitionPurpose.RECOVERY or (
+            transition.purpose in (ModeTransitionPurpose.SELECTION, ModeTransitionPurpose.PREVIEW)
+            and transition.captured
+        ):
+            return
+        if transition.captured:
+            raise RuntimeError("Effect selection must be admitted before control writes")
+        preview = transition.purpose is ModeTransitionPurpose.PREVIEW
+        snapshot = await self.async_prepare_static_baseline()
+        if (
+            preview
+            and (has_segmented_sources(self.profile) or self.profile.configured_string_counts)
+            and not snapshot.static_colour_observed
+        ):
+            raise HomeAssistantError(translation_domain=DOMAIN, translation_key="live_recovery_not_observed")
+        transition.snapshot = snapshot
+        transition.profile = self.profile
+        transition.profile_generation = self._profile_generation
+        transition.subscription = self._notification_token
+        transition.foreground_generation = self._control_arbiter.foreground_generation
+        transition.write_baseline = self.control_write_attempts
+        transition.captured = True
+        transition.purpose = ModeTransitionPurpose.PREVIEW if preview else ModeTransitionPurpose.SELECTION
+
+    def _rebind_selection_retry(self) -> None:
+        transition = self._mode_transition
+        if (
+            transition is not None
+            and transition.owner is asyncio.current_task()
+            and transition.purpose in (ModeTransitionPurpose.SELECTION, ModeTransitionPurpose.PREVIEW)
+            and transition.profile is not None
+            and transition.captured
+            and self.control_write_attempts > transition.write_baseline
+            and transition.foreground_generation == self._control_arbiter.foreground_generation
+            and same_control_profile(transition.profile, self.profile)
+        ):
+            # A permitted transport retry retains the pre-attempt intent, not the partially changed current state.
+            transition.profile = self.profile
+            transition.profile_generation = self._profile_generation
+            transition.subscription = self._notification_token
+            transition.installed = False
 
     async def async_apply_native_scene(
         self,
@@ -234,7 +302,12 @@ class _ActiveModeMixin(_CoordinatorBase):
         verify: bool = True,
         intent: ControlIntent = ControlIntent.USER,
     ) -> None:
-        async with async_control_intent(self, intent), self.async_mode_transition():
+        async with (
+            async_control_intent(self, intent),
+            self.async_mode_transition(
+                purpose=ModeTransitionPurpose.PREVIEW if intent is ControlIntent.PREVIEW else None
+            ),
+        ):
             await self._async_apply_native_scene_locked(
                 scene_name,
                 scene_entry=scene_entry,
@@ -296,23 +369,25 @@ class _ActiveModeMixin(_CoordinatorBase):
             profile=profile,
         )
         upload_count = len(packets) - 1
-
-        power_in_sequence = False
-        if not self.is_on:
-            power = build_power(True, self.model)
-            if verify:
-                await self.send_command(power, write_guard=qualified)
-            else:
-                packets.insert(0, power)
-                power_in_sequence = True
-            if not power_in_sequence:
-                self.is_on = True
-            if verify and self.profile.state_readable and await self.refresh_state(RefreshRequest(on=True)) is False:
-                await self.send_command(power, write_guard=qualified)
-                if await self.refresh_state(RefreshRequest(on=True)) is False:
-                    raise RuntimeError(f"Failed to confirm power-on before selecting scene {scene_name!r}")
-
-        async def apply() -> None:
+        async with self.async_mode_transition(purpose=ModeTransitionPurpose.SELECTION):
+            power_in_sequence = False
+            if not self.is_on:
+                power = build_power(True, self.model)
+                if verify:
+                    await self.send_command(power, write_guard=qualified)
+                else:
+                    packets.insert(0, power)
+                    power_in_sequence = True
+                if not power_in_sequence:
+                    self.is_on = True
+                if (
+                    verify
+                    and self.profile.state_readable
+                    and await self.refresh_state(RefreshRequest(on=True)) is False
+                ):
+                    await self.send_command(power, write_guard=qualified)
+                    if await self.refresh_state(RefreshRequest(on=True)) is False:
+                        raise RuntimeError(f"Failed to confirm power-on before selecting scene {scene_name!r}")
             require_ack = bool(upload_count and self.profile.diy_requires_upload_ack)
             await self.async_write_effect_sequence(
                 packets,
@@ -323,43 +398,35 @@ class _ActiveModeMixin(_CoordinatorBase):
                 require_upload_ack=require_ack,
                 upload_ack_index=upload_count - 1 + int(power_in_sequence) if require_ack else None,
             )
-
-        await apply()
-        qualified()
-        if power_in_sequence:
-            self.is_on = True
-        if verify and self.profile.supports_color_mode_readback:
-            observed = await self.async_observe_effect({"scene_code": selector})
-            if observed is False:
-                await self.send_command(packets[-1], write_guard=qualified)
+            qualified()
+            if power_in_sequence:
+                self.is_on = True
+            if verify and self.profile.supports_color_mode_readback:
                 observed = await self.async_observe_effect({"scene_code": selector})
-            if observed is False:
-                raise RuntimeError(f"Failed to confirm scene {scene_name!r}")
-        self.color_mode = ParsedMode.SCENE
-        self.effect = scene_name
-        self._scene_code = selector
-        self.diy_code = None
-        self.music_mode = self.video_mode = "off"
-        self.async_set_updated_data(self.data or {})
+                if observed is False:
+                    await self.send_command(packets[-1], write_guard=qualified)
+                    observed = await self.async_observe_effect({"scene_code": selector})
+                if observed is False:
+                    raise RuntimeError(f"Failed to confirm scene {scene_name!r}")
+            self.color_mode = ParsedMode.SCENE
+            self.effect = scene_name
+            self._scene_code = selector
+            self.diy_code = None
+            self.music_mode = self.video_mode = "off"
+            self.async_set_updated_data(self.data or {})
 
-    def _capture_static_state(self) -> PreModeSnapshot | None:
-        state = self.capture_effect_control_state()
-        if state.mode != "colour":
-            return None
-        if self.profile.supports_segments:
-            if self._notify_started_monotonic is not None and any(
-                self._field_received_at.get(field, -1) < self._notify_started_monotonic
-                for field in ("color_mode", "segment_colors")
-            ):
-                return None
-        else:
-            source = self.color_temp_kelvin_source if state.color_temp_kelvin is not None else self.rgb_color_source
-            if source == "initial":
-                return None
-        return PreModeSnapshot(state, self.profile)
+    def _capture_static_state(self) -> PriorControlState:
+        return self.capture_effect_control_state()
 
     def _enter_static_mode(self) -> None:
         """Clear every non-static mode so exactly one operating mode is active."""
+        transition = self._mode_transition
+        if transition is None or transition.purpose not in (
+            ModeTransitionPurpose.SELECTION,
+            ModeTransitionPurpose.RECOVERY,
+            ModeTransitionPurpose.PREVIEW,
+        ):
+            self._pre_mode_snapshot = None
         self.color_mode = ParsedMode.COLOUR
         self._scene_code = None
         self.effect = None
@@ -464,7 +531,10 @@ class _ActiveModeMixin(_CoordinatorBase):
             ):
                 raise ValueError("Retained music body changed before edit; refresh and retry")
 
-        async with async_control_intent(self, intent):
+        async with (
+            async_control_intent(self, intent),
+            self.async_mode_transition(purpose=ModeTransitionPurpose.SELECTION),
+        ):
             try:
 
                 def commit(index: int) -> None:
@@ -579,11 +649,13 @@ class _ActiveModeMixin(_CoordinatorBase):
             retained_body_revision=retained_body_revision,
         )
 
-    async def async_restore_pre_mode(self) -> None:
-        async with async_control_intent(self, ControlIntent.USER), self.async_mask_transaction():
-            if self.color_mode is ParsedMode.COLOUR and self.capture_effect_control_state().mode == "colour":
-                return
-            snap = self._pre_mode_snapshot
-            if snap is None or not same_control_profile(snap.profile, self.profile):
+    async def async_restore_pre_mode(self, prepared: PreparedStaticRecovery | None = None) -> None:
+        intent = self._control_arbiter.current_task_intent or ControlIntent.USER
+        async with (
+            async_control_intent(self, intent),
+            self.async_mode_transition(purpose=ModeTransitionPurpose.RECOVERY),
+            self.async_mask_transaction(),
+        ):
+            prepared = self.prepare_static_recovery(prepared)
+            if not await self.async_restore_effect_control_state(prepared, overwritten_diy_code=None):
                 raise ValueError("No complete static state is available to restore")
-            await self.async_restore_effect_control_state(snap.state, overwritten_diy_code=None, require_static=True)

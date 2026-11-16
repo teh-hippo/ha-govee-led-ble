@@ -192,6 +192,7 @@ class PriorControlState:
     segment_colors: tuple[tuple[int, int, int], ...] | None = None
     segment_brightness: tuple[int, ...] | None = None
     music_body: bytes | None = None
+    static_colour_observed: bool = False
 
     def __post_init__(self) -> None:
         self._validate_flags_and_bars()
@@ -212,6 +213,8 @@ class PriorControlState:
             raise EffectStorageError("prior source colour cannot have two intent authorities")
         if type(self.static_rgb_known) is not bool:
             raise EffectStorageError("prior static RGB intent must be a boolean")
+        if type(self.static_colour_observed) is not bool:
+            raise EffectStorageError("prior static colour observation must be a boolean")
         if self.static_gradual is not None and type(self.static_gradual) is not bool:
             raise EffectStorageError("prior static gradual must be a boolean or null")
         for zone_enabled in (getattr(self, name) for name in NATIVE_ZONE_CONTROLS):
@@ -518,8 +521,41 @@ class PriorControlState:
             return None
         return tuple(value for value in intents if value is not None)
 
-    def restorable_source_colour(self, profile: ModelProfile) -> bool:
-        return self.source_segment_kelvin(profile) is not None
+    def static_segment_kelvin(self, profile: ModelProfile) -> tuple[int, ...] | None:
+        from .coordinator_sources import has_segmented_sources
+        from .light_commands import kelvin_rendering_matches, normalize_kelvin
+
+        if has_segmented_sources(profile):
+            return self.source_segment_kelvin(profile)
+        if self.segment_colors is None or len(self.segment_colors) != profile.segment_count:
+            return None
+        if self.restorable_bar_white(profile):
+            assert self.left_bar_kelvin is not None and self.right_bar_kelvin is not None
+            half = profile.segment_count // 2
+            return (normalize_kelvin(self.left_bar_kelvin, profile),) * half + (
+                normalize_kelvin(self.right_bar_kelvin, profile),
+            ) * half
+        fallback = (
+            self.color_temp_kelvin
+            if self.color_temp_kelvin is not None and not profile.segment_colour_mode_ambiguous
+            else (0 if self.static_rgb_known or not profile.segment_colour_mode_ambiguous else None)
+        )
+        intents = self.segment_kelvin or (fallback,) * profile.segment_count
+        result = []
+        for rgb, intent in zip(self.segment_colors, intents, strict=True):
+            intent = fallback if intent is None else intent
+            if intent is None:
+                return None
+            if intent:
+                if not profile.supports_color_temperature:
+                    return None
+                intent = normalize_kelvin(intent, profile)
+                if not kelvin_rendering_matches(rgb, intent, profile):
+                    return None
+            result.append(intent)
+        if any(result) and not profile.supports_segment_color_temperature and (len(set(result)) != 1 or result[0] == 0):
+            return None
+        return tuple(result)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -545,6 +581,7 @@ class PriorControlState:
                 else {}
             ),
             **({"static_rgb_known": True} if self.static_rgb_known else {}),
+            **({"static_colour_observed": True} if self.static_colour_observed else {}),
             **({"static_gradual": self.static_gradual} if self.static_gradual is not None else {}),
             "panel_enabled": self.panel_enabled,
             "ring_enabled": self.ring_enabled,
@@ -690,6 +727,7 @@ class PriorControlState:
             rgb_color=_required_rgb(raw, "rgb_color"),
             color_temp_kelvin=_optional_int(raw, "color_temp_kelvin"),
             static_rgb_known=_optional_bool(raw, "static_rgb_known", default=False),
+            static_colour_observed=_optional_bool(raw, "static_colour_observed", default=False),
             static_gradual=_optional_bool(raw, "static_gradual"),
             panel_enabled=_optional_bool(raw, "panel_enabled"),
             ring_enabled=_optional_bool(raw, "ring_enabled"),

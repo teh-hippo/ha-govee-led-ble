@@ -577,10 +577,12 @@ async def test_scene_default_websocket_persists_full_content_without_ble(
     coordinator.async_apply_native_scene.assert_not_awaited()
 
 
+@pytest.mark.parametrize("live", [False, True])
 async def test_apply_forwards_expected_item_version(
     hass: HomeAssistant,
     hass_ws_client,
     monkeypatch,
+    live,
 ) -> None:
     backend = await _setup_backend(hass)
     monkeypatch.setattr(cast(Any, backend.preview), "async_supersede_device", AsyncMock())
@@ -611,6 +613,7 @@ async def test_apply_forwards_expected_item_version(
             "item_id": str(item.id),
             "expected_version": 2,
             "updated_at": "2026-08-27T00:00:00Z",
+            **({"live": True} if live else {}),
         }
     )
     response = await client.receive_json()
@@ -625,7 +628,62 @@ async def test_apply_forwards_expected_item_version(
         operation_id=None,
         diy_code=None,
         compiled=apply_saved.await_args.kwargs["compiled"],
+        **({"live": True} if live else {}),
     )
+
+
+@pytest.mark.parametrize("live", [False, True])
+async def test_saved_apply_live_marker_enforces_source_observation_policy(hass, hass_ws_client, monkeypatch, live):
+    from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
+    from custom_components.ha_govee_led_ble.effect_domain import BuiltinScene
+    from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_brightness
+    from custom_components.ha_govee_led_ble.layered_scene import CatalogueRef
+    from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES
+    from tests.test_coordinator_recovery import source_recovery_wire
+
+    backend = await _setup_backend(hass)
+    coordinator, physical = source_recovery_wire(hass, monkeypatch, "H607C")
+    await coordinator.send_command(build_brightness(40, coordinator.model, profile=coordinator.profile))
+    count = coordinator.profile.segment_count
+    authored = [(index + 1, 20, 40) for index in range(count)]
+    await coordinator.async_paint_segments([([index], rgb) for index, rgb in enumerate(authored, 1)])
+    await coordinator.async_set_segment_brightness(list(range(1, count + 1)), 60)
+    assert await coordinator.refresh_state(RefreshRequest(refresh_all=True, query_segments=False))
+    before = coordinator.capture_effect_control_state()
+    assert before.segment_colors == tuple(authored) and not before.static_colour_observed
+    scene = next(scene for scene in MODEL_SCENES["H607C"].values() if scene.scene_type == 0 and scene.speed is None)
+    mutation = await backend.application.async_create_library_item(
+        name="Saved scene",
+        content=effect_content_to_dict(BuiltinScene(CatalogueRef("H607C", scene.scene_id, scene.effect_id))),
+    )
+    entry = SimpleNamespace(entry_id="entry-a", domain=DOMAIN, state=ConfigEntryState.LOADED, runtime_data=coordinator)
+    monkeypatch.setattr(
+        hass.config_entries, "async_get_entry", lambda entry_id: entry if entry_id == entry.entry_id else None
+    )
+    physical["packets"].clear()
+    client = await hass_ws_client(hass)
+    await client.send_json_auto_id(
+        {
+            "type": WS_APPLY,
+            "config_entry_id": entry.entry_id,
+            "item_id": str(mutation.item.id),
+            "expected_version": mutation.item.version,
+            "updated_at": "2026-11-16T00:00:00Z",
+            "live": live,
+        }
+    )
+    response = await client.receive_json()
+    if live:
+        assert not response["success"]
+        assert response["error"]["code"] == "apply_failed"
+        assert "live_recovery_not_observed" in response["error"]["message"]
+        assert not any(packet[0] == 0x33 for packet in physical["packets"])
+        assert physical["colours"] == authored
+    else:
+        assert response["success"]
+        assert any(packet[0] == 0x33 for packet in physical["packets"])
+        assert coordinator._pre_mode_snapshot is not None
+        assert coordinator._pre_mode_snapshot.segment_colors == tuple(authored)
 
 
 async def test_apply_surfaces_item_version_conflict(

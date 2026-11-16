@@ -2,12 +2,12 @@ from dataclasses import replace
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
+from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.ha_govee_led_ble import effect_contracts
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, MUSIC_MODE_SLUGS, ModelProfile
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
-from custom_components.ha_govee_led_ble.coordinator_modes import PreModeSnapshot
 from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.effect_contracts import CapabilityWorkflow, release_capability
@@ -495,6 +495,7 @@ async def test_apply_active_video_mode_requires_readback(h6199):
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
     with (
         patch.object(h6199, "_ensure_connected", new=AsyncMock(return_value=client)),
+        patch.object(h6199, "async_prepare_static_baseline", return_value=h6199.capture_effect_control_state()),
         patch.object(h6199, "refresh_state", new_callable=AsyncMock, return_value=True) as refresh,
     ):
         assert await apply_active_video_mode(h6199, mode="game", requested_values=values) is True
@@ -523,6 +524,7 @@ async def test_apply_active_video_mode_powers_on_and_raises_after_retry(h6199):
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
     with (
         patch.object(h6199, "_ensure_connected", new=AsyncMock(return_value=client)),
+        patch.object(h6199, "async_prepare_static_baseline", return_value=h6199.capture_effect_control_state()),
         patch.object(h6199, "refresh_state", new_callable=AsyncMock, return_value=False) as refresh,
         pytest.raises(RuntimeError, match="Video-mode write was not confirmed"),
     ):

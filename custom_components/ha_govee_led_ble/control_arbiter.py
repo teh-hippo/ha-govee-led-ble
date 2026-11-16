@@ -77,7 +77,9 @@ class BLEControlArbiter:
 
     def invalidate_previews(self) -> None:
         self._preview_generation += 1
-        self._foreground_generation += 1
+        intent = self.current_task_intent
+        if intent is None or intent <= ControlIntent.PREVIEW:
+            self._foreground_generation += 1
 
     @asynccontextmanager
     async def hold(self, intent: ControlIntent, *, wait: bool = True) -> AsyncIterator[bool]:

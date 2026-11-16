@@ -11,12 +11,14 @@ from functools import partial
 from typing import Any
 from uuid import UUID, uuid4
 
-from .const import NATIVE_ZONE_CONTROLS, ModelProfile, ReadDomain, get_profile
+from homeassistant.exceptions import HomeAssistantError
+
+from .const import ModelProfile, ReadDomain, get_profile
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator import GoveeBLECoordinator
 from .coordinator_base import async_prepare_effect_profile
+from .coordinator_modes import ModeTransitionPurpose
 from .coordinator_refresh import RefreshRequest
-from .coordinator_sources import has_segmented_sources
 from .coordinator_status import ParsedMode
 from .effect_active_workspace import (
     ActiveEffectWorkspace,
@@ -286,59 +288,64 @@ async def async_apply_compiled_profile(
         build_black_border(compiled.black_border, coordinator.model)
     if compiled.whole_relative_brightness is not None:
         build_whole_relative_brightness(compiled.whole_relative_brightness, coordinator.model, profile=profile)
-    await apply_active_video_mode(
-        coordinator,
-        mode=compiled.mode,
-        requested_values=mode_values,
-        relative_brightness=compiled.relative_brightness,
-        writer=writer,
-        verify=verify,
-        on_write=on_write,
-    )
-    completed = 1
-    if progress is not None:
-        await progress(completed)
-
-    if compiled.white_balance_wire is not None:
-        await apply_white_balance(coordinator, compiled.white_balance_wire, writer=writer, verify=verify)
-        completed += 1
-        if progress is not None:
-            await progress(completed)
-
-    if compiled.relative_brightness is not None and not compiled.relative_brightness_inline:
-        await apply_relative_brightness(coordinator, compiled.relative_brightness, writer=writer, verify=verify)
-        completed += 1
-        if progress is not None:
-            await progress(completed)
-
-    if compiled.whole_relative_brightness is not None:
-        await apply_whole_relative_brightness(
-            coordinator, compiled.whole_relative_brightness, writer=writer, verify=verify
-        )
-        completed += 1
-        if progress is not None:
-            await progress(completed)
-
-    if compiled.blank_screen is not None:
-        policy_options: dict[str, Any] = (
-            {"policy": compiled.blank_screen_policy} if compiled.blank_screen_policy is not None else {}
-        )
-        await apply_blank_screen(
+    intent = coordinator._control_arbiter.current_task_intent or ControlIntent.APPLY
+    async with (
+        async_control_intent(coordinator, intent),
+        coordinator.async_mode_transition(purpose=ModeTransitionPurpose.SELECTION),
+    ):
+        await apply_active_video_mode(
             coordinator,
-            compiled.blank_screen,
+            mode=compiled.mode,
+            requested_values=mode_values,
+            relative_brightness=compiled.relative_brightness,
             writer=writer,
             verify=verify,
-            **policy_options,
+            on_write=on_write,
         )
-        completed += 1
+        completed = 1
         if progress is not None:
             await progress(completed)
 
-    if compiled.black_border is not None:
-        await apply_black_border(coordinator, compiled.black_border, writer=writer, verify=verify)
-        completed += 1
-        if progress is not None:
-            await progress(completed)
+        if compiled.white_balance_wire is not None:
+            await apply_white_balance(coordinator, compiled.white_balance_wire, writer=writer, verify=verify)
+            completed += 1
+            if progress is not None:
+                await progress(completed)
+
+        if compiled.relative_brightness is not None and not compiled.relative_brightness_inline:
+            await apply_relative_brightness(coordinator, compiled.relative_brightness, writer=writer, verify=verify)
+            completed += 1
+            if progress is not None:
+                await progress(completed)
+
+        if compiled.whole_relative_brightness is not None:
+            await apply_whole_relative_brightness(
+                coordinator, compiled.whole_relative_brightness, writer=writer, verify=verify
+            )
+            completed += 1
+            if progress is not None:
+                await progress(completed)
+
+        if compiled.blank_screen is not None:
+            policy_options: dict[str, Any] = (
+                {"policy": compiled.blank_screen_policy} if compiled.blank_screen_policy is not None else {}
+            )
+            await apply_blank_screen(
+                coordinator,
+                compiled.blank_screen,
+                writer=writer,
+                verify=verify,
+                **policy_options,
+            )
+            completed += 1
+            if progress is not None:
+                await progress(completed)
+
+        if compiled.black_border is not None:
+            await apply_black_border(coordinator, compiled.black_border, writer=writer, verify=verify)
+            completed += 1
+            if progress is not None:
+                await progress(completed)
 
 
 async def async_prepare_application(
@@ -396,6 +403,7 @@ class EffectDeploymentEngine:
         operation_id: UUID | None,
         source_kind: str,
         compiled: CompiledApplication | None,
+        purpose: ModeTransitionPurpose = ModeTransitionPurpose.SELECTION,
     ) -> _LibraryApplicationResult:
         if compiled is None:
             compiled = await async_prepare_application(coordinator, item, diy_code=diy_code)
@@ -427,7 +435,7 @@ class EffectDeploymentEngine:
                     generation=self._active_workspaces.next_generation(),
                 )
                 self._active_workspaces.validate(workspace)
-        result = await self._async_apply(coordinator, compiled, record)
+        result = await self._async_apply(coordinator, compiled, record, purpose=purpose)
         return _LibraryApplicationResult(result, workspace)
 
     async def async_apply_saved(
@@ -440,6 +448,7 @@ class EffectDeploymentEngine:
         diy_code: int | None = None,
         operation_id: UUID | None = None,
         compiled: CompiledApplication | None = None,
+        live: bool = False,
     ) -> DeploymentRecord:
         applied = await self._apply_library_item(
             coordinator,
@@ -450,6 +459,7 @@ class EffectDeploymentEngine:
             operation_id=operation_id,
             source_kind="saved_effect",
             compiled=compiled,
+            purpose=ModeTransitionPurpose.PREVIEW if live else ModeTransitionPurpose.SELECTION,
         )
         result = applied.record
         write_only_completed = (
@@ -612,15 +622,19 @@ class EffectDeploymentEngine:
         coordinator: GoveeBLECoordinator,
         compiled: CompiledApplication,
         record: DeploymentRecord,
+        *,
+        purpose: ModeTransitionPurpose = ModeTransitionPurpose.SELECTION,
     ) -> DeploymentRecord:
         async with self._operation_lock(record.operation_id):
-            return await self._async_apply_serialised(coordinator, compiled, record)
+            return await self._async_apply_serialised(coordinator, compiled, record, purpose=purpose)
 
     async def _async_apply_serialised(
         self,
         coordinator: GoveeBLECoordinator,
         compiled: CompiledApplication,
         record: DeploymentRecord,
+        *,
+        purpose: ModeTransitionPurpose = ModeTransitionPurpose.SELECTION,
     ) -> DeploymentRecord:
         if existing := self._deployments.get_optional(record.operation_id):
             if (
@@ -640,7 +654,9 @@ class EffectDeploymentEngine:
         try:
             async with (
                 async_control_intent(coordinator, ControlIntent.APPLY),
-                coordinator.async_mode_transition(),
+                coordinator.async_mode_transition(
+                    purpose=ModeTransitionPurpose.PREVIEW if purpose is ModeTransitionPurpose.PREVIEW else None
+                ),
             ):
                 lock_acquired = True
                 # APPLY excludes other control owners; queries never increment this counter.
@@ -660,6 +676,7 @@ class EffectDeploymentEngine:
                     refreshed = await self._async_prepare_prior_state(coordinator, compiled)
                     _validate_diy_slot_approval(coordinator, compiled)
                     validate_compiled_geometry(compiled, coordinator.effect_authorization_profile)
+                    await coordinator.async_admit_effect_selection()
                     self._reconcile_observation(
                         coordinator,
                         config_entry_id=record.config_entry_id,
@@ -1578,146 +1595,24 @@ async def async_prepare_effect_control_state(
     *,
     require_restorable_static: bool,
 ) -> bool:
-    """Refresh ordinary prior state, optionally requiring a lossless static restore."""
-    profile = coordinator.profile
-    capture = getattr(coordinator, "capture_effect_control_state", None)
-    prior = capture() if require_restorable_static and capture is not None else None
-    prior_mode = prior.mode if isinstance(prior, PriorControlState) else _coordinator_mode(coordinator)
+    """Prepare current state and admit Live through the shared static recovery contract."""
     if require_restorable_static:
-        inline_fields = ("is_on", "brightness_pct", "color_mode")
-        if profile.diy_upload_transport == "single" and not all(
-            coordinator.source_field_fresh(field) for field in inline_fields
+        intent = coordinator._control_arbiter.current_task_intent or ControlIntent.PREVIEW
+        async with (
+            async_control_intent(coordinator, intent),
+            coordinator.async_mode_transition(purpose=ModeTransitionPurpose.PREVIEW),
         ):
-            if (
-                await coordinator.refresh_state(
-                    RefreshRequest(
-                        refresh_all=True,
-                        required_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE}),
-                    )
-                )
-                is not True
-                or coordinator.profile != profile
-                or not all(coordinator.source_field_fresh(field) for field in inline_fields)
-            ):
-                raise EffectStateReadError("Could not read the current state before preview")
-            prior = capture() if capture is not None else None
-            prior_mode = prior.mode if isinstance(prior, PriorControlState) else _coordinator_mode(coordinator)
-        if has_segmented_sources(profile) and (prior_mode in {"colour", "unknown"} or profile.supports_ripple_speed):
-            read_segments = prior_mode in {"colour", "unknown"}
-            if read_segments and not profile.can_read(ReadDomain.SEGMENTS):
-                raise EffectRestorationError("Cannot observe a complete source layout before preview")
-            fields = (
-                "is_on",
-                *(("brightness_pct",) if profile.can_read(ReadDomain.BRIGHTNESS) else ()),
-                "color_mode",
-                *(f"boolean_{source.control}" for source in profile.light_sources),
-                *(
-                    ("top_kelvin", "bottom_kelvin", "bottom_brightness", "ripple_speed")
-                    if profile.supports_ripple_speed
-                    else ()
-                ),
-                *(("segment_colors",) if read_segments else ()),
-            )
-            if not all(coordinator.source_field_fresh(field) for field in fields) or (
-                read_segments and (not isinstance(prior, PriorControlState) or prior.segment_colors is None)
-            ):
-                if (
-                    await coordinator.refresh_state(
-                        RefreshRequest(
-                            refresh_all=True,
-                            query_segments=read_segments,
-                            required_domains=profile.read_domains
-                            & {ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE, ReadDomain.MODE},
-                        )
-                    )
-                    is not True
-                    or coordinator.profile != profile
-                    or not all(coordinator.source_field_fresh(field) for field in fields)
-                ):
-                    raise EffectStateReadError("Could not read the current source state before Live")
-                prior = capture() if capture is not None else None
-                prior_mode = prior.mode if isinstance(prior, PriorControlState) else _coordinator_mode(coordinator)
-        if profile.supports_ripple_speed and (
-            not isinstance(prior, PriorControlState)
-            or any(
-                getattr(prior, field) is None
-                for field in ("top_kelvin", "bottom_kelvin", "bottom_brightness", "ripple_speed")
-            )
-            or not prior.bottom_kelvin
-        ):
-            raise EffectRestorationError("Could not read restorable source values before preview")
-        if any(
-            name in profile.boolean_controls and getattr(prior, name, None) is None for name in NATIVE_ZONE_CONTROLS
-        ):
-            zones = (
-                "left and right bar"
-                if profile.setting_grammar == "H6046"
-                else "pole and base"
-                if profile.setting_grammar == "H607C"
-                else "panel and ring"
-            )
-            raise EffectRestorationError(f"Could not read restorable {zones} enablement before preview")
-        if prior_mode == "custom" and profile.diy_upload_transport == "single":
-            raise EffectRestorationError("The current inline DIY body cannot be safely restored after preview")
-        if prior_mode == "unknown" and profile.diy_upload_transport == "single":
-            raise EffectRestorationError("The current mode cannot be safely restored after preview")
-        if (
-            profile.setting_grammar == "H607C"
-            and prior_mode == "custom"
-            and isinstance(prior, PriorControlState)
-            and prior.diy_companion is None
-        ):
-            raise EffectRestorationError("The current native DIY companion cannot be safely restored after preview")
-        if prior_mode == "music" and isinstance(prior, PriorControlState):
-            if prior.music_mode not in profile.music_modes:
-                raise EffectRestorationError("The current music mode cannot be safely restored after preview")
-            variant = music_variant(profile, music_code_for(coordinator.model, prior.music_mode, profile=profile))
-            if variant and variant.fixed_colour_default is not None and prior.music_color is None:
-                raise EffectRestorationError("The current music colour cannot be safely restored after preview")
-        if prior_mode not in {"colour", "unknown"}:
-            return True
-        if profile.segment_colour_mode_ambiguous and not (
-            isinstance(prior, PriorControlState)
-            and (
-                prior.static_rgb_known or prior.restorable_bar_white(profile) or prior.restorable_source_colour(profile)
-            )
-        ):
-            raise EffectRestorationError(
-                "The current per-bulb RGB or white intent cannot be safely restored after preview"
-            )
-        if not profile.configured_string_counts:
-            return True
-        if (
-            not profile.supports_segments
-            or not profile.can_read(ReadDomain.SEGMENTS)
-            or await coordinator.async_refresh_segments() is not True
-        ):
-            raise EffectStateReadError("Could not read a restorable current segment layout before preview")
-        prior = capture() if capture is not None else None
-        colours = (
-            prior.segment_colors
-            if isinstance(prior, PriorControlState)
-            else tuple(coordinator.segment_colors)
-            if getattr(coordinator, "segment_state_source", None) == "observed"
-            else None
-        )
-        brightness = (
-            prior.segment_brightness
-            if isinstance(prior, PriorControlState)
-            else tuple(coordinator.segment_brightness)
-            if getattr(coordinator, "segment_state_source", None) == "observed"
-            else None
-        )
-        if (
-            colours is None
-            or brightness is None
-            or len(colours) != profile.segment_count
-            or len(brightness) != profile.segment_count
-        ):
-            raise EffectRestorationError(
-                "The current segment layout is incomplete and cannot be safely restored after preview"
-            )
+            try:
+                await coordinator.async_admit_effect_selection()
+            except HomeAssistantError as error:
+                if error.translation_key == "recovery_read_failed":
+                    raise EffectStateReadError("Could not read the current source state before Live") from error
+                raise EffectRestorationError(
+                    "Live needs a complete original static layout with its required colour observations; "
+                    "establish static state first or use Apply for supported write-only layouts"
+                ) from error
         return True
+    profile = coordinator.profile
     if not profile.state_readable:
         return False
     revisions = getattr(coordinator, "_field_revisions", {})

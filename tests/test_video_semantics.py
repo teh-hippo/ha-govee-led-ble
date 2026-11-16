@@ -27,6 +27,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
 from custom_components.ha_govee_led_ble.h6199_calibration import WHITE_BALANCE_POSITIONS
 from custom_components.ha_govee_led_ble.protocol_core import _STATUS_ROOTS, H6199StatusReply
 from custom_components.ha_govee_led_ble.transport import xor_checksum
+from tests.test_effect_preview import _known_static_baseline
 
 
 def alternate(monkeypatch: pytest.MonkeyPatch) -> ModelProfile:
@@ -87,6 +88,9 @@ async def test_alternate_roundtrip_writer_parser_observation_and_recovery(
     assert compiled.progress_total == 3
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H7000", configuration_url="test")
     coordinator.is_on = True
+    monkeypatch.setattr(
+        coordinator, "async_prepare_static_baseline", AsyncMock(return_value=_known_static_baseline(coordinator))
+    )
     packets: list[bytes] = []
 
     async def transmit(_uuid, packet: bytes, **kwargs) -> None:
@@ -144,7 +148,7 @@ async def test_alternate_roundtrip_writer_parser_observation_and_recovery(
     assert compiled_observation(compiled, profile=unavailable)[1] is ObservationConfidence.MODE_MATCH
 
 
-async def test_legacy_calibration_hash_and_omitted_registers(hass: HomeAssistant) -> None:
+async def test_legacy_calibration_hash_and_omitted_registers(hass: HomeAssistant, monkeypatch) -> None:
     from tests.test_h6199_capabilities import set_qualified_identity
 
     content = VideoProfile("H6199", "movie", True, 50, False, 50, 17, RelativeBrightness(100, 100, 100, 100), False)
@@ -167,6 +171,9 @@ async def test_legacy_calibration_hash_and_omitted_registers(hass: HomeAssistant
     )
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url="test")
     coordinator._client = MagicMock(is_connected=True)
+    monkeypatch.setattr(
+        coordinator, "async_prepare_static_baseline", AsyncMock(return_value=_known_static_baseline(coordinator))
+    )
     set_qualified_identity(coordinator)
     coordinator.is_on = True
     writer = AsyncMock()

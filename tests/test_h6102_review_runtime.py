@@ -283,7 +283,8 @@ async def test_music_variant_change_blocks_upload_after_power(radio):
     packets.clear()
     with pytest.raises(ValueError, match="Music variant"):
         await c.async_write_music_sequence(writes, mode_code=0x30, physical_ic_count=None, intent=ControlIntent.USER)
-    assert len(packets) == 1 and packets[0][:2] == bytes.fromhex("3301")
+    controls = [packet for packet in packets if packet[0] != 0xAA]
+    assert len(controls) == 1 and controls[0][:2] == bytes.fromhex("3301")
 
 
 @pytest.mark.parametrize("accept", [True, False])
@@ -470,15 +471,17 @@ async def test_pact1_static_recovery_preserves_register_transport_without_confir
     c._resolve_device_profile()
     state.update(hw="1.00.03", fw="1.08.08", register_brightness=True)
     assert await c.refresh_state(RefreshRequest(refresh_all=True))
-    prior = c.capture_effect_control_state()
     light = GoveeBLELight(c)
     light.async_write_ha_state = MagicMock()
+    await light.async_turn_on(rgb_color=(10, 20, 30))
+    prior = c.capture_effect_control_state()
     await light.async_turn_on(brightness=255, rgb_color=(1, 2, 3))
     packets.clear()
     assert prior.static_gradual is None and "gradual" not in c.profile.boolean_controls
-    assert not await c.async_restore_effect_control_state(prior, overwritten_diy_code=None)
+    assert await c.async_restore_effect_control_state(prior, overwritten_diy_code=None)
     assert state["brightness"] == c.brightness_pct == prior.brightness_pct == 50
     assert frame("330488") in packets
+    assert c.rgb_color_source != "observed"
 
 
 def test_legacy_static_snapshot_keeps_new_fields_unknown():
@@ -562,8 +565,11 @@ async def test_matching_kelvin_with_wrong_fresh_segment_reply_is_incomplete(radi
     assert state["on"] is False
 
 
-async def test_native_scene_revoked_at_connection_writes_nothing(radio):
+async def test_native_scene_revoked_at_connection_writes_nothing(radio, monkeypatch):
+    from tests.test_effect_preview import _known_static_baseline
+
     c, state, packets, _ = radio
+    monkeypatch.setattr(c, "async_prepare_static_baseline", AsyncMock(return_value=_known_static_baseline(c)))
     c.is_on = False
     state["pact_on_connect"] = 1
     with pytest.raises(ValueError, match="native scenes"):
@@ -578,7 +584,9 @@ async def test_engine_failed_upload_never_reselects_overwritten_scene_slot(radio
     from custom_components.ha_govee_led_ble.effect_catalogue import resolve_catalogue_template
 
     c, state, packets, _ = radio
-    state["mode"] = "04" + code.to_bytes(2, "little").hex()
+    assert await c.refresh_state(RefreshRequest(refresh_all=True))
+    await c.send_command(build_scene_activation(c.model, code, profile=c.profile))
+    assert c._pre_mode_snapshot is not None
     assert await c.refresh_state(RefreshRequest(refresh_all=True))
     content = resolve_catalogue_template("H6102", f"template:native-diy:{501 if code == 402 else code}").content
     if code == 402:
@@ -606,11 +614,16 @@ async def test_issue424_pact1_scenes_music_studio_and_segments(radio, virtual_cl
     c.pact_type, c.pact_code = 1, 1
     state.update(hw="1.00.03", fw="1.08.08", register_brightness=True)
     assert await c.refresh_state(RefreshRequest(refresh_all=True))
+    light = GoveeBLELight(c)
+    light.async_write_ha_state = MagicMock()
+    await light.async_turn_on(rgb_color=(10, 20, 30))
 
     # 1. Built-in scenes (type 0 selector-only and type 2 multi-packet A3 02 + selector)
     packets.clear()
     await c.async_apply_native_scene("sunrise", verify=True)
-    assert packets == [bytes.fromhex("3305040000000000000000000000000000000032")]
+    assert [packet for packet in packets if packet[0] != 0xAA] == [
+        bytes.fromhex("3305040000000000000000000000000000000032")
+    ]
     assert c.effect == "sunrise" and c.scene_code == 0
 
     packets.clear()

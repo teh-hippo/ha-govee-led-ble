@@ -262,6 +262,8 @@ async def apply_active_video_mode(
     verify: bool = True,
     on_write: Callable[[], None] | None = None,
 ) -> bool:
+    from .coordinator_modes import ModeTransitionPurpose
+
     if mode not in ("movie", "game"):
         return False
     await async_require_video_controls(coordinator, video_mode_controls(coordinator.profile))
@@ -286,30 +288,35 @@ async def apply_active_video_mode(
         else None,
         video_parameters=values.get("parameters"),
     )
-    for _ in range(2 if verify else 1):
-        await async_require_video_controls(coordinator, controls)
-        if not coordinator.is_on:
+    intent = coordinator._control_arbiter.current_task_intent or ControlIntent.USER
+    async with (
+        async_control_intent(coordinator, intent),
+        coordinator.async_mode_transition(purpose=ModeTransitionPurpose.SELECTION),
+    ):
+        for _ in range(2 if verify else 1):
+            await async_require_video_controls(coordinator, controls)
+            if not coordinator.is_on:
+                await _send_video_setting(
+                    coordinator,
+                    build_power(True, coordinator.model),
+                    controls,
+                    writer=writer,
+                    write_guard=check_retained,
+                    state_values={"is_on": True},
+                )
             await _send_video_setting(
                 coordinator,
-                build_power(True, coordinator.model),
+                packet,
                 controls,
                 writer=writer,
                 write_guard=check_retained,
-                state_values={"is_on": True},
+                state_values=state_values,
+                on_write=on_write,
             )
-        await _send_video_setting(
-            coordinator,
-            packet,
-            controls,
-            writer=writer,
-            write_guard=check_retained,
-            state_values=state_values,
-            on_write=on_write,
-        )
-        if not verify:
-            return True
-        if await coordinator.refresh_state(request) is not False:
-            return True
+            if not verify:
+                return True
+            if await coordinator.refresh_state(request) is not False:
+                return True
     raise RuntimeError("Video-mode write was not confirmed by the device")
 
 

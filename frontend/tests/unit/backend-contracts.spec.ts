@@ -135,6 +135,27 @@ test("canonical backend responses decode through the production validators", () 
   }
 });
 
+test.each([false, true])("saved Apply preserves its route and carries Live evidence policy (%s)", async (live) => {
+  const callWS = vi.fn().mockResolvedValue(undefined);
+  const api = new EffectStudioApi({
+    callWS,
+    callService: vi.fn(),
+    connection: { subscribeMessage: vi.fn() },
+  } as unknown as HomeAssistant);
+  const item = { id: "00000000-0000-0000-0000-000000000001", version: 2 };
+
+  await api.applySavedEffect("entry-a", item, undefined, live);
+
+  expect(callWS).toHaveBeenCalledWith({
+    type: "ha_govee_led_ble/editor/apply",
+    config_entry_id: "entry-a",
+    item_id: item.id,
+    expected_version: 2,
+    updated_at: expect.any(String),
+    ...(live ? { live: true } : {}),
+  });
+});
+
 test("snapshot previews pass catalogue provenance through the API boundary", async () => {
   const callWS = vi.fn().mockResolvedValue(undefined);
   const api = new EffectStudioApi({

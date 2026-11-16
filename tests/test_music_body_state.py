@@ -11,6 +11,7 @@ from custom_components.ha_govee_led_ble.const import get_profile
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.effect_compiler import compile_music_profile, validate_compiled_geometry
+from custom_components.ha_govee_led_ble.effect_deployments import PriorControlState
 from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, MusicProfile
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_music_mode
 from custom_components.ha_govee_led_ble.music_commands import (
@@ -26,6 +27,30 @@ from custom_components.ha_govee_led_ble.transport import fragment_a3
 from tests.coordinator_test_support import frame
 
 BODY = bytes.fromhex("3302010203040506aabbcc196104050708")
+
+
+def _static_baseline(coordinator):
+    return PriorControlState(
+        mode="colour",
+        is_on=True,
+        brightness_pct=42,
+        rgb_color=(17, 34, 51),
+        static_rgb_known=True,
+        segment_colors=((17, 34, 51),) * coordinator.profile.segment_count,
+        segment_brightness=(42,) * coordinator.profile.segment_count,
+    )
+
+
+@pytest.fixture
+def admit_static_baseline(monkeypatch):
+    """Keep retained-body sequencing tests independent of recovery acquisition."""
+
+    def admit(coordinator):
+        baseline = _static_baseline(coordinator)
+        monkeypatch.setattr(coordinator, "async_prepare_static_baseline", AsyncMock(return_value=baseline))
+        return baseline
+
+    return admit
 
 
 @pytest.mark.parametrize(
@@ -128,8 +153,11 @@ def test_h617e_metadata_does_not_inherit_new_controls_or_geometry_policy():
 
 @pytest.mark.parametrize("preview", [False, True])
 @pytest.mark.parametrize("failure", [None, 0, 1, 2, 3, "guard", "ack", "cancel", "notification"])
-async def test_body_known_only_after_complete_sequence_and_positive_ack(hass, monkeypatch, preview, failure):
+async def test_body_known_only_after_complete_sequence_and_positive_ack(
+    hass, monkeypatch, admit_static_baseline, preview, failure
+):
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H617A", configuration_url=None)
+    admit_static_baseline(coordinator)
     coordinator.music_mode = "hopping"
     old = music_variant(coordinator.profile, 51).template
     coordinator._music_body = ("hopping", old)
@@ -208,8 +236,9 @@ async def test_lowlevel_edit_requires_body_and_retains_unknown_companions(hass, 
     assert writes[writes.last_upload][1]["music_hopping_brightness"] == 17
 
 
-async def test_per_parameter_guard_runs_before_physical_write(hass, monkeypatch):
+async def test_per_parameter_guard_runs_before_physical_write(hass, monkeypatch, admit_static_baseline):
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H617A", configuration_url=None)
+    admit_static_baseline(coordinator)
     profile = replace(coordinator.profile, physical_ic_count=60)
     writes = prepare_music_profile_writes("H617A", "piano_keys", 42, None, False, {}, profile=profile)
 
@@ -224,8 +253,9 @@ async def test_per_parameter_guard_runs_before_physical_write(hass, monkeypatch)
         )
 
 
-async def test_edit_rejects_body_invalidated_while_waiting_for_control(hass, monkeypatch):
+async def test_edit_rejects_body_invalidated_while_waiting_for_control(hass, monkeypatch, admit_static_baseline):
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H617A", configuration_url=None)
+    admit_static_baseline(coordinator)
     coordinator.music_mode = "hopping"
     coordinator._music_body = ("hopping", BODY)
 
@@ -266,6 +296,7 @@ async def test_verbatim_restore_updates_retained_display_and_followup_edit_is_no
     from tests.test_music_commands import _music_transport
 
     c = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H617A", configuration_url=None)
+    c._pre_mode_snapshot = _static_baseline(c)
     prior = replace(
         c.capture_effect_control_state(),
         mode="music",
@@ -371,6 +402,7 @@ async def test_notification_during_upload_cannot_resurrect_palette_or_body(hass,
 
     c = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H617A", configuration_url=None)
     c.music_mode = "bloom"
+    c._pre_mode_snapshot = _static_baseline(c)
     writes = prepare_music_body_writes("H617A", "hopping", 42, BODY)
 
     async def writer(packet, *, state_values=None, write_guard=None, **kwargs):
@@ -393,8 +425,9 @@ async def test_notification_during_upload_cannot_resurrect_palette_or_body(hass,
     assert c._music_body is None and c._music_palette is None
 
 
-async def test_raw_replay_display_values_do_not_gate_on_reconnect_geometry(hass, monkeypatch):
+async def test_raw_replay_display_values_do_not_gate_on_reconnect_geometry(hass, monkeypatch, admit_static_baseline):
     c = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6099", configuration_url=None)
+    admit_static_baseline(c)
     known = replace(c.profile, physical_ic_count=60)
     body = bytes.fromhex("34010102030112230109")
     writes = prepare_music_body_writes("H6099", "piano_keys", 42, body, profile=known)

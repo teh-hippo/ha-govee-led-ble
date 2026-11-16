@@ -5,6 +5,7 @@ from dataclasses import replace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from homeassistant.setup import async_setup_component
 
 from custom_components.ha_govee_led_ble.const import device_profile, get_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
@@ -167,6 +168,7 @@ def physical(hass, monkeypatch, request):
         "fault": None,
         "packets": [],
         "colour_modes": ["rgb"] * 15,
+        "scene": None,
     }
 
     async def transmit(_uuid, packet, **_kwargs):
@@ -177,8 +179,13 @@ def physical(hass, monkeypatch, request):
                 state["on"] = bool(packet[2])
             elif packet[1] == 4 and fault != "brightness":
                 state["brightness"] = packet[2]
-            static = parse_static_write(packet, profile=coordinator.profile)
+            elif packet[1:3] == b"\x05\x04":
+                state["scene"] = list(packet[3:5])
+                state["colours"] = [(255, 0, 0)] * 15
+                state["relative"] = [100] * 15
+            static = parse_static_write(packet, coordinator.model, profile=coordinator.profile)
             if static is not None:
+                state["scene"] = None
                 for index in range(15):
                     if static.segment_mask & (1 << index):
                         if static.rgb is not None and fault != "colour":
@@ -196,7 +203,15 @@ def physical(hass, monkeypatch, request):
                 coordinator._notify_callback(None, reply(4, [state["brightness"]]))
             elif domain == 5 and fault != "missing_mode":
                 coordinator._notify_callback(
-                    None, reply(5, [0x13, 0x04, 50, 0, 0, 0, 0, 0] if fault == "mode" else [0x15, 0])
+                    None,
+                    reply(
+                        5,
+                        [0x13, 0x04, 50, 0, 0, 0, 0, 0]
+                        if fault == "mode"
+                        else [0x04, *state["scene"]]
+                        if state["scene"] is not None
+                        else [0x15, 0],
+                    ),
                 )
             elif domain == 0x0F and fault != "missing_count":
                 coordinator._notify_callback(None, reply(0x0F, [1]))
@@ -214,6 +229,8 @@ def physical(hass, monkeypatch, request):
 
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(side_effect=transmit), disconnect=AsyncMock())
     coordinator._client = client
+    coordinator._notification_token = object()
+    coordinator._notify_started_monotonic = time.monotonic() - 1
     monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
     monkeypatch.setattr(coordinator, "_renew_foreground_lease", MagicMock())
     refresh = coordinator.refresh_state
@@ -221,6 +238,25 @@ def physical(hass, monkeypatch, request):
     monkeypatch.setattr(coordinator, "refresh_state", lambda request: refresh(replace(request, timeout=0.02)))
     monkeypatch.setattr(coordinator, "async_refresh_segments", lambda: segments(timeout=0.02))
     return coordinator, state
+
+
+async def test_public_effect_off_restores_non_source_segment_layout(hass, physical, virtual_clock):
+    coordinator, state = physical
+    expected_colours, expected_levels = list(state["colours"]), list(state["relative"])
+    light = GoveeBLELight(coordinator)
+    light._attr_device_info = None
+    light.async_added_to_hass = AsyncMock()
+    assert await async_setup_component(hass, "light", {})
+    await hass.data["light"].async_add_entities([light])
+    await hass.services.async_call(
+        "light", "turn_on", {"entity_id": light.entity_id, "effect": "Sunrise"}, blocking=True
+    )
+    assert state["colours"] != expected_colours
+    assert state["relative"] != expected_levels
+    await hass.services.async_call("light", "turn_on", {"entity_id": light.entity_id, "effect": "off"}, blocking=True)
+    assert state["colours"] == expected_colours
+    assert state["relative"] == expected_levels
+    assert state["brightness"] == 37 and state["on"]
 
 
 @pytest.mark.parametrize("physical", ["H7020"], indirect=True)
@@ -231,6 +267,10 @@ async def test_ambiguous_bulb_readback_never_repaints_white_as_rgb_during_rollba
     assert await coordinator.refresh_state(RefreshRequest(refresh_all=True))
     prior = coordinator.capture_effect_control_state()
     assert prior.color_temp_kelvin is None and prior.segment_colors == tuple(state["colours"])
+    state["packets"].clear()
+    with pytest.raises(EffectRestorationError, match="original static"):
+        await async_prepare_effect_control_state(coordinator, require_restorable_static=True)
+    assert not any(packet[0] == 0x33 for packet in state["packets"])
     state["packets"].clear()
 
     assert not await coordinator.async_restore_effect_control_state(prior, overwritten_diy_code=321)

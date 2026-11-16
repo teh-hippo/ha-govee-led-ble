@@ -23,6 +23,7 @@ from custom_components.ha_govee_led_ble.light_commands import (
     build_color_rgb,
     build_color_temp,
     build_segment_brightness,
+    build_segment_brightness_mask,
     build_segment_color,
     build_segment_color_temp,
     build_segment_paint,

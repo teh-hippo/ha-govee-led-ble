@@ -243,6 +243,7 @@ export class EffectStudioApi {
     configEntryId: string,
     item: Pick<LibraryItem, "id" | "version">,
     diyCode?: number,
+    live = false,
   ): Promise<void> {
     await this.call("apply", {
       config_entry_id: configEntryId,
@@ -250,6 +251,7 @@ export class EffectStudioApi {
       expected_version: item.version,
       updated_at: new Date().toISOString(),
       ...(diyCode === undefined ? {} : { diy_code: diyCode }),
+      ...(live ? { live: true } : {}),
     });
   }
 
