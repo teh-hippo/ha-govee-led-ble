@@ -1,5 +1,6 @@
 """Effect recovery: restoring the prior control state after previews and effect writes."""
 
+import asyncio
 import logging
 import time
 from contextlib import nullcontext
@@ -1037,6 +1038,8 @@ class _RecoveryMixin(_CoordinatorBase):
         segment_revision = self._field_revisions.get("segment_colors", 0)
         attempts = self.control_write_attempts
         static_attempts = self._static_write_attempts
+        expected_segments = (tuple(self.segment_colors), tuple(self.segment_brightness))
+        request = self._as_coordinator.control_write_request()
         token = self._notification_token
         bound = token is not None
 
@@ -1048,8 +1051,11 @@ class _RecoveryMixin(_CoordinatorBase):
                 or foreground != self._control_arbiter.foreground_generation
                 or self._field_revisions.get("color_mode", 0) != mode_revision
                 and (self._static_write_attempts == static_attempts or self.color_mode is not ParsedMode.COLOUR)
-                or self._static_write_attempts == static_attempts
-                and self._field_revisions.get("segment_colors", 0) != segment_revision
+                or self._field_revisions.get("segment_colors", 0) != segment_revision
+                and (
+                    self._static_write_attempts == static_attempts
+                    or (tuple(self.segment_colors), tuple(self.segment_brightness)) != expected_segments
+                )
             ):
                 raise ValueError("Static restoration context changed; refresh and retry")
             if not bound:
@@ -1057,12 +1063,33 @@ class _RecoveryMixin(_CoordinatorBase):
             elif token is not self._notification_token:
                 raise ValueError("Static restoration subscription changed; refresh and retry")
 
-        await self.async_write_effect_sequence(
-            prepared.packets,
-            intent=self._control_arbiter.current_task_intent or ControlIntent.USER,
-            write_guard=guard,
-            retry_allowed=lambda: self.control_write_attempts == attempts,
-        )
+        def attempted(index: int) -> None:
+            nonlocal expected_segments
+            with request.track("is_on" if index == 0 else "brightness_pct" if index == 1 else "rgb_color"):
+                request.on_write()
+            expected_segments = (tuple(self.segment_colors), tuple(self.segment_brightness))
+
+        try:
+            await self.async_write_effect_sequence(
+                prepared.packets,
+                intent=self._control_arbiter.current_task_intent or ControlIntent.USER,
+                write_guard=guard,
+                retry_allowed=lambda: self.control_write_attempts == attempts,
+                packet_on_write=attempted,
+            )
+        except asyncio.CancelledError:
+            request.mark_interrupted()
+            self.async_set_updated_data(self.data or {})
+            raise
+        except Exception:
+            request.mark_interrupted()
+            self.async_set_updated_data(self.data or {})
+            try:
+                await request.reconcile()
+            except Exception:
+                _LOGGER.debug("Static restoration reconciliation failed", exc_info=True)
+            raise
+        request.complete(colour_requested=True)
 
     async def _restore_static_colour(
         self, state: PriorControlState, complete: bool, *, prepared: _StaticRestore | None = None
