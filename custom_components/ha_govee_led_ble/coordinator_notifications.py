@@ -211,7 +211,7 @@ class _NotificationMixin(_CoordinatorBase):
             and self.color_mode is not ParsedMode.COLOUR
             and (self._mode_transition is None or not self._mode_transition.captured)
         ):
-            self._pre_mode_snapshot = None
+            self._discard_static_baseline()
         if parsed.mode is not ParsedMode.COLOUR or self.color_mode is not ParsedMode.COLOUR:
             if parsed.mode is not ParsedMode.COLOUR:
                 self._static_colour_known = False
@@ -652,6 +652,12 @@ class _NotificationMixin(_CoordinatorBase):
             segment_count_ceiling=get_profile(self.model).segment_count_capacity
             or get_profile(self.model).segment_count,
         )
+        if (
+            self._pre_mode_profile is not None
+            and self._pre_mode_profile.physical_ic_count is not None
+            and self._pre_mode_profile.physical_ic_count != count
+        ):
+            self._discard_static_baseline()
         self._observed_physical_ic_count = count
         if self._client is not None and self._client.is_connected:
             self._physical_ic_count_confirmed = True
@@ -678,6 +684,8 @@ class _NotificationMixin(_CoordinatorBase):
                 if spec.key not in self._initialized_music_parameters:
                     setattr(self, spec.key, spec.default)
                     self._initialized_music_parameters.add(spec.key)
+        if self._pre_mode_needs_qualification:
+            self._static_history_profile_current()
 
     def _handle_low_blue_light_notification(self, frame: bytes) -> bool:
         if self.profile.setting_grammar != "H6072":

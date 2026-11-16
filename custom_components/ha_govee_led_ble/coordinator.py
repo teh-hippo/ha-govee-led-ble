@@ -810,7 +810,11 @@ class GoveeBLECoordinator(
                 self.power_on_behaviour = self.power_on_open_flag = None
         if not profile.supports_low_blue_light:
             self.low_blue_light = None
-        self._advance_profile_generation()
+        self._advance_profile_generation(
+            preserve_static_baseline=self._pre_mode_needs_qualification and not context_changed
+        )
+        if self._pre_mode_needs_qualification:
+            self._static_history_profile_current()
         self._expected_state.clear()
         self.segment_kelvin = [None] * self.profile.segment_count
         self.segment_brightness_known = [False] * self.profile.segment_count
@@ -927,6 +931,7 @@ class GoveeBLECoordinator(
                         return self._state_snapshot()
                     previous_client = self._client
                     read_succeeded = False
+                    poll_completed = False
                     try:
                         for _ in range(2):
                             generation = self._profile_generation
@@ -970,6 +975,7 @@ class GoveeBLECoordinator(
                                     )
                             except BleakError, ValueError, TimeoutError:
                                 _LOGGER.debug("Optional low-blue-light query failed", exc_info=True)
+                        poll_completed = True
                     finally:
                         self._state_read_available = read_succeeded
                         client = self._client
@@ -978,7 +984,7 @@ class GoveeBLECoordinator(
                             and client is not previous_client
                             and (not read_succeeded or self.connection_mode != CONNECTION_MODE_HOLD)
                         ):
-                            await self._disconnect_if_current_locked(client)
+                            await self._disconnect_locked(planned_release=poll_completed)
             except (BleakError, GoveeTransportError) as err:
                 # Missing state revokes read-based reachability, not independent advertisement evidence.
                 self._log_availability_transition()
@@ -1179,7 +1185,7 @@ class GoveeBLECoordinator(
                 return
             if generation != self._disconnect_generation:
                 return
-            await self._disconnect_locked()
+            await self._disconnect_locked(planned_release=True)
 
     @callback
     def _disconnected_callback(self, client: BleakClient) -> None:
@@ -1203,12 +1209,16 @@ class GoveeBLECoordinator(
         task.add_done_callback(self._client_release_tasks.discard)
         return task
 
-    def _clear_client_state(self, client: BleakClient | None) -> None:
+    def _clear_client_state(self, client: BleakClient | None, *, preserve_static_baseline: bool = False) -> None:
         if self._client is not client:
             return
         self._invalidate_upload_ack(BleakError("Device disconnected during effect upload"))
         self._client = None
-        self._pre_mode_snapshot = None
+        if preserve_static_baseline:
+            self._pre_mode_profile = self._pre_mode_profile or self.profile
+            self._pre_mode_needs_qualification = True
+        else:
+            self._discard_static_baseline()
         self._power_known = self._static_colour_known = False
         self._static_rgb_known = False
         self._music_palette = self._music_body = None
@@ -1273,6 +1283,8 @@ class GoveeBLECoordinator(
         if not (self._client and self._client.is_connected):
             return
         client = self._client
+        if self._notification_token is not None or not self._pre_mode_needs_qualification:
+            self._discard_static_baseline()
         self._invalidate_upload_ack(BleakError("Device subscription changed during effect upload"))
         self._subscription_advertised_pact = None
         self._h607c_marker_pact = None
@@ -1667,7 +1679,10 @@ class GoveeBLECoordinator(
                     self._expected_state.pop(field, None)
                 self.async_set_updated_data(self.data or {})
 
-        if install_snapshot:
+        if pre_mode_snapshot is not None:
+            if pre_mode_snapshot is not self._pre_mode_snapshot:
+                self._pre_mode_profile = self.profile
+                self._pre_mode_needs_qualification = False
             self._pre_mode_snapshot = pre_mode_snapshot
         if mode_change and transition is not None:
             transition.installed = True
@@ -2444,6 +2459,8 @@ class GoveeBLECoordinator(
         self._configured_strings_confirmed = (
             received and self._client is client and client.is_connected and self._notification_token is token
         )
+        if self._configured_strings_confirmed and self._pre_mode_needs_qualification:
+            self._static_history_profile_current()
         if not self._configured_strings_confirmed:
             _LOGGER.debug("Configured string count could not be confirmed")
         return self._configured_strings_confirmed
@@ -3425,9 +3442,10 @@ class GoveeBLECoordinator(
             except Exception as err:
                 pending.invalidate(err)
 
-    def _advance_profile_generation(self) -> None:
+    def _advance_profile_generation(self, *, preserve_static_baseline: bool = False) -> None:
         self._profile_generation += 1
-        self._pre_mode_snapshot = None
+        if not preserve_static_baseline:
+            self._discard_static_baseline()
         self._power_known = self._static_colour_known = False
         self._invalidate_upload_ack(ValueError("Device profile changed during effect upload"))
 
@@ -4017,8 +4035,10 @@ class GoveeBLECoordinator(
             async with self._lock:
                 await self._disconnect_locked()
 
-    async def _disconnect_locked(self, *, clear_cache: bool = False) -> None:
+    async def _disconnect_locked(self, *, clear_cache: bool = False, planned_release: bool = False) -> None:
         client = self._client
+        snapshot, generation = self._pre_mode_snapshot, self._profile_generation
+        released = False
         self._static_rgb_known = False
         # Invalidate callbacks and keys before disconnect can yield or be cancelled.
         self._music_palette = self._music_body = None
@@ -4048,10 +4068,23 @@ class GoveeBLECoordinator(
                             _LOGGER.debug("Error disconnecting during GATT recovery for %s", self.address)
                     else:
                         await client.disconnect()
+                    released = True
         except BleakError, TimeoutError:
             _LOGGER.debug("Error disconnecting from %s", self.address)
         finally:
-            self._clear_client_state(client)
+            self._clear_client_state(
+                client,
+                preserve_static_baseline=(
+                    planned_release
+                    and released
+                    and client is not None
+                    and not client.is_connected
+                    and self._client is client
+                    and snapshot is not None
+                    and self._pre_mode_snapshot is snapshot
+                    and self._profile_generation == generation
+                ),
+            )
             if (
                 client is not None
                 and client.is_connected

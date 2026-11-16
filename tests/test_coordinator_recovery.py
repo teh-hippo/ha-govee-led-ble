@@ -3,6 +3,7 @@
 import asyncio
 import time
 from dataclasses import replace
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
@@ -36,26 +37,76 @@ from tests.coordinator_test_support import _CONFIGURATION_URL, _c, _packet
 M = "custom_components.ha_govee_led_ble.coordinator"
 
 
+async def test_late_layout_qualification_permanently_discards_incompatible_history(hass, monkeypatch):
+    coord = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H705A", configuration_url=None)
+    coord.pact_type, coord.pact_code = 1, 1
+    coord._resolve_device_profile()
+    coord._pre_mode_snapshot = PriorControlState("colour", True, 37, (10, 20, 30))
+    coord._pre_mode_profile = coord.profile
+    coord._pre_mode_needs_qualification = True
+    coord._client = _c(write_gatt_char=AsyncMock())
+    coord._notification_token = object()
+    coord.pact_code = 2
+    coord._resolve_device_profile()
+
+    async def receive_count(*args, **kwargs):
+        coord._apply_physical_ic_count(
+            SimpleNamespace(domain=SimpleNamespace(name="physical_ic_count"), body=SimpleNamespace(count=36))
+        )
+        coord._mark_received(StatusDomain.PHYSICAL_IC_COUNT, "physical_ic_count")
+
+    monkeypatch.setattr(coord, "_async_write_packet", AsyncMock(side_effect=receive_count))
+    assert await coord._read_configured_strings(coord._client, deadline=time.monotonic() + 1)
+    assert coord._physical_ic_count_confirmed and coord._configured_strings_confirmed
+    assert coord._pre_mode_snapshot is None
+    coord.pact_code = 1
+    coord._resolve_device_profile()
+    assert not coord._static_history_profile_current()
+
+
 @pytest.mark.parametrize(
-    ("initially_on", "kelvin", "retry_selector"),
+    ("confirmed", "physical_count", "eligible"),
+    [(False, 36, False), (True, 36, True), (True, 37, False)],
+)
+def test_suspended_history_requires_qualified_physical_geometry(hass, confirmed, physical_count, eligible):
+    coord = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H705A", configuration_url=None)
+    original = coord.profile
+    coord._pre_mode_snapshot = PriorControlState("colour", True, 20, (10, 20, 30))
+    coord._pre_mode_profile = original
+    coord._pre_mode_needs_qualification = True
+    coord._physical_ic_count_confirmed = coord._configured_strings_confirmed = confirmed
+    coord.profile = replace(original, physical_ic_count=physical_count)
+    assert coord.profile.segment_count == original.segment_count
+    assert coord._static_history_profile_current() is eligible
+    assert (coord._pre_mode_snapshot is None) is (confirmed and physical_count != original.physical_ic_count)
+
+
+@pytest.mark.parametrize(
+    ("initially_on", "kelvin", "retry_selector", "release_between"),
     [
-        (False, None, False),
-        (True, None, False),
-        (False, 5000, False),
-        (True, 5000, False),
-        pytest.param(True, None, True, id="selector-retry"),
+        (False, None, False, False),
+        (True, None, False, False),
+        (False, 5000, False, False),
+        (True, 5000, False, False),
+        pytest.param(True, None, True, False, id="selector-retry"),
+        pytest.param(False, None, False, True, id="released-rgb"),
+        pytest.param(True, 5000, False, True, id="released-kelvin"),
     ],
 )
 async def test_write_only_static_effect_off_round_trip(
-    hass, monkeypatch, virtual_clock, initially_on, kelvin, retry_selector
+    hass, monkeypatch, virtual_clock, initially_on, kelvin, retry_selector, release_between
 ):
     coord = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H601C", configuration_url=None)
     client = _c(write_gatt_char=AsyncMock(), disconnect=AsyncMock())
     coord._client = client
+    coord._present = True
     coord._notification_token = object()
     coord._notify_started_monotonic = time.monotonic()
+    if release_between:
+        client.disconnect.side_effect = lambda: setattr(client, "is_connected", False)
 
     async def connect():
+        client.is_connected = True
         coord._client = client
         if coord._notification_token is None:
             coord._notification_token = object()
@@ -112,7 +163,11 @@ async def test_write_only_static_effect_off_round_trip(
         await hass.services.async_call("light", "turn_off", {"entity_id": light.entity_id}, blocking=True)
     before = dict(physical)
     await control(effect="Morning")
+    if release_between:
+        await coord._async_disconnect_on_timeout(coord._disconnect_generation)
     await control(effect="Dusk")
+    if release_between:
+        await coord._async_disconnect_on_timeout(coord._disconnect_generation)
     assert physical["rgb"] != before["rgb"]
     await control(effect="off")
     assert physical == before
