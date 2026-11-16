@@ -230,6 +230,8 @@ def encode_music_parameters(
             raise ValueError("paired music requires independent zone edits")
         return variant.template
     _set_music_palette(fields, variant, palette)
+    if variant.layout == "music_body" and not preserve_companions:
+        root.padding = []
     tail = fields.tail
     for spec in variant.parameters:
         if spec.profile_key not in parameters:

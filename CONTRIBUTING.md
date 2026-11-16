@@ -104,6 +104,7 @@ Keep real product differences without turning each product into a separate imple
   Arm reply tracking before writing, learn silent commands only from successful attempts on the current subscription, and restore pacing when a valid late reply arrives.
   Never add feature-specific sleeps or acknowledgement polling.
 - Submit multipart transfers as complete, prevalidated, ordered transactions, including injected writers.
+  Keep authored payload length independent of transport-only padding; preserve retained body bytes except for explicitly requested edits.
   Bind every chunk to its authorising sequence and retain typed transfer metadata outside packet state.
   Invalidate retained payload knowledge at the first physical attempt; install a replacement only after complete delivery and any required acknowledgement.
   Subscription or profile invalidation must explicitly complete pending waits.
