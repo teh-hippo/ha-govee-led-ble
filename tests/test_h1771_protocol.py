@@ -447,38 +447,73 @@ async def test_effect_preparation_rejects_replaced_subscription(effect_connectio
     assert all(packet[0] != 0x33 for packet in writes)
 
 
-@pytest.mark.parametrize("source", ["saved", "preview", "preview_rgb"])
+@pytest.mark.parametrize(
+    ("source", "source_mask"),
+    [("saved", 7), ("preview", 7), ("preview_rgb", 7), ("preview_rgb", 3), ("preview_rgb", 5)],
+)
 async def test_music_effect_uses_fresh_preparation_without_replaying_upload(
-    hass, monkeypatch, effect_connection, source
+    hass, monkeypatch, effect_connection, source, source_mask
 ):
     from custom_components.ha_govee_led_ble.effect_deployments import DeploymentPhase, EffectDeploymentRepository
     from custom_components.ha_govee_led_ble.effect_preview import PreviewPhase
     from custom_components.ha_govee_led_ble.effect_runtime import EffectDeploymentEngine
     from tests.storage_test_double import InMemoryVersionedDocumentStore
     from tests.test_effect_preview import _manager, _open
+    from tests.test_h60a_protocol import bulk_frames
 
     coordinator, writes, replies = effect_connection
     if source == "preview_rgb":
         coordinator.is_on = True
-        coordinator.color_mode = ParsedMode.MUSIC
+        coordinator.color_mode = ParsedMode.UNKNOWN
         coordinator._static_rgb_known = False
+        coordinator.static_gradual = None
         coordinator.segment_state_source = "initial"
+        coordinator.segment_colors = [(0, 0, 0)] * 4
+        coordinator.boolean_control_state.clear()
+        coordinator._field_received_at.clear()
         light = GoveeBLELight(coordinator)
         monkeypatch.setattr(light, "_async_supersede_preview", AsyncMock())
         monkeypatch.setattr(light, "_notify_state_changed", MagicMock())
         monkeypatch.setattr(coordinator, "_renew_foreground_lease", MagicMock())
         await light.async_turn_on(rgb_color=(255, 0, 0))
         assert coordinator.segment_state_source == "optimistic"
+        assert not coordinator.capture_effect_control_state().static_rgb_known
+        assert coordinator.capture_effect_control_state().source_0_enabled is None
         writes.clear()
     item = LibraryItem.new("Saved Flowing", MusicProfile("H1771", "flowing", 0))
     compiled = compile_application(item, "H1771")
     write = coordinator._client.write_gatt_char.side_effect
+    resident_sources = source_mask
+    prior = None
 
     async def acknowledge(uuid, packet, **kwargs):
-        await write(uuid, packet, **kwargs)
+        nonlocal resident_sources, prior
+        if packet[0] == 0xAC:
+            writes.append(packet)
+            settings = {
+                0x36: bytes([resident_sources]),
+                0xA3: b"\x01",
+                0x41: b"\x00\x00",
+                0xA5: b"\x01" + b"\x64\xff\x00\x00" * 4,
+            }
+            body = b"".join(
+                bytes([domain, len(settings[domain])]) + settings[domain] for domain in packet[3 : 3 + packet[2]]
+            )
+            for reply in bulk_frames(body):
+                asyncio.get_running_loop().call_soon(coordinator._notify_callback, None, bytearray(reply))
+        else:
+            if packet == compiled.packets[0] and prior is None:
+                prior = coordinator.capture_effect_control_state()
+            elif packet[:2] == b"\x33\x36":
+                bit = 1 << (packet[2] + 1)
+                resident_sources = resident_sources | bit if packet[3] else resident_sources & ~bit
+            elif packet[:2] == b"\x33\x05" and packet != compiled.packets[-1]:
+                replies[frame("aa0501")] = frame("aa0515000000")
+            await write(uuid, packet, **kwargs)
         if packet == compiled.packets[-2]:
             coordinator._notify_callback(None, bytearray(frame("a341ff00")))
         elif packet == compiled.packets[-1]:
+            resident_sources = 7
             replies[frame("aa0501")] = frame("aa05135100")
             coordinator._notify_callback(None, bytearray(frame("330500")))
 
@@ -505,12 +540,36 @@ async def test_music_effect_uses_fresh_preparation_without_replaying_upload(
                 item=item,
             )
             await manager.async_wait_idle("entry-a")
-            assert events[-1].phase is PreviewPhase.CONFIRMED
+            assert events[-1].phase is PreviewPhase.CONFIRMED, events[-1].error_message
+            if source == "preview_rgb":
+                assert prior is not None
+                assert prior.static_rgb_known and prior.static_gradual is True
+                assert prior.segment_colors == ((255, 0, 0),) * 4
+                assert prior.source_0_enabled is bool(source_mask & 2)
+                assert prior.source_1_enabled is bool(source_mask & 4)
+                assert [packet for packet in writes if packet[0] in (0x33, 0xA3)] == list(compiled.packets)
+                await light.async_turn_on(effect="off")
+                restored = coordinator.capture_effect_control_state()
+                assert restored.mode == "colour"
+                for field in (
+                    "is_on",
+                    "brightness_pct",
+                    "rgb_color",
+                    "color_temp_kelvin",
+                    "static_rgb_known",
+                    "static_gradual",
+                    "source_0_enabled",
+                    "source_1_enabled",
+                    "segment_colors",
+                    "segment_brightness",
+                ):
+                    assert getattr(restored, field) == getattr(prior, field), field
         finally:
             await manager.async_shutdown()
-    assert [packet for packet in writes if packet[0] in (0x33, 0xA3)] == list(compiled.packets)
-    assert coordinator.music_mode == "flowing"
-    assert coordinator.music_sensitivity == 0
+    if source != "preview_rgb":
+        assert [packet for packet in writes if packet[0] in (0x33, 0xA3)] == list(compiled.packets)
+        assert coordinator.music_mode == "flowing"
+        assert coordinator.music_sensitivity == 0
 
 
 @pytest.mark.parametrize(
