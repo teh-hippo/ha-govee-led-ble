@@ -252,6 +252,7 @@ class GoveeBLECoordinator(
         self.right_bar_kelvin: int | None = None
         self.bar_enable_mask: int | None = None
         self.rgb_color_source = self.color_temp_kelvin_source = "initial"
+        self.color_temp_unknown = False
         # Device identity from the aa 06/aa 07 handshake replies; None until first read.
         self.fw_version: str | None = None
         self.hw_version: str | None = None
@@ -698,18 +699,20 @@ class GoveeBLECoordinator(
         return "ready" if self.profile.supports_rgb else "unsupported"
 
     async def async_prepare_identity_gated_control(self) -> Callable[[], None]:
-        if not self.identity_gated_controls:
+        if not self.identity_gated_controls and not get_profile(self.model).static_identity_fields:
             return lambda: None
         self._refresh_h607c_advertisements()
         async with async_control_intent(self, ControlIntent.BACKGROUND):
             async with self._lock:
                 client = await self._ensure_connected()
+                await self._async_require_identity(client, self.profile.static_identity_fields)
                 self._reconcile_authorization()
                 if not self._authorization_profile().supports_rgb or self._h607c_pact_conflict:
                     await self._disconnect_if_current_locked(client)
                     raise HomeAssistantError(translation_domain=DOMAIN, translation_key="identity_not_ready")
                 token = self._notification_token
                 generation = self._authorization_generation
+                fields = self.profile.static_identity_fields
                 self._renew_foreground_lease()
 
         def guard() -> None:
@@ -719,6 +722,7 @@ class GoveeBLECoordinator(
                 or not client.is_connected
                 or self._notification_token is not token
                 or self._authorization_generation != generation
+                or not self.identity_fields_confirmed(fields)
                 or (self._encryption is not None and not self._encryption.ready)
                 or not self._authorization_profile().supports_rgb
                 or self._h607c_pact_conflict
@@ -815,6 +819,7 @@ class GoveeBLECoordinator(
         self.video_full_screen, self.video_sound_effects = True, False
         self.video_parameters = None
         self.rgb_color_source = self.color_temp_kelvin_source = "initial"
+        self.color_temp_unknown = False
         self.color_temp_kelvin = None
         self.static_gradual = None
         self.left_bar_kelvin = self.right_bar_kelvin = None
@@ -1003,7 +1008,7 @@ class GoveeBLECoordinator(
                     token = self._notification_token
                     await self._async_read_identity()
                     if self._client is not client or not client.is_connected or self._notification_token is not token:
-                        raise BleakError("Device disconnected while confirming controller identity")
+                        raise GoveeTransportError("identity_subscription_changed")
                 self._renew_foreground_lease()
                 return client
             _LOGGER.debug("Reconnecting stale notification stream for %s", self.address)
@@ -1325,6 +1330,8 @@ class GoveeBLECoordinator(
 
     def _static_field_observed(self, field: str) -> bool:
         """Whether a colour readback field was observed from the device, not retained or assumed."""
+        if self.color_temp_unknown and field in {"rgb_color", "color_temp_kelvin"}:
+            return False
         if field == "rgb_color":
             source = self.rgb_color_source
         elif field == "color_temp_kelvin":
@@ -1441,6 +1448,7 @@ class GoveeBLECoordinator(
         expectations only once those guards pass.  Callers validate and build the full request before
         cancelling previews, acquiring control or mutating state.
         """
+        lifetime = self._client, self._notification_token, self._profile_generation, self._authorization_generation
         await self._reply_gate.wait()
         try:
             self._require_not_shutdown()
@@ -1458,6 +1466,8 @@ class GoveeBLECoordinator(
         self._require_writable_packet(packet, packet_validator, arm_expected=arm_expected, static=parsed.static)
         generation = self._profile_generation
         authorization_generation = self._authorization_generation
+        static_identity_fields = self.profile.static_identity_fields if parsed.static is not None else frozenset()
+        subscription = self._notification_token
         wire_packet = packet
         if (transform := self.profile.outbound_transform) is not None:
             wire_packet = transform(packet)
@@ -1489,10 +1499,31 @@ class GoveeBLECoordinator(
                 parsed = parse_write_state(packet, self.model, profile=self.profile)
                 parsed_profile = self.profile
             self._require_writable_packet(packet, packet_validator, arm_expected=arm_expected, static=parsed.static)
+        if parsed.static is not None:
+            static_identity_fields |= self.profile.static_identity_fields
+        if static_identity_fields and (
+            not arm_expected
+            and lifetime != (self._client, subscription, generation, authorization_generation)
+            or self._client is not client
+            or not client.is_connected
+            or subscription is None
+            or self._notification_token is not subscription
+            or generation != self._profile_generation
+            or authorization_generation != self._authorization_generation
+            or not self.identity_fields_confirmed(static_identity_fields)
+        ):
+            raise ValueError("Static encoding requires current-subscription device identity")
         if arm_expected and generation != self._profile_generation:
             raise ValueError("Device profile changed before control write; refresh and retry")
         if arm_expected and authorization_generation != self._authorization_generation:
             raise ValueError("Device identity changed before control write; refresh and retry")
+        if arm_expected and lifetime != (
+            self._client,
+            self._notification_token,
+            self._profile_generation,
+            self._authorization_generation,
+        ):
+            raise ValueError("Control context changed while waiting for device reply")
         if self.profile is not parsed_profile:
             parsed = parse_write_state(packet, self.model, profile=self.profile)
         requested = expectations_from_packet(
@@ -2123,7 +2154,7 @@ class GoveeBLECoordinator(
     async def _async_read_identity(self, required_fields: frozenset[str] | None = None) -> None:
         """Refresh missing identity without making basic setup depend on its replies."""
         if required_fields is None:
-            required_fields = self.profile.profile_identity_fields | frozenset(video_identity_fields(self.profile))
+            required_fields = self._control_identity_fields()
         identity_baselines = {
             domain: self._domain_revisions.get(domain, 0)
             for domain, field in (
@@ -2140,6 +2171,49 @@ class GoveeBLECoordinator(
         self._require_not_shutdown()
         self._require_not_dreamview_claimed()
         await self._wait_for_revisions({}, identity_baselines, time.monotonic() + IDENTITY_QUERY_TIMEOUT)
+
+    async def _async_require_identity(self, client: BleakClient, fields: frozenset[str]) -> None:
+        if not fields or self.identity_fields_confirmed(fields):
+            return
+        token = self._notification_token
+        await self._async_read_identity(fields)
+        if self._client is not client or not client.is_connected or self._notification_token is not token:
+            raise GoveeTransportError("identity_subscription_changed")
+        if not self.identity_fields_confirmed(fields):
+            raise HomeAssistantError(translation_domain=DOMAIN, translation_key="identity_not_ready")
+
+    async def _async_prepare_control_identity(
+        self,
+        client: BleakClient,
+        packets: Sequence[bytes],
+        validator: Callable[[bytes, ModelProfile], None] = require_profile_packet,
+    ) -> None:
+        fields = self.profile.profile_identity_fields
+        if not fields or self.identity_fields_confirmed(fields):
+            return
+        required = frozenset[str]()
+        authorization_profile = self._authorization_profile()
+        for packet in packets:
+            try:
+                validator(packet, self.profile)
+            except ValueError:
+                if self.profile.command_operations != frozenset({"power"}):
+                    raise
+                validator(packet, get_profile(self.model))
+                required |= fields
+                continue
+            if (
+                self.profile.static_identity_fields
+                and parse_write_state(packet, self.model, profile=self.profile).static
+            ):
+                required |= self.profile.static_identity_fields
+            try:
+                validator(packet, authorization_profile)
+            except ValueError:
+                required |= fields
+        await self._async_require_identity(client, required)
+        for packet in packets:
+            validator(packet, self.profile)
 
     async def _send_identity_queries(self) -> None:
         """Query missing identity and invalid condition-bearing versions.
@@ -2273,6 +2347,7 @@ class GoveeBLECoordinator(
         self.segment_state_observed_at = None
         self.color_temp_kelvin = None
         self.rgb_color_source = self.color_temp_kelvin_source = "initial"
+        self.color_temp_unknown = False
 
     async def _read_configured_strings(self, client: BleakClient, *, deadline: float) -> bool:
         self._configured_strings_confirmed = False
@@ -3360,6 +3435,7 @@ class GoveeBLECoordinator(
         packets = tuple(packets)
         if not packets:
             raise ValueError("effect sequence must contain at least one packet")
+        preparation_packets = packets if final_packet is None else (*packets, final_packet)
         if packet_state_values is not None and len(packet_state_values) != len(packets):
             raise ValueError("packet state must match the effect sequence length")
         subtype, ack_mode, protocol = self._upload_ack_expectation(packets, require_upload_ack, upload_ack_index)
@@ -3381,10 +3457,17 @@ class GoveeBLECoordinator(
                         if writer is None:
                             async with asyncio.timeout(CONNECTION_SETUP_TIMEOUT):
                                 client = await self._ensure_connected()
+                                await self._async_prepare_control_identity(
+                                    client, preparation_packets, packet_validator
+                                )
                         else:
                             if self._client is None or not self._client.is_connected:
                                 raise BleakError("Device disconnected during preview")
                             client = self._client
+                            async with self._lock:
+                                await self._async_prepare_control_identity(
+                                    client, preparation_packets, packet_validator
+                                )
                         token, generation = self._notification_token, self._profile_generation
                         prepared_profile = self.effect_authorization_profile
                         self._require_not_dreamview_claimed()
@@ -3785,6 +3868,7 @@ class GoveeBLECoordinator(
                 for attempt in range(3):
                     try:
                         client = await self._ensure_connected()
+                        await self._async_prepare_control_identity(client, (packet,))
                         await self._async_write_packet(
                             client,
                             packet,

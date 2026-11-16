@@ -309,6 +309,15 @@ class _NotificationMixin(_CoordinatorBase):
                 self.gradient = parsed.gradient
                 observed.append("gradient")
             static_values: dict[str, Any] = {}
+            if parsed.color_temp_unknown:
+                if self._accept_expected_values({"rgb_color": None, "color_temp_kelvin": None}):
+                    self.color_temp_unknown = True
+                    self.color_temp_kelvin = None
+                    self.color_temp_kelvin_source = "observed"
+                    self.rgb_color_source = "retained"
+                    self._static_rgb_known = False
+                    observed.extend(("rgb_color", "color_temp_kelvin"))
+                return tuple(observed)
             if parsed.rgb_color is not None and (
                 self.profile.static_readback_echoes_color
                 if parsed.static_fields is None
@@ -332,6 +341,8 @@ class _NotificationMixin(_CoordinatorBase):
                 if kelvin is None or static_values["rgb_color"] != table_kelvin_rgb(kelvin):
                     accepted_values["color_temp_kelvin"] = None
             if self._accept_expected_values(accepted_values):
+                if static_values:
+                    self.color_temp_unknown = False
                 if static_values.get("color_temp_kelvin") is not None:
                     self._static_rgb_known = False
                 if (

@@ -58,6 +58,7 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     color_temp_kelvin: int | None
     rgb_color_source: str
     color_temp_kelvin_source: str
+    color_temp_unknown: bool
     _pending_kelvin: int | None
     _static_rgb_known: bool
     white_brightness: int
@@ -175,6 +176,7 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
         self, *, rgb: tuple[int, int, int] | None = None, kelvin: int | None = None, source: str = "optimistic"
     ) -> None:
         """Install local/restore values without advancing BLE observation revisions."""
+        self.color_temp_unknown = False
         if rgb is not None:
             self.rgb_color = rgb
             self.rgb_color_source = source
@@ -209,6 +211,8 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
         def _revalidate_upload_ack(self) -> None: ...
 
         def identity_fields_confirmed(self, fields: frozenset[str] | None = None) -> bool: ...
+
+        async def _async_require_identity(self, client: BleakClient, fields: frozenset[str]) -> None: ...
 
         def _record_packet(
             self,
@@ -399,14 +403,15 @@ async def async_prepare_effect_profile(
         and coordinator.profile.rgbic_scene_v0 is None
         and (
             not coordinator.profile.profile_identity_fields
-            or coordinator.profile.supports_rgb
-            or coordinator.identity_fields_confirmed(coordinator.profile.profile_identity_fields)
+            or coordinator._authorization_profile().command_operations != frozenset({"power"})
         )
     ):
         return coordinator.profile
     async with async_control_intent(coordinator, intent):
         async with coordinator._lock:
             client = await coordinator._ensure_connected()
+            if coordinator._authorization_profile().command_operations == frozenset({"power"}):
+                await coordinator._async_require_identity(client, coordinator.profile.profile_identity_fields)
             if (
                 scene_required
                 and coordinator.profile.scene_identity_fields

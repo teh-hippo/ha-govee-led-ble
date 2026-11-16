@@ -31,6 +31,7 @@ _CONTROL_STATE_FIELDS = (
     "video_saturation",
     "rgb_color_source",
     "color_temp_kelvin_source",
+    "color_temp_unknown",
     "segment_colors",
     "video_full_screen",
     "video_sound_effects",
@@ -119,6 +120,7 @@ class ControlStateCheckpoint:
                 "color_temp_kelvin",
                 "rgb_color_source",
                 "color_temp_kelvin_source",
+                "color_temp_unknown",
             }:
                 continue
             revision_field = "music_calm" if field == "_music_calm" else field
