@@ -8,7 +8,7 @@ from unittest.mock import Mock
 import pytest
 
 from custom_components.ha_govee_led_ble import music_commands
-from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, MUSIC_MODE_SLUGS
+from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, MUSIC_MODE_SLUGS, device_profile
 from custom_components.ha_govee_led_ble.coordinator_expectations import expectations_from_packet
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.effect_catalogue import (
@@ -35,6 +35,7 @@ from custom_components.ha_govee_led_ble.effect_catalogue import (
     resolve_catalogue_template,
     validate_catalogue_template_identity,
 )
+from custom_components.ha_govee_led_ble.effect_compiler import compile_application
 from custom_components.ha_govee_led_ble.effect_contracts import (
     RELEASE_CAPABILITY_CONTRACT,
     ApplicationRoute,
@@ -68,6 +69,41 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_
 from custom_components.ha_govee_led_ble.layered_scene_decoder import encode_workshop_effect
 from custom_components.ha_govee_led_ble.protocol_h6199 import build_h6199_scene
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES
+
+
+def test_revision_catalogue_projects_family_bounds_without_mutating_the_ceiling():
+    catalogue = MODEL_EFFECT_CATALOGUES["H6127"]
+    ceiling = catalogue.to_dict()
+    for firmware, palette_max, music_variants, mixed in (
+        ("1.01.16", 4, {6, 7}, False),
+        ("1.01.20", 8, {6, 7, 8}, True),
+    ):
+        profile = device_profile("H6127", 1, 1, firmware=firmware, hardware="1.00.01")
+        payload = catalogue.to_dict(profile=profile)
+        assert payload["limits"]["palette_max"] == palette_max
+        assert {family["family"] for family in payload["effects"]} == {0, 1, 2, 3, 4}
+        music = next(family for family in payload["effects"] if family["family"] == 4)
+        assert {variation["variant"] for variation in music["variations"]} == music_variants
+        assert payload["supports"]["multi"] == ("supported" if mixed else "unsupported")
+        assert payload["painted_effects"] == []
+        assert payload["music_settings"]["spectrum"]["colour_default"] == [255, 0, 0]
+        spectrum = next(
+            template["content"] for template in payload["templates"] if template["id"] == "template:music:spectrum"
+        )
+        assert spectrum["colour"] == [255, 0, 0]
+        assert all(template["content"].get("family", 0) in {0, 1, 2, 3, 4} for template in payload["templates"])
+        for template in payload["templates"]:
+            resolved = resolve_catalogue_template("H6127", template["id"], profile=profile)
+            assert resolved.to_dict() == template
+            validate_catalogue_template_identity("H6127", resolved.id, resolved.content, profile=profile)
+            assert compile_application(
+                LibraryItem.new(resolved.label, resolved.content), "H6127", profile=profile
+            ).packets
+        if palette_max == 4:
+            assert any(template["id"] == "template:single:4:6" for template in payload["templates"])
+            with pytest.raises(ValueError, match="does not support"):
+                resolve_catalogue_template("H6127", "template:single:4:8", profile=profile)
+    assert catalogue.to_dict() == ceiling
 
 
 def test_native_summaries_classify_every_model_and_scene():
@@ -177,6 +213,7 @@ def test_model_aware_catalogue_includes_supported_models_and_legacy_h617a_view()
         "H6102",
         "H6117",
         "H6125",
+        "H6127",
         "H6179",
         "H6181",
         "H617A",

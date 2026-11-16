@@ -14,6 +14,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import STORAGE_DIR, Store, get_internal_store_manager
 
 from custom_components.ha_govee_led_ble import effect_migration
+from custom_components.ha_govee_led_ble.const import device_profile
 from custom_components.ha_govee_led_ble.effect_active_workspace import (
     ActiveEffectWorkspace,
     ActiveEffectWorkspaceRepository,
@@ -116,15 +117,24 @@ async def test_current_only_library_creates_updates_and_hard_deletes() -> None:
     assert store.data == {"items": {}, "generation": 3}
 
 
-async def test_template_defaults_round_trip_and_delete_by_device() -> None:
+@pytest.mark.parametrize(
+    "model,template_id",
+    [
+        ("H617A", "template:single:0:0"),
+        ("H6127", "template:single:4:6"),
+        ("H6127", "template:single:4:7"),
+    ],
+)
+async def test_template_defaults_round_trip_and_delete_by_device(model, template_id) -> None:
     store = InMemoryVersionedDocumentStore()
     repository = CatalogueTemplateDefaultRepository(store)
     assert await repository.async_load() == ()
-    canonical = resolve_catalogue_template("H617A", "template:single:0:0")
+    profile = device_profile("H6127", 1, 1, firmware="1.01.16", hardware="1.00.01") if model == "H6127" else None
+    canonical = resolve_catalogue_template(model, template_id, profile=profile)
     assert isinstance(canonical.content, SingleEffect)
     value = CatalogueTemplateDefault(
         config_entry_id="entry-a",
-        model="H617A",
+        model=model,
         template_id=canonical.id,
         updated_at=TIMESTAMP,
         content=replace(canonical.content, speed=75),
@@ -134,6 +144,9 @@ async def test_template_defaults_round_trip_and_delete_by_device() -> None:
 
     assert repository.get("entry-a", canonical.id) == value
     assert len(value.content_hash) == 64
+    reloaded = CatalogueTemplateDefaultRepository(store)
+    assert await reloaded.async_load() == (value,)
+    assert reloaded.get("entry-a", canonical.id) == value
     await repository.async_delete_device("entry-a")
     assert repository.get("entry-a", canonical.id) is None
     assert store.data == {"devices": {}}

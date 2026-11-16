@@ -6,6 +6,7 @@ meta:
   imports:
     - govee_shared
     - govee_common
+    - speculative/h6127_wire_write
 doc: |
   H617A 20-byte command frame.  The final byte is the XOR of bytes 0 through 18.
   The shared boolean payload also covers H6102 limit opcode 0E, which
@@ -38,6 +39,7 @@ enums:
     0xa3: multi_effect
   multi_sub:
     0x04: scene
+    0x07: inline_diy
     0x0a: diy
     0x13: music
     0x15: static
@@ -112,6 +114,7 @@ types:
           switch-on: sub
           cases:
             'multi_sub::scene': scene_activate
+            'multi_sub::inline_diy': h6127_wire_write::inline_diy
             'multi_sub::diy': govee_common::diy_selector
             'multi_sub::music': govee_common::music_selector
             'multi_sub::static': static_cmd(false)

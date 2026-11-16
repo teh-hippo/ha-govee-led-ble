@@ -14,6 +14,7 @@ from .protocol_core import (
     H6117WireWrite,
     H6125LegacySegmentQuery,
     H6125WireWrite,
+    H6127WireWrite,
     H6181CommandWrite,
     H6199Pact1WireWrite,
     _child,
@@ -244,14 +245,28 @@ def h60a6_legacy_outbound_transform(packet: bytes) -> bytes:
 
 
 @cache
-def h6125_outbound_transform(
-    wire_range: tuple[int, int], *, legacy_colour: bool = False, legacy_music: bool = False
+def dreamcolor_outbound_transform(
+    wire_range: tuple[int, int],
+    *,
+    legacy_colour: bool = False,
+    legacy_music: bool = False,
+    whole_device_colour: bool = False,
+    direct_music_colour: bool = False,
+    legacy_gradual: bool = False,
 ) -> Callable[[bytes], bytes]:
     """Re-encode the revision's differing fields through its generated wire roots."""
 
     from .generated_protocol_adapter import parse_command_result
 
     def transform(packet: bytes) -> bytes:
+        if legacy_gradual:
+            query = _parse_xor_frame(packet, "H617A", _STATUS_QUERY_ROOTS).parsed
+            if query is not None and getattr(query.domain, "name", None) == "multi_effect":
+                root = H6127WireWrite.Query()
+                root.header = b"\xaa"
+                root.domain = H6127WireWrite.Query.QueryDomain.gradual
+                root.unknown_tail = bytes(17)
+                return _serialize_xor(root)
         if legacy_colour:
             query = _parse_xor_frame(packet, "H617A", _STATUS_QUERY_ROOTS).parsed
             if query is not None and getattr(query.domain, "name", None) == "segments":
@@ -266,10 +281,55 @@ def h6125_outbound_transform(
             return packet
         if parsed.opcode.name == "brightness":
             return _register_brightness(H6125WireWrite, int(parsed.body.percent), wire_range)
+        if legacy_gradual and parsed.opcode.name == "multi_effect":
+            root = H6127WireWrite()
+            root.header = b"\x33"
+            root.opcode = H6127WireWrite.CommandOp.gradual
+            body = _child(H6127WireWrite.FlagBody, root)
+            body.flag = parsed.body.flag
+            body.unknown_tail = bytes(16)
+            root.body = body
+            return _serialize_xor(root)
+        if parsed.opcode.name == "multi" and parsed.body.sub.name == "music" and direct_music_colour:
+            selector = parsed.body.sub_body
+            root = H6127WireWrite()
+            root.header = b"\x33"
+            root.opcode = H6127WireWrite.CommandOp.mode
+            mode = _child(H6127WireWrite.ModeBody, root)
+            mode.sub = H6127WireWrite.ModeSub.legacy_music
+            body = _child(H6127WireWrite.LegacyMusicSelector, mode)
+            body.mode_id = H6127WireWrite.LegacyMusicMode[selector.mode_id.name]
+            body.sensitivity = selector.sensitivity
+            fixed = body.mode_id in {H6127WireWrite.LegacyMusicMode.spectrum, H6127WireWrite.LegacyMusicMode.rolling}
+            if fixed:
+                if not selector.has_fixed_colour:
+                    raise ValueError("This legacy music selector requires a fixed colour")
+                rgb = selector.rgb
+                body.rgb = _rgb(body, rgb.red, rgb.green, rgb.blue)
+            body.unknown_tail = bytes(11 if fixed else 14)
+            mode.sub_body, root.body = body, mode
+            return _serialize_xor(root)
         if parsed.opcode.name == "multi" and parsed.body.sub.name == "music":
             return _h6125_wire_music(parsed.body.sub_body, legacy=legacy_music)
         if legacy_colour and parsed.opcode.name == "multi" and parsed.body.sub.name == "static":
             return _h6125_wire_colour(parsed.body.sub_body)
+        if whole_device_colour and parsed.opcode.name == "multi" and parsed.body.sub.name == "static":
+            static = parsed.body.sub_body
+            if static.static_sub != 1 or static.static_body.mask.bits != 1:
+                raise ValueError("Whole-device colour does not support partial masks or segment brightness")
+            colour = static.static_body
+            root = H6127WireWrite()
+            root.header = b"\x33"
+            root.opcode = H6127WireWrite.CommandOp.mode
+            mode = _child(H6127WireWrite.ModeBody, root)
+            mode.sub = H6127WireWrite.ModeSub.whole_device_colour
+            body = _child(H6127WireWrite.WholeDeviceColour, mode)
+            body.rgb = _rgb(body, colour.rgb_direct.red, colour.rgb_direct.green, colour.rgb_direct.blue)
+            body.temperature_flag = int(bool(colour.kelvin))
+            body.companion_rgb = _rgb(body, colour.rgb_preview.red, colour.rgb_preview.green, colour.rgb_preview.blue)
+            body.unknown_tail = bytes(9)
+            mode.sub_body, root.body = body, mode
+            return _serialize_xor(root)
         return packet
 
     return transform

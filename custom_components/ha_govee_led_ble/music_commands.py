@@ -187,6 +187,8 @@ def _prepare_music_request(
     mode_code = music_code_for(model, mode, profile=profile)
     variant = music_variant(profile, mode_code)
     compiled = compile_music_parameters(parameters, mode_code, profile)
+    if colour is None and variant is not None and variant.fixed_colour_default is not None:
+        raise ValueError("This music mode requires a fixed colour")
     if palette is not None and (variant is None or variant.palette_bounds is None):
         raise ValueError("music mode does not support an authored palette")
     if palette is not None and not include_parameters:

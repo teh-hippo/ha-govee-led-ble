@@ -94,8 +94,8 @@ export class GoveeMusicProfileEditor extends LitElement {
       sensitivityMinimum,
       sensitivityMaximum,
     );
-    const colourMode = this.content.colour === null ? "automatic" : "fixed";
-    const fixedColour = this.content.colour ?? this.lastFixedColour ?? recentColour(0);
+    const colourMode = this.content.colour === null && !this.settings?.colour_default ? "automatic" : "fixed";
+    const fixedColour = this.content.colour ?? this.settings?.colour_default ?? this.lastFixedColour ?? recentColour(0);
     const wholeColour = this.settings?.colour && !("left_colour" in (this.settings.parameters ?? {}));
 
     return html`
@@ -115,7 +115,7 @@ export class GoveeMusicProfileEditor extends LitElement {
               }),
           ) : nothing}
 
-          ${wholeColour ? html`<label class="field">
+          ${wholeColour && !this.settings?.colour_default ? html`<label class="field">
             <span>Colour mode</span>
             <select
               aria-label="Colour mode"

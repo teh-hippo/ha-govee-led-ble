@@ -31,6 +31,7 @@ from .music_semantics import (
     H6102_MUSIC_VARIANTS,
     H6117_MUSIC_VARIANTS,
     H6125_MUSIC_VARIANTS,
+    H6127_MUSIC_VARIANTS,
     H6181_MUSIC_VARIANTS,
     H7020_MUSIC_VARIANTS,
     H7025_MUSIC_VARIANTS,
@@ -331,6 +332,8 @@ class ModelProfile:
     rgbic_scene_v0: bool | None = None
     # When set, Type04 custom effects upload as A1 command-02 frames led by this selector and activate with it.
     a1_diy_selector: int | None = None
+    diy_family_variants: tuple[tuple[int, tuple[int, ...]], ...] | None = None
+    diy_palette_max: int | None = None
     diy_upload_transport: str | None = None
     diy_requires_upload_ack: bool = False
     effect_retry_after_upload: bool = True
@@ -418,7 +421,7 @@ class ModelProfile:
             or any(len(group) < 2 or not group <= source_controls for group in self.exclusive_source_groups)
         ):
             raise ValueError("source power constraints require declared sources and valid limits")
-        if self.diy_upload_transport not in {None, "a1_02", "a3"}:
+        if self.diy_upload_transport not in {None, "a1_02", "a3", "single"}:
             raise ValueError("unknown DIY upload transport")
         if not self.restarting_boolean_controls <= self.boolean_controls:
             raise ValueError("restarting settings must be declared boolean controls")
@@ -2282,6 +2285,79 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         diy_requires_upload_ack=True,
         boolean_controls=frozenset({"gradual"}),
     ),
+    "H6127": ModelProfile(
+        "H6127 DreamColor LED Strip",
+        confirmation_issue=634,
+        command_grammar="H617A",
+        command_ack_grammar="H6125",
+        status_grammar="H6125",
+        effect_grammar="H617A",
+        profile_identity_fields=frozenset({"fw_version", "hw_version"}),
+        profile_pact_dependent=True,
+        colour_mode_query_selector=1,
+        read_domains=frozenset(
+            {
+                ReadDomain.POWER,
+                ReadDomain.BRIGHTNESS,
+                ReadDomain.COLOUR_MODE,
+                ReadDomain.FIRMWARE,
+                ReadDomain.HARDWARE,
+                ReadDomain.SEGMENTS,
+            }
+        ),
+        setup_required_read_domains=frozenset({ReadDomain.POWER}),
+        supports_rgb=True,
+        supports_color_temperature=True,
+        color_temp_range=KELVIN_RANGE_2000_9000,
+        static_readback_kelvin=True,
+        static_readback_zero_kelvin_is_rgb=True,
+        static_readback_gradual=True,
+        physical_ic_count=50,
+        segment_count=15,
+        segment_group_size=3,
+        supports_segment_writes=True,
+        supports_segment_brightness=True,
+        supports_segment_color_temperature=True,
+        supports_scenes=True,
+        scene_catalogue_sku="H6127",
+        local_scenes=(
+            (0, "Sunrise"),
+            (1, "Sunset"),
+            (4, "Film"),
+            (5, "Date"),
+            (7, "Romantic"),
+            (8, "Blinking"),
+            (9, "Candle"),
+            (15, "Snow"),
+        ),
+        supports_custom_effects=True,
+        supports_multi_layered_effects=True,
+        supports_advanced_effects=True,
+        advanced_diy_selector=402,
+        a1_diy_selector=0xFE,
+        diy_requires_upload_ack=True,
+        effect_readback="diy_code_only",
+        music_modes=(
+            "energetic",
+            "rhythm",
+            "spectrum",
+            "rolling",
+            "separation",
+            "hopping",
+            "piano_keys",
+            "fountain",
+            "day_and_night",
+            "bloom",
+            "shiny",
+        ),
+        music_variants=H6127_MUSIC_VARIANTS,
+        supports_music_color=True,
+        music_upload_before_selector=True,
+        music_requires_upload_ack=True,
+        music_params_require_activation=True,
+        boolean_controls=frozenset({"gradual"}),
+        connection_idle_timeout=IDLE_TIMEOUT_STANDARD,
+    ),
     "H7020": ModelProfile(
         "H7020 Outdoor String Lights",
         support_quality=SupportQuality.SUPPORTED,
@@ -2890,7 +2966,7 @@ def _h6125_profile(
     """Resolve independently gated H6125 controls from the controller's full identity."""
     from .firmware_version import FirmwareVersion
     from .protocol_core import H6125IntermediateStatusReply, H6125LegacyStatusReply
-    from .protocol_transforms import h6125_outbound_transform
+    from .protocol_transforms import dreamcolor_outbound_transform
 
     fw, hw = FirmwareVersion.parse(firmware), FirmwareVersion.parse(hardware)
     if fw is None or hw is None:
@@ -2955,9 +3031,154 @@ def _h6125_profile(
         static_readback_gradual=True,
         boolean_controls=frozenset({"gradual"}),
         brightness_wire_range=wire_range,
-        outbound_transform=h6125_outbound_transform(
+        outbound_transform=dreamcolor_outbound_transform(
             wire_range, legacy_colour=not extended_colour, legacy_music=original_music
         ),
+    )
+
+
+def _h6127_profile(
+    pact_type: int | None, pact_code: int | None, firmware: str | None, hardware: str | None
+) -> ModelProfile:
+    from .protocol_transforms import dreamcolor_outbound_transform
+
+    profile = MODEL_PROFILES["H6127"]
+    fw, hw = FirmwareVersion.parse(firmware), FirmwareVersion.parse(hardware)
+    if fw is None or hw is None or fw.identity_number() // 10000 != hw.identity_number() // 10000:
+        return replace(
+            profile,
+            command_operations=frozenset({"power"}),
+            effect_workflows=frozenset(),
+            read_domains=frozenset({ReadDomain.POWER, ReadDomain.FIRMWARE, ReadDomain.HARDWARE}),
+            supports_rgb=False,
+            supports_color_temperature=False,
+            supports_segment_writes=False,
+            supports_segment_brightness=False,
+            supports_segment_color_temperature=False,
+            supports_scenes=False,
+            supports_custom_effects=False,
+            supports_multi_layered_effects=False,
+            supports_advanced_effects=False,
+            music_modes=(),
+            music_variants=(),
+            boolean_controls=frozenset(),
+        )
+    modern = pact_type == 10 and pact_code in (1, 2, 3)
+    telink = (
+        hardware is not None
+        and hardware.startswith("1.")
+        and (
+            pact_type == 1
+            and pact_code in (1, 2)
+            or pact_type is None
+            and pact_code is None
+            and fw < FirmwareVersion((1, 3, 1))
+        )
+    )
+    if modern:
+        bk = hardware is not None and hardware.startswith("2.01.")
+        frk = hardware is not None and hardware.startswith("3.") and not hardware.startswith("3.04.")
+        if bk or frk:
+            return replace(
+                profile,
+                status_grammar="H6125-modern",
+                music_modes=profile.music_modes
+                if fw >= FirmwareVersion((2, 4) if bk else (3, 1))
+                else profile.music_modes[:4],
+                a1_diy_selector=None,
+                rgbic_scene_v0=False,
+                scene_command_versions=frozenset({0, 1}),
+            )
+    if not telink:
+        return _h6127_profile(None, None, None, None)
+    if fw < FirmwareVersion((1, 3, 1)):
+        inline = fw < FirmwareVersion((1, 1, 20))
+        diy = fw >= FirmwareVersion((1, 1, 16))
+        legacy_workflows = {"native_music", "native_scenes"}
+        if diy:
+            legacy_workflows.add("single")
+        if diy and not inline:
+            legacy_workflows.add("multi")
+        return replace(
+            profile,
+            status_grammar="H6127-legacy",
+            effect_workflows=frozenset(legacy_workflows),
+            read_domains=profile.read_domains - {ReadDomain.SEGMENTS},
+            color_temp_range=KELVIN_RANGE_2700_6500,
+            static_readback_kelvin=False,
+            static_readback_zero_kelvin_is_rgb=False,
+            static_readback_gradual=False,
+            static_readback_echoes_color=True,
+            supports_segment_writes=False,
+            supports_segment_brightness=False,
+            supports_segment_color_temperature=False,
+            segment_count=1,
+            segment_group_size=0,
+            selector_only_scene_bits=8,
+            scene_codes=frozenset({0, 1, 4, 5, 7, 8, 9, 15}),
+            supports_custom_effects=diy,
+            supports_multi_layered_effects=diy and not inline,
+            supports_advanced_effects=False,
+            advanced_diy_selector=None,
+            diy_upload_transport="single" if inline else "a1_02",
+            diy_family_variants=(
+                (0, (0, 1, 2)),
+                (1, (0, 2)),
+                (2, (0, 1, 2)),
+                (3, (3, 4, 5)),
+                (4, (6, 7) if inline else (8, 6, 7)),
+            ),
+            diy_palette_max=4 if inline else 8,
+            diy_requires_upload_ack=not inline,
+            a1_diy_selector=None if inline else 0xFE,
+            music_modes=profile.music_modes[:4],
+            music_variants=tuple(
+                replace(
+                    variant,
+                    supports_style=False,
+                    supports_fixed_colour=variant.mode_code in (4, 6),
+                    fixed_colour_default=(255, 0, 0) if variant.mode_code in (4, 6) else None,
+                )
+                for variant in profile.music_variants
+                if variant.mode_code in (3, 4, 5, 6)
+            ),
+            music_readback_ambiguous=True,
+            music_upload_before_selector=False,
+            music_requires_upload_ack=False,
+            boolean_controls=frozenset(),
+            brightness_wire_range=(6, 254),
+            outbound_transform=dreamcolor_outbound_transform(
+                (6, 254), whole_device_colour=True, direct_music_colour=True
+            ),
+        )
+    extended = hw >= FirmwareVersion((1, 0, 3)) and fw >= FirmwareVersion((1, 6))
+    uploaded = pact_code == 2 or fw >= FirmwareVersion((1, 4))
+    workflows = frozenset({"native_music", "native_scenes", "single", "multi"})
+    if uploaded:
+        workflows |= {"edited_palette_scenes", "layered_scenes", "advanced", "workshop"}
+    if extended:
+        workflows |= {"painted"}
+    return replace(
+        profile,
+        status_grammar="H6127" if extended else "H6127-intermediate",
+        effect_workflows=workflows,
+        supports_color_temperature=extended,
+        supports_segment_color_temperature=extended,
+        static_readback_kelvin=extended,
+        static_readback_zero_kelvin_is_rgb=extended,
+        supports_segment_brightness=extended,
+        segment_group_size=3 if extended else 4,
+        supports_advanced_effects=uploaded,
+        advanced_diy_selector=profile.advanced_diy_selector if uploaded else None,
+        selector_only_scene_bits=None if uploaded else 8,
+        scene_codes=None if uploaded else frozenset({0, 1, 4, 5, 7, 8, 9, 10, 15, 16, 21, 22}),
+        music_modes=profile.music_modes if fw >= FirmwareVersion((1, 7)) else profile.music_modes[:4],
+        brightness_wire_range=(6, 254),
+        rgbic_scene_v0=not extended,
+        scene_command_versions=frozenset({0, 1})
+        if hw >= FirmwareVersion((1, 0, 2)) and fw >= FirmwareVersion((1, 6))
+        else frozenset({0}),
+        outbound_transform=dreamcolor_outbound_transform((6, 254), legacy_colour=not extended, legacy_gradual=True),
     )
 
 
@@ -3308,6 +3529,8 @@ def device_profile(
         return _h6117_profile(pact_type, pact_code, firmware, hardware)
     if model == "H6125":
         return _h6125_profile(pact_type, pact_code, firmware, hardware)
+    if model == "H6127":
+        return _h6127_profile(pact_type, pact_code, firmware, hardware)
     if model == "H6102":
         from .h6102_capabilities import resolve_h6102_capabilities
 

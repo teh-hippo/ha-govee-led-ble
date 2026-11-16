@@ -30,6 +30,11 @@ editor.content = {
   colour: null, calm: null, parameters: {},
 };
 editor.modeSelectionEnabled = true;
+if (new URLSearchParams(location.search).has("fixed-colour-only")) {
+  catalogue.music_settings.separation.colour = true;
+  catalogue.music_settings.separation.colour_default = [255, 0, 0];
+  editor.content = {...editor.content, colour: [12, 34, 56]};
+}
 if (new URLSearchParams(location.search).has("palette")) {
   // H6099 evidence-backed bounds with synthetic colours for editor interaction checks.
   catalogue.music_settings.separation.palette = { min: 1, max: 8, default: [[12, 34, 56], [78, 90, 123]] };

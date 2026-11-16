@@ -19,7 +19,7 @@ from .effect_limits import (
 )
 
 EDITOR_API_VERSION: Final = 18
-EDITOR_ASSET_VERSION: Final = 31
+EDITOR_ASSET_VERSION: Final = 32
 EFFECT_COMPILER_VERSION: Final = 7
 RELEASE_CAPABILITY_SCHEMA_VERSION: Final = 1
 
@@ -727,7 +727,7 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
             model=model,
             verification_confidence=_V.SELECTION_ONLY,
         )
-        for model in ("H6117", "H6125", "H619A", "H705A")
+        for model in ("H6117", "H6125", "H6127", "H619A", "H705A")
         for capability in _RELEASE_CAPABILITY_BASE
         if capability.model == "H617A"
         and capability.workflow

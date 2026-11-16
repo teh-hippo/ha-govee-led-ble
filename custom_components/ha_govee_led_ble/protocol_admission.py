@@ -262,6 +262,15 @@ def _check_command_packet(frame: bytes, profile: ModelProfile) -> bool:
             raise ValueError("Bar control is outside profile capabilities")
         if operation in {"multi", "mode"}:
             sub_operation, detail = _command_mode_parts(command, profile.command_grammar)
+            if sub_operation == "inline_diy":
+                if profile.diy_upload_transport != "single" or not profile.supports_custom_effects:
+                    raise ValueError("Inline DIY is outside profile capabilities")
+                allowed = dict(profile.diy_family_variants or ())
+                if detail.variant not in allowed.get(int(detail.family), ()) or not 1 <= detail.speed <= 100:
+                    raise ValueError("Inline DIY family, variation or speed is outside profile capabilities")
+                sub_operation = "diy"
+            elif sub_operation == "diy" and profile.diy_upload_transport == "single":
+                raise ValueError("Inline DIY cannot be replaced by a resident selector")
             if profile.command_operations is not None and sub_operation not in {"static", "static_colour"}:
                 operation = sub_operation
             if sub_operation == "music":
@@ -277,6 +286,9 @@ def _check_command_packet(frame: bytes, profile: ModelProfile) -> bool:
                     not in profile.music_modes
                 ):
                     raise ValueError("music mode selector is outside profile capabilities")
+                variant = music_variant(profile, int(mode_id))
+                if variant is not None and variant.fixed_colour_default is not None and not detail.has_fixed_colour:
+                    raise ValueError("This music mode requires a fixed colour")
         control = boolean_control_name(operation)
         if control is not None:
             if boolean_control_is_authorized(control, profile):

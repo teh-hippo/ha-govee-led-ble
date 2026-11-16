@@ -12,7 +12,7 @@ from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ModelProfil
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.effect_catalogue import WORKSHOP_PROTOCOL_FIXTURES, resolve_catalogue_template
-from custom_components.ha_govee_led_ble.effect_compiler import compile_application, compile_effect
+from custom_components.ha_govee_led_ble.effect_compiler import DIY_ACK_EVIDENCE, compile_application, compile_effect
 from custom_components.ha_govee_led_ble.effect_deployments import DeploymentPhase, EffectDeploymentRepository
 from custom_components.ha_govee_led_ble.effect_domain import BuiltinScene, LibraryItem, MusicProfile, SingleEffect
 from custom_components.ha_govee_led_ble.effect_preview import PreviewPhase
@@ -567,12 +567,21 @@ def test_ack_uses_command_grammar_independently_of_video(monkeypatch):
 
 
 @pytest.mark.parametrize("response", [None, "a10201", "a30200", "330200", "a10200"])
-async def test_a1_upload_requires_its_own_positive_ack_before_activation(connected, response):
+@pytest.mark.parametrize(
+    "model,firmware,hardware",
+    [
+        ("H6125", "1.07.01", "1.00.04"),
+        ("H6127", "1.01.20", "1.00.01"),
+    ],
+)
+async def test_a1_upload_requires_its_own_positive_ack_before_activation(
+    connected, response, model, firmware, hardware
+):
     c, client = connected
-    c.model = "H6125"
+    c.model = model
     c.pact_type, c.pact_code = 1, 2
-    c.fw_version, c.hw_version = "1.07.01", "1.00.04"
-    c.profile = device_profile("H6125", 1, 2, firmware=c.fw_version, hardware=c.hw_version)
+    c.fw_version, c.hw_version = firmware, hardware
+    c.profile = device_profile(model, 1, 2, firmware=c.fw_version, hardware=c.hw_version)
     c._confirmed_identity_fields.update(c.profile.profile_identity_fields)
     item = LibraryItem.new("Fade", SingleEffect(family=0, variant=0, speed=40, palette=((255, 0, 0),)))
     compiled = compile_application(item, c.model, profile=c.profile)
@@ -584,12 +593,22 @@ async def test_a1_upload_requires_its_own_positive_ack_before_activation(connect
             receive(client, frame(response))
 
     client.write_gatt_char.side_effect = write
+
+    async def apply():
+        await c.async_write_effect_sequence(
+            packets,
+            intent=ControlIntent.USER,
+            require_upload_ack=DIY_ACK_EVIDENCE in compiled.evidence_codes,
+            upload_ack_index=index,
+            final_packet=compiled.activation_packet,
+        )
+
     if response == "a10200":
-        await write_sequence(c, packets, index, final_packet=compiled.activation_packet)
+        await apply()
         expected = [*packets, compiled.activation_packet]
     else:
         with pytest.raises((TimeoutError, RuntimeError)):
-            await write_sequence(c, packets, index, final_packet=compiled.activation_packet)
+            await apply()
         expected = packets
     assert [call.args[1] for call in client.write_gatt_char.call_args_list] == expected
     assert c._field_revisions == {}

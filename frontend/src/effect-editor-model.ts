@@ -182,6 +182,7 @@ export function effectContentEligible(
         content.sensitivity < catalogue.limits.music_sensitivity_min ||
         content.sensitivity > catalogue.limits.music_sensitivity_max) return false;
     if (content.calm !== null && (!settings.style || typeof content.calm !== "boolean")) return false;
+    if (content.colour === null && settings.colour_default !== undefined) return false;
     if (content.colour !== null && (!settings.colour || content.colour.length !== 3 ||
         !content.colour.every((channel) => Number.isInteger(channel) && channel >= 0 && channel <= 255))) return false;
     if (Object.keys(content.parameters).some((key) => !Object.hasOwn(settings.parameters, key))) return false;

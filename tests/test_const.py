@@ -151,7 +151,7 @@ def test_support_quality_has_only_supported_and_experimental_states():
     }
     assert {
         model for model, profile in MODEL_PROFILES.items() if profile.support_quality is SupportQuality.EXPERIMENTAL
-    } == {"H1771", "H605C", "H6117", "H6179", "H6181", "H619A", "H7025", "H705A"}
+    } == {"H1771", "H605C", "H6117", "H6127", "H6179", "H6181", "H619A", "H7025", "H705A"}
 
 
 @pytest.mark.parametrize("pact", [(1, 1), (2, 1), (2, 2), (None, None), (3, 7)])
@@ -290,6 +290,32 @@ def test_h6125_colour_and_music_have_independent_revision_gates(
 def test_h6125_unmapped_hardware_does_not_inherit_the_modern_route(hardware):
     profile = device_profile("H6125", 10, 2, firmware=f"{hardware[0]}.04.37", hardware=hardware)
     assert profile is const.H6125_POWER_ONLY_PROFILE
+
+
+@pytest.mark.parametrize(
+    ("pact", "firmware", "hardware", "kelvin", "music_count", "scene_versions"),
+    [
+        ((1, 1), "1.05.01", "1.00.01", False, 4, {0}),
+        ((1, 2), "1.06.00", "1.00.02", False, 4, {0, 1}),
+        ((1, 2), "1.05.99", "1.00.03", False, 4, {0}),
+        ((1, 2), "1.06.00", "1.00.03", True, 4, {0, 1}),
+        ((1, 2), "1.07.00", "1.00.01", False, 11, {0}),
+        ((10, 1), "2.03.99", "2.01.01", True, 4, {0, 1}),
+        ((10, 1), "2.04.00", "2.01.01", True, 11, {0, 1}),
+        ((10, 2), "3.00.99", "3.01.01", True, 4, {0, 1}),
+        ((10, 2), "3.01.00", "3.01.01", True, 11, {0, 1}),
+    ],
+)
+def test_strip_colour_music_and_scene_requirements_resolve_independently(
+    pact, firmware, hardware, kelvin, music_count, scene_versions
+):
+    profile = device_profile("H6127", *pact, firmware=firmware, hardware=hardware)
+    assert profile.supports_color_temperature is kelvin
+    assert profile.supports_segment_color_temperature is kelvin
+    assert len(profile.music_modes) == music_count
+    assert profile.scene_command_versions == scene_versions
+    assert profile.rgbic_scene_v0 is (pact[0] == 1 and not kelvin)
+    assert profile == device_profile("H6127", *pact, firmware=firmware, hardware=hardware)
 
 
 def test_register_range_requires_the_transform_that_encodes_it():

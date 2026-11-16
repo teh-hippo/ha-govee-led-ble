@@ -71,6 +71,7 @@ from .effect_catalogue_templates import (
     _h607c_templates,
     _h1771_templates,
     _music_template,
+    _rgbic_native_templates,
     _single_template,
     _video_template,
 )
@@ -479,6 +480,37 @@ MODEL_EFFECT_CATALOGUES: Final = {
         music_modes=H617E_NATIVE_MUSIC_MODES,
         video_modes=(),
         templates=H617E_CATALOGUE_TEMPLATES,
+        workshop_templates=(),
+    ),
+    "H6127": ModelEffectCatalogue(
+        sku="H6127",
+        painted_effects=H617A_PAINTED_EFFECTS,
+        effects=tuple(
+            replace(family, source_reference="H6127 DreamColor basic and mixed DIY") for family in H6125_DIY_FAMILIES
+        ),
+        music_modes=_native_music_modes("H6127"),
+        video_modes=(),
+        templates=(
+            CatalogueTemplate(
+                "template:paint",
+                "Paint",
+                "single-layer",
+                PaintedEffect("clockwise", 50, 100, (None,) * 15),
+            ),
+            *(_single_template("H6127", family) for family in H6125_DIY_FAMILIES),
+            *(
+                replace(
+                    _single_template("H6127", replace(family, variations=(variation,))),
+                    label=f"{family.label}: {'Spectrum' if variation.variant == 6 else 'Rolling'}",
+                )
+                for family in H6125_DIY_FAMILIES
+                if family.family == 4
+                for variation in family.variations
+                if variation.variant in (6, 7)
+            ),
+            *(_music_template("H6127", mode) for mode in _native_music_modes("H6127")),
+            *_rgbic_native_templates(50),
+        ),
         workshop_templates=(),
     ),
     "H6181": ModelEffectCatalogue(

@@ -1,5 +1,9 @@
 __init__.py
 command_write.py
+h6127_wire_write.py
+h6127_legacy_status_reply.py
+h6127_status_reply.py
+h6127_intermediate_status_reply.py
 h60b2_control.py
 h60b2_status_reply.py
 h60b2_music_body.py

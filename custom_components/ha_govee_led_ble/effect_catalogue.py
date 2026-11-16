@@ -66,7 +66,7 @@ from .effect_catalogue_models import ModelEffectCatalogue as ModelEffectCatalogu
 from .effect_catalogue_models import NativeDiyTemplateContract as NativeDiyTemplateContract
 from .effect_catalogue_models import NativeModeOption as NativeModeOption
 from .effect_catalogue_models import WorkshopTemplate as WorkshopTemplate
-from .effect_catalogue_models import _template_available, _template_for_profile
+from .effect_catalogue_models import _template_for_profile
 from .effect_catalogue_registry import MODEL_EFFECT_CATALOGUES as MODEL_EFFECT_CATALOGUES
 from .effect_catalogue_templates import _H1771_SECTIONS, _h1771_rate_min
 from .effect_catalogue_templates import H617A_CATALOGUE_TEMPLATES as H617A_CATALOGUE_TEMPLATES
@@ -199,14 +199,16 @@ def validate_effect_eligibility(
     else:
         if profile.effect_grammar == "H607C":
             raise ValueError("native DIY requires its independently bounded zone definition")
-        if not catalogue.palette_min <= len(content.palette) <= catalogue.palette_max:
+        if not catalogue.palette_min <= len(content.palette) <= (profile.diy_palette_max or catalogue.palette_max):
             raise ValueError(f"{model} palette is outside catalogue limits")
         multi = isinstance(content, MultiEffect)
         if isinstance(content, MultiEffect) and len(content.effects) > catalogue.multi_max:
             raise ValueError(f"{model} Multi count is outside catalogue limits")
         pairs = content.effects if isinstance(content, MultiEffect) else (content,)
         for pair in pairs:
-            family = next((family for family in catalogue.effects if family.family == pair.family), None)
+            family = next(
+                (family for family in catalogue.effects_for_profile(profile) if family.family == pair.family), None
+            )
             if family is None or pair.variant not in {variation.variant for variation in family.variations}:
                 raise ValueError(f"{model} family {pair.family} variation {pair.variant} is not supported")
             if multi and not family.supports_multi:
@@ -450,15 +452,15 @@ def resolve_catalogue_template(
     catalogue = MODEL_EFFECT_CATALOGUES.get(model)
     if catalogue is None:
         raise ValueError(f"{model} has no custom-effect catalogue")
-    for template in catalogue.templates:
+    for template in catalogue.templates_for_profile(profile):
         if template.id == template_id:
-            if profile is not None and not _template_available(template, profile):
-                raise ValueError("Device profile does not support this effect template")
             if isinstance(template.content, PaintedEffect) and template.content.addressing == "physical_ic":
                 count = (get_profile(model) if profile is None else profile).physical_ic_count
                 if count is None:
                     raise ValueError(f"{model} graffiti requires a known physical IC count")
             return _template_for_profile(template, get_profile(model) if profile is None else profile)
+    if any(template.id == template_id for template in catalogue.templates):
+        raise ValueError("Device profile does not support this effect template")
     raise ValueError(f"{model} template {template_id!r} was not found")
 
 
@@ -470,7 +472,11 @@ def validate_catalogue_template_identity(
     profile: ModelProfile | None = None,
 ) -> CatalogueTemplate:
     catalogue = MODEL_EFFECT_CATALOGUES.get(model)
-    template = next((entry for entry in catalogue.templates if entry.id == template_id), None) if catalogue else None
+    template = (
+        next((entry for entry in catalogue.templates_for_profile(profile) if entry.id == template_id), None)
+        if catalogue
+        else None
+    )
     if template is None:
         raise EffectValidationError(f"{model} template {template_id!r} was not found")
     canonical = template.content

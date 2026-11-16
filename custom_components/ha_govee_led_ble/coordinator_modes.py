@@ -392,6 +392,8 @@ class _ActiveModeMixin(_CoordinatorBase):
             if self.profile.supports_music_color and (variant is None or variant.supports_fixed_colour)
             else None
         )
+        if color is None and variant is not None:
+            color = variant.fixed_colour_default
         # Native selection historically sends only style companions; authored profiles
         # and recovery explicitly request all parameter packets.
         writes = prepare_music_profile_writes(

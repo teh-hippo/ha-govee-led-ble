@@ -168,6 +168,17 @@ _QUALIFIED_CONTEXTS: tuple[tuple[str, str, int | None, int | None, str | None, s
     ("H6125-hw-1.00.04", "H6125", 1, 2, "1.07.01", "1.00.04"),
     ("H6125-modern-basic-music", "H6125", 10, 1, "2.03.99", "2.01.01"),
     ("H6125-modern-full", "H6125", 10, 2, "3.04.37", "3.01.10"),
+    ("H6127-bootstrap", "H6127", None, None, None, None),
+    ("H6127-original", "H6127", 1, 1, "1.01.15", "1.00.01"),
+    ("H6127-inline-diy", "H6127", 1, 1, "1.01.16", "1.00.01"),
+    ("H6127-uploaded-diy", "H6127", 1, 1, "1.01.20", "1.00.01"),
+    ("H6127-selector-scenes", "H6127", 1, 1, "1.03.01", "1.00.01"),
+    ("H6127-reported-revision", "H6127", 1, 1, "1.05.01", "1.00.01"),
+    ("H6127-v1-scenes-v0-preparation", "H6127", 1, 2, "1.06.00", "1.00.02"),
+    ("H6127-extended", "H6127", 1, 2, "1.06.00", "1.00.03"),
+    ("H6127-expanded-music", "H6127", 1, 2, "1.07.00", "1.00.04"),
+    ("H6127-modern-basic", "H6127", 10, 1, "2.03.99", "2.01.01"),
+    ("H6127-modern-expanded", "H6127", 10, 2, "3.01.00", "3.01.01"),
     ("H6199-pact1", "H6199", 1, 1, None, None),
     ("H6179-unqualified", "H6179", None, None, None, None),
     ("H6179-newer", "H6179", 10, 1, None, None),
@@ -263,6 +274,7 @@ _DIY_PROFILES = tuple(
     for case_id, model, profile in _EFFECTIVE_PROFILES
     if profile.supports_custom_effects
     and profile.effect_readback == "diy_code_only"
+    and profile.diy_upload_transport != "single"
     and profile is not MODEL_PROFILES["H6125"]
 )
 
@@ -318,7 +330,7 @@ def _status_music_enum(profile: ModelProfile):
         return protocol_core.H6097MusicWrite.MusicMode
     if profile.status_grammar in {"H6072", "H6076"}:
         return protocol_core.H6076MusicWrite.MusicMode
-    if profile.status_grammar == "H6125-intermediate":
+    if profile.status_grammar in {"H6125-intermediate", "H6127-intermediate", "H6127"}:
         return protocol_core.H6125StatusReply.MusicMode
     root_type = _status_root_type(profile)
     return getattr(root_type, "MusicMode", getattr(root_type, "MusicEffect", protocol_core.GoveeCommon.MusicMode))
@@ -800,11 +812,12 @@ def test_every_advertised_music_mode_has_a_way_to_be_applied(model: str, profile
             variant = music_variant(active_profile, mode_code)
             available = variant is not None and music_parameters_available(active_profile, variant)
             include = bool(variant and (variant.template or variant.supports_style) and available)
+            colour = variant.fixed_colour_default if variant is not None else None
             packets = prepare_music_request(
-                model, slug, 50, None, False, {}, include_parameters=include, profile=active_profile
+                model, slug, 50, colour, False, {}, include_parameters=include, profile=active_profile
             )
             writes = prepare_music_profile_writes(
-                model, slug, 50, None, False, {}, include_parameters=include, profile=active_profile
+                model, slug, 50, colour, False, {}, include_parameters=include, profile=active_profile
             )
             assert packets and tuple(packet for packet, _ in writes) == packets
             for packet in packets:
@@ -952,7 +965,9 @@ def test_every_supported_scene_round_trips_between_command_and_status(hass, mode
         if profile.supports_color_mode_readback:
             color_mode_enum = _status_color_mode_enum(profile)
             scene_bytes = (
-                bytes([selector]) if profile.status_grammar == "H6125-legacy" else selector.to_bytes(2, "little")
+                bytes([selector])
+                if profile.status_grammar in {"H6125-legacy", "H6127-legacy"}
+                else selector.to_bytes(2, "little")
             )
             reply = _status(0x05, bytes([int(color_mode_enum.scene)]) + scene_bytes, profile=profile)
             decoded = decode_status_frame(reply, model, profile=profile)
@@ -973,10 +988,9 @@ def test_every_supported_scene_round_trips_between_command_and_status(hass, mode
 
     if profile.supports_color_mode_readback:
         color_mode_enum = _status_color_mode_enum(profile)
-        unknown_code = 0xFE if profile.status_grammar == "H6125-legacy" else 0x7FFE
-        unknown_bytes = (
-            bytes([unknown_code]) if profile.status_grammar == "H6125-legacy" else unknown_code.to_bytes(2, "little")
-        )
+        one_byte_scene = profile.status_grammar in {"H6125-legacy", "H6127-legacy"}
+        unknown_code = 0xFE if one_byte_scene else 0x7FFE
+        unknown_bytes = bytes([unknown_code]) if one_byte_scene else unknown_code.to_bytes(2, "little")
         unknown_reply = _status(0x05, bytes([int(color_mode_enum.scene)]) + unknown_bytes, profile=profile)
         coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url="http://x")
         coordinator.profile = replace(profile, profile_identity_fields=frozenset())
@@ -1019,13 +1033,106 @@ def test_kelvin_writes_carry_constant_white_direct_rgb():
         assert packet[2:9] == bytes.fromhex("1501ffffff0a8c")
 
 
+@pytest.mark.parametrize("hardware", ["1.00.01", "1.00.04"])
+def test_legacy_strip_register_and_rgb_commands_follow_exact_product_policy(hardware):
+    profile = device_profile("H6127", 1, 1, firmware="1.05.01", hardware=hardware)
+    assert profile.outbound_transform is not None
+    for percent, register in ((1, 6), (50, 128), (100, 254)):
+        packet = profile.outbound_transform(a.build_brightness(percent, "H6127", profile=profile))
+        assert packet == _xor(bytes((0x33, 4, register)).ljust(19, b"\0"))
+    colour = build_segment_color([1, 3, 15], 10, 20, 30, "H6127", profile=profile)
+    assert profile.outbound_transform(colour) == _xor(bytes.fromhex("33050b0a141e0540").ljust(19, b"\0"))
+    query = a.build_segment_query(4, "H6127", profile=profile)
+    assert profile.outbound_transform(query) == _xor(bytes.fromhex("aaa204").ljust(19, b"\0"))
+    music = a.build_music_mode(3, 42, (1, 2, 3), True, "H6127", profile=profile)
+    assert profile.outbound_transform(music) == _xor(bytes.fromhex("330511112a0101010203").ljust(19, b"\0"))
+    gradual = a.build_boolean_control("gradual", True, "H6127", profile=profile)
+    assert profile.outbound_transform(gradual) == _xor(bytes.fromhex("331401").ljust(19, b"\0"))
+    with pytest.raises(ValueError, match="colour temperature"):
+        build_color_temp(4000, "H6127", profile=profile)
+
+
+def test_original_whole_strip_colour_and_music_use_their_own_wire_shapes():
+    profile = device_profile("H6127", 1, 1, firmware="1.01.20", hardware="1.00.01")
+    assert profile.outbound_transform is not None
+    rgb = build_color_rgb(10, 20, 30, "H6127", profile=profile)
+    assert profile.outbound_transform(rgb) == _xor(bytes.fromhex("3305020a141e00000000").ljust(19, b"\0"))
+    kelvin = build_color_temp(4000, "H6127", profile=profile)
+    assert profile.outbound_transform(kelvin) == _xor(bytes.fromhex("330502ffffff01ffd5a1").ljust(19, b"\0"))
+    music = a.build_music_mode(4, 42, (10, 20, 30), False, "H6127", profile=profile)
+    assert profile.outbound_transform(music) == _xor(bytes.fromhex("330501012a0a141e").ljust(19, b"\0"))
+    with pytest.raises(ValueError, match="per-segment"):
+        build_segment_color([1], 10, 20, 30, "H6127", profile=profile)
+
+
+def test_inline_diy_notification_is_independent_mode_readback(hass):
+    profile = device_profile("H6127", 1, 1, firmware="1.01.16", hardware="1.00.01")
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6127", configuration_url=None)
+    coordinator.profile = replace(profile, profile_identity_fields=frozenset())
+    coordinator._notify_callback(None, bytearray(bytes.fromhex("aa050718000000000000000000000000000000b0")))
+    assert coordinator.color_mode is ParsedMode.DIY and coordinator.diy_code == 24
+    assert coordinator._field_revisions["color_mode"] > 0
+
+
+@pytest.mark.parametrize(
+    "firmware,hardware",
+    [
+        ("1.01.20", "1.00.01"),
+        ("1.05.01", "1.00.01"),
+        ("1.06.00", "1.00.03"),
+    ],
+)
+def test_observed_rgb_reply_preserves_unknown_suffix_without_inventing_white_fields(hass, firmware, hardware):
+    profile = device_profile("H6127", 1, 1, firmware=firmware, hardware=hardware)
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6127", configuration_url=None)
+    coordinator.profile = replace(profile, profile_identity_fields=frozenset())
+    coordinator.static_gradual = True
+    reply = _status(5, bytes.fromhex("0dff000001234567"))
+    decoded = decode_status_frame(reply, "H6127", profile=profile)
+    assert decoded is not None
+    parsed = parse_color_mode(decoded.generated, "H6127", profile=profile)
+    assert parsed.rgb_color == (255, 0, 0) and parsed.color_temp_kelvin is None
+    assert decoded.generated.body.mode_body.unknown_tail[:4] == bytes.fromhex("01234567")
+    coordinator._notify_callback(None, bytearray(reply))
+    assert coordinator.color_mode is ParsedMode.COLOUR and coordinator.rgb_color == (255, 0, 0)
+    assert coordinator.rgb_color_source == "observed"
+    assert coordinator.static_gradual is True and "static_gradual" not in coordinator._field_revisions
+
+
+@pytest.mark.parametrize("status_mode", [2, 0x0D])
+@pytest.mark.parametrize("matching", [False, True])
+async def test_original_rgb_write_accepts_matching_independent_reply_without_a_selector_echo(
+    hass, status_mode, matching
+):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6127", configuration_url=None)
+    coordinator.profile = replace(
+        device_profile("H6127", 1, 1, firmware="1.01.20", hardware="1.00.01"),
+        profile_identity_fields=frozenset(),
+    )
+    coordinator.rgb_color = (255, 255, 255)
+    colour = (255, 0, 0) if matching else (0, 0, 255)
+    client = MagicMock(is_connected=True)
+
+    async def write(_uuid, packet, **_kwargs):
+        coordinator._notify_callback(None, bytearray(_status(5, bytes([status_mode, *colour]))))
+
+    client.write_gatt_char = AsyncMock(side_effect=write)
+    coordinator._client = client
+    await coordinator._async_write_packet(
+        client, build_color_rgb(255, 0, 0, "H6127", profile=coordinator.profile), arm_expected=True
+    )
+    assert coordinator.rgb_color == (255, 0, 0)
+    assert ("rgb_color" in coordinator._field_revisions) is matching
+    assert (coordinator.rgb_color_source == "observed") is matching
+
+
 @pytest.mark.parametrize(("model", "profile"), _COLOUR_MODE_READBACK_PROFILES)
 def test_static_colour_and_kelvin_status_readback(hass, model: str, profile: ModelProfile) -> None:
     """Profiles with colour-mode readback must decode static colour replies and enforce
     their declared Kelvin bounds on static temperature readback."""
     color_mode_enum = _status_color_mode_enum(profile)
     static_byte = int(getattr(color_mode_enum, "static", getattr(color_mode_enum, "static_colour", None)))
-    if profile.status_grammar in WHOLE_BULB_GRAMMARS | {"H6179", "H60B0", "H6181-modern"}:
+    if profile.status_grammar in WHOLE_BULB_GRAMMARS | {"H6179", "H60B0", "H6181-modern", "H6127-legacy"}:
         rgb_body = bytes([static_byte, 10, 20, 30, 0, 0])
     else:
         rgb_body = bytes([static_byte, 0, 0, 0])
@@ -1108,7 +1215,7 @@ def test_declared_boolean_controls_round_trip(hass, model: str, profile: ModelPr
         query = a.build_boolean_control_query(control, model, profile=profile)
         assert len(query) == 20 and xor_checksum(query) == 0
         a.require_profile_packet(query, profile)
-        domain_byte = query[1]
+        domain_byte = (profile.outbound_transform(query) if profile.outbound_transform is not None else query)[1]
         for enabled in (False, True):
             cmd = a.build_boolean_control(
                 control,

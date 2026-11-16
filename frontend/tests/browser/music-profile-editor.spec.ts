@@ -1,6 +1,15 @@
 import { expect, test } from "@playwright/test";
 import type { GoveeMusicProfileEditor } from "../../src/music-profile-editor";
 
+test("fixed-colour-only music keeps its picker without offering automatic colour", async ({ page }) => {
+  await page.goto("/tests/browser/fixtures/music-profile-editor.html?fixed-colour-only");
+  await expect(page.getByLabel("Colour mode")).toBeHidden();
+  await expect(page.locator("govee-single-colour-field")).toBeVisible();
+  const content = await page.locator("govee-music-profile-editor").evaluate(element =>
+    (element as GoveeMusicProfileEditor).content!);
+  expect(content.colour).toEqual([12, 34, 56]);
+});
+
 test("combined music filters each source roster and retains independent style", async ({ page }) => {
   await page.goto("/tests/browser/fixtures/music-profile-editor.html?combined");
   const editor = page.locator("body > govee-music-profile-editor");
