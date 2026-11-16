@@ -11,7 +11,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.setup import async_setup_component
 
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, MUSIC_MODE_SLUGS, ReadDomain, device_profile
-from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
+from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent, async_control_intent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_refresh import DEFAULT_REFRESH_REQUEST, RefreshRequest
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode, StatusDomain
@@ -118,6 +118,170 @@ async def test_write_only_static_effect_off_round_trip(
     assert physical == before
     assert selector_failed is retry_selector
     assert not any(call.args[1][0] == 0xAA for call in client.write_gatt_char.await_args_list)
+
+
+@pytest.mark.parametrize("field", ["brightness_pct", "is_on"])
+async def test_interrupted_write_only_controls_cannot_publish_rolled_back_baseline(
+    hass, monkeypatch, virtual_clock, field
+):
+    coord = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H601C", configuration_url=None)
+    client = _c(write_gatt_char=AsyncMock())
+    coord._client = client
+    coord._notification_token = object()
+    coord._notify_started_monotonic = time.monotonic()
+    monkeypatch.setattr(coord, "_ensure_connected", AsyncMock(return_value=client))
+    monkeypatch.setattr(coord, "_renew_foreground_lease", lambda: None)
+    light = GoveeBLELight(coord)
+    monkeypatch.setattr(light, "_notify_state_changed", lambda: None)
+    monkeypatch.setattr(light, "_async_supersede_preview", AsyncMock())
+    sent, resume, queued = asyncio.Event(), asyncio.Event(), asyncio.Event()
+    pause = False
+
+    async def radio(_uuid, packet, **_kwargs):
+        if pause and packet[:2] == (b"\x33\x04" if field == "brightness_pct" else b"\x33\x01"):
+            sent.set()
+            await resume.wait()
+
+    client.write_gatt_char.side_effect = radio
+    await light.async_turn_on(rgb_color=(36, 72, 108), brightness=102)
+    if field == "is_on":
+        await light.async_turn_off()
+    pause = True
+    first = asyncio.create_task(
+        light.async_turn_on(effect="Morning", **({"brightness": 204} if field == "brightness_pct" else {}))
+    )
+    await sent.wait()
+    invalidate = coord._control_arbiter.invalidate_previews
+
+    def invalidate_and_signal():
+        invalidate()
+        queued.set()
+
+    monkeypatch.setattr(coord._control_arbiter, "invalidate_previews", invalidate_and_signal)
+
+    async def foreground():
+        async with async_control_intent(coord, ControlIntent.APPLY):
+            pass
+
+    other = asyncio.create_task(foreground())
+    await queued.wait()
+    resume.set()
+    with pytest.raises(HomeAssistantError):
+        await first
+    await other
+    pause = False
+    before = client.write_gatt_char.await_count
+    with pytest.raises(HomeAssistantError) as error:
+        await light.async_turn_on(effect="Dusk")
+    assert error.value.translation_key == "recovery_not_ready"
+    assert client.write_gatt_char.await_count == before
+    await light.async_turn_on(rgb_color=(36, 72, 108), brightness=204)
+    await light.async_turn_on(effect="Dusk")
+    assert coord._pre_mode_snapshot is not None
+    assert coord._pre_mode_snapshot.brightness_pct == 80 and coord._pre_mode_snapshot.is_on
+
+
+@pytest.mark.parametrize(
+    ("model", "external_kelvin", "initially_on", "rendered"),
+    [
+        ("H6072", 5000, True, (255, 255, 255)),
+        ("H6076", None, True, (255, 185, 105)),
+        ("H6076", None, False, (255, 146, 39)),
+    ],
+)
+async def test_native_white_scene_off_uses_supported_observations(
+    hass, monkeypatch, virtual_clock, model, external_kelvin, initially_on, rendered
+):
+    coord = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url=None)
+    if model == "H6072":
+        coord.profile = device_profile(model, 2, 1, firmware="2.04.10", hardware="3.02.00")
+    monkeypatch.setattr(coord, "_authorization_profile", lambda: coord.profile)
+    monkeypatch.setattr(coord, "_reconcile_authorization", lambda: None)
+    monkeypatch.setattr(coord, "async_prepare_identity_gated_control", AsyncMock(return_value=lambda: None))
+    client = _c(write_gatt_char=AsyncMock())
+    coord._client = client
+    coord._notification_token = object()
+    coord._notify_started_monotonic = virtual_clock.virtual_time()
+    monkeypatch.setattr(coord, "_ensure_connected", AsyncMock(return_value=client))
+    monkeypatch.setattr(coord, "_renew_foreground_lease", lambda: None)
+    light = GoveeBLELight(coord)
+    monkeypatch.setattr(light, "_notify_state_changed", lambda: None)
+    monkeypatch.setattr(light, "_async_supersede_preview", AsyncMock())
+    count = coord.profile.segment_count
+    physical = {"on": False, "level": 100, "kelvin": 0, "colours": [(10, 20, 30)] * count, "scene": None}
+
+    def reply(domain, values):
+        coord._notify_callback(None, bytearray(_packet(0xAA, domain, values)))
+
+    async def radio(_uuid, packet, **_kwargs):
+        if packet[0] == 0xAA:
+            if packet[1] == 1:
+                reply(1, [int(physical["on"])])
+            elif packet[1] == 4:
+                reply(4, [physical["level"]])
+            elif packet[1] == 5:
+                reply(
+                    5,
+                    [4, *physical["scene"]]
+                    if physical["scene"]
+                    else [0x15, 0, physical["kelvin"] >> 8, physical["kelvin"] & 255],
+                )
+            elif packet[1] == 0xA5:
+                for group in range(1, coord.profile.segment_group_count + 1):
+                    start = (group - 1) * coord.profile.segment_group_size
+                    reply(
+                        0xA5,
+                        [
+                            group,
+                            *(
+                                value
+                                for rgb in physical["colours"][start : start + coord.profile.segment_group_size]
+                                for value in (100, *rgb)
+                            ),
+                        ],
+                    )
+        elif packet[:2] == b"\x33\x01":
+            physical["on"] = bool(packet[2])
+        elif packet[:2] == b"\x33\x04":
+            physical["level"] = packet[2]
+        elif packet[:3] == b"\x33\x05\x04":
+            physical["scene"] = list(packet[3:5])
+            physical["colours"] = [(255, 0, 0)] * count
+        elif (static := parse_static_write(packet, model, profile=coord.profile)) is not None:
+            physical["scene"] = None
+            if static.kelvin is not None:
+                physical["kelvin"] = static.kelvin
+                physical["colours"] = [rendered] * count
+        pending = coord._upload_ack
+        if pending is not None and not pending.future.done():
+            coord._notify_callback(
+                None,
+                bytearray(
+                    _packet(pending.protocol, pending.subtype, [0] if pending.mode is None else [pending.mode, 0])
+                ),
+            )
+
+    async def gradual(control, enabled):
+        assert control == "gradual"
+        coord.static_gradual = enabled
+
+    monkeypatch.setattr(coord, "async_set_boolean_control", gradual)
+    client.write_gatt_char.side_effect = radio
+    await light.async_turn_on(color_temp_kelvin=3000, brightness=128)
+    if external_kelvin is not None:
+        coord._expected_state.clear()
+        physical["kelvin"] = external_kelvin
+    if not initially_on:
+        await light.async_turn_off()
+    expected_kelvin = external_kelvin or 3000
+    scene = next(entry.display_label for entry in light._selector_entries() if entry.source == "scene")
+    await light.async_turn_on(effect=scene)
+    assert coord._pre_mode_snapshot is not None
+    assert coord._pre_mode_snapshot.static_segment_kelvin(coord.profile) == (expected_kelvin,) * count
+    await light.async_turn_on(effect="off")
+    assert physical["on"] is initially_on
+    assert physical["kelvin"] == expected_kelvin
+    assert physical["colours"] == [rendered] * count
 
 
 async def test_whole_device_revision_keeps_its_scalar_effect_stop(hass, monkeypatch, virtual_clock):

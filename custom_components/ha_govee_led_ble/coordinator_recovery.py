@@ -1100,7 +1100,6 @@ class _RecoveryMixin(_CoordinatorBase):
         whole = target_intents[0] if kelvin_restore else state.color_temp_kelvin
         if kelvin_restore and whole is not None:
             whole = normalize_kelvin(whole, self.profile)
-            target_colours = [table_kelvin_rgb(whole)] * self.profile.segment_count
         state = replace(
             state,
             color_temp_kelvin=whole,
@@ -1158,6 +1157,7 @@ class _RecoveryMixin(_CoordinatorBase):
         state = prepared.state
         source_restore = has_segmented_sources(self.profile)
         target_intents = state.static_segment_kelvin(self.profile)
+        assert target_intents is not None and state.segment_colors is not None
         kelvin_restore = prepared.whole_kelvin
         bar_restore = state.restorable_bar_white(self.profile)
         prepared.check(self)
@@ -1176,7 +1176,7 @@ class _RecoveryMixin(_CoordinatorBase):
                 refresh_all=True,
                 color_temp_kelvin=(
                     normalize_kelvin(state.color_temp_kelvin, self.profile)
-                    if kelvin_restore and state.color_temp_kelvin is not None
+                    if kelvin_restore and state.color_temp_kelvin is not None and self.profile.static_readback_kelvin
                     else None
                 ),
                 zero_kelvin=(
@@ -1199,7 +1199,13 @@ class _RecoveryMixin(_CoordinatorBase):
                 not self.profile.supports_color_mode_readback
                 or self._field_revisions.get("color_mode", 0) > mode_revision
             )
-            and tuple(self.segment_colors) == state.segment_colors
+            and len(self.segment_colors) == len(state.segment_colors)
+            and all(
+                static_colour_matches(actual, intent or expected, self.profile)
+                for actual, expected, intent in zip(
+                    self.segment_colors, state.segment_colors, target_intents, strict=True
+                )
+            )
             and (state.segment_brightness is None or tuple(self.segment_brightness) == state.segment_brightness)
             and (state.static_gradual is None or self.static_gradual == state.static_gradual)
             and (
