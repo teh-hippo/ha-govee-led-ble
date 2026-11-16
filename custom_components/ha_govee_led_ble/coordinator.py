@@ -1583,6 +1583,7 @@ class GoveeBLECoordinator(
                 or transition.profile_generation != self._profile_generation
                 or transition.subscription is not self._notification_token
                 or transition.foreground_generation != self._control_arbiter.foreground_generation
+                and not (transition.installed and self._control_arbiter.current_task_intent is ControlIntent.APPLY)
             )
         ):
             raise ValueError("Static restoration context changed before control write")

@@ -136,6 +136,13 @@ class ControlStateCheckpoint:
         for snapshot in reversed(self._snapshots):
             values.update(self._restorable_values(snapshot))
         for field, value in values.items():
+            if value != getattr(self._coordinator, field):
+                if field in {"is_on", "brightness_pct"}:
+                    known = "_power_known" if field == "is_on" else "_brightness_pct_known"
+                    setattr(self._coordinator, known, False)
+                elif field in {"rgb_color", "color_temp_kelvin"}:
+                    self._coordinator._static_colour_known = False
+                    self._coordinator._static_rgb_known = False
             setattr(self._coordinator, field, value)
 
 

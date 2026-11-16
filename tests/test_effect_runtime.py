@@ -16,7 +16,7 @@ from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ReadDomain,
 from custom_components.ha_govee_led_ble.control_arbiter import BLEControlArbiter, ControlIntent, async_control_intent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_refresh import DEFAULT_REFRESH_REQUEST, RefreshRequest
-from custom_components.ha_govee_led_ble.coordinator_status import parse_color_mode
+from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode, parse_color_mode
 from custom_components.ha_govee_led_ble.effect_active_workspace import (
     ActiveEffectWorkspace,
     ActiveEffectWorkspaceRepository,
@@ -72,6 +72,7 @@ from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_cata
 from custom_components.ha_govee_led_ble.light_commands import build_color_rgb
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
 from custom_components.ha_govee_led_ble.transport import WRITE_UUID, xor_checksum
+from custom_components.ha_govee_led_ble.video_applicability import video_identity_fields
 from tests.storage_test_double import InMemoryVersionedDocumentStore
 from tests.test_effect_preview import _EffectCoordinator, _manager, _open
 from tests.test_music_commands import _music_transport
@@ -1210,6 +1211,65 @@ async def test_mid_upload_failure_recovers_prior_state_and_fails_cleanly(
     assert failed.phase is DeploymentPhase.FAILED
     coordinator.async_restore_effect_control_state.assert_awaited_once()
     assert coordinator.async_restore_effect_control_state.await_args.kwargs == {"overwritten_diy_code": 800}
+
+
+@pytest.mark.parametrize("live", [False, True])
+@pytest.mark.parametrize("interrupt_after", [1, 2])
+async def test_queued_user_does_not_interrupt_owned_native_profile_settings(h6199, monkeypatch, live, interrupt_after):
+    coordinator = h6199
+    coordinator.fw_version, coordinator.hw_version = "1.10.04", "3.02.01"
+    coordinator.subordinate_20_version, coordinator.subordinate_21_version = "1.03.00", "1.00.33"
+    coordinator.pact_type, coordinator.pact_code = 2, 1
+    coordinator._confirmed_identity_fields.update(video_identity_fields(coordinator.profile))
+    coordinator.is_on = True
+    coordinator.color_mode = ParsedMode.COLOUR
+    prior = PriorControlState("colour", True, 50, (10, 20, 30), static_rgb_known=True)
+    monkeypatch.setattr(coordinator, "async_prepare_static_baseline", AsyncMock(return_value=prior))
+    monkeypatch.setattr(coordinator, "_capture_static_state", lambda: prior)
+    monkeypatch.setattr(coordinator, "refresh_state", AsyncMock(return_value=True))
+    monkeypatch.setattr(coordinator, "async_observe_effect", AsyncMock(return_value=True))
+    monkeypatch.setattr(coordinator, "_renew_foreground_lease", lambda: None)
+    entered, release, queued = asyncio.Event(), asyncio.Event(), asyncio.Event()
+    writes = []
+
+    async def transmit(_uuid, packet, **_kwargs):
+        writes.append(packet)
+        if len(writes) == interrupt_after:
+            entered.set()
+            await release.wait()
+
+    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(side_effect=transmit))
+    coordinator._client = client
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
+    repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
+    await repository.async_load()
+    engine = EffectDeploymentEngine(repository)
+    monkeypatch.setattr(engine, "_async_prepare_prior_state", AsyncMock(return_value=True))
+    item = LibraryItem.new(
+        "Video", VideoProfile("H6199", "movie", True, 50, False, 50, 17, RelativeBrightness(10, 20, 30, 40), None)
+    )
+    deployment = asyncio.create_task(
+        engine.async_apply_saved(
+            coordinator, item, config_entry_id="entry-a", updated_at="2026-11-16T13:00:00Z", live=live
+        )
+    )
+    await entered.wait()
+    invalidate = coordinator._control_arbiter.invalidate_previews
+
+    def invalidate_and_signal():
+        invalidate()
+        queued.set()
+
+    monkeypatch.setattr(coordinator._control_arbiter, "invalidate_previews", invalidate_and_signal)
+    user = asyncio.create_task(coordinator.send_command(build_power(False, "H6199")))
+    await queued.wait()
+    release.set()
+    try:
+        result = await deployment
+    finally:
+        await user
+    assert result.phase is DeploymentPhase.CONFIRMED and result.item_id == item.id
+    assert [packet[:2] for packet in writes] == [b"\x33\x05", b"\x33\xa9", b"\x33\xae", b"\x33\x01"]
 
 
 async def test_queued_user_command_runs_after_recovery_under_original_lock(
