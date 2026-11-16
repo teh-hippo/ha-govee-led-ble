@@ -363,17 +363,30 @@ async def test_mode_exit_revalidates_before_first_physical_attempt(coord, change
 async def test_restoration_does_not_replay_a_partially_delivered_static_batch(coord):
     from bleak import BleakError
 
-    from tests.test_h617a_review_proof import observe_segments
+    from tests.test_h617a_review_proof import frame, observe_segments
 
     coord.is_on, coord.color_mode = True, ParsedMode.COLOUR
     observe_segments(coord, [(1, 2, 3)] * 15, [30] * 15)
     with _music_transport(coord) as physical:
         await coord.async_select_music_slug("rhythm")
         physical.reset_mock()
-        physical.side_effect = [None, None, BleakError("static command may have applied")]
+        writes = 0
+
+        async def transmit(_uuid, packet, **_kwargs):
+            nonlocal writes
+            if packet[0] == 0x33:
+                writes += 1
+                if writes == 3:
+                    raise BleakError("static command may have applied")
+            elif packet[:2] == b"\xaa\x01":
+                coord._notify_callback(None, frame(1, [1]))
+            elif packet[:2] == b"\xaa\x04":
+                coord._notify_callback(None, frame(4, [coord.brightness_pct]))
+
+        physical.side_effect = transmit
         with pytest.raises(BleakError, match="may have applied"):
             await coord.async_select_music_slug("off")
-        assert physical.await_count == 3
+        assert writes == 3
 
 
 async def test_restoration_preserves_new_static_observation_after_leading_power(coord):
@@ -385,7 +398,10 @@ async def test_restoration_preserves_new_static_observation_after_leading_power(
         await coord.async_select_music_slug("rhythm")
         physical.reset_mock()
 
-        async def transmit(*_args, **_kwargs):
+        async def transmit(_uuid, packet, **_kwargs):
+            if packet[:2] == b"\xaa\x01":
+                coord._notify_callback(None, frame(1, [1]))
+                return
             coord._expected_state.clear()
             coord._notify_callback(None, frame(5, [0x15, 0]))
             observe_segments(coord, [(4, 5, 6)] * 15, [70] * 15)
@@ -393,10 +409,79 @@ async def test_restoration_preserves_new_static_observation_after_leading_power(
         physical.side_effect = transmit
         with pytest.raises(ValueError, match="Static restoration"):
             await coord.async_select_music_slug("off")
-        physical.assert_awaited_once()
+        assert sum(entry.args[1][0] == 0x33 for entry in physical.await_args_list) == 1
     assert coord.segment_colors == [(4, 5, 6)] * 15
     assert coord.segment_brightness == [70] * 15
     assert coord.color_mode is ParsedMode.COLOUR
+
+
+@pytest.mark.parametrize("conflicting", [False, True])
+async def test_restoration_accepts_only_matching_intermediate_segment_observations(coord, conflicting):
+    from custom_components.ha_govee_led_ble.light_commands import parse_static_write
+    from tests.test_h617a_review_proof import frame, observe_segments
+
+    original = [(255, 0, 0)] * 7 + [(0, 0, 255)] * 8
+    coord.is_on, coord.color_mode, coord.brightness_pct = True, ParsedMode.COLOUR, 20
+    observe_segments(coord, original, [30] * 7 + [70] * 8)
+    with _music_transport(coord) as physical:
+        await coord.async_select_music_slug("rhythm")
+        observe_segments(coord, [(0, 255, 0)] * 15, [60] * 15)
+        physical.reset_mock()
+        static_attempts = 0
+        observed = None
+
+        async def transmit(_uuid, packet, **_kwargs):
+            nonlocal static_attempts, observed
+            if parse_static_write(packet) is not None:
+                static_attempts += 1
+                if static_attempts == 1:
+                    observed = list(coord.segment_colors)
+                    if conflicting:
+                        observed[-1] = (9, 8, 7)
+                    coord._notify_callback(None, frame(5, [0x15, 0]))
+                    observe_segments(coord, observed, list(coord.segment_brightness))
+            elif packet[:2] == b"\xaa\x01":
+                coord._notify_callback(None, frame(1, [1]))
+            elif packet[:2] == b"\xaa\x04":
+                coord._notify_callback(None, frame(4, [20]))
+
+        physical.side_effect = transmit
+        with patch.object(coord, "async_refresh_segments", AsyncMock(return_value=False)):
+            if conflicting:
+                with pytest.raises(ValueError, match="Static restoration"):
+                    await coord.async_select_music_slug("off")
+                assert static_attempts == 1
+                assert coord.segment_colors == observed
+                assert coord.segment_state_source == "observed"
+            else:
+                await coord.async_select_music_slug("off")
+                assert static_attempts == 4
+                assert coord.segment_colors == original
+                assert coord.segment_brightness == [30] * 7 + [70] * 8
+
+
+async def test_effect_off_marks_failed_leading_power_uncertain_without_replay(coord):
+    from bleak import BleakError
+
+    from custom_components.ha_govee_led_ble.light import GoveeBLELight
+    from tests.test_h617a_review_proof import observe_segments
+
+    coord.is_on, coord.color_mode = True, ParsedMode.COLOUR
+    observe_segments(coord, [(1, 2, 3)] * 15, [30] * 15)
+    with _music_transport(coord) as physical:
+        await coord.async_select_music_slug("rhythm")
+        coord.is_on = False
+        physical.reset_mock()
+        physical.side_effect = BleakError("power may have applied")
+
+        async def disconnect():
+            coord._clear_client_state(coord._client)
+
+        with patch.object(coord, "_disconnect_locked", AsyncMock(side_effect=disconnect)):
+            with pytest.raises(BleakError, match="power may have applied"):
+                await GoveeBLELight(coord).async_turn_on(effect="off")
+        physical.assert_awaited_once()
+        assert coord.control_state_uncertain("is_on")
 
 
 async def test_new_subscription_does_not_capture_retained_segment_observations(coord):
