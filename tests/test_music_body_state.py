@@ -68,11 +68,13 @@ def test_invalid_restored_body_rejected(body):
         prepare_music_body_writes("H617A", "hopping", 42, body)
 
 
-def test_edit_known_body_preserves_every_unrequested_companion():
+@pytest.mark.parametrize("padding", [b"", b"\x00" * 20])
+def test_edit_known_body_preserves_every_unrequested_companion(padding):
     profile = get_profile("H617A")
-    changed = edit_music_body(BODY, "hopping", {"relative_brightness": 17}, profile=profile)
-    assert changed == bytes.fromhex("3302010203040506aabbcc116104050708")
-    assert edit_music_body(BODY, "hopping", {}, profile=profile) == BODY
+    body = BODY + padding
+    changed = edit_music_body(body, "hopping", {"relative_brightness": 17}, profile=profile)
+    assert changed == bytes.fromhex("3302010203040506aabbcc116104050708") + padding
+    assert edit_music_body(body, "hopping", {}, profile=profile) == body
     odd_style = bytes.fromhex("30010102030b51")
     assert edit_music_body(odd_style, "bloom", {}, profile=profile) == odd_style
     assert validate_music_body(changed, "hopping", profile=profile).tail.speed == 97

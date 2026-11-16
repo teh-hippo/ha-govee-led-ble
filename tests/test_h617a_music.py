@@ -61,10 +61,27 @@ def test_variable_palette_preserves_complete_preset_tail(mode, size):
     assert parsed.num_palette == size
     assert [(rgb.red, rgb.green, rgb.blue) for rgb in parsed.palette] == palette
     assert parsed._raw_tail == original._raw_tail
-    assert parsed.padding == original.padding
-    assert len(body) == len(variant.template) + 3 * (size - original.num_palette)
+    assert parsed.padding == []
+    assert len(body) == len(variant.template) + 3 * (size - original.num_palette) - len(original.padding)
     upload = parse_body(reassemble_a3(build_music_params(mode, {}, palette=palette, profile=PROFILE)))
     assert upload._raw_tail == original._raw_tail
+
+
+@pytest.mark.parametrize(
+    ("brightness", "first"),
+    [
+        (2, "a3000102413302ff00000000ff00ff000262014e"),
+        (50, "a3000102413302ff00000000ff00ff003262017e"),
+    ],
+)
+def test_hopping_background_upload_ends_with_the_complete_parameter_tail(brightness, first):
+    upload = build_music_params(
+        0x33,
+        {"background": 0x00FF00, "relative_brightness": brightness},
+        [(255, 0, 0), (0, 0, 255)],
+        profile=PROFILE,
+    )
+    assert upload == [bytes.fromhex(first), bytes.fromhex("a3ff03020600000000000000000000000000005b")]
 
 
 @pytest.mark.parametrize("mode", NEW_MODES)
