@@ -145,6 +145,8 @@ Decode-only Kaitai documentation of these is fine; runtime control is not.
 Run `make protocol` after a fresh clone, a new worktree or any `.ksy` change, and `make check` before finishing.
 Keep virtual event-loop clocks out of real HTTP/WebSocket tests; use them only around simulated transport work.
 Invalidate the editor asset generation when its imported module contract changes, not just the backend compiler version.
+Log handled backend failures with their operation, model and failure classification without changing browser feedback.
+Keep request bodies, unique identifiers and arbitrary exception text out of diagnostic logs; use trusted reasons or exception types and source locations instead.
 
 ### Change and test design
 

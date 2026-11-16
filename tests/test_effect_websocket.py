@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import replace
 from datetime import timedelta
 from types import SimpleNamespace
@@ -24,6 +25,7 @@ from custom_components.ha_govee_led_ble.effect_catalogue import resolve_catalogu
 from custom_components.ha_govee_led_ble.effect_contracts import EDITOR_API_VERSION
 from custom_components.ha_govee_led_ble.effect_domain import SingleEffect, effect_content_to_dict
 from custom_components.ha_govee_led_ble.effect_preview import (
+    PreviewError,
     PreviewOwnershipError,
     PreviewSessionNotFoundError,
     PreviewTargetUnavailableError,
@@ -73,6 +75,88 @@ async def _setup_backend(hass: HomeAssistant) -> EffectBackend:
 
 def _content(speed: int = 50) -> dict[str, Any]:
     return effect_content_to_dict(SingleEffect(0, 0, speed, ((255, 0, 0),)))
+
+
+@pytest.mark.parametrize(
+    ("operation", "reason"),
+    [
+        ("saved", "Device profile supports no effects"),
+        ("snapshot", "H6127 effective profile does not support single"),
+        ("preview", "H6127 does not support music mode energetic"),
+    ],
+)
+async def test_studio_logs_capability_rejections_without_changing_browser_errors(
+    hass, hass_ws_client, monkeypatch, caplog, operation, reason
+):
+    from custom_components.ha_govee_led_ble import effect_websocket
+
+    backend = await _setup_backend(hass)
+    coordinator = _EffectCoordinator(model="H6127", profile=get_profile("H6127"))
+    entry = SimpleNamespace(
+        entry_id="private-entry", domain=DOMAIN, state=ConfigEntryState.LOADED, runtime_data=coordinator
+    )
+    monkeypatch.setattr(hass.config_entries, "async_get_entry", lambda _id: entry)
+    message: dict[str, Any] = {"config_entry_id": entry.entry_id, "updated_at": "2026-11-17T00:00:00Z"}
+    if operation == "saved":
+        mutation = await backend.application.async_create_library_item(name="Private name", content=_content())
+        message.update({"type": WS_APPLY, "item_id": str(mutation.item.id), "expected_version": 1})
+    else:
+        message.update(
+            {
+                "type": WS_APPLY_SNAPSHOT if operation == "snapshot" else WS_PREVIEW_APPLY_SNAPSHOT,
+                "name": "Private name",
+                "content": _content(),
+            }
+        )
+    if operation == "preview":
+        message.update({"session_id": str(uuid4()), "sequence": 1})
+        monkeypatch.setattr(backend.preview, "async_queue_snapshot", AsyncMock(side_effect=PreviewError(reason)))
+    else:
+        monkeypatch.setattr(effect_websocket, "async_prepare_application", AsyncMock(side_effect=ValueError(reason)))
+    client = await hass_ws_client(hass)
+    with caplog.at_level(logging.DEBUG, logger=effect_websocket.__name__):
+        await client.send_json_auto_id(message)
+        response = await client.receive_json()
+    assert response["error"] == {
+        "code": "invalid_format" if operation == "preview" else "unsupported_model",
+        "message": reason,
+    }
+    records = [record for record in caplog.records if record.name == effect_websocket.__name__]
+    assert len(records) == 1
+    assert records[0].levelno == logging.DEBUG
+    assert message["type"] in records[0].message
+    assert "model=H6127" in records[0].message
+    assert reason in records[0].message
+    assert entry.entry_id not in records[0].message
+    assert "Private name" not in records[0].message
+
+
+@pytest.mark.parametrize("state", [None, ConfigEntryState.NOT_LOADED])
+async def test_studio_failure_logging_handles_missing_or_unloaded_targets(
+    hass, hass_ws_client, monkeypatch, caplog, state
+):
+    logger = "custom_components.ha_govee_led_ble.effect_websocket"
+    caplog.set_level(logging.DEBUG, logger=logger)
+    await _setup_backend(hass)
+    entry = None if state is None else SimpleNamespace(domain=DOMAIN, state=state)
+    monkeypatch.setattr(hass.config_entries, "async_get_entry", lambda _id: entry)
+    client = await hass_ws_client(hass)
+    await client.send_json_auto_id(
+        {
+            "type": WS_APPLY_SNAPSHOT,
+            "config_entry_id": "private-entry",
+            "name": "Private name",
+            "content": _content(),
+            "updated_at": "2026-11-17T00:00:00Z",
+        }
+    )
+    response = await client.receive_json()
+    assert response["error"] == {"code": "not_found", "message": "target config entry is not loaded"}
+    records = [record for record in caplog.records if record.name == logger]
+    assert len(records) == 1
+    assert WS_APPLY_SNAPSHOT in records[0].message
+    assert "model=unavailable code=not_found" in records[0].message
+    assert all(value not in records[0].message for value in ("private-entry", "Private name"))
 
 
 @pytest.mark.parametrize("reason", ["missing", "stale"])
@@ -583,7 +667,7 @@ async def test_apply_surfaces_item_version_conflict(
 @pytest.mark.parametrize("operation", ["scene", "saved", "snapshot"])
 @pytest.mark.parametrize("error_type", [ValueError, GoveeCryptoError, GoveeTransportError])
 async def test_apply_distinguishes_session_failure_from_invalid_request(
-    hass, hass_ws_client, monkeypatch, operation, error_type
+    hass, hass_ws_client, monkeypatch, caplog, operation, error_type
 ):
     from custom_components.ha_govee_led_ble import effect_websocket
 
@@ -592,7 +676,8 @@ async def test_apply_distinguishes_session_failure_from_invalid_request(
     coordinator = _EffectCoordinator(model="H617A", profile=get_profile("H617A"))
     entry = SimpleNamespace(entry_id="entry-a", domain=DOMAIN, state=ConfigEntryState.LOADED, runtime_data=coordinator)
     monkeypatch.setattr(hass.config_entries, "async_get_entry", lambda _entry_id: entry)
-    apply = AsyncMock(side_effect=error_type("operation_failed"))
+    private_error = "AA:BB:CC:DD:EE:FF token=private-token Private effect content"
+    apply = AsyncMock(side_effect=error_type(private_error))
     message: dict[str, Any] = {"config_entry_id": entry.entry_id, "updated_at": "2026-08-27T00:00:00Z"}
     if operation == "scene":
         monkeypatch.setattr(effect_websocket, "async_apply_scene", apply)
@@ -612,8 +697,9 @@ async def test_apply_distinguishes_session_failure_from_invalid_request(
         message.update({"type": WS_APPLY_SNAPSHOT, "name": "Snapshot", "content": _content()})
     client = await hass_ws_client(hass)
     try:
-        await client.send_json_auto_id(message)
-        response = await client.receive_json()
+        with caplog.at_level(logging.DEBUG, logger=effect_websocket.__name__):
+            await client.send_json_auto_id(message)
+            response = await client.receive_json()
         assert response["success"] is False
         expected = (
             ("invalid_format" if operation == "scene" else "unsupported_model")
@@ -621,6 +707,15 @@ async def test_apply_distinguishes_session_failure_from_invalid_request(
             else "apply_failed"
         )
         assert response["error"]["code"] == expected
+        assert response["error"]["message"] == private_error
+        records = [record for record in caplog.records if record.name == effect_websocket.__name__]
+        assert len(records) == 1
+        assert message["type"] in records[0].message
+        assert "model=H617A" in records[0].message
+        assert f"code={expected}" in records[0].message
+        assert error_type.__name__ in records[0].message
+        assert records[0].exc_info is None
+        assert all(value not in records[0].message for value in (private_error, entry.entry_id, "private-token"))
         apply.assert_awaited_once()
     finally:
         await client.close()
@@ -629,13 +724,15 @@ async def test_apply_distinguishes_session_failure_from_invalid_request(
 
 @pytest.mark.parametrize("error_type", [ValueError, GoveeCryptoError, GoveeTransportError])
 async def test_preview_preparation_reports_session_failure_without_queueing(
-    hass, hass_ws_client, monkeypatch, error_type
+    hass, hass_ws_client, monkeypatch, caplog, error_type
 ):
+    logger = "custom_components.ha_govee_led_ble.effect_websocket"
+    caplog.set_level(logging.DEBUG, logger=logger)
     backend = await _setup_backend(hass)
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H619A", configuration_url=None)
     entry = SimpleNamespace(entry_id="entry-a", domain=DOMAIN, state=ConfigEntryState.LOADED, runtime_data=coordinator)
     monkeypatch.setattr(hass.config_entries, "async_get_entry", lambda _entry_id: entry)
-    prepare = AsyncMock(side_effect=error_type("encrypted_setup_failed"))
+    prepare = AsyncMock(side_effect=error_type("AA:BB:CC:DD:EE:FF token=private-token"))
     monkeypatch.setattr(coordinator, "_ensure_connected", prepare)
     client = await hass_ws_client(hass)
     try:
@@ -656,6 +753,13 @@ async def test_preview_preparation_reports_session_failure_without_queueing(
         response = await client.receive_json()
         assert response["success"] is False
         assert response["error"]["code"] == ("invalid_format" if error_type is ValueError else "preview_failed")
+        records = [record for record in caplog.records if record.name == logger and record.levelno == logging.DEBUG]
+        assert len(records) == 1
+        assert WS_PREVIEW_APPLY_SNAPSHOT in records[0].message
+        assert "model=H619A" in records[0].message
+        for record in (record for record in caplog.records if record.name == logger):
+            assert record.exc_info is None
+            assert all(value not in record.message for value in ("AA:BB:CC:DD:EE:FF", "private-token", entry.entry_id))
         prepare.assert_awaited_once()
         assert not backend.preview._devices and coordinator.control_write_attempts == 0
     finally:
@@ -979,7 +1083,7 @@ async def test_user_state_contains_navigation_without_drafts(
     assert "preferences" not in fetched
 
 
-def test_preview_session_and_target_errors_have_distinct_codes() -> None:
+def test_preview_session_and_target_errors_have_distinct_codes(hass) -> None:
     connection = Mock()
     cases = (
         (
@@ -1001,5 +1105,5 @@ def test_preview_session_and_target_errors_have_distinct_codes() -> None:
 
     for error, code, message in cases:
         connection.reset_mock()
-        _send_preview_error(connection, 7, error)
+        _send_preview_error(hass, connection, {"id": 7, "type": WS_PREVIEW_APPLY_SNAPSHOT}, error)
         connection.send_error.assert_called_once_with(7, code, message)
