@@ -270,10 +270,15 @@ def _make_coord(**ov) -> MagicMock:
     c = MagicMock(spec=GoveeBLECoordinator, **d)
     c._expected_state = {}
     c._power_known = True
+    c._pre_mode_snapshot = None
+    c._pre_mode_profile = None
+    c._pre_mode_needs_qualification = False
     c._lock = asyncio.Lock()
     c._async_read_setting_fields = AsyncMock(return_value=False)
     c._client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
     c.async_mode_transition = GoveeBLECoordinator.async_mode_transition.__get__(c)
+    c.async_prepare_static_recovery = GoveeBLECoordinator.async_prepare_static_recovery.__get__(c)
+    c._discard_static_baseline = GoveeBLECoordinator._discard_static_baseline.__get__(c)
 
     async def send_command(packet, *, write_guard=None, state_values=None, on_write=None) -> None:
         await GoveeBLECoordinator._async_write_packet(

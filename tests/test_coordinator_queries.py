@@ -84,7 +84,7 @@ async def test_h607c_optional_setting_timeout_preserves_required_setup(
         c._resolve_h607c_pact(preserve_state=True)
         return client
 
-    async def disconnect(_client):
+    async def disconnect(*, planned_release=False):
         client.is_connected = False
         c._clear_client_state(client)
 
@@ -104,7 +104,7 @@ async def test_h607c_optional_setting_timeout_preserves_required_setup(
 
     client.write_gatt_char = AsyncMock(side_effect=write)
     monkeypatch.setattr(c, "_ensure_connected", AsyncMock(side_effect=connect))
-    monkeypatch.setattr(c, "_disconnect_if_current_locked", AsyncMock(side_effect=disconnect))
+    monkeypatch.setattr(c, "_disconnect_locked", AsyncMock(side_effect=disconnect))
     snapshot = await c._async_update_data()
     assert snapshot["is_on"] and snapshot["brightness_pct"] == 37
     assert c._state_read_available
@@ -135,7 +135,7 @@ async def test_h607c_setup_cleans_up_after_optional_exception(hass, monkeypatch,
         c._resolve_h607c_pact(preserve_state=True)
         return client
 
-    async def disconnect(_client):
+    async def disconnect(*, planned_release=False):
         client.is_connected = False
         c._clear_client_state(client)
 
@@ -159,7 +159,7 @@ async def test_h607c_setup_cleans_up_after_optional_exception(hass, monkeypatch,
 
     client.write_gatt_char = AsyncMock(side_effect=write)
     monkeypatch.setattr(c, "_ensure_connected", AsyncMock(side_effect=connect))
-    monkeypatch.setattr(c, "_disconnect_if_current_locked", AsyncMock(side_effect=disconnect))
+    monkeypatch.setattr(c, "_disconnect_locked", AsyncMock(side_effect=disconnect))
     monkeypatch.setattr(c, "_async_read_setting_fields", read_after_change)
     if failure == "unexpected":
         with pytest.raises(RuntimeError, match="unexpected"):
@@ -261,7 +261,7 @@ async def test_power_required_profile_collects_optional_brightness_before_releas
         c._client = client
         return client
 
-    async def disconnect(_client):
+    async def disconnect(*, planned_release=False):
         client.is_connected = False
         c._clear_client_state(client)
 
@@ -278,7 +278,7 @@ async def test_power_required_profile_collects_optional_brightness_before_releas
 
     client.write_gatt_char = AsyncMock(side_effect=write)
     monkeypatch.setattr(c, "_ensure_connected", AsyncMock(side_effect=connect))
-    monkeypatch.setattr(c, "_disconnect_if_current_locked", AsyncMock(side_effect=disconnect))
+    monkeypatch.setattr(c, "_disconnect_locked", AsyncMock(side_effect=disconnect))
     try:
         if poll:
             snapshot = await c._async_update_data()

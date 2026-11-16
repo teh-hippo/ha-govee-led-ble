@@ -94,6 +94,8 @@ class _ActiveModeMixin(_CoordinatorBase):
         self._source_power_observation_generation: dict[str, tuple[int, int]] = {}
         self._scene_code = None
         self._pre_mode_snapshot: PriorControlState | None = None
+        self._pre_mode_profile: ModelProfile | None = None
+        self._pre_mode_needs_qualification = False
         self._mode_transition: _ModeTransition | None = None
         self.music_sensitivity = 99
         self.music_color: tuple[int, int, int] | None = None
@@ -118,6 +120,11 @@ class _ActiveModeMixin(_CoordinatorBase):
                     self._initialized_music_parameters.add(spec.key)
             for spec in variant.selector_parameters:
                 setattr(self, spec.key, None)
+
+    def _discard_static_baseline(self) -> None:
+        self._pre_mode_snapshot = None
+        self._pre_mode_profile = None
+        self._pre_mode_needs_qualification = False
 
     def _init_video_state(self) -> None:
         self.video_mode = "off"
@@ -426,7 +433,7 @@ class _ActiveModeMixin(_CoordinatorBase):
             ModeTransitionPurpose.RECOVERY,
             ModeTransitionPurpose.PREVIEW,
         ):
-            self._pre_mode_snapshot = None
+            self._discard_static_baseline()
         self.color_mode = ParsedMode.COLOUR
         self._scene_code = None
         self.effect = None
@@ -651,8 +658,7 @@ class _ActiveModeMixin(_CoordinatorBase):
         async with (
             async_control_intent(self, intent),
             self.async_mode_transition(purpose=ModeTransitionPurpose.RECOVERY),
-            self.async_mask_transaction(),
+            self.async_prepare_static_recovery(prepared) as prepared,
         ):
-            prepared = self.prepare_static_recovery(prepared)
             if not await self.async_restore_effect_control_state(prepared, overwritten_diy_code=None):
                 raise ValueError("No complete static state is available to restore")

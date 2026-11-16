@@ -1191,6 +1191,8 @@ async def test_static_failure_never_restores_stale_mode_siblings(hass, model, fr
 @pytest.mark.parametrize("fail", [False, True])
 async def test_clear_effect_preserves_newer_scene_notification(static_coordinator, monkeypatch, fail):
     coord = static_coordinator
+    coord._client = MagicMock(is_connected=True)
+    coord._ensure_connected = AsyncMock(return_value=coord._client)
     coord.profile = replace(coord.profile, segment_count=0, supports_segment_writes=False)
     monkeypatch.setitem(MODEL_PROFILES, coord.model, coord.profile)
     coord.is_on = True

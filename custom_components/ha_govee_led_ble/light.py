@@ -1100,19 +1100,21 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             if prepared_effect is not None
             else nullcontext(),
         ):
-            if clearing_effect:
-                prepared = self.coordinator.prepare_static_recovery()
-                prepared_effect = partial(self.coordinator.async_restore_pre_mode, prepared)
-                video_guards.append(lambda: prepared.check(self.coordinator))
-                await self._async_supersede_preview()
-            await self._async_turn_on(
-                clear_workspace_on_success=clear_workspace,
-                prepared_effect=prepared_effect,
-                effect_write_guard=video_guards[0] if video_guards else None,
-                native_write_guard=native_write_guard,
-                source_colour=source_colour,
-                **kwargs,
-            )
+            async with (
+                self.coordinator.async_prepare_static_recovery() if clearing_effect else nullcontext()
+            ) as prepared:
+                if prepared is not None:
+                    prepared_effect = partial(self.coordinator.async_restore_pre_mode, prepared)
+                    video_guards.append(partial(prepared.check, self.coordinator))
+                    await self._async_supersede_preview()
+                await self._async_turn_on(
+                    clear_workspace_on_success=clear_workspace,
+                    prepared_effect=prepared_effect,
+                    effect_write_guard=video_guards[0] if video_guards else None,
+                    native_write_guard=native_write_guard,
+                    source_colour=source_colour,
+                    **kwargs,
+                )
 
     async def _async_apply_saved_item(
         self,
