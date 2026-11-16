@@ -1,4 +1,8 @@
 command_write
+speculative/h6127_wire_write
+speculative/h6127_legacy_status_reply
+speculative/h6127_status_reply
+speculative/h6127_intermediate_status_reply
 speculative/h60b2_control
 speculative/h60b2_status_reply
 speculative/h60b2_music_body

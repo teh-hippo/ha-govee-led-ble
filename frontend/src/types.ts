@@ -486,6 +486,7 @@ export interface MusicSettings {
   style: boolean;
   calm_default: boolean;
   colour: boolean;
+  colour_default?: RGB;
   evidence: string | null;
   palette_size: number;
   palette?: { min: number; max: number; default: RGB[] };

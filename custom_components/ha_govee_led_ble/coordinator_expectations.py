@@ -87,7 +87,6 @@ def expectations_from_packet(
     if color_mode := _expected_color_mode(
         generated,
         model,
-        static_echoes_color=static_echoes_color,
         profile=profile,
     ):
         expectations["color_mode"] = color_mode
@@ -234,7 +233,6 @@ def _expected_color_mode(
     generated: Any,
     model: str,
     *,
-    static_echoes_color: bool,
     profile: ModelProfile | None = None,
 ) -> tuple[ParsedMode, int | None] | None:
     profile = profile or get_profile(model)
@@ -252,16 +250,13 @@ def _expected_color_mode(
         if mode == "scene":
             return ParsedMode.SCENE, None
         if mode == "static_colour":
-            return (
-                ParsedMode.COLOUR,
-                (int(detail.operation) if static_echoes_color and hasattr(detail, "operation") else None),
-            )
+            return ParsedMode.COLOUR, None
         return None
     if generated.opcode.name != "multi":
         return None
     mode = getattr(generated.body.sub, "name", None)
     detail = generated.body.sub_body
-    if mode == "diy":
+    if mode in {"diy", "inline_diy"}:
         return ParsedMode.DIY, int(detail.code)
     if mode == "music":
         return ParsedMode.MUSIC, None
@@ -272,7 +267,5 @@ def _expected_color_mode(
     if mode == "source_control":
         return ParsedMode.COLOUR, None
     if mode == "static":
-        if profile.command_grammar == "H60B0":
-            return ParsedMode.COLOUR, None
-        return ParsedMode.COLOUR, (int(detail.static_sub) if static_echoes_color else None)
+        return ParsedMode.COLOUR, None
     return None

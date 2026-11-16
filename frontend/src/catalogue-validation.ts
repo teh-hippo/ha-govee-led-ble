@@ -383,11 +383,16 @@ export function decodeMusicSettings(value: unknown): Record<string, MusicSetting
       return rgb.map(channel => integerValue(channel, "music palette channel", 0, 255)) as RGB;
     }) : [];
     if (palette && defaults.length < minimum) invalid("music default palette");
+    const colourDefault = settings.colour_default === undefined ? undefined
+      : arrayValue(settings.colour_default, "music default colour", 3)
+        .map(channel => integerValue(channel, "music default colour channel", 0, 255)) as RGB;
+    if (colourDefault && colourDefault.length !== 3) invalid("music default colour");
     return [mode, {
       available: booleanValue(settings.available, "music availability"),
       style: booleanValue(settings.style, "music style"),
       calm_default: booleanValue(settings.calm_default, "music default style"),
       colour: booleanValue(settings.colour, "music colour"),
+      ...(colourDefault === undefined ? {} : { colour_default: colourDefault }),
       evidence: settings.evidence === null ? null : boundedString(settings.evidence, "music evidence", 1024),
       palette_size: integerValue(settings.palette_size, "music palette size", 0, 255),
       ...(palette ? { palette: { min: minimum, max: maximum, default: defaults } } : {}),

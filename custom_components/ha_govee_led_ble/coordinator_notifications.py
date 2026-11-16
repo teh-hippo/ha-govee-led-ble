@@ -181,16 +181,15 @@ class _NotificationMixin(_CoordinatorBase):
         self,
         parsed: ParsedColorModeResponse,
     ) -> tuple[str, ...]:
-        if (
-            parsed.mode is ParsedMode.COLOUR
-            and self.profile.static_readback_gradual
-            and parsed.multi_effect_flag not in (0, 1)
-        ):
+        gradual_present = self.profile.static_readback_gradual and (
+            parsed.static_fields is None or "static_gradual" in parsed.static_fields
+        )
+        if parsed.mode is ParsedMode.COLOUR and gradual_present and parsed.multi_effect_flag not in (0, 1):
             raise ValueError("invalid static gradual flag")
         if parsed.mode is ParsedMode.DIY:
             mode_detail = parsed.diy_code
         elif parsed.mode is ParsedMode.COLOUR and self.profile.static_readback_echoes_color:
-            mode_detail = parsed.raw_mode if self.profile.status_grammar == "H6179" else parsed.multi_effect_flag
+            mode_detail = parsed.raw_mode
         else:
             mode_detail = None
         observed_color_mode = parsed.mode, mode_detail
@@ -302,7 +301,7 @@ class _NotificationMixin(_CoordinatorBase):
                     self.color_temp_kelvin = None
                     self.color_temp_kelvin_source = "initial"
                 observed.extend(("left_bar_kelvin", "right_bar_kelvin"))
-            if self.profile.static_readback_gradual:
+            if gradual_present:
                 # AA05 describes the colour mode; only AAA3 confirms a setting write.
                 self.static_gradual = bool(parsed.multi_effect_flag)
                 observed.append("static_gradual")
@@ -310,10 +309,15 @@ class _NotificationMixin(_CoordinatorBase):
                 self.gradient = parsed.gradient
                 observed.append("gradient")
             static_values: dict[str, Any] = {}
-            if parsed.rgb_color is not None and self.profile.static_readback_echoes_color:
+            if parsed.rgb_color is not None and (
+                self.profile.static_readback_echoes_color
+                if parsed.static_fields is None
+                else "rgb_color" in parsed.static_fields
+            ):
                 static_values["rgb_color"] = parsed.rgb_color
             if (
                 (self.profile.static_readback_kelvin or self.profile.static_readback_nonzero_kelvin)
+                and (parsed.static_fields is None or "color_temp_kelvin" in parsed.static_fields)
                 and (
                     parsed.color_temp_kelvin is not None
                     or self.profile.static_readback_kelvin

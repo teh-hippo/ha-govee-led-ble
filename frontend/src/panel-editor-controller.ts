@@ -873,7 +873,7 @@ export class PanelEditorController {
       model: selectedModel,
       mode,
       sensitivity: catalogue.limits.music_sensitivity_max,
-      colour: null,
+      colour: catalogue.music_settings[mode]?.colour_default ?? null,
       calm: catalogue.music_settings[mode]?.style ? catalogue.music_settings[mode].calm_default : null,
       parameters: {},
     };

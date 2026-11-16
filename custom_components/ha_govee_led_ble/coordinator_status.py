@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from .const import (
     KELVIN_RANGE_1000_10000,
@@ -152,6 +152,7 @@ class ParsedColorModeResponse:
     music_left_colour: int | None = None
     music_right_colour: int | None = None
     rgb_color: tuple[int, int, int] | None = None
+    static_fields: frozenset[Literal["rgb_color", "color_temp_kelvin", "static_gradual"]] | None = None
     color_temp_kelvin: int | None = None
     white_brightness: int | None = None
     multi_effect_flag: int | None = None
@@ -234,6 +235,12 @@ def parse_color_mode(generated: Any, model: str, *, profile: ModelProfile | None
         return _parse_music_mode(detail, model, profile)
     if mode_name in {"static", "static_colour"}:
         return _parse_static_mode(detail, profile)
+    if mode_name == "observed_static":
+        if detail is None:
+            raise ValueError("RGB status has no details")
+        return ParsedColorModeResponse(
+            mode=ParsedMode.COLOUR, rgb_color=_rgb_values(detail.rgb), static_fields=frozenset({"rgb_color"})
+        )
     if mode_name == "video":
         return _parse_video_mode(detail, profile)
     detail = body if detail is None else detail
@@ -242,7 +249,7 @@ def parse_color_mode(generated: Any, model: str, *, profile: ModelProfile | None
         return ParsedColorModeResponse(
             mode=ParsedMode.SCENE, effect=scene_key_for_code(model, scene_code, profile=profile), scene_code=scene_code
         )
-    if mode_name == "diy":
+    if mode_name in {"diy", "inline_diy"}:
         return ParsedColorModeResponse(
             mode=ParsedMode.DIY, diy_code=int(detail.code), diy_companion=getattr(detail, "companion", None)
         )
@@ -333,7 +340,7 @@ def _parse_static_mode(detail: Any, profile: ModelProfile) -> ParsedColorModeRes
             left_bar_kelvin=left,
             right_bar_kelvin=right,
         )
-    if profile.status_grammar == "H6181":
+    if profile.status_grammar in {"H6181", "H6127-legacy"}:
         if detail.temperature_flag not in (0, 1):
             raise ValueError("Invalid legacy colour-temperature flag")
         if detail.temperature_flag:

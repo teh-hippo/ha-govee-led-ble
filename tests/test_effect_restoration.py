@@ -1,11 +1,12 @@
 """Fresh physical-state recovery through the real coordinator and deployment path."""
 
+import time
 from dataclasses import replace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from custom_components.ha_govee_led_ble.const import get_profile
+from custom_components.ha_govee_led_ble.const import device_profile, get_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
@@ -15,8 +16,17 @@ from custom_components.ha_govee_led_ble.effect_deployments import (
     PriorControlState,
 )
 from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, SingleEffect
-from custom_components.ha_govee_led_ble.effect_runtime import EffectDeploymentEngine
-from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_power
+from custom_components.ha_govee_led_ble.effect_runtime import (
+    EffectDeploymentEngine,
+    EffectRestorationError,
+    EffectStateReadError,
+    async_prepare_effect_control_state,
+)
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
+    build_diy_activation,
+    build_power,
+    require_profile_packet,
+)
 from custom_components.ha_govee_led_ble.light_commands import parse_static_write
 from custom_components.ha_govee_led_ble.music_commands import edit_music_body
 from custom_components.ha_govee_led_ble.music_semantics import music_variant
@@ -27,6 +37,84 @@ from tests.storage_test_double import InMemoryVersionedDocumentStore
 def reply(domain, body):
     payload = bytes([0xAA, domain, *body]).ljust(19, b"\0")
     return bytearray(payload + bytes([xor_checksum(payload)]))
+
+
+@pytest.mark.parametrize("powered", [False, True])
+async def test_inline_diy_selector_alone_cannot_authorise_preview_or_restoration(hass, powered):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6127", configuration_url=None)
+    coordinator.profile = replace(
+        device_profile("H6127", 1, 1, firmware="1.01.16", hardware="1.00.01"),
+        profile_identity_fields=frozenset(),
+    )
+    coordinator._client = MagicMock(is_connected=True)
+    coordinator._notify_started_monotonic = time.monotonic()
+    coordinator._notify_callback(None, reply(1, [int(powered)]))
+    coordinator._notify_callback(None, reply(4, [128]))
+    coordinator._notify_callback(None, reply(5, [7, 25]))
+    coordinator.send_command = AsyncMock()
+    state = coordinator.capture_effect_control_state()
+    assert not await coordinator.async_restore_effect_control_state(state, overwritten_diy_code=24)
+    with pytest.raises(EffectRestorationError, match="inline DIY body"):
+        await async_prepare_effect_control_state(coordinator, require_restorable_static=True)
+    with pytest.raises(ValueError, match="complete body"):
+        build_diy_activation(25, "H6127", profile=coordinator.profile)
+    with pytest.raises(ValueError, match="resident selector"):
+        require_profile_packet(build_diy_activation(25, "H617A"), coordinator.profile)
+    coordinator.send_command.assert_not_awaited()
+
+
+@pytest.mark.parametrize("retained_mode", [None, ParsedMode.COLOUR])
+@pytest.mark.parametrize("observation", ["inline", "missing", "unknown", "static"])
+async def test_preview_qualifies_mode_before_deciding_inline_restoration_is_available(hass, retained_mode, observation):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6127", configuration_url=None)
+    coordinator.profile = replace(
+        device_profile("H6127", 1, 1, firmware="1.01.16", hardware="1.00.01"),
+        profile_identity_fields=frozenset(),
+    )
+    coordinator._client = MagicMock(is_connected=True)
+    coordinator._notify_started_monotonic = time.monotonic()
+    coordinator._field_received_at["color_mode"] = coordinator._notify_started_monotonic - 30
+    coordinator.color_mode = retained_mode
+    coordinator.send_command = AsyncMock()
+
+    async def refresh(_request):
+        if observation != "missing":
+            coordinator._notify_callback(None, reply(1, [1]))
+            coordinator._notify_callback(None, reply(4, [128]))
+            body = [7, 25] if observation == "inline" else [2, 255, 0, 0, 0] if observation == "static" else [0x7F]
+            coordinator._notify_callback(None, reply(5, body))
+        return True
+
+    coordinator.refresh_state = AsyncMock(side_effect=refresh)
+    if observation == "static":
+        assert await async_prepare_effect_control_state(coordinator, require_restorable_static=True)
+    else:
+        error = EffectStateReadError if observation == "missing" else EffectRestorationError
+        with pytest.raises(error):
+            await async_prepare_effect_control_state(coordinator, require_restorable_static=True)
+    coordinator.refresh_state.assert_awaited_once()
+    coordinator.send_command.assert_not_awaited()
+
+
+async def test_fixed_only_music_cannot_promote_a_retained_colour_into_a_recovery_observation(hass):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6127", configuration_url=None)
+    coordinator.profile = replace(
+        device_profile("H6127", 1, 1, firmware="1.01.20", hardware="1.00.01"),
+        profile_identity_fields=frozenset(),
+    )
+    coordinator._client = MagicMock(is_connected=True)
+    coordinator._notify_started_monotonic = time.monotonic()
+    coordinator.music_color = (255, 0, 0)
+    coordinator.send_command = AsyncMock()
+    coordinator._notify_callback(None, reply(1, [1]))
+    coordinator._notify_callback(None, reply(5, [1, 1, 50, 0, 0, 255]))
+    prior = coordinator.capture_effect_control_state()
+    assert prior.mode == "music" and prior.music_mode == "spectrum" and prior.music_color is None
+    with pytest.raises(EffectRestorationError, match="music colour"):
+        await async_prepare_effect_control_state(coordinator, require_restorable_static=True)
+    with pytest.raises(ValueError, match="fixed colour"):
+        await coordinator.async_restore_effect_control_state(prior, overwritten_diy_code=None)
+    coordinator.send_command.assert_not_awaited()
 
 
 @pytest.fixture

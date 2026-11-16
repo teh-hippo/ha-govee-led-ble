@@ -207,6 +207,29 @@ class ModelEffectCatalogue:
     music_zone_modes: tuple[tuple[str, tuple[str, ...]], ...] = ()
     auxiliary_music_modes: tuple[str, ...] = ()
 
+    def effects_for_profile(self, profile: ModelProfile) -> tuple[DiyEffectFamily, ...]:
+        if profile.diy_family_variants is None:
+            return self.effects
+        allowed = dict(profile.diy_family_variants)
+        return tuple(
+            replace(
+                effect,
+                variations=tuple(
+                    variation for variation in effect.variations if variation.variant in allowed[effect.family]
+                ),
+                palette_max=min(effect.palette_max or self.palette_max, profile.diy_palette_max or self.palette_max),
+            )
+            for effect in self.effects
+            if effect.family in allowed
+        )
+
+    def templates_for_profile(self, profile: ModelProfile | None) -> tuple[CatalogueTemplate, ...]:
+        return tuple(
+            _template_for_profile(template, profile)
+            for template in self.templates
+            if profile is None or _template_available(template, profile)
+        )
+
     def to_dict(self, *, profile: ModelProfile | None = None) -> dict[str, JsonValue]:
         device_profile = profile
         profile = MODEL_PROFILES[self.sku] if profile is None else profile
@@ -255,7 +278,7 @@ class ModelEffectCatalogue:
             ),
             "effects": [
                 effect.to_dict()
-                for effect in self.effects
+                for effect in self.effects_for_profile(profile)
                 if effects_enabled
                 and (device_profile is None or profile_supports_workflow(profile, CapabilityWorkflow.SINGLE))
             ],
@@ -282,9 +305,7 @@ class ModelEffectCatalogue:
                 "brightness_zones": list(profile.video_brightness_zones),
             },
             "templates": [
-                _template_for_profile(template, device_profile).to_dict()
-                for template in self.templates
-                if effects_enabled and (device_profile is None or _template_available(template, profile))
+                template.to_dict() for template in self.templates_for_profile(device_profile) if effects_enabled
             ],
             "workshop_templates": [
                 template.to_dict(self.sku)
@@ -312,7 +333,7 @@ class ModelEffectCatalogue:
             **({"advanced_create": False} if not self.advanced_create else {}),
             "limits": {
                 "palette_min": self.palette_min,
-                "palette_max": self.palette_max,
+                "palette_max": profile.diy_palette_max or self.palette_max,
                 "multi_max": self.multi_max,
                 "speed_min": self.speed_min,
                 "speed_max": self.speed_max,
@@ -341,6 +362,11 @@ def _music_mode_settings(model: str, mode: str, profile: ModelProfile) -> dict[s
         "style": bool(variant and variant.supports_style),
         "calm_default": variant.calm_default if variant else False,
         "colour": bool(profile.supports_music_color and variant and variant.supports_fixed_colour),
+        **(
+            {"colour_default": list(variant.fixed_colour_default)}
+            if variant and variant.fixed_colour_default is not None
+            else {}
+        ),
         "evidence": variant.evidence if variant else None,
         "palette_size": len(palette) if available else 0,
         **(
@@ -386,6 +412,9 @@ def _video_profile_settings(profile: ModelProfile) -> tuple[str, ...]:
 
 def _template_available(template: CatalogueTemplate, profile: ModelProfile) -> bool:
     content = template.content
+    if isinstance(content, SingleEffect) and profile.diy_family_variants is not None:
+        if content.variant not in dict(profile.diy_family_variants).get(content.family, ()):
+            return False
     if isinstance(content, MusicProfile):
         return content.mode in profile.music_modes
     if isinstance(content, VideoProfile):
@@ -423,6 +452,14 @@ def _template_for_profile(template: CatalogueTemplate, profile: ModelProfile | N
     if profile is None:
         return template
     content = template.content
+    if isinstance(content, SingleEffect) and profile.diy_palette_max is not None:
+        return replace(
+            template,
+            content=replace(
+                content,
+                palette=content.palette[: profile.diy_palette_max],
+            ),
+        )
     if isinstance(content, MusicProfile):
         variant = music_variant(profile, music_code_for(content.model, content.mode, profile=profile))
         return replace(
@@ -431,6 +468,11 @@ def _template_for_profile(template: CatalogueTemplate, profile: ModelProfile | N
                 content,
                 sensitivity=profile.music_sensitivity_max,
                 calm=variant.calm_default if variant and variant.supports_style else None,
+                colour=content.colour
+                if content.colour is not None
+                else variant.fixed_colour_default
+                if variant
+                else None,
             ),
         )
     if (

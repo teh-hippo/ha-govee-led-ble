@@ -126,6 +126,10 @@ StatusReply = load_generated_class("status_reply", "StatusReply")
 H6102WireWrite = load_generated_class("h6102_wire_write", "H6102WireWrite")
 
 H6117WireWrite = load_generated_class("h6117_wire_write", "H6117WireWrite")
+H6127WireWrite = load_generated_class("h6127_wire_write", "H6127WireWrite")
+H6127LegacyStatusReply = load_generated_class("h6127_legacy_status_reply", "H6127LegacyStatusReply")
+H6127StatusReply = load_generated_class("h6127_status_reply", "H6127StatusReply")
+H6127IntermediateStatusReply = load_generated_class("h6127_intermediate_status_reply", "H6127IntermediateStatusReply")
 H6117StatusReply = load_generated_class("h6117_status_reply", "H6117StatusReply")
 H6117LegacyStatusReply = load_generated_class("h6117_legacy_status_reply", "H6117LegacyStatusReply")
 
@@ -455,6 +459,9 @@ _STATUS_ROOTS = {
     "H6117": ("h6117_status_reply", H6117StatusReply),
     "H6117-legacy": ("h6117_legacy_status_reply", H6117LegacyStatusReply),
     "H6125": ("h6125_status_reply", H6125StatusReply),
+    "H6127-legacy": ("h6127_legacy_status_reply", H6127LegacyStatusReply),
+    "H6127": ("h6127_status_reply", H6127StatusReply),
+    "H6127-intermediate": ("h6127_intermediate_status_reply", H6127IntermediateStatusReply),
     "H6125-modern": ("h6125_modern_status_reply", H6125ModernStatusReply),
     "H6125-legacy": ("h6125_legacy_status_reply", H6125LegacyStatusReply),
     "H6125-intermediate": ("h6125_intermediate_status_reply", H6125IntermediateStatusReply),

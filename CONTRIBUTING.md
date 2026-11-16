@@ -41,6 +41,8 @@ Keep real product differences without turning each product into a separate imple
   Required BLE companion colours remain protocol data, not Home Assistant RGB approximations.
 - Give each fact one authority.
   Derive catalogue support and apply projections from the release contract, narrowed by the effective profile, rather than maintaining parallel capability flags.
+  Project catalogue defaults and direct template resolution from the same effective contract; every advertised default must compile within its bounds.
+  Keep structural template identities independent of transient revision readiness so defaults remain valid after persistence and reload.
   Preserve distinctions between unknown, unsupported and explicitly disabled.
 - Evaluate revision prerequisites together and fail closed when required identity is missing or a prerequisite fails.
   Where identity requires subscription qualification, cached identity is presentation-only; require current-subscription evidence before authorising dependent writes.

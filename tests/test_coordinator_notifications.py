@@ -331,7 +331,7 @@ def test_mixed_grammars_route_command_expectations_and_status_semantics(
         assert packet == build(*args, model=command_grammar)
         expectations = expectations_from_packet(packet, model, static_echoes_color=True)
         assert expectations[field] == expected
-        assert expectations["color_mode"] == (ParsedMode.COLOUR, 2 if field == "white_brightness" else 1)
+        assert expectations["color_mode"] == (ParsedMode.COLOUR, None)
 
     music = build_music_mode(MUSIC_MODE_SLUGS["rhythm"], 50, (10, 20, 30), True, model)
     assert music == build_music_mode(MUSIC_MODE_SLUGS["rhythm"], 50, (10, 20, 30), True, command_grammar)
@@ -629,11 +629,10 @@ def test_expectations_from_packet_covers_every_command_family():
 
     rgb = expectations_from_packet(build_color_rgb(255, 0, 0))
     assert rgb["rgb_color"] == (255, 0, 0)
-    # The write-side sub is not echoed back, so expecting it would reject every reply. Models
-    # that do echo it keep the discriminator.
+    # RGB readback does not establish an echo of the write-side operation selector.
     assert rgb["color_mode"] == (ParsedMode.COLOUR, None)
     echoed = expectations_from_packet(build_color_rgb(255, 0, 0), static_echoes_color=True)
-    assert echoed["color_mode"] == (ParsedMode.COLOUR, 0x01)
+    assert echoed["color_mode"] == (ParsedMode.COLOUR, None)
 
     # Colour-temperature writes zero the direct RGB field, so they map to a Kelvin
     # expectation rather than an rgb_color one.

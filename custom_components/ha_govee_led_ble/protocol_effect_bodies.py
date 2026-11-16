@@ -40,6 +40,7 @@ from .protocol_core import (
     H6076MusicBody,
     H6099CommandWrite,
     H6099EffectUpload,
+    H6127WireWrite,
     H6181DiyBody,
     H6199EffectUpload,
     SceneBody,
@@ -411,6 +412,23 @@ def _diy_type04_palette(parent: Any, colours: list[tuple[int, int, int]]) -> Any
     return palette
 
 
+def build_inline_diy(
+    code: int, family: int, variant: int, speed: int, palette: tuple[tuple[int, int, int], ...]
+) -> bytes:
+    if not 0 <= code <= 255 or not 1 <= len(palette) <= 4:
+        raise ValueError("Inline DIY requires a byte selector and one to four colours")
+    root = CommandWrite()
+    root.header = b"\x33"
+    root.opcode = CommandWrite.CommandOp.multi
+    mode = _child(CommandWrite.MultiCmd, root)
+    mode.sub = CommandWrite.MultiSub.inline_diy
+    body = _child(H6127WireWrite.InlineDiy, mode)
+    body.code, body.family, body.variant, body.speed = code, family, variant, speed
+    body.colours = [_rgb(body, *colour) for colour in (*palette, *((0, 0, 0),) * (4 - len(palette)))]
+    mode.sub_body, root.body = body, mode
+    return _serialize_xor(root)
+
+
 def build_h617a_diy_single_body(
     family: int,
     variant: int,
@@ -543,7 +561,10 @@ def build_diy_activation(
 ) -> bytes:
     if type(diy_code) is not int or not 0 <= diy_code <= 0xFFFF:
         raise ValueError("DIY code must be an integer from 0 to 65535")
-    grammar = (profile or get_profile(model)).command_grammar
+    profile = profile or get_profile(model)
+    if profile.diy_upload_transport == "single":
+        raise ValueError("Inline DIY requires its complete body, not a resident selector")
+    grammar = profile.command_grammar
     if grammar == "H607C":
         if companion is not None and (type(companion) is not int or not 0 <= companion <= 65535):
             raise ValueError("native DIY companion must be an unsigned word")

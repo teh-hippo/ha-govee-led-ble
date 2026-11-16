@@ -11,7 +11,9 @@ import pytest
 
 from custom_components.ha_govee_led_ble import effect_commands
 from custom_components.ha_govee_led_ble import layered_scene as layered_scene_module
-from custom_components.ha_govee_led_ble.const import MODEL_PROFILES
+from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, device_profile
+from custom_components.ha_govee_led_ble.coordinator_expectations import expectations_from_packet
+from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.effect_catalogue import (
     H617A_WORKSHOP_APPLY_CODE,
     H617A_WORKSHOP_SCENE_TYPE,
@@ -87,7 +89,47 @@ from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_work
 from custom_components.ha_govee_led_ble.native_effect import NativeDiyLayer, NativeEffect
 from custom_components.ha_govee_led_ble.protocol_h6199 import build_h6199_scene
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
-from custom_components.ha_govee_led_ble.transport import reassemble_a3
+from custom_components.ha_govee_led_ble.transport import reassemble_a3, xor_checksum
+
+
+def test_inline_diy_is_one_guarded_activation_and_rejects_later_revision_content():
+    profile = device_profile("H6127", 1, 1, firmware="1.01.16", hardware="1.00.01")
+    item = LibraryItem.new("Two colours", SingleEffect(0, 1, 50, ((255, 0, 0), (0, 0, 255))))
+    compiled = compile_application(item, "H6127", profile=profile)
+    prefix = bytes.fromhex("33050718000132ff00000000ff").ljust(19, b"\0")
+    assert compiled.packets == (prefix + bytes((xor_checksum(prefix),)),)
+    assert compiled.upload_packets == () and compiled.upload_transport == "single"
+    assert expectations_from_packet(compiled.activation_packet, "H6127", profile=profile)["color_mode"] == (
+        ParsedMode.DIY,
+        24,
+    )
+    for changed in (
+        replace(item.content, palette=((255, 0, 0),) * 5),
+        replace(item.content, family=8, variant=9),
+        replace(item.content, family=4, variant=8),
+        MultiEffect((EffectPair(0, 0),), 50, ((255, 0, 0),)),
+    ):
+        assert (
+            compatibility(LibraryItem.new("Unavailable", changed), "H6127", profile=profile).state
+            is CompatibilityState.INCOMPATIBLE
+        )
+    modern = device_profile("H6127", 1, 2, firmware="1.07.00", hardware="1.00.04")
+    with pytest.raises(ValueError, match="transport"):
+        validate_compiled_geometry(compiled, modern)
+    later_item = LibraryItem.new("Later family", SingleEffect(8, 9, 50, ((255, 0, 0),)))
+    later = compile_application(later_item, "H6127", profile=modern)
+    original_upload = device_profile("H6127", 1, 1, firmware="1.01.20", hardware="1.00.01")
+    with pytest.raises(ValueError, match="family"):
+        validate_compiled_geometry(later, original_upload)
+
+
+def test_fixed_colour_only_music_rejects_automatic_authoring_before_packet_preparation():
+    profile = device_profile("H6127", 1, 1, firmware="1.01.20", hardware="1.00.01")
+    item = LibraryItem.new("Automatic", MusicProfile("H6127", "spectrum", 50, None, None))
+    with pytest.raises(ValueError, match="fixed colour"):
+        compile_application(item, "H6127", profile=profile)
+    fixed = LibraryItem.new("Fixed", replace(item.content, colour=(12, 34, 56)))
+    assert compile_application(fixed, "H6127", profile=profile).packets
 
 
 @pytest.mark.parametrize(

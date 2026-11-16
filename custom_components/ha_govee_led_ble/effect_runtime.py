@@ -1577,6 +1577,24 @@ async def async_prepare_effect_control_state(
     prior = capture() if require_restorable_static and capture is not None else None
     prior_mode = prior.mode if isinstance(prior, PriorControlState) else _coordinator_mode(coordinator)
     if require_restorable_static:
+        inline_fields = ("is_on", "brightness_pct", "color_mode")
+        if profile.diy_upload_transport == "single" and not all(
+            coordinator.source_field_fresh(field) for field in inline_fields
+        ):
+            if (
+                await coordinator.refresh_state(
+                    RefreshRequest(
+                        refresh_all=True,
+                        required_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE}),
+                    )
+                )
+                is not True
+                or coordinator.profile != profile
+                or not all(coordinator.source_field_fresh(field) for field in inline_fields)
+            ):
+                raise EffectStateReadError("Could not read the current state before preview")
+            prior = capture() if capture is not None else None
+            prior_mode = prior.mode if isinstance(prior, PriorControlState) else _coordinator_mode(coordinator)
         if profile.partition_segment_writes:
             read_segments = prior_mode in {"colour", "unknown"}
             fields = (
@@ -1630,6 +1648,10 @@ async def async_prepare_effect_control_state(
                 else "panel and ring"
             )
             raise EffectRestorationError(f"Could not read restorable {zones} enablement before preview")
+        if prior_mode == "custom" and profile.diy_upload_transport == "single":
+            raise EffectRestorationError("The current inline DIY body cannot be safely restored after preview")
+        if prior_mode == "unknown" and profile.diy_upload_transport == "single":
+            raise EffectRestorationError("The current mode cannot be safely restored after preview")
         if (
             profile.setting_grammar == "H607C"
             and prior_mode == "custom"
@@ -1637,12 +1659,12 @@ async def async_prepare_effect_control_state(
             and prior.diy_companion is None
         ):
             raise EffectRestorationError("The current native DIY companion cannot be safely restored after preview")
-        if (
-            prior_mode == "music"
-            and isinstance(prior, PriorControlState)
-            and prior.music_mode not in profile.music_modes
-        ):
-            raise EffectRestorationError("The current music mode cannot be safely restored after preview")
+        if prior_mode == "music" and isinstance(prior, PriorControlState):
+            if prior.music_mode not in profile.music_modes:
+                raise EffectRestorationError("The current music mode cannot be safely restored after preview")
+            variant = music_variant(profile, music_code_for(coordinator.model, prior.music_mode, profile=profile))
+            if variant and variant.fixed_colour_default is not None and prior.music_color is None:
+                raise EffectRestorationError("The current music colour cannot be safely restored after preview")
         if prior_mode not in {"colour", "unknown"}:
             return True
         if profile.segment_colour_mode_ambiguous and not (

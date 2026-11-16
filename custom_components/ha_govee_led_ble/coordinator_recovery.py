@@ -154,6 +154,15 @@ class _RecoveryMixin(_CoordinatorBase):
             else None
             for name in ("top_kelvin", "bottom_kelvin", "bottom_brightness", "ripple_speed")
         }
+        music_colour = self.music_color
+        if mode == "music" and self.music_mode in self.profile.music_modes:
+            variant = music_variant(self.profile, music_code_for(self.model, self.music_mode, profile=self.profile))
+            if (
+                variant
+                and variant.fixed_colour_default is not None
+                and not self._as_coordinator.source_field_fresh("music_color")
+            ):
+                music_colour = None
         return PriorControlState(
             mode=mode,
             is_on=self.is_on,
@@ -209,7 +218,7 @@ class _RecoveryMixin(_CoordinatorBase):
             whole_relative_brightness=self.whole_relative_brightness,
             music_sensitivity=self.music_sensitivity,
             music_calm=self.music_calm,
-            music_color=self.music_color,
+            music_color=music_colour,
             video_full_screen=self.video_full_screen,
             video_saturation=self.video_saturation,
             video_sound_effects=self.video_sound_effects,
@@ -243,6 +252,8 @@ class _RecoveryMixin(_CoordinatorBase):
         require_static: bool = False,
     ) -> bool:
         static_restore = None
+        if state.mode == "custom" and self.profile.diy_upload_transport == "single":
+            return False
         if require_static:
             static_restore = self._prepare_static_restore(state)
             if static_restore is None:

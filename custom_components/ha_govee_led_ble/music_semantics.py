@@ -64,6 +64,7 @@ class MusicVariant:
     direction_values: tuple[tuple[str, int, int], ...] = ()
     palette_bounds: tuple[int, int] | None = None
     supports_fixed_colour: bool = True
+    fixed_colour_default: tuple[int, int, int] | None = None
     physical_defaults: str | None = None
 
 
@@ -942,6 +943,9 @@ H6102_MUSIC_VARIANTS = (
 # H6125 pact 1 reaches the same RGBIC music encodings as H6102 through the
 # DreamColor route; only the selector submode differs, and the transform owns that.
 H6125_MUSIC_VARIANTS = H6102_MUSIC_VARIANTS
+H6127_MUSIC_VARIANTS = tuple(
+    replace(variant, evidence="H6127 revision-qualified RGBIC onboard music") for variant in H6102_MUSIC_VARIANTS
+)
 H6117_MUSIC_VARIANTS = tuple(
     replace(variant, evidence="H6117 RGBIC compatibility hypothesis") for variant in H6102_MUSIC_VARIANTS
 )

@@ -85,6 +85,7 @@ from .protocol_core import (
     H6199EffectUpload,
     SceneBody,
 )
+from .protocol_effect_bodies import build_inline_diy
 from .scenes import MODEL_SCENES, SceneEntry, resolve_scene_identity, scene_for_profile, scene_selector_code
 from .transport import fragment_a3
 
@@ -133,6 +134,7 @@ class CompiledEffect:
     body_effect_code: int | None = None
     rgbic_scene_v0: bool | None = None
     native_effect_revision: int = 0
+    authored_diy: SingleEffect | MultiEffect | None = None
 
     @property
     def packets(self) -> tuple[bytes, ...]:
@@ -263,6 +265,8 @@ def validate_compiled_geometry(compiled: CompiledApplication, profile: ModelProf
             ) or compiled.diy_code != scene_selector_code(compiled.model, entry, profile=profile):
                 raise ValueError("Device scene route changed since compilation; refresh and retry")
         if compiled.content_kind in {"h617a_single", "h617a_multi"}:
+            if compiled.authored_diy is not None:
+                validate_effect_eligibility(compiled.authored_diy, compiled.model, profile=profile)
             transport = profile.diy_upload_transport or ("a1_02" if profile.a1_diy_selector is not None else "a3")
             if compiled.upload_transport != transport or (
                 profile.a1_diy_selector is not None and compiled.diy_code != profile.a1_diy_selector
@@ -577,6 +581,7 @@ def _has_fixed_diy_slot(model: str, *, profile: ModelProfile | None = None) -> b
     catalogue = MODEL_EFFECT_CATALOGUES.get(model)
     return (
         profile.effect_grammar == "H6099"
+        or profile.diy_upload_transport == "single"
         or profile.a1_diy_selector is not None
         or catalogue is not None
         and catalogue.temporary_diy_selector is not None
@@ -1058,12 +1063,16 @@ def compile_h617a(
         )
     elif isinstance(content, SingleEffect):
         content_kind = "h617a_single"
-        upload = build_h617a_diy_single(
-            content.family,
-            content.variant,
-            content.speed,
-            content.palette,
-            a1_selector=profile.a1_diy_selector,
+        upload = (
+            []
+            if profile.diy_upload_transport == "single"
+            else build_h617a_diy_single(
+                content.family,
+                content.variant,
+                content.speed,
+                content.palette,
+                a1_selector=profile.a1_diy_selector,
+            )
         )
     elif isinstance(content, MultiEffect):
         content_kind = "h617a_multi"
@@ -1077,7 +1086,11 @@ def compile_h617a(
         raise ValueError("unsupported H617A effect content")
 
     resolve_diy_code(item, diy_code, model=model, profile=profile)
-    activation = build_diy_activation(diy_code, model, profile=profile)
+    activation = (
+        build_inline_diy(diy_code, content.family, content.variant, content.speed, content.palette)
+        if profile.diy_upload_transport == "single" and isinstance(content, SingleEffect)
+        else build_diy_activation(diy_code, model, profile=profile)
+    )
     digest = sha256(b"".join((*upload, activation))).hexdigest()
     return CompiledEffect(
         item_id=str(item.id),
@@ -1102,13 +1115,14 @@ def compile_h617a(
         ),
         upload_subtype=(
             None
-            if profile.diy_upload_transport == "a1_02"
+            if profile.diy_upload_transport in {"a1_02", "single"}
             else 3
             if isinstance(content, PaintedEffect)
             else 4
             if profile.a1_diy_selector is None
             else None
         ),
+        authored_diy=content if isinstance(content, SingleEffect | MultiEffect) else None,
     )
 
 
