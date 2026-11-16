@@ -44,6 +44,7 @@ from .const import (
     ModelProfile,
     ReadDomain,
     effect_category_for_content_kind,
+    get_profile,
     light_unique_id,
     resolve_model,
     supported_effect_categories,
@@ -348,6 +349,8 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 return ColorMode.UNKNOWN
             return ColorMode.COLOR_TEMP if type(colour) is int else ColorMode.RGB
         if coordinator.color_mode in (None, ParsedMode.COLOUR):
+            if coordinator.color_temp_unknown:
+                return ColorMode.COLOR_TEMP
             if coordinator.color_temp_kelvin is not None and coordinator.color_temp_kelvin_source != "initial":
                 return ColorMode.COLOR_TEMP
             if coordinator.rgb_color_source != "initial":
@@ -1022,11 +1025,17 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         await self._async_handle_turn_on(**kwargs)
 
     async def _async_handle_turn_on(self, **kwargs: Any) -> None:
-        if (ATTR_RGB_COLOR in kwargs or ATTR_COLOR_TEMP_KELVIN in kwargs) and not (
+        static_requested = (
+            ATTR_RGB_COLOR in kwargs
+            or ATTR_COLOR_TEMP_KELVIN in kwargs
+            or normalise_effect_name(str(kwargs.get(ATTR_EFFECT, ""))) == EFFECT_OFF
+            and not self.coordinator.profile.partition_segment_writes
+        )
+        if static_requested and not (
             self.coordinator.profile.brightness_zero_turns_off and kwargs.get(ATTR_BRIGHTNESS) == 0
         ):
             guard = None
-            if self.coordinator.identity_gated_controls:
+            if self.coordinator.identity_gated_controls or get_profile(self.coordinator.model).static_identity_fields:
                 self._validate_basic_request(kwargs, profile=self.coordinator.native_presentation_profile)
                 guard = await self.coordinator.async_prepare_identity_gated_control()
             async with self.coordinator.async_mask_transaction():

@@ -39,6 +39,7 @@ Keep real product differences without turning each product into a separate imple
   Use Home Assistant's native colour-temperature mode and Kelvin bounds, keeping product limits independent of compatible wire grammars.
   Normalise requests and restoration writes against the effective range, but preserve valid native Kelvin observations rather than clamping them to the write limits.
   Required BLE companion colours remain protocol data, not Home Assistant RGB approximations.
+  A white-mode indicator without a qualified temperature is not RGB or an exact Kelvin observation; never restore it from an unrelated retained colour.
 - Give each fact one authority.
   Derive catalogue support and apply projections from the release contract, narrowed by the effective profile, rather than maintaining parallel capability flags.
   Project catalogue defaults and direct template resolution from the same effective contract; every advertised default must compile within its bounds.

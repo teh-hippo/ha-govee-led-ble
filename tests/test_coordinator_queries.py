@@ -33,6 +33,22 @@ from tests.coordinator_test_support import _CONFIGURATION_URL, _c, _packet
 M = "custom_components.ha_govee_led_ble.coordinator"
 
 
+@pytest.mark.parametrize("unknown", [False, True])
+async def test_rgb_mode_confirmation_does_not_accept_unknown_white(hass, monkeypatch, virtual_clock, unknown):
+    coord = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6181", configuration_url=None)
+    client = _c()
+    coord._client = client
+    monkeypatch.setattr(coord, "_ensure_connected", AsyncMock(return_value=client))
+
+    async def reply(*_args, **_kwargs):
+        coord._notify_callback(None, bytearray(_packet(0xAA, 5, [2, 255, 255, 255, int(unknown), 0, 0, 0])))
+        return True
+
+    monkeypatch.setattr(coord, "_send_state_queries", reply)
+    result = await coord.refresh_state(RefreshRequest(zero_kelvin=True, timeout=0.1))
+    assert result is (None if unknown else True)
+
+
 @pytest.mark.parametrize(
     ("remaining_domain", "complete"),
     [(None, True), (ReadDomain.BRIGHTNESS, False), (ReadDomain.OTHER, True)],

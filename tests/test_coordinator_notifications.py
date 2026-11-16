@@ -7,6 +7,7 @@ from dataclasses import replace
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+from homeassistant.components.light import ColorMode
 
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, MUSIC_MODE_SLUGS
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
@@ -28,6 +29,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_white_balance_query,
     parse_command_ack_result,
 )
+from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.light_commands import (
     build_color_rgb,
     build_color_temp,
@@ -51,6 +53,78 @@ def test_semantically_invalid_status_is_never_recorded_as_parsed(coord, monkeypa
     assert record.call_args.kwargs["outcome"] == "rejected"
     assert record.call_args.kwargs["reason"] == "semantic_rejected"
     assert coord.capture_effect_control_state() == before
+
+
+@pytest.mark.parametrize("selector", [2, 13])
+@pytest.mark.parametrize("previous", ["rgb", "kelvin"])
+async def test_unknown_white_replaces_stale_colour_without_inventing_a_temperature(hass, selector, previous):
+    coord = GoveeBLECoordinator(hass, "55:66:77:88:99:AA", "H6181", configuration_url=_CONFIGURATION_URL)
+    if previous == "rgb":
+        coord._notify_callback(None, bytearray(_packet(0xAA, 5, [selector, 255, 0, 0])))
+    else:
+        coord._notify_callback(None, bytearray(_packet(0xAA, 5, [selector, 255, 255, 255, 1, 255, 213, 161])))
+    light = GoveeBLELight(coord)
+    coord._notify_callback(None, bytearray(_packet(0xAA, 5, [selector, 255, 255, 255, 1, 0, 0, 0])))
+
+    assert light.color_mode is ColorMode.COLOR_TEMP
+    assert light.color_temp_kelvin is None and light.rgb_color is None
+    assert light.extra_restore_state_data is None
+    assert not light._can_restore_static_color
+    assert coord.color_mode is ParsedMode.COLOUR
+    assert coord.color_temp_kelvin is None
+    assert coord.color_temp_kelvin_source == "observed"
+    assert coord.capture_effect_control_state().mode == "unknown"
+    assert coord._capture_static_state() is None
+    assert coord._prepare_static_restore(coord.capture_effect_control_state()) is None
+    assert coord.packet_log[-1]["outcome"] == "parsed"
+
+    coord._notify_callback(None, bytearray(_packet(0xAA, 5, [selector, 12, 34, 56])))
+    assert light.color_mode is ColorMode.RGB and light.rgb_color == (12, 34, 56)
+    coord._notify_callback(None, bytearray(_packet(0xAA, 5, [selector, 255, 255, 255, 1, 255, 213, 161])))
+    assert light.color_mode is ColorMode.COLOR_TEMP and light.color_temp_kelvin == 4000
+
+
+@pytest.mark.parametrize("expected", [{"rgb_color": (255, 0, 0)}, {"color_temp_kelvin": 4000}])
+async def test_unknown_white_does_not_confirm_a_pending_exact_colour(hass, expected):
+    coord = GoveeBLECoordinator(hass, "55:66:77:88:99:AA", "H6181", configuration_url=_CONFIGURATION_URL)
+    coord.install_static_color(rgb=expected.get("rgb_color"), kelvin=expected.get("color_temp_kelvin"))
+    coord._arm_expected_values(expected)
+    coord._notify_callback(None, bytearray.fromhex("aa0502ffffff0100000000000000000000000053"))
+
+    assert all(getattr(coord, field) == value for field, value in expected.items())
+    assert not coord.color_temp_unknown
+    assert not set(expected).intersection(coord._field_revisions)
+
+
+async def test_power_cycle_preserves_unknown_white_without_replaying_old_colour(hass, monkeypatch, virtual_clock):
+    coord = GoveeBLECoordinator(hass, "55:66:77:88:99:AA", "H6181", configuration_url=_CONFIGURATION_URL)
+    coord._notify_callback(None, bytearray(_packet(0xAA, 5, [2, 255, 0, 0])))
+    coord._notify_callback(None, bytearray.fromhex("aa0502ffffff0100000000000000000000000053"))
+    coord._notify_callback(None, bytearray(_packet(0xAA, 1, [1])))
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet[0] == 0x33:
+            coord._notify_callback(None, bytearray(_packet(0xAA, 1, [packet[2]])))
+
+    client = _c(write_gatt_char=AsyncMock(side_effect=write))
+    coord._client, coord._notification_token = client, object()
+    monkeypatch.setattr(coord, "_ensure_connected", AsyncMock(return_value=client))
+    light = GoveeBLELight(coord)
+    light.hass = hass
+    light.async_write_ha_state = Mock()
+    monkeypatch.setattr(light, "_refresh_with_retry", AsyncMock())
+
+    await light.async_turn_off()
+    await light.async_turn_on()
+
+    assert [call.args[1] for call in client.write_gatt_char.await_args_list] == [
+        build_power(False, "H6181"),
+        build_power(True, "H6181"),
+    ]
+    assert light.is_on is True
+    assert light.color_mode is ColorMode.COLOR_TEMP
+    assert light.color_temp_kelvin is None and light.rgb_color is None
+    assert coord.capture_effect_control_state().mode == "unknown"
 
 
 @pytest.fixture

@@ -154,6 +154,7 @@ class ParsedColorModeResponse:
     rgb_color: tuple[int, int, int] | None = None
     static_fields: frozenset[Literal["rgb_color", "color_temp_kelvin", "static_gradual"]] | None = None
     color_temp_kelvin: int | None = None
+    color_temp_unknown: bool = False
     white_brightness: int | None = None
     multi_effect_flag: int | None = None
     left_bar_kelvin: int | None = None
@@ -344,7 +345,10 @@ def _parse_static_mode(detail: Any, profile: ModelProfile) -> ParsedColorModeRes
         if detail.temperature_flag not in (0, 1):
             raise ValueError("Invalid legacy colour-temperature flag")
         if detail.temperature_flag:
-            kelvin = table_rgb_kelvin(_rgb_values(detail.companion_rgb))
+            companion = _rgb_values(detail.companion_rgb)
+            if companion == (0, 0, 0):
+                return ParsedColorModeResponse(mode=ParsedMode.COLOUR, color_temp_unknown=True)
+            kelvin = table_rgb_kelvin(companion)
             if kelvin is None or not profile.min_color_temp_kelvin <= kelvin <= profile.max_color_temp_kelvin:
                 raise ValueError("Unrecognised legacy colour-temperature companion")
             return ParsedColorModeResponse(mode=ParsedMode.COLOUR, color_temp_kelvin=kelvin)
