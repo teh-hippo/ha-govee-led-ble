@@ -272,6 +272,29 @@ def has_segmented_sources(profile: ModelProfile) -> bool:
     )
 
 
+def native_source_fields(profile: ModelProfile) -> dict[str, tuple[str, str]]:
+    fields = {
+        f"{source.key}_{attribute}": (source.key, attribute)
+        for source in profile.light_sources
+        if source.native_control and source.control in profile.boolean_controls
+        for attribute in ("kelvin", "brightness")
+        if attribute != "kelvin" or "color_temp" in (source.color_modes or ())
+    }
+    if profile.supports_ripple_speed:
+        fields["ripple_speed"] = ("top", "ripple_speed")
+    return fields
+
+
+def source_kelvin_hint_fields(profile: ModelProfile) -> frozenset[str]:
+    return frozenset(
+        f"{source.kelvin_hint_source}_kelvin"
+        for source in profile.light_sources
+        if source.kelvin_hint_source is not None
+        and source.control in profile.boolean_controls
+        and source_segments_available(source, profile)
+    )
+
+
 def source_color_modes(source: LightSource | None, profile: ModelProfile) -> frozenset[str]:
     if source is None or source.control not in profile.boolean_controls:
         return frozenset({"onoff"})

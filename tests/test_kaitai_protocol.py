@@ -1189,9 +1189,13 @@ async def test_static_failure_never_restores_stale_mode_siblings(hass, model, fr
 
 
 @pytest.mark.parametrize("fail", [False, True])
-async def test_clear_effect_preserves_newer_scene_notification(static_coordinator, fail):
+async def test_clear_effect_preserves_newer_scene_notification(static_coordinator, monkeypatch, fail):
     coord = static_coordinator
+    coord.profile = replace(coord.profile, segment_count=0, supports_segment_writes=False)
+    monkeypatch.setitem(MODEL_PROFILES, coord.model, coord.profile)
     coord.is_on = True
+    coord._notify_callback(None, _static_reply(rgb=(1, 2, 3)))
+    coord._pre_mode_snapshot = coord._capture_static_state()
     light = GoveeBLELight(coord)
 
     async def send(_packet, **_kwargs):
@@ -1200,11 +1204,10 @@ async def test_clear_effect_preserves_newer_scene_notification(static_coordinato
             raise RuntimeError("effect-off write failed")
 
     coord.send_command = AsyncMock(side_effect=send)
-    if fail:
-        with pytest.raises(HomeAssistantError), light._rollback():
-            await light._async_clear_effect()
-    else:
-        await light._async_clear_effect()
+    coord.refresh_state = AsyncMock(return_value=True)
+    with pytest.raises(HomeAssistantError), light._rollback():
+        await coord.async_restore_pre_mode()
+    coord.send_command.assert_awaited()
     assert coord.color_mode is ParsedMode.SCENE and coord.scene_code == 65000
     assert coord.active_mode == "scene"
 
@@ -1387,6 +1390,7 @@ def test_static_segment_companion_retains_but_does_not_observe_kelvin(static_coo
 async def test_static_local_write_keeps_notification_source(static_coordinator, rgb):
     coord = static_coordinator
     coord.is_on = True
+    coord._power_known = True
     light = GoveeBLELight(coord)
     light.async_write_ha_state = MagicMock()
     frame = _static_reply(rgb=(1, 2, 3)) if rgb else _static_reply(kelvin=4200)
@@ -1428,9 +1432,7 @@ async def test_static_command_restoration_is_not_observation(static_coordinator,
     assert coord.color_temp_kelvin == 4200 and coord.color_temp_kelvin_source == "optimistic"
     assert coord._field_revisions["color_temp_kelvin"] == 1
     if restore == "recovery":
-        coord.refresh_state.assert_awaited_once_with(
-            RefreshRequest(on=True, brightness=prior.brightness_pct, color_temp_kelvin=4200)
-        )
+        coord.refresh_state.assert_awaited_once_with(RefreshRequest(color_temp_kelvin=4200))
     assert coord._client.write_gatt_char.await_args.args[1] == build_color_temp(4200, coord.model)
 
 

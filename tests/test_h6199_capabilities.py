@@ -289,6 +289,8 @@ async def lifecycle(hass, monkeypatch):
         async def transmit(_uuid, packet, **kwargs):
             nonlocal next_notification
             packets.append(packet)
+            if packet[:3] == b"\x33\x05\x00":
+                replies[build_colour_mode_query(c.model)] = frame("aa" + packet[1:-1].hex())
             if packet in replies:
                 # A GATT write completes before the separate BLE notification arrives.
                 loop = asyncio.get_running_loop()
@@ -345,7 +347,6 @@ async def test_real_reconnect_waits_for_identity_before_guard(lifecycle, hass, m
             assert await apply_active_video_mode(c, mode="movie", requested_values={"sound_effects": True})
 
     replies[build_white_balance_query("H6199")] = frame("aaa90006011003011505")
-    replies[build_colour_mode_query("H6199")] = frame("aa05000100640164")
     if identity == "qualified":
         await apply()
         expected = {

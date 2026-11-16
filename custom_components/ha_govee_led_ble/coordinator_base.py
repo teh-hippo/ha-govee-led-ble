@@ -16,7 +16,8 @@ from .coordinator_status import ParsedMode, StatusDomain
 from .coordinator_upload import PendingUploadAck
 
 if TYPE_CHECKING:
-    from .coordinator_modes import PreModeSnapshot, _ModeTransition
+    from .coordinator_modes import ModeTransitionPurpose, _ModeTransition
+    from .coordinator_recovery import PreparedStaticRecovery
     from .coordinator_refresh import RefreshRequest
     from .effect_deployments import PriorControlState
     from .effect_domain import EffectContent
@@ -120,10 +121,12 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     segment_kelvin: list[int | None]
     segment_brightness_known: list[bool]
     _brightness_pct_known: bool
+    _power_known: bool
+    _static_colour_known: bool
 
     _profile_generation: int
     _authorization_generation: int
-    _pre_mode_snapshot: PreModeSnapshot
+    _pre_mode_snapshot: PriorControlState | None
     segment_colors: list[tuple[int, int, int]]
     segment_brightness: list[int]
     segment_brightness_readable: bool
@@ -191,8 +194,11 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
         def capture_effect_control_state(self) -> PriorControlState: ...
 
         async def async_restore_effect_control_state(
-            self, state: PriorControlState, *, overwritten_diy_code: int | None
+            self, state: PriorControlState | PreparedStaticRecovery, *, overwritten_diy_code: int | None
         ) -> bool: ...
+
+        def require_static_baseline(self) -> PriorControlState: ...
+        def prepare_static_recovery(self, prepared: PreparedStaticRecovery | None = None) -> PreparedStaticRecovery: ...
 
         @property
         def effect_authorization_profile(self) -> ModelProfile: ...
@@ -207,7 +213,13 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
 
         def _advance_profile_generation(self) -> None: ...
 
-        def async_mode_transition(self) -> AbstractAsyncContextManager[None]: ...
+        def async_mode_transition(
+            self, *, purpose: ModeTransitionPurpose | None = None
+        ) -> AbstractAsyncContextManager[None]: ...
+
+        async def async_prepare_static_baseline(self) -> PriorControlState: ...
+
+        async def async_admit_effect_selection(self) -> None: ...
 
         def _revalidate_upload_ack(self) -> None: ...
 

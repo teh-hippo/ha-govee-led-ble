@@ -247,6 +247,8 @@ class GoveeBLECoordinator(
         self.color_temp_kelvin: int | None = None
         self._pending_kelvin: int | None = None
         self._static_rgb_known = False
+        self._static_colour_known = False
+        self._power_known = False
         self.static_gradual: bool | None = None
         self.left_bar_kelvin: int | None = None
         self.right_bar_kelvin: int | None = None
@@ -1196,6 +1198,8 @@ class GoveeBLECoordinator(
             return
         self._invalidate_upload_ack(BleakError("Device disconnected during effect upload"))
         self._client = None
+        self._pre_mode_snapshot = None
+        self._power_known = self._static_colour_known = False
         self._static_rgb_known = False
         self._music_palette = self._music_body = None
         self._notification_token = None
@@ -1296,6 +1300,7 @@ class GoveeBLECoordinator(
             self._field_received_at[field] = received_at
             self._h607c_uncertain_state_fields.discard(field)
             if field == "is_on":
+                self._power_known = True
                 self._observed_power_write_generation = self._power_write_generation
                 self._observed_power_profile_generation = self._profile_generation
             elif field == "brightness_pct":
@@ -1390,6 +1395,8 @@ class GoveeBLECoordinator(
                 self._enter_static_mode()
             return _StaticWriteIntent()
         self._static_write_attempts += 1
+        if static.rgb is not None or static.kelvin is not None:
+            self._static_colour_known = False
         mask = static.segment_mask if static.segment_mask is not None else self.profile.whole_device_mask
         if len(self.segment_kelvin) != self.profile.segment_count:
             self.segment_kelvin = [None] * self.profile.segment_count
@@ -1428,16 +1435,14 @@ class GoveeBLECoordinator(
         rgb = static.rgb or static.kelvin_companion_rgb
         if static.whole_strip and rgb is not None:
             self.install_static_color(rgb=static.rgb, kelvin=static.kelvin)
-        if static.segment_mask is not None:
+        if static.segment_mask is not None or rgb is not None:
             self.mark_segment_state_optimistic(
                 colours=[
-                    rgb if rgb is not None and static.segment_mask & (1 << index) else colour
+                    rgb if rgb is not None and mask & (1 << index) else colour
                     for index, colour in enumerate(self.segment_colors)
                 ],
                 brightness=[
-                    static.brightness_pct
-                    if static.brightness_pct is not None and static.segment_mask & (1 << index)
-                    else value
+                    static.brightness_pct if static.brightness_pct is not None and mask & (1 << index) else value
                     for index, value in enumerate(self.segment_brightness)
                 ],
             )
@@ -1531,10 +1536,26 @@ class GoveeBLECoordinator(
         transition = self._mode_transition
         if transition is not None and transition.owner is not asyncio.current_task():
             transition = None
+        if (
+            arm_expected
+            and transition is not None
+            and transition.purpose is not None
+            and transition.captured
+            and transition.profile is not None
+            and (
+                not same_control_profile(transition.profile, self.profile)
+                or transition.profile_generation != self._profile_generation
+                or transition.subscription is not self._notification_token
+                or transition.foreground_generation != self._control_arbiter.foreground_generation
+            )
+        ):
+            raise ValueError("Static restoration context changed before control write")
         static_mode = self.active_mode == "colour" or (not self.is_on and previous_mode is ParsedMode.COLOUR)
         if arm_expected and transition is not None and not transition.captured:
             transition.snapshot = self._capture_static_state() if static_mode else None
             transition.profile = self.profile
+            transition.profile_generation = self._profile_generation
+            transition.subscription = self._notification_token
             transition.foreground_generation = self._control_arbiter.foreground_generation
             transition.captured = True
         mode_change = arm_expected and requested.get("color_mode", (None,))[0] not in (None, ParsedMode.COLOUR)
@@ -1566,6 +1587,7 @@ class GoveeBLECoordinator(
             self._mode_write_generation += 1
         if arm_expected and "is_on" in requested:
             self._power_write_generation += 1
+            self._power_known = False
         if arm_expected:
             for field in ("is_on", "brightness_pct"):
                 if field in requested:
@@ -1660,6 +1682,15 @@ class GoveeBLECoordinator(
             raise ValueError("Device identity changed during control write; refresh and retry")
         if arm_expected and "brightness_pct" in requested:
             self._brightness_pct_known = True
+        if arm_expected and "is_on" in requested:
+            self._power_known = True
+        if (
+            arm_expected
+            and static is not None
+            and static.whole_strip
+            and (static.rgb is not None or static.kelvin is not None)
+        ):
+            self._static_colour_known = True
         if (
             arm_expected
             and static is not None
@@ -3311,6 +3342,8 @@ class GoveeBLECoordinator(
 
     def _advance_profile_generation(self) -> None:
         self._profile_generation += 1
+        self._pre_mode_snapshot = None
+        self._power_known = self._static_colour_known = False
         self._invalidate_upload_ack(ValueError("Device profile changed during effect upload"))
 
     async def _await_upload_ack(self, pending: PendingUploadAck | None, check_connection: Callable[[], None]) -> None:
@@ -3419,6 +3452,8 @@ class GoveeBLECoordinator(
                         if writer is None:
                             async with asyncio.timeout(CONNECTION_SETUP_TIMEOUT):
                                 client = await self._ensure_connected()
+                            if attempt > 1:
+                                self._rebind_selection_retry()
                         else:
                             if self._client is None or not self._client.is_connected:
                                 raise BleakError("Device disconnected during preview")
@@ -3823,6 +3858,8 @@ class GoveeBLECoordinator(
                 for attempt in range(3):
                     try:
                         client = await self._ensure_connected()
+                        if attempt:
+                            self._rebind_selection_retry()
                         await self._async_write_packet(
                             client,
                             packet,

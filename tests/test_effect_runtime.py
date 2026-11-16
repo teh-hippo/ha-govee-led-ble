@@ -63,8 +63,13 @@ from custom_components.ha_govee_led_ble.effect_runtime import (
     observable_signature_for_compiled,
     resolve_diy_code,
 )
-from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_power, build_video_mode
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
+    build_brightness,
+    build_power,
+    build_video_mode,
+)
 from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_catalogue_layered_scene
+from custom_components.ha_govee_led_ble.light_commands import build_color_rgb
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
 from custom_components.ha_govee_led_ble.transport import WRITE_UUID, xor_checksum
 from tests.storage_test_double import InMemoryVersionedDocumentStore
@@ -283,33 +288,6 @@ async def test_prior_preflight_refreshes_master_brightness_in_every_mode(mode):
         coordinator.async_refresh_segments.assert_awaited_once()
     else:
         coordinator.async_refresh_segments.assert_not_awaited()
-
-
-async def test_preview_rejects_h7020_static_state_with_ambiguous_white_intent():
-    coordinator = _coordinator()
-    coordinator.model = "H7020"
-    coordinator.profile = replace(
-        get_profile("H7020"),
-        read_domains=get_profile("H7020").read_domains | {ReadDomain.SEGMENTS},
-        segment_count=30,
-        configured_string_counts=(1, 2),
-        bulbs_per_string=15,
-        supports_segment_writes=True,
-        supports_segment_brightness=True,
-        supports_segment_color_temperature=True,
-    )
-    coordinator.active_mode = "colour"
-    coordinator.segment_colors = [(1, 2, 3)] * 30
-    coordinator.segment_brightness = [100] * 30
-
-    async def refresh_segments():
-        coordinator.segment_state_source = "observed"
-        return True
-
-    coordinator.async_refresh_segments.side_effect = refresh_segments
-    with pytest.raises(RuntimeError, match="RGB or white intent"):
-        await async_prepare_effect_control_state(coordinator, require_restorable_static=True)
-    coordinator.async_refresh_segments.assert_not_awaited()
 
 
 @pytest.mark.parametrize("model", ["H7020", "H60A1", "H60A6"])
@@ -1400,6 +1378,11 @@ async def test_video_deployment_cancellation_recovers_only_after_physical_attemp
         return client
 
     monkeypatch.setattr(coordinator, "_ensure_connected", connect)
+    monkeypatch.setattr(
+        coordinator,
+        "async_prepare_static_baseline",
+        AsyncMock(return_value=PriorControlState("colour", True, 50, (10, 20, 30), static_rgb_known=True)),
+    )
     restore = AsyncMock(return_value=False)
     monkeypatch.setattr(coordinator, "async_restore_effect_control_state", restore)
     content = VideoProfile(
@@ -1479,6 +1462,16 @@ async def test_music_deployment_before_first_control_preserves_native_selection(
     cancelled: bool,
 ) -> None:
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url="test")
+    coordinator._pre_mode_snapshot = PriorControlState(
+        "colour",
+        True,
+        50,
+        (10, 20, 30),
+        static_rgb_known=True,
+        segment_colors=((10, 20, 30),) * coordinator.profile.segment_count,
+        segment_brightness=(100,) * coordinator.profile.segment_count,
+        segment_kelvin=(0,) * coordinator.profile.segment_count,
+    )
     for body in ("aa0101", "aa051303140000000000"):
         frame = bytearray(bytes.fromhex(body).ljust(19, b"\x00"))
         frame.append(xor_checksum(frame))
@@ -2349,6 +2342,10 @@ async def test_write_only_h601c_deployment_installs_optimistic_state_without_rol
     coordinator._client = client
     monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
     monkeypatch.setattr(coordinator, "_renew_foreground_lease", lambda: None)
+    await coordinator.send_command(build_power(True, coordinator.model))
+    await coordinator.send_command(build_brightness(50, coordinator.model))
+    await coordinator.send_command(build_color_rgb(10, 20, 30, coordinator.model))
+    client.write_gatt_char.reset_mock()
     item = _type04_item()
     compiled = compile_h617a(item, 24, model="H601C")
     engine = EffectDeploymentEngine(repository, cache, active_workspaces)
@@ -2910,6 +2907,11 @@ async def test_reduced_video_profile_skips_unsupported_companion_workflows(
     coordinator.is_on = True
     coordinator.video_saturation = 88
     coordinator.video_sound_effects_softness = 50
+    monkeypatch.setattr(
+        coordinator,
+        "async_prepare_static_baseline",
+        AsyncMock(return_value=PriorControlState("colour", True, 50, (10, 20, 30), static_rgb_known=True)),
+    )
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
     monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
 

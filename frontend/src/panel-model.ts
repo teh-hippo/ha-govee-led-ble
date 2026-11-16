@@ -295,7 +295,7 @@ export class PanelModel {
       "- What I tried:",
       "- What visibly worked:",
       "- What failed or behaved unexpectedly:",
-      "- Anything unexpected in Home Assistant state or after restoring a preview:",
+      "- Anything unexpected in Home Assistant state, Live changes or effect off:",
       "- What I did not test:",
       "",
       "### Follow-up",

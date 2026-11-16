@@ -27,11 +27,9 @@ from custom_components.ha_govee_led_ble.effect_application import EffectStudioAp
 from custom_components.ha_govee_led_ble.effect_catalogue import MODEL_EFFECT_CATALOGUES
 from custom_components.ha_govee_led_ble.effect_commands import DiyPaintGroup, build_h607c_diy_painted
 from custom_components.ha_govee_led_ble.effect_compiler import compile_application, compile_music_profile
-from custom_components.ha_govee_led_ble.effect_deployments import PriorControlState
 from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, MusicProfile, effect_content_to_dict
 from custom_components.ha_govee_led_ble.effect_runtime import (
     async_apply_compiled_profile,
-    async_prepare_effect_control_state,
 )
 from custom_components.ha_govee_led_ble.effect_websocket_payloads import item_summary
 from custom_components.ha_govee_led_ble.h607c_effects import decode_zoned_diy, encode_zoned_diy
@@ -457,36 +455,6 @@ async def test_music_dreamview_service_admits_only_the_exact_member_form_before_
     assert member.area_num == 13 and member.zones == ()
     coordinator.async_validate_dreamview_members.assert_awaited_once()
     entity._async_supersede_preview.assert_awaited_once()
-
-
-@pytest.mark.parametrize("problem", ["pole", "base", "companion", "white-on", "white-off"])
-async def test_native_preview_rejects_incomplete_recovery_state_before_writes(problem):
-    state = PriorControlState(
-        mode="custom",
-        is_on=True,
-        brightness_pct=50,
-        rgb_color=(1, 2, 3),
-        pole_enabled=True,
-        base_enabled=False,
-        diy_code=1234,
-        diy_companion=5678,
-    )
-    if problem in {"pole", "base"}:
-        state = replace(state, **{f"{problem}_enabled": None})
-    elif problem == "companion":
-        state = replace(state, diy_companion=None)
-    else:
-        state = replace(state, mode="colour", is_on=problem == "white-on", static_rgb_known=False)
-    coordinator = SimpleNamespace(
-        profile=get_profile("H607C"),
-        capture_effect_control_state=lambda: state,
-        source_field_fresh=lambda _field: False,
-        refresh_state=AsyncMock(return_value=False),
-        _async_write_packet=AsyncMock(),
-    )
-    with pytest.raises(RuntimeError, match="restor|current source state|complete source layout"):
-        await async_prepare_effect_control_state(coordinator, require_restorable_static=True)
-    coordinator._async_write_packet.assert_not_awaited()
 
 
 @pytest.mark.parametrize(

@@ -34,6 +34,7 @@ from custom_components.ha_govee_led_ble.effect_compiler import (
 )
 from custom_components.ha_govee_led_ble.effect_deployments import (
     ObservationConfidence,
+    PriorControlState,
 )
 from custom_components.ha_govee_led_ble.effect_diagnostics import EffectDiagnosticHistory
 from custom_components.ha_govee_led_ble.effect_domain import (
@@ -92,9 +93,27 @@ def _h6179_item(name: str = "H6179 DIY") -> LibraryItem:
     )
 
 
+def _known_static_baseline(coordinator) -> PriorControlState:
+    count = coordinator.profile.segment_count if coordinator.profile.supports_segments else 0
+    return PriorControlState(
+        "colour",
+        True,
+        50,
+        (10, 20, 30),
+        static_rgb_known=True,
+        static_colour_observed=True,
+        segment_colors=((10, 20, 30),) * count if count else None,
+        segment_brightness=(100,) * count if count else None,
+        segment_kelvin=(0,) * count if count else None,
+    )
+
+
 class _EffectCoordinator(SimpleNamespace):
-    def async_mode_transition(self):
+    def async_mode_transition(self, *, purpose=None):
         return nullcontext()
+
+    async def async_admit_effect_selection(self):
+        pass
 
     def identity_fields_confirmed(self, fields=None):
         return True
@@ -215,32 +234,6 @@ async def _manager(
         lambda entry_id: entry if entry_id == entry.entry_id else None,
     )
     return manager, cache
-
-
-async def test_h7020_static_preview_rejects_ambiguous_per_bulb_white_intent(hass, monkeypatch):
-    coordinator = _coordinator(model="H7020", readable=True)
-    coordinator.is_on = True
-    manager, _cache = await _manager(hass, monkeypatch, coordinator)
-    events: list[PreviewStatus] = []
-    owner = object()
-    session = _open(manager, owner, events)
-    try:
-        await manager.async_queue_snapshot(
-            session_id=session,
-            owner=owner,
-            config_entry_id="entry-a",
-            sequence=1,
-            updated_at="2026-10-21T00:00:00Z",
-            item=_item("Ambiguous static"),
-            diy_code=321,
-        )
-        await manager.async_wait_idle("entry-a")
-
-        assert events[-1].phase is PreviewPhase.FAILED
-        assert events[-1].write_disposition is PreviewWriteDisposition.NOT_STARTED
-        assert not coordinator.writes
-    finally:
-        await manager.async_shutdown()
 
 
 async def test_h6181_music_preview_is_written_without_attempting_selector_verification(hass, monkeypatch):
@@ -1483,6 +1476,9 @@ async def test_snapshot_profile_previews_use_preview_transport(
         monkeypatch.setattr(coordinator, "refresh_state", fresh_policy)
     coordinator.async_preview_preflight = AsyncMock()  # type: ignore[method-assign]
     coordinator.async_preview_write = AsyncMock(wraps=coordinator.async_preview_write)  # type: ignore[method-assign]
+    monkeypatch.setattr(
+        coordinator, "async_prepare_static_baseline", AsyncMock(return_value=_known_static_baseline(coordinator))
+    )
     coordinator.async_observe_effect = AsyncMock(return_value=True)  # type: ignore[method-assign]
     coordinator.send_command = AsyncMock(side_effect=AssertionError("preview must use preview transport"))  # type: ignore[method-assign]
     manager, _cache = await _manager(hass, monkeypatch, coordinator)
@@ -1917,6 +1913,9 @@ async def test_toggle_only_live_preview_uses_fresh_external_policy(hass, monkeyp
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6099", configuration_url="test")
     coordinator._notify_callback(None, bytearray(frame("aaa90a0600020a007800")))
     coordinator.is_on = True
+    monkeypatch.setattr(
+        coordinator, "async_prepare_static_baseline", AsyncMock(return_value=_known_static_baseline(coordinator))
+    )
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(), disconnect=AsyncMock())
     coordinator._client = client
     monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
@@ -2491,6 +2490,9 @@ async def test_h6179_preview_holds_previews_through_admission_check_before_selec
     coordinator._resolve_device_profile()
     coordinator.is_on = True
     coordinator.diy_code = 0x1234
+    baseline = _known_static_baseline(coordinator)
+    coordinator._pre_mode_snapshot = baseline
+    monkeypatch.setattr(coordinator, "async_prepare_static_baseline", AsyncMock(return_value=baseline))
     coordinator.async_preview_preflight = AsyncMock()  # type: ignore[method-assign]
     coordinator.refresh_state = AsyncMock(return_value=True)  # type: ignore[method-assign]
     item = _h6179_item()
@@ -2536,6 +2538,7 @@ async def test_h6179_preview_holds_previews_through_admission_check_before_selec
     assert writes == list(compiled.upload_packets)
     assert compiled.activation_packet not in writes
     assert user_entered.is_set()
+    assert coordinator._pre_mode_snapshot is baseline
     assert any(event.phase is PreviewPhase.CANCELLED and event.error_code == "superseded" for event in events)
     await manager.async_shutdown()
 

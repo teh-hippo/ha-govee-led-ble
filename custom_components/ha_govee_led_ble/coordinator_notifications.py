@@ -126,6 +126,7 @@ class _NotificationMixin(_CoordinatorBase):
             if self.profile.setting_grammar == "H607C":
                 self._field_received_at.pop("diy_companion", None)
             if expectations["color_mode"][0] is not ParsedMode.COLOUR:
+                self._static_colour_known = False
                 self.segment_kelvin = [None] * self.profile.segment_count
                 self.segment_brightness_known = [False] * self.profile.segment_count
                 for field in tuple(self._expected_state):
@@ -206,8 +207,15 @@ class _NotificationMixin(_CoordinatorBase):
         self._observed_color_mode = parsed.mode
         self._observed_mode_write_generation = self._mode_write_generation
         self._observed_mode_profile_generation = self._profile_generation
+        if (
+            parsed.mode is ParsedMode.COLOUR
+            and self.color_mode is not ParsedMode.COLOUR
+            and (self._mode_transition is None or not self._mode_transition.captured)
+        ):
+            self._pre_mode_snapshot = None
         if parsed.mode is not ParsedMode.COLOUR or self.color_mode is not ParsedMode.COLOUR:
             if parsed.mode is not ParsedMode.COLOUR:
+                self._static_colour_known = False
                 self.segment_kelvin = [None] * self.profile.segment_count
                 self.segment_brightness_known = [False] * self.profile.segment_count
                 for source in self.profile.light_sources:
@@ -345,6 +353,8 @@ class _NotificationMixin(_CoordinatorBase):
                 for attr, value in accepted_values.items():
                     setattr(self, attr, value)
                     setattr(self, _STATIC_SOURCE_ATTRS[attr], "observed" if attr in static_values else "initial")
+                if static_values.get("color_temp_kelvin") is not None or "rgb_color" in static_values:
+                    self._static_colour_known = True
                 if (
                     "rgb_color" in static_values
                     and "color_temp_kelvin" not in static_values

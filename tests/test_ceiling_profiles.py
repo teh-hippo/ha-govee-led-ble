@@ -147,6 +147,7 @@ def test_h601c_basic_app_encoding_has_no_artificial_revision_restriction(pact):
 async def test_h601c_rgb_write_does_not_wait_for_status_readback(hass, monkeypatch):
     c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H601C", configuration_url=None)
     c.is_on = True
+    c._power_known = True
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
     c._client = client
     monkeypatch.setattr(c, "_ensure_connected", AsyncMock(return_value=client))

@@ -11,6 +11,7 @@ from homeassistant.helpers.update_coordinator import UpdateFailed
 from custom_components.ha_govee_led_ble.const import device_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
+from custom_components.ha_govee_led_ble.effect_deployments import PriorControlState
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_brightness_query,
     build_firmware_query,
@@ -195,10 +196,27 @@ async def test_setup_identity_retry_is_bounded(transition_lifecycle, virtual_clo
 
 @pytest.mark.parametrize("roundtrip", [False, True])
 @pytest.mark.parametrize("operation", ["scene", "brightness", "power"])
-async def test_transition_during_awaited_control_does_not_reinstall_state(device, roundtrip, operation):
+async def test_transition_during_awaited_control_does_not_reinstall_state(device, monkeypatch, roundtrip, operation):
     c, client = device
     c.is_on = True
     c.brightness_pct = 20
+    if operation == "scene":
+        monkeypatch.setattr(
+            c,
+            "async_prepare_static_baseline",
+            AsyncMock(
+                return_value=PriorControlState(
+                    mode="colour",
+                    is_on=True,
+                    brightness_pct=20,
+                    rgb_color=(12, 34, 56),
+                    static_rgb_known=True,
+                    segment_colors=((12, 34, 56),) * c.profile.segment_count,
+                    segment_brightness=(100,) * c.profile.segment_count,
+                    segment_kelvin=(0,) * c.profile.segment_count,
+                )
+            ),
+        )
     light = GoveeBLELight(c)
     started, finish = asyncio.Event(), asyncio.Event()
 

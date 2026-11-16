@@ -39,6 +39,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     upload_ack_mode,
     upload_ack_success,
 )
+from custom_components.ha_govee_led_ble.light_commands import build_color_rgb
 from custom_components.ha_govee_led_ble.music_commands import (
     build_music_params,
     prepare_music_profile_writes,
@@ -369,6 +370,16 @@ def _music_transport(coordinator):
             assert upload_ack_index is not None and packets[upload_ack_index][0] == 0xA3
         await sequence(packets, writer=writer, **kwargs)
 
+    async def prepared_baseline():
+        if (
+            coordinator.effect is not None
+            or coordinator.diy_code is not None
+            or coordinator.music_mode != "off"
+            or coordinator.video_mode != "off"
+        ):
+            return coordinator._pre_mode_snapshot
+        return replace(coordinator.capture_effect_control_state(), mode="colour")
+
     with (
         patch.object(coordinator, "_client", client),
         patch.object(coordinator, "_ensure_connected", new_callable=AsyncMock, return_value=client),
@@ -376,6 +387,7 @@ def _music_transport(coordinator):
         patch.object(coordinator, "_renew_foreground_lease"),
         patch.object(coordinator, "refresh_state", new_callable=AsyncMock, return_value=False),
         patch.object(coordinator, "async_write_effect_sequence", side_effect=acknowledged_sequence),
+        patch.object(coordinator, "async_prepare_static_baseline", side_effect=prepared_baseline),
     ):
         yield client.write_gatt_char
 
@@ -620,7 +632,7 @@ async def test_music_static_intent_precedes_power_but_is_published_at_selector(h
                 _notify(coordinator, bytes([0xAA, 0xA5, group, *([100, 10, 20, 30] * 3)]))
             assert coordinator.rgb_color == (10, 20, 30)
         if packet == packets[-1]:
-            assert coordinator._pre_mode_snapshot.rgb == (1, 2, 3)
+            assert coordinator._pre_mode_snapshot.rgb_color == (1, 2, 3)
             assert coordinator.music_mode == "separation"
             if fail_at == "selector":
                 raise RuntimeError("selector failed")
@@ -635,8 +647,8 @@ async def test_music_static_intent_precedes_power_but_is_published_at_selector(h
     if fail_at == "power":
         assert coordinator._pre_mode_snapshot is snapshot
     else:
-        assert coordinator._pre_mode_snapshot.kind == "rgb"
-        assert coordinator._pre_mode_snapshot.rgb == (1, 2, 3)
+        assert coordinator._pre_mode_snapshot.mode == "colour"
+        assert coordinator._pre_mode_snapshot.rgb_color == (1, 2, 3)
         assert coordinator.rgb_color == (10, 20, 30)
 
 
@@ -1341,6 +1353,10 @@ async def test_alternate_fountain_direction_survives_capture_and_recovery(hass, 
     )
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "TEST-FOUNTAIN", configuration_url="test")
     with _music_transport(coordinator) as send:
+        await coordinator.send_command(build_power(True, coordinator.model))
+        await coordinator.send_command(build_brightness(50, coordinator.model))
+        await coordinator.send_command(build_color_rgb(1, 2, 3, coordinator.model))
+        send.reset_mock()
         await async_apply_compiled_profile(coordinator, compiled)
         packets = [call.args[1] for call in send.await_args_list]
         raw = coordinator.capture_effect_control_state().to_dict()
@@ -1367,7 +1383,9 @@ async def test_alternate_fountain_direction_survives_capture_and_recovery(hass, 
         # Recovery must restore the selected mode, not replay retained Fountain parameters.
         await async_apply_compiled_profile(coordinator, compiled)
         send.reset_mock()
-        assert not await coordinator.async_restore_effect_control_state(inactive, overwritten_diy_code=None)
+        assert await coordinator.async_restore_effect_control_state(inactive, overwritten_diy_code=None) is (
+            next_mode == "off"
+        )
         assert coordinator.music_mode == next_mode
         assert all(call.args[1][0] != 0xA3 for call in send.await_args_list)
         assert PriorControlState.from_dict(coordinator.capture_effect_control_state().to_dict()).music_parameters == {}
@@ -1375,7 +1393,9 @@ async def test_alternate_fountain_direction_survives_capture_and_recovery(hass, 
         powered_off = PriorControlState.from_dict(coordinator.capture_effect_control_state().to_dict())
         assert powered_off.mode == inactive.mode and not powered_off.is_on and powered_off.music_parameters == {}
         send.reset_mock()
-        assert not await coordinator.async_restore_effect_control_state(powered_off, overwritten_diy_code=None)
+        assert await coordinator.async_restore_effect_control_state(powered_off, overwritten_diy_code=None) is (
+            next_mode == "off"
+        )
         assert send.await_args_list[-1].args[1] == build_power(False, coordinator.model)
     del raw["music_parameters"]
     raw["music_fountain_direction"] = "alternate"

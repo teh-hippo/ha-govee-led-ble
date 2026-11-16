@@ -1380,6 +1380,7 @@ def ws_user_state_update(
         vol.Required("updated_at"): TIMESTAMP,
         vol.Optional("operation_id"): UUID_TEXT,
         vol.Optional("diy_code"): DIY_CODE,
+        vol.Optional("live"): bool,
     }
 )
 @require_admin
@@ -1417,6 +1418,7 @@ async def ws_apply(
                 operation_id=operation_id,
                 diy_code=msg.get("diy_code"),
                 compiled=compiled,
+                **({"live": msg["live"]} if "live" in msg else {}),
             )
     except EffectNotFoundError as exc:
         connection.send_error(msg["id"], "not_found", str(exc))

@@ -36,6 +36,7 @@ from custom_components.ha_govee_led_ble.effect_deployments import (
     DeploymentRecord,
     EffectDeploymentRepository,
     ObservationConfidence,
+    PriorControlState,
 )
 from custom_components.ha_govee_led_ble.effect_domain import (
     BuiltinScene,
@@ -613,9 +614,7 @@ async def test_failed_power_off_preserves_segment_colour_observation(hass, model
         assert coord._segment_query_colors[:size] == [rgb] * size
 
 
-@pytest.mark.parametrize(
-    "colour_request", [{"rgb_color": (200, 100, 50)}, {"color_temp_kelvin": 5000}, {"effect": "off"}]
-)
+@pytest.mark.parametrize("colour_request", [{"rgb_color": (200, 100, 50)}, {"color_temp_kelvin": 5000}])
 @pytest.mark.parametrize("mode_reply", [False, True])
 @pytest.mark.parametrize("observed_kelvin", [None, 4200])
 async def test_failed_colour_after_brightness_preserves_latest_observation(
@@ -1602,7 +1601,7 @@ async def test_turn_on_scene_applies_and_clears_sticky(light, mock_coordinator):
     assert co.music_mode == "off" and co.video_mode == "off"
 
 
-async def test_turn_on_effect_off_returns_to_static_colour(light, mock_coordinator):
+async def test_effect_off_uses_complete_recovery_instead_of_aggregate_colour(light, mock_coordinator):
     mock_coordinator.is_on = True
     mock_coordinator.effect = "rainbow"
     mock_coordinator.rgb_color = (12, 34, 56)
@@ -1611,24 +1610,25 @@ async def test_turn_on_effect_off_returns_to_static_colour(light, mock_coordinat
 
     await light.async_turn_on(effect="off")
 
-    mock_coordinator.send_command.assert_awaited_once_with(build_color_rgb(12, 34, 56))
-    assert mock_coordinator.effect is None
-    assert mock_coordinator.unknown_scene_code is None
-    assert mock_coordinator.segment_colors == [(12, 34, 56)] * 15
-    assert mock_coordinator.segment_state_source == "optimistic"
-    assert light.effect == "off"
+    mock_coordinator.prepare_static_recovery.assert_called_once_with()
+    mock_coordinator.async_restore_pre_mode.assert_awaited_once_with(
+        mock_coordinator.prepare_static_recovery.return_value
+    )
+    mock_coordinator.send_command.assert_not_awaited()
 
 
-async def test_turn_on_effect_off_restores_colour_temperature(light, mock_coordinator):
-    mock_coordinator.is_on = True
-    mock_coordinator.effect = "rainbow"
-    mock_coordinator.color_temp_kelvin = 4000
-
-    await light.async_turn_on(effect="off")
-
-    mock_coordinator.send_command.assert_awaited_once_with(build_color_temp(4000))
-    assert mock_coordinator.segment_colors == [table_kelvin_rgb(4000)] * 15
-    assert light.color_mode is ColorMode.COLOR_TEMP
+async def test_effect_off_without_baseline_rejects_before_combined_mutations(hass):
+    coord = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H617A", configuration_url=None)
+    coord.send_command = AsyncMock()
+    entity = GoveeBLELight(coord)
+    entity._async_supersede_preview = AsyncMock()
+    admission = coord._control_arbiter.admit_preview()
+    with pytest.raises(HomeAssistantError) as error:
+        await entity.async_turn_on(effect="off", brightness=100)
+    assert error.value.translation_key == "recovery_not_ready"
+    coord.send_command.assert_not_awaited()
+    entity._async_supersede_preview.assert_not_awaited()
+    assert admission.is_current
 
 
 async def test_turn_on_scene_uses_the_device_stored_default(mock_coordinator):
@@ -1860,6 +1860,16 @@ async def saved_video_light(hass, monkeypatch, request):
     coordinator.video_saturation = 63
     coordinator.video_sound_effects = False
     coordinator.video_sound_effects_softness = 27
+    coordinator._pre_mode_snapshot = PriorControlState(
+        "colour",
+        True,
+        50,
+        (10, 20, 30),
+        static_rgb_known=True,
+        segment_colors=((10, 20, 30),) * coordinator.profile.segment_count,
+        segment_brightness=(100,) * coordinator.profile.segment_count,
+        segment_kelvin=(0,) * coordinator.profile.segment_count,
+    )
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
     coordinator._client = client
     monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))

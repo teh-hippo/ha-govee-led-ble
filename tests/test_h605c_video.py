@@ -55,6 +55,22 @@ def device(hass, monkeypatch):
     coordinator.subordinate_20_version = "1.03.30"
     coordinator.subordinate_21_version = "1.00.18"
     monkeypatch.setattr(coordinator, "refresh_state", AsyncMock(return_value=True))
+    monkeypatch.setattr(
+        coordinator,
+        "async_prepare_static_baseline",
+        AsyncMock(
+            return_value=PriorControlState(
+                "colour",
+                True,
+                50,
+                (10, 20, 30),
+                static_rgb_known=True,
+                segment_colors=((10, 20, 30),) * coordinator.profile.segment_count,
+                segment_brightness=(100,) * coordinator.profile.segment_count,
+                segment_kelvin=(0,) * coordinator.profile.segment_count,
+            )
+        ),
+    )
     return coordinator
 
 

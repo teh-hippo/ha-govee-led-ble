@@ -1,5 +1,6 @@
 """H617A review regressions and remaining findings; never connect to a real radio."""
 
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -46,6 +47,13 @@ def coordinator(hass):
 
 @pytest.mark.parametrize("accept_colour", [True, False])
 async def test_restoration_preserves_segments_and_rejects_wrong_readback(coordinator, accept_colour):
+    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
+    coordinator._client = client
+    coordinator._notification_token = object()
+    coordinator._notify_started_monotonic = time.monotonic() - 1
+    coordinator._notify_callback(None, frame(1, [1]))
+    coordinator._notify_callback(None, frame(4, [37]))
+    coordinator._notify_callback(None, frame(5, [0x15, 0]))
     coordinator.is_on = True
     coordinator.color_mode = ParsedMode.COLOUR
     coordinator.brightness_pct = 37
@@ -86,8 +94,7 @@ async def test_restoration_preserves_segments_and_rejects_wrong_readback(coordin
         elif packet[1] == 0xA5 and packet[2] == 5:
             observe_segments(coordinator, physical, physical_brightness)
 
-    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(side_effect=transmit))
-    coordinator._client = client
+    client.write_gatt_char.side_effect = transmit
     with (
         patch.object(coordinator, "_ensure_connected", AsyncMock(return_value=client)),
         patch.object(coordinator, "_renew_foreground_lease"),
@@ -136,9 +143,7 @@ async def test_whole_colour_failure_reconciles_uncertain_segments(coordinator):
     refresh.assert_awaited_once()
 
 
-@pytest.mark.parametrize(
-    "colour_request", [{"rgb_color": (90, 80, 70)}, {"color_temp_kelvin": 5000}, {"effect": "off"}]
-)
+@pytest.mark.parametrize("colour_request", [{"rgb_color": (90, 80, 70)}, {"color_temp_kelvin": 5000}])
 @pytest.mark.parametrize("fresh_notification", [False, True])
 async def test_static_connection_failure_preserves_observed_state(coordinator, colour_request, fresh_notification):
     coordinator.is_on = True
@@ -181,9 +186,7 @@ async def test_static_connection_failure_preserves_observed_state(coordinator, c
         assert coordinator._field_revisions == revisions
 
 
-@pytest.mark.parametrize(
-    "colour_request", [{"rgb_color": (90, 80, 70)}, {"color_temp_kelvin": 5000}, {"effect": "off"}]
-)
+@pytest.mark.parametrize("colour_request", [{"rgb_color": (90, 80, 70)}, {"color_temp_kelvin": 5000}])
 @pytest.mark.parametrize("mixed", [False, True])
 async def test_static_attempt_failure_keeps_new_segment_notification(coordinator, colour_request, mixed):
     coordinator.is_on = True

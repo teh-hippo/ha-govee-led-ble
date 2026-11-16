@@ -44,6 +44,7 @@ from custom_components.ha_govee_led_ble.video_applicability import (
     validate_video_request,
     video_control_states,
 )
+from tests.test_effect_preview import _EffectCoordinator, _known_static_baseline
 from tests.test_h6099 import frame
 
 
@@ -58,7 +59,7 @@ def coordinator(version: str | None = None) -> SimpleNamespace:
     async def ensure_connected():
         return None
 
-    return SimpleNamespace(
+    return _EffectCoordinator(
         _control_arbiter=BLEControlArbiter(),
         _lock=asyncio.Lock(),
         _confirmed_identity_fields=confirmed,
@@ -351,6 +352,9 @@ async def test_saturation_range_at_every_write_entry(hass, monkeypatch, model, m
 
         writer.side_effect = write
         monkeypatch.setattr(device, "refresh_state", AsyncMock(return_value=True))
+        monkeypatch.setattr(
+            device, "async_prepare_static_baseline", AsyncMock(return_value=_known_static_baseline(device))
+        )
         device.video_saturation = 0
         await light.async_turn_on(effect="Video: Movie")
         written = [parse_command(packet, model) for call in writer.await_args_list for packet in call.args[0]]

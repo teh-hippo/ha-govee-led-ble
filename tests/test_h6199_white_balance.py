@@ -224,7 +224,7 @@ async def test_deployment_requires_complete_prior_wb_register(coordinator, monke
 
 async def test_recovery_does_not_install_or_claim_changed_device_defaults(coordinator, monkeypatch):
     coordinator._notify_callback(None, bytearray(AUTO))
-    original = coordinator.capture_effect_control_state()
+    original = replace(coordinator.capture_effect_control_state(), mode="unknown")
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
     coordinator._client = client
     monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))

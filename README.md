@@ -49,6 +49,14 @@ To request another model or suggest a device-specific fix, see [CONTRIBUTING.md]
 
 Effect Studio is a Home Assistant sidebar panel that gives you full control of supported devices' effect capabilities.  Explore built-in scenes, create custom effects with colours and layers, tune music and camera/video settings, and preview changes live before saving.  The panel shows the controls available for your device.
 
+Effects require a recoverable static layout before starting.
+Effect off restores that original layout, including different area and segment colours, even after switching between effects.
+If recovery state is unavailable, including after restarting while an effect is running, establish a complete static colour and brightness layout through the integration first.
+Devices without full readback can use successfully delivered static controls.
+Live retains extra readback requirements for source layouts and configurable segments; Apply remains available for complete write-only layouts.
+Disabling Live or closing the editor stops further Live changes without undoing completed changes.
+Restoring a previously off light may briefly illuminate it before turning it off again.
+
 ![Effect Studio custom effect editor](docs/images/effect-studio-effects.png)
 
 ![Effect Studio scene browser](docs/images/effect-studio-scenes.png)

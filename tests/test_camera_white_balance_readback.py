@@ -1,6 +1,6 @@
 """Regression checks for protocol, readback and camera applicability.
 
-Only BLE connection/I/O is stubbed unless a test explicitly isolates validation.
+BLE connection/I/O and the unrelated static-recovery admission boundary are isolated.
 Synthetic profiles prove software capability boundaries, not H66A0 qualification.
 Run: uv run --no-sync pytest tests/test_camera_white_balance_readback.py -v --tb=short
 """
@@ -19,6 +19,7 @@ from custom_components.ha_govee_led_ble.coordinator_status import (
     decode_status_frame_result,
     parse_color_mode,
 )
+from custom_components.ha_govee_led_ble.effect_deployments import PriorControlState
 from custom_components.ha_govee_led_ble.effect_domain import VideoProfile
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_white_balance, build_white_balance_query
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
@@ -36,6 +37,22 @@ def connected(hass, monkeypatch):
         c._client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(), disconnect=AsyncMock())
         monkeypatch.setattr(c, "_ensure_connected", AsyncMock(return_value=c._client))
         monkeypatch.setattr(c, "_renew_foreground_lease", lambda: None)
+        monkeypatch.setattr(
+            c,
+            "async_prepare_static_baseline",
+            AsyncMock(
+                return_value=PriorControlState(
+                    "colour",
+                    True,
+                    50,
+                    (10, 20, 30),
+                    static_rgb_known=True,
+                    segment_colors=((10, 20, 30),) * c.profile.segment_count if c.profile.segment_count else None,
+                    segment_brightness=(100,) * c.profile.segment_count if c.profile.segment_count else None,
+                    segment_kelvin=(0,) * c.profile.segment_count if c.profile.segment_count else None,
+                )
+            ),
+        )
         return c
 
     return create

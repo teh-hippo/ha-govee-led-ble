@@ -16,6 +16,7 @@ from custom_components.ha_govee_led_ble.effect_deployments import (
     DeploymentPhase,
     EffectDeploymentRepository,
     ObservationConfidence,
+    PriorControlState,
 )
 from custom_components.ha_govee_led_ble.effect_domain import BuiltinScene, CatalogueRef, LibraryItem, SingleEffect
 from custom_components.ha_govee_led_ble.effect_runtime import EffectDeploymentEngine, _DeploymentTransaction
@@ -133,6 +134,7 @@ async def test_interrupted_retry_uses_last_physical_attempt_revision(coord, monk
 async def test_interrupted_control_queries_only_attempted_readable_fields(coord, monkeypatch, readable, observed):
     coord.profile = replace(coord.profile, read_domains=readable, setup_required_read_domains=frozenset())
     coord.is_on = True
+    coord._power_known = True
     coord.brightness_pct = 20
     device = _c(write_gatt_char=AsyncMock())
     coord._client = device
@@ -683,6 +685,21 @@ async def test_native_scene_holds_control_ownership_for_complete_delivery(coord)
     with (
         patch.object(coord, "_ensure_connected", AsyncMock(return_value=client)),
         patch.object(coord, "_reset_disconnect_timer"),
+        patch.object(
+            coord,
+            "async_prepare_static_baseline",
+            AsyncMock(
+                return_value=PriorControlState(
+                    mode="colour",
+                    is_on=False,
+                    brightness_pct=42,
+                    rgb_color=(17, 34, 51),
+                    static_rgb_known=True,
+                    segment_colors=((17, 34, 51),) * coord.profile.segment_count,
+                    segment_brightness=(42,) * coord.profile.segment_count,
+                )
+            ),
+        ),
     ):
         await coord.async_apply_native_scene("glacier", speed_index=0, verify=False)
 
@@ -696,6 +713,21 @@ async def test_native_scene_power_state_waits_for_atomic_sequence(coord):
     coord._client = _c()
     _confirm_identity(coord)
     with (
+        patch.object(
+            coord,
+            "async_prepare_static_baseline",
+            AsyncMock(
+                return_value=PriorControlState(
+                    mode="colour",
+                    is_on=False,
+                    brightness_pct=42,
+                    rgb_color=(17, 34, 51),
+                    static_rgb_known=True,
+                    segment_colors=((17, 34, 51),) * coord.profile.segment_count,
+                    segment_brightness=(42,) * coord.profile.segment_count,
+                )
+            ),
+        ),
         patch.object(
             coord,
             "async_write_effect_sequence",

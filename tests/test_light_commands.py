@@ -23,10 +23,10 @@ from custom_components.ha_govee_led_ble.light_commands import (
     build_color_rgb,
     build_color_temp,
     build_segment_brightness,
+    build_segment_brightness_mask,
     build_segment_color,
     build_segment_color_temp,
     build_segment_paint,
-    build_white_brightness,
     normalize_kelvin,
     parse_static_write,
     scale_segment_groups,
@@ -156,7 +156,7 @@ def test_power_and_brightness_remain_byte_identical(model: str) -> None:
 
 def test_whole_strip_colour_temperature_and_brightness() -> None:
     assert build_color_rgb(10, 20, 30) == H("330515010a141e0000000000ff7f0000000000a2")
-    assert build_white_brightness(50) == H("3305150232ff7f00000000000000000000000093")
+    assert build_segment_brightness_mask(0x7FFF, 50) == H("3305150232ff7f00000000000000000000000093")
     temperature = build_color_temp(4000)
     assert temperature[7:9] == (4000).to_bytes(2, "big")
     assert tuple(temperature[9:12]) == table_kelvin_rgb(4000)
@@ -173,7 +173,7 @@ def test_h6076_uses_its_whole_device_mask_and_kelvin_range() -> None:
     assert build_color_temp(2000, "H6076", profile=device_profile("H6076", 2, 1))[7:9] == (2700).to_bytes(2, "big")
     assert build_color_temp(9000, "H6076")[7:9] == (6500).to_bytes(2, "big")
     assert build_color_temp(4000, "H6076")[12:14] == b"\x7f\x00"
-    assert build_white_brightness(50, "H6076") == H("33051502327f000000000000000000000000006c")
+    assert build_segment_brightness_mask(0x7F, 50, "H6076") == H("33051502327f000000000000000000000000006c")
     assert build_segment_color([1, 7], 10, 20, 30, "H6076")[12:14] == b"\x41\x00"
     assert build_segment_brightness([1, 7], 50, "H6076")[5:7] == b"\x41\x00"
 
@@ -286,7 +286,7 @@ def test_static_write_semantics_round_trip(model: str) -> None:
     temperature = parse_static_write(build_color_temp(3600, model), model)
     assert temperature is not None and temperature.kelvin == 3600
     assert temperature.kelvin_companion_rgb == table_kelvin_rgb(3600)
-    level = parse_static_write(build_white_brightness(80, model), model)
+    level = parse_static_write(build_segment_brightness_mask(MODEL_PROFILES[model].whole_device_mask, 80, model), model)
     assert level is not None and level.brightness_pct == 80 and level.whole_strip
 
 

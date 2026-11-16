@@ -694,7 +694,7 @@ async def test_failed_rgb_write_cannot_qualify_matching_native_white_as_rgb(hass
     with pytest.raises(TimeoutError, match="not delivered"):
         await c.send_command(build_color_rgb(*rgb, c.model))
     state = c.capture_effect_control_state()
-    assert state.segment_colors == (rgb,) * c.profile.segment_count
+    assert c.segment_colors == [rgb] * c.profile.segment_count
     assert not state.static_rgb_known
     assert not await c.async_restore_effect_control_state(state, overwritten_diy_code=None)
     assert len(writes) == 1

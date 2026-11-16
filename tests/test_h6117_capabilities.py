@@ -260,6 +260,8 @@ async def test_cached_identity_does_not_authorise_reconnect_writes(hass, monkeyp
 
 @pytest.fixture(params=[(1, 1), (2, 1)])
 async def reconnect_identity(hass, monkeypatch, request):
+    from tests.test_effect_preview import _known_static_baseline
+
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6117", configuration_url="test")
     coordinator.pact_type, coordinator.pact_code = request.param
     coordinator.fw_version, coordinator.hw_version = "1.08.06", "1.00.02"
@@ -298,6 +300,11 @@ async def reconnect_identity(hass, monkeypatch, request):
     )
     monkeypatch.setattr("custom_components.ha_govee_led_ble.coordinator.IDENTITY_QUERY_TIMEOUT", 0.08)
     monkeypatch.setattr(coordinator, "_start_keep_alive", MagicMock())
+    monkeypatch.setattr(
+        coordinator,
+        "async_prepare_static_baseline",
+        AsyncMock(side_effect=lambda: _known_static_baseline(coordinator)),
+    )
     try:
         await coordinator._ensure_connected()
         assert coordinator.profile.supports_custom_effects

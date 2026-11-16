@@ -144,6 +144,15 @@
     "device_command_failed": {
       "message": "The device command failed."
     },
+    "recovery_not_ready": {
+      "message": "The previous static layout cannot be restored safely. Set a complete static colour and brightness before selecting an effect."
+    },
+    "recovery_read_failed": {
+      "message": "The current static layout could not be read completely. Check the Bluetooth connection and try again before selecting an effect."
+    },
+    "live_recovery_not_observed": {
+      "message": "Live needs independently observed static source colours. Read the static layout first, or use Apply for a complete write-only layout."
+    },
     "partial_command": {
       "message": "The command was interrupted after a write was attempted. The light may have partially changed."
     },

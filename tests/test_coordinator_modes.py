@@ -2,24 +2,20 @@ from dataclasses import replace
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
+from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.ha_govee_led_ble import effect_contracts
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, MUSIC_MODE_SLUGS, ModelProfile
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
-from custom_components.ha_govee_led_ble.coordinator_modes import PreModeSnapshot
 from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
 from custom_components.ha_govee_led_ble.effect_contracts import CapabilityWorkflow, release_capability
+from custom_components.ha_govee_led_ble.effect_deployments import PriorControlState
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_music_mode,
     build_power,
     build_scene_activation,
     build_video_mode,
-)
-from custom_components.ha_govee_led_ble.light_commands import (
-    build_color_rgb,
-    build_color_temp,
-    build_white_brightness,
 )
 from custom_components.ha_govee_led_ble.light_services import apply_active_video_mode
 from custom_components.ha_govee_led_ble.music_commands import build_music_params
@@ -173,19 +169,19 @@ async def test_entering_music_from_color_temp_captures_color_temp_snapshot(coord
     coord.is_on, coord.color_temp_kelvin = True, 4000
     with _music_transport(coord):
         await coord.async_select_music_slug("spectrum")
-    assert coord._pre_mode_snapshot == PreModeSnapshot(kind="color_temp", kelvin=4000)
+    assert coord._pre_mode_snapshot.color_temp_kelvin == 4000
 
 
 async def test_entering_music_from_rgb_captures_rgb_snapshot(coord):
     coord.is_on, coord.color_temp_kelvin, coord.rgb_color = True, None, (7, 8, 9)
     with _music_transport(coord):
         await coord.async_select_music_slug("bloom")
-    assert coord._pre_mode_snapshot == PreModeSnapshot(kind="rgb", rgb=(7, 8, 9))
+    assert coord._pre_mode_snapshot.rgb_color == (7, 8, 9)
 
 
 async def test_entering_music_from_active_mode_preserves_snapshot(coord):
     coord.is_on, coord.music_mode = True, "rhythm"
-    original = PreModeSnapshot(kind="color_temp", kelvin=6000)
+    original = PriorControlState("colour", True, 100, (255, 255, 255), color_temp_kelvin=6000)
     coord._pre_mode_snapshot, coord.color_temp_kelvin = original, 4000
     with _music_transport(coord):
         await coord.async_select_music_slug("spectrum")
@@ -194,7 +190,7 @@ async def test_entering_music_from_active_mode_preserves_snapshot(coord):
 
 async def test_failed_music_power_attempt_does_not_publish_transition_snapshot(coord):
     coord.is_on, coord.color_temp_kelvin = True, 4000
-    original = PreModeSnapshot(kind="color_temp", kelvin=6000)
+    original = PriorControlState("colour", True, 100, (255, 255, 255), color_temp_kelvin=6000)
     coord._pre_mode_snapshot = original
     with _music_transport(coord) as physical:
         physical.side_effect = RuntimeError("failed power attempt")
@@ -255,42 +251,13 @@ async def test_music_style_applies_to_rhythm_bloom_and_shiny(coord):
     ]
 
 
-@pytest.mark.parametrize(
-    ("snapshot", "expected"),
-    [
-        (PreModeSnapshot(kind="rgb", rgb=(1, 2, 3)), build_color_rgb(1, 2, 3)),
-        (PreModeSnapshot(kind="color_temp", kelvin=3500), build_color_temp(3500)),
-        (PreModeSnapshot(kind="white", level=42), build_white_brightness(42)),
-    ],
-)
-async def test_restore_pre_mode_re_emits_matching_builder(coord, snapshot, expected):
-    coord._pre_mode_snapshot = snapshot
-    coord.music_mode, coord.video_mode = "rhythm", "movie"
-    coord.effect = "leftover"
-    coord.diy_code = 0xF0
+async def test_fresh_off_rejects_without_inventing_white_state(coord):
+    assert coord._pre_mode_snapshot is None
     with patch.object(coord, "send_command", new_callable=AsyncMock) as sc:
-        await coord.async_restore_pre_mode()
-    assert _sent(sc) == [expected]
-    assert (coord.music_mode, coord.video_mode) == ("off", "off")
-    assert coord.effect is None
-    assert coord.diy_code is None
-
-
-async def test_select_off_routes_to_restore_and_clears_music_mode(coord):
-    coord.music_mode = "rhythm"
-    coord._pre_mode_snapshot = PreModeSnapshot(kind="color_temp", kelvin=5000)
-    with patch.object(coord, "send_command", new_callable=AsyncMock) as sc:
-        await coord.async_select_music_slug("off")
-    assert _sent(sc) == [build_color_temp(5000)]
-    assert coord.music_mode == "off"
-
-
-async def test_fresh_off_falls_back_to_white_rgb(coord):
-    assert coord._pre_mode_snapshot == PreModeSnapshot(kind="rgb", rgb=(255, 255, 255))
-    with patch.object(coord, "send_command", new_callable=AsyncMock) as sc:
-        await coord.async_select_music_slug("off")
-    assert _sent(sc) == [build_color_rgb(255, 255, 255)]
-    assert (coord.music_mode, coord.video_mode) == ("off", "off")
+        with pytest.raises(HomeAssistantError) as error:
+            await coord.async_select_music_slug("off")
+    assert error.value.translation_key == "recovery_not_ready"
+    sc.assert_not_awaited()
 
 
 async def test_apply_active_video_mode_noop_when_video_off(coord):
@@ -309,6 +276,7 @@ async def test_apply_active_video_mode_requires_readback(h6199):
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
     with (
         patch.object(h6199, "_ensure_connected", new=AsyncMock(return_value=client)),
+        patch.object(h6199, "async_prepare_static_baseline", return_value=h6199.capture_effect_control_state()),
         patch.object(h6199, "refresh_state", new_callable=AsyncMock, return_value=True) as refresh,
     ):
         assert await apply_active_video_mode(h6199, mode="game", requested_values=values) is True
@@ -337,6 +305,7 @@ async def test_apply_active_video_mode_powers_on_and_raises_after_retry(h6199):
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
     with (
         patch.object(h6199, "_ensure_connected", new=AsyncMock(return_value=client)),
+        patch.object(h6199, "async_prepare_static_baseline", return_value=h6199.capture_effect_control_state()),
         patch.object(h6199, "refresh_state", new_callable=AsyncMock, return_value=False) as refresh,
         pytest.raises(RuntimeError, match="Video-mode write was not confirmed"),
     ):

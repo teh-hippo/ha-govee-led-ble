@@ -52,11 +52,11 @@ from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator import GoveeBLECoordinator
 from .coordinator_base import async_prepare_effect_profile
 from .coordinator_control import ControlStateSnapshot, ControlWriteRequest
+from .coordinator_modes import ModeTransitionPurpose
 from .coordinator_refresh import RefreshRequest
 from .coordinator_sources import (
     PreparedSourceColour,
     SourceTurnOnRequest,
-    has_segmented_sources,
     main_source_colour,
     main_source_colours,
     prepare_source_colour,
@@ -860,7 +860,8 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         key = normalise_effect_name(effect_name)
         coordinator = self.coordinator
         if key == EFFECT_OFF:
-            return self._async_clear_effect
+            coordinator.require_static_baseline()
+            return coordinator.async_restore_pre_mode
         try:
             selected = resolve_effect_selector(self._selector_entries(), effect_name)
         except EffectValidationError as exc:
@@ -984,27 +985,6 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             translation_placeholders={"effect": key},
         )
 
-    async def _async_clear_effect(self) -> None:
-        coordinator = self.coordinator
-        if has_segmented_sources(coordinator.profile):
-            await coordinator.async_restore_pre_mode()
-            return
-        async with coordinator.async_mask_transaction():
-            with self._rollback():
-                if coordinator.color_temp_kelvin is not None:
-                    packet = build_color_temp(
-                        coordinator.color_temp_kelvin, coordinator.model, profile=coordinator.profile
-                    )
-                    self._attr_color_mode = ColorMode.COLOR_TEMP
-                else:
-                    packet = build_color_rgb(
-                        *coordinator.rgb_color,
-                        coordinator.model,
-                        profile=coordinator.profile,
-                    )
-                    self._attr_color_mode = ColorMode.RGB
-                await coordinator.send_command(packet)
-
     def _validate_basic_request(self, kwargs: Mapping[str, Any], *, profile: ModelProfile | None = None) -> None:
         profile = self.coordinator.profile if profile is None else profile
         model = self.coordinator.model
@@ -1099,9 +1079,11 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             if ATTR_EFFECT in kwargs
             else None
         )
+        clearing_effect = prepared_effect is not None and normalise_effect_name(str(kwargs[ATTR_EFFECT])) == EFFECT_OFF
         if native_write_guard is not None:
             native_write_guard()
-        await self._async_supersede_preview()
+        if not clearing_effect:
+            await self._async_supersede_preview()
         if native_write_guard is not None:
             native_write_guard()
         clear_workspace = active_workspace is not None and (
@@ -1112,8 +1094,17 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 self.coordinator,
                 ControlIntent.USER,
             ),
-            self.coordinator.async_mode_transition() if prepared_effect is not None else nullcontext(),
+            self.coordinator.async_mode_transition(
+                purpose=ModeTransitionPurpose.RECOVERY if clearing_effect else ModeTransitionPurpose.SELECTION
+            )
+            if prepared_effect is not None
+            else nullcontext(),
         ):
+            if clearing_effect:
+                prepared = self.coordinator.prepare_static_recovery()
+                prepared_effect = partial(self.coordinator.async_restore_pre_mode, prepared)
+                video_guards.append(lambda: prepared.check(self.coordinator))
+                await self._async_supersede_preview()
             await self._async_turn_on(
                 clear_workspace_on_success=clear_workspace,
                 prepared_effect=prepared_effect,
@@ -1166,7 +1157,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                         self.coordinator,
                         ControlIntent.USER,
                     ),
-                    self.coordinator.async_mode_transition(),
+                    self.coordinator.async_mode_transition(purpose=ModeTransitionPurpose.SELECTION),
                 ):
                     guard()
                     await self._async_supersede_preview()
@@ -1341,7 +1332,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         )
         try:
             with self._rollback() as checkpoint:
-                if not coordinator.is_on or coordinator.control_state_uncertain("is_on"):
+                if request.needs_power_on:
                     with request.track("is_on"):
                         await power_on()
                         await self._refresh_with_retry(

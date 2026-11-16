@@ -269,6 +269,7 @@ def _make_coord(**ov) -> MagicMock:
     )
     c = MagicMock(spec=GoveeBLECoordinator, **d)
     c._expected_state = {}
+    c._power_known = True
     c._lock = asyncio.Lock()
     c._async_read_setting_fields = AsyncMock(return_value=False)
     c._client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
