@@ -3,7 +3,8 @@
 import asyncio
 import logging
 import time
-from contextlib import nullcontext
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager, nullcontext
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, cast
 
@@ -66,6 +67,7 @@ from .scenes import (
 )
 from .video_applicability import (
     video_control_states,
+    video_identity_fields,
 )
 
 if TYPE_CHECKING:
@@ -119,6 +121,61 @@ class _RecoveryMixin(_CoordinatorBase):
             raise HomeAssistantError(translation_domain=DOMAIN, translation_key="recovery_not_ready")
         return self._pre_mode_snapshot
 
+    def _static_history_profile_current(self) -> bool:
+        profile = self._pre_mode_profile
+        if self._pre_mode_snapshot is None:
+            return False
+        if not self._pre_mode_needs_qualification:
+            return True
+        if profile is None:
+            self._discard_static_baseline()
+            return False
+        if (
+            not self.identity_fields_confirmed(
+                profile.profile_identity_fields | frozenset(video_identity_fields(profile))
+            )
+            or profile.segment_count_ic_divisor is not None
+            and not self._physical_ic_count_confirmed
+            or profile.configured_string_counts
+            and not self._configured_strings_confirmed
+        ):
+            return False
+        if not same_control_profile(profile, self._as_coordinator._authorization_profile()):
+            self._discard_static_baseline()
+            return False
+        return True
+
+    @asynccontextmanager
+    async def _async_qualified_static_history(self) -> AsyncIterator[None]:
+        self.require_static_baseline()
+        async with self._lock:
+            await self._ensure_connected()
+        async with self.async_mask_transaction():
+            if self._pre_mode_needs_qualification:
+                if not self._static_history_profile_current():
+                    raise HomeAssistantError(translation_domain=DOMAIN, translation_key="recovery_not_ready")
+                self._pre_mode_needs_qualification = False
+            self.require_static_baseline()
+            yield
+
+    @asynccontextmanager
+    async def async_prepare_static_recovery(
+        self, prepared: PreparedStaticRecovery | None = None
+    ) -> AsyncIterator[PreparedStaticRecovery]:
+        transition = self._mode_transition
+        if (
+            transition is None
+            or transition.owner is not asyncio.current_task()
+            or transition.purpose is not ModeTransitionPurpose.RECOVERY
+            or self._control_arbiter.current_task_intent is None
+        ):
+            raise RuntimeError("Static restoration requires an owned recovery transition")
+        if prepared is not None:
+            yield self.prepare_static_recovery(prepared)
+        else:
+            async with self._async_qualified_static_history():
+                yield self.prepare_static_recovery()
+
     def prepare_static_recovery(self, prepared: PreparedStaticRecovery | None = None) -> PreparedStaticRecovery:
         transition = self._mode_transition
         if (
@@ -144,6 +201,9 @@ class _RecoveryMixin(_CoordinatorBase):
         return prepared
 
     async def async_prepare_static_baseline(self) -> PriorControlState:
+        if self._pre_mode_needs_qualification:
+            async with self._async_qualified_static_history():
+                pass
         profile = self.profile
         transition = self._mode_transition
         baselines = transition.field_baselines if transition is not None else dict(self._field_revisions)

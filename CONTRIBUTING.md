@@ -89,6 +89,9 @@ Keep real product differences without turning each product into a separate imple
   Validate the requested content first and acquire readable baseline fields within the owned operation; subscription freshness alone cannot exclude an unreported external change.
   Reuse observations acquired by that same operation rather than repeating reads.
   Preserve the original baseline across effect-to-effect changes and restore it on effect off, independently of scalar main-light presentation.
+  Successful planned idle and polling releases may suspend historical recovery intent, never current observations or prepared writes.
+  Requalify the connection, effective control profile and installed geometry before reusing that history; unexpected loss, failed release and explicit lifecycle invalidation still discard it.
+  Keep cold recovery preparation under ownership and retain its layout context through leading attributes and restoration.
   Missing recovery state is temporary readiness, not unsupported hardware; basic static controls remain available to establish it.
   Keep this baseline distinct from deployment-failure immediate-prior recovery.
   Live retains the original static baseline with its capability-specific independent-colour/layout requirements; cancel and close stop future work without undo writes.

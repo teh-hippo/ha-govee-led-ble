@@ -1,10 +1,13 @@
 """Fresh physical-state recovery through the real coordinator and deployment path."""
 
+import asyncio
 import time
 from dataclasses import replace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from bleak.exc import BleakError
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.setup import async_setup_component
 
 from custom_components.ha_govee_led_ble.const import device_profile, get_profile
@@ -257,6 +260,100 @@ async def test_public_effect_off_restores_non_source_segment_layout(hass, physic
     assert state["colours"] == expected_colours
     assert state["relative"] == expected_levels
     assert state["brightness"] == 37 and state["on"]
+
+
+@pytest.mark.parametrize(
+    ("initially_on", "release"),
+    [
+        (False, "idle"),
+        (True, "idle"),
+        (True, "poll"),
+        (True, "poll_failed"),
+        (True, "unexpected"),
+        (True, "manual"),
+        (True, "failed"),
+        (True, "cancelled"),
+        (True, "profile_changed"),
+        (True, "resubscribed"),
+    ],
+)
+async def test_public_effect_recovery_after_release(hass, physical, monkeypatch, virtual_clock, initially_on, release):
+    coordinator, state = physical
+    state["on"] = initially_on
+    coordinator._present = True
+    expected_colours, expected_levels = list(state["colours"]), list(state["relative"])
+    client = coordinator._client
+    client.disconnect.side_effect = lambda: setattr(client, "is_connected", False)
+
+    async def connected():
+        client.is_connected = True
+        coordinator._client = client
+        if coordinator._notification_token is None:
+            coordinator._notification_token = object()
+            coordinator._notify_started_monotonic = virtual_clock.virtual_time()
+        return client
+
+    monkeypatch.setattr(coordinator, "_ensure_connected", connected)
+    light = GoveeBLELight(coordinator)
+    light._attr_device_info = None
+    light.async_added_to_hass = AsyncMock()
+    assert await async_setup_component(hass, "light", {})
+    await hass.data["light"].async_add_entities([light])
+
+    async def control(effect):
+        await hass.services.async_call(
+            "light", "turn_on", {"entity_id": light.entity_id, "effect": effect}, blocking=True
+        )
+
+    async def lose_subscription():
+        if release in {"idle", "poll", "poll_failed", "failed", "cancelled", "profile_changed"}:
+            if release in {"failed", "cancelled", "profile_changed"}:
+
+                async def interrupted_disconnect():
+                    if release == "failed":
+                        raise BleakError("Failed release")
+                    if release == "cancelled":
+                        raise asyncio.CancelledError
+                    coordinator._advance_profile_generation()
+                    client.is_connected = False
+
+                client.disconnect.side_effect = interrupted_disconnect
+            if release == "cancelled":
+                with pytest.raises(asyncio.CancelledError):
+                    await coordinator._async_disconnect_on_timeout(coordinator._disconnect_generation)
+                return
+            await coordinator._async_disconnect_on_timeout(coordinator._disconnect_generation)
+            if release in {"poll", "poll_failed"}:
+                coordinator._first_refresh_done = True
+                if release == "poll_failed":
+                    state["fault"] = "missing_mode"
+                await coordinator._async_update_data()
+                state["fault"] = None
+                assert coordinator._client is None
+        elif release == "manual":
+            await coordinator.disconnect()
+        elif release == "resubscribed":
+            client.start_notify = AsyncMock()
+            await coordinator._start_notify()
+            return
+        else:
+            coordinator._disconnected_callback(client)
+        assert coordinator._notification_token is None
+
+    await control("Sunrise")
+    await lose_subscription()
+    if release not in {"idle", "poll"}:
+        with pytest.raises(HomeAssistantError) as error:
+            await control("off")
+        assert error.value.translation_key == "recovery_not_ready"
+        return
+    await control("Rainbow")
+    await lose_subscription()
+    await control("off")
+    assert state["on"] is initially_on
+    assert state["brightness"] == 37
+    assert state["colours"] == expected_colours
+    assert state["relative"] == expected_levels
 
 
 @pytest.mark.parametrize("physical", ["H7020"], indirect=True)

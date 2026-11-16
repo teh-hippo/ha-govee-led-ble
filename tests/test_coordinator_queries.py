@@ -96,7 +96,7 @@ def h607c_subscription(hass, monkeypatch):
         c._resolve_h607c_pact(preserve_state=True)
         return client
 
-    async def disconnect(_client):
+    async def disconnect(*, planned_release=False):
         client.is_connected = False
         c._clear_client_state(client)
 
@@ -266,7 +266,7 @@ async def test_power_required_profile_collects_optional_brightness_before_releas
         c._client = client
         return client
 
-    async def disconnect(_client):
+    async def disconnect(*, planned_release=False):
         client.is_connected = False
         c._clear_client_state(client)
 
@@ -283,7 +283,7 @@ async def test_power_required_profile_collects_optional_brightness_before_releas
 
     client.write_gatt_char = AsyncMock(side_effect=write)
     monkeypatch.setattr(c, "_ensure_connected", AsyncMock(side_effect=connect))
-    monkeypatch.setattr(c, "_disconnect_if_current_locked", AsyncMock(side_effect=disconnect))
+    monkeypatch.setattr(c, "_disconnect_locked", AsyncMock(side_effect=disconnect))
     try:
         if poll:
             snapshot = await c._async_update_data()
