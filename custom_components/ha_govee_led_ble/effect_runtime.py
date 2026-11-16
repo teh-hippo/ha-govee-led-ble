@@ -11,7 +11,7 @@ from functools import partial
 from typing import Any
 from uuid import UUID, uuid4
 
-from .const import NATIVE_ZONE_CONTROLS, ModelProfile, ReadDomain, get_profile
+from .const import NATIVE_ZONE_CONTROLS, ModelProfile, ReadDomain, get_profile, same_control_profile
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator import GoveeBLECoordinator
 from .coordinator_base import async_prepare_effect_profile
@@ -684,6 +684,8 @@ class EffectDeploymentEngine:
                         coordinator,
                         config_entry_id=transaction.current.config_entry_id,
                     )
+                    if refreshed:
+                        coordinator.bind_effect_recovery()
                     if isinstance(compiled, CompiledVideoProfile):
                         prior_state = replace(
                             prior_state,
@@ -1667,7 +1669,7 @@ async def _async_prepare_effect_control_state(
                 "Could not read current power, mode, brightness and source states before applying the effect",
                 reason="missing_required_observations",
             )
-        if require_restorable_static and coordinator.profile != profile:
+        if require_restorable_static and not same_control_profile(coordinator.profile, profile):
             raise EffectStateReadError(
                 "The device profile changed while preparing the effect", reason="profile_changed"
             )
@@ -1679,8 +1681,36 @@ async def _async_prepare_effect_control_state(
                     "The device mode or subscription changed while preparing effect recovery",
                     reason="mode_or_subscription_changed",
                 )
-    prior = capture() if require_restorable_static and capture is not None else None
+    prior = capture() if capture is not None else None
     prior_mode = prior.mode if isinstance(prior, PriorControlState) else _coordinator_mode(coordinator)
+    preparation_token = getattr(coordinator, "_notification_token", None)
+    preparation_generation = getattr(coordinator, "_profile_generation", None)
+
+    def capture_prepared_state() -> PriorControlState | None:
+        if (
+            not same_control_profile(coordinator.profile, profile)
+            or getattr(coordinator, "_notification_token", None) is not preparation_token
+            or getattr(coordinator, "_profile_generation", None) != preparation_generation
+        ):
+            raise EffectStateReadError(
+                "The device profile or subscription changed while preparing effect recovery",
+                reason="profile_or_subscription_changed",
+            )
+        current = capture() if capture is not None else None
+        mode = current.mode if isinstance(current, PriorControlState) else _coordinator_mode(coordinator)
+        if mode != prior_mode:
+            raise EffectStateReadError(
+                "The device mode changed while preparing effect recovery", reason="mode_or_subscription_changed"
+            )
+        if isinstance(current, PriorControlState) and any(
+            name in profile.boolean_controls and getattr(current, name, None) is None for name in NATIVE_ZONE_CONTROLS
+        ):
+            raise EffectStateReadError(
+                "Required source observations changed while preparing effect recovery",
+                reason="missing_required_observations",
+            )
+        return current if isinstance(current, PriorControlState) else None
+
     if require_restorable_static:
         inline_fields = ("is_on", "brightness_pct", "color_mode")
         if profile.diy_upload_transport == "single" and not all(
@@ -1727,13 +1757,13 @@ async def _async_prepare_effect_control_state(
                         )
                     )
                     is not True
-                    or coordinator.profile != profile
+                    or not same_control_profile(coordinator.profile, profile)
                     or not all(coordinator.source_field_fresh(field) for field in fields)
                 ):
                     raise EffectStateReadError(
                         "Could not read the current source state before Live", reason="missing_source_observations"
                     )
-                prior = capture() if capture is not None else None
+                prior = capture_prepared_state()
                 prior_mode = prior.mode if isinstance(prior, PriorControlState) else _coordinator_mode(coordinator)
         if profile.supports_ripple_speed and (
             not isinstance(prior, PriorControlState)
@@ -1776,15 +1806,15 @@ async def _async_prepare_effect_control_state(
                 raise EffectRestorationError("The current music colour cannot be safely restored after preview")
         if prior_mode not in {"colour", "unknown"}:
             return True
-        requires_segment_refresh = bool(profile.configured_string_counts or profile.light_sources)
+        requires_segment_refresh = bool(
+            profile.configured_string_counts or profile.light_sources or profile.static_palette_recovery
+        )
         if profile.segment_colour_mode_ambiguous and not (
             isinstance(prior, PriorControlState)
             and (
-                prior.static_rgb_known
+                prior.restorable_static_colour(profile)
                 or requires_segment_refresh
-                and getattr(coordinator, "_static_rgb_known", False) is True
-                or prior.restorable_bar_white(profile)
-                or prior.restorable_source_colour(profile)
+                and (profile.static_palette_recovery or getattr(coordinator, "_static_rgb_known", False) is True)
             )
         ):
             raise EffectRestorationError(
@@ -1802,12 +1832,9 @@ async def _async_prepare_effect_control_state(
                 "Could not read a restorable current segment layout before preview",
                 reason="missing_segment_observations",
             )
-        prior = capture() if capture is not None else None
+        prior = capture_prepared_state()
         if profile.segment_colour_mode_ambiguous and not (
-            isinstance(prior, PriorControlState)
-            and (
-                prior.static_rgb_known or prior.restorable_bar_white(profile) or prior.restorable_source_colour(profile)
-            )
+            isinstance(prior, PriorControlState) and prior.restorable_static_colour(profile)
         ):
             raise EffectRestorationError(
                 "The current per-bulb RGB or white intent cannot be safely restored after preview",
@@ -1841,7 +1868,7 @@ async def _async_prepare_effect_control_state(
     if not profile.state_readable:
         return False
     if (
-        not profile.segment_colour_mode_ambiguous
+        (not profile.segment_colour_mode_ambiguous or profile.static_palette_recovery)
         and profile.supports_segments
         and profile.can_read(ReadDomain.SEGMENTS)
         and _coordinator_mode(coordinator) in {"colour", "off"}
@@ -1852,6 +1879,7 @@ async def _async_prepare_effect_control_state(
             "Could not read the current segment layout before applying the effect",
             reason="missing_segment_observations",
         )
+    capture_prepared_state()
     return True
 
 

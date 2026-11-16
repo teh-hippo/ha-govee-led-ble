@@ -11,6 +11,7 @@ from .generated_protocol_adapter import (
     build_segment_colour,
     parse_command,
     table_kelvin_rgb,
+    table_rgb_kelvin,
 )
 from .generated_protocol_adapter import (
     build_segment_brightness as build_segment_brightness_mask,
@@ -138,6 +139,42 @@ def build_segment_paint(
     ]
     if not packets:
         raise ValueError("at least one non-empty segment group is required")
+    return packets
+
+
+def build_segment_palette_recovery(
+    groups: Iterable[SegmentColorGroup],
+    model: str,
+    *,
+    profile: ModelProfile,
+    known_rgb_mask: int = 0,
+) -> list[bytes]:
+    if type(known_rgb_mask) is not int or not 0 <= known_rgb_mask < 1 << profile.segment_count:
+        raise ValueError("RGB intent mask is outside profile geometry")
+    packets = []
+    for segments, rgb in groups:
+        kelvin = table_rgb_kelvin(rgb)
+        selected = tuple(segments)
+        segments_to_mask(selected, profile)
+        for explicit in (True, False):
+            positions = [position for position in selected if bool(known_rgb_mask & (1 << (position - 1))) is explicit]
+            for group in segment_write_groups(positions, profile) if positions else ():
+                if (
+                    not explicit
+                    and kelvin is not None
+                    and profile.min_color_temp_kelvin <= kelvin <= profile.max_color_temp_kelvin
+                ):
+                    if not profile.supports_segment_color_temperature:
+                        raise ValueError("The observed palette requires segment colour-temperature recovery")
+                    packets.append(
+                        build_colour_temperature(
+                            kelvin, segments_to_mask(group, profile), model, profile=profile, companion_rgb=rgb
+                        )
+                    )
+                else:
+                    packets.append(build_segment_color(group, *rgb, model, profile=profile))
+    if not packets:
+        raise ValueError("At least one segment group is required")
     return packets
 
 

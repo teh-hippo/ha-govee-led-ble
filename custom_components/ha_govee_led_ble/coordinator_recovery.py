@@ -32,6 +32,7 @@ from .light_commands import (
     build_segment_color_temp,
     build_segment_kelvin_packets,
     build_segment_paint,
+    build_segment_palette_recovery,
     normalize_kelvin,
 )
 from .music_commands import MusicWriteSequence, prepare_music_profile_writes
@@ -170,6 +171,7 @@ class _RecoveryMixin(_CoordinatorBase):
             rgb_color=self.rgb_color,
             color_temp_kelvin=self.color_temp_kelvin,
             static_rgb_known=self._static_rgb_known and observed_segments,
+            static_rgb_mask=self._static_rgb_mask if observed_segments and not self._static_rgb_known else 0,
             static_gradual=self.static_gradual if self.color_mode is ParsedMode.COLOUR else None,
             panel_enabled=zone_flags.get("panel_enabled"),
             ring_enabled=zone_flags.get("ring_enabled"),
@@ -369,15 +371,7 @@ class _RecoveryMixin(_CoordinatorBase):
             return await self._async_restore_effect_control_state(
                 state, overwritten_diy_code=overwritten_diy_code, static_restore=static_restore
             )
-        if (
-            state.mode == "colour"
-            and self.profile.segment_colour_mode_ambiguous
-            and not (
-                state.static_rgb_known
-                or state.restorable_bar_white(self.profile)
-                or state.restorable_source_colour(self.profile)
-            )
-        ):
+        if state.mode == "colour" and not state.restorable_static_colour(self.profile):
             return False
         async with self.async_mask_transaction() if state.mode == "colour" else nullcontext():
             if (
@@ -837,11 +831,7 @@ class _RecoveryMixin(_CoordinatorBase):
     def _prepare_static_restore(self, state: PriorControlState) -> _StaticRestore | None:
         if state.mode != "colour":
             return None
-        if self.profile.segment_colour_mode_ambiguous and not (
-            state.static_rgb_known
-            or state.restorable_bar_white(self.profile)
-            or state.restorable_source_colour(self.profile)
-        ):
+        if not state.restorable_static_colour(self.profile):
             return None
         if not self.profile.supports_segments:
             packet = (
@@ -872,8 +862,12 @@ class _RecoveryMixin(_CoordinatorBase):
         if source_restore and not state.restorable_source_colour(self.profile):
             return None
         bar_restore = state.restorable_bar_white(self.profile)
+        palette_restore = self.profile.static_palette_recovery and not state.static_rgb_known
         kelvin_restore = (
-            not source_restore and state.color_temp_kelvin is not None and self.profile.static_readback_kelvin
+            not source_restore
+            and not self.profile.static_palette_recovery
+            and state.color_temp_kelvin is not None
+            and self.profile.static_readback_kelvin
         )
         if (
             kelvin_restore
@@ -904,7 +898,7 @@ class _RecoveryMixin(_CoordinatorBase):
             left, right = normalize_kelvin(left, self.profile), normalize_kelvin(right, self.profile)
             half = self.profile.segment_count // 2
             target_colours = [table_kelvin_rgb(left)] * half + [table_kelvin_rgb(right)] * half
-        whole = state.color_temp_kelvin
+        whole = None if self.profile.static_palette_recovery else state.color_temp_kelvin
         if kelvin_restore and whole is not None:
             whole = normalize_kelvin(whole, self.profile)
             target_colours = [table_kelvin_rgb(whole)] * self.profile.segment_count
@@ -927,17 +921,24 @@ class _RecoveryMixin(_CoordinatorBase):
         if state.segment_brightness is not None:
             for index, brightness in enumerate(state.segment_brightness, 1):
                 brightness_groups.setdefault(brightness, []).append(index)
-        packets = (
-            [build_color_temp(state.color_temp_kelvin, self.model, profile=self.profile)]
-            if kelvin_restore and state.color_temp_kelvin is not None
-            else build_segment_paint(
+        if kelvin_restore and state.color_temp_kelvin is not None:
+            packets = [build_color_temp(state.color_temp_kelvin, self.model, profile=self.profile)]
+        elif palette_restore:
+            packets = build_segment_palette_recovery(
+                [(segments, rgb) for rgb, segments in colour_groups.items()],
+                self.model,
+                profile=self.profile,
+                known_rgb_mask=state.static_rgb_mask,
+            )
+        else:
+            packets = build_segment_paint(
                 [(segments, rgb) for rgb, segments in colour_groups.items()], self.model, profile=self.profile
             )
-        ) + [
+        packets.extend(
             packet
             for brightness, segments in brightness_groups.items()
             for packet in build_segment_brightness_packets(segments, brightness, self.model, profile=self.profile)
-        ]
+        )
         if source_restore:
             packets = []
             for source in self.profile.light_sources:
@@ -983,7 +984,10 @@ class _RecoveryMixin(_CoordinatorBase):
         source_restore = self.profile.partition_segment_writes
         bar_restore = state.restorable_bar_white(self.profile)
         kelvin_restore = (
-            not source_restore and state.color_temp_kelvin is not None and self.profile.static_readback_kelvin
+            not source_restore
+            and not self.profile.static_palette_recovery
+            and state.color_temp_kelvin is not None
+            and self.profile.static_readback_kelvin
         )
         await self._write_static_restore(prepared)
         if state.static_gradual is not None:
@@ -1035,6 +1039,7 @@ class _RecoveryMixin(_CoordinatorBase):
         )
         if restored:
             self._static_rgb_known = state.static_rgb_known
+            self._static_rgb_mask |= state.static_rgb_mask
         return restored
 
     async def _write_static_restore(self, prepared: _StaticRestore) -> None:

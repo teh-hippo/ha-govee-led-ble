@@ -96,6 +96,9 @@ class _EffectCoordinator(SimpleNamespace):
     def async_mode_transition(self):
         return nullcontext()
 
+    def bind_effect_recovery(self):
+        pass
+
     def identity_fields_confirmed(self, fields=None):
         return True
 

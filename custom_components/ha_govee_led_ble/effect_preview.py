@@ -302,13 +302,21 @@ class _PreviewWriter:
         self._request = request
         self._coordinator = coordinator
         self._health_target = health_target
-        self.started = False
+        self._begun = False
+        self._write_baseline = getattr(coordinator, "control_write_attempts", None)
         self.completed = False
 
+    @property
+    def started(self) -> bool:
+        attempts = getattr(self._coordinator, "control_write_attempts", None)
+        if type(self._write_baseline) is int and type(attempts) is int:
+            return attempts != self._write_baseline
+        return self._begun
+
     async def begin(self) -> None:
-        if not self.started:
+        if not self._begun:
             await self._manager._async_begin_transmission(self._request, self._health_target)
-            self.started = True
+            self._begun = True
 
     async def __call__(
         self,
@@ -986,9 +994,11 @@ class EffectPreviewManager:
             self._degrade_checking_health(request.config_entry_id)
             return
         try:
-            await self._async_prepare_execution(coordinator, compiled)
-            writer = _PreviewWriter(self, request, coordinator, health_target)
-            await self._async_transmit_request(request, coordinator, compiled, writer)
+            await coordinator.async_preview_preflight(timeout=self._connect_timeout)
+            async with async_control_intent(coordinator, ControlIntent.PREVIEW), coordinator.async_mode_transition():
+                await self._async_prepare_execution(coordinator, compiled)
+                writer = _PreviewWriter(self, request, coordinator, health_target)
+                await self._async_transmit_request(request, coordinator, compiled, writer)
             writer.completed = True
             if not await self._async_request_is_current(request):
                 raise _PreviewSupersededError
@@ -1125,7 +1135,6 @@ class EffectPreviewManager:
             self._mark_write_unverified(request)
 
     async def _async_prepare_execution(self, coordinator: Any, compiled: CompiledApplication | None) -> None:
-        await coordinator.async_preview_preflight(timeout=self._connect_timeout)
         inline_brightness = (
             isinstance(compiled, CompiledVideoProfile)
             and compiled.relative_brightness_inline
@@ -1150,6 +1159,8 @@ class EffectPreviewManager:
             if not await coordinator.refresh_state():
                 raise PreviewError("approved disposable DIY code could not be refreshed")
             _validate_diy_slot_approval(coordinator, compiled)
+        if coordinator.profile.state_readable:
+            coordinator.bind_effect_recovery()
 
     async def _async_transmit_request(
         self,

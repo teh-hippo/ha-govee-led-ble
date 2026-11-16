@@ -60,6 +60,7 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     color_temp_kelvin_source: str
     _pending_kelvin: int | None
     _static_rgb_known: bool
+    _static_rgb_mask: int
     white_brightness: int
     music_mode: str
     video_mode: str

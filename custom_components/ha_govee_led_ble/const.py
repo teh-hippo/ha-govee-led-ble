@@ -307,6 +307,7 @@ class ModelProfile:
     light_sources: tuple[LightSource, ...] = ()
     segment_group_size: int = 0
     segment_colour_mode_ambiguous: bool = False
+    static_palette_recovery: bool = False
     configured_string_counts: tuple[int, ...] = ()
     bulbs_per_string: int = 0
     configured_string_ic_count: int = 0
@@ -974,6 +975,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         color_temp_range=KELVIN_RANGE_1000_10000,
         static_readback_kelvin=True,
         segment_colour_mode_ambiguous=True,
+        static_palette_recovery=True,
         segment_count=4,
         segment_group_size=4,
         physical_ic_count=4,

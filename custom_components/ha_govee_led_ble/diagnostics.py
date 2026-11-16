@@ -140,6 +140,7 @@ async def async_get_config_entry_diagnostics(
         "color_temp_kelvin": coordinator.color_temp_kelvin,
         "color_temp_kelvin_source": coordinator.color_temp_kelvin_source,
         "static_rgb_known": coordinator._static_rgb_known,
+        "static_rgb_mask": coordinator._static_rgb_mask,
         "effect": coordinator.effect,
         "diy_code": coordinator.diy_code,
         "color_mode": coordinator.color_mode.name.lower() if coordinator.color_mode is not None else None,

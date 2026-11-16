@@ -511,6 +511,7 @@ def test_prior_state_round_trips_thirty_segments():
         ring_enabled=True,
         source_0_enabled=False,
         source_1_enabled=True,
+        static_rgb_mask=5,
     )
 
     assert PriorControlState.from_dict(prior.to_dict()) == prior

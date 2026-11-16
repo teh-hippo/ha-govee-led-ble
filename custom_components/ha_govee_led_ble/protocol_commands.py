@@ -325,11 +325,16 @@ def build_colour_temperature(
     model: str = "H617A",
     *,
     profile: ModelProfile | None = None,
+    companion_rgb: tuple[int, int, int] | None = None,
 ) -> bytes:
     profile = profile or get_profile(model)
     value = max(profile.min_color_temp_kelvin, min(profile.max_color_temp_kelvin, kelvin))
-    preview = table_kelvin_rgb(value)
+    if companion_rgb is not None and table_rgb_kelvin(companion_rgb) != value:
+        raise ValueError("Companion colour does not represent the requested Kelvin")
+    preview = table_kelvin_rgb(value) if companion_rgb is None else companion_rgb
     resolved = profile.command_grammar
+    if companion_rgb is not None and resolved in WHOLE_BULB_GRAMMARS | {"H60B0"}:
+        raise ValueError("This colour-temperature grammar cannot preserve a supplied companion")
     if resolved == "H60B0":
         from .h60b0_controls import build_static
 

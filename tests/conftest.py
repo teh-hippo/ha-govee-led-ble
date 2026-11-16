@@ -163,6 +163,7 @@ def _coord_defaults() -> dict[str, Any]:
         rgb_color_source="initial",
         color_temp_kelvin_source="initial",
         _static_rgb_known=False,
+        _static_rgb_mask=0,
         _pending_kelvin=None,
         _notification_token=None,
         _notify_started_monotonic=None,

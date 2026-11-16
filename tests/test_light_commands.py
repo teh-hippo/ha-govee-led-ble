@@ -26,6 +26,7 @@ from custom_components.ha_govee_led_ble.light_commands import (
     build_segment_color,
     build_segment_color_temp,
     build_segment_paint,
+    build_segment_palette_recovery,
     normalize_kelvin,
     parse_static_write,
     scale_segment_groups,
@@ -36,6 +37,27 @@ from custom_components.ha_govee_led_ble.scenes import SCENES
 from custom_components.ha_govee_led_ble.transport import xor_checksum
 
 H = bytes.fromhex
+
+
+@pytest.mark.parametrize("known_rgb_mask", [0, 4])
+def test_palette_recovery_preserves_rgb_and_kelvin_lookup_companions(known_rgb_mask):
+    profile = MODEL_PROFILES["H1771"]
+    groups = [([1], (255, 255, 255)), ([2], (255, 51, 0)), ([3, 4], (255, 137, 18))]
+    packets = build_segment_palette_recovery(groups, "H1771", profile=profile, known_rgb_mask=known_rgb_mask)
+    prefixes = [
+        "33051501ffffff00000000000100",
+        "33051501ffffff03e8ff33000200",
+        "33051501ffffff07d0ff89120c00",
+    ]
+    if known_rgb_mask:
+        prefixes[-1:] = ["33051501ff891200000000000400", "33051501ffffff07d0ff89120800"]
+    expected = [H(prefix).ljust(19, b"\x00") for prefix in prefixes]
+    assert packets == [body + bytes([xor_checksum(body)]) for body in expected]
+    for packet in packets:
+        require_profile_packet(packet, profile)
+
+    authored = [parse_static_write(packet, "H1771") for packet in build_segment_paint(groups, "H1771")]
+    assert all(command is not None and command.kelvin is None for command in authored)
 
 
 @pytest.mark.parametrize("model", ["H617A", "H6199", "H6181", "H6179"])

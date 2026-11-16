@@ -163,6 +163,7 @@ _WHITE_BALANCE_GAIN_FIELDS = (
 class _StaticWriteIntent:
     rgb: tuple[int, int, int] | None = None
     sources: frozenset[str] = frozenset()
+    rgb_mask: int = 0
 
 
 class GoveeBLECoordinator(
@@ -1397,12 +1398,11 @@ class GoveeBLECoordinator(
                             self.source_static_intents[source.key] = value
                     else:
                         self.source_static_intents.pop(source.key, None)
-        rgb_intent = None
-        if static.kelvin is not None:
+        if self.color_mode is not ParsedMode.COLOUR:
             self._static_rgb_known = False
-        elif static.rgb is not None and static.whole_strip:
-            self._static_rgb_known = False
-            rgb_intent = static.rgb
+        rgb_mask = mask if self.profile.segment_count else 1
+        if static.kelvin is not None or static.rgb is not None:
+            self._static_rgb_mask &= ~rgb_mask
         rgb = static.rgb or static.kelvin_companion_rgb
         if static.whole_strip and rgb is not None:
             self.install_static_color(rgb=static.rgb, kelvin=static.kelvin)
@@ -1420,7 +1420,7 @@ class GoveeBLECoordinator(
                 ],
             )
         self._enter_static_mode()
-        return _StaticWriteIntent(rgb_intent, frozenset(sources))
+        return _StaticWriteIntent(static.rgb, frozenset(sources), rgb_mask if static.rgb is not None else 0)
 
     async def _async_write_packet(
         self,
@@ -1509,6 +1509,22 @@ class GoveeBLECoordinator(
         transition = self._mode_transition
         if transition is not None and transition.owner is not asyncio.current_task():
             transition = None
+        if arm_expected and transition is not None and (preparation := transition.preparation) is not None:
+            if (
+                self._notification_token is not preparation.subscription
+                or self._profile_generation != preparation.profile_generation
+                or not same_control_profile(self.profile, preparation.profile)
+                or not preparation.matches(self.capture_effect_control_state())
+            ):
+                from .effect_diagnostics import record_control_failure
+                from .effect_runtime import EffectStateReadError
+
+                error = EffectStateReadError(
+                    "The prepared recovery state changed before writing the effect",
+                    reason="preparation_changed",
+                )
+                error.diagnostics = record_control_failure(self, error.reason)
+                raise error
         static_mode = self.active_mode == "colour" or (not self.is_on and previous_mode is ParsedMode.COLOUR)
         if arm_expected and transition is not None and not transition.captured:
             transition.snapshot = self._capture_static_state() if static_mode else None
@@ -1592,6 +1608,8 @@ class GoveeBLECoordinator(
             on_write()
         if self._a3_sequence is not None and self._a3_sequence[0] is asyncio.current_task():
             self._a3_sequence[1].note_write(packet)
+        if arm_expected and transition is not None:
+            transition.preparation = None
         token = self._notification_token
         self._reply_gate.arm(reply_frame)
         try:
@@ -1656,7 +1674,15 @@ class GoveeBLECoordinator(
             and client.is_connected
             and self._notification_token is token
         ):
-            self._static_rgb_known = self.segment_colors == [intent.rgb] * self.profile.segment_count
+            self._static_rgb_mask |= (
+                sum(
+                    1 << index
+                    for index, colour in enumerate(self.segment_colors)
+                    if intent.rgb_mask & (1 << index) and colour == intent.rgb
+                )
+                if self.profile.segment_count
+                else intent.rgb_mask
+            )
 
     def _setting_queries(
         self, profile: ModelProfile, *, fields: frozenset[str] | None = None

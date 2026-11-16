@@ -164,7 +164,10 @@ async def test_committed_apply_fails_closed_when_geometry_changes(hass, kind, co
             return coordinator._client if stage == "connect" else await refresh(request)
 
         (coordinator.refresh_state if stage == "refresh" else coordinator._ensure_connected).side_effect = change
-        with pytest.raises(ValueError, match="Physical IC count changed"):
+        with pytest.raises(
+            RuntimeError if stage == "refresh" else ValueError,
+            match="device profile.*changed" if stage == "refresh" else "Physical IC count changed",
+        ):
             await backend.engine.async_apply_snapshot(
                 coordinator,
                 _item(kind),

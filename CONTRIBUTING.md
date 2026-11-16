@@ -67,6 +67,7 @@ Keep real product differences without turning each product into a separate imple
 
 - Prepare effect recovery from fresh required observations before checking restorable source state.
   Query only the native settings needed by the operation, and distinguish unsafe restoration from a Bluetooth connection failure.
+  Declare evidenced palette reconstruction separately from exact RGB/white intent; require complete current observations and preserve known explicit intent.
 - Entities adapt Home Assistant inputs and presentation; the coordinator owns admission, state qualification, physical attempts and recovery.
   Ordinary entity controls send the first request immediately and coalesce later requests to the newest per control.
   A light's power and attribute requests share one control stream, merging queued attributes; services, Studio and background work bypass this coalescing.

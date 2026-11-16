@@ -38,6 +38,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     parse_a3_effect_envelope,
     parse_command_ack_result,
     require_profile_packet,
+    table_kelvin_rgb,
     upload_ack_success,
 )
 from custom_components.ha_govee_led_ble.h60a6_effects import decode_native_scene
@@ -368,13 +369,13 @@ async def test_effect_preparation_reads_required_sources_without_unrelated_bulk_
         assert prior.segment_colors == ((255, 0, 0),) * 4
 
 
-@pytest.mark.parametrize("missing", ["aa04", "ac030236a3"])
+@pytest.mark.parametrize("missing", ["aa04", "ac030236a3", "aaa501"])
 async def test_effect_preparation_rejects_cached_required_fields_without_writes(effect_connection, missing):
     coordinator, writes, replies = effect_connection
     coordinator.boolean_control_state.update(source_0_enabled=True, source_1_enabled=True)
     coordinator._mark_received(ReadDomain.OTHER, "boolean_source_0_enabled", "boolean_source_1_enabled")
     del replies[frame(missing)]
-    with pytest.raises(RuntimeError, match="Could not read current"):
+    with pytest.raises(RuntimeError, match="Could not read"):
         await async_prepare_effect_control_state(coordinator, require_restorable_static=True)
     assert all(packet[0] != 0x33 for packet in writes)
 
@@ -447,12 +448,117 @@ async def test_effect_preparation_rejects_replaced_subscription(effect_connectio
     assert all(packet[0] != 0x33 for packet in writes)
 
 
+@pytest.mark.parametrize("preview", [False, True])
+@pytest.mark.parametrize("changed", ["subscription", "profile", "mode", "scene_policy"])
+async def test_effect_preparation_binds_recovery_observations(monkeypatch, effect_connection, preview, changed):
+    coordinator, writes, _replies = effect_connection
+    if changed == "scene_policy":
+        coordinator.profile = replace(coordinator.profile, scene_identity_fields=frozenset({"fw_version"}))
+    refresh = coordinator.async_refresh_segments
+
+    async def replace_observations():
+        if changed == "subscription":
+            coordinator._notification_token = object()
+            coordinator._notify_started_monotonic = asyncio.get_running_loop().time()
+            coordinator._field_received_at.clear()
+            coordinator.boolean_control_state.clear()
+            coordinator.color_mode = ParsedMode.UNKNOWN
+            coordinator._static_rgb_known = False
+        elif changed == "profile":
+            coordinator.profile = replace(coordinator.profile, static_palette_recovery=False)
+        elif changed == "scene_policy":
+            coordinator.profile = replace(coordinator.profile, rgbic_scene_v0=not coordinator.profile.rgbic_scene_v0)
+        else:
+            coordinator._notify_callback(None, bytearray(frame("aa05135100")))
+        return await refresh()
+
+    monkeypatch.setattr(coordinator, "async_refresh_segments", replace_observations)
+    if changed == "scene_policy":
+        await async_prepare_effect_control_state(coordinator, require_restorable_static=preview)
+    else:
+        with pytest.raises(RuntimeError, match="changed"):
+            await async_prepare_effect_control_state(coordinator, require_restorable_static=preview)
+    assert all(packet[0] not in (0x33, 0xA3) for packet in writes)
+
+
+@pytest.mark.parametrize("source", ["saved", "preview"])
+@pytest.mark.parametrize("changed", ["subscription", "brightness"])
+async def test_effect_preparation_remains_bound_until_first_write(
+    hass, monkeypatch, effect_connection, source, changed
+):
+    from custom_components.ha_govee_led_ble.effect_deployments import EffectDeploymentRepository
+    from custom_components.ha_govee_led_ble.effect_preview import PreviewPhase, PreviewWriteDisposition
+    from custom_components.ha_govee_led_ble.effect_runtime import EffectDeploymentEngine
+    from tests.storage_test_double import InMemoryVersionedDocumentStore
+    from tests.test_effect_preview import _manager, _open
+
+    coordinator, writes, _replies = effect_connection
+    bind = coordinator.bind_effect_recovery
+
+    def replace_preparation():
+        bind()
+        if changed == "subscription":
+            coordinator._notification_token = object()
+            coordinator._notify_started_monotonic = asyncio.get_running_loop().time()
+            coordinator._field_received_at.clear()
+            coordinator.boolean_control_state.clear()
+            coordinator.color_mode = ParsedMode.UNKNOWN
+            coordinator._static_rgb_known = False
+        else:
+            coordinator._notify_callback(None, bytearray(frame("aa0419")))
+
+    monkeypatch.setattr(coordinator, "bind_effect_recovery", replace_preparation)
+    item = LibraryItem.new("Flowing", MusicProfile("H1771", "flowing", 0))
+    if source == "saved":
+        repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
+        await repository.async_load()
+        with pytest.raises(RuntimeError, match="prepared recovery state changed"):
+            await EffectDeploymentEngine(repository).async_apply_saved(
+                coordinator, item, config_entry_id="entry-a", updated_at="2026-11-16T00:00:00Z"
+            )
+    else:
+        manager, _cache = await _manager(hass, monkeypatch, coordinator)
+        owner = object()
+        events = []
+        session = _open(manager, owner, events)
+        try:
+            await manager.async_queue_snapshot(
+                session_id=session,
+                owner=owner,
+                config_entry_id="entry-a",
+                sequence=1,
+                updated_at="2026-11-16T00:00:00Z",
+                item=item,
+            )
+            await manager.async_wait_idle("entry-a")
+            assert events[-1].phase is PreviewPhase.FAILED
+            assert events[-1].write_disposition is PreviewWriteDisposition.NOT_STARTED
+            assert "prepared recovery state changed" in events[-1].error_message
+        finally:
+            await manager.async_shutdown()
+    assert coordinator.control_write_attempts == 0
+    assert all(packet[0] not in (0x33, 0xA3) for packet in writes)
+
+
 @pytest.mark.parametrize(
-    ("source", "source_mask"),
-    [("saved", 7), ("preview", 7), ("preview_rgb", 7), ("preview_rgb", 3), ("preview_rgb", 5)],
+    ("source", "initial", "source_mask"),
+    [
+        ("saved", "cached", 7),
+        ("preview", "cached", 7),
+        ("preview", "rgb", 7),
+        ("preview", "rgb", 3),
+        ("preview", "rgb", 5),
+        ("preview", "reconnect", 7),
+        ("saved", "reconnect", 7),
+        ("preview", "palette", 7),
+        ("preview", "partial_palette", 7),
+        ("saved", "partial_palette", 7),
+        ("preview", "palette_hint", 7),
+        ("preview", "uniform_palette_hint", 7),
+    ],
 )
 async def test_music_effect_uses_fresh_preparation_without_replaying_upload(
-    hass, monkeypatch, effect_connection, source, source_mask
+    hass, monkeypatch, effect_connection, source, initial, source_mask
 ):
     from custom_components.ha_govee_led_ble.effect_deployments import DeploymentPhase, EffectDeploymentRepository
     from custom_components.ha_govee_led_ble.effect_preview import PreviewPhase
@@ -462,7 +568,27 @@ async def test_music_effect_uses_fresh_preparation_without_replaying_upload(
     from tests.test_h60a_protocol import bulk_frames
 
     coordinator, writes, replies = effect_connection
-    if source == "preview_rgb":
+    client = coordinator._client
+    reconnected = initial == "reconnect"
+    painted = initial in {"palette", "partial_palette", "palette_hint", "uniform_palette_hint"}
+    partial = initial == "partial_palette"
+    scalar_hint = partial or initial in {"palette_hint", "uniform_palette_hint"}
+    from_static = initial != "cached"
+    rgb = (255, 255, 255) if reconnected else (255, 0, 0)
+    palette = [(255, 137, 18)] + [table_kelvin_rgb(4000) if partial else (0, 0, 255)] * 3 if painted else [rgb] * 4
+    if initial == "uniform_palette_hint":
+        palette = [table_kelvin_rgb(4000)] * 4
+    static_reply = frame("aa0515000fa0" if scalar_hint else "aa0515010000" if reconnected else "aa0515000000")
+    segment_reply = frame(
+        "aaa50101ffffff1effffff28ffffff01ffffff"
+        if reconnected
+        else "aaa501" + "".join("64" + bytes(colour).hex() for colour in palette)
+    )
+    replies[frame("aa0501")] = static_reply
+    replies[frame("aaa501")] = segment_reply
+    if reconnected:
+        replies[frame("aa04")] = frame("aa0464")
+    if from_static:
         coordinator.is_on = True
         coordinator.color_mode = ParsedMode.UNKNOWN
         coordinator._static_rgb_known = False
@@ -475,14 +601,32 @@ async def test_music_effect_uses_fresh_preparation_without_replaying_upload(
         monkeypatch.setattr(light, "_async_supersede_preview", AsyncMock())
         monkeypatch.setattr(light, "_notify_state_changed", MagicMock())
         monkeypatch.setattr(coordinator, "_renew_foreground_lease", MagicMock())
-        await light.async_turn_on(rgb_color=(255, 0, 0))
-        assert coordinator.segment_state_source == "optimistic"
-        assert not coordinator.capture_effect_control_state().static_rgb_known
+        if painted:
+            if partial:
+                coordinator.segment_colors = [palette[1]] * 4
+            groups = [([1], palette[0])] + ([] if partial else [([2, 3, 4], palette[1])])
+            await coordinator.async_paint_segments(groups)
+        else:
+            await light.async_turn_on(rgb_color=rgb)
+            assert coordinator.segment_state_source == "optimistic"
+            assert not coordinator.capture_effect_control_state().static_rgb_known
         assert coordinator.capture_effect_control_state().source_0_enabled is None
         writes.clear()
+        if reconnected:
+            await coordinator.disconnect()
+            assert not coordinator._static_rgb_known
+
+            async def reconnect():
+                if coordinator._client is None:
+                    coordinator._client = client
+                    coordinator._notification_token = object()
+                    coordinator._notify_started_monotonic = asyncio.get_running_loop().time()
+                return client
+
+            coordinator._ensure_connected.side_effect = reconnect
     item = LibraryItem.new("Saved Flowing", MusicProfile("H1771", "flowing", 0))
     compiled = compile_application(item, "H1771")
-    write = coordinator._client.write_gatt_char.side_effect
+    write = client.write_gatt_char.side_effect
     resident_sources = source_mask
     prior = None
 
@@ -494,7 +638,7 @@ async def test_music_effect_uses_fresh_preparation_without_replaying_upload(
                 0x36: bytes([resident_sources]),
                 0xA3: b"\x01",
                 0x41: b"\x00\x00",
-                0xA5: b"\x01" + b"\x64\xff\x00\x00" * 4,
+                0xA5: segment_reply[2:19],
             }
             body = b"".join(
                 bytes([domain, len(settings[domain])]) + settings[domain] for domain in packet[3 : 3 + packet[2]]
@@ -508,7 +652,7 @@ async def test_music_effect_uses_fresh_preparation_without_replaying_upload(
                 bit = 1 << (packet[2] + 1)
                 resident_sources = resident_sources | bit if packet[3] else resident_sources & ~bit
             elif packet[:2] == b"\x33\x05" and packet != compiled.packets[-1]:
-                replies[frame("aa0501")] = frame("aa0515000000")
+                replies[frame("aa0501")] = static_reply
             await write(uuid, packet, **kwargs)
         if packet == compiled.packets[-2]:
             coordinator._notify_callback(None, bytearray(frame("a341ff00")))
@@ -517,20 +661,21 @@ async def test_music_effect_uses_fresh_preparation_without_replaying_upload(
             replies[frame("aa0501")] = frame("aa05135100")
             coordinator._notify_callback(None, bytearray(frame("330500")))
 
-    coordinator._client.write_gatt_char.side_effect = acknowledge
-    if source == "saved":
-        repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
-        await repository.async_load()
-        result = await EffectDeploymentEngine(repository).async_apply_saved(
-            coordinator, item, config_entry_id="entry-a", updated_at="2026-11-14T00:00:00Z"
-        )
-        assert result.phase is DeploymentPhase.CONFIRMED
-    else:
-        manager, _cache = await _manager(hass, monkeypatch, coordinator)
-        owner = object()
-        events = []
-        session = _open(manager, owner, events)
-        try:
+    client.write_gatt_char.side_effect = acknowledge
+    manager = None
+    try:
+        if source == "saved":
+            repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
+            await repository.async_load()
+            result = await EffectDeploymentEngine(repository).async_apply_saved(
+                coordinator, item, config_entry_id="entry-a", updated_at="2026-11-14T00:00:00Z"
+            )
+            assert result.phase is DeploymentPhase.CONFIRMED
+        else:
+            manager, _cache = await _manager(hass, monkeypatch, coordinator)
+            owner = object()
+            events = []
+            session = _open(manager, owner, events)
             await manager.async_queue_snapshot(
                 session_id=session,
                 owner=owner,
@@ -541,32 +686,61 @@ async def test_music_effect_uses_fresh_preparation_without_replaying_upload(
             )
             await manager.async_wait_idle("entry-a")
             assert events[-1].phase is PreviewPhase.CONFIRMED, events[-1].error_message
-            if source == "preview_rgb":
-                assert prior is not None
-                assert prior.static_rgb_known and prior.static_gradual is True
-                assert prior.segment_colors == ((255, 0, 0),) * 4
-                assert prior.source_0_enabled is bool(source_mask & 2)
-                assert prior.source_1_enabled is bool(source_mask & 4)
-                assert [packet for packet in writes if packet[0] in (0x33, 0xA3)] == list(compiled.packets)
-                await light.async_turn_on(effect="off")
-                restored = coordinator.capture_effect_control_state()
-                assert restored.mode == "colour"
-                for field in (
-                    "is_on",
-                    "brightness_pct",
-                    "rgb_color",
-                    "color_temp_kelvin",
-                    "static_rgb_known",
-                    "static_gradual",
-                    "source_0_enabled",
-                    "source_1_enabled",
-                    "segment_colors",
-                    "segment_brightness",
-                ):
-                    assert getattr(restored, field) == getattr(prior, field), field
-        finally:
+        if from_static:
+            assert prior is not None
+            assert prior.static_rgb_known is (not reconnected and not partial)
+            assert prior.static_rgb_mask == (1 if partial else 0)
+            assert prior.static_gradual is True
+            assert prior.segment_colors == tuple(palette)
+            assert prior.source_0_enabled is bool(source_mask & 2)
+            assert prior.source_1_enabled is bool(source_mask & 4)
+            assert [packet for packet in writes if packet[0] in (0x33, 0xA3)] == list(compiled.packets)
+            restore_start = len(writes)
+            await light.async_turn_on(effect="off")
+            restored = coordinator.capture_effect_control_state()
+            assert restored.mode == "colour"
+            for field in (
+                "is_on",
+                "brightness_pct",
+                "color_temp_kelvin",
+                "static_rgb_known",
+                "static_rgb_mask",
+                "static_gradual",
+                "source_0_enabled",
+                "source_1_enabled",
+                "segment_colors",
+                "segment_brightness",
+            ):
+                assert getattr(restored, field) == getattr(prior, field), field
+            if reconnected:
+                assert prior.segment_brightness == (1, 30, 40, 1)
+                assert [packet for packet in writes[restore_start:] if packet[0] == 0x33] == [
+                    build_power(True, "H1771"),
+                    build_brightness(100, "H1771"),
+                    build_segment_color(range(1, 5), *rgb, "H1771"),
+                    build_segment_brightness([1, 4], 1, "H1771"),
+                    build_segment_brightness([2], 30, "H1771"),
+                    build_segment_brightness([3], 40, "H1771"),
+                    build_boolean_control("gradual", True, "H1771"),
+                ]
+            if painted:
+                colours = [
+                    command
+                    for packet in writes[restore_start:]
+                    if packet[0] == 0x33
+                    and (command := parse_static_write(packet, "H1771")) is not None
+                    and (command.rgb is not None or command.kelvin is not None)
+                ]
+                expected_colours = (
+                    [(15, palette[0], None)]
+                    if initial == "uniform_palette_hint"
+                    else [(1, palette[0], None), (14, None, 4000) if partial else (14, palette[1], None)]
+                )
+                assert [(command.segment_mask, command.rgb, command.kelvin) for command in colours] == expected_colours
+    finally:
+        if manager is not None:
             await manager.async_shutdown()
-    if source != "preview_rgb":
+    if not from_static:
         assert [packet for packet in writes if packet[0] in (0x33, 0xA3)] == list(compiled.packets)
         assert coordinator.music_mode == "flowing"
         assert coordinator.music_sensitivity == 0
@@ -612,6 +786,7 @@ async def test_live_rejection_keeps_qualified_recovery_context_without_writing(h
     from tests.test_effect_preview import _manager, _open
 
     coordinator, writes, _replies = effect_connection
+    coordinator.profile = replace(coordinator.profile, static_palette_recovery=False)
     coordinator._static_rgb_known = False
     manager, _cache = await _manager(hass, monkeypatch, coordinator)
     owner = object()

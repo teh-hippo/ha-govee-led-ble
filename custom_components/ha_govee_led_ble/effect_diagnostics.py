@@ -250,6 +250,7 @@ def record_control_failure(
                 "segment_count": profile.segment_count,
                 "physical_ic_count": profile.physical_ic_count,
                 "ambiguous_static_intent": profile.segment_colour_mode_ambiguous,
+                "static_palette_recovery": profile.static_palette_recovery,
                 "static_readback_kelvin": profile.static_readback_kelvin,
                 "zero_kelvin_is_rgb": profile.static_readback_zero_kelvin_is_rgb,
             },
@@ -265,6 +266,7 @@ def record_control_failure(
                     "rgb_color_source",
                     "segment_state_source",
                     "_static_rgb_known",
+                    "_static_rgb_mask",
                 )
             },
             "mode_observation": getattr(coordinator, "_last_mode_observation", {}),

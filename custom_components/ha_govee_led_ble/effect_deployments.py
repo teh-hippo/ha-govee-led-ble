@@ -190,6 +190,7 @@ class PriorControlState:
     segment_colors: tuple[tuple[int, int, int], ...] | None = None
     segment_brightness: tuple[int, ...] | None = None
     music_body: bytes | None = None
+    static_rgb_mask: int = 0
 
     def __post_init__(self) -> None:
         self._validate_flags_and_bars()
@@ -270,6 +271,14 @@ class PriorControlState:
                 raise EffectStorageError("invalid prior music body") from error
 
     def _validate_segment_layout(self) -> None:
+        if type(self.static_rgb_mask) is not int or self.static_rgb_mask < 0:
+            raise EffectStorageError("prior RGB intent mask must be a nonnegative integer")
+        if self.static_rgb_mask and (
+            self.static_rgb_known
+            or not isinstance(self.segment_colors, tuple)
+            or self.static_rgb_mask >= (1 << len(self.segment_colors)) - 1
+        ):
+            raise EffectStorageError("prior RGB intent mask must describe partial segment intent")
         if self.segment_colors is not None or self.segment_brightness is not None:
             if not isinstance(self.segment_colors, tuple) or not 1 <= len(self.segment_colors) <= MAX_PRIOR_SEGMENTS:
                 raise EffectStorageError(f"prior segment layout must contain 1 to {MAX_PRIOR_SEGMENTS} colours")
@@ -449,6 +458,22 @@ class PriorControlState:
         if self.black_border is not None and type(self.black_border) is not bool:
             raise EffectStorageError("prior black-border state must be a boolean or null")
 
+    def restorable_static_colour(self, profile: ModelProfile) -> bool:
+        return (
+            not profile.segment_colour_mode_ambiguous
+            or self.static_rgb_known
+            or self.restorable_bar_white(profile)
+            or self.restorable_source_colour(profile)
+            or profile.static_palette_recovery
+            and self.segment_colors is not None
+            and len(self.segment_colors) == profile.segment_count
+            and (
+                not profile.supports_segment_brightness
+                or self.segment_brightness is not None
+                and len(self.segment_brightness) == profile.segment_count
+            )
+        )
+
     def restorable_bar_white(self, profile: ModelProfile) -> bool:
         from .generated_protocol_adapter import table_kelvin_rgb
         from .light_commands import normalize_kelvin
@@ -511,6 +536,7 @@ class PriorControlState:
                 else {}
             ),
             **({"static_rgb_known": True} if self.static_rgb_known else {}),
+            **({"static_rgb_mask": self.static_rgb_mask} if self.static_rgb_mask else {}),
             **({"static_gradual": self.static_gradual} if self.static_gradual is not None else {}),
             "panel_enabled": self.panel_enabled,
             "ring_enabled": self.ring_enabled,
@@ -654,6 +680,7 @@ class PriorControlState:
             rgb_color=_required_rgb(raw, "rgb_color"),
             color_temp_kelvin=_optional_int(raw, "color_temp_kelvin"),
             static_rgb_known=_optional_bool(raw, "static_rgb_known", default=False),
+            static_rgb_mask=_optional_int(raw, "static_rgb_mask") or 0,
             static_gradual=_optional_bool(raw, "static_gradual"),
             panel_enabled=_optional_bool(raw, "panel_enabled"),
             ring_enabled=_optional_bool(raw, "ring_enabled"),

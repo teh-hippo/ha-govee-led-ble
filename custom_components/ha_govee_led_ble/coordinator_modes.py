@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any
 
-from .const import ModelProfile, ReadDomain, same_control_profile
+from .const import NATIVE_ZONE_CONTROLS, ModelProfile, ReadDomain, same_control_profile
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator_base import _CoordinatorBase, async_prepare_effect_profile
 from .coordinator_refresh import RefreshRequest
@@ -51,6 +51,46 @@ class PreModeSnapshot:
     profile: ModelProfile
 
 
+@dataclass(frozen=True)
+class _EffectRecoveryPreparation:
+    state: PriorControlState
+    profile: ModelProfile
+    subscription: object | None
+    profile_generation: int
+
+    def matches(self, current: PriorControlState) -> bool:
+        fields: tuple[str, ...] = (
+            "mode",
+            "is_on",
+            "brightness_pct",
+            "effect",
+            "scene_code",
+            "diy_code",
+            "diy_companion",
+            "music_mode",
+            "video_mode",
+            *NATIVE_ZONE_CONTROLS,
+        )
+        if self.state.mode in {"colour", "unknown"}:
+            fields += (
+                "rgb_color",
+                "color_temp_kelvin",
+                "static_rgb_known",
+                "static_rgb_mask",
+                "static_gradual",
+                "segment_colors",
+                "segment_brightness",
+                "source_static_intents",
+                "top_kelvin",
+                "bottom_kelvin",
+                "bottom_brightness",
+                "ripple_speed",
+                "left_bar_kelvin",
+                "right_bar_kelvin",
+            )
+        return all(getattr(self.state, name) == getattr(current, name) for name in fields)
+
+
 @dataclass
 class _ModeTransition:
     owner: asyncio.Task[Any] | None
@@ -60,6 +100,7 @@ class _ModeTransition:
     snapshot: PreModeSnapshot | None = None
     profile: ModelProfile | None = None
     foreground_generation: int = 0
+    preparation: _EffectRecoveryPreparation | None = None
 
 
 class _ActiveModeMixin(_CoordinatorBase):
@@ -220,6 +261,14 @@ class _ActiveModeMixin(_CoordinatorBase):
         finally:
             if self._mode_transition is transition:
                 self._mode_transition = previous
+
+    def bind_effect_recovery(self) -> None:
+        transition = self._mode_transition
+        if transition is None or transition.owner is not asyncio.current_task():
+            raise RuntimeError("Effect recovery preparation requires operation ownership")
+        transition.preparation = _EffectRecoveryPreparation(
+            self.capture_effect_control_state(), self.profile, self._notification_token, self._profile_generation
+        )
 
     async def async_apply_native_scene(
         self,

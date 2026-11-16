@@ -26,6 +26,14 @@ _SEGMENT_READ_TIMEOUT = 2.0
 
 
 class _SegmentMixin(_CoordinatorBase):
+    @property
+    def _static_rgb_known(self) -> bool:
+        return self._static_rgb_mask == (1 << max(1, self.profile.segment_count)) - 1
+
+    @_static_rgb_known.setter
+    def _static_rgb_known(self, known: bool) -> None:
+        self._static_rgb_mask = (1 << max(1, self.profile.segment_count)) - 1 if known else 0
+
     def _init_segment_state(self) -> None:
         self.configured_strings: int | None = None
         self._configured_strings_confirmed = False
@@ -163,8 +171,9 @@ class _SegmentMixin(_CoordinatorBase):
         self._segment_groups_observed.add(group)
         if len(self._segment_groups_observed) != self._segment_group_count:
             return ()
-        if self._static_rgb_known and self.segment_colors != colours:
-            self._static_rgb_known = False
+        for index, (previous, current) in enumerate(zip(self.segment_colors, colours, strict=True)):
+            if previous != current:
+                self._static_rgb_mask &= ~(1 << index)
         self.segment_colors = colours
         if page_brightness is not None:
             self.segment_brightness = brightness
