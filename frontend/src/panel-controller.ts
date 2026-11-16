@@ -2016,11 +2016,7 @@ export class PanelController {
       return false;
     }
     try {
-      if (diyCode === undefined) {
-        await this.api.applySavedEffect(configEntryId, item);
-      } else {
-        await this.api.applySavedEffect(configEntryId, item, diyCode);
-      }
+      await this.api.applySavedEffect(configEntryId, item, diyCode, true);
       if (
         !this.model.liveApplyEnabled ||
         this.model.selectedDeviceId !== configEntryId ||

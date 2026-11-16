@@ -461,6 +461,8 @@ def test_unsaved_apply_records_content_free_source_metadata() -> None:
         ("panel_enabled", 1),
         ("ring_enabled", "on"),
         ("source_0_enabled", 1),
+        ("static_colour_observed", "true"),
+        ("static_colour_observed", 1),
     ],
 )
 def test_prior_state_rejects_invalid_body_and_segment_persistence(field, value):

@@ -11,6 +11,7 @@ from custom_components.ha_govee_led_ble.const import device_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.effect_catalogue import MODEL_EFFECT_CATALOGUES
 from custom_components.ha_govee_led_ble.effect_compiler import compile_application, validate_compiled_geometry
+from custom_components.ha_govee_led_ble.effect_deployments import PriorControlState
 from custom_components.ha_govee_led_ble.effect_domain import BuiltinScene, CatalogueRef, LibraryItem
 from custom_components.ha_govee_led_ble.effect_storage import LibrarySnapshot
 from custom_components.ha_govee_led_ble.layered_scene import AppliedArea, Distribution, Selection
@@ -31,6 +32,19 @@ from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
 from custom_components.ha_govee_led_ble.transport import reassemble_a3
 from tests.coordinator_test_support import frame as _frame
+
+
+@pytest.fixture
+def static_baseline():
+    return PriorControlState(
+        mode="colour",
+        is_on=True,
+        brightness_pct=42,
+        rgb_color=(17, 34, 51),
+        static_rgb_known=True,
+        segment_colors=((17, 34, 51),) * 10,
+        segment_brightness=(42,) * 10,
+    )
 
 
 def test_static_writes_select_ten_logical_segments_not_twenty_physical_ics():
@@ -169,7 +183,7 @@ def test_scene_geometry_rewrites_out_of_budget_fields_without_mutating_authored_
 
 @pytest.mark.parametrize("revoke_during_pacing", [False, True])
 async def test_native_scene_uses_subscription_identity_and_rechecks_after_reply_pacing(
-    hass, monkeypatch, revoke_during_pacing
+    hass, monkeypatch, static_baseline, revoke_during_pacing
 ):
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model="H619A", configuration_url=None)
     coordinator.profile = device_profile("H619A", 2, 1, firmware="2.07.01", hardware="2.01.02")
@@ -180,6 +194,7 @@ async def test_native_scene_uses_subscription_identity_and_rechecks_after_reply_
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
     coordinator._client = client
     monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
+    monkeypatch.setattr(coordinator, "async_prepare_static_baseline", AsyncMock(return_value=static_baseline))
     entry = next(entry for entry in SCENE_ENTRIES["H619A"] if entry.scene_type == 2)
 
     async def sequence(packets, *, write_guard, **kwargs):
@@ -207,7 +222,9 @@ async def test_native_scene_uses_subscription_identity_and_rechecks_after_reply_
 
 
 @pytest.mark.parametrize("fresh_identity", [False, True])
-async def test_saved_scene_reconnects_before_compilation_after_idle_disconnect(hass, monkeypatch, fresh_identity):
+async def test_saved_scene_reconnects_before_compilation_after_idle_disconnect(
+    hass, monkeypatch, static_baseline, fresh_identity
+):
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model="H619A", configuration_url=None)
     coordinator.profile = device_profile("H619A", 2, 1, firmware="1.06.00", hardware="1.00.02")
     coordinator.fw_version, coordinator.hw_version = "1.06.00", "1.00.02"
@@ -224,6 +241,7 @@ async def test_saved_scene_reconnects_before_compilation_after_idle_disconnect(h
         return client
 
     monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(side_effect=connect))
+    monkeypatch.setattr(coordinator, "async_prepare_static_baseline", AsyncMock(return_value=static_baseline))
 
     @asynccontextmanager
     async def saved_effect_for_apply(*args, **kwargs):

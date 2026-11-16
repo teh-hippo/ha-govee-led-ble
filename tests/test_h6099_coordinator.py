@@ -14,7 +14,7 @@ from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_refresh import DEFAULT_REFRESH_REQUEST, RefreshRequest
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.effect_compiler import compile_video_profile
-from custom_components.ha_govee_led_ble.effect_deployments import EffectDeploymentRepository
+from custom_components.ha_govee_led_ble.effect_deployments import EffectDeploymentRepository, PriorControlState
 from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, VideoProfile
 from custom_components.ha_govee_led_ble.effect_runtime import EffectDeploymentEngine, async_apply_compiled_profile
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
@@ -56,6 +56,20 @@ def device(hass, monkeypatch):
     monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
     monkeypatch.setattr(coordinator, "_renew_foreground_lease", lambda: None)
     return coordinator
+
+
+@pytest.fixture
+def static_baseline(device):
+    return PriorControlState(
+        mode="colour",
+        is_on=True,
+        brightness_pct=42,
+        rgb_color=(12, 34, 56),
+        static_rgb_known=True,
+        segment_colors=((12, 34, 56),) * device.profile.segment_count,
+        segment_brightness=(100,) * device.profile.segment_count,
+        segment_kelvin=(0,) * device.profile.segment_count,
+    )
 
 
 def notify(device, prefix):
@@ -507,7 +521,10 @@ async def test_video_recovery_restores_policy_and_border_only_when_requested(dev
 
 @pytest.mark.parametrize("changed_at", [0, 1, 2, 3])
 @pytest.mark.parametrize("count", [None, 14])
-async def test_authored_music_rechecks_geometry_before_every_attempt(device, changed_at, count):
+async def test_authored_music_rechecks_geometry_before_every_attempt(
+    device, monkeypatch, static_baseline, changed_at, count
+):
+    monkeypatch.setattr(device, "async_prepare_static_baseline", AsyncMock(return_value=static_baseline))
     notify(device, "aa40003c")
     state = replace(
         device.capture_effect_control_state(),
@@ -608,7 +625,8 @@ async def test_authored_policy_recovery_checks_notifications_at_physical_boundar
 
 
 @pytest.mark.parametrize("authored", [False, True])
-async def test_studio_persists_policy_recovery_only_for_explicit_policy(device, monkeypatch, authored):
+async def test_studio_persists_policy_recovery_only_for_explicit_policy(device, monkeypatch, static_baseline, authored):
+    monkeypatch.setattr(device, "async_prepare_static_baseline", AsyncMock(return_value=static_baseline))
     notify(device, "aaa90a0601020a007800")
 
     async def refresh(request=DEFAULT_REFRESH_REQUEST):
@@ -646,6 +664,7 @@ async def test_authored_policy_recovery_does_not_retry_over_a_filtered_notificat
     notify(device, "aaa90a0601020a007800")
     state = replace(
         device.capture_effect_control_state(),
+        mode="unknown",
         blank_screen_detection=1,
         blank_screen_low_brightness_duration_seconds=300,
         blank_screen_same_tone_duration_seconds=600,
@@ -693,7 +712,7 @@ async def test_toggle_reads_fresh_external_policy_before_writing(device, monkeyp
     notify(device, "aaa90a0600020a007800")
     client = device._client
     device.subordinate_21_version = "1.00.11"
-    saved = replace(device.capture_effect_control_state(), blank_screen=True)
+    saved = replace(device.capture_effect_control_state(), mode="unknown", blank_screen=True)
     device._clear_client_state(client)
     device._client = client
     device._confirmed_identity_fields.add("subordinate_21_version")
@@ -781,7 +800,10 @@ async def test_toggle_guard_rejects_filtered_reply_or_reconnect(device, monkeypa
 
 @pytest.mark.parametrize("cached", [False, True])
 @pytest.mark.parametrize("fresh", [False, True])
-async def test_compiled_toggle_prepares_policy_before_any_control(device, monkeypatch, virtual_clock, cached, fresh):
+async def test_compiled_toggle_prepares_policy_before_any_control(
+    device, monkeypatch, static_baseline, virtual_clock, cached, fresh
+):
+    monkeypatch.setattr(device, "async_prepare_static_baseline", AsyncMock(return_value=static_baseline))
     device.subordinate_21_version = "1.00.11"
     device._confirmed_identity_fields.add("subordinate_21_version")
     if cached:

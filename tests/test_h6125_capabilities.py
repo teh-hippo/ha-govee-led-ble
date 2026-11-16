@@ -1,5 +1,6 @@
 """Exact H6125 candidate: wire encodings that differ from the shared logical frames, and the effect route."""
 
+import time
 from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -160,6 +161,11 @@ def test_original_controller_preserves_rgb_only_pages_and_recovery(h6125):
     assert wire(build_music_mode(5, 42, None, False, profile=profile))[:5] == H("33050c002a")
     assert wire(build_segment_query(4, profile=profile))[:3] == H("aaa204")
 
+    h6125._client = MagicMock(is_connected=True)
+    h6125._notification_token = object()
+    h6125._notify_started_monotonic = time.monotonic() - 1
+    h6125._notify_callback(None, bytearray(frame(0x01, [1])))
+    h6125._notify_callback(None, bytearray(frame(0x04, [128])))
     h6125._notify_callback(None, bytearray(frame(0x05, [0x0B, 0])))
     colours = [(index, index * 2, index * 3) for index in range(15)]
     for group in range(1, 5):
@@ -324,6 +330,8 @@ def test_two_controller_profiles_do_not_share_diy_transport_or_slots():
 async def test_prepared_scenes_recheck_revision_before_any_write(
     hass, h6125, monkeypatch, path, before, after, name, stage
 ):
+    from tests.test_effect_preview import _known_static_baseline
+
     c = h6125
     c.profile = before
     c.is_on = False
@@ -349,6 +357,7 @@ async def test_prepared_scenes_recheck_revision_before_any_write(
     monkeypatch.setattr(c, "_renew_foreground_lease", MagicMock())
     monkeypatch.setattr(c, "async_restore_effect_control_state", AsyncMock(return_value=False))
     monkeypatch.setattr(c, "refresh_state", AsyncMock(return_value=False))
+    monkeypatch.setattr(c, "async_prepare_static_baseline", AsyncMock(return_value=_known_static_baseline(c)))
     if path == "saved":
         repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
         await repository.async_load()

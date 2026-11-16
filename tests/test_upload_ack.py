@@ -67,8 +67,9 @@ async def connected(hass, monkeypatch, request):
     if c.model == "H600A":
 
         async def reconnect():
-            c._client = client
-            await c._start_notify()
+            if c._client is not client:
+                c._client = client
+                await c._start_notify()
             return client
 
         c._ensure_connected.side_effect = reconnect
@@ -77,13 +78,32 @@ async def connected(hass, monkeypatch, request):
         c._cancel_disconnect()
 
 
+@pytest.fixture
+def selection_ready(connected, monkeypatch):
+    """Keep ACK/identity faults independent of static recovery acquisition."""
+    c, _ = connected
+    baseline = PriorControlState(
+        mode="colour",
+        is_on=True,
+        brightness_pct=23,
+        rgb_color=(17, 34, 51),
+        static_rgb_known=True,
+        left_bar_enabled=True if "left_bar_enabled" in c.profile.boolean_controls else None,
+        right_bar_enabled=True if "right_bar_enabled" in c.profile.boolean_controls else None,
+        segment_colors=((17, 34, 51),) * c.profile.segment_count if c.profile.supports_segments else None,
+        segment_brightness=(23,) * c.profile.segment_count if c.profile.supports_segments else None,
+    )
+    monkeypatch.setattr(c, "async_prepare_static_baseline", AsyncMock(return_value=baseline))
+    return connected
+
+
 def receive(client, data):
     client.start_notify.call_args.args[1](None, bytearray(data))
 
 
 @pytest.mark.parametrize("scene_type", [0, 1])
-async def test_identity_independent_native_scene_survives_scene_policy_change(connected, scene_type):
-    c, client = connected
+async def test_identity_independent_native_scene_survives_scene_policy_change(selection_ready, scene_type):
+    c, client = selection_ready
     c.is_on = False
     c.brightness_pct = 23
     c._music_body = b"resident music"
@@ -112,8 +132,8 @@ async def test_identity_independent_native_scene_survives_scene_policy_change(co
 
 
 @pytest.mark.parametrize("change", ["policy", "authority"])
-async def test_scene_ack_revalidates_dependent_policy_and_authority(connected, change):
-    c, client = connected
+async def test_scene_ack_revalidates_dependent_policy_and_authority(selection_ready, change):
+    c, client = selection_ready
     c.is_on = True
     scene = next(scene for scene in SCENE_ENTRIES[c.model] if scene.command_version == 1)
     content = BuiltinScene(CatalogueRef(c.model, scene.scene_id, scene.effect_id))
@@ -140,8 +160,8 @@ async def test_scene_ack_revalidates_dependent_policy_and_authority(connected, c
 @pytest.mark.parametrize("connected", ["H600A"], indirect=True)
 @pytest.mark.parametrize("kind", ["scene", "diy"])
 @pytest.mark.parametrize("response", ["accepted", "rejected", "missing"])
-async def test_h600a_scene_and_diy_ack_barrier(connected, kind, response):
-    c, client = connected
+async def test_h600a_scene_and_diy_ack_barrier(selection_ready, kind, response):
+    c, client = selection_ready
     c.is_on = True
     if kind == "scene":
         scene = next(scene for scene in SCENE_ENTRIES[c.model] if scene.scene_type == 1)
@@ -255,8 +275,8 @@ async def test_diy_upload_requires_result_without_uncertain_replay(connected, fa
 
 @pytest.mark.parametrize("connected", ["H6097", "H600A", "H617A", "H617C"], indirect=True)
 @pytest.mark.parametrize("observations", [(None,), (False, False), (False, True)])
-async def test_scene_verification_does_not_repeat_accepted_upload(connected, monkeypatch, observations):
-    c, client = connected
+async def test_scene_verification_does_not_repeat_accepted_upload(selection_ready, monkeypatch, observations):
+    c, client = selection_ready
     c.is_on = True
     scene = next(scene for scene in SCENE_ENTRIES[c.model] if scene.scene_type == (1 if c.model == "H600A" else 2))
     compiled = compile_effect(
@@ -292,8 +312,8 @@ async def test_missing_upload_ack_cannot_spend_transport_retries(connected, monk
     assert c._upload_ack is None
 
 
-async def test_native_scene_revalidates_command_version_after_subscription_replacement(connected):
-    c, first = connected
+async def test_native_scene_revalidates_command_version_after_subscription_replacement(selection_ready):
+    c, first = selection_ready
     c.is_on = True
     c._note_identity(fw_version="1.06.00", hw_version="1.00.02")
     scene = next(scene for scene in SCENE_ENTRIES[c.model] if scene.command_version == 1)
@@ -354,8 +374,8 @@ async def test_h600a_connection_failure_before_upload_can_retry(connected):
 
 @pytest.mark.parametrize("connected", ["H6097", "H7025", "H6046"], indirect=True)
 @pytest.mark.parametrize("accepted", [False, True])
-async def test_h7025_music_waits_for_positive_upload_result(connected, accepted):
-    c, client = connected
+async def test_h7025_music_waits_for_positive_upload_result(selection_ready, accepted):
+    c, client = selection_ready
     c.music_sensitivity = 42
     mode, code = ("torch", "50") if c.model == "H6046" else ("hopping", "48")
     expected = prepare_music_request(c.model, mode, 42, None, False, {})
@@ -378,14 +398,15 @@ async def test_h7025_music_waits_for_positive_upload_result(connected, accepted)
 
 @pytest.mark.parametrize("connected", ["H6097", "H7025", "H6046"], indirect=True)
 @pytest.mark.parametrize("fault", ["missing_ack", "write_timeout", "disconnect"])
-async def test_h7025_uncertain_upload_is_not_automatically_replayed(connected, fault):
-    c, client = connected
+async def test_h7025_uncertain_upload_is_not_automatically_replayed(selection_ready, fault):
+    c, client = selection_ready
     mode = "torch" if c.model == "H6046" else "hopping"
     expected = prepare_music_request(c.model, mode, 99, None, False, {})
 
     async def reconnect():
-        c._client = client
-        await c._start_notify()
+        if c._client is not client:
+            c._client = client
+            await c._start_notify()
         return client
 
     async def write(_uuid, packet, **_kwargs):
@@ -424,10 +445,14 @@ async def test_h7025_connection_failure_before_upload_can_retry(connected):
 
     c._ensure_connected.side_effect = reconnect
     client.write_gatt_char.side_effect = write
-    await c.async_select_music_slug("hopping")
+    await c.async_write_effect_sequence(
+        expected,
+        intent=ControlIntent.USER,
+        require_upload_ack=True,
+        upload_ack_index=len(expected) - 2,
+    )
     assert c._ensure_connected.await_count == 2
     assert [call.args[1] for call in client.write_gatt_char.await_args_list] == list(expected)
-    assert c.music_body is not None
 
 
 @pytest.mark.parametrize(
@@ -458,7 +483,7 @@ async def test_h7025_connection_failure_before_upload_can_retry(connected):
 async def test_retained_edit_uploads_acknowledges_then_activates(
     connected, mode, code, body, parameters, edited, accepted, preview
 ):
-    c, client = connected
+    c, client = selection_ready
     c.music_mode, c.music_sensitivity = mode, 42
     c._music_body = (mode, bytes.fromhex(body))
     upload = fragment_a3(0x41, bytes.fromhex(edited))
@@ -779,6 +804,21 @@ async def test_invalid_upload_boundary_fails_before_connection_or_writes(connect
 async def test_real_preview_path_upload_ack_then_own_selector(connected, hass, monkeypatch, kind, positive, power):
     c, client = connected
     c.is_on = power
+    monkeypatch.setattr(
+        c,
+        "async_prepare_static_baseline",
+        AsyncMock(
+            return_value=PriorControlState(
+                mode="colour",
+                is_on=power,
+                brightness_pct=23,
+                rgb_color=(17, 34, 51),
+                static_rgb_known=True,
+                segment_colors=((17, 34, 51),) * c.profile.segment_count,
+                segment_brightness=(23,) * c.profile.segment_count,
+            )
+        ),
+    )
     c.async_preview_preflight = AsyncMock()
     c.async_observe_effect = AsyncMock(return_value=True)
     if kind == "diy":
@@ -831,8 +871,8 @@ async def test_real_preview_path_upload_ack_then_own_selector(connected, hass, m
 
 
 @pytest.mark.parametrize("positive", [False, True])
-async def test_saved_native_diy_apply_uses_ack_gate(connected, monkeypatch, positive):
-    c, client = connected
+async def test_saved_native_diy_apply_uses_ack_gate(selection_ready, monkeypatch, positive):
+    c, client = selection_ready
     c.is_on = True
     item = LibraryItem.new("Stack", resolve_catalogue_template("H617A", "template:native-diy:507").content)
     compiled = compile_effect(item, "H617A")
@@ -861,8 +901,8 @@ async def test_saved_native_diy_apply_uses_ack_gate(connected, monkeypatch, posi
 
 @pytest.mark.parametrize("path", ["saved", "preview"])
 @pytest.mark.parametrize("ack", ["accepted", "rejected", "missing"])
-async def test_workshop_public_paths_require_upload_ack(connected, hass, monkeypatch, path, ack):
-    c, client = connected
+async def test_workshop_public_paths_require_upload_ack(selection_ready, hass, monkeypatch, path, ack):
+    c, client = selection_ready
     c.model = "H6125"
     c.profile = device_profile("H6125", 10, 2, firmware="3.04.37", hardware="3.01.10")
     c._confirmed_identity_fields.update(c.profile.profile_identity_fields)

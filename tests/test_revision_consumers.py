@@ -10,7 +10,11 @@ from custom_components.ha_govee_led_ble import select, sensor
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_refresh import DEFAULT_REFRESH_REQUEST
 from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
-from custom_components.ha_govee_led_ble.effect_deployments import DeploymentPhase, EffectDeploymentRepository
+from custom_components.ha_govee_led_ble.effect_deployments import (
+    DeploymentPhase,
+    EffectDeploymentRepository,
+    PriorControlState,
+)
 from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, MusicProfile, PaletteDiyEffect, VideoProfile
 from custom_components.ha_govee_led_ble.effect_runtime import EffectDeploymentEngine
 from custom_components.ha_govee_led_ble.effect_storage import LibrarySnapshot
@@ -35,6 +39,16 @@ def coordinator(hass):
 @pytest.mark.parametrize("kind", ["music", "custom"])
 async def test_non_video_failure_restores_power_without_white_balance(coordinator, monkeypatch, source, kind):
     c = coordinator
+    static_baseline = c._pre_mode_snapshot = PriorControlState(
+        mode="colour",
+        is_on=False,
+        brightness_pct=42,
+        rgb_color=(12, 34, 56),
+        static_rgb_known=True,
+        segment_colors=((12, 34, 56),) * c.profile.segment_count,
+        segment_brightness=(100,) * c.profile.segment_count,
+        segment_kelvin=(0,) * c.profile.segment_count,
+    )
     c.white_balance_flag, c.white_balance_red, c.white_balance_blue = 0, 21, 5
     # The hidden resident mode is unknown: power-off recovery cannot prove appearance.
     c._notify_callback(None, bytearray(frame("aa0504ffff")))
@@ -80,12 +94,8 @@ async def test_non_video_failure_restores_power_without_white_balance(coordinato
     record = repository.snapshot().records[0]
     assert record.phase is DeploymentPhase.UNCERTAIN
     assert record.prior_state is not None
-    assert record.prior_state == replace(
-        before,
-        video_restore_controls=(),
-        segment_colors=((255, 255, 255),) * 15,
-        segment_brightness=(100,) * 15,
-    )
+    assert record.prior_state == replace(before, video_restore_controls=())
+    assert c._pre_mode_snapshot is static_baseline
     assert record.prior_state.from_dict(record.prior_state.to_dict()).video_restore_controls == ()
     assert not c.is_on
     assert client.write_gatt_char.await_args_list[-1].args[1] == build_power(False, c.model)

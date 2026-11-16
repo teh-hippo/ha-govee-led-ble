@@ -12,7 +12,7 @@ from custom_components.ha_govee_led_ble import coordinator as coordinator_module
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent, async_control_intent
 from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
 from custom_components.ha_govee_led_ble.effect_compiler import compile_video_profile
-from custom_components.ha_govee_led_ble.effect_deployments import EffectDeploymentRepository
+from custom_components.ha_govee_led_ble.effect_deployments import EffectDeploymentRepository, PriorControlState
 from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, VideoProfile, effect_content_to_dict
 from custom_components.ha_govee_led_ble.effect_preview import PreviewPhase
 from custom_components.ha_govee_led_ble.effect_runtime import EffectDeploymentEngine, async_apply_compiled_profile
@@ -38,6 +38,23 @@ from tests.test_h6199_capabilities import QUALIFIED, set_qualified_identity
 from tests.test_h6199_capabilities import lifecycle as reconnect_lifecycle  # noqa: F401
 
 
+@pytest.fixture
+def static_recovery_ready(reconnect_lifecycle, monkeypatch):  # noqa: F811
+    """Isolate recovery readiness while retaining real reconnect and identity admission."""
+    c, _, _, _ = reconnect_lifecycle
+    baseline = PriorControlState(
+        mode="colour",
+        is_on=True,
+        brightness_pct=50,
+        rgb_color=(1, 2, 3),
+        static_rgb_known=True,
+        segment_colors=((1, 2, 3),) * c.profile.segment_count,
+        segment_brightness=(100,) * c.profile.segment_count,
+    )
+    monkeypatch.setattr(c, "async_prepare_static_baseline", AsyncMock(return_value=baseline))
+    return reconnect_lifecycle
+
+
 @pytest.mark.parametrize("identity", ["qualified", "missing", "mismatched"])
 @pytest.mark.parametrize(
     "route",
@@ -59,8 +76,8 @@ from tests.test_h6199_capabilities import lifecycle as reconnect_lifecycle  # no
         "ws_snapshot",
     ],
 )
-async def test_background_reconnect_admission(reconnect_lifecycle, hass, monkeypatch, route, identity):  # noqa: F811
-    c, replies, clients, packets = reconnect_lifecycle
+async def test_background_reconnect_admission(static_recovery_ready, hass, monkeypatch, route, identity):
+    c, replies, clients, packets = static_recovery_ready
     set_qualified_identity(c)
     replies[build_colour_mode_query("H6199")] = frame("aa05000100640164")
     if identity == "missing":

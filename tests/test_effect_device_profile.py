@@ -251,7 +251,7 @@ async def test_selector_only_request_is_not_silently_expanded_after_aa40(hass):
         physical.assert_not_awaited()
 
 
-async def test_music_does_not_invent_static_intent_from_power_or_companion_state(hass):
+async def test_music_rejects_unknown_static_state_before_power_or_companion_writes(hass):
     coordinator = _device(hass)
     coordinator._pre_mode_snapshot = None
     compiled = compile_application(
@@ -259,16 +259,19 @@ async def test_music_does_not_invent_static_intent_from_power_or_companion_state
         "H6099",
         profile=coordinator.profile,
     )
-    with _music_transport(coordinator) as physical, patch.object(coordinator, "_encryption", None):
-
-        async def transmit(_uuid, packet, **kwargs):
-            if packet[0] == 0xA3:
-                assert coordinator._pre_mode_snapshot is None
-            if packet == compiled.packets[-2]:
-                coordinator.rgb_color = (10, 20, 30)
-
-        physical.side_effect = transmit
-        await async_apply_compiled_profile(coordinator, compiled)
+    with (
+        _music_transport(coordinator) as physical,
+        patch.object(coordinator, "_encryption", None),
+        patch.object(
+            coordinator,
+            "async_prepare_static_baseline",
+            GoveeBLECoordinator.async_prepare_static_baseline.__get__(coordinator),
+        ),
+    ):
+        with pytest.raises(HomeAssistantError) as error:
+            await async_apply_compiled_profile(coordinator, compiled)
+        assert error.value.translation_key == "recovery_not_ready"
+        physical.assert_not_awaited()
     assert coordinator._pre_mode_snapshot is None
     assert coordinator._field_revisions == {} and coordinator._domain_revisions == {}
 

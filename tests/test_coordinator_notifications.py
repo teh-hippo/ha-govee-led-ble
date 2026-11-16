@@ -33,6 +33,7 @@ from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.light_commands import (
     build_color_rgb,
     build_color_temp,
+    build_segment_brightness_mask,
 )
 from custom_components.ha_govee_led_ble.protocol_core import H6199StatusReply, StatusReply
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES, SCENES
@@ -399,7 +400,7 @@ def test_mixed_grammars_route_command_expectations_and_status_semantics(
     for build, args, field, expected in (
         (build_color_rgb, (10, 20, 30), "rgb_color", (10, 20, 30)),
         (build_color_temp, (4000,), "color_temp_kelvin", 4000),
-        (build_segment_brightness, (coordinator.profile.whole_device_mask, 80), "white_brightness", 80),
+        (build_segment_brightness_mask, (0x7FFF, 80), "white_brightness", 80),
     ):
         packet = build(*args, model=model)
         assert packet == build(*args, model=command_grammar)
@@ -720,12 +721,7 @@ def test_expectations_from_packet_covers_every_command_family():
     assert black["rgb_color"] == (0, 0, 0)
     assert "color_temp_kelvin" not in black
 
-    assert (
-        expectations_from_packet(build_segment_brightness(MODEL_PROFILES["H617A"].whole_device_mask, 80))[
-            "white_brightness"
-        ]
-        == 80
-    )
+    assert expectations_from_packet(build_segment_brightness_mask(0x7FFF, 80))["white_brightness"] == 80
 
     assert expectations_from_packet(build_h617a_scene(scene_code))["effect"] == _SCENE_EFFECT_BY_ID[scene_code]
 

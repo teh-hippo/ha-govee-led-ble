@@ -29,6 +29,7 @@ from custom_components.ha_govee_led_ble.const import CONF_MODEL, DOMAIN, ReadDom
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
+from custom_components.ha_govee_led_ble.effect_deployments import PriorControlState
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_boolean_control,
     build_boolean_control_query,
@@ -1926,7 +1927,7 @@ async def test_encrypted_write_retries_reconnect_with_fresh_session(hass, versio
     await coordinator.disconnect()
 
 
-async def test_h6076_identity_and_music_travel_over_v1_and_the_companion_is_acknowledged(hass):
+async def test_h6076_identity_and_music_travel_over_v1_and_the_companion_is_acknowledged(hass, monkeypatch):
     # The reporter's lamp negotiated V1 and acknowledged each companion with an A3 reply.
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6076", configuration_url=None)
     coordinator.config_entry = MockConfigEntry(domain=DOMAIN, entry_id="test-entry")
@@ -1968,6 +1969,21 @@ async def test_h6076_identity_and_music_travel_over_v1_and_the_companion_is_ackn
                 "H6076", "torch", coordinator.music_sensitivity, None, False, {}, profile=coordinator.profile
             )
             assert [packet[0] for packet in expected] == [0x33, 0xA3, 0xA3, 0x33]
+            monkeypatch.setattr(
+                coordinator,
+                "async_prepare_static_baseline",
+                AsyncMock(
+                    return_value=PriorControlState(
+                        mode="colour",
+                        is_on=False,
+                        brightness_pct=42,
+                        rgb_color=(17, 34, 51),
+                        static_rgb_known=True,
+                        segment_colors=((17, 34, 51),) * coordinator.profile.segment_count,
+                        segment_brightness=(42,) * coordinator.profile.segment_count,
+                    )
+                ),
+            )
             await coordinator.async_select_music_slug("torch")
         finally:
             await coordinator.disconnect()

@@ -9,7 +9,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.effect_compiler import compile_application
-from custom_components.ha_govee_led_ble.effect_deployments import ObservationConfidence
+from custom_components.ha_govee_led_ble.effect_deployments import ObservationConfidence, PriorControlState
 from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, MusicProfile
 from custom_components.ha_govee_led_ble.effect_runtime import async_apply_compiled_profile, compiled_observation
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_brightness
@@ -48,6 +48,16 @@ async def test_bloom_last_fragment_failure_restarts_all_packets(hass, route, ver
     coordinator.music_sensitivity = 42
     coordinator.music_calm = route == "native"
     snapshot = coordinator._pre_mode_snapshot
+    static_baseline = PriorControlState(
+        mode="colour",
+        is_on=True,
+        brightness_pct=42,
+        rgb_color=(12, 34, 56),
+        static_rgb_known=True,
+        segment_colors=((12, 34, 56),) * coordinator.profile.segment_count,
+        segment_brightness=(100,) * coordinator.profile.segment_count,
+        segment_kelvin=(0,) * coordinator.profile.segment_count,
+    )
     compiled = compile_application(LibraryItem.new("Bloom", MusicProfile("H6099", "bloom", 42, calm=True)), "H6099")
     writes = prepare_music_profile_writes("H6099", "bloom", 42, None, True, {})
     packets = list(compiled.packets)
@@ -121,7 +131,9 @@ async def test_bloom_last_fragment_failure_restarts_all_packets(hass, route, ver
                 expected_state["_music_palette"] = writes.palette
             assert coordinator._music_body is None
             assert all(getattr(coordinator, field) == value for field, value in expected_state.items())
-            assert coordinator._pre_mode_snapshot is snapshot
+            assert coordinator._pre_mode_snapshot is (
+                static_baseline if route != "recovery" and index == len(packets) - 1 else snapshot
+            )
             attempts[connection].append(plain)
             if connection == 0 and index == 2:
                 raise BleakError("last companion fragment failed")
@@ -139,9 +151,18 @@ async def test_bloom_last_fragment_failure_restarts_all_packets(hass, route, ver
         else:
             await coordinator.async_restore_effect_control_state(prior, overwritten_diy_code=None)
 
+    async def prepare_baseline():
+        await coordinator._ensure_connected()
+        return static_baseline
+
     with (
         patch("custom_components.ha_govee_led_ble.coordinator.async_establish_ble_connection", side_effect=connect),
         patch.object(coordinator, "_send_identity_queries", AsyncMock()),
+        patch.object(
+            coordinator,
+            "async_prepare_static_baseline",
+            AsyncMock(side_effect=prepare_baseline),
+        ) as prepare_static,
     ):
         try:
             if reject_reconnect:
@@ -166,11 +187,16 @@ async def test_bloom_last_fragment_failure_restarts_all_packets(hass, route, ver
                 assert attempts == [[b"\xfe" + p for p in prefix + packets[:3]], [b"\xfe" + p for p in packets]]
                 assert transformed == prefix + packets[:3] + packets
                 assert coordinator.music_body == prior.music_body
+                assert coordinator._pre_mode_snapshot is (snapshot if route == "recovery" else static_baseline)
                 assert coordinator._encryption.active is bool(version)
                 if version == 2:
                     assert host_ivs[0] != host_ivs[1]
             assert coordinator._field_revisions == coordinator._domain_revisions == {}
             assert "music_calm" not in coordinator._expected_state
+            if route == "recovery":
+                prepare_static.assert_not_awaited()
+            else:
+                prepare_static.assert_awaited_once()
         finally:
             await coordinator.disconnect()
 

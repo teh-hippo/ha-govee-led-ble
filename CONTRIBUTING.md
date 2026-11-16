@@ -77,6 +77,7 @@ Keep real product differences without turning each product into a separate imple
   Preparation reads retain the submitting operation's intent; acquiring state must not invalidate that same request.
   Scope preparation ownership to the required work, not unrelated connection or persistence stages.
   Keep API identity preparation under background ownership until validation succeeds, so invalid requests cannot invalidate active previews.
+  Cancelling previews inside an already-owned foreground operation must not invalidate that operation's preparation or conceal a newer foreground request.
 - Bind prepared work and observations to their actual lifetime: device, effective profile, layout, subscription and operation generation as applicable.
   Capture static restoration intent before an effect operation's first state-changing attempt, including leading power, and publish it only at the physical mode transition.
   Preserve complete static appearance, including segment colours and relative brightness, through every mode-exit entry point.
@@ -84,6 +85,16 @@ Keep real product differences without turning each product into a separate imple
   Enter task-owned operation contexts after acquiring device ownership, and release them before releasing that ownership.
   Revalidate at physical boundaries, and invalidate dependent knowledge when its authority changes.
   Older work must not invalidate newer preparation, restore over newer observations or mutate a replacement session.
+- Admit ordinary effect selections only with a complete, executable original static baseline, before leading power, brightness, colour or effect writes.
+  Validate the requested content first and acquire readable baseline fields within the owned operation; subscription freshness alone cannot exclude an unreported external change.
+  Reuse observations acquired by that same operation rather than repeating reads.
+  Preserve the original baseline across effect-to-effect changes and restore it on effect off, independently of scalar main-light presentation.
+  Missing recovery state is temporary readiness, not unsupported hardware; basic static controls remain available to establish it.
+  Keep this baseline distinct from deployment-failure immediate-prior recovery.
+  Live retains the original static baseline with its capability-specific independent-colour/layout requirements; cancel and close stop future work without undo writes.
+  Preserve historical evidence quality across effect transitions rather than promoting delivered colours to observed state.
+  Internal recovery consumes its own prepared authority rather than admitting another selection or publishing a replacement baseline.
+  Final power-off requires independent confirmation where readable and completed delivery otherwise.
 - Update physical geometry and derived logical counts together against declared product capacity.
   Equivalent profile resolution preserves observations and transactions.
   Segment partitions must cover each position exactly once and exclude separately addressed sources.
@@ -150,6 +161,8 @@ Decode-only Kaitai documentation of these is fine; runtime control is not.
 ## Development
 
 Run `make protocol` after a fresh clone, a new worktree or any `.ksy` change, and `make check` before finishing.
+Run independent pytest processes serially within one checkout because Home Assistant fixtures share test storage.
+If parallel workers collide on filesystem-backed storage, run the complete gate with `make check PYTEST_WORKERS=1`.
 Keep virtual event-loop clocks out of real HTTP/WebSocket tests; use them only around simulated transport work.
 Invalidate the editor asset generation when its imported module contract changes, not just the backend compiler version.
 Log handled backend failures with their operation, model and failure classification without changing browser feedback.

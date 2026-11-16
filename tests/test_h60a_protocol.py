@@ -205,7 +205,7 @@ async def test_generic_music_observation_replaces_previous_effect_without_invent
 
 
 @pytest.mark.parametrize("flags", [None, "fresh", "retained"])
-async def test_native_preview_requires_fresh_zone_flags_even_for_scene_mode(hass, flags):
+async def test_scene_zone_flags_cannot_recreate_a_missing_static_baseline(hass, monkeypatch, flags):
     c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H60A6", configuration_url=None)
     c.hw_version, c.fw_version = "1.04.03", "1.00.41"
     c._resolve_device_profile()
@@ -215,14 +215,13 @@ async def test_native_preview_requires_fresh_zone_flags_even_for_scene_mode(hass
         c._notify_callback(None, bytearray(frame("ee3001010001")))
         if flags == "retained":
             c._notify_started_monotonic = time.monotonic() + 1
-    if flags == "fresh":
-        assert await async_prepare_effect_control_state(c, require_restorable_static=True)
-        c.color_mode, c._scene_code = ParsedMode.MUSIC, None
-        with pytest.raises(RuntimeError, match="music mode"):
-            await async_prepare_effect_control_state(c, require_restorable_static=True)
-    else:
-        with pytest.raises(RuntimeError, match="panel and ring"):
-            await async_prepare_effect_control_state(c, require_restorable_static=True)
+    monkeypatch.setattr(c, "refresh_state", AsyncMock(return_value=True))
+    monkeypatch.setattr(c, "send_command", AsyncMock())
+    with pytest.raises(RuntimeError, match="original static"):
+        await async_prepare_effect_control_state(c, require_restorable_static=True)
+    assert c._pre_mode_snapshot is None
+    assert c.color_mode is ParsedMode.SCENE and c.scene_code == 99
+    c.send_command.assert_not_awaited()
 
 
 @pytest.mark.parametrize("required_segments", [False, True])

@@ -160,6 +160,16 @@ class ControlWriteRequest:
     def has_attempted_writes(self) -> bool:
         return bool(self._attempted_fields)
 
+    @property
+    def needs_power_on(self) -> bool:
+        coordinator = self._coordinator
+        return (
+            not coordinator.is_on
+            or "is_on" in coordinator._h607c_uncertain_state_fields
+            or not coordinator.profile.can_read(ReadDomain.POWER)
+            and not coordinator._power_known
+        )
+
     def before_write(self) -> None:
         if self._identity_guard is not None:
             self._identity_guard()
