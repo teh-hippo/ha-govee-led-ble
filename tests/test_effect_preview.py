@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from contextlib import nullcontext
 from dataclasses import replace
 from types import SimpleNamespace
@@ -1072,7 +1073,10 @@ async def test_selector_only_scene_preview_never_creates_a_default(
 async def test_transport_failure_does_not_delay_newest_request(
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
+    logger = "custom_components.ha_govee_led_ble.effect_preview"
+    caplog.set_level(logging.DEBUG, logger=logger)
     coordinator = _coordinator()
     failed_write_started = asyncio.Event()
     release_failure = asyncio.Event()
@@ -1084,7 +1088,7 @@ async def test_transport_failure_does_not_delay_newest_request(
         if write_count == 1:
             failed_write_started.set()
             await release_failure.wait()
-            raise OSError("transport failed")
+            raise OSError("AA:BB:CC:DD:EE:FF token=private-token")
         coordinator.writes.append(packet)
 
     coordinator.async_preview_write.side_effect = write
@@ -1117,6 +1121,14 @@ async def test_transport_failure_does_not_delay_newest_request(
     assert any(event.sequence == 2 and event.phase is PreviewPhase.WRITTEN for event in events)
     assert coordinator.writes[0] == build_power(True, "H617A")
     assert coordinator.is_on is True
+    records = [record for record in caplog.records if record.name == logger]
+    assert len(records) == 1
+    assert "operation=preview model=H617A code=transport_failed" in records[0].message
+    assert "write_disposition=may_have_started" in records[0].message
+    assert records[0].exc_info is None
+    assert all(
+        value not in records[0].message for value in ("AA:BB:CC:DD:EE:FF", "private-token", session_id, "entry-a")
+    )
     await manager.async_shutdown()
 
 

@@ -1501,6 +1501,19 @@ class EffectPreviewManager:
         error_message: str | None = None,
         write_disposition: PreviewWriteDisposition = PreviewWriteDisposition.UNKNOWN,
     ) -> None:
+        if phase is PreviewPhase.FAILED and _LOGGER.isEnabledFor(logging.DEBUG):
+            entry = self._hass.config_entries.async_get_entry(request.config_entry_id)
+            model = (
+                entry.runtime_data.model
+                if entry is not None and entry.domain == DOMAIN and entry.state is ConfigEntryState.LOADED
+                else "unavailable"
+            )
+            _LOGGER.debug(
+                "Effect Studio preview failed: operation=preview model=%s code=%s write_disposition=%s",
+                model,
+                error_code,
+                write_disposition.value,
+            )
         session = self._sessions.get(request.session_id)
         if session is None:
             return

@@ -23,7 +23,14 @@ from homeassistant.helpers.event import async_call_later
 from homeassistant.loader import async_get_integration
 from homeassistant.util import dt as dt_util
 
-from .const import CONF_SHOW_EXPERIMENTAL_FEEDBACK, DOMAIN, ModelProfile, light_unique_id, supported_effect_categories
+from .const import (
+    CONF_SHOW_EXPERIMENTAL_FEEDBACK,
+    DOMAIN,
+    MODEL_PROFILES,
+    ModelProfile,
+    light_unique_id,
+    supported_effect_categories,
+)
 from .control_arbiter import ControlIntent
 from .coordinator_base import async_prepare_effect_profile
 from .effect_backend import EffectBackend
@@ -32,7 +39,7 @@ from .effect_catalogue import (
     resolve_catalogue_template,
     validate_catalogue_template_identity,
 )
-from .effect_contracts import EditorApiInfo, device_effect_capabilities
+from .effect_contracts import CapabilityWorkflow, EditorApiInfo, device_effect_capabilities
 from .effect_deployments import DeploymentSnapshot
 from .effect_domain import (
     BuiltinScene,
@@ -135,7 +142,7 @@ from .effect_websocket_schema import (
 from .govee_encryption import GoveeCryptoError
 from .layered_scene import CatalogueRef
 from .music_commands import music_body_style
-from .music_protocol import music_code_for
+from .music_protocol import MUSIC_MODE_CODES_BY_MODEL, music_code_for
 from .schema_compat import vol
 from .video_applicability import video_profile_control_states
 
@@ -171,8 +178,10 @@ async def ws_editor_devices(
         and supported_effect_categories(entry.runtime_data.model, profile=entry.runtime_data.profile)
     ]
     if len(entries) > MAX_EDITOR_DEVICES:
-        connection.send_error(
-            msg["id"],
+        _send_error(
+            hass,
+            connection,
+            msg,
             "limit_reached",
             f"device response must not exceed {MAX_EDITOR_DEVICES} entries",
         )
@@ -196,7 +205,7 @@ async def ws_editor_device(
 ) -> None:
     entry = hass.config_entries.async_get_entry(msg["config_entry_id"])
     if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
-        connection.send_error(msg["id"], "not_found", "target config entry is not loaded")
+        _send_error(hass, connection, msg, "not_found", "target config entry is not loaded")
         return
     connection.send_result(
         msg["id"],
@@ -275,7 +284,7 @@ def ws_device_subscribe(
 ) -> None:
     entry = hass.config_entries.async_get_entry(msg["config_entry_id"])
     if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
-        connection.send_error(msg["id"], "not_found", "target config entry is not loaded")
+        _send_error(hass, connection, msg, "not_found", "target config entry is not loaded")
         return
     backend = _backend(hass)
     cancel_forward: CALLBACK_TYPE | None = None
@@ -348,24 +357,26 @@ def ws_scene_catalogue_list(
 ) -> None:
     entry = hass.config_entries.async_get_entry(msg["config_entry_id"])
     if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
-        connection.send_error(msg["id"], "not_found", "target config entry is not loaded")
+        _send_error(hass, connection, msg, "not_found", "target config entry is not loaded")
         return
     coordinator = entry.runtime_data
     if not coordinator.profile.supports_scenes:
-        connection.send_error(msg["id"], "unsupported_model", "Device profile supports no scenes")
+        _send_error(hass, connection, msg, "unsupported_model", "Device profile supports no scenes")
         return
     try:
         catalogue = scene_catalogue_payload(coordinator.model, profile=coordinator.profile)
     except ValueError as exc:
-        connection.send_error(msg["id"], "not_found", str(exc))
+        _send_error(hass, connection, msg, "not_found", exc)
         return
     scenes = catalogue["scenes"]
     if not isinstance(scenes, list):
-        connection.send_error(msg["id"], "invalid_format", "scene catalogue has no scene list")
+        _send_error(hass, connection, msg, "invalid_format", "scene catalogue has no scene list")
         return
     if len(scenes) > MAX_SCENE_CATALOGUE_ENTRIES:
-        connection.send_error(
-            msg["id"],
+        _send_error(
+            hass,
+            connection,
+            msg,
             "limit_reached",
             f"scene catalogue must not exceed {MAX_SCENE_CATALOGUE_ENTRIES} entries",
         )
@@ -389,10 +400,10 @@ def ws_scene_catalogue_get(
 ) -> None:
     entry = hass.config_entries.async_get_entry(msg["config_entry_id"])
     if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
-        connection.send_error(msg["id"], "not_found", "target config entry is not loaded")
+        _send_error(hass, connection, msg, "not_found", "target config entry is not loaded")
         return
     if not entry.runtime_data.profile.supports_scenes:
-        connection.send_error(msg["id"], "unsupported_model", "Device profile supports no scenes")
+        _send_error(hass, connection, msg, "unsupported_model", "Device profile supports no scenes")
         return
     try:
         backend = _backend(hass)
@@ -411,7 +422,7 @@ def ws_scene_catalogue_get(
             ),
         )
     except ValueError as exc:
-        connection.send_error(msg["id"], "not_found", str(exc))
+        _send_error(hass, connection, msg, "not_found", exc)
         return
     connection.send_result(msg["id"], detail)
 
@@ -434,7 +445,7 @@ async def ws_scene_apply(
 ) -> None:
     entry = hass.config_entries.async_get_entry(msg["config_entry_id"])
     if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
-        connection.send_error(msg["id"], "not_found", "target config entry is not loaded")
+        _send_error(hass, connection, msg, "not_found", "target config entry is not loaded")
         return
     try:
         backend = _backend(hass)
@@ -449,7 +460,7 @@ async def ws_scene_apply(
             ),
         )
         if not profile.supports_scenes:
-            connection.send_error(msg["id"], "unsupported_model", "Device profile supports no scenes")
+            _send_error(hass, connection, msg, "unsupported_model", "Device profile supports no scenes")
             return
         resolved, speed_index = await async_apply_scene(
             hass,
@@ -462,13 +473,13 @@ async def ws_scene_apply(
             before_apply=partial(backend.preview.async_supersede_device, entry.entry_id, reason="committed_apply"),
         )
     except GoveeCryptoError as exc:
-        connection.send_error(msg["id"], "apply_failed", str(exc))
+        _send_error(hass, connection, msg, "apply_failed", exc)
         return
     except ValueError as exc:
-        connection.send_error(msg["id"], "invalid_format", str(exc))
+        _send_error(hass, connection, msg, "invalid_format", exc)
         return
     except (HomeAssistantError, RuntimeError) as exc:
-        connection.send_error(msg["id"], "apply_failed", str(exc))
+        _send_error(hass, connection, msg, "apply_failed", exc)
         return
     backend.engine.reconcile_current(
         entry.runtime_data,
@@ -515,7 +526,7 @@ async def ws_scene_reset(
 ) -> None:
     entry = hass.config_entries.async_get_entry(msg["config_entry_id"])
     if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
-        connection.send_error(msg["id"], "not_found", "target config entry is not loaded")
+        _send_error(hass, connection, msg, "not_found", "target config entry is not loaded")
         return
     backend = _backend(hass)
     try:
@@ -526,10 +537,10 @@ async def ws_scene_reset(
             scene_defaults=backend.scene_defaults,
         )
     except ValueError as exc:
-        connection.send_error(msg["id"], "invalid_format", str(exc))
+        _send_error(hass, connection, msg, "invalid_format", exc)
         return
     except EffectStorageError as exc:
-        connection.send_error(msg["id"], "reset_failed", str(exc))
+        _send_error(hass, connection, msg, "reset_failed", exc)
         return
     connection.send_result(
         msg["id"],
@@ -561,10 +572,10 @@ async def ws_scene_default_set(
 ) -> None:
     entry = hass.config_entries.async_get_entry(msg["config_entry_id"])
     if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
-        connection.send_error(msg["id"], "not_found", "target config entry is not loaded")
+        _send_error(hass, connection, msg, "not_found", "target config entry is not loaded")
         return
     if not entry.runtime_data.profile.supports_scenes:
-        connection.send_error(msg["id"], "unsupported_model", "Device profile supports no scenes")
+        _send_error(hass, connection, msg, "unsupported_model", "Device profile supports no scenes")
         return
     backend = _backend(hass)
     try:
@@ -577,10 +588,10 @@ async def ws_scene_default_set(
             scene_defaults=backend.scene_defaults,
         )
     except ValueError as exc:
-        connection.send_error(msg["id"], "invalid_format", str(exc))
+        _send_error(hass, connection, msg, "invalid_format", exc)
         return
     except EffectStorageError as exc:
-        connection.send_error(msg["id"], "save_failed", str(exc))
+        _send_error(hass, connection, msg, "save_failed", exc)
         return
     connection.send_result(
         msg["id"],
@@ -635,7 +646,7 @@ def ws_template_default_get(
 ) -> None:
     entry = hass.config_entries.async_get_entry(msg["config_entry_id"])
     if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
-        connection.send_error(msg["id"], "not_found", "target config entry is not loaded")
+        _send_error(hass, connection, msg, "not_found", "target config entry is not loaded")
         return
     try:
         detail = _template_default_detail(
@@ -646,7 +657,7 @@ def ws_template_default_get(
             profile=entry.runtime_data.profile,
         )
     except ValueError as exc:
-        connection.send_error(msg["id"], "not_found", str(exc))
+        _send_error(hass, connection, msg, "not_found", exc)
         return
     connection.send_result(msg["id"], detail)
 
@@ -669,7 +680,7 @@ async def ws_template_default_set(
 ) -> None:
     entry = hass.config_entries.async_get_entry(msg["config_entry_id"])
     if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
-        connection.send_error(msg["id"], "not_found", "target config entry is not loaded")
+        _send_error(hass, connection, msg, "not_found", "target config entry is not loaded")
         return
     backend = _backend(hass)
     try:
@@ -693,10 +704,10 @@ async def ws_template_default_set(
                 )
             )
     except (EffectValidationError, ValueError) as exc:
-        connection.send_error(msg["id"], "invalid_format", str(exc))
+        _send_error(hass, connection, msg, "invalid_format", exc)
         return
     except EffectStorageError as exc:
-        connection.send_error(msg["id"], "save_failed", str(exc))
+        _send_error(hass, connection, msg, "save_failed", exc)
         return
     connection.send_result(
         msg["id"],
@@ -726,17 +737,17 @@ async def ws_template_default_reset(
 ) -> None:
     entry = hass.config_entries.async_get_entry(msg["config_entry_id"])
     if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
-        connection.send_error(msg["id"], "not_found", "target config entry is not loaded")
+        _send_error(hass, connection, msg, "not_found", "target config entry is not loaded")
         return
     backend = _backend(hass)
     try:
         resolve_catalogue_template(entry.runtime_data.model, msg["template_id"], profile=entry.runtime_data.profile)
         await backend.template_defaults.async_delete(entry.entry_id, msg["template_id"])
     except ValueError as exc:
-        connection.send_error(msg["id"], "not_found", str(exc))
+        _send_error(hass, connection, msg, "not_found", exc)
         return
     except EffectStorageError as exc:
-        connection.send_error(msg["id"], "reset_failed", str(exc))
+        _send_error(hass, connection, msg, "reset_failed", exc)
         return
     connection.send_result(
         msg["id"],
@@ -769,10 +780,10 @@ async def ws_preview_close(
             connection,
         )
     except PreviewOwnershipError as exc:
-        connection.send_error(msg["id"], PREVIEW_SESSION_UNAUTHORIZED_CODE, str(exc))
+        _send_error(hass, connection, msg, PREVIEW_SESSION_UNAUTHORIZED_CODE, exc)
         return
     except PreviewSessionNotFoundError as exc:
-        connection.send_error(msg["id"], PREVIEW_SESSION_NOT_FOUND_CODE, str(exc))
+        _send_error(hass, connection, msg, PREVIEW_SESSION_NOT_FOUND_CODE, exc)
         return
     connection.send_result(msg["id"], {"closed": True})
 
@@ -792,7 +803,7 @@ async def ws_preview_close(
 async def ws_music_edit_retained(hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]) -> None:
     entry = hass.config_entries.async_get_entry(msg["config_entry_id"])
     if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
-        connection.send_error(msg["id"], "not_found", "target config entry is not loaded")
+        _send_error(hass, connection, msg, "not_found", "target config entry is not loaded")
         return
     coordinator = entry.runtime_data
     try:
@@ -813,7 +824,7 @@ async def ws_music_edit_retained(hass: HomeAssistant, connection: ActiveConnecti
             else music_body_style(coordinator.music_body, msg["mode"], profile=coordinator.profile),
         )
     except (ValueError, HomeAssistantError, BleakError, TimeoutError) as exc:
-        connection.send_error(msg["id"], "apply_failed", str(exc))
+        _send_error(hass, connection, msg, "apply_failed", exc)
         return
     connection.send_result(msg["id"], {"retained_music_edit": retained_music_edit(coordinator)})
 
@@ -870,7 +881,7 @@ async def ws_preview_apply_snapshot(
             kwargs["diy_code"] = msg["diy_code"]
         acceptance = await backend.preview.async_queue_snapshot(**kwargs)
     except Exception as exc:
-        _send_preview_error(connection, msg["id"], exc)
+        _send_preview_error(hass, connection, msg, exc)
         return
     connection.send_result(msg["id"], acceptance.to_dict())
 
@@ -910,7 +921,7 @@ async def ws_preview_apply_scene(
             persist_default=msg["persist_default"],
         )
     except Exception as exc:
-        _send_preview_error(connection, msg["id"], exc)
+        _send_preview_error(hass, connection, msg, exc)
         return
     connection.send_result(msg["id"], acceptance.to_dict())
 
@@ -936,10 +947,10 @@ async def ws_preview_cancel(
             config_entry_id=msg.get("config_entry_id"),
         )
     except PreviewOwnershipError as exc:
-        connection.send_error(msg["id"], PREVIEW_SESSION_UNAUTHORIZED_CODE, str(exc))
+        _send_error(hass, connection, msg, PREVIEW_SESSION_UNAUTHORIZED_CODE, exc)
         return
     except PreviewSessionNotFoundError as exc:
-        connection.send_error(msg["id"], PREVIEW_SESSION_NOT_FOUND_CODE, str(exc))
+        _send_error(hass, connection, msg, PREVIEW_SESSION_NOT_FOUND_CODE, exc)
         return
     connection.send_result(msg["id"], {"cancelled": True})
 
@@ -971,7 +982,7 @@ def ws_preview_subscribe(
             listener=forward,
         )
     except Exception as exc:
-        _send_preview_error(connection, msg["id"], exc)
+        _send_preview_error(hass, connection, msg, exc)
         return
     connection.send_result(msg["id"])
     if latest := backend.preview.latest_status(msg["session_id"], connection):
@@ -1021,7 +1032,7 @@ async def ws_preview_health_check(
             msg["config_entry_id"],
         )
     except Exception as exc:
-        _send_preview_error(connection, msg["id"], exc)
+        _send_preview_error(hass, connection, msg, exc)
         return
     connection.send_result(msg["id"], {"health": status.to_dict()})
 
@@ -1072,11 +1083,13 @@ def ws_library_get(
     try:
         item = backend.application.get_saved_effect(msg["item_id"])
     except (ValueError, EffectNotFoundError) as exc:
-        connection.send_error(msg["id"], "not_found", str(exc))
+        _send_error(hass, connection, msg, "not_found", exc)
         return
     if isinstance(item.content, OpaqueContent) and not connection.user.is_admin:
-        connection.send_error(
-            msg["id"],
+        _send_error(
+            hass,
+            connection,
+            msg,
             "unauthorized",
             "opaque effect content is available only to administrators",
         )
@@ -1106,19 +1119,19 @@ async def ws_library_create(
             layer_labels=msg.get("layer_labels"),
         )
     except ReservedEffectNameError as exc:
-        connection.send_error(msg["id"], "reserved_name", str(exc))
+        _send_error(hass, connection, msg, "reserved_name", exc)
         return
     except SavedEffectNameConflictError as exc:
-        connection.send_error(msg["id"], "name_conflict", str(exc))
+        _send_error(hass, connection, msg, "name_conflict", exc)
         return
     except EffectValidationError as exc:
-        connection.send_error(msg["id"], "invalid_format", str(exc))
+        _send_error(hass, connection, msg, "invalid_format", exc)
         return
     except EffectLimitError as exc:
-        connection.send_error(msg["id"], "limit_reached", str(exc))
+        _send_error(hass, connection, msg, "limit_reached", exc)
         return
     except EffectStorageError as exc:
-        connection.send_error(msg["id"], "storage_unavailable", str(exc))
+        _send_error(hass, connection, msg, "storage_unavailable", exc)
         return
     connection.send_result(
         msg["id"],
@@ -1157,29 +1170,31 @@ async def ws_library_update(
             layer_labels=msg.get("layer_labels"),
         )
     except ReservedEffectNameError as exc:
-        connection.send_error(msg["id"], "reserved_name", str(exc))
+        _send_error(hass, connection, msg, "reserved_name", exc)
         return
     except SavedEffectNameConflictError as exc:
-        connection.send_error(msg["id"], "name_conflict", str(exc))
+        _send_error(hass, connection, msg, "name_conflict", exc)
         return
     except EffectValidationError as exc:
-        connection.send_error(msg["id"], "invalid_format", str(exc))
+        _send_error(hass, connection, msg, "invalid_format", exc)
         return
     except (ValueError, EffectNotFoundError) as exc:
-        connection.send_error(msg["id"], "not_found", str(exc))
+        _send_error(hass, connection, msg, "not_found", exc)
         return
     except EffectVersionConflictError as exc:
-        connection.send_error(
-            msg["id"],
+        _send_error(
+            hass,
+            connection,
+            msg,
             "conflict",
             f"{exc}; current_version={exc.current_version}",
         )
         return
     except EffectLimitError as exc:
-        connection.send_error(msg["id"], "limit_reached", str(exc))
+        _send_error(hass, connection, msg, "limit_reached", exc)
         return
     except EffectStorageError as exc:
-        connection.send_error(msg["id"], "storage_unavailable", str(exc))
+        _send_error(hass, connection, msg, "storage_unavailable", exc)
         return
     connection.send_result(
         msg["id"],
@@ -1209,7 +1224,7 @@ def ws_library_name_status(
             excluding_item_id=msg.get("excluding_item_id"),
         )
     except ValueError as exc:
-        connection.send_error(msg["id"], "invalid_format", str(exc))
+        _send_error(hass, connection, msg, "invalid_format", exc)
         return
     payload: dict[str, Any] = {"kind": status.kind}
     if status.item is not None:
@@ -1245,29 +1260,31 @@ async def ws_library_overwrite(
             layer_labels=msg.get("layer_labels"),
         )
     except ReservedEffectNameError as exc:
-        connection.send_error(msg["id"], "reserved_name", str(exc))
+        _send_error(hass, connection, msg, "reserved_name", exc)
         return
     except SavedEffectNameConflictError as exc:
-        connection.send_error(msg["id"], "name_conflict", str(exc))
+        _send_error(hass, connection, msg, "name_conflict", exc)
         return
     except EffectValidationError as exc:
-        connection.send_error(msg["id"], "invalid_format", str(exc))
+        _send_error(hass, connection, msg, "invalid_format", exc)
         return
     except (ValueError, EffectNotFoundError) as exc:
-        connection.send_error(msg["id"], "not_found", str(exc))
+        _send_error(hass, connection, msg, "not_found", exc)
         return
     except EffectVersionConflictError as exc:
-        connection.send_error(
-            msg["id"],
+        _send_error(
+            hass,
+            connection,
+            msg,
             "conflict",
             f"{exc}; current_version={exc.current_version}",
         )
         return
     except EffectLimitError as exc:
-        connection.send_error(msg["id"], "limit_reached", str(exc))
+        _send_error(hass, connection, msg, "limit_reached", exc)
         return
     except EffectStorageError as exc:
-        connection.send_error(msg["id"], "storage_unavailable", str(exc))
+        _send_error(hass, connection, msg, "storage_unavailable", exc)
         return
     connection.send_result(
         msg["id"],
@@ -1300,11 +1317,13 @@ async def ws_library_delete(
             expected_updated_at=msg["expected_updated_at"],
         )
     except (ValueError, EffectNotFoundError) as exc:
-        connection.send_error(msg["id"], "not_found", str(exc))
+        _send_error(hass, connection, msg, "not_found", exc)
         return
     except EffectVersionConflictError as exc:
-        connection.send_error(
-            msg["id"],
+        _send_error(
+            hass,
+            connection,
+            msg,
             "conflict",
             f"{exc}; current_version={exc.current_version}",
         )
@@ -1362,8 +1381,10 @@ def ws_user_state_update(
             navigation=msg["navigation"],
         )
     except EffectStorageError as exc:
-        connection.send_error(
-            msg["id"],
+        _send_error(
+            hass,
+            connection,
+            msg,
             "limit_reached" if isinstance(exc, EffectLimitError) else "invalid_format",
             str(exc),
         )
@@ -1392,13 +1413,13 @@ async def ws_apply(
     backend = _backend(hass)
     entry = hass.config_entries.async_get_entry(msg["config_entry_id"])
     if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
-        connection.send_error(msg["id"], "not_found", "target config entry is not loaded")
+        _send_error(hass, connection, msg, "not_found", "target config entry is not loaded")
         return
     try:
         UUID(msg["item_id"])
         operation_id = UUID(msg["operation_id"]) if "operation_id" in msg else None
     except ValueError as exc:
-        connection.send_error(msg["id"], "invalid_format", str(exc))
+        _send_error(hass, connection, msg, "invalid_format", exc)
         return
     try:
         async with backend.application.saved_effect_for_apply(
@@ -1419,22 +1440,22 @@ async def ws_apply(
                 compiled=compiled,
             )
     except EffectNotFoundError as exc:
-        connection.send_error(msg["id"], "not_found", str(exc))
+        _send_error(hass, connection, msg, "not_found", exc)
         return
     except EffectVersionConflictError as exc:
-        connection.send_error(msg["id"], "conflict", str(exc))
+        _send_error(hass, connection, msg, "conflict", exc)
         return
     except GoveeCryptoError as exc:
-        connection.send_error(msg["id"], "apply_failed", str(exc))
+        _send_error(hass, connection, msg, "apply_failed", exc)
         return
     except ValueError as exc:
-        connection.send_error(msg["id"], "unsupported_model", str(exc))
+        _send_error(hass, connection, msg, "unsupported_model", exc)
         return
     except EffectStorageError as exc:
-        connection.send_error(msg["id"], "storage_unavailable", str(exc))
+        _send_error(hass, connection, msg, "storage_unavailable", exc)
         return
     except Exception as exc:
-        connection.send_error(msg["id"], "apply_failed", str(exc))
+        _send_error(hass, connection, msg, "apply_failed", exc)
         return
     connection.send_result(msg["id"], {"deployment": result.to_public_dict()})
 
@@ -1462,7 +1483,7 @@ async def ws_apply_snapshot(
     backend = _backend(hass)
     entry = hass.config_entries.async_get_entry(msg["config_entry_id"])
     if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
-        connection.send_error(msg["id"], "not_found", "target config entry is not loaded")
+        _send_error(hass, connection, msg, "not_found", "target config entry is not loaded")
         return
     try:
         if "origin_id" in msg and "origin_kind" not in msg:
@@ -1494,19 +1515,19 @@ async def ws_apply_snapshot(
             compiled=compiled,
         )
     except EffectValidationError as exc:
-        connection.send_error(msg["id"], "invalid_format", str(exc))
+        _send_error(hass, connection, msg, "invalid_format", exc)
         return
     except GoveeCryptoError as exc:
-        connection.send_error(msg["id"], "apply_failed", str(exc))
+        _send_error(hass, connection, msg, "apply_failed", exc)
         return
     except ValueError as exc:
-        connection.send_error(msg["id"], "unsupported_model", str(exc))
+        _send_error(hass, connection, msg, "unsupported_model", exc)
         return
     except EffectStorageError as exc:
-        connection.send_error(msg["id"], "storage_unavailable", str(exc))
+        _send_error(hass, connection, msg, "storage_unavailable", exc)
         return
     except Exception as exc:
-        connection.send_error(msg["id"], "apply_failed", str(exc))
+        _send_error(hass, connection, msg, "apply_failed", exc)
         return
     connection.send_result(msg["id"], {"deployment": result.to_public_dict()})
 
@@ -1556,9 +1577,63 @@ def _backend(hass: HomeAssistant) -> EffectBackend:
     return cast(EffectBackend, hass.data[DOMAIN][BACKEND_DATA_KEY])
 
 
-def _send_preview_error(
+def _log_failure(hass: HomeAssistant, msg: dict[str, Any], code: str, error: str | Exception) -> None:
+    if not _LOGGER.isEnabledFor(logging.DEBUG):
+        return
+    entry = hass.config_entries.async_get_entry(msg["config_entry_id"]) if "config_entry_id" in msg else None
+    model = (
+        entry.runtime_data.model
+        if entry is not None and entry.domain == DOMAIN and entry.state is ConfigEntryState.LOADED
+        else None
+    )
+    if model not in MODEL_PROFILES:
+        model = None
+    safe_reasons = {
+        "Device profile supports no effects",
+        "Device profile supports no scenes",
+        "Device profile supports no effect templates",
+        *(f"{model} effective profile does not support {workflow}" for workflow in CapabilityWorkflow),
+        *(
+            f"{model} does not support music mode {mode}"
+            for modes in MUSIC_MODE_CODES_BY_MODEL.values()
+            for slug in modes
+            for mode in (slug, repr(slug))
+        ),
+    }
+    # Exception messages may contain authored content, identifiers or transport credentials.
+    message = str(error)
+    reason = message if message in safe_reasons else code
+    source = "-"
+    if isinstance(error, Exception) and (traceback := error.__traceback__) is not None:
+        while traceback.tb_next is not None:
+            traceback = traceback.tb_next
+        source = f"{traceback.tb_frame.f_code.co_name}:{traceback.tb_lineno}"
+    _LOGGER.debug(
+        "Effect Studio request failed: operation=%s model=%s code=%s reason=%s error_type=%s source=%s",
+        msg.get("type", "unavailable"),
+        model or "unavailable",
+        code,
+        reason,
+        type(error).__name__ if isinstance(error, Exception) else "-",
+        source,
+    )
+
+
+def _send_error(
+    hass: HomeAssistant,
     connection: ActiveConnection,
-    message_id: int,
+    msg: dict[str, Any],
+    code: str,
+    error: str | Exception,
+) -> None:
+    _log_failure(hass, msg, code, error)
+    connection.send_error(msg["id"], code, str(error))
+
+
+def _send_preview_error(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
     error: Exception,
 ) -> None:
     if isinstance(error, PreviewOwnershipError):
@@ -1585,5 +1660,6 @@ def _send_preview_error(
     else:
         code = "preview_failed"
         message = "The preview request failed."
-        _LOGGER.exception("Unexpected Effect Studio preview request failure", exc_info=error)
-    connection.send_error(message_id, code, message)
+        _LOGGER.error("Unexpected Effect Studio preview request failure: error_type=%s", type(error).__name__)
+    _log_failure(hass, msg, code, error)
+    connection.send_error(msg["id"], code, message)
