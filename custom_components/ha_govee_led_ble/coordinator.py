@@ -704,7 +704,8 @@ class GoveeBLECoordinator(
             fields |= self.profile.profile_identity_fields
         if not self.identity_gated_controls and not get_profile(self.model).static_identity_fields and not fields:
             return lambda: None
-        self._refresh_h607c_advertisements()
+        if self._tracks_pact_identity:
+            self._refresh_h607c_advertisements()
         async with async_control_intent(self, ControlIntent.BACKGROUND):
             async with self._lock:
                 client = await self._ensure_connected()

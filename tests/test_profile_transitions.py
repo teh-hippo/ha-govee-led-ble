@@ -40,6 +40,33 @@ def device(hass, monkeypatch):
     return c, client
 
 
+async def test_colour_preparation_preserves_nontracked_protocol_identity(hass, monkeypatch):
+    c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6127", configuration_url=None)
+    c.pact_type, c.pact_code = 10, 2
+    c._resolve_device_profile()
+    client = MagicMock(is_connected=True, disconnect=AsyncMock())
+    monkeypatch.setattr(
+        "custom_components.ha_govee_led_ble.coordinator.bluetooth.async_last_service_info",
+        lambda *_args, **_kwargs: None,
+    )
+
+    async def connect():
+        c._client = client
+        c._notification_token = object()
+        c._observe_identity_field("hw_version", "2.01.01")
+        c._observe_identity_field("fw_version", "2.04.00")
+        return client
+
+    monkeypatch.setattr(c, "_ensure_connected", connect)
+    try:
+        guard = await c.async_prepare_identity_gated_control()
+        guard()
+        assert (c.pact_type, c.pact_code) == (10, 2)
+        assert c.profile == device_profile("H6127", 10, 2, firmware="2.04.00", hardware="2.01.01")
+    finally:
+        await c.disconnect()
+
+
 async def test_setup_rebuilds_after_narrowing_during_power_query(device):
     c, client = device
 
