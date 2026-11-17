@@ -52,14 +52,10 @@ from custom_components.ha_govee_led_ble.light_source import GoveeBLESourceLight
 from custom_components.ha_govee_led_ble.music_commands import prepare_music_request
 from custom_components.ha_govee_led_ble.protocol_core import serialize_native_body
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES
-from custom_components.ha_govee_led_ble.transport import reassemble_a3, xor_checksum
+from custom_components.ha_govee_led_ble.transport import reassemble_a3
+from tests.coordinator_test_support import frame
 
 PROFILE = device_profile("H60B0", 1, 2)
-
-
-def frame(prefix: str) -> bytes:
-    content = bytes.fromhex(prefix).ljust(19, b"\x00")
-    return content + bytes((xor_checksum(content),))
 
 
 @pytest.mark.parametrize("pact_code", [1, 2, 3])

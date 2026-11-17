@@ -18,12 +18,7 @@ from custom_components.ha_govee_led_ble.low_blue_light import (
 )
 from custom_components.ha_govee_led_ble.number import GoveeBLELowBlueLightLevel
 from custom_components.ha_govee_led_ble.switch import GoveeBLEControlSwitch
-from custom_components.ha_govee_led_ble.transport import xor_checksum
-
-
-def frame(prefix: str) -> bytes:
-    body = bytes.fromhex(prefix).ljust(19, b"\0")
-    return body + bytes((xor_checksum(body),))
+from tests.coordinator_test_support import frame
 
 
 @pytest.fixture

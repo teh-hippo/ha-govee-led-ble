@@ -31,8 +31,8 @@ from custom_components.ha_govee_led_ble.light_commands import (
 )
 from custom_components.ha_govee_led_ble.music_commands import prepare_music_profile_writes
 from custom_components.ha_govee_led_ble.protocol_core import decode_wire_brightness, encode_wire_brightness
+from tests.coordinator_test_support import frame
 from tests.storage_test_double import InMemoryVersionedDocumentStore
-from tests.test_h6199_native_controls import frame
 
 
 @pytest.fixture

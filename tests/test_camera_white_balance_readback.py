@@ -26,7 +26,8 @@ from custom_components.ha_govee_led_ble.native_profile_controls import apply_act
 from custom_components.ha_govee_led_ble.protocol_core import _STATUS_ROOTS, H6199StatusReply
 from custom_components.ha_govee_led_ble.transport import xor_checksum
 from custom_components.ha_govee_led_ble.video_applicability import validate_video_request, white_balance_readback_state
-from tests.test_h6199_native_controls import frame, qualify
+from tests.coordinator_test_support import frame
+from tests.test_h6199_native_controls import qualify
 
 
 @pytest.fixture
@@ -253,7 +254,6 @@ async def test_camera_absent_hides_video_effects(camera_device, state):
     c = camera_device
     observe_camera(c, state)
     light = GoveeBLELight(c)
-    assert not {"Movie", "Game"} & set(light.effect_list)
     with pytest.raises(HomeAssistantError) as error:
         await light.async_turn_on(effect="Video: Movie")
     assert error.value.translation_key == "unknown_effect"

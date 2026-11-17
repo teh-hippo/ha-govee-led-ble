@@ -80,15 +80,11 @@ async def test_query_deadline_after_completed_write_only_counts_unsent_required_
     writer.assert_awaited_once()
 
 
-@pytest.mark.parametrize("missing", ["zone", "power_on"])
-@pytest.mark.parametrize("error", [None, BleakError, ValueError, TimeoutError])
-async def test_h607c_optional_setting_timeout_preserves_required_setup(
-    hass, monkeypatch, virtual_clock, missing, error
-):
+@pytest.fixture
+def h607c_subscription(hass, monkeypatch):
     c = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H607C", configuration_url=None)
     c.pact_type, c.pact_code = 1, 1
     c._resolve_device_profile()
-    c._present = True
     client = MagicMock(is_connected=True, disconnect=AsyncMock(), start_notify=AsyncMock())
 
     async def connect():
@@ -103,6 +99,19 @@ async def test_h607c_optional_setting_timeout_preserves_required_setup(
     async def disconnect(_client):
         client.is_connected = False
         c._clear_client_state(client)
+
+    monkeypatch.setattr(c, "_ensure_connected", AsyncMock(side_effect=connect))
+    monkeypatch.setattr(c, "_disconnect_if_current_locked", AsyncMock(side_effect=disconnect))
+    return c, client
+
+
+@pytest.mark.parametrize("missing", ["zone", "power_on"])
+@pytest.mark.parametrize("error", [None, BleakError, ValueError, TimeoutError])
+async def test_h607c_optional_setting_timeout_preserves_required_setup(
+    h607c_subscription, monkeypatch, virtual_clock, missing, error
+):
+    c, client = h607c_subscription
+    c._present = True
 
     async def write(_uuid, packet, **_kwargs):
         receive = client.start_notify.await_args.args[1]
@@ -119,8 +128,6 @@ async def test_h607c_optional_setting_timeout_preserves_required_setup(
             receive(None, bytearray(_packet(0xAA, 0xA3, [0])))
 
     client.write_gatt_char = AsyncMock(side_effect=write)
-    monkeypatch.setattr(c, "_ensure_connected", AsyncMock(side_effect=connect))
-    monkeypatch.setattr(c, "_disconnect_if_current_locked", AsyncMock(side_effect=disconnect))
     snapshot = await c._async_update_data()
     assert snapshot["is_on"] and snapshot["brightness_pct"] == 37
     assert c._state_read_available
@@ -134,26 +141,10 @@ async def test_h607c_optional_setting_timeout_preserves_required_setup(
 
 
 @pytest.mark.parametrize("failure", ["identity", "unexpected"])
-async def test_h607c_setup_cleans_up_after_optional_exception(hass, monkeypatch, failure):
-    c = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H607C", configuration_url=None)
-    c.pact_type, c.pact_code = 1, 1
-    c._resolve_device_profile()
+async def test_h607c_setup_cleans_up_after_optional_exception(h607c_subscription, monkeypatch, failure):
+    c, client = h607c_subscription
     c.boolean_control_state["gradual"] = True
     c.power_on_behaviour, c.power_on_open_flag = "on", 1
-    client = MagicMock(is_connected=True, disconnect=AsyncMock(), start_notify=AsyncMock())
-
-    async def connect():
-        if c._client is client and c._notification_token is not None:
-            return client
-        c._client = client
-        await c._start_notify()
-        c._h607c_marker_pact = (1, 1)
-        c._resolve_h607c_pact(preserve_state=True)
-        return client
-
-    async def disconnect(_client):
-        client.is_connected = False
-        c._clear_client_state(client)
 
     async def write(_uuid, packet, **_kwargs):
         receive = client.start_notify.await_args.args[1]
@@ -174,8 +165,6 @@ async def test_h607c_setup_cleans_up_after_optional_exception(hass, monkeypatch,
         return await read_setting(client, query, fields, **kwargs)
 
     client.write_gatt_char = AsyncMock(side_effect=write)
-    monkeypatch.setattr(c, "_ensure_connected", AsyncMock(side_effect=connect))
-    monkeypatch.setattr(c, "_disconnect_if_current_locked", AsyncMock(side_effect=disconnect))
     monkeypatch.setattr(c, "_async_read_setting_fields", read_after_change)
     if failure == "unexpected":
         with pytest.raises(RuntimeError, match="unexpected"):

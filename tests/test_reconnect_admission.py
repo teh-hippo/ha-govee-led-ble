@@ -31,11 +31,11 @@ from custom_components.ha_govee_led_ble.native_profile_controls import (
     async_require_video_controls,
 )
 from custom_components.ha_govee_led_ble.select import GoveeBLEControlSelect
+from tests.coordinator_test_support import frame
 from tests.storage_test_double import InMemoryVersionedDocumentStore
 from tests.test_effect_preview import _manager, _open
 from tests.test_h6199_capabilities import QUALIFIED, set_qualified_identity
 from tests.test_h6199_capabilities import lifecycle as reconnect_lifecycle  # noqa: F401
-from tests.test_h6199_native_controls import frame
 
 
 @pytest.mark.parametrize("identity", ["qualified", "missing", "mismatched"])

@@ -35,7 +35,7 @@ from custom_components.ha_govee_led_ble.light_commands import (
     parse_static_write,
 )
 from custom_components.ha_govee_led_ble.protocol_core import ProtocolParseRejection
-from custom_components.ha_govee_led_ble.transport import xor_checksum
+from tests.coordinator_test_support import frame
 
 PROFILE = ModelProfile(
     "Synthetic H601C basic protocol",
@@ -54,12 +54,6 @@ PROFILE = ModelProfile(
     static_readback_zero_kelvin_is_rgb=True,
     whole_device_mask_override=1,
 )
-
-
-def frame(prefix: str) -> bytes:
-    body = bytes.fromhex(prefix).ljust(19, b"\x00")
-    assert len(body) == 19
-    return body + bytes([xor_checksum(body)])
 
 
 @pytest.mark.parametrize(

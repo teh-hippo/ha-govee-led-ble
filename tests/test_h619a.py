@@ -29,12 +29,8 @@ from custom_components.ha_govee_led_ble.light_commands import (
 from custom_components.ha_govee_led_ble.music_commands import prepare_music_request
 from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_packets
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
-from custom_components.ha_govee_led_ble.transport import reassemble_a3, xor_checksum
-
-
-def _frame(prefix: str) -> bytes:
-    data = bytes.fromhex(prefix).ljust(19, b"\x00")
-    return data + bytes((xor_checksum(data),))
+from custom_components.ha_govee_led_ble.transport import reassemble_a3
+from tests.coordinator_test_support import frame as _frame
 
 
 def test_static_writes_select_ten_logical_segments_not_twenty_physical_ics():

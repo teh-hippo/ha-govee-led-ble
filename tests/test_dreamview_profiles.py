@@ -27,8 +27,9 @@ from custom_components.ha_govee_led_ble.dreamview_services import _async_dreamvi
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_brightness, build_power
 from custom_components.ha_govee_led_ble.protocol_core import _STATUS_ROOTS, H6199StatusReply
 from custom_components.ha_govee_led_ble.transport import reassemble_a3
+from tests.coordinator_test_support import frame
 from tests.test_govee_encryption import client as ble_client
-from tests.test_h6099_dreamview import coordinator, frame, member
+from tests.test_h6099_dreamview import coordinator, member
 
 
 @pytest.fixture

@@ -18,7 +18,7 @@ from bleak_retry_connector import (
 )
 from homeassistant.core import HomeAssistant
 
-from .ble_device_resolver import BLEDeviceResolver
+from .ble_device_resolver import BLEDeviceResolver, async_resolve_ble_device
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
@@ -141,13 +141,13 @@ async def async_establish_ble_connection(
     use_services_cache: bool = True,
 ) -> BleakClient:
     """Resolve and establish a BLE connection using production retry semantics."""
-    active_resolver = BLEDeviceResolver() if resolver is None else resolver
+    active_resolver = async_resolve_ble_device if resolver is None else resolver
     recovery_pending = stale_gatt_recovery_pending(hass, address)
 
     async def connect(callback: DisconnectedCallback | None, cache: bool) -> BleakClient:
         resolution = None
         for attempt in range(DEVICE_DISCOVERY_ATTEMPTS):
-            resolution = await active_resolver.async_resolve(hass, address)
+            resolution = await active_resolver(hass, address)
             if resolution is not None:
                 break
             if attempt < DEVICE_DISCOVERY_ATTEMPTS - 1:

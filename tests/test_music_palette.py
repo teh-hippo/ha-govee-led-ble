@@ -31,8 +31,8 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_
 from custom_components.ha_govee_led_ble.music_commands import prepare_music_request
 from custom_components.ha_govee_led_ble.protocol_core import MusicBody
 from custom_components.ha_govee_led_ble.transport import reassemble_a3
+from tests.coordinator_test_support import frame
 from tests.test_effect_preview import _manager, _open
-from tests.test_h6099_music import frame
 from tests.test_music_commands import _music_transport
 
 PALETTE = ((12, 34, 56), (78, 90, 123))

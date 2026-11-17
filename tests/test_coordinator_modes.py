@@ -28,29 +28,8 @@ from custom_components.ha_govee_led_ble.music_commands import build_music_params
 from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_packets
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES, SCENE_ENTRIES, scene_selector_code
 from custom_components.ha_govee_led_ble.transport import WRITE_UUID
+from tests.coordinator_test_support import _CONFIGURATION_URL
 from tests.test_music_commands import _music_transport
-
-_CONFIGURATION_URL = "homeassistant://ha-govee-led-ble/editor/test-entry"
-
-
-@pytest.fixture
-def coord(hass):
-    return GoveeBLECoordinator(
-        hass,
-        "AA:BB:CC:DD:EE:FF",
-        "H617A",
-        configuration_url=_CONFIGURATION_URL,
-    )
-
-
-@pytest.fixture
-def h6199(hass):
-    return GoveeBLECoordinator(
-        hass,
-        "11:22:33:44:55:66",
-        "H6199",
-        configuration_url=_CONFIGURATION_URL,
-    )
 
 
 def _sent(sc):

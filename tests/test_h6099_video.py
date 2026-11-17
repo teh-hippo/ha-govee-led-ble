@@ -44,7 +44,7 @@ from custom_components.ha_govee_led_ble.video_applicability import (
     validate_video_request,
     video_control_states,
 )
-from tests.test_h6099 import frame
+from tests.coordinator_test_support import frame
 
 
 def content() -> VideoProfile:

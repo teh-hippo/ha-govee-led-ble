@@ -40,7 +40,8 @@ from custom_components.ha_govee_led_ble.dreamview_services import (
 )
 from custom_components.ha_govee_led_ble.govee_encryption import GoveeCryptoError, GoveeTransportError, v1_transform
 from custom_components.ha_govee_led_ble.light_services import async_register_light_services
-from custom_components.ha_govee_led_ble.transport import reassemble_a3, xor_checksum
+from custom_components.ha_govee_led_ble.transport import reassemble_a3
+from tests.coordinator_test_support import frame
 from tests.test_govee_encryption import KEY, negotiate
 
 PROFILE = get_profile("H6099")
@@ -56,11 +57,6 @@ def durable_storage(hass_storage):
         patch.object(Store, "_async_load", _STORE_LOAD),
     ):
         yield
-
-
-def frame(prefix: str) -> bytes:
-    payload = bytes.fromhex(prefix).ljust(19, b"\x00")
-    return payload + bytes((xor_checksum(payload),))
 
 
 def member(**overrides) -> DreamviewMember:

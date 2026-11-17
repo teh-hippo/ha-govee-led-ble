@@ -1,5 +1,6 @@
 """Profile-qualified native configuration levels."""
 
+from collections.abc import Awaitable, Callable
 from functools import partial
 
 from bleak.exc import BleakError
@@ -23,7 +24,6 @@ async def async_setup_entry(
     added: set[str] = set()
 
     def add_qualified() -> None:
-        nonlocal added
         if "low_blue_light" not in added and entry.runtime_data.profile.supports_low_blue_light:
             added.add("low_blue_light")
             async_add_entities([GoveeBLELowBlueLightLevel(entry)])
@@ -35,17 +35,28 @@ async def async_setup_entry(
     entry.async_on_unload(entry.runtime_data.async_add_listener(add_qualified))
 
 
-class GoveeBLELowBlueLightLevel(GoveeBLEEntity, NumberEntity):
-    _attr_entity_category = EntityCategory.CONFIG
-    _attr_translation_key = "low_blue_light_level"
-    _attr_native_min_value = Setting.State().minimum_level
-    _attr_native_max_value = Setting.State().maximum_level
+class _GoveeBLELevel(GoveeBLEEntity, NumberEntity):
     _attr_native_step = 1
 
     def __init__(self, entry: GoveeBLEConfigEntry) -> None:
         super().__init__(entry.runtime_data)
-        self._attr_unique_id = f"{self.coordinator.address.replace(':', '').lower()}_low_blue_light_level"
+        self._attr_unique_id = f"{self.coordinator.address.replace(':', '').lower()}_{self.translation_key}"
         self._attr_device_info = self.coordinator.device_info
+
+    async def _async_set_level(self, value: float, write: Callable[[int], Awaitable[None]]) -> None:
+        if not self.native_min_value <= value <= self.native_max_value or int(value) != value:
+            raise ServiceValidationError(translation_domain=DOMAIN, translation_key="invalid_control_request")
+        try:
+            await self._async_latest(partial(write, int(value)))
+        except (BleakError, ValueError, TimeoutError) as error:
+            raise HomeAssistantError(translation_domain=DOMAIN, translation_key="device_command_failed") from error
+
+
+class GoveeBLELowBlueLightLevel(_GoveeBLELevel):
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_translation_key = "low_blue_light_level"
+    _attr_native_min_value = Setting.State().minimum_level
+    _attr_native_max_value = Setting.State().maximum_level
 
     @property
     def available(self) -> bool:
@@ -57,24 +68,13 @@ class GoveeBLELowBlueLightLevel(GoveeBLEEntity, NumberEntity):
         return state.level if state is not None else None
 
     async def async_set_native_value(self, value: float) -> None:
-        if not self.native_min_value <= value <= self.native_max_value or int(value) != value:
-            raise ServiceValidationError(translation_domain=DOMAIN, translation_key="invalid_control_request")
-        try:
-            await self._async_latest(partial(self.coordinator.async_set_low_blue_light, level=int(value)))
-        except (BleakError, ValueError, TimeoutError) as error:
-            raise HomeAssistantError(translation_domain=DOMAIN, translation_key="device_command_failed") from error
+        await self._async_set_level(value, lambda level: self.coordinator.async_set_low_blue_light(level=level))
 
 
-class GoveeBLERippleSpeed(GoveeBLEEntity, NumberEntity):
+class GoveeBLERippleSpeed(_GoveeBLELevel):
     _attr_translation_key = "ripple_speed"
     _attr_native_min_value = 0
     _attr_native_max_value = 100
-    _attr_native_step = 1
-
-    def __init__(self, entry: GoveeBLEConfigEntry) -> None:
-        super().__init__(entry.runtime_data)
-        self._attr_unique_id = f"{self.coordinator.address.replace(':', '').lower()}_ripple_speed"
-        self._attr_device_info = self.coordinator.device_info
 
     @property
     def available(self) -> bool:
@@ -85,11 +85,4 @@ class GoveeBLERippleSpeed(GoveeBLEEntity, NumberEntity):
         return self.coordinator.ripple_speed
 
     async def async_set_native_value(self, value: float) -> None:
-        if not self.native_min_value <= value <= self.native_max_value or int(value) != value:
-            raise ServiceValidationError(translation_domain=DOMAIN, translation_key="invalid_control_request")
-        try:
-            await self._async_latest(
-                partial(self.coordinator.async_set_source_value, "top", "ripple_speed", int(value))
-            )
-        except (BleakError, ValueError, TimeoutError) as error:
-            raise HomeAssistantError(translation_domain=DOMAIN, translation_key="device_command_failed") from error
+        await self._async_set_level(value, partial(self.coordinator.async_set_source_value, "top", "ripple_speed"))

@@ -50,7 +50,8 @@ from custom_components.ha_govee_led_ble.protocol_music_params import (
     native_music_zone_body,
     parse_music_parameters,
 )
-from custom_components.ha_govee_led_ble.transport import fragment_a3, reassemble_a3, xor_checksum
+from custom_components.ha_govee_led_ble.transport import fragment_a3, reassemble_a3
+from tests.coordinator_test_support import frame
 
 HOPPING = bytes.fromhex("3302ff00000000ff00000019620103123a")
 PAIRED = bytes.fromhex("82331002ff00000000ff00000019620103123a4f070200ff00ffffff")
@@ -127,11 +128,6 @@ def profile():
         dreamview_max_sub_devices=10,
         dreamview_requires_group_ack=True,
     )
-
-
-def frame(prefix: str) -> bytes:
-    payload = bytes.fromhex(prefix).ljust(19, b"\x00")
-    return payload + bytes((xor_checksum(payload),))
 
 
 def test_native_controls_are_independent_and_queries_use_exact_selectors(profile):

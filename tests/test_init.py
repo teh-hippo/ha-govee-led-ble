@@ -322,7 +322,7 @@ async def test_scheduled_setup_retry_replaces_coordinator_and_retains_recovery(h
         patch("custom_components.ha_govee_led_ble.GoveeBLECoordinator", side_effect=create_coordinator),
         patch("custom_components.ha_govee_led_ble.coordinator.bluetooth"),
         patch(
-            "custom_components.ha_govee_led_ble.coordinator.BLEDeviceResolver.async_resolve",
+            "custom_components.ha_govee_led_ble.coordinator.async_resolve_ble_device",
             return_value=BLEDeviceResolution(MagicMock(), BleakClient),
         ),
         patch(
