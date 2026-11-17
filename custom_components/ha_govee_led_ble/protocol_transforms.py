@@ -15,6 +15,7 @@ from .protocol_core import (
     H6125LegacySegmentQuery,
     H6125WireWrite,
     H6127WireWrite,
+    H6159WireWrite,
     H6181CommandWrite,
     H6199Pact1WireWrite,
     _child,
@@ -25,6 +26,59 @@ from .protocol_core import (
 )
 
 
+@cache
+def h6159_outbound_transform(
+    wire_range: tuple[int, int] | None, *, legacy_colour: bool, music_version: int
+) -> Callable[[bytes], bytes]:
+    """Translate the compatible logical whole-strip contract to its revision's wire shape."""
+
+    def transform(packet: bytes) -> bytes:
+        parsed = _parse_xor_frame(packet, "H6181", {"H6181": ("h6181_command_write", H6181CommandWrite)}).parsed
+        if parsed is None:
+            return packet
+        operation = getattr(parsed.opcode, "name", None)
+        if operation == "brightness" and wire_range is not None:
+            return _register_brightness(H6159WireWrite, int(parsed.body.percent), wire_range)
+        if operation != "mode":
+            return packet
+        mode = getattr(parsed.body.sub_mode, "name", None)
+        detail = parsed.body.detail
+        if mode == "static_colour" and legacy_colour:
+            return _whole_rgb_colour_effect(parsed)
+        if mode != "music" or not legacy_colour:
+            return packet
+        root = H6159WireWrite()
+        root.header, root.opcode = b"\x33", H6159WireWrite.CommandOp.mode
+        body = _child(H6159WireWrite.ModeBody, root)
+        body.sub_mode = H6159WireWrite.ModeSel.legacy_music if music_version == 0 else H6159WireWrite.ModeSel.music
+        music = _child(H6159WireWrite.LegacyMusicBody if music_version == 0 else H6159WireWrite.MusicBody, body)
+        if music_version != 0:
+            music.mode = H6159WireWrite.MusicMode(int(detail.mode))
+        music.sensitivity = detail.sensitivity
+        if music_version == 0 or int(detail.mode) in (0, 1):
+            music.has_fixed_colour = detail.has_fixed_colour
+            if detail.has_fixed_colour:
+                rgb = detail.fixed_colour
+                music.fixed_colour = _rgb(music, rgb.red, rgb.green, rgb.blue)
+        music.padding = bytes(music.write_tail_size)
+        body.detail, root.body = music, body
+        return _serialize_xor(root)
+
+    return transform
+
+
+def _whole_rgb_colour_effect(command: Any) -> bytes:
+    static = command.body.detail
+    detail = _child(H6181CommandWrite.ColourEffectBody, command.body)
+    detail.rgb = _rgb(detail, static.rgb.red, static.rgb.green, static.rgb.blue)
+    detail.temperature_flag = int(bool(static.kelvin))
+    detail.companion_rgb = _rgb(detail, static.companion_rgb.red, static.companion_rgb.green, static.companion_rgb.blue)
+    detail.unknown_tail = bytes(9)
+    command.body.sub_mode = H6181CommandWrite.ModeSel.colour_effect
+    command.body.detail = detail
+    return _serialize_xor(command)
+
+
 def h6181_outbound_transform(packet: bytes, *, colour_effect: bool = False) -> bytes:
     parsed = _parse_xor_frame(packet, "H6181", {"H6181": ("h6181_command_write", H6181CommandWrite)}).parsed
     if parsed is None:
@@ -33,17 +87,7 @@ def h6181_outbound_transform(packet: bytes, *, colour_effect: bool = False) -> b
         parsed.body.percent = encode_wire_brightness(int(parsed.body.percent), (20, 254))
         return _serialize_xor(parsed)
     if colour_effect and parsed.is_static:
-        static = parsed.body.detail
-        detail = _child(H6181CommandWrite.ColourEffectBody, parsed.body)
-        detail.rgb = _rgb(detail, static.rgb.red, static.rgb.green, static.rgb.blue)
-        detail.temperature_flag = int(bool(static.kelvin))
-        detail.companion_rgb = _rgb(
-            detail, static.companion_rgb.red, static.companion_rgb.green, static.companion_rgb.blue
-        )
-        detail.unknown_tail = bytes(9)
-        parsed.body.sub_mode = H6181CommandWrite.ModeSel.colour_effect
-        parsed.body.detail = detail
-        return _serialize_xor(parsed)
+        return _whole_rgb_colour_effect(parsed)
     return packet
 
 

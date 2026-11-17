@@ -181,18 +181,23 @@ async def test_h600a_scene_and_diy_ack_barrier(connected, kind, response):
     assert c._ensure_connected.await_count == 1
 
 
-@pytest.mark.parametrize("connected", ["H6181"], indirect=True)
+@pytest.mark.parametrize("connected", ["H6159", "H6181"], indirect=True)
 @pytest.mark.parametrize("kind,pact", [("diy", (None, None)), ("diy", (10, 2)), ("scene", (10, 2))])
 @pytest.mark.parametrize("response", ["accepted", "rejected", "missing"])
 async def test_h6181_revision_uploads_require_matching_success_before_activation(connected, kind, pact, response):
     c, client = connected
-    c.profile = replace(device_profile(c.model, *pact), profile_identity_fields=frozenset())
+    c.profile = replace(
+        device_profile(c.model, *pact, firmware="1.07.02", hardware="1.00.02"),
+        profile_identity_fields=frozenset(),
+    )
     if kind == "scene":
         scene = next(scene for scene in SCENE_ENTRIES[c.model] if scene.scene_type == 1)
         content = BuiltinScene(CatalogueRef(c.model, scene.scene_id, scene.effect_id))
     else:
         content = SingleEffect(0, 0, 50, ((1, 2, 3),))
-    compiled = compile_effect(LibraryItem.new("Palette", content), c.model, diy_code=42, profile=c.profile)
+    compiled = compile_effect(
+        LibraryItem.new("Palette", content), c.model, diy_code=None if c.model == "H6159" else 42, profile=c.profile
+    )
     last_upload = len(compiled.upload_packets) - 1
     subtype = upload_ack_subtype(compiled.upload_packets, last_upload, c.model, profile=c.profile)
     protocol = compiled.upload_packets[-1][0]

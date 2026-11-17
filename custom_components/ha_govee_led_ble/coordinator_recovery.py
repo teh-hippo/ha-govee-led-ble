@@ -15,7 +15,7 @@ from .coordinator_sources import source_color_temp_kelvin
 from .coordinator_status import (
     ParsedMode,
 )
-from .effect_contracts import CapabilityState
+from .effect_contracts import CapabilityState, CapabilityWorkflow, profile_supports_workflow
 from .effect_deployments import PriorControlState
 from .generated_protocol_adapter import (
     build_brightness,
@@ -703,13 +703,17 @@ class _RecoveryMixin(_CoordinatorBase):
         native_selectors = {
             template.content.native_diy
             for template in (() if catalogue is None else catalogue.templates)
-            if isinstance(template.content, LayeredEffect) and template.content.native_diy is not None
+            if self.profile.supports_advanced_effects
+            and isinstance(template.content, LayeredEffect)
+            and template.content.native_diy is not None
         }
-        if (
-            self.profile.supports_advanced_effects
-            and state.scene_code is not None
-            and (state.scene_code == self.profile.advanced_diy_selector or state.scene_code in native_selectors)
+        if self.profile.supports_advanced_effects and self.profile.advanced_diy_selector is not None:
+            native_selectors.add(self.profile.advanced_diy_selector)
+        if self.profile.authored_palette_scene_selector is not None and profile_supports_workflow(
+            self.profile, CapabilityWorkflow.EDITED_PALETTE_SCENES
         ):
+            native_selectors.add(self.profile.authored_palette_scene_selector)
+        if state.scene_code is not None and state.scene_code in native_selectors:
             if state.scene_code == overwritten_diy_code:
                 return False
             await self.send_command(build_power(True, self.model))

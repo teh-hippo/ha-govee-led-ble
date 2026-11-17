@@ -32,6 +32,7 @@ from .music_semantics import (
     H6117_MUSIC_VARIANTS,
     H6125_MUSIC_VARIANTS,
     H6127_MUSIC_VARIANTS,
+    H6159_MUSIC_VARIANTS,
     H6181_MUSIC_VARIANTS,
     H7020_MUSIC_VARIANTS,
     H7025_MUSIC_VARIANTS,
@@ -330,6 +331,7 @@ class ModelProfile:
     workshop_scene_selector: int | None = None
     workshop_brightness_algorithm: int | None = None
     advanced_diy_selector: int | None = None
+    authored_palette_scene_selector: int | None = None
     rgbic_scene_v0: bool | None = None
     # When set, Type04 custom effects upload as A1 command-02 frames led by this selector and activate with it.
     a1_diy_selector: int | None = None
@@ -2365,6 +2367,56 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         boolean_controls=frozenset({"gradual"}),
         connection_idle_timeout=IDLE_TIMEOUT_STANDARD,
     ),
+    "H6159": ModelProfile(
+        "H6159 RGB LED Strip",
+        confirmation_issue=640,
+        reconciles_marker_pact=True,
+        command_grammar="H6181",
+        command_operations=frozenset({"power", "brightness", "static", "scene", "diy", "music", "effect_upload"}),
+        status_grammar="H6159",
+        effect_grammar="H6181",
+        profile_identity_fields=frozenset({"fw_version", "hw_version"}),
+        profile_pact_dependent=True,
+        colour_mode_query_selector=1,
+        read_domains=frozenset(
+            {ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE, ReadDomain.FIRMWARE, ReadDomain.HARDWARE}
+        ),
+        setup_required_read_domains=frozenset({ReadDomain.POWER}),
+        supports_rgb=True,
+        supports_color_temperature=True,
+        color_temp_range=KELVIN_RANGE_2000_9000,
+        static_readback_echoes_color=True,
+        static_readback_kelvin=True,
+        static_readback_zero_kelvin_is_rgb=True,
+        supports_scenes=True,
+        scene_catalogue_sku="H6159",
+        authored_palette_scene_selector=198,
+        local_scenes=(
+            (0, "Sunrise"),
+            (1, "Sunset"),
+            (4, "Movie"),
+            (5, "Date"),
+            (7, "Romantic"),
+            (8, "Blink"),
+            (9, "Candle"),
+        ),
+        supports_custom_effects=True,
+        supports_multi_layered_effects=True,
+        effect_workflows=frozenset({"native_scenes", "edited_palette_scenes", "single", "multi", "native_music"}),
+        diy_upload_transport="a3",
+        diy_requires_upload_ack=True,
+        effect_retry_after_upload=False,
+        effect_readback="diy_code_only",
+        music_modes=("dynamic", "soft", "bloom", "radiant"),
+        music_variants=H6159_MUSIC_VARIANTS,
+        music_upload_before_selector=True,
+        music_requires_upload_ack=True,
+        music_retry_after_upload=False,
+        music_params_require_activation=True,
+        music_sensitivity_max=99,
+        supports_music_color=True,
+        connection_idle_timeout=IDLE_TIMEOUT_STANDARD,
+    ),
     "H7020": ModelProfile(
         "H7020 Outdoor String Lights",
         support_quality=SupportQuality.SUPPORTED,
@@ -2821,7 +2873,7 @@ _EFFECT_ACTIVATION_GRAMMARS = {
 }
 MODE_COMMAND_GRAMMARS = WHOLE_BULB_GRAMMARS | {"H6046", "H6099", "H6199"}
 PERCENT_BRIGHTNESS_STATUS_GRAMMARS = frozenset(
-    {"H1771", "H60B0", "H600A", "H6046", "H6097", "H6099", "H6181", "H6181-modern", "H6199", "H66A0"}
+    {"H1771", "H60B0", "H600A", "H6046", "H6097", "H6099", "H6159", "H6181", "H6181-modern", "H6199", "H66A0"}
 )
 
 
@@ -3347,6 +3399,51 @@ def device_profile(
     hardware: str | None = None,
 ) -> ModelProfile:
     """Resolve exact-product capabilities from evidenced revision context."""
+    if model == "H6159":
+        from .protocol_transforms import h6159_outbound_transform
+
+        profile = get_profile(model)
+        fw, hw = FirmwareVersion.parse(firmware), FirmwareVersion.parse(hardware)
+        later = pact_type is not None and pact_code is not None and pact_type >= 2 and pact_code >= 1
+        wire_range = None if later else (6, 254)
+        if fw is None or hw is None:
+            return _basic_revision_profile(
+                replace(
+                    profile,
+                    brightness_wire_range=wire_range,
+                    outbound_transform=h6159_outbound_transform(wire_range, legacy_colour=not later, music_version=0),
+                )
+            )
+        hardware_number = hw.identity_number()
+        telink = 10000 <= hardware_number < 20000
+        palette_hardware = 20100 <= hardware_number < 20200 or (
+            30000 <= hardware_number < 40000 and not 30400 <= hardware_number < 30500
+        )
+        palette_music = palette_hardware and fw >= FirmwareVersion((2, 4)) if later else fw >= FirmwareVersion((1, 7))
+        music_version = 2 if palette_music else 1 if fw >= FirmwareVersion((1, 3)) else 0
+        modes = profile.music_modes if palette_music else ("dynamic", "soft") if music_version else ("dynamic",)
+        uploaded_scenes = fw >= FirmwareVersion((1, 3))
+        mixed = fw >= FirmwareVersion((1, 2, 3))
+        assert profile.effect_workflows is not None
+        return replace(
+            profile,
+            brightness_wire_range=wire_range,
+            outbound_transform=h6159_outbound_transform(
+                wire_range, legacy_colour=not later, music_version=music_version
+            ),
+            diy_upload_transport="a3" if later or not telink else "a1_02",
+            supports_multi_layered_effects=mixed,
+            effect_workflows=profile.effect_workflows
+            - (set() if mixed else {"multi"})
+            - (set() if uploaded_scenes else {"edited_palette_scenes"}),
+            selector_only_scene_bits=None if uploaded_scenes else 16,
+            authored_palette_scene_selector=198 if uploaded_scenes else None,
+            scene_codes=None if uploaded_scenes else frozenset({0, 1, 4, 5, 7, 8, 9}),
+            music_modes=modes,
+            music_variants=tuple(
+                variant for variant in profile.music_variants if palette_music or variant.mode_code < len(modes)
+            ),
+        )
     if model == "H6181":
         profile = get_profile(model)
         later = pact_type is not None and pact_code is not None and pact_type >= 10 and pact_code >= 1

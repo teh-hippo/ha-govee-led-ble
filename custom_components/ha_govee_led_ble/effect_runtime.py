@@ -77,7 +77,7 @@ from .native_profile_controls import (
     async_prepare_video_mode,
     async_require_video_controls,
 )
-from .scenes import canonical_scene_key, resolve_scene_identity, scene_code_is_ambiguous
+from .scenes import canonical_scene_key, resolve_scene_identity, scene_code_is_ambiguous, scene_selector_code
 from .video_applicability import requested_video_controls, require_video_controls, require_video_mode
 
 ACTIVATION_ATTEMPTS = 2
@@ -1507,9 +1507,15 @@ def active_workspace_matches(
     if resolved is None:
         return False
     key, entry = resolved
+    selector = scene_selector_code(
+        workspace.model,
+        entry,
+        profile=getattr(coordinator, "profile", None),
+        authored=isinstance(content, PaletteScene),
+    )
     scene_code = getattr(coordinator, "scene_code", None)
-    return (scene_code is None or scene_code == entry.code) and (
-        not scene_code_is_ambiguous(workspace.model, entry.code)
+    return (scene_code is None or scene_code == selector) and (
+        not scene_code_is_ambiguous(workspace.model, selector)
         or coordinator.effect == canonical_scene_key(workspace.model, key)
     )
 

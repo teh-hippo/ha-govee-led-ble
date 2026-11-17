@@ -240,7 +240,7 @@ async def test_reconnect_invalidates_all_h6199_revision_authorization(hass, monk
 
 
 @pytest.fixture
-async def lifecycle(hass, monkeypatch):
+async def lifecycle(hass, monkeypatch, request):
     """Only the radio is fake: connection, subscriptions, parsing, guards and polling are real."""
     from homeassistant.config_entries import current_entry
     from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -251,9 +251,15 @@ async def lifecycle(hass, monkeypatch):
     entry = MockConfigEntry(domain=DOMAIN)
     entry.add_to_hass(hass)
     with current_entry.set(entry):
-        c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url="test")
+        c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", getattr(request, "param", "H6199"), configuration_url="test")
     c._present = True
-    c._note_advertisement(SimpleNamespace(manufacturer_data={34818: bytes.fromhex("ec00020100")}))
+    c._note_advertisement(
+        SimpleNamespace(
+            manufacturer_data={34818: bytes.fromhex("ec00010100" if c.model == "H6159" else "ec00020100")},
+            source="test",
+            time=hass.loop.time(),
+        )
+    )
     replies = {
         build_hardware_query("H6199"): frame("aa0703" + b"3.02.01".hex()),
         build_firmware_query("H6199"): frame("aa06" + b"1.10.04".hex()),
@@ -274,6 +280,14 @@ async def lifecycle(hass, monkeypatch):
             for group in range(1, c.profile.segment_group_count + 1)
         }
     )
+    if c.model == "H6159":
+        replies = {
+            build_hardware_query(c.model): frame("aa0703" + b"1.00.02".hex()),
+            build_firmware_query(c.model): frame("aa06" + b"1.07.02".hex()),
+            build_power_query(c.model): frame("aa0101"),
+            build_brightness_query(c.model): frame("aa0480"),
+            build_colour_mode_query(c.model): frame("aa05020c223800000000"),
+        }
     clients, packets, timers = [], [], []
 
     async def connect(*args, **kwargs):

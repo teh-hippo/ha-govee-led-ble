@@ -246,8 +246,13 @@ def scene_for_profile(scene: SceneEntry, profile: ModelProfile) -> SceneEntry:
     return scene
 
 
-def scene_selector_code(model: str, scene: SceneEntry, *, profile: ModelProfile | None = None) -> int:
-    bits = (MODEL_PROFILES[model] if profile is None else profile).selector_only_scene_bits
+def scene_selector_code(
+    model: str, scene: SceneEntry, *, profile: ModelProfile | None = None, authored: bool = False
+) -> int:
+    profile = MODEL_PROFILES[model] if profile is None else profile
+    if authored and scene.scene_type == 1 and profile.authored_palette_scene_selector is not None:
+        return profile.authored_palette_scene_selector
+    bits = profile.selector_only_scene_bits
     if bits is None:
         return scene.code
     if not isinstance(scene.code, int) or isinstance(scene.code, bool) or scene.code < 0:

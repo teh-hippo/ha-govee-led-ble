@@ -34,6 +34,7 @@ from custom_components.ha_govee_led_ble.effect_domain import (
 )
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_h617a_scene,
+    build_scene_activation,
     parse_scene_type1_body_param,
 )
 from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_packets
@@ -127,6 +128,8 @@ def test_committed_palette_scenes_compile_to_byte_exact_model_frames() -> None:
 
         compiled = compile_effect(LibraryItem.new("Palette scene", decoded), model)
         expected = build_native_scene_packets(model, entry)
+        if (selector := get_profile(model).authored_palette_scene_selector) is not None:
+            expected[-1] = build_scene_activation(model, selector)
 
         assert compiled.activation_mode is ActivationMode.SCENE
         assert compiled.selector_kind == "scene"

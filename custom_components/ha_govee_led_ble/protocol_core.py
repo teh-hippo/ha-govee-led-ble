@@ -94,6 +94,8 @@ H6181StatusQuery = load_generated_class("h6181_status_query", "H6181StatusQuery"
 H6181StatusReply = load_generated_class("h6181_status_reply", "H6181StatusReply")
 H6181DiyBody = load_generated_class("h6181_diy_body", "H6181DiyBody")
 H6181ModernStatusReply = load_generated_class("h6181_modern_status_reply", "H6181ModernStatusReply")
+H6159WireWrite = load_generated_class("h6159_wire_write", "H6159WireWrite")
+H6159StatusReply = load_generated_class("h6159_status_reply", "H6159StatusReply")
 
 
 H6199CommandAck = load_generated_class("h6199_command_ack", "H6199CommandAck")
@@ -442,6 +444,7 @@ _STATUS_ROOTS = {
     "H705A": ("h705a_status_reply", H705aStatusReply),
     "H6181": ("h6181_status_reply", H6181StatusReply),
     "H6181-modern": ("h6181_modern_status_reply", H6181ModernStatusReply),
+    "H6159": ("h6159_status_reply", H6159StatusReply),
     "H619A": ("h619a_status_reply", H619aStatusReply),
     "H60B0": ("h60b0_status_reply", H60b0StatusReply),
     "H60B2": ("h60b2_status_reply", H60b2StatusReply),
