@@ -17,7 +17,6 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.ha_govee_led_ble.ble_connection import mark_stale_gatt_recovery
 from custom_components.ha_govee_led_ble.ble_device_resolver import (
     BLEDeviceResolution,
-    BLEDeviceResolver,
 )
 from custom_components.ha_govee_led_ble.const import (
     DOMAIN,
@@ -402,7 +401,7 @@ async def test_stale_write_revokes_authority_before_awaited_native_clear(coord, 
         clear_cache=AsyncMock(side_effect=clear_cache),
     )
     with (
-        patch(f"{M}.BLEDeviceResolver.async_resolve", return_value=_resolution()),
+        patch(f"{M}.async_resolve_ble_device", return_value=_resolution()),
         patch(f"{M}.establish_connection", return_value=client),
     ):
         assert await coord._ensure_connected() is client
@@ -473,7 +472,7 @@ async def test_gatt_cleanup_disconnect_failure_preserves_original_outcome(coord,
         disconnect=AsyncMock(side_effect=disconnect),
     )
     with (
-        patch(f"{M}.BLEDeviceResolver.async_resolve", return_value=_resolution()),
+        patch(f"{M}.async_resolve_ble_device", return_value=_resolution()),
         patch(f"{M}.establish_connection", return_value=client),
     ):
         assert await coord._ensure_connected() is client
@@ -757,7 +756,7 @@ async def test_reconnect_releases_retained_disconnected_client(coord):
     client.is_connected = False
     coord._client = client
     with (
-        patch(f"{M}.BLEDeviceResolver.async_resolve", return_value=None),
+        patch(f"{M}.async_resolve_ble_device", return_value=None),
         patch(f"{M}.asyncio.sleep", new_callable=AsyncMock),
         pytest.raises(BleakError, match="not found"),
     ):
@@ -814,7 +813,7 @@ async def test_ensure_connected(coord):
         assert await coord._ensure_connected() is c
     coord._client = None
     with (
-        patch(f"{M}.BLEDeviceResolver.async_resolve", new_callable=AsyncMock, return_value=None) as resolve,
+        patch(f"{M}.async_resolve_ble_device", new_callable=AsyncMock, return_value=None) as resolve,
         patch(f"{M}.asyncio.sleep", new_callable=AsyncMock),
         pytest.raises(BleakError, match="not found"),
     ):
@@ -824,8 +823,7 @@ async def test_ensure_connected(coord):
 
 async def test_ensure_connected_retries_cache_resolution_with_wrapped_client(coord):
     device = MagicMock()
-    resolver = MagicMock(spec=BLEDeviceResolver)
-    resolver.async_resolve = AsyncMock(side_effect=[None, _resolution(device)])
+    resolver = AsyncMock(side_effect=[None, _resolution(device)])
     coord._device_resolver = resolver
     client = _c(start_notify=AsyncMock(), write_gatt_char=AsyncMock(), disconnect=AsyncMock())
 
@@ -838,7 +836,7 @@ async def test_ensure_connected_retries_cache_resolution_with_wrapped_client(coo
     ):
         assert await coord._ensure_connected() is client
 
-    assert resolver.async_resolve.await_count == 2
+    assert resolver.await_count == 2
     sleep.assert_awaited_once()
     connect.assert_awaited_once_with(
         BleakClient,
@@ -853,8 +851,7 @@ async def test_resolution_reuses_selected_client_after_disconnect(coord):
     device = MagicMock()
     original_client_class = type("OriginalClient", (), {})
     resolution = _resolution(device, original_client_class)
-    resolver = MagicMock(spec=BLEDeviceResolver)
-    resolver.async_resolve = AsyncMock(return_value=resolution)
+    resolver = AsyncMock(return_value=resolution)
     coord._device_resolver = resolver
     first = _c()
     second = _c()
@@ -869,7 +866,7 @@ async def test_resolution_reuses_selected_client_after_disconnect(coord):
         await coord.disconnect()
         assert await coord._ensure_connected() is second
 
-    assert resolver.async_resolve.await_count == 2
+    assert resolver.await_count == 2
     assert connect.await_args_list == [
         call(
             original_client_class,
@@ -892,8 +889,7 @@ async def test_resolution_reuses_selected_client_after_disconnect(coord):
 
 async def test_gatt_failure_reconnects_new_client_with_fresh_services(coord):
     device = MagicMock()
-    resolver = MagicMock(spec=BLEDeviceResolver)
-    resolver.async_resolve = AsyncMock(return_value=_resolution(device))
+    resolver = AsyncMock(return_value=_resolution(device))
     coord._device_resolver = resolver
     first = _c(
         write_gatt_char=AsyncMock(side_effect=BleakError("GATT characteristic not found")),
@@ -932,8 +928,7 @@ async def test_gatt_failure_reconnects_new_client_with_fresh_services(coord):
 
 async def test_stale_gatt_connection_failure_forces_next_connection_fresh(coord):
     device = MagicMock()
-    resolver = MagicMock(spec=BLEDeviceResolver)
-    resolver.async_resolve = AsyncMock(return_value=_resolution(device))
+    resolver = AsyncMock(return_value=_resolution(device))
     coord._device_resolver = resolver
     client = _c()
     bootstrap = _c(clear_cache=AsyncMock(return_value=True))
@@ -975,8 +970,7 @@ async def test_stale_gatt_connection_failure_forces_next_connection_fresh(coord)
 
 async def test_failed_fresh_notification_setup_retains_fresh_requirement(coord):
     device = MagicMock()
-    resolver = MagicMock(spec=BLEDeviceResolver)
-    resolver.async_resolve = AsyncMock(return_value=_resolution(device))
+    resolver = AsyncMock(return_value=_resolution(device))
     coord._device_resolver = resolver
     mark_stale_gatt_recovery(coord.hass, coord.address)
     bootstrap = _c(clear_cache=AsyncMock(return_value=True))
@@ -1008,8 +1002,7 @@ async def test_failed_fresh_notification_setup_retains_fresh_requirement(coord):
 
 async def test_stale_gatt_identity_failure_discards_client_and_requires_fresh_services(coord):
     device = MagicMock()
-    resolver = MagicMock(spec=BLEDeviceResolver)
-    resolver.async_resolve = AsyncMock(return_value=_resolution(device))
+    resolver = AsyncMock(return_value=_resolution(device))
     coord._device_resolver = resolver
     client = _c(
         start_notify=AsyncMock(),
@@ -1042,7 +1035,7 @@ async def test_recovery_identity_failure_only_rejects_discarded_client(coord, st
         clear_cache=AsyncMock(return_value=True),
     )
     with (
-        patch(f"{M}.BLEDeviceResolver.async_resolve", return_value=_resolution()),
+        patch(f"{M}.async_resolve_ble_device", return_value=_resolution()),
         patch(f"{M}.establish_connection", side_effect=[bootstrap, client]) as connect,
     ):
         if stale:
@@ -1081,7 +1074,7 @@ async def test_optional_state_query_failure_only_tolerated_on_current_client(coo
         clear_cache=AsyncMock(return_value=True),
     )
     with (
-        patch(f"{M}.BLEDeviceResolver.async_resolve", return_value=_resolution()),
+        patch(f"{M}.async_resolve_ble_device", return_value=_resolution()),
         patch(f"{M}.establish_connection", return_value=client),
     ):
         await coord._ensure_connected()
@@ -1127,7 +1120,7 @@ async def test_recovery_bootstrap_failure_retains_pending_and_skips_qualificatio
         disconnect=AsyncMock(side_effect=BleakError("disconnect failed") if failure == "disconnect" else None),
     )
     with (
-        patch(f"{M}.BLEDeviceResolver.async_resolve", return_value=_resolution()),
+        patch(f"{M}.async_resolve_ble_device", return_value=_resolution()),
         patch(f"{M}.establish_connection", return_value=bootstrap) as connect,
         patch(
             "custom_components.ha_govee_led_ble.ble_connection.GATT_CACHE_CLEAR_TIMEOUT",
@@ -1165,7 +1158,7 @@ async def test_recovery_proxy_switch_failure_requires_another_native_bootstrap(c
     proxy_bootstrap = _c(clear_cache=AsyncMock(return_value=True))
     qualified = _c(start_notify=AsyncMock(), write_gatt_char=AsyncMock())
     with (
-        patch(f"{M}.BLEDeviceResolver.async_resolve", side_effect=[local, proxy, proxy, proxy]),
+        patch(f"{M}.async_resolve_ble_device", side_effect=[local, proxy, proxy, proxy]),
         patch(
             f"{M}.establish_connection",
             side_effect=[
@@ -1219,7 +1212,7 @@ async def test_keep_alive_stale_identity_failure_stops_before_state_queries(coor
 async def test_start_notify(coord, h6199):
     c = _c(start_notify=AsyncMock(), write_gatt_char=AsyncMock(), disconnect=AsyncMock())
     with (
-        patch(f"{M}.BLEDeviceResolver.async_resolve", new_callable=AsyncMock, return_value=_resolution()),
+        patch(f"{M}.async_resolve_ble_device", new_callable=AsyncMock, return_value=_resolution()),
         patch(f"{M}.establish_connection", return_value=c),
     ):
         assert await h6199._ensure_connected() is c
@@ -1231,7 +1224,7 @@ async def test_start_notify(coord, h6199):
     await h6199.disconnect()
     c2 = _c(start_notify=AsyncMock(), write_gatt_char=AsyncMock(), disconnect=AsyncMock())
     with (
-        patch(f"{M}.BLEDeviceResolver.async_resolve", new_callable=AsyncMock, return_value=_resolution()),
+        patch(f"{M}.async_resolve_ble_device", new_callable=AsyncMock, return_value=_resolution()),
         patch(f"{M}.establish_connection", return_value=c2),
     ):
         await coord._ensure_connected()
@@ -1258,7 +1251,7 @@ async def test_ensure_connected_cleans_up_setup_failure(coord, failure):
     if failure == "identity_transform":
         coord.profile = replace(coord.profile, outbound_transform=MagicMock(side_effect=error))
     with (
-        patch(f"{M}.BLEDeviceResolver.async_resolve", new_callable=AsyncMock, return_value=_resolution()),
+        patch(f"{M}.async_resolve_ble_device", new_callable=AsyncMock, return_value=_resolution()),
         patch(f"{M}.establish_connection", return_value=client) as connect,
         pytest.raises(type(error), match=str(error)),
     ):
@@ -1301,7 +1294,7 @@ async def test_ensure_connected_replaces_receive_stale_client(coord, virtual_clo
     coord._client = old
     coord._notify_started_monotonic = virtual_clock.virtual_time() - RX_STALE_TIMEOUT - 1
     with (
-        patch(f"{M}.BLEDeviceResolver.async_resolve", new_callable=AsyncMock, return_value=_resolution()),
+        patch(f"{M}.async_resolve_ble_device", new_callable=AsyncMock, return_value=_resolution()),
         patch(f"{M}.establish_connection", return_value=new),
     ):
         assert await coord._ensure_connected() is new

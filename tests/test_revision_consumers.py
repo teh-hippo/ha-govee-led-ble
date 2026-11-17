@@ -18,8 +18,8 @@ from custom_components.ha_govee_led_ble.effect_template_defaults import Catalogu
 from custom_components.ha_govee_led_ble.effect_websocket import _device_payload
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_power
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
+from tests.coordinator_test_support import frame
 from tests.storage_test_double import InMemoryVersionedDocumentStore
-from tests.test_h6099 import frame
 
 
 @pytest.fixture

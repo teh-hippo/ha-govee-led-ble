@@ -1,5 +1,6 @@
 """Resolve BLE devices through Home Assistant."""
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 import bleak
@@ -17,10 +18,10 @@ class BLEDeviceResolution:
     client_class: type[BleakClient]
 
 
-@dataclass(frozen=True, slots=True)
-class BLEDeviceResolver:
-    """Resolve from Home Assistant's connectable BLE cache."""
+type BLEDeviceResolver = Callable[[HomeAssistant, str], Awaitable[BLEDeviceResolution | None]]
 
-    async def async_resolve(self, hass: HomeAssistant, address: str) -> BLEDeviceResolution | None:
-        device = bluetooth.async_ble_device_from_address(hass, address, connectable=True)
-        return None if device is None else BLEDeviceResolution(device, bleak.BleakClient)
+
+async def async_resolve_ble_device(hass: HomeAssistant, address: str) -> BLEDeviceResolution | None:
+    """Resolve from Home Assistant's connectable BLE cache."""
+    device = bluetooth.async_ble_device_from_address(hass, address, connectable=True)
+    return None if device is None else BLEDeviceResolution(device, bleak.BleakClient)

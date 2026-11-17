@@ -1,29 +1,21 @@
 import asyncio
 from dataclasses import replace
 from types import SimpleNamespace
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
 from aiotools import VirtualClock
 from homeassistant.config_entries import current_entry
-from homeassistant.helpers.device_registry import DeviceInfo
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.ha_govee_led_ble.const import (
     DOMAIN,
     MODEL_PROFILES,
     ModelProfile,
-    default_effect_categories,
-    default_effect_families,
     device_profile,
 )
-from custom_components.ha_govee_led_ble.control_arbiter import BLEControlArbiter, LatestRequests
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
-from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.h6199_calibration import WHITE_BALANCE_RESET
-from custom_components.ha_govee_led_ble.reply_pacing import ReplyGate
-from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES
 from tests.coordinator_test_support import _CONFIGURATION_URL
 
 
@@ -138,137 +130,29 @@ def disable_reply_pacing():
         yield
 
 
-def _coord_defaults() -> dict[str, Any]:
-    """Fresh attribute defaults for a mock H6199 coordinator; callers may mutate the result."""
-    return dict(
-        address="11:22:33:44:55:66",
-        model="H6199",
-        profile=MODEL_PROFILES["H6199"],
+def _make_coord(hass, **overrides) -> MagicMock:
+    """Use production initial state while retaining spies for isolated entity tests."""
+    model = overrides.get("model", "H6199")
+    real = GoveeBLECoordinator(
+        hass,
+        overrides.get("address", "11:22:33:44:55:66"),
+        model,
+        configuration_url=_CONFIGURATION_URL,
+    )
+    d = vars(real) | dict(
         is_on=True,
         effect="video: movie",
-        fw_version=None,
-        hw_version=None,
-        fresh_services_required=False,
-        fresh_service_discovery_forced=False,
-        last_connected_at=None,
-        last_disconnected_at=None,
-        last_failure_type=None,
         available=True,
-        connection_mode="release",
-        _present=False,
-        _state_read_available=False,
-        brightness_pct=100,
-        rgb_color=(255, 255, 255),
-        color_temp_kelvin=None,
-        color_temp_unknown=False,
-        rgb_color_source="initial",
-        color_temp_kelvin_source="initial",
-        _static_rgb_known=False,
-        _pending_kelvin=None,
-        _notification_token=None,
-        _notify_started_monotonic=None,
-        _reply_gate=ReplyGate(0),
-        _a3_sequence=None,
-        _field_revisions={},
-        _field_received_at={},
-        _domain_revisions={},
-        _h607c_uncertain_state_fields=set(),
-        _h607c_failed_color_write=False,
-        _profile_generation=0,
-        _authorization_generation=0,
-        pact_type=None,
-        pact_code=None,
-        _confirmed_identity_fields=set(),
-        _encryption=None,
-        control_write_attempts=0,
-        _static_write_attempts=0,
-        source_static_intents={},
-        _scene_code=None,
-        _mode_transition=None,
-        _segment_groups_observed=set(),
-        _segment_query_colors=None,
-        _segment_query_brightness=None,
-        _segment_query_incomplete=False,
-        _bulk_query_incomplete=False,
-        video_saturation=100,
-        white_brightness=100,
-        video_full_screen=True,
-        video_sound_effects=False,
-        video_sound_effects_softness=100,
-        white_balance_red=None,
-        white_balance_blue=None,
-        white_balance_flag=None,
-        white_balance_default_flag=None,
-        white_balance_default_red=None,
-        white_balance_default_blue=None,
-        white_balance_scalar=None,
-        subordinate_20_version=None,
-        subordinate_21_version=None,
-        wireless_firmware_version=None,
-        wireless_hardware_version=None,
         white_balance=WHITE_BALANCE_RESET,
-        relative_brightness=None,
-        relative_brightness_left=None,
-        relative_brightness_top=None,
-        relative_brightness_right=None,
-        relative_brightness_bottom=None,
-        relative_brightness_strip_left=None,
-        relative_brightness_strip_right=None,
-        blank_screen=None,
-        low_blue_light=None,
-        black_border=None,
-        installation_direction=None,
-        camera_health="unknown",
-        camera_status="unknown",
-        _dreamview_last_write="unknown",
-        blank_screen_detection=2,
-        blank_screen_low_brightness_duration_seconds=10,
-        blank_screen_same_tone_duration_seconds=120,
-        music_sensitivity=100,
-        music_calm=False,
-        music_color=None,
-        segment_colors=[(255, 255, 255)] * 15,
-        segment_brightness=[100] * 15,
-        segment_brightness_readable=False,
-        segment_state_source="initial",
-        segment_state_observed_at=None,
-        configured_strings=None,
-        _configured_strings_confirmed=False,
-        diy_code=None,
-        color_mode=None,
-        _observed_color_mode=None,
-        _mode_write_generation=0,
-        _observed_mode_write_generation=-1,
-        _observed_mode_profile_generation=-1,
-        _power_write_generation=0,
-        _observed_power_write_generation=-1,
-        _observed_power_profile_generation=-1,
-        _source_power_observation_generation={},
-        music_mode="off",
-        video_mode="off",
+        music_calm=real.music_calm,
         data={},
     )
-
-
-def _make_coord(**ov) -> MagicMock:
-    d = _coord_defaults()
-    d |= ov
-    model = d["model"]
-    assert isinstance(model, str)
-    d.setdefault("effect_families", default_effect_families(model))
-    d.setdefault("effect_categories", frozenset(default_effect_categories(model)))
-    d.setdefault("prefix_effect_names", False)
-    d.setdefault("always_include_custom_effects", False)
-    d.setdefault("identity_gated_controls", False)
-    effect_families = d["effect_families"]
-    assert isinstance(effect_families, frozenset)
-    d.setdefault(
-        "scene_name_set",
-        frozenset(MODEL_SCENES[model]) if "scenes" in effect_families else frozenset(),
-    )
+    # MagicMock consumes name as its diagnostic label rather than an ordinary attribute.
+    d.pop("name", None)
+    d.update(overrides)
+    d["identity_gated_controls"] = False
+    d["scene_name_set"] = real.scene_name_set
     c = MagicMock(spec=GoveeBLECoordinator, **d)
-    c._expected_state = {}
-    c._lock = asyncio.Lock()
     c._async_read_setting_fields = AsyncMock(return_value=False)
     c._client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
     c.async_mode_transition = GoveeBLECoordinator.async_mode_transition.__get__(c)
@@ -285,56 +169,27 @@ def _make_coord(**ov) -> MagicMock:
         )
 
     c.send_command = AsyncMock(side_effect=send_command)
-    c.control_state_checkpoint = MagicMock(side_effect=lambda: GoveeBLECoordinator.control_state_checkpoint(c))
-    c.control_write_request = MagicMock(
-        side_effect=lambda **kwargs: GoveeBLECoordinator.control_write_request(c, **kwargs)
-    )
-    c.control_state_uncertain = MagicMock(
-        side_effect=lambda *fields: GoveeBLECoordinator.control_state_uncertain(c, *fields)
-    )
-    c.static_color_unknown = MagicMock(side_effect=lambda: GoveeBLECoordinator.static_color_unknown(c))
-    c.unconfirmed_state_fields = MagicMock(side_effect=lambda: GoveeBLECoordinator.unconfirmed_state_fields(c))
-    c.source_field_fresh = MagicMock(side_effect=lambda field: GoveeBLECoordinator.source_field_fresh(c, field))
-    c.source_power_state = MagicMock(side_effect=lambda key: GoveeBLECoordinator.source_power_state(c, key))
-
-    async def turn_on_source(key, request):
-        await GoveeBLECoordinator.async_turn_on_source(c, key, request)
-
-    async def set_source_enabled(key, enabled):
-        await GoveeBLECoordinator.async_set_source_enabled(c, key, enabled)
-
-    c.async_turn_on_source = AsyncMock(side_effect=turn_on_source)
-    c.async_set_source_enabled = AsyncMock(side_effect=set_source_enabled)
-    c.install_static_color = MagicMock(
-        side_effect=lambda **kwargs: GoveeBLECoordinator.install_static_color(c, **kwargs)
-    )
-    c._apply_static_write_intent = MagicMock(
-        side_effect=lambda static, requested, **kwargs: GoveeBLECoordinator._apply_static_write_intent(
-            c, static, requested, **kwargs
-        )
-    )
+    for name in (
+        "control_state_checkpoint",
+        "control_write_request",
+        "control_state_uncertain",
+        "static_color_unknown",
+        "unconfirmed_state_fields",
+        "source_field_fresh",
+        "source_power_state",
+        "install_static_color",
+        "_apply_static_write_intent",
+        "mark_segment_state_optimistic",
+        "mark_segment_state_restored",
+        "_enter_static_mode",
+    ):
+        setattr(c, name, MagicMock(side_effect=getattr(GoveeBLECoordinator, name).__get__(c)))
+    for name in ("async_turn_on_source", "async_set_source_enabled", "_async_apply_native_scene_locked"):
+        setattr(c, name, AsyncMock(side_effect=getattr(GoveeBLECoordinator, name).__get__(c)))
     c.async_paint_segments = AsyncMock()
     c.async_set_segment_brightness = AsyncMock()
     c.async_refresh_segments = AsyncMock(return_value=True)
 
-    def mark_segment_state_optimistic(*, colours=None, brightness=None) -> None:
-        if colours is not None:
-            c.segment_colors = colours
-        if brightness is not None:
-            c.segment_brightness = brightness
-        c.segment_state_source = "optimistic"
-        c.segment_state_observed_at = None
-
-    def mark_segment_state_restored(colours, brightness) -> None:
-        c.segment_colors = colours
-        c.segment_brightness = brightness
-        c.segment_state_source = "restored"
-        c.segment_state_observed_at = None
-
-    c.mark_segment_state_optimistic = MagicMock(side_effect=mark_segment_state_optimistic)
-    c.mark_segment_state_restored = MagicMock(side_effect=mark_segment_state_restored)
-    c._control_arbiter = BLEControlArbiter()
-    c.latest_requests = LatestRequests()
     c.refresh_state, c.async_set_updated_data = AsyncMock(return_value=True), MagicMock()
     c.unknown_scene_code = None
 
@@ -348,49 +203,33 @@ def _make_coord(**ov) -> MagicMock:
 
     c.async_write_effect_sequence = AsyncMock(side_effect=write_effect_sequence)
 
-    async def _apply_native_scene_locked(*args, **kwargs) -> None:
-        await GoveeBLECoordinator._async_apply_native_scene_locked(c, *args, **kwargs)
-
-    c._async_apply_native_scene_locked = AsyncMock(side_effect=_apply_native_scene_locked)
-
-    def _enter_static_mode() -> None:
-        c.color_mode = ParsedMode.COLOUR
-        c._scene_code = None
-        c.unknown_scene_code = None
-        c.effect = None
-        c.diy_code = None
-        c.music_mode = c.video_mode = "off"
-
-    c._enter_static_mode = MagicMock(side_effect=_enter_static_mode)
     type(c).native_presentation_profile = PropertyMock(side_effect=lambda: c.profile)
     type(c).effect_authorization_profile = PropertyMock(side_effect=lambda: c.profile)
-    type(c).device_info = PropertyMock(
-        return_value=DeviceInfo(
-            identifiers={(DOMAIN, d["address"])},
-            name=f"Govee {d['model']}",
-            manufacturer="Govee",
-            model=d["model"],
-            configuration_url="homeassistant://ha-govee-led-ble/editor/test-entry",
-        )
-    )
+    type(c).device_info = PropertyMock(return_value=real.device_info)
     return c
 
 
 @pytest.fixture
-def mock_h6199_coordinator():
-    return _make_coord()
-
-
-@pytest.fixture
-def mock_coordinator():
+def mock_h6199_coordinator(hass):
     return _make_coord(
-        address="AA:BB:CC:DD:EE:FF", model="H617A", profile=MODEL_PROFILES["H617A"], is_on=False, effect=None
+        hass,
+        blank_screen_detection=2,
+        blank_screen_low_brightness_duration_seconds=10,
+        blank_screen_same_tone_duration_seconds=120,
     )
 
 
 @pytest.fixture
-def mock_h6076_coordinator():
+def mock_coordinator(hass):
     return _make_coord(
+        hass, address="AA:BB:CC:DD:EE:FF", model="H617A", profile=MODEL_PROFILES["H617A"], is_on=False, effect=None
+    )
+
+
+@pytest.fixture
+def mock_h6076_coordinator(hass):
+    return _make_coord(
+        hass,
         address="22:33:44:55:66:77",
         model="H6076",
         profile=device_profile("H6076", None, None),

@@ -34,7 +34,7 @@ from .ble_connection import (
     needs_reconnect_backoff,
     stale_gatt_recovery_pending,
 )
-from .ble_device_resolver import BLEDeviceResolver
+from .ble_device_resolver import BLEDeviceResolver, async_resolve_ble_device
 from .const import (
     CONNECTION_MODE_HOLD,
     CONNECTION_MODE_RELEASE,
@@ -212,7 +212,7 @@ class GoveeBLECoordinator(
         self.connection_mode = (
             CONNECTION_MODE_HOLD if connection_mode == CONNECTION_MODE_HOLD else CONNECTION_MODE_RELEASE
         )
-        self._device_resolver = BLEDeviceResolver() if device_resolver is None else device_resolver
+        self._device_resolver = device_resolver
         self._client: BleakClient | None = None
         self._encryption: GoveeEncryptionSession | None = None
         self._advertised_encryption = False
@@ -1044,7 +1044,7 @@ class GoveeBLECoordinator(
             self._client = client = await async_establish_ble_connection(
                 self.hass,
                 self.address,
-                resolver=self._device_resolver,
+                resolver=self._device_resolver or async_resolve_ble_device,
                 establish=establish_connection,
                 sleep=asyncio.sleep,
                 disconnected_callback=self._disconnected_callback,

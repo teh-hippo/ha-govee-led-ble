@@ -22,7 +22,7 @@ from custom_components.ha_govee_led_ble.native_profile_controls import (
     prepare_video_mode,
 )
 from custom_components.ha_govee_led_ble.protocol_core import _STATUS_ROOTS
-from tests.test_h6099 import frame
+from tests.coordinator_test_support import frame
 
 
 @pytest.fixture

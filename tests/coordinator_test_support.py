@@ -23,3 +23,10 @@ def _confirm_identity(coordinator, firmware="3.02.24", hardware="3.01.01"):
     coordinator._note_identity(fw_version=firmware, hw_version=hardware)
     coordinator._observe_identity_field("fw_version", firmware)
     coordinator._observe_identity_field("hw_version", hardware)
+
+
+def frame(prefix: str) -> bytes:
+    """Pad a synthetic hexadecimal prefix to a checksummed 20-byte frame."""
+    body = bytes.fromhex(prefix).ljust(19, b"\x00")
+    assert len(body) == 19
+    return body + bytes([xor_checksum(body)])

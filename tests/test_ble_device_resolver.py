@@ -18,7 +18,7 @@ from custom_components.ha_govee_led_ble.ble_connection import (
 )
 from custom_components.ha_govee_led_ble.ble_device_resolver import (
     BLEDeviceResolution,
-    BLEDeviceResolver,
+    async_resolve_ble_device,
 )
 from custom_components.ha_govee_led_ble.const import DOMAIN
 
@@ -37,30 +37,27 @@ def _resolution() -> BLEDeviceResolution:
 
 async def test_production_cache_uses_wrapped_client(hass):
     device = _device()
-    resolver = BLEDeviceResolver()
     wrapped_client = type("WrappedClient", (), {})
 
     with (
         patch(f"{M}.bluetooth.async_ble_device_from_address", return_value=device) as cache,
         patch(f"{M}.bleak.BleakClient", wrapped_client),
     ):
-        resolution = await resolver.async_resolve(hass, ADDRESS)
+        resolution = await async_resolve_ble_device(hass, ADDRESS)
 
     assert resolution == BLEDeviceResolution(device, wrapped_client)
     cache.assert_called_once_with(hass, ADDRESS, connectable=True)
 
 
 async def test_cache_miss_returns_none(hass):
-    resolver = BLEDeviceResolver()
 
     with patch(f"{M}.bluetooth.async_ble_device_from_address", return_value=None):
-        assert await resolver.async_resolve(hass, ADDRESS) is None
+        assert await async_resolve_ble_device(hass, ADDRESS) is None
 
 
 async def test_connection_establishment_reuses_resolution_retry_contract(hass):
-    resolver = MagicMock(spec=BLEDeviceResolver)
     resolution = _resolution()
-    resolver.async_resolve = AsyncMock(side_effect=[None, resolution])
+    resolver = AsyncMock(side_effect=[None, resolution])
     client = MagicMock()
     establish = AsyncMock(return_value=client)
     sleep = AsyncMock()
@@ -76,7 +73,7 @@ async def test_connection_establishment_reuses_resolution_retry_contract(hass):
         is client
     )
 
-    assert resolver.async_resolve.await_count == 2
+    assert resolver.await_count == 2
     sleep.assert_awaited_once_with(2)
     establish.assert_awaited_once_with(
         resolution.client_class,
@@ -87,9 +84,8 @@ async def test_connection_establishment_reuses_resolution_retry_contract(hass):
 
 
 async def test_connection_establishment_passes_disconnected_callback(hass):
-    resolver = MagicMock(spec=BLEDeviceResolver)
     resolution = _resolution()
-    resolver.async_resolve = AsyncMock(return_value=resolution)
+    resolver = AsyncMock(return_value=resolution)
     establish = AsyncMock(return_value=MagicMock())
     disconnected_callback = MagicMock()
 
@@ -111,9 +107,8 @@ async def test_connection_establishment_passes_disconnected_callback(hass):
 
 
 async def test_connection_establishment_can_bypass_service_cache(hass):
-    resolver = MagicMock(spec=BLEDeviceResolver)
     resolution = _resolution()
-    resolver.async_resolve = AsyncMock(return_value=resolution)
+    resolver = AsyncMock(return_value=resolution)
     establish = AsyncMock(return_value=MagicMock())
 
     await async_establish_ble_connection(
@@ -235,7 +230,7 @@ async def test_native_cache_clear_propagates_cancellation():
 
 async def test_other_address_pending_does_not_force_recovery(hass):
     mark_stale_gatt_recovery(hass, "11:22:33:44:55:66")
-    resolver = SimpleNamespace(async_resolve=AsyncMock(return_value=_resolution()))
+    resolver = AsyncMock(return_value=_resolution())
     client = MagicMock()
     establish = AsyncMock(return_value=client)
     assert await async_establish_ble_connection(hass, ADDRESS, resolver=resolver, establish=establish) is client
@@ -284,7 +279,7 @@ async def test_recovery_bootstraps_clears_disconnects_then_qualifies(hass, sourc
         assert kwargs["disconnected_callback"] is callback
         return qualified
 
-    resolver = SimpleNamespace(async_resolve=resolve)
+    resolver = resolve
     assert (
         await async_establish_ble_connection(
             hass, ADDRESS, resolver=resolver, establish=establish, disconnected_callback=callback
@@ -300,7 +295,7 @@ async def test_recovery_bootstraps_clears_disconnects_then_qualifies(hass, sourc
 @pytest.mark.parametrize("stage", ["bootstrap", "clear_false", "clear_error", "disconnect", "qualification"])
 async def test_recovery_failure_retains_pending_and_sanitizes_errors(hass, stage, caplog):
     mark_stale_gatt_recovery(hass, ADDRESS)
-    resolver = SimpleNamespace(async_resolve=AsyncMock(return_value=_resolution()))
+    resolver = AsyncMock(return_value=_resolution())
     bootstrap = MagicMock(clear_cache=AsyncMock(return_value=True), disconnect=AsyncMock())
     establish = AsyncMock(side_effect=[bootstrap, MagicMock()])
     if stage == "bootstrap":
@@ -327,7 +322,7 @@ async def test_recovery_failure_retains_pending_and_sanitizes_errors(hass, stage
 @pytest.mark.parametrize("stage", ["resolve", "bootstrap", "clear", "disconnect", "qualification"])
 async def test_recovery_is_bounded_at_every_await(hass, stage):
     mark_stale_gatt_recovery(hass, ADDRESS)
-    resolver = SimpleNamespace(async_resolve=AsyncMock(return_value=_resolution()))
+    resolver = AsyncMock(return_value=_resolution())
     bootstrap = MagicMock(clear_cache=AsyncMock(return_value=True), disconnect=AsyncMock())
 
     async def establish(*_args, **_kwargs):
@@ -336,7 +331,7 @@ async def test_recovery_is_bounded_at_every_await(hass, stage):
         return bootstrap
 
     if stage == "resolve":
-        resolver.async_resolve.side_effect = _never_finishes
+        resolver.side_effect = _never_finishes
     elif stage == "clear":
         bootstrap.clear_cache.side_effect = _never_finishes
     elif stage == "disconnect":
@@ -356,7 +351,7 @@ async def test_recovery_is_bounded_at_every_await(hass, stage):
 @pytest.mark.parametrize("stage", ["bootstrap", "clear", "disconnect", "qualification"])
 async def test_recovery_cancellation_retains_pending_and_cleans_bootstrap(hass, stage):
     mark_stale_gatt_recovery(hass, ADDRESS)
-    resolver = SimpleNamespace(async_resolve=AsyncMock(return_value=_resolution()))
+    resolver = AsyncMock(return_value=_resolution())
     bootstrap = MagicMock(clear_cache=AsyncMock(return_value=True), disconnect=AsyncMock())
     establish = AsyncMock(side_effect=[bootstrap, MagicMock()])
     if stage == "bootstrap":
@@ -382,7 +377,7 @@ async def test_task_cancellation_during_clear_still_bounds_disconnect(hass):
         clearing.set()
         await _never_finishes()
 
-    resolver = SimpleNamespace(async_resolve=AsyncMock(return_value=_resolution()))
+    resolver = AsyncMock(return_value=_resolution())
     bootstrap = MagicMock(
         clear_cache=AsyncMock(side_effect=clear_cache), disconnect=AsyncMock(side_effect=_never_finishes)
     )
@@ -403,7 +398,7 @@ async def test_task_cancellation_during_clear_still_bounds_disconnect(hass):
 
 async def test_recovery_deadline_includes_bootstrap_and_qualification(hass):
     mark_stale_gatt_recovery(hass, ADDRESS)
-    resolver = SimpleNamespace(async_resolve=AsyncMock(return_value=_resolution()))
+    resolver = AsyncMock(return_value=_resolution())
     bootstrap = MagicMock(clear_cache=AsyncMock(return_value=True), disconnect=AsyncMock())
     deadlines = []
     timeout = asyncio.timeout
@@ -445,7 +440,7 @@ async def test_manual_validation_marks_chained_stale_failure_then_recovers_witho
         return await async_establish_ble_connection(hass, address, establish=establish)
 
     with (
-        patch(f"{CONNECTION_M}.BLEDeviceResolver.async_resolve", return_value=_resolution()),
+        patch(f"{CONNECTION_M}.async_resolve_ble_device", return_value=_resolution()),
         patch(f"{CONNECTION_M}.async_establish_ble_connection", side_effect=validation_establish),
         patch(f"{CONNECTION_M}.clear_cache", return_value=True),
     ):
@@ -464,10 +459,10 @@ async def test_manual_validation_marks_chained_stale_failure_then_recovers_witho
 async def test_shared_establishment_marks_only_stale_failures(hass, stage, stale):
     failure = BleakError("connection failed")
     failure.__context__ = KeyError("org.bluez.GattService1" if stale else "org.bluez.Device1")
-    resolver = SimpleNamespace(async_resolve=AsyncMock(return_value=_resolution()))
+    resolver = AsyncMock(return_value=_resolution())
     establish = AsyncMock(side_effect=failure)
     if stage == "resolve":
-        resolver.async_resolve.side_effect = failure
+        resolver.side_effect = failure
     with patch(f"{CONNECTION_M}.clear_cache", return_value=True), pytest.raises(BleakError) as caught:
         await async_establish_ble_connection(hass, ADDRESS, resolver=resolver, establish=establish)
     assert caught.value is failure
@@ -483,7 +478,7 @@ async def test_bluez_no_client_failure_clears_address_before_next_recovery(hass,
     failure.__cause__ = RuntimeError("wrapper")
     failure.__cause__.__context__ = KeyError("org.bluez.GattService1")
     failure.__cause__.__cause__ = failure
-    resolver = SimpleNamespace(async_resolve=AsyncMock(return_value=_resolution()))
+    resolver = AsyncMock(return_value=_resolution())
     bootstrap = MagicMock(clear_cache=AsyncMock(return_value=True), disconnect=AsyncMock())
     qualified = MagicMock()
     events = []
@@ -544,7 +539,7 @@ async def test_bluez_no_client_failure_clears_address_before_next_recovery(hass,
     ],
 )
 async def test_address_clear_requires_specific_bluez_stale_evidence(hass, failure, expected_clear):
-    resolver = SimpleNamespace(async_resolve=AsyncMock(return_value=_resolution()))
+    resolver = AsyncMock(return_value=_resolution())
     establish = AsyncMock(side_effect=failure)
     with patch(f"{CONNECTION_M}.clear_cache", return_value=True) as address_clear:
         with pytest.raises(type(failure)) as caught:
@@ -558,7 +553,7 @@ async def test_address_clear_does_not_combine_unrelated_bluez_and_proxy_errors(h
     failure = BleakError("ESPHome GATT service not found")
     failure.__cause__ = BleakDBusError("org.bluez.Error.DoesNotExist", ["Device missing"])
     failure.__cause__.__context__ = failure
-    resolver = SimpleNamespace(async_resolve=AsyncMock(return_value=_resolution()))
+    resolver = AsyncMock(return_value=_resolution())
     establish = AsyncMock(side_effect=failure)
     with patch(f"{CONNECTION_M}.clear_cache") as address_clear:
         with pytest.raises(BleakError) as caught:
@@ -574,7 +569,7 @@ async def test_address_clear_failure_preserves_original_failure_and_pending(hass
     if pending:
         mark_stale_gatt_recovery(hass, ADDRESS)
     failure = KeyError("org.bluez.GattService1")
-    resolver = SimpleNamespace(async_resolve=AsyncMock(return_value=_resolution()))
+    resolver = AsyncMock(return_value=_resolution())
     establish = AsyncMock(side_effect=failure)
     clear = AsyncMock(return_value=False)
     if isinstance(result, Exception):
@@ -603,7 +598,7 @@ async def test_address_clear_propagates_task_cancellation(hass):
         clearing.set()
         await _never_finishes()
 
-    resolver = SimpleNamespace(async_resolve=AsyncMock(return_value=_resolution()))
+    resolver = AsyncMock(return_value=_resolution())
     establish = AsyncMock(side_effect=KeyError("org.bluez.GattService1"))
     with patch(f"{CONNECTION_M}.clear_cache", side_effect=clear_address):
         async with asyncio.timeout(1):
@@ -619,14 +614,13 @@ async def test_address_clear_propagates_task_cancellation(hass):
 
 
 async def test_connection_establishment_fails_after_bounded_cache_resolution(hass):
-    resolver = MagicMock(spec=BLEDeviceResolver)
-    resolver.async_resolve = AsyncMock(return_value=None)
+    resolver = AsyncMock(return_value=None)
     sleep = AsyncMock()
 
     with pytest.raises(BleakError, match="Device AA:BB:CC:DD:EE:FF not found"):
         await async_establish_ble_connection(hass, ADDRESS, resolver=resolver, sleep=sleep)
 
-    assert resolver.async_resolve.await_count == 4
+    assert resolver.await_count == 4
     assert sleep.await_count == 3
 
 

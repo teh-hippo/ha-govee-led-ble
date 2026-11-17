@@ -39,12 +39,8 @@ from custom_components.ha_govee_led_ble.light_commands import (
 from custom_components.ha_govee_led_ble.music_commands import prepare_music_request
 from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_packets
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
-from custom_components.ha_govee_led_ble.transport import reassemble_a3, xor_checksum
-
-
-def frame(prefix: str) -> bytes:
-    body = bytes.fromhex(prefix).ljust(19, b"\0")
-    return body + bytes((xor_checksum(body),))
+from custom_components.ha_govee_led_ble.transport import reassemble_a3
+from tests.coordinator_test_support import frame
 
 
 def test_static_writes_select_native_geometry_and_keep_kelvin_separate():

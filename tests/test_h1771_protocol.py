@@ -59,7 +59,8 @@ from custom_components.ha_govee_led_ble.native_effect import (
 )
 from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_packets, encode_authored_scene_body
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES, SceneEntry, _load_speed
-from custom_components.ha_govee_led_ble.transport import reassemble_a3, xor_checksum
+from custom_components.ha_govee_led_ble.transport import reassemble_a3
+from tests.coordinator_test_support import frame
 
 PROFILE = ModelProfile(
     "H1771 candidate",
@@ -107,11 +108,6 @@ SCENE_PROFILE = replace(
     supports_custom_effects=True,
     command_operations=(MUSIC_PROFILE.command_operations or frozenset()) | {"scene", "diy"},
 )
-
-
-def frame(prefix):
-    content = bytes.fromhex(prefix).ljust(19, b"\x00")
-    return content + bytes((xor_checksum(content),))
 
 
 @pytest.mark.parametrize(

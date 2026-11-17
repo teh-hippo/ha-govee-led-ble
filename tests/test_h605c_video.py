@@ -38,7 +38,7 @@ from custom_components.ha_govee_led_ble.native_profile_controls import (
     prepare_video_mode,
 )
 from custom_components.ha_govee_led_ble.video_applicability import video_control_states, video_profile_control_states
-from tests.test_h6099 import frame
+from tests.coordinator_test_support import frame
 
 EDGES = {"left_percent": 27, "top_percent": 48, "right_percent": 69, "bottom_percent": 80}
 SETTINGS = {"full_screen": True, "saturation": 50, "sound_effects": False, "sound_effects_softness": 50}

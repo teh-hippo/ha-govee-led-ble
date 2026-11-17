@@ -26,13 +26,8 @@ from custom_components.ha_govee_led_ble.protocol_h6199 import (
     build_h6199_control_query,
     parse_h6199_control,
 )
-from custom_components.ha_govee_led_ble.transport import xor_checksum
 from custom_components.ha_govee_led_ble.video_applicability import video_identity_fields
-
-
-def frame(prefix):
-    body = bytes.fromhex(prefix).ljust(19, b"\0")
-    return body + bytes((xor_checksum(body),))
+from tests.coordinator_test_support import frame
 
 
 def qualify(c):

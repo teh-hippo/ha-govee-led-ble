@@ -22,9 +22,9 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_white_balance_query,
 )
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
+from tests.coordinator_test_support import frame
 from tests.test_h6199_capabilities import lifecycle as transition_lifecycle  # noqa: F401
 from tests.test_h6199_capabilities import set_qualified_identity
-from tests.test_h6199_native_controls import frame
 from tests.test_h6199_pact1 import advertise
 
 

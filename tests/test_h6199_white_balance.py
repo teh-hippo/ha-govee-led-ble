@@ -20,8 +20,8 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
 )
 from custom_components.ha_govee_led_ble.native_profile_controls import apply_white_balance
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES
+from tests.coordinator_test_support import frame
 from tests.storage_test_double import InMemoryVersionedDocumentStore
-from tests.test_h6099 import frame
 from tests.test_h6199_capabilities import set_qualified_identity
 
 AUTO = bytes.fromhex("aaa9000601100300150500000000000000000007")

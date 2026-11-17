@@ -39,13 +39,8 @@ from custom_components.ha_govee_led_ble.light_commands import (
 )
 from custom_components.ha_govee_led_ble.protocol_core import ProtocolParseRejection, decode_wire_brightness
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES
-from custom_components.ha_govee_led_ble.transport import fragment_a3, reassemble_a3, xor_checksum
-
-
-def _frame(prefix: str) -> bytes:
-    body = bytes.fromhex(prefix).ljust(19, b"\x00")
-    assert len(body) == 19
-    return body + bytes([xor_checksum(body)])
+from custom_components.ha_govee_led_ble.transport import fragment_a3, reassemble_a3
+from tests.coordinator_test_support import frame as _frame
 
 
 def test_modern_commands_use_shared_grammar_and_exact_scene_catalogue() -> None:
