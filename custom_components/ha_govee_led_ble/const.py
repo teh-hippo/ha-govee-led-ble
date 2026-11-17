@@ -2417,6 +2417,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     "H6181": ModelProfile(
         "H6181 RGB TV Backlight",
         color_temp_range=KELVIN_RANGE_2000_9000,
+        support_quality=SupportQuality.SUPPORTED,
         confirmation_issue=580,
         allows_legacy_plaintext_marker=True,
         reconciles_marker_pact=True,
