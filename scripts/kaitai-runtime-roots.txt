@@ -1,4 +1,6 @@
 command_write
+speculative/h6159_wire_write
+speculative/h6159_status_reply
 speculative/h6127_wire_write
 speculative/h6127_legacy_status_reply
 speculative/h6127_status_reply

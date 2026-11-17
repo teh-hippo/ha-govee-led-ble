@@ -228,7 +228,7 @@ def parse_color_mode(generated: Any, model: str, *, profile: ModelProfile | None
         return ParsedColorModeResponse(mode=ParsedMode.COLOUR, source_values=source_readback(detail))
     if mode_name in {"legacy_static", "legacy_colour", "whole_device_colour"}:
         mode_name = "static"
-    elif mode_name == "legacy_music":
+    elif mode_name in {"legacy_music", "modern_music"}:
         mode_name = "music"
     if profile.bulk_status_grammar == "H60A" and mode_name == "music":
         return ParsedColorModeResponse(mode=ParsedMode.MUSIC)
@@ -341,7 +341,7 @@ def _parse_static_mode(detail: Any, profile: ModelProfile) -> ParsedColorModeRes
             left_bar_kelvin=left,
             right_bar_kelvin=right,
         )
-    if profile.status_grammar in {"H6181", "H6127-legacy"}:
+    if hasattr(detail, "temperature_flag"):
         if detail.temperature_flag not in (0, 1):
             raise ValueError("Invalid legacy colour-temperature flag")
         if detail.temperature_flag:
@@ -360,7 +360,9 @@ def _parse_static_mode(detail: Any, profile: ModelProfile) -> ParsedColorModeRes
         mode=ParsedMode.COLOUR,
         rgb_color=_rgb_values(rgb)
         if rgb is not None
-        and not (profile.status_grammar in WHOLE_BULB_GRAMMARS | {"H6181-modern", "H60B0"} and kelvin is not None)
+        and not (
+            profile.status_grammar in WHOLE_BULB_GRAMMARS | {"H6159", "H6181-modern", "H60B0"} and kelvin is not None
+        )
         else None,
         color_temp_kelvin=kelvin,
         multi_effect_flag=getattr(detail, "sub", None),

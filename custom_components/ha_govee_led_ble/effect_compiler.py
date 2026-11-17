@@ -258,11 +258,18 @@ def validate_compiled_geometry(compiled: CompiledApplication, profile: ModelProf
             raise ValueError("Device native effect revision changed since compilation")
         if compiled.scene_entry is not None:
             entry = scene_for_profile(compiled.scene_entry, profile)
-            if compiled.scene_route != (
-                profile.command_grammar,
-                profile.effect_grammar,
-                profile.selector_only_scene_bits,
-            ) or compiled.diy_code != scene_selector_code(compiled.model, entry, profile=profile):
+            selector = scene_selector_code(
+                compiled.model, entry, profile=profile, authored=compiled.content_kind == "scene_palette"
+            )
+            if (
+                compiled.scene_route
+                != (
+                    profile.command_grammar,
+                    profile.effect_grammar,
+                    profile.selector_only_scene_bits,
+                )
+                or compiled.diy_code != selector
+            ):
                 raise ValueError("Device scene route changed since compilation; refresh and retry")
         if compiled.content_kind in {"h617a_single", "h617a_multi"}:
             if compiled.authored_diy is not None:
@@ -879,6 +886,15 @@ def compile_scene_effect(
         )
         upload = packets[:-1]
         activation = packets[-1]
+        if isinstance(content, PaletteScene):
+            activation = build_scene_activation(
+                model,
+                scene_selector_code(model, entry, profile=profile, authored=True),
+                entry.music_code,
+                profile=profile,
+            )
+            if profile.authored_palette_scene_selector is not None:
+                scene_key = None
         evidence_codes.append("scene_payload_readback_unavailable")
         if isinstance(content, LayeredScene):
             evidence_codes.append("layered_field_semantics_uncalibrated")
@@ -916,7 +932,7 @@ def compile_scene_effect(
         model=model,
         content_kind=content_kind,
         workflow=_effect_workflow(content),
-        diy_code=scene_selector_code(model, entry, profile=profile),
+        diy_code=scene_selector_code(model, entry, profile=profile, authored=isinstance(content, PaletteScene)),
         activation_mode=ActivationMode.SCENE,
         selector_kind="scene",
         expected_effect=scene_key,

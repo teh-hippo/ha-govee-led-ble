@@ -179,6 +179,13 @@ _QUALIFIED_CONTEXTS: tuple[tuple[str, str, int | None, int | None, str | None, s
     ("H6127-expanded-music", "H6127", 1, 2, "1.07.00", "1.00.04"),
     ("H6127-modern-basic", "H6127", 10, 1, "2.03.99", "2.01.01"),
     ("H6127-modern-expanded", "H6127", 10, 2, "3.01.00", "3.01.01"),
+    ("H6159-bootstrap", "H6159", None, None, None, None),
+    ("H6159-original", "H6159", None, None, "1.02.02", "1.00.01"),
+    ("H6159-mixed", "H6159", None, None, "1.02.03", "1.00.01"),
+    ("H6159-rgb-scenes", "H6159", 1, 1, "1.03.00", "1.00.01"),
+    ("H6159-owner-revision", "H6159", 1, 1, "1.07.02", "1.00.02"),
+    ("H6159-modern-basic", "H6159", 2, 1, "2.03.99", "2.01.01"),
+    ("H6159-modern-palette", "H6159", 2, 1, "2.04.00", "2.01.01"),
     ("H6199-pact1", "H6199", 1, 1, None, None),
     ("H6179-unqualified", "H6179", None, None, None, None),
     ("H6179-newer", "H6179", 10, 1, None, None),
@@ -314,6 +321,8 @@ def _status_color_mode_enum(profile: ModelProfile):
 
 
 def _status_music_enum(profile: ModelProfile):
+    if profile.status_grammar == "H6159":
+        return protocol_core.H6159WireWrite.MusicMode
     if profile.status_grammar == "H60B0":
         return H60b0MusicBody.MusicMode
     if profile.status_grammar == "H60B2":
@@ -1132,7 +1141,7 @@ def test_static_colour_and_kelvin_status_readback(hass, model: str, profile: Mod
     their declared Kelvin bounds on static temperature readback."""
     color_mode_enum = _status_color_mode_enum(profile)
     static_byte = int(getattr(color_mode_enum, "static", getattr(color_mode_enum, "static_colour", None)))
-    if profile.status_grammar in WHOLE_BULB_GRAMMARS | {"H6179", "H60B0", "H6181-modern", "H6127-legacy"}:
+    if profile.status_grammar in WHOLE_BULB_GRAMMARS | {"H6179", "H60B0", "H6159", "H6181-modern", "H6127-legacy"}:
         rgb_body = bytes([static_byte, 10, 20, 30, 0, 0])
     else:
         rgb_body = bytes([static_byte, 0, 0, 0])
@@ -1152,7 +1161,7 @@ def test_static_colour_and_kelvin_status_readback(hass, model: str, profile: Mod
             kelvin_bytes = kelvin.to_bytes(2, "big")
             body = (
                 bytes([static_byte, 255, 255, 255]) + kelvin_bytes
-                if profile.status_grammar in WHOLE_BULB_GRAMMARS | {"H6179", "H60B0", "H6181-modern"}
+                if profile.status_grammar in WHOLE_BULB_GRAMMARS | {"H6179", "H60B0", "H6159", "H6181-modern"}
                 else bytes([static_byte, 1]) + kelvin_bytes
             )
             if profile.status_grammar == "H6046":
@@ -1173,7 +1182,7 @@ def test_static_colour_and_kelvin_status_readback(hass, model: str, profile: Mod
             bad_bytes = out_of_range.to_bytes(2, "big")
             bad_body = (
                 bytes([static_byte, 255, 255, 255]) + bad_bytes
-                if profile.status_grammar in WHOLE_BULB_GRAMMARS | {"H6179", "H60B0", "H6181-modern"}
+                if profile.status_grammar in WHOLE_BULB_GRAMMARS | {"H6179", "H60B0", "H6159", "H6181-modern"}
                 else bytes([static_byte, 1]) + bad_bytes
             )
             if profile.status_grammar == "H6046":

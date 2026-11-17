@@ -23,8 +23,10 @@ from custom_components.ha_govee_led_ble.effect_runtime import (
     async_prepare_effect_control_state,
 )
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
+    build_brightness,
     build_diy_activation,
     build_power,
+    build_scene_activation,
     require_profile_packet,
 )
 from custom_components.ha_govee_led_ble.light_commands import parse_static_write
@@ -115,6 +117,38 @@ async def test_fixed_only_music_cannot_promote_a_retained_colour_into_a_recovery
     with pytest.raises(ValueError, match="fixed colour"):
         await coordinator.async_restore_effect_control_state(prior, overwritten_diy_code=None)
     coordinator.send_command.assert_not_awaited()
+
+
+@pytest.mark.parametrize("condition", ["resident", "overwritten", "unsupported"])
+async def test_resident_palette_program_reselection_never_restores_an_overwritten_or_unsupported_body(hass, condition):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6159", configuration_url=None)
+    coordinator.profile = device_profile("H6159", 1, 1, firmware="1.07.02", hardware="1.00.02")
+    if condition == "unsupported":
+        coordinator.profile = replace(coordinator.profile, effect_workflows=frozenset())
+    state = replace(
+        coordinator.capture_effect_control_state(),
+        is_on=True,
+        mode="scene",
+        scene_code=198,
+        effect=None,
+        brightness_pct=37,
+    )
+    coordinator.send_command = AsyncMock()
+    coordinator.refresh_state = AsyncMock(return_value=True)
+    assert not await coordinator.async_restore_effect_control_state(
+        state, overwritten_diy_code=198 if condition == "overwritten" else None
+    )
+    sent = [call.args[0] for call in coordinator.send_command.await_args_list]
+    if condition == "resident":
+        assert sent == [
+            build_power(True, coordinator.model),
+            build_brightness(37, coordinator.model),
+            build_scene_activation(coordinator.model, 198, profile=coordinator.profile),
+        ]
+        coordinator.refresh_state.assert_awaited_once()
+    else:
+        assert sent == []
+        coordinator.refresh_state.assert_not_awaited()
 
 
 @pytest.fixture

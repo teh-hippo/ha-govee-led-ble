@@ -50,6 +50,11 @@ _MODULE_PREFIX = "" if _GENERATED_DIR else "custom_components.ha_govee_led_ble.g
 @pytest.mark.parametrize(
     "module,class_name,payload,envelope",
     [
+        ("h6159_wire_write", "H6159WireWrite", "330502ffffff01ffae547f", True),
+        ("h6159_wire_write", "H6159WireWrite", "33050301630102037f", True),
+        ("h6159_wire_write", "H6159WireWrite", "33050e0132010102037f", True),
+        ("h6159_status_reply", "H6159StatusReply", "aa0502ffffff01ffae547f", True),
+        ("h6159_status_reply", "H6159StatusReply", "aa050e30327f", True),
         ("h6181_command_write", "H6181CommandWrite", "33050d01020300000000007f", True),
         ("h6181_status_query", "H6181StatusQuery", "aa05017f", True),
         ("h6181_status_reply", "H6181StatusReply", "aa050d010203000405067f", True),
