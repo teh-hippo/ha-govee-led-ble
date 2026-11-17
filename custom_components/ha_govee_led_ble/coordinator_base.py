@@ -403,14 +403,14 @@ async def async_prepare_effect_profile(
         and coordinator.profile.rgbic_scene_v0 is None
         and (
             not coordinator.profile.profile_identity_fields
-            or coordinator._authorization_profile().command_operations != frozenset({"power"})
+            or not coordinator._authorization_profile().basic_controls_only
         )
     ):
         return coordinator.profile
     async with async_control_intent(coordinator, intent):
         async with coordinator._lock:
             client = await coordinator._ensure_connected()
-            if coordinator._authorization_profile().command_operations == frozenset({"power"}):
+            if coordinator._authorization_profile().basic_controls_only:
                 await coordinator._async_require_identity(client, coordinator.profile.profile_identity_fields)
             if (
                 scene_required

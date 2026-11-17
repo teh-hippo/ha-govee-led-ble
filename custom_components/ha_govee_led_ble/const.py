@@ -349,6 +349,14 @@ class ModelProfile:
     effect_readback: str = "none"
 
     @property
+    def basic_controls_only(self) -> bool:
+        return (
+            self.command_operations is not None
+            and bool(self.command_operations)
+            and self.command_operations <= {"power", "brightness"}
+        )
+
+    @property
     def whole_device_mask(self) -> int:
         return self.whole_device_mask_override or (1 << self.segment_count) - 1
 

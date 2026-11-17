@@ -4,7 +4,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from custom_components.ha_govee_led_ble.const import device_profile
+from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator_base import async_prepare_effect_profile
 from custom_components.ha_govee_led_ble.coordinator_status import decode_status_frame, parse_color_mode
 from custom_components.ha_govee_led_ble.effect_compiler import compile_effect, validate_compiled_geometry
 from custom_components.ha_govee_led_ble.effect_domain import (
@@ -173,6 +175,18 @@ async def test_legacy_colour_allows_untransformed_identity_queries_and_power(leg
     for packet in packets:
         await coordinator._async_write_packet(client, packet)
     assert [call.args[1] for call in client.write_gatt_char.await_args_list] == list(packets)
+
+
+@pytest.mark.parametrize("lifecycle", ["H6159"], indirect=True)
+async def test_whole_strip_studio_prepares_identity_from_a_cold_basic_profile(lifecycle):  # noqa: F811
+    coordinator, _replies, _clients, packets = lifecycle
+    assert not coordinator.profile.supports_custom_effects
+    profile = await async_prepare_effect_profile(
+        coordinator, intent=ControlIntent.APPLY, content=SingleEffect(0, 0, 50, ((255, 0, 0),))
+    )
+    assert profile.supports_custom_effects
+    assert coordinator.identity_fields_confirmed(frozenset({"fw_version", "hw_version"}))
+    assert packets and all(packet[0] == 0xAA for packet in packets)
 
 
 @pytest.mark.parametrize("lifecycle", ["H6159"], indirect=True)
