@@ -1172,13 +1172,14 @@ class _RecoveryMixin(_CoordinatorBase):
         kelvin_restore = (
             not source_restore
             and not bar_restore
+            and not self.profile.static_palette_recovery
             and bool(target_intents)
             and target_intents[0] > 0
             and len(set(target_intents)) == 1
             and self.profile.supports_color_temperature
         )
         target_colours = list(state.segment_colors)
-        if not self.profile.kelvin_renders_device_white:
+        if not (self.profile.kelvin_renders_device_white or self.profile.static_palette_recovery):
             for index, kelvin in enumerate(target_intents):
                 if kelvin:
                     target_colours[index] = table_kelvin_rgb(kelvin)
@@ -1224,7 +1225,15 @@ class _RecoveryMixin(_CoordinatorBase):
                 semantic_groups.setdefault((intent, rgb), []).append(index)
             for (intent, rgb), segments in semantic_groups.items():
                 if intent:
-                    packets.extend(build_segment_kelvin_packets(segments, intent, self.model, profile=self.profile))
+                    packets.extend(
+                        build_segment_kelvin_packets(
+                            segments,
+                            intent,
+                            self.model,
+                            profile=self.profile,
+                            companion_rgb=rgb if self.profile.static_palette_recovery else None,
+                        )
+                    )
                 else:
                     packets.extend(build_segment_paint([(segments, rgb)], self.model, profile=self.profile))
         packets.extend(
@@ -1291,7 +1300,9 @@ class _RecoveryMixin(_CoordinatorBase):
             )
             and len(self.segment_colors) == len(state.segment_colors)
             and all(
-                static_colour_matches(actual, intent or expected, self.profile)
+                static_colour_matches(
+                    actual, expected if self.profile.static_palette_recovery else intent or expected, self.profile
+                )
                 for actual, expected, intent in zip(
                     self.segment_colors, state.segment_colors, target_intents, strict=True
                 )

@@ -11,6 +11,7 @@ from .generated_protocol_adapter import (
     build_segment_colour,
     parse_command,
     table_kelvin_rgb,
+    table_rgb_kelvin,
 )
 from .generated_protocol_adapter import (
     build_segment_brightness as build_segment_brightness_mask,
@@ -46,10 +47,15 @@ def build_segment_brightness_packets(
 
 
 def build_segment_kelvin_packets(
-    segments: Iterable[int], kelvin: int, model: str, *, profile: ModelProfile
+    segments: Iterable[int],
+    kelvin: int,
+    model: str,
+    *,
+    profile: ModelProfile,
+    companion_rgb: tuple[int, int, int] | None = None,
 ) -> list[bytes]:
     return [
-        build_segment_color_temp(group, kelvin, model, profile=profile)
+        build_segment_color_temp(group, kelvin, model, profile=profile, companion_rgb=companion_rgb)
         for group in segment_write_groups(segments, profile)
     ]
 
@@ -163,7 +169,7 @@ def kelvin_rendering_matches(rgb: tuple[int, int, int], kelvin: int, profile: Mo
     """
     if profile.kelvin_renders_device_white and rgb[0] >= 200 and rgb[1] >= 100:
         return True
-    return rgb == table_kelvin_rgb(kelvin)
+    return rgb == table_kelvin_rgb(kelvin) or profile.static_palette_recovery and table_rgb_kelvin(rgb) == kelvin
 
 
 def static_colour_matches(rgb: tuple[int, int, int], intent: int | tuple[int, int, int], profile: ModelProfile) -> bool:
@@ -199,6 +205,7 @@ def build_segment_color_temp(
     model: str = "H617A",
     *,
     profile: ModelProfile | None = None,
+    companion_rgb: tuple[int, int, int] | None = None,
 ) -> bytes:
     """Build masked Kelvin with its rendered RGB companion, using the target bounds."""
     profile = profile or get_profile(model)
@@ -212,7 +219,7 @@ def build_segment_color_temp(
     if not profile.min_color_temp_kelvin <= kelvin <= profile.max_color_temp_kelvin:
         raise ValueError("Kelvin outside profile range")
     value = normalize_kelvin(kelvin, profile)
-    return build_colour_temperature(value, mask, model, profile=profile)
+    return build_colour_temperature(value, mask, model, profile=profile, companion_rgb=companion_rgb)
 
 
 @dataclass(frozen=True)

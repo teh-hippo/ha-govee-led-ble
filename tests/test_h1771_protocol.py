@@ -286,7 +286,8 @@ async def test_candidate_identity_queries_use_bulk_path(hass, monkeypatch):
     assert coordinator._async_read_bulk_status.await_args.kwargs["domains"] == ()
 
 
-async def test_candidate_kelvin_verification_reads_the_ordinary_mode_reply(hass, monkeypatch):
+@pytest.mark.parametrize(("reply", "kelvin"), [("aa050d010fa0", 4000), ("aa0515000898", 2200)])
+async def test_candidate_kelvin_verification_reads_the_ordinary_mode_reply(hass, monkeypatch, reply, kelvin):
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H1771", configuration_url=None)
     client = MagicMock(is_connected=True)
     coordinator._client = client
@@ -294,11 +295,11 @@ async def test_candidate_kelvin_verification_reads_the_ordinary_mode_reply(hass,
 
     async def write(_uuid, packet, **_kwargs):
         if packet == frame("aa0501"):
-            coordinator._notify_callback(None, bytearray(frame("aa050d010fa0")))
+            coordinator._notify_callback(None, bytearray(frame(reply)))
 
     client.write_gatt_char = AsyncMock(side_effect=write)
-    assert await coordinator.refresh_state(RefreshRequest(color_temp_kelvin=4000, timeout=1))
-    assert coordinator.color_temp_kelvin == 4000 and coordinator.color_temp_kelvin_source == "observed"
+    assert await coordinator.refresh_state(RefreshRequest(color_temp_kelvin=kelvin, timeout=1))
+    assert coordinator.color_temp_kelvin == kelvin and coordinator.color_temp_kelvin_source == "observed"
     assert client.write_gatt_char.await_args.args[1] == frame("aa0501")
 
 

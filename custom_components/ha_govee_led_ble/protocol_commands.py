@@ -191,16 +191,18 @@ _TABLE_KELVIN_RGB = {
 }
 
 _TABLE_RGB_KELVIN = {
-    bytes.fromhex(rgb): 2000 + index * 100
+    bytes.fromhex(rgb): 1000 + index * 100
     for index, rgb in enumerate(
         (
+            "ff3800 ff4700 ff5300 ff5d00 ff6500 ff6d00 ff7300 ff7900 ff7e00 ff8300 "
             "ff8912 ff8e21 ff932c ff9836 ff9d3f ffa148 ffa54f ffa957 ffad5e ffb165 "
             "ffb46b ffb872 ffbb78 ffbe7e ffc184 ffc489 ffc78f ffc994 ffcc99 ffce9f "
             "ffd1a3 ffd3a8 ffd5ad ffd7b1 ffd9b6 ffdbba ffddbe ffdfc2 ffe1c6 ffe3ca "
             "ffe4ce ffe6d2 ffe8d5 ffe9d9 ffebdc ffece0 ffeee3 ffefe6 fff0e9 fff2ec "
             "fff3ef fff4f2 fff5f5 fff6f8 fff8fb fff9fd fef9ff fcf7ff f9f6ff f7f5ff "
             "f5f3ff f3f2ff f0f1ff eff0ff edefff ebeeff e9edff e7ecff e6ebff e4eaff "
-            "e3e9ff e1e8ff e0e7ff dee6ff dde6ff dce5ff dae4ff d9e3ff d8e3ff d7e2ff d6e1ff"
+            "e3e9ff e1e8ff e0e7ff dee6ff dde6ff dce5ff dae4ff d9e3ff d8e3ff d7e2ff d6e1ff "
+            "d4e1ff d3e0ff d2dfff d1dfff d0deff cfdfff cfdcff cedcff cdcdff ccdbff"
         ).split()
     )
 }
@@ -325,10 +327,13 @@ def build_colour_temperature(
     model: str = "H617A",
     *,
     profile: ModelProfile | None = None,
+    companion_rgb: tuple[int, int, int] | None = None,
 ) -> bytes:
     profile = profile or get_profile(model)
     value = max(profile.min_color_temp_kelvin, min(profile.max_color_temp_kelvin, kelvin))
-    preview = table_kelvin_rgb(value)
+    if companion_rgb is not None and (not profile.static_palette_recovery or table_rgb_kelvin(companion_rgb) != value):
+        raise ValueError("Invalid observed companion for colour-temperature recovery")
+    preview = table_kelvin_rgb(value) if companion_rgb is None else companion_rgb
     resolved = profile.command_grammar
     if resolved == "H60B0":
         from .h60b0_controls import build_static

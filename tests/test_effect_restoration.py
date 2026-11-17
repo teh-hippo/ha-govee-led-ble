@@ -38,6 +38,7 @@ from custom_components.ha_govee_led_ble.light_commands import parse_static_write
 from custom_components.ha_govee_led_ble.music_commands import edit_music_body
 from custom_components.ha_govee_led_ble.music_semantics import music_variant
 from custom_components.ha_govee_led_ble.transport import fragment_a3, xor_checksum
+from tests.coordinator_test_support import frame
 from tests.storage_test_double import InMemoryVersionedDocumentStore
 
 
@@ -164,6 +165,7 @@ def physical(hass, monkeypatch, request):
         coordinator.pact_type = coordinator.pact_code = 1
         coordinator._resolve_device_profile()
         coordinator._apply_configured_strings(1)
+    count = coordinator.profile.segment_count
     state = {
         "on": True,
         "brightness": 37,
@@ -171,9 +173,16 @@ def physical(hass, monkeypatch, request):
         "relative": [30] * 14 + [70],
         "fault": None,
         "packets": [],
-        "colour_modes": ["rgb"] * 15,
+        "colour_modes": ["rgb"] * count,
         "scene": None,
     }
+    if model == "H1771":
+        state.update(
+            colours=[(255, 255, 255), (255, 147, 44), (255, 0, 0), (204, 219, 255)],
+            relative=[1, 50, 70, 1],
+            sources=[True, False],
+            gradual=True,
+        )
 
     async def transmit(_uuid, packet, **_kwargs):
         state["packets"].append(packet)
@@ -185,16 +194,26 @@ def physical(hass, monkeypatch, request):
                 state["brightness"] = packet[2]
             elif packet[1:3] == b"\x05\x04":
                 state["scene"] = list(packet[3:5])
-                state["colours"] = [(255, 0, 0)] * 15
-                state["relative"] = [100] * 15
+                state["colours"] = [(255, 0, 0)] * count
+                state["relative"] = [100] * count
+                if model == "H1771":
+                    state["sources"] = [True, True]
+                    state["gradual"] = False
+            elif packet[1] == 0x36 and model == "H1771":
+                state["sources"][packet[2]] = bool(packet[3])
+            elif packet[1] == 0xA3 and model == "H1771":
+                state["gradual"] = bool(packet[2])
             static = parse_static_write(packet, coordinator.model, profile=coordinator.profile)
             if static is not None:
                 state["scene"] = None
-                for index in range(15):
+                for index in range(count):
                     if static.segment_mask & (1 << index):
                         if static.rgb is not None and fault != "colour":
                             state["colours"][index] = static.rgb
                             state["colour_modes"][index] = "rgb"
+                        elif static.kelvin is not None:
+                            state["colours"][index] = static.kelvin_companion_rgb
+                            state["colour_modes"][index] = "kelvin"
                         if static.brightness_pct is not None and fault != "relative":
                             state["relative"][index] = static.brightness_pct
         elif packet[0] == 0xAA:
@@ -221,15 +240,22 @@ def physical(hass, monkeypatch, request):
                 coordinator._notify_callback(None, reply(0x0F, [1]))
             elif domain == 0x41:
                 coordinator._notify_callback(None, reply(0x41, [1]))
-            elif domain == 0xA5 and packet[2] == 5:
-                pages = [5, 2, 4, 1, 3] if fault == "reordered" else range(1, 6)
+            elif domain == 0xA5 and packet[2] == (1 if model == "H1771" else 5):
+                pages = [5, 2, 4, 1, 3] if fault == "reordered" else range(1, 2 if model == "H1771" else 6)
+                size = coordinator.profile.segment_group_size
                 for page in pages:
                     if fault == "partial" and page == 3:
                         continue
                     body = [page]
-                    for index in range((page - 1) * 3, page * 3):
+                    for index in range((page - 1) * size, page * size):
                         body.extend([state["relative"][index], *state["colours"][index]])
                     coordinator._notify_callback(None, reply(0xA5, body))
+        elif packet[:2] == b"\xac\x03" and model == "H1771":
+            first, second = state["sources"]
+            flags = int(state["on"]) | (int(first) << 1) | (int(second) << 2)
+            records = {0x36: f"3601{flags:02x}", 0xA3: f"a301{int(state['gradual']):02x}", 0x41: "41020000"}
+            body = "".join(records.get(domain, "") for domain in packet[3 : 3 + packet[2]])
+            coordinator._notify_callback(None, bytearray(frame(f"ac000100{len(body) // 2:02x}0300{body}")))
 
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(side_effect=transmit), disconnect=AsyncMock())
     coordinator._client = client
@@ -244,23 +270,29 @@ def physical(hass, monkeypatch, request):
     return coordinator, state
 
 
+@pytest.mark.parametrize("physical", ["H617A", "H1771"], indirect=True)
 async def test_public_effect_off_restores_non_source_segment_layout(hass, physical, virtual_clock):
     coordinator, state = physical
-    expected_colours, expected_levels = list(state["colours"]), list(state["relative"])
     light = GoveeBLELight(coordinator)
     light._attr_device_info = None
     light.async_added_to_hass = AsyncMock()
     assert await async_setup_component(hass, "light", {})
     await hass.data["light"].async_add_entities([light])
-    await hass.services.async_call(
-        "light", "turn_on", {"entity_id": light.entity_id, "effect": "Sunrise"}, blocking=True
-    )
+    if coordinator.model == "H1771":
+        # A known RGB write takes precedence over an identical Kelvin companion.
+        await light.async_set_segment_color([3], state["colours"][1])
+    expected_colours, expected_levels = list(state["colours"]), list(state["relative"])
+    effect = "Rainbow" if coordinator.model == "H1771" else "Sunrise"
+    await hass.services.async_call("light", "turn_on", {"entity_id": light.entity_id, "effect": effect}, blocking=True)
     assert state["colours"] != expected_colours
     assert state["relative"] != expected_levels
     await hass.services.async_call("light", "turn_on", {"entity_id": light.entity_id, "effect": "off"}, blocking=True)
     assert state["colours"] == expected_colours
     assert state["relative"] == expected_levels
     assert state["brightness"] == 37 and state["on"]
+    if coordinator.model == "H1771":
+        assert state["colour_modes"] == ["rgb", "kelvin", "rgb", "kelvin"]
+        assert state["sources"] == [True, False] and state["gradual"]
 
 
 @pytest.mark.parametrize(

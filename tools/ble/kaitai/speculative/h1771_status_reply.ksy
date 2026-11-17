@@ -6,8 +6,9 @@ meta:
     - ../govee_segment_page
     - h1771_music_body
 doc: |
-  SPECULATIVE: H1771 reply layouts reconstructed from model behaviour, not
-  confirmed by device traffic.  Static mode reports a flag and Kelvin, while
+  SPECULATIVE: H1771 reply layouts are only partially confirmed by device
+  traffic. Hardware 3.08.01 / firmware 1.00.09 reports static selector 0x15;
+  0x0d remains a candidate. Static mode reports a flag and Kelvin, while
   segment pages report rendered RGB and relative brightness.  These are
   independent observations and do not prove a per-source Kelvin value.
   Unknown suffixes are retained.
@@ -39,6 +40,7 @@ enums:
     0x0a: diy
     0x0d: static
     0x13: music
+    0x15: static_colour
 types:
   power:
     seq:
@@ -65,6 +67,7 @@ types:
             'mode_code::scene': scene_selector
             'mode_code::diy': diy_selector
             'mode_code::static': colour
+            'mode_code::static_colour': colour
             'mode_code::music': music
   scene_selector:
     seq:
