@@ -13,7 +13,11 @@ from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.effect_catalogue import WORKSHOP_PROTOCOL_FIXTURES, resolve_catalogue_template
 from custom_components.ha_govee_led_ble.effect_compiler import DIY_ACK_EVIDENCE, compile_application, compile_effect
-from custom_components.ha_govee_led_ble.effect_deployments import DeploymentPhase, EffectDeploymentRepository
+from custom_components.ha_govee_led_ble.effect_deployments import (
+    DeploymentPhase,
+    EffectDeploymentRepository,
+    PriorControlState,
+)
 from custom_components.ha_govee_led_ble.effect_domain import BuiltinScene, LibraryItem, MusicProfile, SingleEffect
 from custom_components.ha_govee_led_ble.effect_preview import PreviewPhase
 from custom_components.ha_govee_led_ble.effect_runtime import EffectDeploymentEngine
@@ -481,7 +485,7 @@ async def test_h7025_connection_failure_before_upload_can_retry(connected):
 @pytest.mark.parametrize("accepted", [False, True])
 @pytest.mark.parametrize("preview", [False, True])
 async def test_retained_edit_uploads_acknowledges_then_activates(
-    connected, mode, code, body, parameters, edited, accepted, preview
+    selection_ready, mode, code, body, parameters, edited, accepted, preview
 ):
     c, client = selection_ready
     c.music_mode, c.music_sensitivity = mode, 42

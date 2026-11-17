@@ -348,10 +348,11 @@ async def test_static_recovery_qualifies_identity_before_its_first_control(
         brightness_pct=50,
         rgb_color=(255, 0, 0),
         color_temp_kelvin=None,
+        static_rgb_known=True,
     )
     monkeypatch.setattr(coordinator, "refresh_state", AsyncMock(return_value=True))
 
-    assert await coordinator._restore_static_colour(state, True)
+    assert await coordinator.async_restore_effect_control_state(state, overwritten_diy_code=None)
 
     assert packets.count(build_hardware_query("H6181")) == 2
     assert [packet[:10] for packet in packets if packet[0] == 0x33] == [

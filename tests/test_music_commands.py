@@ -614,11 +614,16 @@ async def test_music_notification_during_write_survives_return(hass, operation):
 
 
 @pytest.mark.parametrize("fail_at", [None, "power", "selector"])
-async def test_music_static_intent_precedes_power_but_is_published_at_selector(hass, fail_at):
+async def test_music_static_intent_precedes_power_but_is_published_at_selector(hass, fail_at, virtual_clock):
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H617A", configuration_url="test")
     coordinator.is_on = True
     coordinator.color_mode = ParsedMode.COLOUR
     coordinator.rgb_color = (1, 2, 3)
+    coordinator._notification_token = object()
+    coordinator._notify_started_monotonic = virtual_clock.virtual_time()
+    _notify(coordinator, H("aa0101"))
+    _notify(coordinator, H("aa0464"))
+    _notify(coordinator, H("aa051500"))
     original = [(1, 2, 3)] * 14 + [(4, 5, 6)]
     brightness = [30] * 14 + [70]
     for offset in range(0, 15, 3):
@@ -639,9 +644,9 @@ async def test_music_static_intent_precedes_power_but_is_published_at_selector(h
                 _notify(coordinator, bytes([0xAA, 0xA5, group, *([100, 10, 20, 30] * 3)]))
             assert coordinator.rgb_color == (10, 20, 30)
         if packet == packets[-1]:
-            assert coordinator._pre_mode_snapshot.state.rgb_color == (1, 2, 3)
-            assert coordinator._pre_mode_snapshot.state.segment_colors == tuple(original)
-            assert coordinator._pre_mode_snapshot.state.segment_brightness == tuple(brightness)
+            assert coordinator._pre_mode_snapshot.rgb_color == (1, 2, 3)
+            assert coordinator._pre_mode_snapshot.segment_colors == tuple(original)
+            assert coordinator._pre_mode_snapshot.segment_brightness == tuple(brightness)
             assert coordinator.music_mode == "separation"
             if fail_at == "selector":
                 raise RuntimeError("selector failed")
@@ -656,8 +661,8 @@ async def test_music_static_intent_precedes_power_but_is_published_at_selector(h
     if fail_at == "power":
         assert coordinator._pre_mode_snapshot is snapshot
     else:
-        assert coordinator._pre_mode_snapshot.state.mode == "colour"
-        assert coordinator._pre_mode_snapshot.state.rgb_color == (1, 2, 3)
+        assert coordinator._pre_mode_snapshot.mode == "colour"
+        assert coordinator._pre_mode_snapshot.rgb_color == (1, 2, 3)
         assert coordinator.rgb_color == (10, 20, 30)
 
 

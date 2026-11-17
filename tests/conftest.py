@@ -143,6 +143,7 @@ def _make_coord(hass, **overrides) -> MagicMock:
         is_on=True,
         effect="video: movie",
         available=True,
+        _power_known=True,
         white_balance=WHITE_BALANCE_RESET,
         music_calm=real.music_calm,
         data={},

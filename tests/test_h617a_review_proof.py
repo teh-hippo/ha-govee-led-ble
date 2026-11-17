@@ -48,6 +48,13 @@ def coordinator(hass):
 @pytest.mark.parametrize("accept_colour", [True, False])
 @pytest.mark.parametrize("exit_path", ["recovery", "light", "music"])
 async def test_restoration_preserves_segments_and_rejects_wrong_readback(coordinator, accept_colour, exit_path):
+    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
+    coordinator._client = client
+    coordinator._notification_token = object()
+    coordinator._notify_started_monotonic = time.monotonic() - 1
+    coordinator._notify_callback(None, frame(1, [1]))
+    coordinator._notify_callback(None, frame(4, [37]))
+    coordinator._notify_callback(None, frame(5, [0x15, 0]))
     coordinator.is_on = True
     coordinator.color_mode = ParsedMode.COLOUR
     coordinator.brightness_pct = 37
@@ -109,9 +116,17 @@ async def test_restoration_preserves_segments_and_rejects_wrong_readback(coordin
             if exit_path == "light":
                 light = GoveeBLELight(coordinator)
                 light.async_write_ha_state = MagicMock()
-                await light.async_turn_on(effect="off")
+                if accept_colour:
+                    await light.async_turn_on(effect="off")
+                else:
+                    with pytest.raises(HomeAssistantError):
+                        await light.async_turn_on(effect="off")
             else:
-                await coordinator.async_select_music_slug("off")
+                if accept_colour:
+                    await coordinator.async_select_music_slug("off")
+                else:
+                    with pytest.raises(ValueError, match="complete static state"):
+                        await coordinator.async_select_music_slug("off")
     assert any(packet[:2] == b"\xaa\xa5" for packet in writes)
     assert any(packet[:2] == b"\xaa\x04" for packet in writes)
     static_writes = [parsed for packet in writes if (parsed := parse_static_write(packet)) is not None]

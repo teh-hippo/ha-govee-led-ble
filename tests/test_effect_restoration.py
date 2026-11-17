@@ -33,6 +33,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_scene_activation,
     require_profile_packet,
 )
+from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.light_commands import parse_static_write
 from custom_components.ha_govee_led_ble.music_commands import edit_music_body
 from custom_components.ha_govee_led_ble.music_semantics import music_variant
@@ -532,13 +533,13 @@ async def test_unknown_observed_mode_stays_unknown_in_capture(physical):
 
 async def test_nonsegment_restore_never_overwrites_notification_after_await(physical, monkeypatch):
     coordinator, _ = physical
-    coordinator.profile = replace(coordinator.profile, segment_count=0, whole_device_mask_override=0x7FFF)
-    prior = PriorControlState("colour", True, 37, (1, 2, 3))
+    coordinator.model, coordinator.profile = "H600A", get_profile("H600A")
+    prior = PriorControlState("colour", True, 37, (1, 2, 3), static_rgb_known=True)
 
     async def send(packets, *, write_guard, **_kwargs):
         for packet in packets:
             write_guard()
-            if parse_static_write(packet) is not None:
+            if parse_static_write(packet, coordinator.model, profile=coordinator.profile) is not None:
                 coordinator.rgb_color = (8, 9, 10)
                 coordinator.brightness_pct = 12
                 coordinator.is_on = False

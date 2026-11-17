@@ -1602,7 +1602,6 @@ class GoveeBLECoordinator(
         static_mode = self.active_mode == "colour" or (not self.is_on and previous_mode is ParsedMode.COLOUR)
         if arm_expected and transition is not None and not transition.captured:
             transition.snapshot = self._capture_static_state() if static_mode else None
-            transition.static_origin = static_mode
             transition.profile = self.profile
             transition.profile_generation = self._profile_generation
             transition.subscription = self._notification_token
@@ -1610,7 +1609,6 @@ class GoveeBLECoordinator(
             transition.captured = True
         mode_change = arm_expected and requested.get("color_mode", (None,))[0] not in (None, ParsedMode.COLOUR)
         pre_mode_snapshot = None
-        install_snapshot = False
         if mode_change:
             if transition is not None:
                 if not transition.installed:
@@ -1621,10 +1619,8 @@ class GoveeBLECoordinator(
                     ):
                         raise ValueError("Static restoration context changed before mode transition")
                     pre_mode_snapshot = transition.snapshot
-                    install_snapshot = transition.static_origin
             elif static_mode:
                 pre_mode_snapshot = self._capture_static_state()
-                install_snapshot = True
         mode_revision = self._field_revisions.get("color_mode", 0)
         observed_mode_at = self._field_received_at.get("color_mode")
         mode_confirmed_static = (

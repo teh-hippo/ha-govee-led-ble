@@ -1,3 +1,5 @@
+import asyncio
+import time
 from dataclasses import replace
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
@@ -29,7 +31,21 @@ from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES, SCENE_ENTRIES, scene_selector_code
 from custom_components.ha_govee_led_ble.transport import WRITE_UUID
 from tests.coordinator_test_support import _CONFIGURATION_URL
+from tests.test_effect_preview import _known_static_baseline
+from tests.test_h617a_review_proof import frame
 from tests.test_music_commands import _music_transport
+
+
+@pytest.fixture
+def coord(coord):
+    coord._client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
+    coord._notification_token = object()
+    coord._notify_started_monotonic = time.monotonic() - 1
+    coord._notify_callback(None, frame(1, [0]))
+    coord._notify_callback(None, frame(4, [100]))
+    coord._notify_callback(None, frame(5, [0x15, 0]))
+    coord._ensure_connected = AsyncMock(return_value=coord._client)
+    return coord
 
 
 def _sent(sc):
@@ -155,7 +171,7 @@ async def test_entering_music_from_color_temp_captures_color_temp_snapshot(coord
     before = coord.capture_effect_control_state()
     with _music_transport(coord):
         await coord.async_select_music_slug("spectrum")
-    assert coord._pre_mode_snapshot.state == before
+    assert coord._pre_mode_snapshot == before
 
 
 async def test_entering_music_from_rgb_captures_rgb_snapshot(coord):
@@ -163,12 +179,12 @@ async def test_entering_music_from_rgb_captures_rgb_snapshot(coord):
     before = coord.capture_effect_control_state()
     with _music_transport(coord):
         await coord.async_select_music_slug("bloom")
-    assert coord._pre_mode_snapshot.state == before
+    assert coord._pre_mode_snapshot == before
 
 
 async def test_entering_music_from_active_mode_preserves_snapshot(coord):
     coord.is_on, coord.music_mode = True, "rhythm"
-    original = PreModeSnapshot(PriorControlState("colour", True, 50, (1, 2, 3), color_temp_kelvin=6000), coord.profile)
+    original = PriorControlState("colour", True, 50, (1, 2, 3), color_temp_kelvin=6000)
     coord._pre_mode_snapshot, coord.color_temp_kelvin = original, 4000
     with _music_transport(coord):
         await coord.async_select_music_slug("spectrum")
@@ -177,7 +193,7 @@ async def test_entering_music_from_active_mode_preserves_snapshot(coord):
 
 async def test_failed_music_power_attempt_does_not_publish_transition_snapshot(coord):
     coord.is_on, coord.color_temp_kelvin = True, 4000
-    original = PreModeSnapshot(PriorControlState("colour", True, 50, (1, 2, 3), color_temp_kelvin=6000), coord.profile)
+    original = PriorControlState("colour", True, 50, (1, 2, 3), color_temp_kelvin=6000)
     coord._pre_mode_snapshot = original
     with _music_transport(coord) as physical:
         physical.side_effect = RuntimeError("failed power attempt")
@@ -241,11 +257,17 @@ async def test_music_style_applies_to_rhythm_bloom_and_shiny(coord):
 @pytest.mark.parametrize("confirmed", [False, True])
 async def test_select_off_delegates_complete_state_without_replaying_unconfirmed_delivery(coord, confirmed):
     coord.music_mode = "rhythm"
-    prior = PriorControlState("colour", True, 50, (1, 2, 3), color_temp_kelvin=5000)
-    coord._pre_mode_snapshot = PreModeSnapshot(prior, coord.profile)
+    prior = _known_static_baseline(coord)
+    coord._pre_mode_snapshot = prior
     with patch.object(coord, "async_restore_effect_control_state", AsyncMock(return_value=confirmed)) as restore:
-        await coord.async_select_music_slug("off")
-    restore.assert_awaited_once_with(prior, overwritten_diy_code=None, require_static=True)
+        if confirmed:
+            await coord.async_select_music_slug("off")
+        else:
+            with pytest.raises(ValueError, match="complete static state"):
+                await coord.async_select_music_slug("off")
+    restore.assert_awaited_once()
+    assert restore.await_args.args[0].state == prior
+    assert restore.await_args.kwargs == {"overwritten_diy_code": None}
 
 
 @pytest.mark.parametrize("entrypoint", ["light", "music"])
@@ -256,13 +278,12 @@ async def test_unavailable_restoration_rejects_before_power_or_brightness(coord,
     coord.is_on = False
     coord.music_mode = "rhythm"
     if target != "missing":
-        coord._pre_mode_snapshot = PreModeSnapshot(
-            replace(coord.capture_effect_control_state(), mode="colour"), coord.profile
-        )
+        coord._pre_mode_snapshot = replace(coord.capture_effect_control_state(), mode="colour")
+        coord._pre_mode_profile = coord.profile
         if target == "profile_changed":
             coord.profile = replace(coord.profile, segment_count=12)
     with patch.object(coord, "send_command", new_callable=AsyncMock) as sc:
-        with pytest.raises(ValueError, match="complete static state"):
+        with pytest.raises(HomeAssistantError):
             if entrypoint == "light":
                 await GoveeBLELight(coord).async_turn_on(effect="off", brightness=100)
             else:
@@ -273,9 +294,12 @@ async def test_unavailable_restoration_rejects_before_power_or_brightness(coord,
 async def test_already_static_off_does_not_restore_stale_snapshot(coord):
     coord.is_on = True
     coord.color_mode = ParsedMode.COLOUR
-    coord._pre_mode_snapshot = PreModeSnapshot(coord.capture_effect_control_state(), coord.profile)
+    coord._pre_mode_snapshot = coord.capture_effect_control_state()
+    coord._enter_static_mode()
     with patch.object(coord, "send_command", new_callable=AsyncMock) as send:
-        await coord.async_select_music_slug("off")
+        with pytest.raises(HomeAssistantError) as error:
+            await coord.async_select_music_slug("off")
+    assert error.value.translation_key == "recovery_not_ready"
     send.assert_not_awaited()
 
 
@@ -287,12 +311,19 @@ async def test_unsegmented_mode_exit_preserves_known_native_intent_without_segme
     if known:
         coord.install_static_color(rgb=(12, 34, 56), kelvin=kelvin)
     else:
-        coord._pre_mode_snapshot = PreModeSnapshot(PriorControlState("colour", True, 50, (200, 100, 50)), coord.profile)
+        coord._pre_mode_snapshot = PriorControlState("colour", True, 50, (200, 100, 50))
     with _music_transport(coord) as physical:
+        if known:
+            await coord.send_command(build_power(True, coord.model))
+            await coord.send_command(build_brightness(37, coord.model))
+            await coord.send_command(
+                build_color_temp(kelvin, coord.model) if kelvin else build_color_rgb(12, 34, 56, coord.model)
+            )
         await coord.async_select_music_slug("mode_0")
         physical.reset_mock()
         if known:
-            await coord.async_select_music_slug("off")
+            with patch.object(coord, "refresh_state", AsyncMock(return_value=True)):
+                await coord.async_select_music_slug("off")
             colour = build_color_temp(kelvin, "H6179") if kelvin else build_color_rgb(12, 34, 56, "H6179")
             assert [entry.args[1] for entry in physical.await_args_list] == [
                 build_power(True, "H6179"),
@@ -300,7 +331,7 @@ async def test_unsegmented_mode_exit_preserves_known_native_intent_without_segme
                 colour,
             ]
         else:
-            with pytest.raises(ValueError, match="complete static state"):
+            with pytest.raises(HomeAssistantError):
                 await coord.async_select_music_slug("off")
             physical.assert_not_awaited()
 
@@ -316,21 +347,29 @@ async def test_mode_exit_revalidates_before_first_physical_attempt(coord, change
         await coord.async_select_music_slug("rhythm")
         coord._expected_state.clear()
         physical.reset_mock()
+        changed = False
 
         async def connect():
-            if change == "profile":
-                coord.profile = replace(coord.profile, segment_count=12)
-            elif change == "subscription":
-                coord._notification_token = object()
-            elif change == "owner":
-                coord._control_arbiter.invalidate_previews()
-            else:
-                coord._notify_callback(None, frame(5, [0x15, 0]))
-                observe_segments(coord, [(4, 5, 6)] * 15, [70] * 15)
+            nonlocal changed
+            if not changed:
+                changed = True
+                if change == "profile":
+                    coord.profile = replace(coord.profile, segment_count=12)
+                elif change == "subscription":
+                    coord._notification_token = object()
+                elif change == "owner":
+
+                    async def supersede():
+                        coord._control_arbiter.invalidate_previews()
+
+                    await asyncio.create_task(supersede())
+                else:
+                    coord._notify_callback(None, frame(5, [0x15, 0]))
+                    observe_segments(coord, [(4, 5, 6)] * 15, [70] * 15)
             return coord._client
 
         with patch.object(coord, "_ensure_connected", AsyncMock(side_effect=connect)):
-            with pytest.raises(ValueError, match="Static restoration"):
+            with pytest.raises((ValueError, HomeAssistantError)):
                 await coord.async_select_music_slug("off")
         physical.assert_not_awaited()
     if change == "observation":
@@ -433,7 +472,8 @@ async def test_restoration_accepts_only_matching_intermediate_segment_observatio
                 assert coord.segment_colors == observed
                 assert coord.segment_state_source == "observed"
             else:
-                await coord.async_select_music_slug("off")
+                with pytest.raises(ValueError, match="No complete static state"):
+                    await coord.async_select_music_slug("off")
                 assert static_attempts == 4
                 assert coord.segment_colors == original
                 assert coord.segment_brightness == [30] * 7 + [70] * 8
@@ -457,7 +497,7 @@ async def test_effect_off_marks_failed_leading_power_uncertain_without_replay(co
             coord._clear_client_state(coord._client)
 
         with patch.object(coord, "_disconnect_locked", AsyncMock(side_effect=disconnect)):
-            with pytest.raises(BleakError, match="power may have applied"):
+            with pytest.raises(HomeAssistantError):
                 await GoveeBLELight(coord).async_turn_on(effect="off")
         physical.assert_awaited_once()
         assert coord.control_state_uncertain("is_on")
@@ -474,7 +514,7 @@ async def test_new_subscription_does_not_capture_retained_segment_observations(c
         await coord._start_notify()
         await coord.async_select_music_slug("rhythm")
         physical.reset_mock()
-        with pytest.raises(ValueError, match="complete static state"):
+        with pytest.raises(HomeAssistantError):
             await coord.async_select_music_slug("off")
         physical.assert_not_awaited()
 

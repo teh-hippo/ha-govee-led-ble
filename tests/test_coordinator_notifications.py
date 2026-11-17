@@ -22,7 +22,6 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_music_mode,
     build_power,
     build_relative_brightness_query,
-    build_segment_brightness,
     build_segment_query,
     build_video_mode,
     build_white_balance,
@@ -75,8 +74,7 @@ async def test_unknown_white_replaces_stale_colour_without_inventing_a_temperatu
     assert coord.color_temp_kelvin is None
     assert coord.color_temp_kelvin_source == "observed"
     assert coord.capture_effect_control_state().mode == "unknown"
-    assert coord._capture_static_state() is None
-    assert coord._prepare_static_restore(coord.capture_effect_control_state()) is None
+    assert coord._prepare_static_colour(coord.capture_effect_control_state()) is None
     assert coord.packet_log[-1]["outcome"] == "parsed"
 
     coord._notify_callback(None, bytearray(_packet(0xAA, 5, [selector, 12, 34, 56])))

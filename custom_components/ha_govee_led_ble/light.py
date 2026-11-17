@@ -1348,9 +1348,6 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         self._validate_basic_request(kwargs)
         coordinator = self.coordinator
         source_colour = source_colour or self._prepare_source_colour_request(kwargs)
-        if ATTR_EFFECT in kwargs and normalise_effect_name(str(kwargs[ATTR_EFFECT])) == EFFECT_OFF:
-            await coordinator.async_restore_pre_mode()
-            prepared_effect = None
         request = coordinator.control_write_request(identity_guard=native_write_guard, effect_guard=effect_write_guard)
 
         if ATTR_BRIGHTNESS in kwargs:

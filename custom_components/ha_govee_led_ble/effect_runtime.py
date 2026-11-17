@@ -1602,6 +1602,36 @@ async def async_prepare_effect_control_state(
             async_control_intent(coordinator, intent),
             coordinator.async_mode_transition(purpose=ModeTransitionPurpose.PREVIEW),
         ):
+            profile = coordinator.profile
+            if coordinator.music_mode in profile.music_modes:
+                variant = music_variant(
+                    profile, music_code_for(coordinator.model, coordinator.music_mode, profile=profile)
+                )
+                if variant and variant.fixed_colour_default is not None:
+                    prior = coordinator.capture_effect_control_state()
+                    if prior.mode == "music" and prior.music_color is None:
+                        raise EffectRestorationError("The current music colour cannot be safely restored after preview")
+            if profile.diy_upload_transport == "single":
+                inline_fields = ("is_on", "brightness_pct", "color_mode")
+                if not all(coordinator.source_field_fresh(field) for field in inline_fields) and (
+                    await coordinator.refresh_state(
+                        RefreshRequest(
+                            refresh_all=True,
+                            required_domains=frozenset(
+                                {ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE}
+                            ),
+                        )
+                    )
+                    is not True
+                    or coordinator.profile != profile
+                    or not all(coordinator.source_field_fresh(field) for field in inline_fields)
+                ):
+                    raise EffectStateReadError("Could not read the current state before preview")
+                prior = coordinator.capture_effect_control_state()
+                if prior.mode == "custom":
+                    raise EffectRestorationError("The current inline DIY body cannot be safely restored after preview")
+                if prior.mode == "unknown":
+                    raise EffectRestorationError("The current mode cannot be safely restored after preview")
             try:
                 await coordinator.async_admit_effect_selection()
             except HomeAssistantError as error:
