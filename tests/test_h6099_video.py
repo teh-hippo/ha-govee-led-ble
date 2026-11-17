@@ -45,6 +45,7 @@ from custom_components.ha_govee_led_ble.video_applicability import (
     video_control_states,
 )
 from tests.coordinator_test_support import frame
+from tests.test_effect_preview import _EffectCoordinator, _known_static_baseline
 
 
 def content() -> VideoProfile:

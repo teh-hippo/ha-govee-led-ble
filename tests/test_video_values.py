@@ -23,6 +23,7 @@ from custom_components.ha_govee_led_ble.native_profile_controls import (
 )
 from custom_components.ha_govee_led_ble.protocol_core import _STATUS_ROOTS
 from tests.coordinator_test_support import frame
+from tests.test_effect_preview import _known_static_baseline
 
 
 @pytest.fixture

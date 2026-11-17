@@ -101,7 +101,7 @@ def h607c_subscription(hass, monkeypatch):
         c._clear_client_state(client)
 
     monkeypatch.setattr(c, "_ensure_connected", AsyncMock(side_effect=connect))
-    monkeypatch.setattr(c, "_disconnect_if_current_locked", AsyncMock(side_effect=disconnect))
+    monkeypatch.setattr(c, "_disconnect_locked", AsyncMock(side_effect=disconnect))
     return c, client
 
 

@@ -439,7 +439,6 @@ class _ActiveModeMixin(_CoordinatorBase):
         self.effect = None
         self.diy_code = None
         self.music_mode = self.video_mode = "off"
-        self._pre_mode_snapshot = None
 
     async def async_select_music_slug(
         self,

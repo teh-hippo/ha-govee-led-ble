@@ -1196,10 +1196,10 @@ async def test_static_failure_never_restores_stale_mode_siblings(hass, model, fr
 @pytest.mark.parametrize("fail", [False, True])
 async def test_clear_effect_preserves_newer_scene_notification(static_coordinator, monkeypatch, fail):
     coord = static_coordinator
-    coord.profile = replace(coord.profile, supports_segment_brightness=True)
+    coord.profile = replace(coord.profile, segment_count=0, supports_segment_writes=False)
+    monkeypatch.setitem(MODEL_PROFILES, coord.model, coord.profile)
     coord.is_on = True
     coord._notify_callback(None, _static_reply(rgb=(1, 2, 3)))
-    _static_segments(coord, (1, 2, 3))
     coord._pre_mode_snapshot = coord._capture_static_state()
     coord.color_mode, coord.music_mode = ParsedMode.MUSIC, "rhythm"
     coord._client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
