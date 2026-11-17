@@ -523,6 +523,7 @@ class PriorControlState:
 
     def static_segment_kelvin(self, profile: ModelProfile) -> tuple[int, ...] | None:
         from .coordinator_sources import has_segmented_sources
+        from .generated_protocol_adapter import table_rgb_kelvin
         from .light_commands import kelvin_rendering_matches, normalize_kelvin
 
         if has_segmented_sources(profile):
@@ -544,6 +545,10 @@ class PriorControlState:
         result = []
         for rgb, intent in zip(self.segment_colors, intents, strict=True):
             intent = fallback if intent is None else intent
+            if intent is None and profile.static_palette_recovery and self.static_colour_observed:
+                # The palette is restorable even when it does not identify the original emitter intent.
+                kelvin = table_rgb_kelvin(rgb)
+                intent = kelvin if kelvin is not None and normalize_kelvin(kelvin, profile) == kelvin else 0
             if intent is None:
                 return None
             if intent:
