@@ -2,6 +2,7 @@ from dataclasses import replace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.ha_govee_led_ble.const import device_profile
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
@@ -20,6 +21,7 @@ from custom_components.ha_govee_led_ble.effect_domain import (
 from custom_components.ha_govee_led_ble.effect_protocol_decoder import decode_effect_frames
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_brightness,
+    build_colour_mode_query,
     build_firmware_query,
     build_hardware_query,
     build_power,
@@ -178,15 +180,57 @@ async def test_legacy_colour_allows_untransformed_identity_queries_and_power(leg
 
 
 @pytest.mark.parametrize("lifecycle", ["H6159"], indirect=True)
-async def test_whole_strip_studio_prepares_identity_from_a_cold_basic_profile(lifecycle):  # noqa: F811
-    coordinator, _replies, _clients, packets = lifecycle
-    assert not coordinator.profile.supports_custom_effects
-    profile = await async_prepare_effect_profile(
-        coordinator, intent=ControlIntent.APPLY, content=SingleEffect(0, 0, 50, ((255, 0, 0),))
+@pytest.mark.parametrize("control", ["studio", "rgb", "kelvin"])
+@pytest.mark.parametrize("identity_returns", [False, True])
+async def test_whole_strip_controls_prepare_identity_after_basic_setup(
+    lifecycle,  # noqa: F811
+    monkeypatch,
+    control,
+    identity_returns,
+):
+    coordinator, replies, _clients, packets = lifecycle
+    monkeypatch.setattr(
+        "custom_components.ha_govee_led_ble.coordinator.bluetooth.async_last_service_info",
+        lambda *_args, **_kwargs: None,
     )
-    assert profile.supports_custom_effects
+    identity = {
+        query: replies.pop(query)
+        for query in (build_firmware_query(coordinator.model), build_hardware_query(coordinator.model))
+    }
+    await coordinator._async_update_data()
+    assert coordinator.available
+    assert not coordinator.profile.supports_custom_effects
+    if identity_returns:
+        replies.update(identity)
+    if control == "kelvin":
+        replies[build_colour_mode_query(coordinator.model)] = frame(bytes.fromhex("aa0502ffffff01ffae54"))
+    packets.clear()
+    light = GoveeBLELight(coordinator)
+    monkeypatch.setattr(light, "_notify_state_changed", MagicMock())
+
+    async def apply():
+        if control == "studio":
+            await async_prepare_effect_profile(
+                coordinator, intent=ControlIntent.APPLY, content=SingleEffect(0, 0, 50, ((255, 0, 0),))
+            )
+        else:
+            await light.async_turn_on(
+                **({"rgb_color": (12, 34, 56)} if control == "rgb" else {"color_temp_kelvin": 2700})
+            )
+
+    if not identity_returns:
+        with pytest.raises(HomeAssistantError):
+            await apply()
+        assert packets and all(packet[0] == 0xAA for packet in packets)
+        return
+    await apply()
+    assert coordinator.profile.supports_custom_effects
     assert coordinator.identity_fields_confirmed(frozenset({"fw_version", "hw_version"}))
-    assert packets and all(packet[0] == 0xAA for packet in packets)
+    if control == "studio":
+        assert packets and all(packet[0] == 0xAA for packet in packets)
+    else:
+        payload = "3305020c2238" if control == "rgb" else "330502ffffff01ffae54"
+        assert frame(bytes.fromhex(payload)) in packets
 
 
 @pytest.mark.parametrize("lifecycle", ["H6159"], indirect=True)

@@ -699,20 +699,24 @@ class GoveeBLECoordinator(
         return "ready" if self.profile.supports_rgb else "unsupported"
 
     async def async_prepare_identity_gated_control(self) -> Callable[[], None]:
-        if not self.identity_gated_controls and not get_profile(self.model).static_identity_fields:
+        fields = self.profile.static_identity_fields
+        if self.profile.basic_controls_only:
+            fields |= self.profile.profile_identity_fields
+        if not self.identity_gated_controls and not get_profile(self.model).static_identity_fields and not fields:
             return lambda: None
         self._refresh_h607c_advertisements()
         async with async_control_intent(self, ControlIntent.BACKGROUND):
             async with self._lock:
                 client = await self._ensure_connected()
-                await self._async_require_identity(client, self.profile.static_identity_fields)
+                fields |= self.profile.static_identity_fields
+                await self._async_require_identity(client, fields)
                 self._reconcile_authorization()
                 if not self._authorization_profile().supports_rgb or self._h607c_pact_conflict:
                     await self._disconnect_if_current_locked(client)
                     raise HomeAssistantError(translation_domain=DOMAIN, translation_key="identity_not_ready")
                 token = self._notification_token
                 generation = self._authorization_generation
-                fields = self.profile.static_identity_fields
+                fields |= self.profile.static_identity_fields
                 self._renew_foreground_lease()
 
         def guard() -> None:
