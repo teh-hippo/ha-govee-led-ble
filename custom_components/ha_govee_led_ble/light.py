@@ -1035,8 +1035,19 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             self.coordinator.profile.brightness_zero_turns_off and kwargs.get(ATTR_BRIGHTNESS) == 0
         ):
             guard = None
-            if self.coordinator.identity_gated_controls or get_profile(self.coordinator.model).static_identity_fields:
-                self._validate_basic_request(kwargs, profile=self.coordinator.native_presentation_profile)
+            profile = self.coordinator.profile
+            pending_identity = profile.basic_controls_only and bool(profile.profile_identity_fields)
+            if (
+                self.coordinator.identity_gated_controls
+                or get_profile(self.coordinator.model).static_identity_fields
+                or pending_identity
+            ):
+                self._validate_basic_request(
+                    kwargs,
+                    profile=get_profile(self.coordinator.model)
+                    if pending_identity
+                    else self.coordinator.native_presentation_profile,
+                )
                 guard = await self.coordinator.async_prepare_identity_gated_control()
             async with self.coordinator.async_mask_transaction():
                 await self._async_prepare_turn_on(native_write_guard=guard, **kwargs)
