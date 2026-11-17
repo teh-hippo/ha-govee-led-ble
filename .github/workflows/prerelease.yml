@@ -100,7 +100,7 @@ jobs:
 
   package:
     needs: prepare
-    uses: teh-hippo/common-repo-configs/.github/workflows/ha-prerelease.yml@109668e1c86560a3bc50aa184d341d4258b77a8b # v3.5.12
+    uses: teh-hippo/common-repo-configs/.github/workflows/ha-prerelease.yml@04132673f8dbfe520b09cdc14fc08c83c34ea6bf # v3.5.15
     permissions:
       contents: write
     with:
