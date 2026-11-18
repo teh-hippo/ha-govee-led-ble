@@ -1727,7 +1727,7 @@ async def async_prepare_effect_control_state(
             RefreshRequest(
                 refresh_all=True,
                 query_native_settings=STATIC_RECOVERY_SETTINGS,
-                query_segments=False if profile.segment_colour_mode_ambiguous else None,
+                query_segments=False,
                 required_domains=profile.read_domains
                 & {ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE, ReadDomain.MODE},
             ),
