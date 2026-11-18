@@ -33,6 +33,7 @@ from .const import (
 )
 from .control_arbiter import ControlIntent
 from .coordinator_base import async_prepare_effect_profile
+from .coordinator_modes import ModeTransitionSupersededError
 from .effect_backend import EffectBackend
 from .effect_catalogue import (
     custom_effect_catalogue_payload,
@@ -472,7 +473,7 @@ async def ws_scene_apply(
             scene_defaults=backend.scene_defaults,
             before_apply=partial(backend.preview.async_supersede_device, entry.entry_id, reason="committed_apply"),
         )
-    except GoveeCryptoError as exc:
+    except (GoveeCryptoError, ModeTransitionSupersededError) as exc:
         _send_error(hass, connection, msg, "apply_failed", exc)
         return
     except ValueError as exc:
@@ -1447,7 +1448,7 @@ async def ws_apply(
     except EffectVersionConflictError as exc:
         _send_error(hass, connection, msg, "conflict", exc)
         return
-    except GoveeCryptoError as exc:
+    except (GoveeCryptoError, ModeTransitionSupersededError) as exc:
         _send_error(hass, connection, msg, "apply_failed", exc)
         return
     except ValueError as exc:
@@ -1519,7 +1520,7 @@ async def ws_apply_snapshot(
     except EffectValidationError as exc:
         _send_error(hass, connection, msg, "invalid_format", exc)
         return
-    except GoveeCryptoError as exc:
+    except (GoveeCryptoError, ModeTransitionSupersededError) as exc:
         _send_error(hass, connection, msg, "apply_failed", exc)
         return
     except ValueError as exc:

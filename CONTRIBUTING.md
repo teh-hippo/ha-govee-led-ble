@@ -21,7 +21,8 @@ Keep real product differences without turning each product into a separate imple
   An identity check, device-named helper, duplicated handler or new feature flag needs an evidenced reason that those existing seams cannot express.
 - Fix a shared cause at its owning layer and migrate affected callers rather than adding an exception beside the symptom.
   Prefer deleting duplicate paths and redundant state; do not introduce a general framework, growing switch or override hook for every device.
-  A genuine behavioural override must be narrow, typed, capability-selected and use the same validation, transport and recovery boundaries.
+  A genuine behavioural override must be narrow, typed and capability-selected.
+  It must preserve other profiles' behaviour and use the same validation, transport and recovery boundaries.
 - Keep ordinary controls independent of optional features and transport encodings.
   Shared grammar does not grant capabilities, and shared transport does not make distinct semantic workflows interchangeable.
   Preserve semantic intent through preparation rather than reconstructing it from packets later.
