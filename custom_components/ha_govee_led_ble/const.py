@@ -1400,6 +1400,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     "H605C": ModelProfile(
         "H605C Envisual TV Backlight T2",
         color_temp_range=KELVIN_RANGE_2000_9000,
+        support_quality=SupportQuality.SUPPORTED,
         confirmation_issue=571,
         command_grammar="H6099",
         status_grammar="H605C",
