@@ -16,7 +16,7 @@
 | **H600A** | ✅ Supported |
 | **H601C** | ✅ Supported |
 | **H6046** | ✅ Supported |
-| **H605C** | [🚧 Experimental](https://github.com/teh-hippo/ha-govee-led-ble/issues/571) |
+| **H605C** | ✅ Supported |
 | **H6072** | ✅ Supported |
 | **H607C** | ✅ Supported |
 | **H6076** | ✅ Supported |
