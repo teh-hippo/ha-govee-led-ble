@@ -61,6 +61,7 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     color_temp_kelvin_source: str
     color_temp_unknown: bool
     _pending_kelvin: int | None
+    _kelvin_observed_segment_revision: int
     _static_rgb_known: bool
     white_brightness: int
     music_mode: str
@@ -104,6 +105,7 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     power_on_open_flag: int | None
     color_mode: ParsedMode | None
     _observed_color_mode: ParsedMode | None
+    _selector_revision: int
     _mode_write_generation: int
     _observed_mode_write_generation: int
     _observed_mode_profile_generation: int
@@ -128,6 +130,7 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     _profile_generation: int
     _authorization_generation: int
     _pre_mode_snapshot: PriorControlState | None
+    _incomplete_static_exit: PriorControlState | None
     _pre_mode_profile: ModelProfile | None
     _pre_mode_needs_qualification: bool
     segment_colors: list[tuple[int, int, int]]
@@ -152,6 +155,7 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     _notify_started_monotonic: float | None
     _expected_state: dict[str, tuple[Any, float]]
     _field_revisions: dict[str, int]
+    _revision_event: asyncio.Event
     _field_received_at: dict[str, float]
     _observed_physical_ic_count: int | None
     _physical_ic_count_confirmed: bool
@@ -203,12 +207,15 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
         ) -> bool: ...
 
         def require_static_baseline(self) -> PriorControlState: ...
-        def _discard_static_baseline(self) -> None: ...
+        def _discard_static_baseline(self, *, keep_incomplete_exit: bool = False) -> None: ...
         def _static_history_profile_current(self) -> bool: ...
-        def prepare_static_recovery(self, prepared: PreparedStaticRecovery | None = None) -> PreparedStaticRecovery: ...
         def async_prepare_static_recovery(
-            self, prepared: PreparedStaticRecovery | None = None
-        ) -> AbstractAsyncContextManager[PreparedStaticRecovery]: ...
+            self, off_guard: Callable[[], None] | None, *, brightness_pct: int | None = None
+        ) -> AbstractAsyncContextManager[PreparedStaticRecovery | None]: ...
+
+        def static_mode_confirmed(self) -> bool: ...
+
+        async def async_preflight_static_off(self) -> Callable[[], None] | None: ...
 
         @property
         def effect_authorization_profile(self) -> ModelProfile: ...
@@ -225,7 +232,7 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
 
         def async_mode_transition(
             self, *, purpose: ModeTransitionPurpose | None = None
-        ) -> AbstractAsyncContextManager[None]: ...
+        ) -> AbstractAsyncContextManager[_ModeTransition]: ...
 
         async def async_prepare_static_baseline(self) -> PriorControlState: ...
 
@@ -259,6 +266,8 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
 
         def _apply_segment_group(self, generated: Any) -> tuple[str, ...]: ...
 
+        def _project_segment_palette(self) -> tuple[str, ...]: ...
+
         def _accept_expected_values(self, values: dict[str, Any]) -> bool: ...
 
         def _apply_configured_strings(self, count: int) -> None: ...
@@ -270,6 +279,7 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
             deadline: float,
             *,
             expectations: Mapping[str, Any] | None = None,
+            stop: Callable[[], bool] | None = None,
         ) -> bool: ...
 
         async def _async_write_packet(
@@ -320,7 +330,13 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
         async def _async_read_identity(self, required_fields: frozenset[str] | None = None) -> None: ...
 
         async def _async_read_bulk_status(
-            self, client: BleakClient, *, deadline: float, domains: tuple[str, ...] | None = None
+            self,
+            client: BleakClient,
+            *,
+            deadline: float,
+            domains: tuple[str, ...] | None = None,
+            query: bytes | None = None,
+            allow_complete_rejection: bool = False,
         ) -> bool: ...
 
         async def _async_read_setting_fields(
@@ -350,7 +366,7 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
             required_domains: frozenset[ReadDomain] | None = None,
             optional_baselines: dict[str, int] | None = None,
             deadline: float | None = None,
-            query_native_settings: bool = True,
+            query_native_settings: bool | frozenset[str] = True,
         ) -> bool: ...
 
         async def async_write_effect_sequence(

@@ -52,6 +52,16 @@ def _sent(sc):
     return [call.args[0] for call in sc.await_args_list]
 
 
+def _off_readback(coord, mode=(0x13, 3, 88, 1), *, verified=False):
+    async def refresh(request):
+        if request.required_domains is not None:
+            coord._notify_callback(None, frame(5, list(mode)))
+            return True
+        return verified
+
+    return AsyncMock(side_effect=refresh)
+
+
 @pytest.mark.parametrize("grammar", ["H617A", "H6199"])
 @pytest.mark.parametrize("scene_type", [0, 1, 2])
 @pytest.mark.parametrize("intent", [ControlIntent.USER, ControlIntent.PREVIEW])
@@ -259,7 +269,10 @@ async def test_select_off_delegates_complete_state_without_replaying_unconfirmed
     coord.music_mode = "rhythm"
     prior = _known_static_baseline(coord)
     coord._pre_mode_snapshot = prior
-    with patch.object(coord, "async_restore_effect_control_state", AsyncMock(return_value=confirmed)) as restore:
+    with (
+        patch.object(coord, "refresh_state", _off_readback(coord)),
+        patch.object(coord, "async_restore_effect_control_state", AsyncMock(return_value=confirmed)) as restore,
+    ):
         if confirmed:
             await coord.async_select_music_slug("off")
         else:
@@ -282,7 +295,10 @@ async def test_unavailable_restoration_rejects_before_power_or_brightness(coord,
         coord._pre_mode_profile = coord.profile
         if target == "profile_changed":
             coord.profile = replace(coord.profile, segment_count=12)
-    with patch.object(coord, "send_command", new_callable=AsyncMock) as sc:
+    with (
+        patch.object(coord, "refresh_state", _off_readback(coord)),
+        patch.object(coord, "send_command", new_callable=AsyncMock) as sc,
+    ):
         with pytest.raises(HomeAssistantError):
             if entrypoint == "light":
                 await GoveeBLELight(coord).async_turn_on(effect="off", brightness=100)
@@ -295,12 +311,13 @@ async def test_already_static_off_does_not_restore_stale_snapshot(coord):
     coord.is_on = True
     coord.color_mode = ParsedMode.COLOUR
     coord._pre_mode_snapshot = coord.capture_effect_control_state()
-    coord._enter_static_mode()
-    with patch.object(coord, "send_command", new_callable=AsyncMock) as send:
-        with pytest.raises(HomeAssistantError) as error:
-            await coord.async_select_music_slug("off")
-    assert error.value.translation_key == "recovery_not_ready"
+    with (
+        patch.object(coord, "refresh_state", _off_readback(coord, (0x15, 0))),
+        patch.object(coord, "send_command", new_callable=AsyncMock) as send,
+    ):
+        await coord.async_select_music_slug("off")
     send.assert_not_awaited()
+    assert coord._pre_mode_snapshot is None
 
 
 @pytest.mark.parametrize("kelvin", [None, 4200])
@@ -308,6 +325,8 @@ async def test_already_static_off_does_not_restore_stale_snapshot(coord):
 async def test_unsegmented_mode_exit_preserves_known_native_intent_without_segment_reads(hass, kelvin, known):
     coord = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6179", configuration_url=None)
     coord.is_on, coord.color_mode, coord.brightness_pct = True, ParsedMode.COLOUR, 37
+    coord._notification_token = object()
+    coord._notify_started_monotonic = time.monotonic() - 1
     if known:
         coord.install_static_color(rgb=(12, 34, 56), kelvin=kelvin)
     else:
@@ -321,9 +340,9 @@ async def test_unsegmented_mode_exit_preserves_known_native_intent_without_segme
             )
         await coord.async_select_music_slug("mode_0")
         physical.reset_mock()
+        coord.refresh_state = _off_readback(coord, (0x0E, 0, 50, 0), verified=True)
         if known:
-            with patch.object(coord, "refresh_state", AsyncMock(return_value=True)):
-                await coord.async_select_music_slug("off")
+            await coord.async_select_music_slug("off")
             colour = build_color_temp(kelvin, "H6179") if kelvin else build_color_rgb(12, 34, 56, "H6179")
             assert [entry.args[1] for entry in physical.await_args_list] == [
                 build_power(True, "H6179"),
@@ -368,7 +387,10 @@ async def test_mode_exit_revalidates_before_first_physical_attempt(coord, change
                     observe_segments(coord, [(4, 5, 6)] * 15, [70] * 15)
             return coord._client
 
-        with patch.object(coord, "_ensure_connected", AsyncMock(side_effect=connect)):
+        with (
+            patch.object(coord, "refresh_state", _off_readback(coord)),
+            patch.object(coord, "_ensure_connected", AsyncMock(side_effect=connect)),
+        ):
             with pytest.raises((ValueError, HomeAssistantError)):
                 await coord.async_select_music_slug("off")
         physical.assert_not_awaited()
@@ -402,6 +424,7 @@ async def test_restoration_does_not_replay_a_partially_delivered_static_batch(co
                 coord._notify_callback(None, frame(4, [coord.brightness_pct]))
 
         physical.side_effect = transmit
+        coord.refresh_state = _off_readback(coord)
         with pytest.raises(BleakError, match="may have applied"):
             await coord.async_select_music_slug("off")
         assert writes == 3
@@ -425,6 +448,7 @@ async def test_restoration_preserves_new_static_observation_after_leading_power(
             observe_segments(coord, [(4, 5, 6)] * 15, [70] * 15)
 
         physical.side_effect = transmit
+        coord.refresh_state = _off_readback(coord)
         with pytest.raises(ValueError, match="Static restoration"):
             await coord.async_select_music_slug("off")
         assert sum(entry.args[1][0] == 0x33 for entry in physical.await_args_list) == 1
@@ -464,6 +488,7 @@ async def test_restoration_accepts_only_matching_intermediate_segment_observatio
                 coord._notify_callback(None, frame(4, [20]))
 
         physical.side_effect = transmit
+        coord.refresh_state = _off_readback(coord)
         with patch.object(coord, "async_refresh_segments", AsyncMock(return_value=False)):
             if conflicting:
                 with pytest.raises(ValueError, match="Static restoration"):
@@ -479,7 +504,7 @@ async def test_restoration_accepts_only_matching_intermediate_segment_observatio
                 assert coord.segment_brightness == [30] * 7 + [70] * 8
 
 
-async def test_effect_off_marks_failed_leading_power_uncertain_without_replay(coord):
+async def test_effect_off_marks_failed_restore_power_uncertain_without_replay(coord):
     from bleak import BleakError
 
     from custom_components.ha_govee_led_ble.light import GoveeBLELight
@@ -496,10 +521,15 @@ async def test_effect_off_marks_failed_leading_power_uncertain_without_replay(co
         async def disconnect():
             coord._clear_client_state(coord._client)
 
-        with patch.object(coord, "_disconnect_locked", AsyncMock(side_effect=disconnect)):
-            with pytest.raises(HomeAssistantError):
+        with (
+            patch.object(coord, "_disconnect_locked", AsyncMock(side_effect=disconnect)),
+            patch.object(coord, "refresh_state", _off_readback(coord)),
+        ):
+            with pytest.raises(HomeAssistantError) as error:
                 await GoveeBLELight(coord).async_turn_on(effect="off")
+        assert error.value.translation_key == "partial_command"
         physical.assert_awaited_once()
+        assert physical.await_args.args[1] == build_power(True, coord.model)
         assert coord.control_state_uncertain("is_on")
 
 

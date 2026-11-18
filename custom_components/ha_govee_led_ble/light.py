@@ -862,9 +862,6 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
     ) -> Callable[[], Awaitable[None]]:
         key = normalise_effect_name(effect_name)
         coordinator = self.coordinator
-        if key == EFFECT_OFF:
-            coordinator.require_static_baseline()
-            return coordinator.async_restore_pre_mode
         try:
             selected = resolve_effect_selector(self._selector_entries(), effect_name)
         except EffectValidationError as exc:
@@ -1099,46 +1096,79 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 source_colour=source_colour,
             )
             return
+        clear_workspace = active_workspace is not None and (
+            ATTR_RGB_COLOR in kwargs or ATTR_COLOR_TEMP_KELVIN in kwargs or ATTR_EFFECT in kwargs
+        )
+        if ATTR_EFFECT in kwargs and normalise_effect_name(str(kwargs[ATTR_EFFECT])) == EFFECT_OFF:
+            await self._async_clear_effect(
+                kwargs, clear_workspace=clear_workspace, native_write_guard=native_write_guard
+            )
+            return
         video_guards: list[Callable[[], None]] = []
         prepared_effect = (
             await self._prepare_effect(str(kwargs[ATTR_EFFECT]), video_guards=video_guards)
             if ATTR_EFFECT in kwargs
             else None
         )
-        clearing_effect = prepared_effect is not None and normalise_effect_name(str(kwargs[ATTR_EFFECT])) == EFFECT_OFF
         if native_write_guard is not None:
             native_write_guard()
-        if not clearing_effect:
-            await self._async_supersede_preview()
+        await self._async_supersede_preview()
         if native_write_guard is not None:
             native_write_guard()
-        clear_workspace = active_workspace is not None and (
-            ATTR_RGB_COLOR in kwargs or ATTR_COLOR_TEMP_KELVIN in kwargs or ATTR_EFFECT in kwargs
-        )
         async with (
             async_control_intent(
                 self.coordinator,
                 ControlIntent.USER,
             ),
-            self.coordinator.async_mode_transition(
-                purpose=ModeTransitionPurpose.RECOVERY if clearing_effect else ModeTransitionPurpose.SELECTION
-            )
+            self.coordinator.async_mode_transition(purpose=ModeTransitionPurpose.SELECTION)
             if prepared_effect is not None
             else nullcontext(),
         ):
-            async with (
-                self.coordinator.async_prepare_static_recovery() if clearing_effect else nullcontext()
-            ) as prepared:
-                if prepared is not None:
-                    prepared_effect = partial(self.coordinator.async_restore_pre_mode, prepared)
-                    video_guards.append(partial(prepared.check, self.coordinator))
-                    await self._async_supersede_preview()
+            await self._async_turn_on(
+                clear_workspace_on_success=clear_workspace,
+                prepared_effect=prepared_effect,
+                effect_write_guard=video_guards[0] if video_guards else None,
+                native_write_guard=native_write_guard,
+                source_colour=source_colour,
+                **kwargs,
+            )
+
+    async def _async_clear_effect(
+        self, kwargs: Mapping[str, Any], *, clear_workspace: bool, native_write_guard: Callable[[], None] | None
+    ) -> None:
+        coordinator = self.coordinator
+        guard = await coordinator.async_preflight_static_off()
+        pct = (
+            max(1, round(brightness_to_value((1, 100), kwargs[ATTR_BRIGHTNESS]))) if ATTR_BRIGHTNESS in kwargs else None
+        )
+        async with (
+            async_control_intent(coordinator, ControlIntent.USER),
+            coordinator.async_mode_transition(purpose=ModeTransitionPurpose.RECOVERY),
+            coordinator.async_prepare_static_recovery(guard, brightness_pct=pct) as prepared,
+        ):
+            await self._async_supersede_preview()
+            if guard is not None:
+                guard()
+            if native_write_guard is not None:
+                native_write_guard()
+            if prepared is not None:
+                attempts = coordinator.control_write_attempts
+                try:
+                    await coordinator.async_restore_pre_mode(prepared)
+                except HomeAssistantError:
+                    raise
+                except Exception as error:
+                    if coordinator.control_write_attempts == attempts:
+                        raise
+                    raise HomeAssistantError(translation_domain=DOMAIN, translation_key="partial_command") from error
+                if clear_workspace:
+                    self._clear_active_workspace()
+                self._notify_state_changed()
+            elif len(kwargs) > 1:
                 await self._async_turn_on(
                     clear_workspace_on_success=clear_workspace,
-                    prepared_effect=prepared_effect,
-                    effect_write_guard=video_guards[0] if video_guards else None,
+                    effect_write_guard=guard,
                     native_write_guard=native_write_guard,
-                    source_colour=source_colour,
                     **kwargs,
                 )
 

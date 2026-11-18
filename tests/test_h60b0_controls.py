@@ -537,6 +537,7 @@ def source_wire(native_sources):
         "bottom": 4000,
         "drop_source_readback": False,
         "scene": None,
+        "music": None,
         "master": 50,
     }
 
@@ -544,7 +545,7 @@ def source_wire(native_sources):
         command = packet[1]
         if packet[0] == 0x33 and state["apply"]:
             if command == 0x05 and packet[2] == 0x2C:
-                state["scene"] = None
+                state["scene"] = state["music"] = None
             if command == 0x01:
                 state["flags"] = state["flags"] | 0x80 if packet[2] else state["flags"] & ~0x80
             elif command == 0x04:
@@ -575,6 +576,8 @@ def source_wire(native_sources):
             elif command == 0x05 and packet[2] == 0x04:
                 state["scene"] = packet[3:5].hex()
                 state["colours"] = [(255, 0, 0)] * 9
+            elif command == 0x05 and packet[2] == 0x13:
+                state["music"] = packet[3:19].hex()
         if packet[0] != 0xAA:
             return
         if command in (0x05, 0x42):
@@ -582,6 +585,9 @@ def source_wire(native_sources):
                 return
             if command == 0x05 and state["scene"] is not None:
                 coordinator._notify_callback(None, bytearray(frame(f"aa0504{state['scene']}")))
+                return
+            if command == 0x05 and state["music"] is not None:
+                coordinator._notify_callback(None, bytearray(frame(f"aa0513{state['music']}")))
                 return
             prefix = "aa052c" if command == 0x05 else f"aa42{state['flags']:02x}"
             bottom = state.get("mode_bottom", state["bottom"]) if command == 0x05 else state["bottom"]
@@ -671,6 +677,45 @@ async def test_effect_readiness_precedes_combined_power_and_brightness(hass, sou
     assert physical["flags"] == 0x60
 
 
+@pytest.mark.parametrize("change", ["palette", "native"])
+async def test_source_write_rechecks_verified_layout_after_native_validation(
+    source_wire, monkeypatch, virtual_clock, change
+):
+    coordinator, physical = source_wire
+    physical["apply"] = True
+    light = GoveeBLELight(coordinator)
+    light.async_write_ha_state = MagicMock()
+    await light.async_turn_on(effect="Rainbow")
+    physical["flags"] = 0xF0
+    client = coordinator._client
+    client.write_gatt_char.reset_mock()
+    validate = coordinator.async_validate_source_power
+    transmit = client.write_gatt_char.side_effect
+    palette = [(36, 72, 108)] * 8 + [table_kelvin_rgb(2700)]
+
+    async def validate_then_report_change(control, enabled):
+        flags = await validate(control, enabled)
+        assert physical["scene"] is None
+        if change == "palette":
+            physical["colours"] = palette
+            for page in range(1, 4):
+                await transmit(None, frame(f"aaa5{page:02x}"))
+            assert coordinator.segment_colors == palette
+        else:
+            physical["bottom"] = 6500
+            await transmit(None, frame("aa4201"))
+            assert coordinator.bottom_kelvin == 6500
+        assert coordinator.color_mode is ParsedMode.COLOUR
+        return flags
+
+    monkeypatch.setattr(coordinator, "async_validate_source_power", validate_then_report_change)
+    with pytest.raises(HomeAssistantError) as error:
+        await light.async_turn_on(effect="off")
+    assert error.value.translation_key == "partial_command"
+    assert physical["flags"] == 0xF0
+    assert not any(call.args[1][:2] == b"\x33\x30" for call in client.write_gatt_char.await_args_list)
+
+
 async def test_effect_off_cannot_replay_baseline_invalidated_while_waiting(
     hass, source_wire, monkeypatch, virtual_clock
 ):
@@ -688,37 +733,34 @@ async def test_effect_off_cannot_replay_baseline_invalidated_while_waiting(
         await hass.services.async_call("light", "turn_on", {"entity_id": light.entity_id, **kwargs}, blocking=True)
 
     await control(main, effect="Rainbow")
-    source_entered, release_source, off_ready = asyncio.Event(), asyncio.Event(), asyncio.Event()
-    resolve_effect = main._prepare_effect
+    off_ready, source_done = asyncio.Event(), asyncio.Event()
+    preflight = coordinator.async_preflight_static_off
 
     async def source_control():
+        await off_ready.wait()
         async with coordinator._control_arbiter.hold(ControlIntent.USER):
-            source_entered.set()
-            await release_source.wait()
             await coordinator.async_turn_on_source("side", SourceTurnOnRequest(rgb_color=(36, 72, 108)))
+        source_done.set()
 
-    async def note_off_ready(*args, **kwargs):
-        effect = await resolve_effect(*args, **kwargs)
+    async def note_off_ready():
+        guard = await preflight()
         off_ready.set()
-        return effect
+        await source_done.wait()
+        return guard
 
-    monkeypatch.setattr(main, "_prepare_effect", note_off_ready)
+    monkeypatch.setattr(coordinator, "async_preflight_static_off", note_off_ready)
     source = hass.async_create_task(source_control())
-    off = None
     try:
-        await asyncio.wait_for(source_entered.wait(), 2)
-        off = hass.async_create_task(control(main, effect="off", brightness=200))
-        await asyncio.wait_for(off_ready.wait(), 2)
-        release_source.set()
-        await source
         with pytest.raises(HomeAssistantError) as error:
-            await off
+            await asyncio.wait_for(control(main, effect="off", brightness=200), 2)
+        await source
         assert error.value.translation_key == "recovery_not_ready"
         assert physical["colours"][:8] == [(36, 72, 108)] * 8
         assert physical["master"] == 50
     finally:
-        release_source.set()
-        await asyncio.gather(source, *([off] if off is not None else []), return_exceptions=True)
+        if not source.done():
+            source.cancel()
+        await asyncio.gather(source, return_exceptions=True)
 
 
 async def test_lost_effect_baseline_requires_complete_static_controls(source_wire, virtual_clock):

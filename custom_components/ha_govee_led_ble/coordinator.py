@@ -39,6 +39,7 @@ from .const import (
     CONNECTION_MODE_HOLD,
     CONNECTION_MODE_RELEASE,
     DOMAIN,
+    NATIVE_ZONE_CONTROLS,
     REPLY_PACING_TIMEOUT,
     ModelProfile,
     ReadDomain,
@@ -57,7 +58,7 @@ from .coordinator_control import ControlWriteRequest
 from .coordinator_dreamview import DreamviewClaimedError, _DreamviewMixin, is_dreamview_claimed
 from .coordinator_expectations import expectations_from_packet, parse_write_state
 from .coordinator_h6102 import H6102InitialIdentity, _H6102Mixin
-from .coordinator_modes import _ActiveModeMixin
+from .coordinator_modes import ModeTransitionPurpose, _ActiveModeMixin
 from .coordinator_notifications import _OPTIONAL_CONTROL_DOMAINS, _NotificationMixin
 from .coordinator_recovery import _RecoveryMixin
 from .coordinator_refresh import (
@@ -246,6 +247,7 @@ class GoveeBLECoordinator(
         self.rgb_color: tuple[int, int, int] = (255, 255, 255)
         self.color_temp_kelvin: int | None = None
         self._pending_kelvin: int | None = None
+        self._kelvin_observed_segment_revision = 0
         self._static_rgb_known = False
         self._static_colour_known = False
         self._power_known = False
@@ -1337,6 +1339,41 @@ class GoveeBLECoordinator(
         ):
             self._h607c_uncertain_state_fields.discard("color")
             self._h607c_failed_color_write = False
+        transition = self._mode_transition
+        if "color_mode" in fields:
+            selector = (
+                self.color_mode,
+                self.scene_code,
+                self.diy_code,
+                self.music_mode,
+                self.video_mode,
+                self.diy_companion if self.color_mode is ParsedMode.DIY else None,
+            )
+            if selector != self._observed_selector:
+                self._observed_selector = selector
+                self._selector_revision += 1
+            if (
+                transition is not None
+                and transition.last_selector is not None
+                and self.color_mode not in (None, ParsedMode.UNKNOWN)
+            ):
+                expected = transition.written_selector or {}
+                if (
+                    transition.last_selector
+                    and transition.last_selector != selector
+                    and (
+                        self.color_mode != expected.get("color_mode")
+                        or any(
+                            field in fields and getattr(self, field) != value
+                            for field, value in expected.items()
+                            if field != "color_mode"
+                        )
+                    )
+                ):
+                    transition.superseded = True
+                transition.last_selector = selector
+        if fields and transition is not None and not transition.current():
+            transition.superseded = True
         self._revision_event.set()
 
     @callback
@@ -1584,6 +1621,8 @@ class GoveeBLECoordinator(
         transition = self._mode_transition
         if transition is not None and transition.owner is not asyncio.current_task():
             transition = None
+        if arm_expected and transition is not None and not transition.current():
+            raise ValueError("The observed device state changed during the mode transition")
         if (
             arm_expected
             and transition is not None
@@ -1632,6 +1671,32 @@ class GoveeBLECoordinator(
             and observed_mode_at is not None
             and observed_mode_at >= self._notify_started_monotonic
         )
+        if (
+            arm_expected
+            and transition is not None
+            and transition.purpose in (ModeTransitionPurpose.SELECTION, ModeTransitionPurpose.PREVIEW)
+        ):
+            # From the first physical attempt the snapshot is history, not an expectation of the current lamp.
+            transition.observations_match = None
+            # An upload does not authorise a change of selector.  A mode write authorises only its own selection.
+            if transition.last_selector is None:
+                # Without an observed prior selector, the first definite report establishes it.
+                selector = self._observed_selector
+                if selector and selector[0] in (None, ParsedMode.UNKNOWN):
+                    selector = ()
+                transition.last_selector = selector
+            if "color_mode" in requested:
+                mode, detail = requested["color_mode"]
+                transition.written_selector = {
+                    "color_mode": mode,
+                    **{
+                        field: requested[field]
+                        for field in ("scene_code", "diy_companion", "music_mode", "video_mode")
+                        if field in requested
+                    },
+                }
+                if mode is ParsedMode.DIY:
+                    transition.written_selector["diy_code"] = detail
         if arm_expected and "color_mode" in requested:
             self._mode_write_generation += 1
         if arm_expected and "is_on" in requested:
@@ -1676,6 +1741,7 @@ class GoveeBLECoordinator(
                 self.async_set_updated_data(self.data or {})
 
         if pre_mode_snapshot is not None:
+            self._incomplete_static_exit = None
             if pre_mode_snapshot is not self._pre_mode_snapshot:
                 self._pre_mode_profile = self.profile
                 self._pre_mode_needs_qualification = False
@@ -1778,25 +1844,35 @@ class GoveeBLECoordinator(
         ):
             self._static_rgb_known = self.segment_colors == [intent.rgb] * self.profile.segment_count
 
-    def _setting_queries(self, profile: ModelProfile) -> list[tuple[bytes, tuple[str, ...]]]:
+    def _setting_queries(
+        self, profile: ModelProfile, scope: bool | frozenset[str] = True
+    ) -> list[tuple[bytes, tuple[str, ...]]]:
         from .generated_protocol_adapter import (
             build_boolean_control_query,
             build_bulk_status_query,
             build_power_on_behaviour_query,
         )
 
+        controls = profile.boolean_controls if scope is True else profile.boolean_controls & (scope or frozenset())
+        power_on = profile.supports_power_on_behaviour and scope is True
         queries: dict[bytes, tuple[str, ...]] = {}
         if profile.bulk_status_grammar == "H1771":
-            fields = tuple(f"boolean_{control}" for control in sorted(profile.boolean_controls))
-            if profile.supports_power_on_behaviour:
+            fields = tuple(f"boolean_{control}" for control in sorted(controls))
+            if power_on:
                 fields += ("power_on_behaviour",)
             if fields:
-                return [(build_bulk_status_query(profile), fields)]
+                if scope is True:
+                    return [(build_bulk_status_query(profile), fields)]
+                return [
+                    (build_bulk_status_query(profile, domains=(domain,)), selected)
+                    for domain, names in (("zone_enable", NATIVE_ZONE_CONTROLS), ("gradual", {"gradual"}))
+                    if (selected := tuple(f"boolean_{name}" for name in sorted(controls.intersection(names))))
+                ]
         if profile.bulk_status_grammar is None:
-            for control in sorted(profile.boolean_controls):
+            for control in sorted(controls):
                 query = build_boolean_control_query(control, self.model, profile=profile)
                 queries[query] = (*queries.get(query, ()), f"boolean_{control}")
-        if profile.supports_power_on_behaviour and profile.bulk_status_grammar is None:
+        if power_on and profile.bulk_status_grammar is None:
             fields = (
                 ("power_on_behaviour", "power_on_open_flag")
                 if profile.setting_grammar == "H607C"
@@ -1866,7 +1942,7 @@ class GoveeBLECoordinator(
         query_black_border: bool | None,
         query_relative_brightness: bool | None,
         query_segments: bool | None,
-        query_native_settings: bool,
+        query_native_settings: bool | frozenset[str],
         query_whole_relative_brightness: bool | None = None,
     ) -> tuple[list[tuple[bytes, ReadDomain, tuple[str, ...]]], dict[str, int]]:
         """Queries to send, each with the domain it reads and the fields it should refresh."""
@@ -1998,7 +2074,10 @@ class GoveeBLECoordinator(
                     for control in H6199_NATIVE_CONTROLS
                 )
         if full_query and query_native_settings:
-            queries.extend((query, ReadDomain.OTHER, fields) for query, fields in self._setting_queries(profile))
+            queries.extend(
+                (query, ReadDomain.OTHER, fields)
+                for query, fields in self._setting_queries(profile, query_native_settings)
+            )
         return queries, segment_baseline
 
     async def _async_read_optional_h607c_settings(self, client: BleakClient) -> None:
@@ -2035,7 +2114,7 @@ class GoveeBLECoordinator(
         required_domains: frozenset[ReadDomain] | None = None,
         optional_baselines: dict[str, int] | None = None,
         deadline: float | None = None,
-        query_native_settings: bool = True,
+        query_native_settings: bool | frozenset[str] = True,
     ) -> bool:
         client = self._client
         if client is None or not client.is_connected or self._segment_query_incomplete or self._bulk_query_incomplete:
@@ -2123,10 +2202,18 @@ class GoveeBLECoordinator(
                     and profile.bulk_status_grammar == "H1771"
                     and is_bulk_status_frame(query, profile)
                 ):
+                    isolated_gradual = isinstance(query_native_settings, frozenset) and fields == ("boolean_gradual",)
+                    if isolated_gradual:
+                        if not await self._async_read_bulk_status(
+                            client, deadline=deadline, query=query, allow_complete_rejection=True
+                        ):
+                            return False
+                        self._expire_optional_observations(baselines)
+                        continue
                     if optional_baselines is not None and domain not in required:
                         for field, revision in baselines.items():
                             optional_baselines.setdefault(field, revision)
-                    if not await self._async_read_bulk_status(client, deadline=deadline):
+                    if not await self._async_read_bulk_status(client, deadline=deadline, query=query):
                         return domain not in required and all(d not in required for _, d, _ in queries[index + 1 :])
                     continue
 
@@ -3037,6 +3124,7 @@ class GoveeBLECoordinator(
         deadline: float,
         *,
         expectations: Mapping[str, Any] | None = None,
+        stop: Callable[[], bool] | None = None,
     ) -> bool:
         def received() -> bool:
             # Collection of optional domains can consume the budget after basic replies
@@ -3067,6 +3155,8 @@ class GoveeBLECoordinator(
             self._revision_event.clear()
             if received():
                 break
+            if stop is not None and stop():
+                return False
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 return False
@@ -3213,6 +3303,7 @@ class GoveeBLECoordinator(
             authorization_generation = self._authorization_generation
             profile = self._authorization_profile()
             states = video_control_states(self.profile, self)
+            subscription = self._notification_token
             states["white_balance"] = white_balance_readback_state(self.profile, self)
             confirmed_controls = {
                 control
@@ -3326,7 +3417,7 @@ class GoveeBLECoordinator(
                         if optional_baselines and not await self._wait_for_revisions(optional_baselines, {}, deadline):
                             self._expire_optional_observations(optional_baselines)
                         return (
-                            True
+                            self._retain_verified_selector(expectations, generation, subscription)
                             if (
                                 generation == self._profile_generation
                                 and authorization_generation == self._authorization_generation
@@ -3792,6 +3883,7 @@ class GoveeBLECoordinator(
                 if client is None or not client.is_connected:
                     return None
                 field_baselines = {field: self._field_revisions.get(field, 0) for field in expectations}
+                generation, subscription = self._profile_generation, self._notification_token
                 deadline = time.monotonic() + timeout
                 ok = await self._send_state_queries(
                     query_power=query_power,
@@ -3826,7 +3918,9 @@ class GoveeBLECoordinator(
         if scene_code is not None and scene_code_is_ambiguous(self.model, scene_code):
             # Catalogue names are derived from this same selector, not independent readback.
             return None
-        return all(getattr(self, field) == expected for field, expected in expectations.items())
+        return all(
+            getattr(self, field) == expected for field, expected in expectations.items()
+        ) and self._retain_verified_selector(expectations, generation, subscription)
 
     def _start_keep_alive(self) -> None:
         self._require_not_shutdown()
@@ -4033,7 +4127,8 @@ class GoveeBLECoordinator(
 
     async def _disconnect_locked(self, *, clear_cache: bool = False, planned_release: bool = False) -> None:
         client = self._client
-        snapshot, generation = self._pre_mode_snapshot, self._profile_generation
+        snapshot, partial = self._pre_mode_snapshot, self._incomplete_static_exit
+        generation = self._profile_generation
         released = False
         self._static_rgb_known = False
         # Invalidate callbacks and keys before disconnect can yield or be cancelled.
@@ -4076,8 +4171,9 @@ class GoveeBLECoordinator(
                     and client is not None
                     and not client.is_connected
                     and self._client is client
-                    and snapshot is not None
+                    and (snapshot is not None or partial is not None)
                     and self._pre_mode_snapshot is snapshot
+                    and self._incomplete_static_exit is partial
                     and self._profile_generation == generation
                 ),
             )

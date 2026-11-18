@@ -1604,15 +1604,17 @@ async def test_turn_on_scene_applies_and_clears_sticky(light, mock_coordinator):
 async def test_effect_off_uses_complete_recovery_instead_of_aggregate_colour(light, mock_coordinator):
     mock_coordinator.is_on = True
     mock_coordinator.effect = "rainbow"
+    mock_coordinator._pre_mode_snapshot = mock_coordinator.capture_effect_control_state.return_value
     mock_coordinator.rgb_color = (12, 34, 56)
     mock_coordinator.segment_colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255)] * 5
     mock_coordinator.unknown_scene_code = 800
+    mock_coordinator.async_preflight_static_off.return_value = None
 
     await light.async_turn_on(effect="off")
 
-    mock_coordinator.prepare_static_recovery.assert_called_once_with()
+    mock_coordinator.async_prepare_static_recovery.assert_called_once_with(None, brightness_pct=None)
     mock_coordinator.async_restore_pre_mode.assert_awaited_once_with(
-        mock_coordinator.prepare_static_recovery.return_value
+        mock_coordinator.async_prepare_static_recovery.return_value.__aenter__.return_value
     )
     mock_coordinator.send_command.assert_not_awaited()
 
@@ -1620,6 +1622,7 @@ async def test_effect_off_uses_complete_recovery_instead_of_aggregate_colour(lig
 async def test_effect_off_without_baseline_rejects_before_combined_mutations(hass):
     coord = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H617A", configuration_url=None)
     coord.send_command = AsyncMock()
+    coord.refresh_state = AsyncMock(return_value=None)
     entity = GoveeBLELight(coord)
     entity._async_supersede_preview = AsyncMock()
     admission = coord._control_arbiter.admit_preview()

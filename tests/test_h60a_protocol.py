@@ -161,7 +161,7 @@ async def test_abandoned_bulk_query_rejects_late_status_until_reconnect(hass, mo
     prior = c.capture_effect_control_state()
     packets = bulk_frames(bytes.fromhex("010101050304630030020001"))
 
-    async def wait(*_args):
+    async def wait(*_args, **_kwargs):
         if outcome == "cancelled":
             raise asyncio.CancelledError
         if outcome == "expired":

@@ -171,6 +171,8 @@ async def test_write_only_static_effect_off_round_trip(
     assert physical["rgb"] != before["rgb"]
     await control(effect="off")
     assert physical == before
+    await control(effect="off")
+    assert physical == before
     assert selector_failed is retry_selector
     assert not any(call.args[1][0] == 0xAA for call in client.write_gatt_char.await_args_list)
 
@@ -350,12 +352,13 @@ async def test_whole_device_revision_keeps_its_scalar_effect_stop(hass, monkeypa
     monkeypatch.setattr(coord, "_ensure_connected", AsyncMock(return_value=client))
     monkeypatch.setattr(coord, "_renew_foreground_lease", lambda: None)
     monkeypatch.setattr(coord, "_authorization_profile", MagicMock(return_value=coord.profile))
-    physical = None
+    physical = scene = None
 
     async def radio(_uuid, packet, **_kwargs):
-        nonlocal physical
+        nonlocal physical, scene
         if packet[0] == 0xAC:
-            for response in bulk_frames(bytes.fromhex("01010105041500000030020101")):
+            mode = "050304" + scene if scene is not None else "050415000000"
+            for response in bulk_frames(bytes.fromhex(f"010101{mode}30020101")):
                 coord._notify_callback(None, bytearray(response))
         elif packet[:2] == b"\xaa\x01":
             coord._notify_callback(None, bytearray(_packet(0xAA, 1, [1])))
@@ -369,6 +372,9 @@ async def test_whole_device_revision_keeps_its_scalar_effect_stop(hass, monkeypa
             )
         if packet[:3] == b"\x33\x05\x0d":
             physical = tuple(packet[3:6])
+            scene = None
+        elif packet[:3] == b"\x33\x05\x04":
+            scene = packet[3:5].hex()
 
     client.write_gatt_char.side_effect = radio
     original = (36, 72, 108)
@@ -1403,6 +1409,8 @@ async def test_h6179_off_grid_persisted_kelvin_restores_against_normalised_readb
     coord = GoveeBLECoordinator(hass, "55:66:77:88:99:AA", "H6179", configuration_url=_CONFIGURATION_URL)
     client = _c(write_gatt_char=AsyncMock())
     coord._client = client
+    coord._notification_token = object()
+    coord._notify_started_monotonic = time.monotonic() - 1
     monkeypatch.setattr(coord, "_ensure_connected", AsyncMock(return_value=client))
     monkeypatch.setattr(coord, "_renew_foreground_lease", lambda: None)
 
@@ -1423,6 +1431,17 @@ async def test_h6179_off_grid_persisted_kelvin_restores_against_normalised_readb
     )
     assert await coord.async_restore_effect_control_state(state, overwritten_diy_code=None)
     assert coord.color_temp_kelvin == 2000
+    refresh = coord.refresh_state
+
+    async def missing_verification(request):
+        return False if request.color_temp_kelvin is not None else await refresh(request)
+
+    monkeypatch.setattr(coord, "refresh_state", missing_verification)
+    assert not await coord.async_restore_effect_control_state(state, overwritten_diy_code=None)
+    assert coord._incomplete_static_exit is not None
+    attempts = coord.control_write_attempts
+    await coord.async_restore_pre_mode()
+    assert coord._incomplete_static_exit is None and coord.control_write_attempts == attempts
 
 
 @pytest.mark.parametrize("enabled", [False, True])

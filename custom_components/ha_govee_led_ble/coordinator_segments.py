@@ -210,18 +210,19 @@ class _SegmentMixin(_CoordinatorBase):
         observed = ["segment_colors"]
         if page_brightness is not None:
             observed.append("segment_brightness")
-        if (
-            self.color_mode is ParsedMode.COLOUR
-            and len(set(self.segment_colors)) != 1
-            and self.color_temp_kelvin_source != "observed"
-        ):
+        return (*observed, *self._project_segment_palette())
+
+    def _project_segment_palette(self) -> tuple[str, ...]:
+        if self.color_mode is not ParsedMode.COLOUR:
+            return ()
+        uniform = len(set(self.segment_colors)) == 1
+        if not uniform and self.color_temp_kelvin_source != "observed":
             self.color_temp_kelvin = None
             self.color_temp_kelvin_source = "initial"
         # Direct static readback outranks rendered segments; a matching white point
         # can retain last-known Kelvin but never proves a fresh Kelvin measurement.
         if (
-            self.color_mode is ParsedMode.COLOUR
-            and len(set(self.segment_colors)) == 1
+            uniform
             and self.rgb_color_source != "observed"
             and (self.color_temp_kelvin is None or self.color_temp_kelvin_source != "observed")
         ):
@@ -239,8 +240,8 @@ class _SegmentMixin(_CoordinatorBase):
                 if kelvin is None and self.color_temp_kelvin_source != "observed":
                     self.color_temp_kelvin = None
                     self.color_temp_kelvin_source = "initial"
-                observed.append("rgb_color")
-        return tuple(observed)
+                return ("rgb_color",)
+        return ()
 
     async def async_refresh_segments(self, *, timeout: float = _SEGMENT_READ_TIMEOUT) -> bool:
         if (

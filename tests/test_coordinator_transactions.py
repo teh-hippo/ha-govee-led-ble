@@ -1035,7 +1035,7 @@ async def test_deployment_retries_activation_after_fresh_wrong_mode(
             await coord.async_write_effect_sequence(compiled.packets, intent=ControlIntent.APPLY)
             assert "color_mode" in coord._expected_state
             transaction = _DeploymentTransaction(repository, record, len(compiled.upload_packets), persisted=True)
-            confirmed, confidence = await engine._async_verify(coord, compiled, transaction)
+            confirmed, confidence = await engine._async_verify(coord, compiled, transaction, lambda: True)
             current = transaction.current
 
     expected_revisions = (

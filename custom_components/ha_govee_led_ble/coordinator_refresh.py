@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from .const import ModelProfile, ReadDomain
+from .const import NATIVE_ZONE_CONTROLS, ModelProfile, ReadDomain
 from .coordinator_status import ParsedMode
 
 BLANK_SCREEN_POLICY_FIELDS = (
@@ -15,6 +15,7 @@ BLANK_SCREEN_POLICY_FIELDS = (
     "blank_screen_same_tone_duration_seconds",
 )
 STATE_QUERY_TIMEOUT = 2.0
+STATIC_RECOVERY_SETTINGS = frozenset((*NATIVE_ZONE_CONTROLS, "gradual"))
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,7 +50,7 @@ class RefreshRequest:
     display_settings: frozenset[str] = frozenset()
     refresh_relative_brightness: bool = False
     refresh_all: bool = False
-    query_native_settings: bool = True
+    query_native_settings: bool | frozenset[str] = True
     query_segments: bool | None = None
     required_domains: frozenset[ReadDomain] | None = None
     timeout: float = STATE_QUERY_TIMEOUT

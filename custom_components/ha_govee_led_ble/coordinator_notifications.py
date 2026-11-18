@@ -203,6 +203,9 @@ class _NotificationMixin(_CoordinatorBase):
             mode_values["diy_companion"] = parsed.diy_companion
         if not self._accept_expected_values(mode_values):
             return ()
+        transition = self._mode_transition
+        if transition is not None and transition.static_restore_started and parsed.mode is not ParsedMode.COLOUR:
+            transition.superseded = True
         self._observed_color_mode = parsed.mode
         self._observed_mode_write_generation = self._mode_write_generation
         self._observed_mode_profile_generation = self._profile_generation
@@ -211,7 +214,7 @@ class _NotificationMixin(_CoordinatorBase):
             and self.color_mode is not ParsedMode.COLOUR
             and (self._mode_transition is None or not self._mode_transition.captured)
         ):
-            self._discard_static_baseline()
+            self._discard_static_baseline(keep_incomplete_exit=True)
         if parsed.mode is not ParsedMode.COLOUR or self.color_mode is not ParsedMode.COLOUR:
             if parsed.mode is not ParsedMode.COLOUR:
                 self._static_colour_known = False
@@ -319,6 +322,20 @@ class _NotificationMixin(_CoordinatorBase):
                 # AA05 describes the colour mode; only AAA3 confirms a setting write.
                 self.static_gradual = bool(parsed.multi_effect_flag)
                 observed.append("static_gradual")
+            if (
+                parsed.zero_kelvin_reported
+                and self.profile.segment_colour_mode_ambiguous
+                and not self.profile.static_readback_zero_kelvin_is_rgb
+                and self.color_temp_kelvin_source == "observed"
+                and self._accept_expected("color_temp_kelvin", None)
+            ):
+                self.color_temp_kelvin_source = "retained"
+                if (
+                    self.segment_state_source == "observed"
+                    and self.source_field_fresh("segment_colors")
+                    and self._field_revisions.get("segment_colors", 0) > self._kelvin_observed_segment_revision
+                ):
+                    observed.extend(self._project_segment_palette())
             if self.profile.status_grammar == "H6199":
                 self.gradient = parsed.gradient
                 observed.append("gradient")
@@ -359,6 +376,7 @@ class _NotificationMixin(_CoordinatorBase):
                     self.color_temp_unknown = False
                 if static_values.get("color_temp_kelvin") is not None:
                     self._static_rgb_known = False
+                    self._kelvin_observed_segment_revision = self._field_revisions.get("segment_colors", 0)
                     if (
                         self.profile.supports_segments
                         and not self.profile.supports_segment_color_temperature
@@ -410,6 +428,8 @@ class _NotificationMixin(_CoordinatorBase):
             return True
         result = collector.feed(frame)
         if result.parsed is None:
+            if collector.complete:
+                self._revision_event.set()
             self._record_packet(
                 "rx",
                 frame,
@@ -496,7 +516,7 @@ class _NotificationMixin(_CoordinatorBase):
                 elif domain == "gradual" and "gradual" in self.profile.boolean_controls:
                     self.boolean_control_state["gradual"] = bool(record.body.flag)
                     self.static_gradual = bool(record.body.flag)
-                    self._mark_received(StatusDomain.OTHER, "boolean_gradual")
+                    self._mark_received(StatusDomain.OTHER, "boolean_gradual", "static_gradual")
                 elif domain == "segments" and self.profile.can_read(ReadDomain.SEGMENTS):
                     self._mark_received(StatusDomain.SEGMENTS, *self._apply_segment_group(record))
                 elif domain == "power_on_behaviour" and self.profile.supports_power_on_behaviour:
@@ -509,43 +529,55 @@ class _NotificationMixin(_CoordinatorBase):
             self.async_set_updated_data(self.data or {})
         except ValueError:
             collector.failed = True
+            self._revision_event.set()
             self._record_packet("rx", frame, outcome="rejected", reason="semantic_rejected", parser=result.parser)
             _LOGGER.debug("Rejected complete bulk status for %s", self.model, exc_info=True)
         return True
 
     async def _async_read_bulk_status(
-        self, client: BleakClient, *, deadline: float, domains: tuple[str, ...] | None = None
+        self,
+        client: BleakClient,
+        *,
+        deadline: float,
+        domains: tuple[str, ...] | None = None,
+        query: bytes | None = None,
+        allow_complete_rejection: bool = False,
     ) -> bool:
         if self._bulk_query_incomplete:
             return False
         self._reconcile_authorization()
-        packet = build_bulk_status_query(self._authorization_profile(), domains=domains)
+        packet = query if query is not None else build_bulk_status_query(self._authorization_profile(), domains=domains)
+        collector = BulkStatusCollector(self.profile.bulk_status_grammar or "H60A")
         baseline = {"bulk_status": self._field_revisions.get("bulk_status", 0)}
         generation, token = self._profile_generation, self._notification_token
         attempted = succeeded = False
 
+        def discarded_reply() -> bool:
+            return allow_complete_rejection and collector.complete and collector.failed
+
         def before_write() -> None:
             nonlocal attempted
             attempted = True
-            self._bulk_collector = BulkStatusCollector(self.profile.bulk_status_grammar or "H60A")
+            self._bulk_collector = collector
             self._bulk_query_deadline = deadline
             self._bulk_query_incomplete = True
 
         try:
             await self._async_write_packet(client, packet, before_write=before_write, cleanup_deadline=deadline)
+            received = await self._wait_for_revisions(baseline, {}, deadline, stop=discarded_reply)
             succeeded = (
-                await self._wait_for_revisions(baseline, {}, deadline)
+                (received and not self._bulk_query_incomplete or discarded_reply())
                 and generation == self._profile_generation
                 and self._client is client
                 and client.is_connected
                 and self._notification_token is token
-                and not self._bulk_query_incomplete
             )
             return succeeded
         finally:
             if attempted and self._client is client and self._notification_token is token:
                 self._bulk_collector = None
                 self._bulk_query_deadline = None
+                # Only an isolated optional read can discard a fully drained, rejected reply.
                 self._bulk_query_incomplete = not succeeded
 
     def _deliver_command_ack(self, ack: Any) -> None:
