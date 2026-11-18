@@ -390,6 +390,23 @@ class _RecoveryMixin(_CoordinatorBase):
                 ):
                     baseline = None
         if baseline is None or self._prepare_static_colour(baseline) is None:
+            _LOGGER.debug(
+                "Static effect admission rejected model=%s mode=%s baseline_mode=%s power_known=%s "
+                "brightness_known=%s palette_source=%s captured_colours=%s captured_levels=%s missing_flags=%s",
+                self.model,
+                self.color_mode,
+                baseline.mode if baseline is not None else None,
+                self._power_known,
+                self._brightness_pct_known,
+                self.segment_state_source,
+                baseline is not None and baseline.segment_colors is not None,
+                baseline is not None and baseline.segment_brightness is not None,
+                sorted(
+                    name
+                    for name in profile.boolean_controls.intersection(NATIVE_ZONE_CONTROLS)
+                    if baseline is None or getattr(baseline, name) is None
+                ),
+            )
             raise HomeAssistantError(translation_domain=DOMAIN, translation_key="recovery_not_ready")
         if transition is not None and transition.purpose is not ModeTransitionPurpose.RECOVERY:
             selector_revision = self._selector_revision

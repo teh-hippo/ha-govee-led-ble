@@ -15,6 +15,7 @@ import pytest
 from aiotools import VirtualClock
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.ha_govee_led_ble.const import DOMAIN, EFFECT_FAMILY_SCENES, get_profile
 from custom_components.ha_govee_led_ble.control_arbiter import BLEControlArbiter, ControlIntent, async_control_intent
@@ -52,6 +53,7 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     VideoProfile,
 )
 from custom_components.ha_govee_led_ble.effect_identity import EffectDeviceCache, ObservedDeviceState
+from custom_components.ha_govee_led_ble.effect_limits import MAX_EFFECT_NAME_LENGTH
 from custom_components.ha_govee_led_ble.effect_preview import (
     EffectPreviewManager,
     PreviewError,
@@ -1164,6 +1166,44 @@ async def test_failed_preflight_cannot_install_a_health_target_for_an_unwritten_
         with pytest.raises(PreviewError, match="no Live verification target"):
             await manager.async_check_health("entry-a")
     await manager.async_shutdown()
+
+
+async def test_live_restoration_rejection_keeps_the_event_and_device_health_readable(hass, monkeypatch):
+    coordinator = _coordinator(readable=True)
+    coordinator.async_admit_effect_selection = AsyncMock(
+        side_effect=HomeAssistantError(translation_domain=DOMAIN, translation_key="recovery_not_ready")
+    )
+    manager, _cache = await _manager(hass, monkeypatch, coordinator)
+    owner = object()
+    events: list[PreviewStatus] = []
+    session_id = _open(manager, owner, events)
+    try:
+        await manager.async_queue_snapshot(
+            session_id=session_id,
+            owner=owner,
+            config_entry_id="entry-a",
+            sequence=1,
+            updated_at="2026-08-17T00:00:00Z",
+            item=_item("Live"),
+        )
+        await manager.async_wait_idle("entry-a")
+        status = events[-1]
+        assert status.phase is PreviewPhase.FAILED
+        assert status.error_code == "state_not_restorable"
+        assert status.write_disposition is PreviewWriteDisposition.NOT_STARTED
+        assert status.error_message and len(status.error_message) <= MAX_EFFECT_NAME_LENGTH
+        coordinator.async_preview_write.assert_not_awaited()
+
+        await manager.async_close_session(session_id, owner)
+        health = manager.health("entry-a")
+        assert health.phase is PreviewHealthPhase.DEGRADED
+        assert (health.error_code, health.error_message, health.write_disposition) == (
+            status.error_code,
+            status.error_message,
+            status.write_disposition,
+        )
+    finally:
+        await manager.async_shutdown()
 
 
 async def test_latest_verification_is_read_only_without_holding_control_lock(

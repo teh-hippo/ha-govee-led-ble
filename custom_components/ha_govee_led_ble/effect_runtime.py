@@ -1705,8 +1705,8 @@ async def async_prepare_effect_control_state(
                 if error.translation_key == "recovery_read_failed":
                     raise EffectStateReadError("Could not read the current source state before Live") from error
                 raise EffectRestorationError(
-                    "Live needs a complete original static layout with its required colour observations; "
-                    "establish static state first or use Apply for supported write-only layouts"
+                    "Live needs observations of the original static layout. Set static colours first, "
+                    "or use Apply for supported write-only layouts."
                 ) from error
         return True
     profile = coordinator.profile
