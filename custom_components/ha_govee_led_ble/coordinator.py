@@ -1261,6 +1261,7 @@ class GoveeBLECoordinator(
         self._bulk_query_incomplete = False
         self._bulk_collector = None
         self._bulk_query_deadline = None
+        self._bulk_mode_unqualified = False
         self._segment_groups_observed.clear()
         self._segment_query_colors = self._segment_query_brightness = None
         if client is None or self._intentional_disconnect_client is not client:
@@ -1341,6 +1342,8 @@ class GoveeBLECoordinator(
             self._h607c_failed_color_write = False
         transition = self._mode_transition
         if "color_mode" in fields:
+            if self._observed_color_mode not in (None, ParsedMode.UNKNOWN):
+                self._bulk_mode_unqualified = False
             selector = (
                 self.color_mode,
                 self.scene_code,
@@ -1932,7 +1935,6 @@ class GoveeBLECoordinator(
         self,
         profile: ModelProfile,
         *,
-        generation: int,
         full_query: bool,
         query_power: bool,
         query_brightness: bool,
@@ -1944,9 +1946,8 @@ class GoveeBLECoordinator(
         query_segments: bool | None,
         query_native_settings: bool | frozenset[str],
         query_whole_relative_brightness: bool | None = None,
-    ) -> tuple[list[tuple[bytes, ReadDomain, tuple[str, ...]]], dict[str, int]]:
+    ) -> list[tuple[bytes, ReadDomain, tuple[str, ...]]]:
         """Queries to send, each with the domain it reads and the fields it should refresh."""
-        segment_baseline: dict[str, int] = {}
         queries: list[tuple[bytes, ReadDomain, tuple[str, ...]]] = []
         states = video_control_states(self.profile, self)
         video_identity_ready = self.identity_fields_confirmed(video_identity_fields(self.profile))
@@ -2041,11 +2042,6 @@ class GoveeBLECoordinator(
             and (not self.profile.configured_string_counts or self._configured_strings_confirmed)
             and (query_segments if query_segments is not None else full_query)
         ):
-            segment_baseline = {"segment_colors": self._field_revisions.get("segment_colors", 0)}
-            self._segment_groups_observed.clear()
-            self._segment_query_colors = list(self.segment_colors)
-            self._segment_query_brightness = list(self.segment_brightness)
-            self._segment_query_generation = generation
             queries.extend(
                 (
                     build_segment_query(group, self.model, profile=profile),
@@ -2078,7 +2074,7 @@ class GoveeBLECoordinator(
                 (query, ReadDomain.OTHER, fields)
                 for query, fields in self._setting_queries(profile, query_native_settings)
             )
-        return queries, segment_baseline
+        return queries
 
     async def _async_read_optional_h607c_settings(self, client: BleakClient) -> None:
         try:
@@ -2135,9 +2131,8 @@ class GoveeBLECoordinator(
         authorization_generation = self._authorization_generation
         profile = self._authorization_profile()
         try:
-            queries, segment_baseline = self._build_state_queries(
+            queries = self._build_state_queries(
                 profile,
-                generation=generation,
                 full_query=full_query,
                 query_power=query_power,
                 query_brightness=query_brightness,
@@ -2165,7 +2160,11 @@ class GoveeBLECoordinator(
             ) & profile.read_domains
             if query_segments is True and profile.supports_segments:
                 required |= {ReadDomain.SEGMENTS}
+            if profile.bulk_status_grammar == "H1771" and ReadDomain.SEGMENTS in required:
+                # Bulk settings can report mode; collect dependent pages after resolving it.
+                queries.sort(key=lambda request: request[1] is ReadDomain.SEGMENTS)
             remaining_segment_queries = sum(domain is ReadDomain.SEGMENTS for _, domain, _ in queries)
+            segment_baseline: dict[str, int] = {}
             for index, (query, domain, fields) in enumerate(queries):
                 if (
                     generation != self._profile_generation
@@ -2180,6 +2179,11 @@ class GoveeBLECoordinator(
                     return False
                 if time.monotonic() >= deadline:
                     return all(d not in required for _, d, _ in queries[index:])
+                if domain is ReadDomain.SEGMENTS and self._bulk_mode_unqualified:
+                    if domain not in required:
+                        continue
+                    if not await self._async_qualify_bulk_mode(client, deadline=deadline, required=True):
+                        return False
                 baselines = {field: self._field_revisions.get(field, 0) for field in fields}
                 if profile.setting_grammar == "H607C" and domain is ReadDomain.OTHER:
                     if not await self._async_read_setting_fields(client, query, fields, deadline=deadline):
@@ -2203,21 +2207,36 @@ class GoveeBLECoordinator(
                     and is_bulk_status_frame(query, profile)
                 ):
                     isolated_gradual = isinstance(query_native_settings, frozenset) and fields == ("boolean_gradual",)
-                    if isolated_gradual:
-                        if not await self._async_read_bulk_status(
-                            client, deadline=deadline, query=query, allow_complete_rejection=True
-                        ):
-                            return False
-                        self._expire_optional_observations(baselines)
-                        continue
-                    if optional_baselines is not None and domain not in required:
+                    qualify_mode = (
+                        domain is ReadDomain.OTHER and query_color_mode and ReadDomain.COLOUR_MODE in required
+                    )
+                    if not isolated_gradual and optional_baselines is not None and domain not in required:
                         for field, revision in baselines.items():
                             optional_baselines.setdefault(field, revision)
-                    if not await self._async_read_bulk_status(client, deadline=deadline, query=query):
-                        return domain not in required and all(d not in required for _, d, _ in queries[index + 1 :])
+                    if not await self._async_read_bulk_status(
+                        client,
+                        deadline=deadline,
+                        query=query,
+                        allow_complete_rejection=isolated_gradual,
+                        qualify_mode=qualify_mode,
+                    ):
+                        return (
+                            not isolated_gradual
+                            and (not qualify_mode or self.source_field_fresh("color_mode"))
+                            and domain not in required
+                            and all(d not in required for _, d, _ in queries[index + 1 :])
+                        )
+                    if isolated_gradual:
+                        self._expire_optional_observations(baselines)
                     continue
 
                 def before_segment_write() -> None:
+                    if not segment_baseline:
+                        segment_baseline["segment_colors"] = self._field_revisions.get("segment_colors", 0)
+                        self._segment_groups_observed.clear()
+                        self._segment_query_colors = list(self.segment_colors)
+                        self._segment_query_brightness = list(self.segment_brightness)
+                        self._segment_query_generation = generation
                     # A rejected transform has not started a batch. Once any page is
                     # attempted, later failures must leave the connection non-reusable.
                     self._segment_query_incomplete = True

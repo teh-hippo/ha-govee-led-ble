@@ -323,6 +323,185 @@ async def test_public_effect_off_restores_non_source_segment_layout(hass, physic
 
 
 @pytest.mark.parametrize("physical", ["H1771"], indirect=True)
+@pytest.mark.parametrize(
+    ("bulk_selector", "result"),
+    [
+        (0x15, "static"),
+        (0x15, "mixed"),
+        (0x15, "unknown"),
+        (0x15, "missing_mode"),
+        (0x15, "missing_layout"),
+        (0x15, "saved_missing_layout"),
+        (0x15, "saved_layout"),
+        (0x15, "scene"),
+        (0x04, "static"),
+    ],
+)
+async def test_scoped_settings_do_not_authorise_effects_without_a_qualified_layout(
+    physical, virtual_clock, bulk_selector, result
+):
+    from tests.test_h60a_protocol import bulk_frames
+
+    coord, state = physical
+    light = GoveeBLELight(coord)
+    light.async_write_ha_state = MagicMock()
+    if result == "mixed":
+        await light.async_set_segment_color([3], state["colours"][1])
+        virtual_clock.vtime = max(virtual_clock.vtime, coord._expected_state["color_mode"][1])
+    else:
+        state.update(colours=[(255, 255, 255)] * 4, relative=[1, 15, 20, 1], brightness=100)
+        if result == "saved_layout":
+            state["colours"] = [(127, 0, 0)] * 4
+    colours, levels = tuple(state["colours"]), tuple(state["relative"])
+    sources, gradual = list(state["sources"]), state["gradual"]
+    send = coord._client.write_gatt_char.side_effect
+    settings_read = False
+    mode_reads_after_settings = 0
+    requested_pages = 0
+
+    async def transmit(uuid, packet, **kwargs):
+        nonlocal settings_read, mode_reads_after_settings, requested_pages
+        if packet[:4] == b"\xac\x03\x01\x36":
+            if settings_read and "color_mode" in coord._expected_state:
+                # The restored selector's optimistic guard may expire before source verification.
+                virtual_clock.vtime = max(virtual_clock.vtime, coord._expected_state["color_mode"][1])
+            settings_read = True
+            mode = "050415010000" if bulk_selector == 0x15 else "0503045b00"
+            first, second = state["sources"]
+            flags = int(state["on"]) | (int(first) << 1) | (int(second) << 2)
+            body = bytes((0x36, 1, flags)) + bytes.fromhex(mode)
+            if result in {"missing_layout", "saved_missing_layout", "saved_layout"}:
+                body += bytes((0xA5, 17, 1, 1, 255, 255, 255, 15, 255, 255, 255, 20, 255, 255, 255, 1, 255, 255, 255))
+            for response in bulk_frames(body):
+                coord._notify_callback(None, bytearray(response))
+        elif packet[:2] == b"\xaa\x05" and settings_read and not state["scene"]:
+            mode_reads_after_settings += 1
+            if result.startswith("saved_"):
+                coord._notify_callback(None, reply(0xA5, [1, *([15, 255, 255, 255] * 4)]))
+            if result != "missing_mode":
+                report = {"unknown": [0x7F], "scene": [4, 91, 0]}.get(result, [0x15, 1, 0, 0])
+                coord._notify_callback(None, reply(5, report))
+        else:
+            if packet[:2] == b"\xaa\xa5":
+                requested_pages += 1
+            if result not in {"missing_layout", "saved_missing_layout"} or packet[:2] != b"\xaa\xa5":
+                await send(uuid, packet, **kwargs)
+
+    coord._client.write_gatt_char.side_effect = transmit
+    if result.startswith("saved_"):
+        async with coord.async_mode_transition() as transition:
+            assert await async_prepare_effect_control_state(coord, require_restorable_static=False)
+            if result == "saved_missing_layout":
+                with pytest.raises(HomeAssistantError):
+                    await coord.async_admit_effect_selection()
+            else:
+                await coord.async_admit_effect_selection()
+                assert transition.snapshot is not None and transition.snapshot.segment_colors == colours
+        assert requested_pages == 1 and coord.control_write_attempts == 0
+        return
+    if bulk_selector == 0x15 and result in {"static", "mixed"}:
+        await light.async_turn_on(effect="Rainbow")
+        target = coord._pre_mode_snapshot
+        assert target is not None
+        assert target.segment_colors == colours
+        assert target.segment_brightness == levels
+        assert state["scene"] is not None
+        assert mode_reads_after_settings == requested_pages == 1
+        await light.async_turn_on(effect="off")
+        assert state["scene"] is None
+        assert tuple(state["colours"]) == colours
+        assert tuple(state["relative"]) == levels
+        assert state["sources"] == sources and state["gradual"] == gradual
+        if result == "mixed":
+            assert state["colour_modes"] == ["rgb", "kelvin", "rgb", "kelvin"]
+    else:
+        with pytest.raises(HomeAssistantError):
+            await light.async_turn_on(effect="Rainbow")
+        assert coord.control_write_attempts == 0 and state["scene"] is None
+        assert mode_reads_after_settings == (1 if bulk_selector == 0x15 else 0)
+    if bulk_selector == 0x04 or result == "scene":
+        assert coord.scene_code == 91
+
+
+@pytest.mark.parametrize("physical", ["H1771"], indirect=True)
+async def test_settings_hint_does_not_invalidate_later_ordinary_mode(physical, virtual_clock):
+    coord, state = physical
+    send = coord._client.write_gatt_char.side_effect
+
+    async def transmit(uuid, packet, **kwargs):
+        if packet[:4] == b"\xac\x03\x01\xa3":
+            coord._notify_callback(None, bytearray(frame(f"ac000100090300a301{int(state['gradual']):02x}050415010000")))
+            coord._notify_callback(None, reply(5, [4, 91, 0]))
+        else:
+            await send(uuid, packet, **kwargs)
+
+    coord._client.write_gatt_char.side_effect = transmit
+    await coord.async_set_boolean_control("gradual", False)
+    assert not state["gradual"] and coord.scene_code == 91
+    assert coord.source_field_fresh("color_mode")
+
+
+@pytest.mark.parametrize("physical", ["H1771"], indirect=True)
+@pytest.mark.parametrize("mode_reply", [[0x15, 1, 0, 0], [0x7F], None])
+async def test_standalone_settings_hint_qualifies_the_next_segment_write(physical, virtual_clock, mode_reply):
+    coord, state = physical
+    light = GoveeBLELight(coord)
+    light.async_write_ha_state = MagicMock()
+    send = coord._client.write_gatt_char.side_effect
+    reads = []
+
+    async def transmit(uuid, packet, **kwargs):
+        if packet[:4] == b"\xac\x03\x01\xa3":
+            coord._notify_callback(None, bytearray(frame(f"ac000100090300a301{int(state['gradual']):02x}050415010000")))
+        elif packet[:2] == b"\xaa\x05":
+            reads.append("mode")
+            if mode_reply is not None:
+                coord._notify_callback(None, reply(5, mode_reply))
+        else:
+            if packet[:2] == b"\xaa\xa5":
+                reads.append("layout")
+            await send(uuid, packet, **kwargs)
+
+    coord._client.write_gatt_char.side_effect = transmit
+    await coord.async_set_boolean_control("gradual", False)
+    assert not state["gradual"] and not reads
+    attempts = coord.control_write_attempts
+    if mode_reply == [0x15, 1, 0, 0]:
+        await light.async_set_segment_color_temp([1], 3000)
+        assert reads[:2] == ["mode", "layout"]
+        assert state["colour_modes"] == ["kelvin", "rgb", "rgb", "rgb"]
+    else:
+        with pytest.raises(HomeAssistantError):
+            await light.async_set_segment_color_temp([1], 3000)
+        assert reads == ["mode"] and coord.control_write_attempts == attempts
+
+
+async def test_saved_effect_preparation_reads_each_segment_page_once(physical, virtual_clock):
+    coord, state = physical
+    async with coord.async_mode_transition():
+        assert await async_prepare_effect_control_state(coord, require_restorable_static=False)
+        await coord.async_admit_effect_selection()
+
+    assert [packet[2] for packet in state["packets"] if packet[:2] == b"\xaa\xa5"] == [1, 2, 3, 4, 5]
+
+
+@pytest.mark.parametrize("physical", ["H1771"], indirect=True)
+async def test_optional_bulk_timeout_does_not_prevent_independent_page(physical, virtual_clock):
+    coord, _ = physical
+    transmit = coord._client.write_gatt_char.side_effect
+
+    async def withhold_optional_settings(uuid, packet, **kwargs):
+        if packet[:2] != b"\xac\x03":
+            await transmit(uuid, packet, **kwargs)
+
+    coord._client.write_gatt_char.side_effect = withhold_optional_settings
+    assert await coord.refresh_state(
+        RefreshRequest(refresh_all=True, required_domains=coord.profile.setup_required_read_domains)
+    )
+    assert coord.source_field_fresh("segment_colors")
+
+
+@pytest.mark.parametrize("physical", ["H1771"], indirect=True)
 @pytest.mark.parametrize("fault", ["missing_gradual", "invalid_gradual", "invalid_power_on"])
 async def test_effect_recovery_uses_only_current_layout_settings(physical, virtual_clock, fault):
     coordinator, state = physical

@@ -62,7 +62,7 @@ async def test_query_deadline_after_completed_write_only_counts_unsent_required_
     queries = [(build_power_query(), ReadDomain.POWER, ("is_on",))]
     if remaining_domain is not None:
         queries.append((build_brightness_query(), remaining_domain, ("brightness_pct",)))
-    monkeypatch.setattr(coord, "_build_state_queries", lambda *args, **kwargs: (queries, {}))
+    monkeypatch.setattr(coord, "_build_state_queries", lambda *args, **kwargs: queries)
     monkeypatch.setattr(f"{M}.time", SimpleNamespace(monotonic=lambda: now))
 
     async def write(*args, **kwargs):
