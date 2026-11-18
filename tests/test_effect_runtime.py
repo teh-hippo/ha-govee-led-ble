@@ -276,7 +276,7 @@ async def test_prior_preflight_refreshes_master_brightness_in_every_mode(mode):
 
     async def refresh(request=DEFAULT_REFRESH_REQUEST):
         assert request.refresh_all is True
-        assert request.query_segments is None
+        assert request.query_segments is False
         assert ReadDomain.BRIGHTNESS in request.required_domains
         coordinator.brightness_pct = 37
         return True
