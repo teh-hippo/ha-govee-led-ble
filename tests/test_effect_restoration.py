@@ -12,6 +12,7 @@ from homeassistant.setup import async_setup_component
 
 from custom_components.ha_govee_led_ble.const import device_profile, get_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator_modes import ModeTransitionSupersededError
 from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.effect_deployments import (
@@ -46,6 +47,14 @@ from tests.storage_test_double import InMemoryVersionedDocumentStore
 def reply(domain, body):
     payload = bytes([0xAA, domain, *body]).ljust(19, b"\0")
     return bytearray(payload + bytes([xor_checksum(payload)]))
+
+
+def report_scene(coordinator, virtual_clock, code):
+    for field in ("color_mode", "effect", "scene_code", "unknown_scene_code"):
+        if field in coordinator._expected_state:
+            virtual_clock.vtime = max(virtual_clock.vtime, coordinator._expected_state[field][1])
+    coordinator._notify_callback(None, reply(5, [4, *code.to_bytes(2, "little")]))
+    assert coordinator.scene_code == code
 
 
 @pytest.mark.parametrize("powered", [False, True])
@@ -380,19 +389,15 @@ async def test_off_tracks_selector_changes_not_reply_count(physical, monkeypatch
     attempts = coord.control_write_attempts
     preflight = coord.async_preflight_static_off
 
-    async def report_scene():
+    async def preflight_with_report():
         guard = await preflight()
         if changed:
-            for field in ("color_mode", "effect", "scene_code", "unknown_scene_code"):
-                if field in coord._expected_state:
-                    virtual_clock.vtime = max(virtual_clock.vtime, coord._expected_state[field][1])
-            coord._notify_callback(None, reply(5, [4, 91, 0]))
-            assert coord.scene_code == 91
+            report_scene(coord, virtual_clock, 91)
         coord._notify_callback(None, reply(5, [4, *state["scene"]]))
         assert coord.scene_code == 22
         return guard
 
-    monkeypatch.setattr(coord, "async_preflight_static_off", report_scene)
+    monkeypatch.setattr(coord, "async_preflight_static_off", preflight_with_report)
     if changed:
         with pytest.raises(HomeAssistantError):
             await coord.async_select_music_slug("off")
@@ -546,14 +551,10 @@ async def test_saved_failure_preserves_new_scene_across_recovery(
     send = coord._client.write_gatt_char.side_effect
     failed = observed = False
 
-    def report_scene(code):
+    def set_scene(code):
         nonlocal observed
-        for field in ("color_mode", "effect", "scene_code", "unknown_scene_code"):
-            if field in coord._expected_state:
-                virtual_clock.vtime = max(virtual_clock.vtime, coord._expected_state[field][1])
         state["scene"] = [code, 0]
-        coord._notify_callback(None, reply(5, [4, *state["scene"]]))
-        assert coord.scene_code == code
+        report_scene(coord, virtual_clock, code)
         observed = True
 
     async def interrupt(uuid, packet, **kwargs):
@@ -562,7 +563,7 @@ async def test_saved_failure_preserves_new_scene_across_recovery(
             failed = True
             await send(uuid, packet, **kwargs)
             if update == "before_rejected_ack":
-                report_scene(91)
+                set_scene(91)
                 state["packets"].clear()
             coord._notify_callback(None, bytearray(frame("a358ff00" if update == "own_activation" else "a358ff01")))
             return
@@ -579,7 +580,7 @@ async def test_saved_failure_preserves_new_scene_across_recovery(
             and packet[:4] == b"\xac\x03\x01\x36"
         ):
             assert state["scene"] == [22, 0]
-            report_scene(91 if update == "source_readback" else 22)
+            set_scene(91 if update == "source_readback" else 22)
         await send(uuid, packet, **kwargs)
 
     coord._client.write_gatt_char.side_effect = interrupt
@@ -594,7 +595,7 @@ async def test_saved_failure_preserves_new_scene_across_recovery(
                 raise RuntimeError("interrupted after own activation")
             await put(record, **kwargs)
             if update == "recovering_record" and record.phase is DeploymentPhase.RECOVERING:
-                report_scene(91)
+                set_scene(91)
                 state["packets"].clear()
 
         monkeypatch.setattr(repository, "async_put", persist)
@@ -657,15 +658,11 @@ async def test_saved_effect_observation_authority(physical, monkeypatch, virtual
     selector = [4, 22, 0]
     activations = 0
 
-    def report_scene(code):
+    def set_scene(code):
         nonlocal selector
         selector = [4, code, 0]
-        for field in ("color_mode", "effect", "scene_code", "unknown_scene_code"):
-            if field in coord._expected_state:
-                virtual_clock.vtime = max(virtual_clock.vtime, coord._expected_state[field][1])
         revision = coord._selector_revision
-        coord._notify_callback(None, reply(5, selector))
-        assert coord.scene_code == code
+        report_scene(coord, virtual_clock, code)
         assert (coord._selector_revision > revision) is (code != 22)
 
     async def transmit(uuid, packet, **kwargs):
@@ -673,7 +670,7 @@ async def test_saved_effect_observation_authority(physical, monkeypatch, virtual
         if packet[0] == 0xA3 and coord._upload_ack is not None:
             await send(uuid, packet, **kwargs)
             if handoff == "upload_ack":
-                report_scene(91)
+                set_scene(91)
             else:
                 coord._notify_callback(None, reply(5, selector))
             coord._notify_callback(None, bytearray(frame("a358ff00")))
@@ -684,9 +681,9 @@ async def test_saved_effect_observation_authority(physical, monkeypatch, virtual
                 coord._notify_callback(None, reply(5, selector))
         elif packet[:2] == b"\xaa\x05":
             if handoff == "verification_retry" and activations:
-                report_scene(91)
+                set_scene(91)
             elif handoff == "retry_prior" and activations == 1:
-                report_scene(22)
+                set_scene(22)
             else:
                 coord._notify_callback(None, reply(5, selector))
         else:
@@ -694,7 +691,7 @@ async def test_saved_effect_observation_authority(physical, monkeypatch, virtual
 
     async def persist(data):
         if handoff == "confirmation_save" and any(row["phase"] == "confirmed" for row in data["records"].values()):
-            report_scene(91)
+            set_scene(91)
         await save(data)
 
     monkeypatch.setattr(store, "async_save", persist)
@@ -703,7 +700,7 @@ async def test_saved_effect_observation_authority(physical, monkeypatch, virtual
     engine = EffectDeploymentEngine(repo, device_cache=cache)
     item = LibraryItem.new("Test", content)
     if handoff == "upload_ack":
-        with pytest.raises(ValueError, match="observed device state changed"):
+        with pytest.raises(ModeTransitionSupersededError, match="observed device state changed"):
             await engine.async_apply_saved(coord, item, config_entry_id="entry", updated_at="2026-11-18T00:00:00Z")
     else:
         await engine.async_apply_saved(coord, item, config_entry_id="entry", updated_at="2026-11-18T00:00:00Z")

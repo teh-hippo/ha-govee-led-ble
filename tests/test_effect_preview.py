@@ -111,7 +111,7 @@ def _known_static_baseline(coordinator) -> PriorControlState:
 
 class _EffectCoordinator(SimpleNamespace):
     def async_mode_transition(self, *, purpose=None):
-        return nullcontext(SimpleNamespace(current=lambda: True))
+        return nullcontext(SimpleNamespace(current=lambda: True, require_current=lambda: None))
 
     async def async_admit_effect_selection(self):
         pass

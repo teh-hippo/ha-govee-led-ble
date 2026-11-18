@@ -758,46 +758,26 @@ class EffectDeploymentEngine:
                     else:
                         await self._async_apply_profile(coordinator, compiled, transaction)
 
-                    if not transition.current():
-                        raise ValueError("The observed device state changed during effect application")
-                    if (
-                        isinstance(compiled, CompiledMusicProfile)
-                        and coordinator.profile.music_readback_ambiguous
-                        or compiled_observation(compiled, profile=coordinator.profile)[0] is None
-                    ):
-                        completed = replace(
-                            transaction.current,
-                            phase=DeploymentPhase.APPLIED,
-                            error_code=None,
-                            verification_confidence=ObservationConfidence.WRITE_COMPLETED,
-                        )
-                        await transaction.store(completed)
-                        still_active = transition.current()
-                        self._reconcile_observation(
+                    transition.require_current()
+                    confirmed = None
+                    confidence = ObservationConfidence.WRITE_COMPLETED
+                    if compiled_observation(compiled, profile=coordinator.profile)[0] is not None:
+                        await transaction.store(replace(transaction.current, phase=DeploymentPhase.VERIFYING))
+                        confirmed, confidence = await self._async_verify(
                             coordinator,
-                            config_entry_id=record.config_entry_id,
-                            observed_at=record.updated_at,
-                            refreshed=False,
-                            matched_record=completed,
-                            match_current=still_active,
+                            compiled,
+                            transaction,
+                            transition.current,
                         )
-                        return completed, still_active
-                    await transaction.store(replace(transaction.current, phase=DeploymentPhase.VERIFYING))
-                    confirmed, confidence = await self._async_verify(
-                        coordinator,
-                        compiled,
-                        transaction,
-                        transition.current,
-                    )
-                    if confirmed is False or not transition.current():
-                        final = await self._async_finish_failure(
-                            coordinator,
-                            transaction.current,
-                            error_code="device_state_unconfirmed",
-                            writes_attempted=writes_attempted(),
-                            prior_origin=prior_origin,
-                        )
-                        return final, False
+                        if confirmed is False or not transition.current():
+                            final = await self._async_finish_failure(
+                                coordinator,
+                                transaction.current,
+                                error_code="device_state_unconfirmed",
+                                writes_attempted=writes_attempted(),
+                                prior_origin=prior_origin,
+                            )
+                            return final, False
                     completed = replace(
                         transaction.current,
                         phase=DeploymentPhase.CONFIRMED if confirmed else DeploymentPhase.APPLIED,

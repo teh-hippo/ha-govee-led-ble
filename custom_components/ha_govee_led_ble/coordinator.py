@@ -1621,8 +1621,8 @@ class GoveeBLECoordinator(
         transition = self._mode_transition
         if transition is not None and transition.owner is not asyncio.current_task():
             transition = None
-        if arm_expected and transition is not None and not transition.current():
-            raise ValueError("The observed device state changed during the mode transition")
+        if arm_expected and transition is not None:
+            transition.require_current()
         if (
             arm_expected
             and transition is not None

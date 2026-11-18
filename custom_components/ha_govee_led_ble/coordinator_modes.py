@@ -54,6 +54,10 @@ class ModeTransitionPurpose(StrEnum):
     RECOVERY = "recovery"
 
 
+class ModeTransitionSupersededError(ValueError):
+    """A newer device observation invalidated an in-progress mode transition."""
+
+
 @dataclass
 class _ModeTransition:
     owner: asyncio.Task[Any] | None
@@ -77,6 +81,10 @@ class _ModeTransition:
 
     def current(self) -> bool:
         return not self.superseded and (self.observations_match is None or self.observations_match())
+
+    def require_current(self) -> None:
+        if not self.current():
+            raise ModeTransitionSupersededError("The observed device state changed during the mode transition")
 
 
 class _ActiveModeMixin(_CoordinatorBase):
@@ -476,8 +484,7 @@ class _ActiveModeMixin(_CoordinatorBase):
                     observed = await self.async_observe_effect({"scene_code": selector})
                 if observed is False:
                     raise RuntimeError(f"Failed to confirm scene {scene_name!r}")
-            if not transition.current():
-                raise ValueError("The observed device state changed during the mode transition")
+            transition.require_current()
             self.color_mode = ParsedMode.SCENE
             self.effect = scene_name
             self._scene_code = selector

@@ -20,6 +20,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry, async_
 
 from custom_components.ha_govee_led_ble.const import CONF_SHOW_EXPERIMENTAL_FEEDBACK, DOMAIN, get_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator_modes import ModeTransitionSupersededError
 from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
 from custom_components.ha_govee_led_ble.effect_catalogue import resolve_catalogue_template
 from custom_components.ha_govee_led_ble.effect_contracts import EDITOR_API_VERSION
@@ -724,7 +725,9 @@ async def test_apply_surfaces_item_version_conflict(
 
 
 @pytest.mark.parametrize("operation", ["scene", "saved", "snapshot"])
-@pytest.mark.parametrize("error_type", [ValueError, GoveeCryptoError, GoveeTransportError])
+@pytest.mark.parametrize(
+    "error_type", [ValueError, GoveeCryptoError, GoveeTransportError, ModeTransitionSupersededError]
+)
 async def test_apply_distinguishes_session_failure_from_invalid_request(
     hass, hass_ws_client, monkeypatch, caplog, operation, error_type
 ):
