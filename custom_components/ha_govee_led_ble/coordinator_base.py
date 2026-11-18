@@ -161,6 +161,7 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     _physical_ic_count_confirmed: bool
     _bulk_collector: BulkStatusCollector | None
     _bulk_query_deadline: float | None
+    _bulk_mode_unqualified: bool
     _segment_query_generation: int | None
     _configured_strings_confirmed: bool
     _segment_query_incomplete: bool
@@ -337,6 +338,7 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
             domains: tuple[str, ...] | None = None,
             query: bytes | None = None,
             allow_complete_rejection: bool = False,
+            qualify_mode: bool = False,
         ) -> bool: ...
 
         async def _async_read_setting_fields(

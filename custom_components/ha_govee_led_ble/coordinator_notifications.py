@@ -99,6 +99,7 @@ class _NotificationMixin(_CoordinatorBase):
     def _init_observation_state(self) -> None:
         self._bulk_collector: BulkStatusCollector | None = None
         self._bulk_query_deadline: float | None = None
+        self._bulk_mode_unqualified = False
         self._bulk_query_incomplete = False
         self.packet_log: list[dict[str, Any]] = []
         self._expected_state: dict[str, tuple[Any, float]] = {}
@@ -448,6 +449,7 @@ class _NotificationMixin(_CoordinatorBase):
                     raise ValueError("Bulk master power observations disagree")
             decode_generation = self._profile_generation
             parsed_modes: dict[int, ParsedColorModeResponse] = {}
+            unqualified_mode = False
             for record in records:
                 domain = getattr(record.domain, "name", None)
                 if domain == "colour_mode":
@@ -460,6 +462,10 @@ class _NotificationMixin(_CoordinatorBase):
                     raise ValueError("Bulk gradual flag is invalid")
                 elif domain == "power_on_behaviour" and getattr(record.body.state, "name", None) is None:
                     raise ValueError("Bulk power-on behaviour is unknown")
+            independent_mode = self.profile.bulk_status_grammar != "H60A" and self.profile.can_read(
+                ReadDomain.COLOUR_MODE
+            )
+            opaque_mode = independent_mode and any(mode.mode is ParsedMode.UNKNOWN for mode in parsed_modes.values())
             for record in records:
                 domain = getattr(record.domain, "name", None)
                 if domain == "colour_mode" and self.profile.supports_color_mode_readback:
@@ -468,7 +474,14 @@ class _NotificationMixin(_CoordinatorBase):
                         if decode_generation == self._profile_generation
                         else parse_color_mode(record, self.model, profile=self.profile)
                     )
-                    self._mark_received(StatusDomain.COLOUR_MODE, *self._apply_color_mode_payload(parsed_mode))
+                    if independent_mode and parsed_mode.mode is ParsedMode.UNKNOWN:
+                        # This record cannot replace the independent selector or erase retained colour intent.
+                        unqualified_mode |= self._accept_expected("color_mode", (ParsedMode.UNKNOWN, None))
+                    else:
+                        observed = self._apply_color_mode_payload(parsed_mode)
+                        if "color_mode" in observed:
+                            unqualified_mode = False
+                        self._mark_received(StatusDomain.COLOUR_MODE, *observed)
                 elif domain == "power" and self.profile.can_read(ReadDomain.POWER):
                     value = bool(record.body.is_on)
                     if self._accept_expected("is_on", value):
@@ -516,14 +529,21 @@ class _NotificationMixin(_CoordinatorBase):
                     self.boolean_control_state["gradual"] = bool(record.body.flag)
                     self.static_gradual = bool(record.body.flag)
                     self._mark_received(StatusDomain.OTHER, "boolean_gradual", "static_gradual")
-                elif domain == "segments" and self.profile.can_read(ReadDomain.SEGMENTS):
+                elif domain == "segments" and not opaque_mode and self.profile.can_read(ReadDomain.SEGMENTS):
                     self._mark_received(StatusDomain.SEGMENTS, *self._apply_segment_group(record))
                 elif domain == "power_on_behaviour" and self.profile.supports_power_on_behaviour:
                     self.power_on_behaviour = record.body.state.name
                     self._mark_received(StatusDomain.OTHER, "power_on_behaviour")
             self._bulk_query_incomplete = False
             self._bulk_collector = None
-            self._mark_received(StatusDomain.OTHER, "bulk_status")
+            if unqualified_mode:
+                self._bulk_mode_unqualified = True
+                if self._mode_transition is None or not self._mode_transition.captured:
+                    self._field_received_at.pop("segment_colors", None)
+                    self._field_received_at.pop("segment_brightness", None)
+            self._mark_received(
+                StatusDomain.OTHER, "bulk_status", *(("unqualified_bulk_mode",) if unqualified_mode else ())
+            )
             self._record_packet("rx", frame, outcome="parsed", reason="bulk_status_fragment", parser=result.parser)
             self.async_set_updated_data(self.data or {})
         except ValueError:
@@ -541,6 +561,7 @@ class _NotificationMixin(_CoordinatorBase):
         domains: tuple[str, ...] | None = None,
         query: bytes | None = None,
         allow_complete_rejection: bool = False,
+        qualify_mode: bool = False,
     ) -> bool:
         if self._bulk_query_incomplete:
             return False
@@ -548,6 +569,7 @@ class _NotificationMixin(_CoordinatorBase):
         packet = query if query is not None else build_bulk_status_query(self._authorization_profile(), domains=domains)
         collector = BulkStatusCollector(self.profile.bulk_status_grammar or "H60A")
         baseline = {"bulk_status": self._field_revisions.get("bulk_status", 0)}
+        mode_hint_revision = self._field_revisions.get("unqualified_bulk_mode", 0)
         generation, token = self._profile_generation, self._notification_token
         attempted = succeeded = False
 
@@ -571,13 +593,71 @@ class _NotificationMixin(_CoordinatorBase):
                 and client.is_connected
                 and self._notification_token is token
             )
-            return succeeded
         finally:
             if attempted and self._client is client and self._notification_token is token:
                 self._bulk_collector = None
                 self._bulk_query_deadline = None
                 # Only an isolated optional read can discard a fully drained, rejected reply.
                 self._bulk_query_incomplete = not succeeded
+        if not succeeded or self._field_revisions.get("unqualified_bulk_mode", 0) <= mode_hint_revision:
+            return succeeded
+        return await self._async_qualify_bulk_mode(client, deadline=deadline, required=qualify_mode)
+
+    async def _async_qualify_bulk_mode(self, client: BleakClient, *, deadline: float, required: bool) -> bool:
+        from .generated_protocol_adapter import build_colour_mode_query
+
+        transition = self._mode_transition
+        captured = transition is not None and transition.captured and transition.purpose is not None
+        token, generation, authorization = (
+            self._notification_token,
+            self._profile_generation,
+            self._authorization_generation,
+        )
+
+        def same_subscription() -> bool:
+            return (
+                self._client is client and self._notification_token is token and self._profile_generation == generation
+            )
+
+        try:
+            if self._bulk_mode_unqualified and (required or captured):
+                await self._async_read_setting_fields(
+                    client,
+                    build_colour_mode_query(self.model, profile=self._authorization_profile()),
+                    ("color_mode",),
+                    deadline=deadline,
+                )
+            if (
+                not self._bulk_mode_unqualified
+                and same_subscription()
+                and authorization == self._authorization_generation
+                and self._observed_color_mode not in (None, ParsedMode.UNKNOWN)
+                and self.source_field_fresh("color_mode")
+            ):
+                if (
+                    not required
+                    and transition is not None
+                    and transition.static_restore_started
+                    and transition.current()
+                    and self.color_mode is ParsedMode.COLOUR
+                    and self.profile.can_read(ReadDomain.SEGMENTS)
+                ):
+                    return await self._send_state_queries(
+                        query_power=False,
+                        query_brightness=False,
+                        query_color_mode=False,
+                        query_segments=True,
+                        query_native_settings=False,
+                        deadline=deadline,
+                    )
+                return True
+            return not (required or captured)
+        finally:
+            if self._bulk_mode_unqualified and same_subscription():
+                self._observed_color_mode = ParsedMode.UNKNOWN
+                self._field_received_at.pop("color_mode", None)
+                if captured and transition is not None:
+                    transition.superseded = True
 
     def _deliver_command_ack(self, ack: Any) -> None:
         """Resolve any pending setting or upload ACK future this reply answers."""

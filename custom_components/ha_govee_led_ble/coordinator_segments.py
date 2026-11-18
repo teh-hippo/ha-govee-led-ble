@@ -125,6 +125,8 @@ class _SegmentMixin(_CoordinatorBase):
         self._segment_query_brightness = None
 
     def _apply_segment_group(self, generated: Any) -> tuple[str, ...]:
+        if self._bulk_mode_unqualified:
+            return ()
         if (
             self.profile.configured_string_counts
             and (not self._configured_strings_confirmed or self._segment_query_generation != self._profile_generation)

@@ -84,6 +84,8 @@ Keep real product differences without turning each product into a separate imple
   Preserve complete static appearance, including segment colours and relative brightness, through every mode-exit entry point.
   Keep the original appearance current until the first physical attempt, and the recovered appearance or selector current through dependent writes and completion.
   Keep accepted selector changes authoritative through activation, retry and rollback; uploads do not authorise a change of selector.
+  An unrecognised selector in a supplementary settings reply is not a definite mode change.
+  Requalify dependent mode and layout through independent readback without discarding retained colour intent.
   Bind rollback to its starting observations, including source settings it may restore, before persisting recovery progress.
   Matching readback preserves verification; a contradiction revokes it, and a complete response without the required field cannot establish it.
   Keep historical deployment confirmation separate from current active attribution; recheck the observation and reconcile active identity before notifying entities after persistence.
