@@ -989,11 +989,13 @@ class EffectPreviewManager:
             await coordinator.async_preview_preflight(timeout=self._connect_timeout)
             async with (
                 async_control_intent(coordinator, ControlIntent.PREVIEW),
-                coordinator.async_mode_transition(purpose=ModeTransitionPurpose.PREVIEW),
+                coordinator.async_mode_transition(purpose=ModeTransitionPurpose.PREVIEW) as transition,
             ):
                 await self._async_prepare_execution(coordinator, compiled)
                 writer = _PreviewWriter(self, request, coordinator, health_target)
                 await self._async_transmit_request(request, coordinator, compiled, writer)
+                if not transition.current():
+                    raise _PreviewSupersededError
             writer.completed = True
             if not await self._async_request_is_current(request):
                 raise _PreviewSupersededError

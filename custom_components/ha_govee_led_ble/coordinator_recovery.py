@@ -3,18 +3,19 @@
 import asyncio
 import logging
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable, Iterator, Mapping
 from contextlib import asynccontextmanager, nullcontext
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, cast
 
+from bleak.exc import BleakError
 from homeassistant.exceptions import HomeAssistantError
 
 from .const import DOMAIN, NATIVE_ZONE_CONTROLS, ModelProfile, ReadDomain, get_profile, same_control_profile
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator_base import _CoordinatorBase
 from .coordinator_modes import ModeTransitionPurpose
-from .coordinator_refresh import RefreshRequest
+from .coordinator_refresh import STATIC_RECOVERY_SETTINGS, RefreshRequest
 from .coordinator_sources import (
     PreparedSourceValue,
     has_segmented_sources,
@@ -93,6 +94,7 @@ class PreparedStaticRecovery:
     generation: int
     subscription: object | None
     native_writes: tuple[PreparedSourceValue, ...] = ()
+    off_guard: Callable[[], None] | None = None
 
     def check(self, coordinator: _CoordinatorBase) -> None:
         transition = coordinator._mode_transition
@@ -101,6 +103,13 @@ class PreparedStaticRecovery:
             or coordinator._profile_generation != self.generation
             or self.subscription is not None
             and coordinator._notification_token is not self.subscription
+            or self.off_guard is not None
+            and (
+                transition is None
+                or transition.owner is not asyncio.current_task()
+                or transition.purpose is not ModeTransitionPurpose.RECOVERY
+                or transition.snapshot is None
+            )
             or transition is not None
             and transition.owner is asyncio.current_task()
             and transition.purpose is ModeTransitionPurpose.RECOVERY
@@ -108,6 +117,8 @@ class PreparedStaticRecovery:
             and coordinator._pre_mode_snapshot is not transition.snapshot
         ):
             raise ValueError("The colour restoration context changed")
+        if self.off_guard is not None:
+            self.off_guard()
 
 
 class _RecoveryMixin(_CoordinatorBase):
@@ -121,9 +132,66 @@ class _RecoveryMixin(_CoordinatorBase):
             raise HomeAssistantError(translation_domain=DOMAIN, translation_key="recovery_not_ready")
         return self._pre_mode_snapshot
 
+    def static_mode_confirmed(self) -> bool:
+        return (
+            self.color_mode is ParsedMode.COLOUR
+            and self._observed_color_mode is ParsedMode.COLOUR
+            and self.source_field_fresh("color_mode")
+            and self.effect is None
+            and self.scene_code is None
+            and self.diy_code is None
+            and self.music_mode in (None, "off")
+            and self.video_mode in (None, "off")
+        )
+
+    async def async_preflight_static_off(self) -> Callable[[], None] | None:
+        async with async_control_intent(self, ControlIntent.BACKGROUND):
+            if not self.profile.supports_color_mode_readback:
+                self.require_static_baseline()
+                return None
+            revision = self._field_revisions.get("color_mode", 0)
+            try:
+                refreshed = await self.refresh_state(
+                    RefreshRequest(
+                        query_segments=False,
+                        query_native_settings=False,
+                        required_domains=self.profile.read_domains & {ReadDomain.COLOUR_MODE, ReadDomain.MODE},
+                    )
+                )
+            except BleakError as error:
+                raise HomeAssistantError(translation_domain=DOMAIN, translation_key="recovery_not_ready") from error
+            if (
+                refreshed is not True
+                or self._field_revisions.get("color_mode", 0) <= revision
+                or not self.source_field_fresh("color_mode")
+            ):
+                raise HomeAssistantError(translation_domain=DOMAIN, translation_key="recovery_not_ready")
+            static = self.static_mode_confirmed()
+            snapshot = None if static else self.require_static_baseline()
+            if not static and self._observed_color_mode in (None, ParsedMode.UNKNOWN, ParsedMode.COLOUR):
+                raise HomeAssistantError(translation_domain=DOMAIN, translation_key="recovery_not_ready")
+            selector_revision = self._selector_revision
+            subscription = self._notification_token
+            generation = self._profile_generation
+
+            def check() -> None:
+                if (
+                    subscription is not self._notification_token
+                    or generation != self._profile_generation
+                    or not self.source_field_fresh("color_mode")
+                    or (
+                        not self.static_mode_confirmed()
+                        if static
+                        else self._selector_revision != selector_revision or self._pre_mode_snapshot is not snapshot
+                    )
+                ):
+                    raise HomeAssistantError(translation_domain=DOMAIN, translation_key="recovery_not_ready")
+
+            return check
+
     def _static_history_profile_current(self) -> bool:
         profile = self._pre_mode_profile
-        if self._pre_mode_snapshot is None:
+        if self._pre_mode_snapshot is None and self._incomplete_static_exit is None:
             return False
         if not self._pre_mode_needs_qualification:
             return True
@@ -147,7 +215,6 @@ class _RecoveryMixin(_CoordinatorBase):
 
     @asynccontextmanager
     async def _async_qualified_static_history(self) -> AsyncIterator[None]:
-        self.require_static_baseline()
         foreground = self._control_arbiter.foreground_generation
         subscription = self._notification_token
         observations = {field: self._field_revisions.get(field, 0) for field in ("color_mode", "segment_colors")}
@@ -158,8 +225,10 @@ class _RecoveryMixin(_CoordinatorBase):
         if subscription is not None and subscription is not self._notification_token:
             raise ValueError("Static restoration subscription changed; refresh and retry")
         async with self.async_mask_transaction():
-            if self.color_mode is ParsedMode.COLOUR and any(
-                self._field_revisions.get(field, 0) != revision for field, revision in observations.items()
+            if (
+                self._incomplete_static_exit is None
+                and self.color_mode is ParsedMode.COLOUR
+                and any(self._field_revisions.get(field, 0) != revision for field, revision in observations.items())
             ):
                 self._discard_static_baseline()
                 raise ValueError("Static restoration observations changed; refresh and retry")
@@ -167,13 +236,12 @@ class _RecoveryMixin(_CoordinatorBase):
                 if not self._static_history_profile_current():
                     raise HomeAssistantError(translation_domain=DOMAIN, translation_key="recovery_not_ready")
                 self._pre_mode_needs_qualification = False
-            self.require_static_baseline()
             yield
 
     @asynccontextmanager
     async def async_prepare_static_recovery(
-        self, prepared: PreparedStaticRecovery | None = None
-    ) -> AsyncIterator[PreparedStaticRecovery]:
+        self, off_guard: Callable[[], None] | None, *, brightness_pct: int | None = None
+    ) -> AsyncIterator[PreparedStaticRecovery | None]:
         transition = self._mode_transition
         if (
             transition is None
@@ -182,35 +250,53 @@ class _RecoveryMixin(_CoordinatorBase):
             or self._control_arbiter.current_task_intent is None
         ):
             raise RuntimeError("Static restoration requires an owned recovery transition")
-        if prepared is not None:
-            yield self.prepare_static_recovery(prepared)
-        else:
-            async with self._async_qualified_static_history():
-                yield self.prepare_static_recovery()
+        if off_guard is not None:
+            off_guard()
+            if self.static_mode_confirmed():
+                incomplete = self._incomplete_static_exit
+                if incomplete is not None:
+                    current = await self.async_prepare_static_baseline()
+                    off_guard()
+                    if not self._same_static_appearance(incomplete, current):
+                        raise HomeAssistantError(translation_domain=DOMAIN, translation_key="partial_command")
+                    attempts = self.control_write_attempts
+                    subscription, generation = self._notification_token, self._profile_generation
+                    transition.observations_match = lambda: (
+                        self.control_write_attempts != attempts
+                        or (
+                            subscription is self._notification_token
+                            and generation == self._profile_generation
+                            and self._incomplete_static_exit is incomplete
+                            and self.static_mode_confirmed()
+                            and self._same_static_appearance(incomplete, self.capture_effect_control_state())
+                        )
+                    )
+                yield None
+                if incomplete is not None and not transition.current():
+                    raise HomeAssistantError(translation_domain=DOMAIN, translation_key="partial_command")
+                self._discard_static_baseline()
+                return
+        async with self._async_qualified_static_history():
+            state = self.require_static_baseline()
+            target = replace(state, brightness_pct=brightness_pct) if brightness_pct is not None else state
+            prepared = self._prepare_static_colour(target)
+            if prepared is None:
+                raise HomeAssistantError(translation_domain=DOMAIN, translation_key="recovery_not_ready")
+            attempts = self.control_write_attempts
 
-    def prepare_static_recovery(self, prepared: PreparedStaticRecovery | None = None) -> PreparedStaticRecovery:
-        transition = self._mode_transition
-        if (
-            transition is None
-            or transition.owner is not asyncio.current_task()
-            or transition.purpose is not ModeTransitionPurpose.RECOVERY
-            or self._control_arbiter.current_task_intent is None
-        ):
-            raise RuntimeError("Static restoration requires an owned recovery transition")
-        state = self.require_static_baseline()
-        if prepared is not None and transition.snapshot is not state:
-            raise HomeAssistantError(translation_domain=DOMAIN, translation_key="recovery_not_ready")
-        prepared = prepared or self._prepare_static_colour(state)
-        if prepared is None:
-            raise HomeAssistantError(translation_domain=DOMAIN, translation_key="recovery_not_ready")
-        prepared.check(self)
-        if transition.snapshot is None:
+            def check_before_first_write() -> None:
+                # The recovery writes can change mode themselves once the restore has started.
+                if off_guard is not None and self.control_write_attempts == attempts:
+                    off_guard()
+
             transition.snapshot = state
             transition.profile = self.profile
             transition.profile_generation = self._profile_generation
             transition.subscription = self._notification_token
             transition.foreground_generation = self._control_arbiter.foreground_generation
-        return prepared
+            prepared = replace(prepared, off_guard=check_before_first_write)
+            prepared.check(self)
+            yield prepared
 
     async def async_prepare_static_baseline(self) -> PriorControlState:
         if self._pre_mode_needs_qualification:
@@ -267,6 +353,7 @@ class _RecoveryMixin(_CoordinatorBase):
                 refreshed = await self.refresh_state(
                     RefreshRequest(
                         refresh_all=True,
+                        query_native_settings=STATIC_RECOVERY_SETTINGS,
                         query_segments=profile.can_read(ReadDomain.SEGMENTS),
                         required_domains=profile.read_domains
                         & {
@@ -304,9 +391,54 @@ class _RecoveryMixin(_CoordinatorBase):
                     baseline = None
         if baseline is None or self._prepare_static_colour(baseline) is None:
             raise HomeAssistantError(translation_domain=DOMAIN, translation_key="recovery_not_ready")
+        if transition is not None and transition.purpose is not ModeTransitionPurpose.RECOVERY:
+            selector_revision = self._selector_revision
+            from_static = self.color_mode is ParsedMode.COLOUR
+            transition.observations_match = lambda: (
+                self._selector_revision == selector_revision
+                and (
+                    self._same_static_appearance(baseline, self.capture_effect_control_state())
+                    if from_static
+                    else self._pre_mode_snapshot is baseline
+                )
+            )
         return baseline
 
+    def _same_static_appearance(self, target: PriorControlState, current: PriorControlState) -> bool:
+        profile = self.profile
+        fields = (
+            "is_on",
+            "brightness_pct",
+            *profile.boolean_controls.intersection(NATIVE_ZONE_CONTROLS),
+            *native_source_fields(profile),
+            *source_kelvin_hint_fields(profile),
+            *(("left_bar_kelvin", "right_bar_kelvin") if profile.setting_grammar == "H6046" else ()),
+        )
+        return (
+            current.mode == target.mode == "colour"
+            and all(getattr(current, field) == getattr(target, field) for field in fields)
+            and (target.static_gradual is None or current.static_gradual == target.static_gradual)
+            and (
+                current.segment_colors == target.segment_colors
+                and current.segment_brightness == target.segment_brightness
+                and current.static_segment_kelvin(profile) == target.static_segment_kelvin(profile)
+                if profile.supports_segments
+                else current.color_temp_kelvin == target.color_temp_kelvin
+                and (
+                    target.color_temp_kelvin is not None
+                    or current.static_rgb_known
+                    and current.rgb_color == target.rgb_color
+                )
+            )
+        )
+
     def capture_effect_control_state(self) -> PriorControlState:
+        transition = self._mode_transition
+        gradual_observed = self.source_field_fresh("static_gradual") and (
+            transition is None
+            or transition.owner is not asyncio.current_task()
+            or self._field_revisions.get("static_gradual", 0) > transition.field_baselines.get("static_gradual", 0)
+        )
         current_source_layout = (
             self._client is not None
             and self._client.is_connected
@@ -387,7 +519,7 @@ class _RecoveryMixin(_CoordinatorBase):
             or not self.profile.supports_segments
             and self._static_colour_known
             and self.color_temp_kelvin is None,
-            static_gradual=self.static_gradual if self.color_mode is ParsedMode.COLOUR else None,
+            static_gradual=self.static_gradual if self.color_mode is ParsedMode.COLOUR and gradual_observed else None,
             static_colour_observed=self.color_mode is ParsedMode.COLOUR
             and (
                 observed_segments
@@ -496,18 +628,37 @@ class _RecoveryMixin(_CoordinatorBase):
             async_control_intent(self, intent),
             self.async_mode_transition(purpose=ModeTransitionPurpose.RECOVERY),
         ):
-            if (state.state if isinstance(state, PreparedStaticRecovery) else state).mode == "colour" and get_profile(
-                self.model
-            ).static_identity_fields:
+            transition = self._mode_transition
+            if transition is not None and not transition.current():
+                return False
+            target = state.state if isinstance(state, PreparedStaticRecovery) else state
+            if target.mode == "colour" and get_profile(self.model).static_identity_fields:
                 await self._as_coordinator.async_prepare_identity_gated_control()
-            prepared = state if isinstance(state, PreparedStaticRecovery) else None
+            prepared = state if isinstance(state, PreparedStaticRecovery) else self._prepare_static_colour(target)
             if prepared is not None:
                 prepared.check(self)
-            return await self._async_restore_prior_control_state(
-                prepared.state if prepared is not None else cast(PriorControlState, state),
-                overwritten_diy_code=overwritten_diy_code,
-                prepared_colour=prepared,
-            )
+            elif target.mode == "colour":
+                if not target.is_on:
+                    await self.send_command(build_power(False, self.model), state_values={"is_on": False})
+                    await self.refresh_state(RefreshRequest(on=False))
+                return False
+            attempts = self.control_write_attempts
+            snapshot = self._pre_mode_snapshot
+            restored = False
+            try:
+                restored = await self._async_restore_prior_control_state(
+                    target, overwritten_diy_code=overwritten_diy_code, prepared_colour=prepared
+                ) and (transition is None or transition.current())
+                return restored
+            finally:
+                if (
+                    prepared is not None
+                    and self.control_write_attempts != attempts
+                    and self._pre_mode_snapshot is snapshot
+                    and prepared.generation == self._profile_generation
+                    and (prepared.subscription is None or prepared.subscription is self._notification_token)
+                ):
+                    self._incomplete_static_exit = None if restored else prepared.state
 
     async def _async_restore_prior_control_state(
         self,
@@ -518,13 +669,6 @@ class _RecoveryMixin(_CoordinatorBase):
     ) -> bool:
         if state.mode == "custom" and self.profile.diy_upload_transport == "single":
             return False
-        if state.mode == "colour":
-            prepared_colour = prepared_colour or self._prepare_static_colour(state)
-            if prepared_colour is None:
-                if not state.is_on:
-                    await self.send_command(build_power(False, self.model), state_values={"is_on": False})
-                    await self.refresh_state(RefreshRequest(on=False))
-                return False
         native_zones = self.profile.boolean_controls.intersection(NATIVE_ZONE_CONTROLS)
         expected = {name: value for name in native_zones if (value := getattr(state, name)) is not None}
         if self.profile.minimum_enabled_sources and (
@@ -544,15 +688,7 @@ class _RecoveryMixin(_CoordinatorBase):
         )
         if native_writes is None:
             return False
-        source_values = {
-            "ripple_speed" if write.attribute == "ripple_speed" else f"{write.source}_{write.attribute}": write.value
-            for write in native_writes
-        }
-        source_values.update(
-            (field, normalize_kelvin(value, self.profile) if value else 0)
-            for field in source_kelvin_hint_fields(self.profile)
-            if (value := getattr(state, field)) is not None
-        )
+        source_values = () if prepared_colour is not None else tuple(self._native_recovery_values(state, native_writes))
         for write in native_writes:
             field = "ripple_speed" if write.attribute == "ripple_speed" else f"{write.source}_{write.attribute}"
             transition = self._mode_transition
@@ -571,6 +707,9 @@ class _RecoveryMixin(_CoordinatorBase):
         )
         if prepared_colour is not None:
             prepared_colour.check(self)
+        transition = self._mode_transition
+        if not restored or transition is not None and not transition.current():
+            return False
         if not native_zones:
             return restored
         if not expected:
@@ -596,10 +735,14 @@ class _RecoveryMixin(_CoordinatorBase):
                     deadline=time.monotonic() + 4.0,
                 ):
                     return False
-            elif not await self._async_read_bulk_status(
-                client, deadline=time.monotonic() + 4.0, domains=("zone_enable",)
-            ):
-                return False
+            else:
+                revisions = {
+                    f"boolean_{name}": self._field_revisions.get(f"boolean_{name}", 0) for name in native_zones
+                }
+                if not await self._async_read_bulk_status(
+                    client, deadline=time.monotonic() + 4.0, domains=("zone_enable",)
+                ) or any(self._field_revisions.get(field, 0) <= revision for field, revision in revisions.items()):
+                    return False
         if self.profile.minimum_enabled_sources:
             for _ in range(len(expected) * 2):
                 remove = [
@@ -626,7 +769,7 @@ class _RecoveryMixin(_CoordinatorBase):
             restored
             and set(expected) == native_zones
             and all(self.boolean_control_state.get(name) == value for name, value in expected.items())
-            and all(getattr(self, field) == value for field, value in source_values.items())
+            and all(getattr(self, field) == value for field, value in source_values)
         )
 
     async def _async_restore_effect_appearance(
@@ -667,6 +810,9 @@ class _RecoveryMixin(_CoordinatorBase):
             return False
         variant, music_writes = prepared
         permitted, complete = await self._restore_video_controls(state)
+        if self._mode_transition is not None:
+            # Intermediate controls can use a different mode from the final resident effect.
+            self._mode_transition.verifying_resident_effect = state.mode != "colour"
         if state.mode == "custom":
             return await self._restore_custom(state, overwritten_diy_code, complete)
         if state.mode == "scene" and (state.effect is not None or state.scene_code is not None):
@@ -689,6 +835,12 @@ class _RecoveryMixin(_CoordinatorBase):
         prepared_colour: PreparedStaticRecovery | None = None,
     ) -> bool:
         attempts = self.control_write_attempts
+        transition = self._mode_transition
+
+        def powering_off() -> None:
+            if transition is not None:
+                transition.powering_off = True
+
         try:
             appearance_restored = await self._async_restore_effect_appearance(
                 replace(state, is_on=True), overwritten_diy_code=overwritten_diy_code, prepared_colour=prepared_colour
@@ -696,11 +848,13 @@ class _RecoveryMixin(_CoordinatorBase):
         except BaseException:
             if self.is_on or self.control_write_attempts != attempts:
                 try:
-                    await self.send_command(build_power(False, self.model), state_values={"is_on": False})
+                    await self.send_command(
+                        build_power(False, self.model), state_values={"is_on": False}, on_write=powering_off
+                    )
                 except Exception:
                     _LOGGER.debug("Power-off cleanup failed during effect recovery", exc_info=True)
             raise
-        await self.send_command(build_power(False, self.model), state_values={"is_on": False})
+        await self.send_command(build_power(False, self.model), state_values={"is_on": False}, on_write=powering_off)
         powered_off = (
             await self.refresh_state(RefreshRequest(on=False)) is True
             if self.profile.can_read(ReadDomain.POWER)
@@ -1116,6 +1270,16 @@ class _RecoveryMixin(_CoordinatorBase):
             )
         return tuple(writes)
 
+    def _native_recovery_values(
+        self, state: PriorControlState, writes: tuple[PreparedSourceValue, ...]
+    ) -> Iterator[tuple[str, int]]:
+        for write in writes:
+            field = "ripple_speed" if write.attribute == "ripple_speed" else f"{write.source}_{write.attribute}"
+            yield field, write.value
+        for field in source_kelvin_hint_fields(self.profile):
+            if (value := getattr(state, field)) is not None:
+                yield field, normalize_kelvin(value, self.profile) if value else 0
+
     def _prepare_static_colour(self, state: PriorControlState) -> PreparedStaticRecovery | None:
         if state.mode != "colour":
             return None
@@ -1133,11 +1297,20 @@ class _RecoveryMixin(_CoordinatorBase):
         native_writes = self._prepare_native_sources(state)
         if native_writes is None:
             return None
+        native_values = dict(self._native_recovery_values(state, native_writes))
+        if native_values:
+            state = replace(
+                state,
+                top_kelvin=native_values.get("top_kelvin", state.top_kelvin),
+                bottom_kelvin=native_values.get("bottom_kelvin", state.bottom_kelvin),
+            )
         if self.profile.supports_segments:
             prepared = self._prepare_segmented_colour(state)
             return replace(prepared, native_writes=native_writes) if prepared is not None else None
         if not state.static_rgb_known and state.color_temp_kelvin is None:
             return None
+        if state.color_temp_kelvin is not None:
+            state = replace(state, color_temp_kelvin=normalize_kelvin(state.color_temp_kelvin, self.profile))
         packet = (
             build_color_temp(state.color_temp_kelvin, self.model, profile=self.profile)
             if state.color_temp_kelvin is not None
@@ -1261,77 +1434,103 @@ class _RecoveryMixin(_CoordinatorBase):
         kelvin_restore = prepared.whole_kelvin
         bar_restore = state.restorable_bar_white(self.profile)
         prepared.check(self)
-        await self._write_static_restore(prepared)
-        if state.static_gradual is not None:
-            if "gradual" not in self.profile.boolean_controls:
-                complete = False
-            else:
-                await self.async_set_boolean_control("gradual", state.static_gradual)
+        subscription = await self._write_static_restore(prepared)
         mode_revision = self._field_revisions.get("color_mode", 0)
-        basic_matches = await self.refresh_state(
-            RefreshRequest(
-                on=True,
-                brightness=state.brightness_pct if self.profile.can_read(ReadDomain.BRIGHTNESS) else None,
-                refresh_all=True,
-                color_temp_kelvin=(
-                    normalize_kelvin(state.color_temp_kelvin, self.profile)
-                    if kelvin_restore and state.color_temp_kelvin is not None and self.profile.static_readback_kelvin
-                    else None
-                ),
-                zero_kelvin=(
-                    self.profile.static_readback_zero_kelvin_is_rgb
-                    and not source_restore
-                    and not kelvin_restore
-                    and not bar_restore
-                ),
+        request = RefreshRequest(
+            on=True,
+            brightness=state.brightness_pct if self.profile.can_read(ReadDomain.BRIGHTNESS) else None,
+            refresh_all=True,
+            query_native_settings=False,
+            query_segments=False,
+            color_temp_kelvin=(
+                normalize_kelvin(state.color_temp_kelvin, self.profile)
+                if kelvin_restore and state.color_temp_kelvin is not None and self.profile.static_readback_kelvin
+                else None
+            ),
+            zero_kelvin=(
+                self.profile.static_readback_zero_kelvin_is_rgb
+                and not source_restore
+                and not kelvin_restore
+                and not bar_restore
             ),
         )
+        basic_matches = await self.refresh_state(request)
         segments_match = await self.async_refresh_segments() if self.profile.can_read(ReadDomain.SEGMENTS) else True
+
+        expected_colours = state.segment_colors
+        verify_gradual = False
+
+        def matches_layout() -> bool:
+            return (
+                self.brightness_pct == state.brightness_pct
+                and len(self.segment_colors) == len(expected_colours)
+                and all(
+                    static_colour_matches(
+                        actual, expected if self.profile.static_palette_recovery else intent or expected, self.profile
+                    )
+                    for actual, expected, intent in zip(
+                        self.segment_colors, expected_colours, target_intents, strict=True
+                    )
+                )
+                and (state.segment_brightness is None or tuple(self.segment_brightness) == state.segment_brightness)
+                and (not verify_gradual or self.static_gradual == state.static_gradual)
+                and (
+                    self.profile.setting_grammar != "H6046"
+                    or (self.left_bar_kelvin, self.right_bar_kelvin) == (state.left_bar_kelvin, state.right_bar_kelvin)
+                )
+                and (
+                    (not source_restore or state.top_kelvin is None or self.top_kelvin == state.top_kelvin)
+                    and self.capture_effect_control_state().static_segment_kelvin(self.profile) == target_intents
+                )
+            )
+
         restored = (
-            basic_matches is True
+            complete
+            and basic_matches is True
             and segments_match is True
-            and self.is_on
-            and self.brightness_pct == state.brightness_pct
-            and self.active_mode == "colour"
-            and self.color_mode is ParsedMode.COLOUR
             and (
                 not self.profile.supports_color_mode_readback
                 or self._field_revisions.get("color_mode", 0) > mode_revision
             )
-            and len(self.segment_colors) == len(state.segment_colors)
-            and all(
-                static_colour_matches(
-                    actual, expected if self.profile.static_palette_recovery else intent or expected, self.profile
-                )
-                for actual, expected, intent in zip(
-                    self.segment_colors, state.segment_colors, target_intents, strict=True
-                )
-            )
-            and (state.segment_brightness is None or tuple(self.segment_brightness) == state.segment_brightness)
-            and (state.static_gradual is None or self.static_gradual == state.static_gradual)
-            and (
-                self.profile.setting_grammar != "H6046"
-                or (self.left_bar_kelvin, self.right_bar_kelvin) == (state.left_bar_kelvin, state.right_bar_kelvin)
-            )
-            and complete
-            and (
-                (not source_restore or state.top_kelvin is None or self.top_kelvin == state.top_kelvin)
-                and self.capture_effect_control_state().static_segment_kelvin(self.profile) == target_intents
-            )
+            and self._confirm_static_appearance(prepared, subscription, request, matches_layout)
         )
-        if restored:
-            self._static_rgb_known = state.static_rgb_known
-        return restored
+        if not restored:
+            return False
+        if state.static_gradual is not None:
+            if "gradual" not in self.profile.boolean_controls:
+                return False
+            await self.async_set_boolean_control("gradual", state.static_gradual)
+            if self.profile.static_readback_gradual:
+                # The register reply does not establish the static mode's Gradual flag.
+                gradual_revision = self._field_revisions.get("static_gradual", 0)
+                if (
+                    await self.refresh_state(
+                        RefreshRequest(
+                            query_native_settings=False,
+                            query_segments=False,
+                            required_domains=self.profile.read_domains & {ReadDomain.COLOUR_MODE, ReadDomain.MODE},
+                        )
+                    )
+                    is not True
+                    or self._field_revisions.get("static_gradual", 0) <= gradual_revision
+                ):
+                    return False
+            verify_gradual = True
+            if not self._confirm_static_appearance(prepared, subscription, request, matches_layout):
+                return False
+        self._static_rgb_known = state.static_rgb_known
+        return True
 
-    async def _write_static_restore(self, prepared: PreparedStaticRecovery) -> None:
+    async def _write_static_restore(self, prepared: PreparedStaticRecovery) -> object | None:
         generation = self._profile_generation
         foreground = self._control_arbiter.foreground_generation
-        mode_revision = self._field_revisions.get("color_mode", 0)
+        selector_revision = self._selector_revision
         segment_revision = self._field_revisions.get("segment_colors", 0)
         attempts = self.control_write_attempts
         static_attempts = self._static_write_attempts
         expected_segments = (tuple(self.segment_colors), tuple(self.segment_brightness))
         request = self._as_coordinator.control_write_request()
+        transition = self._mode_transition
         token = self._notification_token
         bound = token is not None
 
@@ -1341,13 +1540,10 @@ class _RecoveryMixin(_CoordinatorBase):
             if (
                 generation != self._profile_generation
                 or foreground != self._control_arbiter.foreground_generation
-                or self._field_revisions.get("color_mode", 0) != mode_revision
+                or self._selector_revision != selector_revision
                 and (self._static_write_attempts == static_attempts or self.color_mode is not ParsedMode.COLOUR)
                 or self._field_revisions.get("segment_colors", 0) != segment_revision
-                and (
-                    self._static_write_attempts == static_attempts
-                    or (tuple(self.segment_colors), tuple(self.segment_brightness)) != expected_segments
-                )
+                and (tuple(self.segment_colors), tuple(self.segment_brightness)) != expected_segments
             ):
                 raise ValueError("Static restoration context changed; refresh and retry")
             if not bound:
@@ -1359,6 +1555,8 @@ class _RecoveryMixin(_CoordinatorBase):
             nonlocal expected_segments
             with request.track("is_on" if index == 0 else "brightness_pct" if index == 1 else "rgb_color"):
                 request.on_write()
+            if transition is not None and self._static_write_attempts != static_attempts:
+                transition.static_restore_started = True
             expected_segments = (tuple(self.segment_colors), tuple(self.segment_brightness))
 
         try:
@@ -1382,6 +1580,7 @@ class _RecoveryMixin(_CoordinatorBase):
                 _LOGGER.debug("Static restoration reconciliation failed", exc_info=True)
             raise
         request.complete(colour_requested=True)
+        return token
 
     async def _restore_static_colour(
         self, state: PriorControlState, complete: bool, *, prepared: PreparedStaticRecovery | None = None
@@ -1389,7 +1588,7 @@ class _RecoveryMixin(_CoordinatorBase):
         prepared = prepared or self._prepare_static_colour(state)
         if prepared is None:
             return False
-        await self._write_static_restore(prepared)
+        subscription = await self._write_static_restore(prepared)
         request = RefreshRequest(
             on=True if self.profile.can_read(ReadDomain.POWER) else None,
             brightness=state.brightness_pct if self.profile.can_read(ReadDomain.BRIGHTNESS) else None,
@@ -1401,9 +1600,66 @@ class _RecoveryMixin(_CoordinatorBase):
             else None,
             zero_kelvin=state.color_temp_kelvin is None and self.profile.static_readback_zero_kelvin_is_rgb,
         )
-        return (
-            (not self.profile.state_readable or await self.refresh_state(request) is True)
-            and self.active_mode == "colour"
-            and self.color_mode is ParsedMode.COLOUR
-            and complete
-        )
+        verified = not self.profile.state_readable or await self.refresh_state(request) is True
+        return complete and verified and self._confirm_static_appearance(prepared, subscription, request)
+
+    def _confirm_static_appearance(
+        self,
+        prepared: PreparedStaticRecovery,
+        subscription: object | None,
+        request: RefreshRequest,
+        matches_layout: Callable[[], bool] | None = None,
+    ) -> bool:
+        expected = request.field_expectations(self.profile)
+        expected.update(is_on=True, color_mode=ParsedMode.COLOUR)
+        expected.update(self._native_recovery_values(prepared.state, prepared.native_writes))
+        return self._retain_recovery_appearance(expected, prepared.generation, subscription, matches_layout)
+
+    def _retain_recovery_appearance(
+        self,
+        expected: Mapping[str, Any],
+        generation: int,
+        subscription: object | None,
+        matches_layout: Callable[[], bool] | None = None,
+    ) -> bool:
+        transition = self._mode_transition
+        selector_revision = self._selector_revision
+
+        def matches() -> bool:
+            powering_off = transition is not None and transition.powering_off
+            return (
+                generation == self._profile_generation
+                and subscription is self._notification_token
+                and (expected.get("color_mode") is ParsedMode.COLOUR or selector_revision == self._selector_revision)
+                and all(
+                    getattr(self, field) == (False if field == "is_on" and powering_off else value)
+                    for field, value in expected.items()
+                )
+                and (
+                    expected.get("color_mode") is not ParsedMode.COLOUR
+                    or self.active_mode == ("off" if powering_off else "colour")
+                )
+                and (matches_layout is None or matches_layout())
+            )
+
+        if not matches() or transition is not None and transition.superseded:
+            return False
+        if transition is not None:
+            transition.observations_match = matches
+        return True
+
+    def _retain_verified_selector(
+        self, expectations: Mapping[str, Any], generation: int, subscription: object | None
+    ) -> bool:
+        transition = self._mode_transition
+        if (
+            transition is None
+            or transition.owner is not asyncio.current_task()
+            or not (
+                transition.verifying_resident_effect
+                or transition.purpose in (ModeTransitionPurpose.SELECTION, ModeTransitionPurpose.PREVIEW)
+            )
+            or not expectations.keys() & {"scene_code", "diy_code", "music_mode", "video_mode"}
+        ):
+            return True
+        return self._retain_recovery_appearance(expectations, generation, subscription)

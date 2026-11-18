@@ -81,6 +81,12 @@ Keep real product differences without turning each product into a separate imple
 - Bind prepared work and observations to their actual lifetime: device, effective profile, layout, subscription and operation generation as applicable.
   Capture static restoration intent before an effect operation's first state-changing attempt, including leading power, and publish it only at the physical mode transition.
   Preserve complete static appearance, including segment colours and relative brightness, through every mode-exit entry point.
+  Keep the original appearance current until the first physical attempt, and the recovered appearance or selector current through dependent writes and completion.
+  Keep accepted selector changes authoritative through activation, retry and rollback; uploads do not authorise a change of selector.
+  Bind rollback to its starting observations, including source settings it may restore, before persisting recovery progress.
+  Matching readback preserves verification; a contradiction revokes it, and a complete response without the required field cannot establish it.
+  Keep historical deployment confirmation separate from current active attribution; recheck the observation before publishing active state after persistence.
+  A static mode report after a partial exit is not proof of restoration; retain the incomplete target across planned release independently of the original effect baseline, and verify without repainting before clearing it on completion.
   An unavailable restoration target rejects before lighting writes; never substitute aggregate colour or an invented default.
   Enter task-owned operation contexts after acquiring device ownership, and release them before releasing that ownership.
   Revalidate at physical boundaries, and invalidate dependent knowledge when its authority changes.

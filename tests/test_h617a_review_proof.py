@@ -73,11 +73,15 @@ async def test_restoration_preserves_segments_and_rejects_wrong_readback(coordin
         physical = [(1, 2, 3)] * 15
     writes = []
     physical_brightness = [100] * 15
+    rendering_effect = exit_path != "recovery"
 
     async def transmit(_uuid, packet, **_kwargs):
+        nonlocal rendering_effect
         writes.append(packet)
         if packet[0] == 0x33:
             static = parse_static_write(packet)
+            if static is not None and static.rgb is not None:
+                rendering_effect = False
             if static is not None and static.rgb is not None and accept_colour:
                 for index in range(15):
                     if static.segment_mask & (1 << index):
@@ -89,7 +93,7 @@ async def test_restoration_preserves_segments_and_rejects_wrong_readback(coordin
         elif packet[1] == 1:
             coordinator._notify_callback(None, frame(1, [1]))
         elif packet[1] == 5:
-            coordinator._notify_callback(None, frame(5, [0x15, 0]))
+            coordinator._notify_callback(None, frame(5, [0x13, 3, 88, 1] if rendering_effect else [0x15, 0]))
         elif packet[1] == 4:
             coordinator._notify_callback(None, frame(4, [37]))
         elif packet[1] == 0xA5 and packet[2] == 5:

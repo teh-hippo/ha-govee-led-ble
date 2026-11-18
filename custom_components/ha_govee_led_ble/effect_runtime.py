@@ -18,7 +18,7 @@ from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator import GoveeBLECoordinator
 from .coordinator_base import async_prepare_effect_profile
 from .coordinator_modes import ModeTransitionPurpose
-from .coordinator_refresh import RefreshRequest
+from .coordinator_refresh import STATIC_RECOVERY_SETTINGS, RefreshRequest
 from .coordinator_status import ParsedMode
 from .effect_active_workspace import (
     ActiveEffectWorkspace,
@@ -368,6 +368,7 @@ async def async_prepare_application(
 class _LibraryApplicationResult:
     record: DeploymentRecord
     workspace: ActiveEffectWorkspace | None
+    still_active: bool
 
 
 class EffectDeploymentEngine:
@@ -435,8 +436,8 @@ class EffectDeploymentEngine:
                     generation=self._active_workspaces.next_generation(),
                 )
                 self._active_workspaces.validate(workspace)
-        result = await self._async_apply(coordinator, compiled, record, purpose=purpose)
-        return _LibraryApplicationResult(result, workspace)
+        result, still_active = await self._async_apply(coordinator, compiled, record, purpose=purpose)
+        return _LibraryApplicationResult(result, workspace, still_active)
 
     async def async_apply_saved(
         self,
@@ -468,7 +469,7 @@ class EffectDeploymentEngine:
             and result.error_code == "device_state_unconfirmed"
         )
         if result.phase in {DeploymentPhase.CONFIRMED, DeploymentPhase.APPLIED} or write_only_completed:
-            if self._active_workspaces is not None:
+            if self._active_workspaces is not None and (applied.still_active or write_only_completed):
                 self._active_workspaces.clear(config_entry_id)
             if write_only_completed:
                 self._reconcile_observation(
@@ -511,8 +512,9 @@ class EffectDeploymentEngine:
         write_only_completed |= (
             result.phase is DeploymentPhase.APPLIED
             and result.verification_confidence is ObservationConfidence.WRITE_COMPLETED
+            and applied.still_active
         )
-        if result.phase is DeploymentPhase.CONFIRMED or write_only_completed:
+        if (result.phase is DeploymentPhase.CONFIRMED and applied.still_active) or write_only_completed:
             if self._active_workspaces is not None and workspace is not None:
                 try:
                     self._active_workspaces.set(
@@ -624,7 +626,7 @@ class EffectDeploymentEngine:
         record: DeploymentRecord,
         *,
         purpose: ModeTransitionPurpose = ModeTransitionPurpose.SELECTION,
-    ) -> DeploymentRecord:
+    ) -> tuple[DeploymentRecord, bool]:
         async with self._operation_lock(record.operation_id):
             return await self._async_apply_serialised(coordinator, compiled, record, purpose=purpose)
 
@@ -635,14 +637,14 @@ class EffectDeploymentEngine:
         record: DeploymentRecord,
         *,
         purpose: ModeTransitionPurpose = ModeTransitionPurpose.SELECTION,
-    ) -> DeploymentRecord:
+    ) -> tuple[DeploymentRecord, bool]:
         if existing := self._deployments.get_optional(record.operation_id):
             if (
                 existing.config_entry_id == record.config_entry_id
                 and existing.artifact_sha256 == record.artifact_sha256
                 and existing.phase in {DeploymentPhase.CONFIRMED, DeploymentPhase.APPLIED}
             ):
-                return existing
+                return existing, _activation_matches(coordinator, existing)
             raise RuntimeError(
                 f"deployment operation {record.operation_id} already exists in phase {existing.phase.value}"
             )
@@ -656,7 +658,7 @@ class EffectDeploymentEngine:
                 async_control_intent(coordinator, ControlIntent.APPLY),
                 coordinator.async_mode_transition(
                     purpose=ModeTransitionPurpose.PREVIEW if purpose is ModeTransitionPurpose.PREVIEW else None
-                ),
+                ) as transition,
             ):
                 lock_acquired = True
                 # APPLY excludes other control owners; queries never increment this counter.
@@ -756,6 +758,8 @@ class EffectDeploymentEngine:
                     else:
                         await self._async_apply_profile(coordinator, compiled, transaction)
 
+                    if not transition.current():
+                        raise ValueError("The observed device state changed during effect application")
                     if (
                         isinstance(compiled, CompiledMusicProfile)
                         and coordinator.profile.music_readback_ambiguous
@@ -768,28 +772,32 @@ class EffectDeploymentEngine:
                             verification_confidence=ObservationConfidence.WRITE_COMPLETED,
                         )
                         await transaction.store(completed)
+                        still_active = transition.current()
                         self._reconcile_observation(
                             coordinator,
                             config_entry_id=record.config_entry_id,
                             observed_at=record.updated_at,
                             refreshed=False,
                             matched_record=completed,
+                            match_current=still_active,
                         )
-                        return completed
+                        return completed, still_active
                     await transaction.store(replace(transaction.current, phase=DeploymentPhase.VERIFYING))
                     confirmed, confidence = await self._async_verify(
                         coordinator,
                         compiled,
                         transaction,
+                        transition.current,
                     )
-                    if confirmed is False:
-                        return await self._async_finish_failure(
+                    if confirmed is False or not transition.current():
+                        final = await self._async_finish_failure(
                             coordinator,
                             transaction.current,
                             error_code="device_state_unconfirmed",
                             writes_attempted=writes_attempted(),
                             prior_origin=prior_origin,
                         )
+                        return final, False
                     completed = replace(
                         transaction.current,
                         phase=DeploymentPhase.CONFIRMED if confirmed else DeploymentPhase.APPLIED,
@@ -797,14 +805,16 @@ class EffectDeploymentEngine:
                         verification_confidence=confidence if confirmed else ObservationConfidence.WRITE_COMPLETED,
                     )
                     await transaction.store(completed)
+                    still_active = transition.current()
                     self._reconcile_observation(
                         coordinator,
                         config_entry_id=record.config_entry_id,
                         observed_at=record.updated_at,
-                        refreshed=confirmed is True,
+                        refreshed=confirmed is True and still_active,
                         matched_record=completed,
+                        match_current=still_active,
                     )
-                    return completed
+                    return completed, still_active
                 except asyncio.CancelledError:
                     await self._async_finish_failure_while_locked_best_effort(
                         coordinator,
@@ -892,12 +902,13 @@ class EffectDeploymentEngine:
         coordinator: GoveeBLECoordinator,
         compiled: CompiledApplication,
         transaction: _DeploymentTransaction,
+        current: Callable[[], bool],
     ) -> tuple[bool | None, ObservationConfidence]:
         expectations, confidence = compiled_observation(compiled, profile=coordinator.profile)
         if expectations is None:
             return None, ObservationConfidence.UNKNOWN
         if not isinstance(compiled, CompiledEffect):
-            return await self._async_verify_profile(coordinator, compiled, transaction)
+            return await self._async_verify_profile(coordinator, compiled, transaction, current)
         if compiled.activation_packet is None:
             raise RuntimeError("compiled activation verification has no activation packet")
         for attempt in range(VERIFICATION_ATTEMPTS):
@@ -914,7 +925,7 @@ class EffectDeploymentEngine:
                     break
             if refreshed is True:
                 return True, confidence
-            if refreshed is not False or attempt + 1 == VERIFICATION_ATTEMPTS:
+            if refreshed is not False or attempt + 1 == VERIFICATION_ATTEMPTS or not current():
                 break
             await transaction.store(replace(transaction.current, phase=DeploymentPhase.ACTIVATING))
             await self._async_activate(coordinator, compiled)
@@ -926,6 +937,7 @@ class EffectDeploymentEngine:
         coordinator: GoveeBLECoordinator,
         compiled: CompiledMusicProfile | CompiledVideoProfile,
         transaction: _DeploymentTransaction,
+        current: Callable[[], bool],
     ) -> tuple[bool | None, ObservationConfidence]:
         expectations, confidence = compiled_observation(compiled, profile=coordinator.profile)
         if expectations is None:
@@ -939,6 +951,8 @@ class EffectDeploymentEngine:
                 continue
             if isinstance(compiled, CompiledMusicProfile):
                 continue
+            if not current():
+                break
             if attempt + 1 < VERIFICATION_ATTEMPTS:
                 await transaction.store(
                     replace(
@@ -987,13 +1001,15 @@ class EffectDeploymentEngine:
             error_code=error_code,
             verification_confidence=ObservationConfidence.UNKNOWN,
         )
-        await self._deployments.async_put(recovering, expected_version=None, expected_record=record)
         recovered = False
-        if recovering.prior_state is not None and (
-            coordinator.profile.supports_color_mode_readback or error_code != "device_state_unconfirmed"
-        ):
+        async with coordinator.async_mode_transition(purpose=ModeTransitionPurpose.RECOVERY) as transition:
+            await self._deployments.async_put(recovering, expected_version=None, expected_record=record)
             restore = getattr(coordinator, "async_restore_effect_control_state", None)
-            if restore is not None:
+            if (
+                restore is not None
+                and recovering.prior_state is not None
+                and (coordinator.profile.supports_color_mode_readback or error_code != "device_state_unconfirmed")
+            ):
                 try:
                     recovered = await restore(
                         recovering.prior_state,
@@ -1011,11 +1027,12 @@ class EffectDeploymentEngine:
                         "Failed to recover the prior state after Effect Studio deployment %s",
                         recovering.operation_id,
                     )
-        final = replace(
-            recovering,
-            phase=DeploymentPhase.FAILED if recovered else DeploymentPhase.UNCERTAIN,
-        )
-        await self._deployments.async_put(final, expected_version=None, expected_record=recovering)
+            final = replace(
+                recovering,
+                phase=DeploymentPhase.FAILED if recovered else DeploymentPhase.UNCERTAIN,
+            )
+            await self._deployments.async_put(final, expected_version=None, expected_record=recovering)
+            recovered = recovered and transition.current()
         if recovered and prior_origin is not None:
             observed, workspace = prior_origin
             if self._device_cache is not None and observed is not None:
@@ -1288,6 +1305,7 @@ class EffectDeploymentEngine:
         observed_at: str,
         refreshed: bool,
         matched_record: DeploymentRecord | None = None,
+        match_current: bool = True,
     ) -> ObservedDeviceState:
         mode = _coordinator_mode(coordinator)
         previous = self._device_cache.get(config_entry_id) if self._device_cache is not None else None
@@ -1306,8 +1324,10 @@ class EffectDeploymentEngine:
             and workspace.observable_signature == f"scene-code:{scene_code}"
         ):
             mode, diy_code, effect = "custom", scene_code, None
+        if not match_current:
+            matched_record = None
         verified_now = matched_record is not None
-        if matched_record is None and not workspace_matches:
+        if matched_record is None and match_current and not workspace_matches:
             latest = max(
                 (
                     record
@@ -1617,6 +1637,7 @@ async def async_prepare_effect_control_state(
                     await coordinator.refresh_state(
                         RefreshRequest(
                             refresh_all=True,
+                            query_native_settings=False,
                             required_domains=frozenset(
                                 {ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE}
                             ),
@@ -1659,6 +1680,7 @@ async def async_prepare_effect_control_state(
         await coordinator.refresh_state(
             RefreshRequest(
                 refresh_all=True,
+                query_native_settings=STATIC_RECOVERY_SETTINGS,
                 query_segments=False if profile.segment_colour_mode_ambiguous else None,
                 required_domains=profile.read_domains
                 & {ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE, ReadDomain.MODE},

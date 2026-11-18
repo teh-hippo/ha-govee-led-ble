@@ -28,6 +28,7 @@ from custom_components.ha_govee_led_ble.effect_runtime import (
 )
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_brightness,
+    build_colour_mode_query,
     build_diy_activation,
     build_power,
     build_scene_activation,
@@ -233,7 +234,7 @@ def physical(hass, monkeypatch, request):
                         if fault == "mode"
                         else [0x04, *state["scene"]]
                         if state["scene"] is not None
-                        else [0x15, 0],
+                        else [0x15, 0, *state.get("kelvin", 0).to_bytes(2, "big")],
                     ),
                 )
             elif domain == 0x0F and fault != "missing_count":
@@ -254,8 +255,18 @@ def physical(hass, monkeypatch, request):
             first, second = state["sources"]
             flags = int(state["on"]) | (int(first) << 1) | (int(second) << 2)
             records = {0x36: f"3601{flags:02x}", 0xA3: f"a301{int(state['gradual']):02x}", 0x41: "41020000"}
+            if fault == "missing_gradual":
+                records.pop(0xA3)
+            if fault == "invalid_gradual":
+                records[0xA3] = "a30102"
+            if fault == "invalid_power_on":
+                records[0x41] = "410200ff"
             body = "".join(records.get(domain, "") for domain in packet[3 : 3 + packet[2]])
-            coordinator._notify_callback(None, bytearray(frame(f"ac000100{len(body) // 2:02x}0300{body}")))
+            response = bytearray(frame(f"ac000100{len(body) // 2:02x}0300{body}"))
+            if fault == "invalid_gradual" and 0xA3 in packet[3 : 3 + packet[2]]:
+                asyncio.get_running_loop().call_soon(coordinator._notify_callback, None, response)
+            else:
+                coordinator._notify_callback(None, response)
 
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(side_effect=transmit), disconnect=AsyncMock())
     coordinator._client = client
@@ -286,13 +297,736 @@ async def test_public_effect_off_restores_non_source_segment_layout(hass, physic
     await hass.services.async_call("light", "turn_on", {"entity_id": light.entity_id, "effect": effect}, blocking=True)
     assert state["colours"] != expected_colours
     assert state["relative"] != expected_levels
-    await hass.services.async_call("light", "turn_on", {"entity_id": light.entity_id, "effect": "off"}, blocking=True)
+    request = {"entity_id": light.entity_id, "effect": "off"}
+    expected_brightness = 37
+    if coordinator.model == "H1771":
+        request["brightness"] = 128
+        expected_brightness = 50
+    state["packets"].clear()
+    await hass.services.async_call("light", "turn_on", request, blocking=True)
     assert state["colours"] == expected_colours
     assert state["relative"] == expected_levels
-    assert state["brightness"] == 37 and state["on"]
+    assert state["brightness"] == expected_brightness and state["on"]
+    assert [packet[2] for packet in state["packets"] if packet[:2] == b"\x33\x04"] == [expected_brightness]
     if coordinator.model == "H1771":
         assert state["colour_modes"] == ["rgb", "kelvin", "rgb", "kelvin"]
         assert state["sources"] == [True, False] and state["gradual"]
+
+
+@pytest.mark.parametrize("physical", ["H1771"], indirect=True)
+@pytest.mark.parametrize("fault", ["missing_gradual", "invalid_gradual", "invalid_power_on"])
+async def test_effect_recovery_uses_only_current_layout_settings(physical, virtual_clock, fault):
+    coordinator, state = physical
+    light = GoveeBLELight(coordinator)
+    light.async_write_ha_state = MagicMock()
+    assert await coordinator.refresh_state(RefreshRequest(refresh_all=True))
+    if fault != "invalid_power_on":
+        state["gradual"] = False
+    state["fault"] = fault
+    await light.async_turn_on(effect="Rainbow")
+    assert state["scene"] is not None
+    if fault != "invalid_power_on":
+        state["fault"] = None
+    await light.async_turn_on(effect="off")
+    assert state["scene"] is None
+    assert state["gradual"] is (fault == "invalid_power_on")
+
+
+@pytest.mark.parametrize("changed", [True, False])
+@pytest.mark.parametrize("physical", ["H1771", "H617A"], indirect=True)
+async def test_selection_rechecks_layout_at_first_physical_write(physical, monkeypatch, virtual_clock, changed):
+    coord, state = physical
+    light = GoveeBLELight(coord)
+    light.async_write_ha_state = MagicMock()
+    send = coord._async_write_packet
+    injected = False
+
+    async def accept_palette(client, packet, **kwargs):
+        nonlocal injected
+        if kwargs.get("arm_expected") and not injected:
+            assert coord.control_write_attempts == 0
+            injected = True
+            if changed:
+                state["relative"] = [24] * coord.profile.segment_count
+            size = coord.profile.segment_group_size
+            for start in range(0, coord.profile.segment_count, size):
+                body = [1 + start // size]
+                for position in range(start, min(start + size, coord.profile.segment_count)):
+                    body.extend([state["relative"][position], *state["colours"][position]])
+                coord._notify_callback(None, reply(0xA5, body))
+            assert coord.segment_brightness == state["relative"]
+        await send(client, packet, **kwargs)
+
+    monkeypatch.setattr(coord, "_async_write_packet", accept_palette)
+    select = light.async_turn_on(effect="Rainbow" if coord.model == "H1771" else "Sunrise")
+    if changed:
+        with pytest.raises(HomeAssistantError) as error:
+            await select
+        assert isinstance(error.value.__cause__, ValueError) and "observed device state" in str(error.value.__cause__)
+        assert coord.control_write_attempts == 0 and state["scene"] is None
+    else:
+        await select
+        assert state["scene"] is not None
+    assert injected
+
+
+@pytest.mark.parametrize("physical", ["H1771"], indirect=True)
+@pytest.mark.parametrize("changed", [True, False])
+async def test_off_tracks_selector_changes_not_reply_count(physical, monkeypatch, virtual_clock, changed):
+    coord, state = physical
+    light = GoveeBLELight(coord)
+    light.async_write_ha_state = MagicMock()
+    await light.async_turn_on(effect="Rainbow")
+    attempts = coord.control_write_attempts
+    preflight = coord.async_preflight_static_off
+
+    async def report_scene():
+        guard = await preflight()
+        if changed:
+            for field in ("color_mode", "effect", "scene_code", "unknown_scene_code"):
+                if field in coord._expected_state:
+                    virtual_clock.vtime = max(virtual_clock.vtime, coord._expected_state[field][1])
+            coord._notify_callback(None, reply(5, [4, 91, 0]))
+            assert coord.scene_code == 91
+        coord._notify_callback(None, reply(5, [4, *state["scene"]]))
+        assert coord.scene_code == 22
+        return guard
+
+    monkeypatch.setattr(coord, "async_preflight_static_off", report_scene)
+    if changed:
+        with pytest.raises(HomeAssistantError):
+            await coord.async_select_music_slug("off")
+        assert coord.control_write_attempts == attempts
+    else:
+        state["packets"].clear()
+        await coord.async_select_music_slug("off")
+        assert state["scene"] is None and state["packets"].count(frame("aaa501")) == 1
+
+
+@pytest.mark.parametrize("physical", ["H1771"], indirect=True)
+@pytest.mark.parametrize("exit_path", ["light", "rollback", "rollback_after_release"])
+async def test_partial_exit_requires_evidence_not_another_repaint(physical, monkeypatch, virtual_clock, exit_path):
+    coord, state = physical
+    light = GoveeBLELight(coord)
+    light.async_write_ha_state = MagicMock()
+    levels, sources = list(state["relative"]), list(state["sources"])
+    if exit_path == "light":
+        await light.async_turn_on(effect="Rainbow")
+    else:
+        assert await coord.refresh_state(RefreshRequest(refresh_all=True))
+        target = coord.capture_effect_control_state()
+        state.update(scene=[22, 0], relative=[100] * 4, sources=[True, True], gradual=False)
+        coord._notify_callback(None, reply(5, [4, 22, 0]))
+    state["fault"] = "relative"
+    if exit_path == "light":
+        with pytest.raises(HomeAssistantError) as error:
+            await light.async_turn_on(effect="off", brightness=128)
+        assert error.value.translation_key == "partial_command"
+    else:
+        assert not await coord.async_restore_effect_control_state(target, overwritten_diy_code=None)
+    assert state["scene"] is None and state["relative"] != levels
+    if exit_path == "rollback_after_release":
+        if expected_mode := coord._expected_state.get("color_mode"):
+            virtual_clock.vtime = max(virtual_clock.vtime, expected_mode[1])
+        state["scene"] = [91, 0]
+        coord._notify_callback(None, reply(5, [4, 91, 0]))
+        assert coord.scene_code == 91
+        client = coord._client
+        client.disconnect.side_effect = lambda: setattr(client, "is_connected", False)
+        await coord._async_disconnect_on_timeout(coord._disconnect_generation)
+        assert coord._client is None
+        state["scene"] = None
+
+        async def connect(*_args, **_kwargs):
+            client.is_connected = True
+            return client
+
+        client.services = []
+        client.start_notify = AsyncMock()
+        coord._ensure_connected = GoveeBLECoordinator._ensure_connected.__get__(coord)
+        monkeypatch.setattr("custom_components.ha_govee_led_ble.coordinator.async_establish_ble_connection", connect)
+    attempts = coord.control_write_attempts
+    state["fault"] = None
+    with pytest.raises(HomeAssistantError) as error:
+        await coord.async_select_music_slug("off")
+    assert error.value.translation_key == "partial_command" and coord.control_write_attempts == attempts
+    state.update(relative=levels, sources=sources, gradual=True)
+    await coord.async_select_music_slug("off")
+    assert coord.control_write_attempts == attempts and coord._pre_mode_snapshot is None
+    assert state["brightness"] == (50 if exit_path == "light" else 37)
+
+
+@pytest.mark.parametrize("physical", ["H1771"], indirect=True)
+@pytest.mark.parametrize("changed", [False, True])
+async def test_repeat_off_rechecks_verified_layout_at_completion(physical, monkeypatch, virtual_clock, changed):
+    coord, state = physical
+    light = GoveeBLELight(coord)
+    light.async_write_ha_state = MagicMock()
+    levels, sources = list(state["relative"]), list(state["sources"])
+    await light.async_turn_on(effect="Rainbow")
+    state["fault"] = "relative"
+    with pytest.raises(HomeAssistantError) as error:
+        await light.async_turn_on(effect="off")
+    assert error.value.translation_key == "partial_command"
+    target = coord._incomplete_static_exit
+    assert target is not None
+    state.update(relative=levels, sources=sources, gradual=True, fault=None)
+
+    async def report_palette():
+        if changed:
+            state.update(colours=[(0, 0, 255)] * 4, relative=[20] * 4)
+        body = [1]
+        for rgb, level in zip(state["colours"], state["relative"], strict=True):
+            body.extend([level, *rgb])
+        revision = coord._field_revisions["segment_colors"]
+        coord._notify_callback(None, reply(0xA5, body))
+        assert coord._field_revisions["segment_colors"] > revision
+
+    monkeypatch.setattr(light, "_async_supersede_preview", report_palette)
+    attempts = coord.control_write_attempts
+    if changed:
+        with pytest.raises(HomeAssistantError) as error:
+            await light.async_turn_on(effect="off")
+        assert error.value.translation_key == "partial_command"
+        assert coord._incomplete_static_exit is target
+    else:
+        await light.async_turn_on(effect="off")
+        assert coord._incomplete_static_exit is None
+    assert coord.control_write_attempts == attempts and coord.static_mode_confirmed()
+
+
+@pytest.mark.parametrize("physical", ["H1771"], indirect=True)
+async def test_complete_bulk_reply_without_requested_source_flags_cannot_confirm_off(physical, virtual_clock):
+    coord, state = physical
+    light = GoveeBLELight(coord)
+    light.async_write_ha_state = MagicMock()
+    await light.async_turn_on(effect="Rainbow")
+    send = coord._client.write_gatt_char.side_effect
+
+    async def omit_flags(uuid, packet, **kwargs):
+        if packet[:4] == b"\xac\x03\x01\x36":
+            coord._notify_callback(None, bytearray(frame("ac000100030300a30101")))
+        else:
+            await send(uuid, packet, **kwargs)
+
+    coord._client.write_gatt_char.side_effect = omit_flags
+    with pytest.raises(HomeAssistantError) as error:
+        await light.async_turn_on(effect="off")
+    assert error.value.translation_key == "partial_command" and state["sources"] == [True, True]
+    assert not coord._bulk_query_incomplete
+
+
+@pytest.mark.parametrize("physical", ["H1771"], indirect=True)
+@pytest.mark.parametrize(
+    ("prior_scene", "update"),
+    [
+        (True, "matching"),
+        (True, "source_readback"),
+        (True, "recovering_record"),
+        (False, "recovering_record"),
+        (True, "recovering_source"),
+        (True, "matching_recovering_source"),
+        (True, "before_rejected_ack"),
+        (False, "before_rejected_ack"),
+        (True, "own_activation"),
+    ],
+)
+async def test_saved_failure_preserves_new_scene_across_recovery(
+    physical, monkeypatch, virtual_clock, prior_scene, update
+):
+    from custom_components.ha_govee_led_ble.effect_catalogue import MODEL_EFFECT_CATALOGUES
+    from custom_components.ha_govee_led_ble.native_effect import NativeEffect
+
+    coord, state = physical
+    light = GoveeBLELight(coord)
+    light.async_write_ha_state = MagicMock()
+    if prior_scene:
+        await light.async_turn_on(effect="Rainbow")
+        await coord.async_set_boolean_control("source_1_enabled", False)
+    send = coord._client.write_gatt_char.side_effect
+    failed = observed = False
+
+    def report_scene(code):
+        nonlocal observed
+        for field in ("color_mode", "effect", "scene_code", "unknown_scene_code"):
+            if field in coord._expected_state:
+                virtual_clock.vtime = max(virtual_clock.vtime, coord._expected_state[field][1])
+        state["scene"] = [code, 0]
+        coord._notify_callback(None, reply(5, [4, *state["scene"]]))
+        assert coord.scene_code == code
+        observed = True
+
+    async def interrupt(uuid, packet, **kwargs):
+        nonlocal failed
+        if not failed and packet[0] == 0xA3 and coord._upload_ack is not None:
+            failed = True
+            await send(uuid, packet, **kwargs)
+            if update == "before_rejected_ack":
+                report_scene(91)
+                state["packets"].clear()
+            coord._notify_callback(None, bytearray(frame("a358ff00" if update == "own_activation" else "a358ff01")))
+            return
+        if update == "own_activation" and packet[:3] == b"\x33\x05\x0a":
+            await send(uuid, packet, **kwargs)
+            code = int.from_bytes(packet[3:5], "little")
+            coord._notify_callback(None, reply(5, [0x0A, *packet[3:5]]))
+            assert coord.diy_code == code
+            return
+        if (
+            failed
+            and not observed
+            and update in {"matching", "source_readback", "own_activation"}
+            and packet[:4] == b"\xac\x03\x01\x36"
+        ):
+            assert state["scene"] == [22, 0]
+            report_scene(91 if update == "source_readback" else 22)
+        await send(uuid, packet, **kwargs)
+
+    coord._client.write_gatt_char.side_effect = interrupt
+    store = InMemoryVersionedDocumentStore()
+    repository = EffectDeploymentRepository(store)
+    await repository.async_load()
+    if update in {"recovering_record", "own_activation"}:
+        put = repository.async_put
+
+        async def persist(record, **kwargs):
+            if update == "own_activation" and record.phase is DeploymentPhase.VERIFYING:
+                raise RuntimeError("interrupted after own activation")
+            await put(record, **kwargs)
+            if update == "recovering_record" and record.phase is DeploymentPhase.RECOVERING:
+                report_scene(91)
+                state["packets"].clear()
+
+        monkeypatch.setattr(repository, "async_put", persist)
+    if update in {"recovering_source", "matching_recovering_source"}:
+        save = store.async_save
+
+        async def persist_source(data):
+            nonlocal observed
+            if any(row["phase"] == "recovering" for row in data["records"].values()):
+                changed = update == "recovering_source"
+                state["sources"] = [True, changed]
+                revision = coord._field_revisions["boolean_source_1_enabled"]
+                coord._notify_callback(None, bytearray(frame("ee300107" if changed else "ee300103")))
+                assert coord._field_revisions["boolean_source_1_enabled"] > revision
+                assert coord.boolean_control_state["source_1_enabled"] is changed
+                assert coord.scene_code == 22
+                state["packets"].clear()
+                observed = True
+            await save(data)
+
+        monkeypatch.setattr(store, "async_save", persist_source)
+    item = next(t.content for t in MODEL_EFFECT_CATALOGUES["H1771"].templates if isinstance(t.content, NativeEffect))
+    match = "interrupted after own activation" if update == "own_activation" else "Device rejected A3 upload"
+    with pytest.raises(RuntimeError, match=match):
+        await EffectDeploymentEngine(repository).async_apply_saved(
+            coord, LibraryItem.new("Test", item), config_entry_id="entry", updated_at="2026-11-18T00:00:00Z"
+        )
+    loaded = EffectDeploymentRepository(store)
+    await loaded.async_load()
+    (record,) = loaded.snapshot().records
+    assert observed and record.prior_state.scene_code == (22 if prior_scene else None)
+    assert record.error_code == "deployment_failed"
+    recovered = update in {"matching", "matching_recovering_source", "own_activation"}
+    assert record.phase is (DeploymentPhase.FAILED if recovered else DeploymentPhase.UNCERTAIN)
+    assert state["scene"] == [22 if recovered or update == "recovering_source" else 91, 0]
+    assert state["sources"] == [True, update in {"source_readback", "recovering_source"}]
+    if update in {"recovering_record", "recovering_source", "before_rejected_ack"}:
+        assert not any(packet[0] == 0x33 for packet in state["packets"])
+
+
+@pytest.mark.parametrize("physical", ["H1771"], indirect=True)
+@pytest.mark.parametrize(
+    "handoff", ["matching", "retry_prior", "upload_ack", "verification_retry", "confirmation_save"]
+)
+async def test_saved_effect_observation_authority(physical, monkeypatch, virtual_clock, handoff):
+    from custom_components.ha_govee_led_ble.effect_catalogue import MODEL_EFFECT_CATALOGUES
+    from custom_components.ha_govee_led_ble.effect_identity import EffectDeviceCache
+    from custom_components.ha_govee_led_ble.native_effect import NativeEffect
+
+    coord, state = physical
+    light = GoveeBLELight(coord)
+    light.async_write_ha_state = MagicMock()
+    await light.async_turn_on(effect="Rainbow")
+    store = InMemoryVersionedDocumentStore()
+    repo = EffectDeploymentRepository(store)
+    await repo.async_load()
+    cache = EffectDeviceCache(InMemoryVersionedDocumentStore())
+    await cache.async_load()
+    send, save = coord._client.write_gatt_char.side_effect, store.async_save
+    selector = [4, 22, 0]
+    activations = 0
+
+    def report_scene(code):
+        nonlocal selector
+        selector = [4, code, 0]
+        for field in ("color_mode", "effect", "scene_code", "unknown_scene_code"):
+            if field in coord._expected_state:
+                virtual_clock.vtime = max(virtual_clock.vtime, coord._expected_state[field][1])
+        revision = coord._selector_revision
+        coord._notify_callback(None, reply(5, selector))
+        assert coord.scene_code == code
+        assert (coord._selector_revision > revision) is (code != 22)
+
+    async def transmit(uuid, packet, **kwargs):
+        nonlocal selector, activations
+        if packet[0] == 0xA3 and coord._upload_ack is not None:
+            await send(uuid, packet, **kwargs)
+            if handoff == "upload_ack":
+                report_scene(91)
+            else:
+                coord._notify_callback(None, reply(5, selector))
+            coord._notify_callback(None, bytearray(frame("a358ff00")))
+        elif packet[:3] == b"\x33\x05\x0a":
+            activations += 1
+            if handoff != "retry_prior" or activations > 1:
+                selector = [0x0A, *packet[3:5]]
+                coord._notify_callback(None, reply(5, selector))
+        elif packet[:2] == b"\xaa\x05":
+            if handoff == "verification_retry" and activations:
+                report_scene(91)
+            elif handoff == "retry_prior" and activations == 1:
+                report_scene(22)
+            else:
+                coord._notify_callback(None, reply(5, selector))
+        else:
+            await send(uuid, packet, **kwargs)
+
+    async def persist(data):
+        if handoff == "confirmation_save" and any(row["phase"] == "confirmed" for row in data["records"].values()):
+            report_scene(91)
+        await save(data)
+
+    monkeypatch.setattr(store, "async_save", persist)
+    coord._client.write_gatt_char.side_effect = transmit
+    content = next(t.content for t in MODEL_EFFECT_CATALOGUES["H1771"].templates if isinstance(t.content, NativeEffect))
+    engine = EffectDeploymentEngine(repo, device_cache=cache)
+    item = LibraryItem.new("Test", content)
+    if handoff == "upload_ack":
+        with pytest.raises(ValueError, match="observed device state changed"):
+            await engine.async_apply_saved(coord, item, config_entry_id="entry", updated_at="2026-11-18T00:00:00Z")
+    else:
+        await engine.async_apply_saved(coord, item, config_entry_id="entry", updated_at="2026-11-18T00:00:00Z")
+    loaded = EffectDeploymentRepository(store)
+    await loaded.async_load()
+    (record,) = loaded.snapshot().records
+    assert activations == (0 if handoff == "upload_ack" else 2 if handoff == "retry_prior" else 1)
+    assert record.phase is (
+        DeploymentPhase.UNCERTAIN if handoff in {"upload_ack", "verification_retry"} else DeploymentPhase.CONFIRMED
+    )
+    observed = cache.get("entry")
+    assert observed is not None
+    if handoff in {"matching", "retry_prior"}:
+        assert observed.mode == "custom" and observed.matched_operation_id == record.operation_id
+    else:
+        assert selector == [4, 91, 0]
+        assert observed.mode == "scene" and observed.matched_operation_id is None
+
+
+@pytest.mark.parametrize("physical", ["H1771"], indirect=True)
+@pytest.mark.parametrize("changed", [False, True])
+async def test_live_music_upload_preserves_accepted_selector(physical, hass, monkeypatch, virtual_clock, changed):
+    from custom_components.ha_govee_led_ble.effect_domain import MusicProfile
+    from custom_components.ha_govee_led_ble.effect_preview import PreviewPhase
+    from tests.test_effect_preview import _manager, _open
+
+    coord, state = physical
+    send = coord._client.write_gatt_char.side_effect
+    music = None
+
+    async def transmit(uuid, packet, **kwargs):
+        nonlocal music
+        if packet[0] == 0xA3 and coord._upload_ack is not None:
+            await send(uuid, packet, **kwargs)
+            if changed:
+                state["scene"] = [91, 0]
+            revision = coord._selector_revision
+            coord._notify_callback(None, reply(5, [4, 91, 0] if changed else [0x15, 1, 0, 0]))
+            assert (coord._selector_revision > revision) is changed
+            coord._notify_callback(None, bytearray(frame("a341ff00")))
+        elif packet[:3] == b"\x33\x05\x13":
+            music = [0x13, *packet[3:5]]
+            state["scene"] = None
+            await send(uuid, packet, **kwargs)
+        elif packet[:2] == b"\xaa\x05" and music is not None:
+            coord._notify_callback(None, reply(5, music))
+        else:
+            await send(uuid, packet, **kwargs)
+
+    coord._client.write_gatt_char.side_effect = transmit
+    manager, _ = await _manager(hass, monkeypatch, coord)
+    owner, events = object(), []
+    session = _open(manager, owner, events)
+    try:
+        await manager.async_queue_snapshot(
+            session_id=session,
+            owner=owner,
+            config_entry_id="entry-a",
+            sequence=1,
+            updated_at="2026-11-18T00:00:00Z",
+            item=LibraryItem.new("Flowing", MusicProfile("H1771", "flowing", 50)),
+        )
+        await manager.async_wait_idle("entry-a")
+        if changed:
+            assert music is None and state["scene"] == [91, 0] and coord.scene_code == 91
+            assert events[-1].phase not in {PreviewPhase.WRITTEN, PreviewPhase.CONFIRMED}
+        else:
+            assert music == [0x13, 81, 50] and events[-1].phase is PreviewPhase.CONFIRMED
+    finally:
+        await manager.async_shutdown()
+
+
+@pytest.mark.parametrize("physical", ["H1771"], indirect=True)
+@pytest.mark.parametrize("palette_first", [False, True])
+async def test_fresh_palette_revokes_kelvin_without_assuming_zero_means_rgb(physical, virtual_clock, palette_first):
+    coordinator, state = physical
+    light = GoveeBLELight(coordinator)
+    state.update(kelvin=2200, colours=[(255, 152, 41)] * 4)
+    assert await coordinator.refresh_state(RefreshRequest(refresh_all=True))
+    assert light.color_temp_kelvin == 2200
+    state["kelvin"] = 0
+    assert await coordinator.refresh_state(RefreshRequest(refresh_all=True))
+    assert light.color_temp_kelvin == 2200
+    coordinator._notify_callback(None, reply(5, [0x15, 0, 0x08, 0x98]))
+    zero = reply(5, [0x15, 1, 0, 0])
+    blue = reply(0xA5, [1] + [30, 0, 0, 255] * 4)
+    for packet in (blue, zero) if palette_first else (zero, blue):
+        coordinator._notify_callback(None, packet)
+    assert light.color_temp_kelvin is None and light.rgb_color == (0, 0, 255)
+
+
+@pytest.mark.parametrize("entry", ["light", "music"])
+async def test_effect_off_rechecks_cached_static_mode(physical, virtual_clock, entry):
+    coordinator, state = physical
+    light = GoveeBLELight(coordinator)
+    light.async_write_ha_state = MagicMock()
+    assert await coordinator.refresh_state(RefreshRequest(refresh_all=True))
+
+    async def off(**kwargs):
+        if entry == "light":
+            await light.async_turn_on(effect="off", **kwargs)
+        else:
+            await coordinator.async_select_music_slug("off")
+
+    state["packets"].clear()
+    await off()
+    assert build_colour_mode_query(coordinator.model, profile=coordinator.profile) in state["packets"]
+    assert coordinator.control_write_attempts == 0
+    state["scene"] = [22, 0]
+    with pytest.raises(HomeAssistantError) as error:
+        await off(brightness=100)
+    assert error.value.translation_key == "recovery_not_ready"
+    assert coordinator.control_write_attempts == 0 and state["brightness"] == 37
+
+
+@pytest.mark.parametrize("physical", ["H1771"], indirect=True)
+@pytest.mark.parametrize(("entry", "during_setting_readback"), [("light", False), ("music", False), ("light", True)])
+async def test_off_does_not_finish_over_a_new_scene(physical, virtual_clock, entry, during_setting_readback):
+    coordinator, state = physical
+    light = GoveeBLELight(coordinator)
+    light.async_write_ha_state = MagicMock()
+    await light.async_turn_on(effect="Rainbow")
+    client = coordinator._client
+    transmit = client.write_gatt_char.side_effect
+    state["packets"].clear()
+    observed = False
+    zone_reads = 0
+
+    async def report_new_scene(uuid, packet, **kwargs):
+        nonlocal zone_reads, observed
+        if packet[:4] == b"\xac\x03\x01\x36":
+            zone_reads += 1
+            if zone_reads == (2 if during_setting_readback else 1):
+                assert state["scene"] is None
+                for field in ("color_mode", "effect"):
+                    if field in coordinator._expected_state:
+                        virtual_clock.vtime = max(virtual_clock.vtime, coordinator._expected_state[field][1])
+                state["scene"] = [22, 0]
+                coordinator._notify_callback(None, reply(5, [0x04, *state["scene"]]))
+                assert coordinator.color_mode is ParsedMode.SCENE
+                observed = True
+        await transmit(uuid, packet, **kwargs)
+
+    client.write_gatt_char.side_effect = report_new_scene
+    off = light.async_turn_on(effect="off") if entry == "light" else coordinator.async_select_music_slug("off")
+    with pytest.raises(HomeAssistantError if entry == "light" else ValueError) as error:
+        await off
+    if isinstance(error.value, HomeAssistantError):
+        assert error.value.translation_key == "partial_command"
+    assert observed and state["scene"] == [22, 0] and coordinator.active_mode == "scene"
+    assert state["sources"] == [True, not during_setting_readback]
+    assert sum(packet[:2] == b"\x33\x36" for packet in state["packets"]) == int(during_setting_readback)
+
+
+@pytest.mark.parametrize("physical", ["H1771"], indirect=True)
+@pytest.mark.parametrize(
+    ("entry", "update"),
+    [
+        ("light", "unverified"),
+        ("rollback", "unverified"),
+        ("light", "before_gradual"),
+        ("music", "new_palette"),
+        ("light", "new_levels"),
+        ("light", "matching"),
+        ("rollback", "matching"),
+    ],
+)
+async def test_source_recovery_requires_current_static_appearance(physical, virtual_clock, entry, update):
+    coordinator, state = physical
+    light = GoveeBLELight(coordinator)
+    light.async_write_ha_state = MagicMock()
+    state["on"] = entry != "rollback"
+    await light.async_turn_on(effect="Rainbow")
+    client = coordinator._client
+    transmit = client.write_gatt_char.side_effect
+    state["packets"].clear()
+    state["fault"] = "relative" if update == "unverified" else None
+    zone_reads = 0
+    observed = False
+
+    def report_palette(colours, levels):
+        body = [1]
+        for rgb, level in zip(colours, levels, strict=True):
+            body.extend([level, *rgb])
+        coordinator._notify_callback(None, reply(0xA5, body))
+        assert coordinator.color_mode is ParsedMode.COLOUR
+        assert coordinator.segment_colors == colours and coordinator.segment_brightness == levels
+
+    async def report_update(uuid, packet, **kwargs):
+        nonlocal zone_reads, observed
+        if update == "before_gradual":
+            await transmit(uuid, packet, **kwargs)
+            static = parse_static_write(packet, coordinator.model, profile=coordinator.profile)
+            if static is not None and static.brightness_pct == 70:
+                for field, (_, deadline) in coordinator._expected_state.items():
+                    if field.startswith("segment_"):
+                        virtual_clock.vtime = max(virtual_clock.vtime, deadline)
+                state.update(colours=[(0, 0, 255)] * 4, relative=[20] * 4)
+                report_palette(state["colours"], state["relative"])
+                observed = True
+            return
+        if packet[:4] == b"\xac\x03\x01\x36":
+            zone_reads += 1
+            if update != "unverified" and zone_reads == (2 if update == "new_levels" else 1):
+                assert state["scene"] is None
+                colours, levels = list(state["colours"]), list(state["relative"])
+                if update == "new_palette":
+                    report_palette([(0, 0, 255)] * 4, levels)
+                    # A second accepted reply must not regain authority for this operation.
+                    report_palette(colours, levels)
+                elif update == "new_levels":
+                    state["relative"] = [20] * 4
+                    report_palette(colours, state["relative"])
+                else:
+                    report_palette(colours, levels)
+                observed = True
+        await transmit(uuid, packet, **kwargs)
+
+    client.write_gatt_char.side_effect = report_update
+    if entry == "rollback":
+        prior = coordinator.require_static_baseline()
+        assert await coordinator.async_restore_effect_control_state(prior, overwritten_diy_code=None) is (
+            update == "matching"
+        )
+        assert not state["on"]
+        assert frame("330100") in state["packets"]
+    else:
+        off = light.async_turn_on(effect="off") if entry == "light" else coordinator.async_select_music_slug("off")
+        if update == "matching":
+            await off
+        else:
+            with pytest.raises(HomeAssistantError if entry == "light" else ValueError) as error:
+                await off
+            if isinstance(error.value, HomeAssistantError):
+                assert error.value.translation_key == "partial_command"
+    writes = 1 if update in {"matching", "new_levels"} else 0
+    assert observed is (update != "unverified")
+    assert state["sources"] == [True, not writes]
+    assert sum(packet[:2] == b"\x33\x36" for packet in state["packets"]) == writes
+    if update in {"before_gradual", "unverified"}:
+        assert not state["gradual"] and frame("33a301") not in state["packets"]
+
+
+@pytest.mark.parametrize("physical", ["H1771"], indirect=True)
+@pytest.mark.parametrize("entry", ["light", "music"])
+@pytest.mark.parametrize("active_elsewhere", [False, True])
+async def test_effect_off_qualifies_cold_mode_without_snapshot(
+    physical, monkeypatch, virtual_clock, entry, active_elsewhere
+):
+    coordinator, state = physical
+    light = GoveeBLELight(coordinator)
+    light.async_write_ha_state = MagicMock()
+    coordinator._present = True
+    client = coordinator._client
+    client.disconnect.side_effect = lambda: setattr(client, "is_connected", False)
+
+    async def connected():
+        client.is_connected = True
+        coordinator._client = client
+        if coordinator._notification_token is None:
+            coordinator._notification_token = object()
+            coordinator._notify_started_monotonic = virtual_clock.virtual_time()
+        return client
+
+    monkeypatch.setattr(coordinator, "_ensure_connected", connected)
+    assert await coordinator.refresh_state(RefreshRequest(refresh_all=True))
+    assert coordinator.static_mode_confirmed()
+    await coordinator._async_disconnect_on_timeout(coordinator._disconnect_generation)
+    assert coordinator._client is None
+    if active_elsewhere:
+        state["scene"] = [22, 0]
+    state["packets"].clear()
+    off = light.async_turn_on(effect="off") if entry == "light" else coordinator.async_select_music_slug("off")
+    if active_elsewhere:
+        with pytest.raises(HomeAssistantError) as error:
+            await off
+        assert error.value.translation_key == "recovery_not_ready"
+    else:
+        await off
+    assert frame("aa0501") in state["packets"]
+    assert coordinator.control_write_attempts == 0
+
+
+@pytest.mark.parametrize("physical", ["H1771"], indirect=True)
+@pytest.mark.parametrize(("entry", "already_static"), [("light", True), ("music", True), ("light", False)])
+async def test_effect_off_rechecks_mode_before_replaying_suspended_history(
+    physical, monkeypatch, virtual_clock, entry, already_static
+):
+    coordinator, state = physical
+    light = GoveeBLELight(coordinator)
+    light.async_write_ha_state = MagicMock()
+    original = list(state["colours"]), list(state["relative"])
+    await light.async_turn_on(effect="Rainbow")
+    client = coordinator._client
+    client.disconnect.side_effect = lambda: setattr(client, "is_connected", False)
+    await coordinator._async_disconnect_on_timeout(coordinator._disconnect_generation)
+    assert coordinator._client is None and coordinator._pre_mode_needs_qualification
+    if already_static:
+        state.update(scene=None, colours=[(0, 0, 255)] * 4, relative=[20] * 4)
+    expected = (list(state["colours"]), list(state["relative"])) if already_static else original
+    state["packets"].clear()
+
+    async def connect(*_args, **_kwargs):
+        client.is_connected = True
+        return client
+
+    client.services = []
+    client.start_notify = AsyncMock()
+    coordinator._ensure_connected = GoveeBLECoordinator._ensure_connected.__get__(coordinator)
+    monkeypatch.setattr("custom_components.ha_govee_led_ble.coordinator.async_establish_ble_connection", connect)
+    if entry == "light":
+        await light.async_turn_on(effect="off")
+    else:
+        await coordinator.async_select_music_slug("off")
+
+    assert (state["colours"], state["relative"]) == expected
+    assert state["scene"] is None
+    mode_read = state["packets"].index(frame("aa0501"))
+    writes = [index for index, packet in enumerate(state["packets"]) if packet[0] == 0x33]
+    if already_static:
+        assert not writes and coordinator._pre_mode_snapshot is None
+    else:
+        assert mode_read < writes[0]
 
 
 @pytest.mark.parametrize(

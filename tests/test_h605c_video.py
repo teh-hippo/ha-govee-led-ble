@@ -386,3 +386,45 @@ async def test_inline_recovery_restores_mode_values_without_the_independent_regi
         "movie", True, 50, False, 50, "H605C", values=EDGES
     )
     reader.assert_not_awaited()
+
+
+async def test_inline_video_reconciliation_does_not_pin_the_intermediate_mode(device, monkeypatch, virtual_clock):
+    from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_brightness
+    from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES
+
+    device.fw_version, device.subordinate_21_version = "1.00.09", "1.00.04"
+    mode_body = "000100320032001b30455000"
+    device._notify_callback(None, bytearray(frame("aa05" + mode_body)))
+    name, scene = next((name, scene) for name, scene in MODEL_SCENES["H605C"].items() if not scene.param)
+    prior = replace(
+        device.capture_effect_control_state(),
+        mode="scene",
+        effect=name,
+        scene_code=scene.code,
+        brightness_pct=50,
+        video_restore_controls=("inline_relative_brightness",),
+    )
+    device.video_parameters = dict.fromkeys(EDGES, 100)
+    controls = []
+
+    async def radio(uuid, packet, **kwargs):
+        nonlocal mode_body
+        if packet[:2] == b"\x33\x05":
+            mode_body = packet[2:-1].hex()
+            controls.append(packet[2])
+
+    async def queries(**kwargs):
+        if kwargs["query_power"]:
+            device._notify_callback(None, bytearray(frame("aa0101")))
+        if kwargs["query_brightness"]:
+            device._notify_callback(None, bytearray(frame(f"aa04{build_brightness(50, device.model)[2]:02x}")))
+        if kwargs["query_color_mode"]:
+            device._notify_callback(None, bytearray(frame("aa05" + mode_body)))
+        return True
+
+    device._client.write_gatt_char.side_effect = radio
+    monkeypatch.setattr(device, "_ensure_connected", AsyncMock(return_value=device._client))
+    monkeypatch.setattr(device, "_send_state_queries", queries)
+    monkeypatch.setattr(device, "refresh_state", GoveeBLECoordinator.refresh_state.__get__(device))
+    assert await device.async_restore_effect_control_state(prior, overwritten_diy_code=None)
+    assert controls == [0, 4] and device.scene_code == scene.code

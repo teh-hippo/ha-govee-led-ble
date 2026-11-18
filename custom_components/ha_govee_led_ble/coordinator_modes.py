@@ -9,11 +9,11 @@ from typing import TYPE_CHECKING, Any
 
 from homeassistant.exceptions import HomeAssistantError
 
-from .const import DOMAIN, ModelProfile, ReadDomain, same_control_profile
+from .const import DOMAIN, NATIVE_ZONE_CONTROLS, ModelProfile, ReadDomain, same_control_profile
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator_base import _CoordinatorBase, async_prepare_effect_profile
 from .coordinator_refresh import RefreshRequest
-from .coordinator_sources import has_segmented_sources
+from .coordinator_sources import has_segmented_sources, native_source_fields, source_kelvin_hint_fields
 from .coordinator_status import ParsedMode
 from .generated_protocol_adapter import build_power
 from .music_commands import (
@@ -67,6 +67,16 @@ class _ModeTransition:
     subscription: object | None = None
     field_baselines: dict[str, int] = field(default_factory=dict)
     write_baseline: int = 0
+    static_restore_started: bool = False
+    verifying_resident_effect: bool = False
+    last_selector: tuple[object, ...] | None = None
+    written_selector: dict[str, Any] | None = None
+    superseded: bool = False
+    observations_match: Callable[[], bool] | None = None
+    powering_off: bool = False
+
+    def current(self) -> bool:
+        return not self.superseded and (self.observations_match is None or self.observations_match())
 
 
 class _ActiveModeMixin(_CoordinatorBase):
@@ -85,6 +95,8 @@ class _ActiveModeMixin(_CoordinatorBase):
         self.diy_companion: int | None = None
         self.color_mode: ParsedMode | None = None
         self._observed_color_mode: ParsedMode | None = None
+        self._observed_selector: tuple[object, ...] = ()
+        self._selector_revision = 0
         self._mode_write_generation = 0
         self._observed_mode_write_generation = -1
         self._observed_mode_profile_generation = -1
@@ -94,6 +106,7 @@ class _ActiveModeMixin(_CoordinatorBase):
         self._source_power_observation_generation: dict[str, tuple[int, int]] = {}
         self._scene_code = None
         self._pre_mode_snapshot: PriorControlState | None = None
+        self._incomplete_static_exit: PriorControlState | None = None
         self._pre_mode_profile: ModelProfile | None = None
         self._pre_mode_needs_qualification = False
         self._mode_transition: _ModeTransition | None = None
@@ -121,8 +134,11 @@ class _ActiveModeMixin(_CoordinatorBase):
             for spec in variant.selector_parameters:
                 setattr(self, spec.key, None)
 
-    def _discard_static_baseline(self) -> None:
+    def _discard_static_baseline(self, *, keep_incomplete_exit: bool = False) -> None:
         self._pre_mode_snapshot = None
+        if keep_incomplete_exit and self._incomplete_static_exit is not None:
+            return
+        self._incomplete_static_exit = None
         self._pre_mode_profile = None
         self._pre_mode_needs_qualification = False
 
@@ -221,7 +237,9 @@ class _ActiveModeMixin(_CoordinatorBase):
         return "colour"
 
     @asynccontextmanager
-    async def async_mode_transition(self, *, purpose: ModeTransitionPurpose | None = None) -> AsyncIterator[None]:
+    async def async_mode_transition(
+        self, *, purpose: ModeTransitionPurpose | None = None
+    ) -> AsyncIterator[_ModeTransition]:
         previous = self._mode_transition
         owner = asyncio.current_task()
         if (
@@ -233,7 +251,7 @@ class _ActiveModeMixin(_CoordinatorBase):
                 previous.purpose = purpose
             if purpose is ModeTransitionPurpose.SELECTION:
                 await self.async_admit_effect_selection()
-            yield
+            yield previous
             return
         transition = _ModeTransition(
             owner,
@@ -244,9 +262,52 @@ class _ActiveModeMixin(_CoordinatorBase):
         )
         self._mode_transition = transition
         try:
+            if (
+                purpose is ModeTransitionPurpose.RECOVERY
+                and previous is not None
+                and previous.owner is owner
+                and previous.purpose in (ModeTransitionPurpose.SELECTION, ModeTransitionPurpose.PREVIEW)
+            ):
+                transition.superseded = previous.superseded
+                zones = self.profile.boolean_controls.intersection(NATIVE_ZONE_CONTROLS)
+                source_fields = (*native_source_fields(self.profile), *source_kelvin_hint_fields(self.profile))
+
+                def appearance() -> tuple[object, ...]:
+                    basic = (
+                        self._selector_revision,
+                        self.is_on,
+                        self.brightness_pct,
+                        *(self.boolean_control_state.get(zone) for zone in zones),
+                        *(getattr(self, name) for name in source_fields),
+                    )
+                    if self.color_mode is not ParsedMode.COLOUR:
+                        return basic
+                    return (
+                        *basic,
+                        self.rgb_color,
+                        self.color_temp_kelvin,
+                        self.static_gradual,
+                        tuple(self.segment_colors),
+                        tuple(self.segment_brightness),
+                    )
+
+                # Deployment rollback must retain its starting context across persistence.
+                starting_appearance = appearance()
+                generation, subscription = self._profile_generation, self._notification_token
+                foreground = self._control_arbiter.foreground_generation
+                attempts = self.control_write_attempts
+                transition.observations_match = lambda: (
+                    self.control_write_attempts != attempts
+                    or (
+                        generation == self._profile_generation
+                        and subscription is self._notification_token
+                        and foreground == self._control_arbiter.foreground_generation
+                        and appearance() == starting_appearance
+                    )
+                )
             if purpose is ModeTransitionPurpose.SELECTION:
                 await self.async_admit_effect_selection()
-            yield
+            yield transition
         finally:
             if self._mode_transition is transition:
                 self._mode_transition = previous
@@ -376,7 +437,7 @@ class _ActiveModeMixin(_CoordinatorBase):
             profile=profile,
         )
         upload_count = len(packets) - 1
-        async with self.async_mode_transition(purpose=ModeTransitionPurpose.SELECTION):
+        async with self.async_mode_transition(purpose=ModeTransitionPurpose.SELECTION) as transition:
             power_in_sequence = False
             if not self.is_on:
                 power = build_power(True, self.model)
@@ -415,6 +476,8 @@ class _ActiveModeMixin(_CoordinatorBase):
                     observed = await self.async_observe_effect({"scene_code": selector})
                 if observed is False:
                     raise RuntimeError(f"Failed to confirm scene {scene_name!r}")
+            if not transition.current():
+                raise ValueError("The observed device state changed during the mode transition")
             self.color_mode = ParsedMode.SCENE
             self.effect = scene_name
             self._scene_code = selector
@@ -656,11 +719,19 @@ class _ActiveModeMixin(_CoordinatorBase):
         )
 
     async def async_restore_pre_mode(self, prepared: PreparedStaticRecovery | None = None) -> None:
-        intent = self._control_arbiter.current_task_intent or ControlIntent.USER
-        async with (
-            async_control_intent(self, intent),
-            self.async_mode_transition(purpose=ModeTransitionPurpose.RECOVERY),
-            self.async_prepare_static_recovery(prepared) as prepared,
-        ):
-            if not await self.async_restore_effect_control_state(prepared, overwritten_diy_code=None):
-                raise ValueError("No complete static state is available to restore")
+        if prepared is None:
+            guard = await self.async_preflight_static_off()
+            intent = self._control_arbiter.current_task_intent or ControlIntent.USER
+            async with (
+                async_control_intent(self, intent),
+                self.async_mode_transition(purpose=ModeTransitionPurpose.RECOVERY),
+                self.async_prepare_static_recovery(guard) as prepared,
+            ):
+                if prepared is not None:
+                    await self.async_restore_pre_mode(prepared)
+        elif not await self.async_restore_effect_control_state(prepared, overwritten_diy_code=None):
+            raise ValueError("No complete static state is available to restore")
+        elif self.profile.supports_color_mode_readback:
+            self._discard_static_baseline()
+        else:
+            self._pre_mode_snapshot = prepared.state

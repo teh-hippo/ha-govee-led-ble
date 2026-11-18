@@ -299,7 +299,9 @@ async def test_kelvin_and_gradual_recovery_do_not_use_rendered_rgb_as_kelvin(rad
     restored = await c.async_restore_effect_control_state(prior, overwritten_diy_code=None)
     assert restored is accept
     assert build_color_temp(4500, c.model, profile=c.profile) in packets
-    assert any(packet[:2] == bytes.fromhex("aaa3") for packet in packets)
+    assert any(packet[:2] == bytes.fromhex("33a3") for packet in packets) is accept
+    assert any(packet[:2] == bytes.fromhex("aaa3") for packet in packets) is accept
+    assert state["gradual"] is accept
 
 
 @pytest.mark.parametrize("code", [402, 501, 504, 507])

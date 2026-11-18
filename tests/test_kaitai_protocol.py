@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import os
 import sys
+import time
 from dataclasses import replace
 from importlib import import_module
 from types import SimpleNamespace
@@ -1073,8 +1074,8 @@ def _static_segments(coordinator, rgb):
         coordinator._notify_callback(None, bytearray(payload + bytes((xor_checksum(payload),))))
 
 
-def _static_scene_reply():
-    payload = bytes.fromhex("aa0504e8fd").ljust(19, b"\x00")
+def _static_scene_reply(selector=65000):
+    payload = (bytes.fromhex("aa0504") + selector.to_bytes(2, "little")).ljust(19, b"\x00")
     return bytearray(payload + bytes((xor_checksum(payload),)))
 
 
@@ -1201,13 +1202,19 @@ async def test_clear_effect_preserves_newer_scene_notification(static_coordinato
     coord.is_on = True
     coord._notify_callback(None, _static_reply(rgb=(1, 2, 3)))
     coord._pre_mode_snapshot = coord._capture_static_state()
-    coord.color_mode, coord.music_mode = ParsedMode.MUSIC, "rhythm"
-    coord._client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
+
+    async def read(_uuid, _packet, **_kwargs):
+        coord._notify_callback(None, _static_scene_reply(2))
+
+    coord._client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(side_effect=read))
     coord._ensure_connected = AsyncMock(return_value=coord._client)
+    coord._notification_token = object()
+    coord._notify_started_monotonic = time.monotonic() - 1
 
     async def send(packets, *, write_guard, **_kwargs):
         for _packet in packets:
             write_guard()
+            coord.control_write_attempts += 1
             coord._notify_callback(None, _static_scene_reply())
             if fail:
                 raise RuntimeError("effect-off write failed")
@@ -1433,7 +1440,15 @@ async def test_static_command_restoration_is_not_observation(static_coordinator,
     monkeypatch.setattr(coord, "_renew_foreground_lease", lambda: None)
     coord.refresh_state = AsyncMock(return_value=True)
     if restore == "pre_mode":
-        coord.music_mode = "rhythm"
+        coord._notification_token = object()
+        coord._notify_started_monotonic = time.monotonic() - 1
+
+        async def refresh(request):
+            if request.required_domains is not None:
+                coord._notify_callback(None, _static_scene_reply())
+            return True
+
+        coord.refresh_state.side_effect = refresh
         await coord.async_restore_pre_mode()
     else:
         assert await coord.async_restore_effect_control_state(prior, overwritten_diy_code=None)

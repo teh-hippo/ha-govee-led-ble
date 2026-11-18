@@ -154,6 +154,7 @@ class ParsedColorModeResponse:
     rgb_color: tuple[int, int, int] | None = None
     static_fields: frozenset[Literal["rgb_color", "color_temp_kelvin", "static_gradual"]] | None = None
     color_temp_kelvin: int | None = None
+    zero_kelvin_reported: bool = False
     color_temp_unknown: bool = False
     white_brightness: int | None = None
     multi_effect_flag: int | None = None
@@ -365,6 +366,7 @@ def _parse_static_mode(detail: Any, profile: ModelProfile) -> ParsedColorModeRes
         )
         else None,
         color_temp_kelvin=kelvin,
+        zero_kelvin_reported=reported == 0,
         multi_effect_flag=getattr(detail, "sub", None),
         gradient=int(detail.gradient) if profile.status_grammar == "H6199" and detail.gradient in (0, 1) else None,
     )

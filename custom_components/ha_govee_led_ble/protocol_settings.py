@@ -602,6 +602,7 @@ class BulkStatusCollector:
             self._position += 1
             if self._position != self._count:
                 return ProtocolParseResult(None, result.parser, None)
+            self.complete = True
             payload = self._root.Payload.from_bytes(bytes(self._payload))
             payload._read()
             records = [
@@ -615,7 +616,6 @@ class BulkStatusCollector:
             ]
             if len(records) != len(set(records)):
                 raise ValueError("Bulk response has duplicate domains")
-            self.complete = True
             return ProtocolParseResult(payload, f"{self._parser}.payload", None)
         except KaitaiStructError, ValueError, EOFError:
             self.failed = True
