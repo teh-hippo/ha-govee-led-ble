@@ -12,6 +12,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from bleak import BleakError
 from bleak.backends.bluezdbus.client import BleakClientBlueZDBus
+from bleak.backends.characteristic import BleakGATTCharacteristic
+from bleak.backends.service import BleakGATTService, BleakGATTServiceCollection
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from dbus_fast.constants import MessageType
 from habluetooth.wrappers import HaBleakClientWrapper
@@ -60,6 +62,7 @@ from custom_components.ha_govee_led_ble.light_source import GoveeBLESourceLight
 from custom_components.ha_govee_led_ble.music_commands import prepare_music_request
 from custom_components.ha_govee_led_ble.transport import (
     ENCRYPTION_UUID,
+    LIGHT_SERVICE_UUID,
     READ_UUID,
     WRITE_UUID,
     fragment_a3,
@@ -904,7 +907,12 @@ def v2_reply(iv_key=IV):
 
 def client(marker=None, *, mtu=100):
     return SimpleNamespace(
-        services=[SimpleNamespace(characteristics=[SimpleNamespace(uuid=ENCRYPTION_UUID)])]
+        services=[
+            SimpleNamespace(
+                uuid=LIGHT_SERVICE_UUID,
+                characteristics=[SimpleNamespace(uuid=ENCRYPTION_UUID)],
+            )
+        ]
         if marker is not None
         else [],
         read_gatt_char=AsyncMock(return_value=marker),
@@ -1092,6 +1100,63 @@ async def test_selection_without_probe(advertised, marker, version):
     else:
         with pytest.raises(GoveeCryptoError):
             session.encode(build_power(True))
+
+
+@pytest.mark.parametrize("marker", [None, b"\x01\0", b"\x01\x01", b"\x01\x02"])
+@pytest.mark.parametrize("ota_first", [False, True])
+async def test_marker_selection_uses_light_service_characteristic(marker, ota_first):
+    services = BleakGATTServiceCollection()
+    light = BleakGATTService(None, 1, LIGHT_SERVICE_UUID)
+    ota = BleakGATTService(None, 10, "00010203-0405-0607-0809-0a0b0c0d1912")
+    light_marker = BleakGATTCharacteristic(None, 2, ENCRYPTION_UUID, ["read"], lambda: 20, light)
+    ota_characteristic = BleakGATTCharacteristic(None, 11, ENCRYPTION_UUID, ["read"], lambda: 20, ota)
+    for service in (ota, light) if ota_first else (light, ota):
+        services.add_service(service)
+        if service is ota:
+            services.add_characteristic(ota_characteristic)
+        elif marker is not None:
+            services.add_characteristic(light_marker)
+    device = client()
+    device.services = services
+
+    async def read(characteristic):
+        resolved = services.get_characteristic(characteristic) if isinstance(characteristic, str) else characteristic
+        return marker if resolved is light_marker else b"\0"
+
+    device.read_gatt_char.side_effect = read
+    session = GoveeEncryptionSession()
+    await session.async_select(device, advertised=False)
+    assert session.version == (marker[1] if marker is not None else 0)
+    if marker is None:
+        device.read_gatt_char.assert_not_awaited()
+    else:
+        device.read_gatt_char.assert_awaited_once_with(light_marker)
+    device.write_gatt_char.assert_not_awaited()
+
+
+@pytest.mark.parametrize("requirement", ["advertised", "profile", "previous", "rejected"])
+async def test_ota_characteristic_cannot_override_encryption_requirement(requirement):
+    session = GoveeEncryptionSession()
+    if requirement == "previous":
+        await session.async_select(client(b"\x01\x02"), advertised=False)
+    elif requirement == "rejected":
+        with pytest.raises(GoveeCryptoError):
+            await session.async_select(client(b"\0"), advertised=False)
+    device = client(b"\0")
+    device.services[0].uuid = "00010203-0405-0607-0809-0a0b0c0d1912"
+    if requirement == "rejected":
+        with pytest.raises(GoveeCryptoError):
+            await session.async_select(device, advertised=False)
+    else:
+        await session.async_select(
+            device,
+            advertised=requirement == "advertised",
+            requires_legacy_encryption=requirement == "profile",
+        )
+        assert session.version == session.required_version == (2 if requirement == "previous" else 1)
+    assert not session.ready
+    device.read_gatt_char.assert_not_awaited()
+    device.write_gatt_char.assert_not_awaited()
 
 
 @pytest.mark.parametrize("marker,version", [(None, 1), (b"\x01\x00", 1), (b"\x01\x02", 2)])
@@ -1386,8 +1451,15 @@ def test_h6097_runtime_profile_tracks_pact_without_version_queries(hass):
         generation = coordinator._profile_generation
 
 
-@pytest.mark.parametrize("model", ["H6076", "H6181"])
-async def test_coordinator_uses_qualified_plaintext_marker_policy(hass, model):
+@pytest.mark.parametrize(
+    ("model", "result"),
+    [
+        ("H6076", "plaintext_unrecognised_marker"),
+        ("H6181", "plaintext_profile_marker"),
+        ("H6182", "plaintext"),
+    ],
+)
+async def test_coordinator_uses_qualified_plaintext_marker_policy(hass, model, result):
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", model, configuration_url=None)
     coordinator.profile = replace(
         coordinator.profile,
@@ -1398,11 +1470,14 @@ async def test_coordinator_uses_qualified_plaintext_marker_policy(hass, model):
     if model == "H6076":
         device.read_gatt_char.side_effect = BleakError("Not permitted")
         coordinator._note_advertisement(SimpleNamespace(manufacturer_data={0x8801: bytes.fromhex("ec000101")}))
+    elif model == "H6182":
+        device.services[0].uuid = "00010203-0405-0607-0809-0a0b0c0d1912"
+        device.read_gatt_char.return_value = b"\0"
     with patch(f"{M}.async_establish_ble_connection", return_value=device):
         await coordinator.send_command(build_power(True, model))
-    assert coordinator._encryption.last_result == (
-        "plaintext_profile_marker" if model == "H6181" else "plaintext_unrecognised_marker"
-    )
+    assert coordinator._encryption.last_result == result
+    if model == "H6182":
+        device.read_gatt_char.assert_not_awaited()
     device.write_gatt_char.assert_awaited_with(WRITE_UUID, build_power(True, model), response=False)
 
 

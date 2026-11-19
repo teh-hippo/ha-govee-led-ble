@@ -26,7 +26,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_white_balance_query,
 )
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES
-from custom_components.ha_govee_led_ble.transport import ENCRYPTION_UUID, WRITE_UUID, xor_checksum
+from custom_components.ha_govee_led_ble.transport import ENCRYPTION_UUID, LIGHT_SERVICE_UUID, WRITE_UUID, xor_checksum
 from custom_components.ha_govee_led_ble.video_applicability import video_identity_fields
 from tests.coordinator_test_support import _CONFIGURATION_URL, _c, _packet
 
@@ -222,7 +222,9 @@ async def test_h607c_hold_optional_failure_keeps_basic_read_and_quarantines_repl
 async def test_h607c_marker_only_poll_preserves_brightness_after_optional_timeout(hass, monkeypatch, virtual_clock):
     c = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H607C", configuration_url=None)
     device = MagicMock(is_connected=True, mtu_size=100)
-    device.services = [SimpleNamespace(characteristics=[SimpleNamespace(uuid=ENCRYPTION_UUID)])]
+    device.services = [
+        SimpleNamespace(uuid=LIGHT_SERVICE_UUID, characteristics=[SimpleNamespace(uuid=ENCRYPTION_UUID)])
+    ]
     device.read_gatt_char = AsyncMock(return_value=bytes.fromhex("020000000101"))
     device.start_notify = AsyncMock()
 

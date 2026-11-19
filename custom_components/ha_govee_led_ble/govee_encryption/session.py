@@ -8,7 +8,7 @@ from typing import Any
 
 from bleak.exc import BleakError
 
-from ..transport import ENCRYPTION_UUID, WRITE_UUID, xor_checksum
+from ..transport import ENCRYPTION_UUID, LIGHT_SERVICE_UUID, WRITE_UUID, xor_checksum
 from . import (
     MIN_MTU,
     GoveeCryptoError,
@@ -85,7 +85,14 @@ class GoveeEncryptionSession:
         try:
             # Enumerate discovered services: absence alone never causes a read or probe.
             characteristic = next(
-                (c for service in client.services for c in service.characteristics if c.uuid == ENCRYPTION_UUID), None
+                (
+                    c
+                    for service in client.services
+                    if service.uuid == LIGHT_SERVICE_UUID
+                    for c in service.characteristics
+                    if c.uuid == ENCRYPTION_UUID
+                ),
+                None,
             )
             if characteristic is None:
                 if self._selection_failed:
@@ -94,7 +101,7 @@ class GoveeEncryptionSession:
             else:
                 raw_marker: bytes | None = None
                 try:
-                    data = await client.read_gatt_char(ENCRYPTION_UUID)
+                    data = await client.read_gatt_char(characteristic)
                     if not isinstance(data, (bytes, bytearray)):
                         raise GoveeCryptoError("invalid_marker")
                     raw_marker = bytes(data)

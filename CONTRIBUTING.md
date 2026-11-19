@@ -139,6 +139,7 @@ Keep real product differences without turning each product into a separate imple
   Prefer validated acknowledgements, explicit state transitions and completion-driven backpressure; timeouts bound failure, not normal operation.
   Arm reply tracking before writing, learn silent commands only from successful attempts on the current subscription, and restore pacing when a valid late reply arrives.
   Never add feature-specific sleeps or acknowledgement polling.
+- Resolve GATT characteristics within their owning service and use the resolved object for I/O; UUIDs reused by other services must not redirect an operation.
 - Submit multipart transfers as complete, prevalidated, ordered transactions, including injected writers.
   Keep authored payload length independent of transport-only padding; preserve retained body bytes except for explicitly requested edits.
   Bind every chunk to its authorising sequence and retain typed transfer metadata outside packet state.
