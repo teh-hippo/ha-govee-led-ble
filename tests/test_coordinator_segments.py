@@ -111,6 +111,8 @@ async def test_saved_static_rgb_uses_native_paint_without_an_effect_recovery_bas
     )
     coord.profile = profile
     coord.is_on = True
+    coord.color_mode = ParsedMode.DIY
+    coord.diy_code = 0x638
     colours = ((200, 10, 0),) * 5 + ((0, 200, 0),) * 5 + ((0, 0, 200),) * 5
     item = LibraryItem.new("Tricolour", StaticRgbComposition(colours, 25))
     compiled = compile_application(item, coord.model, profile=profile)
@@ -137,6 +139,8 @@ async def test_saved_static_rgb_uses_native_paint_without_an_effect_recovery_bas
     )
     assert coord.segment_colors == [(50, 3, 0)] * 5 + [(0, 50, 0)] * 5 + [(0, 0, 50)] * 5
     assert coord.segment_brightness == levels
+    assert coord.color_mode is ParsedMode.COLOUR
+    assert coord.diy_code is None
     expected = build_segment_paint(
         [(range(1, 6), (50, 3, 0)), (range(6, 11), (0, 50, 0)), (range(11, 16), (0, 0, 50))],
         profile=profile,
