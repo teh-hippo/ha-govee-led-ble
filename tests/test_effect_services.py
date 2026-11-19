@@ -17,7 +17,7 @@ from homeassistant.exceptions import ServiceValidationError
 from custom_components.ha_govee_led_ble.const import DOMAIN, get_profile
 from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
 from custom_components.ha_govee_led_ble.effect_catalogue import WORKSHOP_PROTOCOL_FIXTURES
-from custom_components.ha_govee_led_ble.effect_domain import H6179SingleDiyEffect, LibraryItem
+from custom_components.ha_govee_led_ble.effect_domain import H6179SingleDiyEffect, LibraryItem, StaticRgbComposition
 from custom_components.ha_govee_led_ble.effect_services import (
     APPLY_CUSTOM_EFFECT_SCHEMA,
     ATTR_DIY_CODE,
@@ -48,16 +48,25 @@ def test_service_registration_uses_home_assistant_entity_targeting(
 
 
 @pytest.mark.parametrize("reference", ["name", "id"])
+@pytest.mark.parametrize("static", [False, True])
 async def test_entity_action_applies_saved_effect_and_returns_deployment(
     mock_coordinator,
     reference: str,
+    static: bool,
 ) -> None:
-    mock_coordinator.model = "H6179"
-    mock_coordinator.profile = get_profile("H6179")
+    mock_coordinator.model = "H617A" if static else "H6179"
+    mock_coordinator.profile = get_profile(mock_coordinator.model)
     mock_coordinator.effect_categories = frozenset({"effects"})
+    if static:
+        mock_coordinator.profile = replace(mock_coordinator.profile, supports_custom_effects=False)
+        mock_coordinator.async_admit_effect_selection = AsyncMock(
+            side_effect=AssertionError("Static RGB is not an effect")
+        )
     item = LibraryItem.new(
         "Paint",
-        H6179SingleDiyEffect("H6179", 0, 0, 50, ((255, 0, 0),)),
+        StaticRgbComposition(((255, 0, 0),) * mock_coordinator.profile.segment_count)
+        if static
+        else H6179SingleDiyEffect("H6179", 0, 0, 50, ((255, 0, 0),)),
     )
     deployment = SimpleNamespace(
         to_public_dict=MagicMock(
@@ -97,7 +106,7 @@ async def test_entity_action_applies_saved_effect_and_returns_deployment(
     response = await entity.async_apply_custom_effect(
         effect=item.name if reference == "name" else None,
         effect_id=str(item.id) if reference == "id" else None,
-        diy_code=0x1234,
+        diy_code=None if static else 0x1234,
     )
 
     assert response["phase"] == "confirmed"
@@ -108,7 +117,7 @@ async def test_entity_action_applies_saved_effect_and_returns_deployment(
     apply_saved.assert_awaited_once()
     assert apply_saved.await_args is not None
     assert apply_saved.await_args.kwargs["operation_id"] is not None
-    assert apply_saved.await_args.kwargs["diy_code"] == 0x1234
+    assert apply_saved.await_args.kwargs.get("diy_code") == (None if static else 0x1234)
 
 
 @pytest.mark.parametrize(

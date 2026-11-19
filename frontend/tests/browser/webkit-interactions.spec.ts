@@ -55,6 +55,81 @@ async function mountFeedbackPanel(page: Page, model = "H7025", showFeedback = tr
   }, { model, showFeedback });
 }
 
+for (const width of [320, 1280]) {
+  test(`Static RGB saves and recalls in the normal workspace at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.evaluate(async () => {
+      const modulePath = "/src/panel.ts";
+      const { GoveeLedEffectStudio } = await import(modulePath);
+      const contracts = await fetch("/tests/fixtures/backend-contracts.json").then(response => response.json());
+      const device = contracts.responses.devices.find((item: { model: string }) => item.model === "H617A");
+      const userState = {
+        owner_id: "test-owner", recent_colours: [], selected_config_entry_id: device.config_entry_id,
+        navigation: { section: "custom", custom_category: "single-layer", auto_save: false },
+      };
+      let saved: typeof contracts.responses.library_item | undefined;
+      const library = () => ({
+        generation: saved ? 1 : 0,
+        items: saved ? [{
+          ...contracts.responses.library_snapshot.items[0],
+          id: saved.id, kind: saved.content.kind, name: saved.name, version: saved.version, content_hash: saved.content_hash,
+        }] : [],
+      });
+      const panel = new GoveeLedEffectStudio();
+      panel.hass = {
+        user: { is_admin: true },
+        async callWS<T>(message: Record<string, unknown>): Promise<T> {
+          const type = String(message.type).replace("ha_govee_led_ble/editor/", "");
+          if (type === "library/create") {
+            saved = {
+              ...contracts.responses.library_item, name: message.name, content: message.content,
+              content_hash: "a".repeat(64), origin: { kind: "authored", source_id: null },
+            };
+            panel.dataset.saved = JSON.stringify(saved.content);
+            return { item: saved, library: library() } as T;
+          }
+          const responses: Record<string, unknown> = {
+            info: contracts.responses.editor_info, devices: { devices: [device] }, device: { device },
+            "library/list": library(), "library/get": { item: saved },
+            "custom/catalogue": { catalogue: contracts.responses.custom_catalogue },
+            "user_state/get": { user_state: userState }, "user_state/update": { user_state: userState },
+            "preview/cancel": { cancelled: true },
+          };
+          if (!(type in responses)) throw new Error(`Unexpected WebSocket call: ${type}`);
+          return structuredClone(responses[type]) as T;
+        },
+        async callService() { throw new Error("Saving must not control a light"); },
+        connection: { async subscribeMessage() { return () => undefined; } },
+      } as HomeAssistant;
+      document.body.replaceChildren(panel);
+    });
+    const panel = page.locator("ha-govee-led-ble-editor");
+    const live = page.getByRole("button", { name: "Live", exact: true });
+    await expect(live).toBeVisible();
+    if (await live.getAttribute("aria-pressed") === "true") await live.click();
+    await page.getByRole("button", { name: "Static RGB", exact: true }).click();
+    await page.getByRole("button", { name: "New", exact: true }).click();
+    const save = page.getByRole("button", { name: "Save", exact: true });
+    await expect(save).toBeDisabled();
+    await expect(page.getByRole("slider", { name: "Speed", exact: true })).toHaveCount(0);
+    await expect(panel.locator("header details")).toHaveCount(0);
+    await page.getByRole("button", { name: "Fill all", exact: true }).click();
+    await expect(save).toBeEnabled();
+    const scale = page.getByRole("slider", { name: "RGB scale", exact: true });
+    await scale.focus();
+    await scale.press("ArrowLeft");
+    await save.click();
+    await expect(panel).toHaveAttribute("data-saved", /"kind":"static_rgb".*"rgb_scale":99/);
+    await page.getByRole("button", { name: "New", exact: true }).click();
+    await page.getByRole("button", { name: "New Static RGB composition User-created effect", exact: true }).click();
+    await expect(scale).toHaveValue("99");
+    await page.getByRole("button", { name: "Clear all", exact: true }).click();
+    await expect(save).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Save As", exact: true })).toBeDisabled();
+    expect(await panel.locator(".editor-surface").evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+  });
+}
+
 test("Auto Save keeps keyboard editing responsive and serialises the latest draft", async ({ page }) => {
   await page.evaluate(async () => {
     const modulePath = "/src/panel.ts";

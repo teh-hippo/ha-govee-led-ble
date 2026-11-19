@@ -770,6 +770,7 @@ async def test_preview_observation_stays_read_only_when_device_is_silent(coord, 
         query_black_border=False,
         query_relative_brightness=False,
         query_whole_relative_brightness=False,
+        query_segments=None,
         deadline=ANY,
     )
     disconnect.assert_not_awaited()

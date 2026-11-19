@@ -831,7 +831,8 @@ export class PanelController {
     if (
       this.model.sceneEditorOpen ||
       !this.model.currentItem ||
-      !this.model.dirty
+      !this.model.dirty ||
+      !this.model.canSaveCurrentDraft
     ) {
       return;
     }
@@ -1049,6 +1050,7 @@ export class PanelController {
   private async flushAutoSave(owner: PendingTransition): Promise<boolean> {
     if (
       this.model.stateUpdatesUnavailable ||
+      !this.model.canSaveCurrentDraft ||
       !this.model.currentItem ||
       !isEditableEffectContent(this.model.content)
     ) {
@@ -2194,7 +2196,7 @@ export class PanelController {
 }
 
 export function isCustomEffectCategory(value: unknown): value is CustomEffectCategory {
-  return value === "all" || value === "music" || value === "single-layer" || value === "multi-layer" ||
+  return value === "all" || value === "static" || value === "music" || value === "single-layer" || value === "multi-layer" ||
     value === "advanced" || value === "my-effects";
 }
 

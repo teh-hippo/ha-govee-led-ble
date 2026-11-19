@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import logging
-from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, replace
 from functools import partial
@@ -31,6 +33,7 @@ from .effect_compiler import (
     CompiledApplication,
     CompiledEffect,
     CompiledMusicProfile,
+    CompiledStaticRgb,
     CompiledVideoProfile,
     compile_application,
     validate_compiled_geometry,
@@ -143,13 +146,26 @@ class _DeploymentTransaction:
 
 async def async_apply_compiled_profile(
     coordinator: GoveeBLECoordinator,
-    compiled: CompiledMusicProfile | CompiledVideoProfile,
+    compiled: CompiledMusicProfile | CompiledVideoProfile | CompiledStaticRgb,
     *,
     writer: ProfileWriter | None = None,
     verify: bool = True,
     progress: Callable[[int], Awaitable[None]] | None = None,
     on_write: Callable[[], None] | None = None,
 ) -> None:
+    if isinstance(compiled, CompiledStaticRgb):
+        if coordinator.model != compiled.model:
+            raise ValueError("Static RGB target does not match coordinator")
+        await coordinator.async_paint_segments(
+            list(compiled.groups),
+            writer=writer,
+            intent=ControlIntent.APPLY,
+            write_guard=lambda: validate_compiled_geometry(compiled, coordinator.effect_authorization_profile),
+            on_write=on_write,
+        )
+        if progress is not None:
+            await progress(1)
+        return
     if isinstance(compiled, CompiledMusicProfile):
         if coordinator.model != compiled.model:
             raise ValueError("music profile target does not match coordinator")
@@ -591,6 +607,8 @@ class EffectDeploymentEngine:
             target_mode = compiled.activation_mode.value
             target_effect = compiled.expected_effect
             evidence_codes = compiled.evidence_codes
+        elif isinstance(compiled, CompiledStaticRgb):
+            target_mode, target_effect, evidence_codes = "colour", None, ()
         else:
             target_mode = "music" if isinstance(compiled, CompiledMusicProfile) else "video"
             target_effect = None
@@ -651,6 +669,41 @@ class EffectDeploymentEngine:
         transaction = _DeploymentTransaction(
             self._deployments, record, len(compiled.upload_packets) if isinstance(compiled, CompiledEffect) else 0
         )
+        if isinstance(compiled, CompiledStaticRgb):
+            async with (
+                async_control_intent(coordinator, ControlIntent.APPLY),
+                coordinator.async_mode_transition(),
+            ):
+                await transaction.store(record)
+                try:
+                    await async_apply_compiled_profile(
+                        coordinator,
+                        compiled,
+                        on_write=lambda: self.clear_active_origin(record.config_entry_id),
+                    )
+                except BaseException:
+                    try:
+                        await transaction.store(
+                            replace(transaction.current, phase=DeploymentPhase.FAILED, error_code="static_apply_failed")
+                        )
+                    except Exception as error:
+                        _LOGGER.warning(
+                            "Static RGB failure persistence failed for %s (%s)", coordinator.model, type(error).__name__
+                        )
+                    raise
+                static_confirmed = static_rgb_matches(coordinator, compiled) is True
+                result = replace(
+                    transaction.current,
+                    phase=DeploymentPhase.CONFIRMED if static_confirmed else DeploymentPhase.APPLIED,
+                    progress_current=compiled.progress_total,
+                    verification_confidence=(
+                        ObservationConfidence.SETTINGS_MATCH
+                        if static_confirmed
+                        else ObservationConfidence.WRITE_COMPLETED
+                    ),
+                )
+                await transaction.store(result)
+                return result, static_rgb_matches(coordinator, compiled) is True
         lock_acquired = False
         prior_origin: _PriorEffectOrigin | None = None
         try:
@@ -884,6 +937,8 @@ class EffectDeploymentEngine:
         transaction: _DeploymentTransaction,
         current: Callable[[], bool],
     ) -> tuple[bool | None, ObservationConfidence]:
+        if isinstance(compiled, CompiledStaticRgb):
+            return static_rgb_matches(coordinator, compiled), ObservationConfidence.SETTINGS_MATCH
         expectations, confidence = compiled_observation(compiled, profile=coordinator.profile)
         if expectations is None:
             return None, ObservationConfidence.UNKNOWN
@@ -1366,6 +1421,8 @@ class EffectDeploymentEngine:
                 if mode in {"music", "video"} and workspace.confidence is ObservationConfidence.SETTINGS_MATCH
                 else workspace.confidence
             )
+        elif matched_record is not None and matched_record.content_kind == "static_rgb":
+            confidence = ObservationConfidence.SETTINGS_MATCH
         elif matched_record is not None and (
             matched_record.phase is DeploymentPhase.UNCERTAIN
             or matched_record.phase is DeploymentPhase.APPLIED
@@ -1464,6 +1521,8 @@ def observable_signature_for_state(
     diy_code: int | None,
     effect: str | None,
 ) -> str | None:
+    if mode == "colour" and getattr(coordinator, "segment_state_source", None) == "observed":
+        return _static_rgb_signature(coordinator.segment_colors)
     if mode == "custom" and diy_code is not None:
         return f"custom:{diy_code}"
     if mode == "scene" and effect is not None:
@@ -1691,6 +1750,10 @@ def compiled_observation(
 ) -> tuple[dict[str, Any] | None, ObservationConfidence]:
     """Fields with evidenced readback, independent of the write grammar."""
     profile = get_profile(compiled.model) if profile is None else profile
+    if isinstance(compiled, CompiledStaticRgb):
+        if profile.can_read(ReadDomain.SEGMENTS) and None not in compiled.segments:
+            return {"segment_colors": list(compiled.segments)}, ObservationConfidence.SETTINGS_MATCH
+        return None, ObservationConfidence.UNKNOWN
     if not profile.can_read(ReadDomain.POWER) or not profile.supports_color_mode_readback:
         return None, ObservationConfidence.UNKNOWN
     expectations: dict[str, Any] = {"is_on": True}
@@ -1815,12 +1878,29 @@ def compiled_observation(
 
 
 def observable_signature_for_compiled(compiled: CompiledApplication) -> str | None:
+    if isinstance(compiled, CompiledStaticRgb):
+        return _static_rgb_signature(compiled.segments)
     if isinstance(compiled, CompiledEffect):
         if compiled.diy_code is None:
             return None
         domain = "custom" if compiled.selector_kind == "diy" else "scene-code"
         return f"{domain}:{compiled.diy_code}"
     return f"{'music' if isinstance(compiled, CompiledMusicProfile) else 'video'}:{compiled.mode}"
+
+
+def _static_rgb_signature(segments: Sequence[tuple[int, int, int] | None]) -> str | None:
+    if not segments or None in segments:
+        return None
+    return "static-rgb:" + hashlib.sha256(json.dumps(segments, separators=(",", ":")).encode()).hexdigest()
+
+
+def static_rgb_matches(coordinator: GoveeBLECoordinator, compiled: CompiledStaticRgb) -> bool | None:
+    if getattr(coordinator, "segment_state_source", None) != "observed":
+        return None
+    actual = coordinator.segment_colors
+    return len(actual) == len(compiled.segments) and all(
+        expected is None or actual[index] == expected for index, expected in enumerate(compiled.segments)
+    )
 
 
 def _record_signature(record: DeploymentRecord, model: str) -> str | None:

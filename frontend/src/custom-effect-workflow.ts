@@ -11,6 +11,7 @@ const CATEGORY_PRIORITY: readonly Exclude<
   "all"
 >[] = [
   "single-layer",
+  "static",
   "multi-layer",
   "music",
   "advanced",
@@ -19,6 +20,7 @@ const CATEGORY_PRIORITY: readonly Exclude<
 const CATEGORY_LABELS: Readonly<
   Record<CustomEffectCategory, string>
 > = {
+  static: "Static RGB",
   all: "All",
   "my-effects": "My Effects",
   "multi-layer": "Multi-Layered",
@@ -29,6 +31,7 @@ const CATEGORY_LABELS: Readonly<
 
 const CATEGORY_DISPLAY_ORDER: readonly CustomEffectCategory[] = [
   "single-layer",
+  "static",
   "multi-layer",
   "music",
   "advanced",

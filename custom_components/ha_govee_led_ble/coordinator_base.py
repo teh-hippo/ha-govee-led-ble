@@ -415,7 +415,14 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
 async def async_prepare_effect_profile(
     coordinator: _CoordinatorBase, *, intent: ControlIntent, content: EffectContent | None = None
 ) -> ModelProfile:
-    from .effect_domain import BuiltinScene, LayeredEffect, LayeredScene, PaletteScene, WorkshopEffect
+    from .effect_domain import (
+        BuiltinScene,
+        LayeredEffect,
+        LayeredScene,
+        PaletteScene,
+        StaticRgbComposition,
+        WorkshopEffect,
+    )
     from .scenes import resolve_scene_identity
 
     scene_required = content is None or isinstance(content, LayeredEffect | WorkshopEffect)
@@ -431,7 +438,12 @@ async def async_prepare_effect_profile(
             )
         )
 
-    if content is not None and coordinator.profile.supports_rgb and not scene_required:
+    if (
+        content is not None
+        and coordinator.profile.supports_rgb
+        and not scene_required
+        and not isinstance(content, StaticRgbComposition)
+    ):
         return coordinator.effect_authorization_profile
     fields = coordinator.profile.profile_identity_fields
     if scene_required:

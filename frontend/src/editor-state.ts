@@ -46,6 +46,7 @@ export interface EditorActionContext {
   liveApplyEnabled?: boolean;
   canApply?: boolean;
   canSave: boolean;
+  canSaveAs?: boolean;
   canMutate: boolean;
   busy: boolean;
 }
@@ -149,7 +150,7 @@ export function editorActionDescriptors(
           : id === "cancel"
             ? true
             : context.canMutate &&
-              (id === "save" ? context.canSave : true));
+              (id === "save" ? context.canSave : id === "saveAs" ? context.canSaveAs !== false : true));
       return {
         id,
         label:

@@ -51,6 +51,7 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     RelativeBrightness,
     SingleEffect,
     SourceKind,
+    StaticRgbComposition,
     VideoProfile,
 )
 from custom_components.ha_govee_led_ble.effect_identity import EffectDeviceCache
@@ -998,12 +999,19 @@ def test_prefixes_depend_on_represented_categories() -> None:
     assert "Effect: Saved effect" in {entry.display_label for entry in two_categories}
 
 
+@pytest.mark.parametrize("static", [False, True])
 async def test_saved_effects_are_compatible_reactive_and_lock_safe(
     mock_coordinator,
+    static,
 ):
+    if static:
+        mock_coordinator.profile = replace(mock_coordinator.profile, supports_custom_effects=False)
+        mock_coordinator.async_admit_effect_selection = AsyncMock(
+            side_effect=AssertionError("Static RGB is not an effect")
+        )
     saved = LibraryItem.new(
         "My Effect",
-        SingleEffect(0, 0, 50, ((255, 0, 0),)),
+        StaticRgbComposition(((255, 0, 0),) * 15) if static else SingleEffect(0, 0, 50, ((255, 0, 0),)),
     )
     incompatible = LibraryItem.new(
         "Movie profile",
@@ -1069,13 +1077,16 @@ async def test_saved_effects_are_compatible_reactive_and_lock_safe(
         updated_at=apply_saved.await_args.kwargs["updated_at"],
         compiled=apply_saved.await_args.kwargs["compiled"],
     )
-    mock_coordinator.send_command.assert_awaited_once_with(build_power(True))
+    if static:
+        mock_coordinator.send_command.assert_awaited_once_with(build_power(True), write_guard=ANY, on_write=ANY)
+    else:
+        mock_coordinator.send_command.assert_awaited_once_with(build_power(True))
     assert mock_coordinator.is_on is True
 
     assert listener is None
     late_saved = LibraryItem.new(
         "Late Effect",
-        SingleEffect(0, 0, 50, ((0, 255, 0),)),
+        StaticRgbComposition(((0, 255, 0),) * 15) if static else SingleEffect(0, 0, 50, ((0, 255, 0),)),
     )
     application.library_snapshot.return_value = LibrarySnapshot((saved, incompatible, late_saved))
     entity._async_restore_static_color = AsyncMock()
@@ -2264,7 +2275,7 @@ async def test_segment_colour_services_normalise_groups(
         kwargs["segments"] = iter(kwargs["segments"])
     await getattr(light, method)(**kwargs)
 
-    mock_coordinator.async_paint_segments.assert_awaited_once_with(expected)
+    mock_coordinator.async_paint_segments.assert_awaited_once_with(expected, write_guard=None)
 
 
 @pytest.mark.parametrize("error", [TypeError("bad segment"), ValueError("bad colour")])

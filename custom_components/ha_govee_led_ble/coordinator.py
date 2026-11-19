@@ -3812,6 +3812,8 @@ class GoveeBLECoordinator(
     ) -> bool | None:
         if not self.profile.state_readable or not expectations:
             return None
+        if "segment_colors" in expectations and not self.profile.can_read(ReadDomain.SEGMENTS):
+            return None
         if ("rgb_color" in expectations and not self.profile.static_readback_echoes_color) or (
             "color_temp_kelvin" in expectations and not self.profile.static_readback_kelvin
         ):
@@ -3894,6 +3896,7 @@ class GoveeBLECoordinator(
                     query_black_border=query_black_border,
                     query_relative_brightness=query_relative_brightness,
                     query_whole_relative_brightness=query_whole_relative_brightness,
+                    query_segments=True if "segment_colors" in expectations else None,
                     deadline=deadline,
                 )
         if not ok or self._client is not client:

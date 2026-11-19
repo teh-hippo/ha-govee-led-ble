@@ -20,6 +20,7 @@ from .light_commands import (
     parse_static_write,
     static_colour_matches,
 )
+from .native_profile_controls import ProfileWriter
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -453,7 +454,13 @@ class _SegmentMixin(_CoordinatorBase):
                     )
 
     async def async_paint_segments(
-        self, groups: list[SegmentColorGroup], *, write_guard: Callable[[], None] | None = None
+        self,
+        groups: list[SegmentColorGroup],
+        *,
+        write_guard: Callable[[], None] | None = None,
+        writer: ProfileWriter | None = None,
+        intent: ControlIntent = ControlIntent.USER,
+        on_write: Callable[[], None] | None = None,
     ) -> None:
         async with self.async_mask_transaction():
             resolved: list[SegmentColorGroup] = [(list(segments), rgb) for segments, rgb in groups]
@@ -463,6 +470,9 @@ class _SegmentMixin(_CoordinatorBase):
                 {},
                 "paint",
                 write_guard=write_guard,
+                writer=writer,
+                intent=intent,
+                on_write=on_write,
             )
 
     async def async_set_segment_brightness(
@@ -487,6 +497,9 @@ class _SegmentMixin(_CoordinatorBase):
         operation: str,
         *,
         write_guard: Callable[[], None] | None,
+        writer: ProfileWriter | None = None,
+        intent: ControlIntent = ControlIntent.USER,
+        on_write: Callable[[], None] | None = None,
     ) -> None:
         expected_sizes: tuple[int, int] | None = None
         attempted = False
@@ -510,14 +523,18 @@ class _SegmentMixin(_CoordinatorBase):
                 expected_sizes = (len(self.segment_colors), len(self.segment_brightness))
             attempted = True
 
-        async with async_control_intent(self, ControlIntent.USER):
+        async with async_control_intent(self, intent):
             segment_revision = self._field_revisions.get("segment_colors", 0)
             batch_start = self._static_write_attempts
             try:
                 for packet in packets:
                     packet_start = self._static_write_attempts
                     try:
-                        await self.send_command(packet, write_guard=before_write)
+                        options: dict[str, Any] = {"on_write": on_write} if on_write is not None else {}
+                        if writer is None:
+                            await self.send_command(packet, write_guard=before_write, **options)
+                        else:
+                            await writer(packet, write_guard=before_write, **options)
                     except Exception:
                         # Control ownership excludes other static writers; send_command
                         # reconciles its own attempted packet, but not earlier chunks.

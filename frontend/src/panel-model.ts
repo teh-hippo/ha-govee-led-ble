@@ -435,7 +435,7 @@ export class PanelModel {
   public get customEffectsAvailable(): boolean {
     const catalogue = this.modelCatalogue;
     return Boolean(
-      catalogue &&
+      this.selectedDevice?.static_composition || catalogue &&
         (this.customEffectCategoryAvailable("single-layer") ||
           this.customEffectCategoryAvailable("multi-layer") ||
           this.customEffectCategoryAvailable("music") ||
@@ -448,6 +448,7 @@ export class PanelModel {
       model: this.selectedModel,
       catalogue: this.modelCatalogue,
       libraryItems: this.library.items,
+      staticComposition: this.selectedDevice?.static_composition,
     };
   }
 
@@ -486,6 +487,7 @@ export class PanelModel {
   }
 
   public get canSaveCurrentDraft(): boolean {
+    if (this.content.kind === "static_rgb" && this.content.segments.some(colour => colour === null)) return false;
     return (
       this.builtInDefaultDirty ||
       this.dirty ||
@@ -540,6 +542,7 @@ export class PanelModel {
           (!this.h6179DiyCodeRequired ||
             this.h6179DiyCode !== undefined),
         canSave: this.canSaveCurrentDraft,
+        canSaveAs: this.content.kind !== "static_rgb" || this.content.segments.every(colour => colour !== null),
         canMutate: this.isAdmin && !this.stateUpdatesUnavailable,
         busy: this.saving || this.applying || this.deletingCurrentItem,
       },
@@ -585,6 +588,8 @@ export class PanelModel {
       return "unsupported";
     }
     switch (this.content.kind) {
+      case "static_rgb":
+        return device.static_composition ? "supported" : "unsupported";
       case "h617a_painted":
         return device.custom_effects.painted;
       case "h617a_single":
@@ -674,6 +679,7 @@ export class PanelModel {
   }
 
   private effectCategoryEnabled(category: CustomEffectCategory | "scenes" | "video"): boolean {
+    if (category === "static") return this.selectedDevice?.static_composition === true;
     const option = {
       scenes: "scenes",
       video: "video",
@@ -689,7 +695,7 @@ export class PanelModel {
 
   public defaultCustomEffectCategory(): CustomEffectCategory {
     return (
-      ["single-layer", "multi-layer", "music", "advanced"].find(
+      ["single-layer", "static", "multi-layer", "music", "advanced"].find(
         (category) =>
           this.customEffectCategoryAvailable(category as CustomEffectCategory),
       ) as CustomEffectCategory | undefined
