@@ -1,5 +1,5 @@
 import { LitElement, css, html } from "lit";
-import { property } from "lit/decorators.js";
+import { property, state } from "lit/decorators.js";
 
 import {
   studioBaseStyles,
@@ -23,9 +23,30 @@ export class GoveePaintedSegmentEditor extends LitElement {
   @property({ type: Boolean })
   public disabled = false;
 
+  @state()
+  private columns = 0;
+
   private paintingPointerId?: number;
   private paintingPointerTarget?: HTMLElement;
   private lastPaintedSegment?: number;
+
+  private readonly layoutChanged = (): void => {
+    const grid = this.shadowRoot?.querySelector<HTMLElement>(".segments");
+    if (grid?.clientWidth) {
+      this.columns = getComputedStyle(grid).gridTemplateColumns.split(/\s+/).length;
+    }
+  };
+
+  public connectedCallback(): void {
+    super.connectedCallback();
+    window.addEventListener("resize", this.layoutChanged);
+    void this.updateComplete.then(this.layoutChanged);
+  }
+
+  public disconnectedCallback(): void {
+    window.removeEventListener("resize", this.layoutChanged);
+    super.disconnectedCallback();
+  }
 
   protected render() {
     return html`
@@ -55,7 +76,10 @@ export class GoveePaintedSegmentEditor extends LitElement {
                 @pointercancel=${this.pointerCancelled}
                 @click=${(event: MouseEvent) =>
                   this.segmentClicked(index, event)}
-              ></button>
+              ><span class="segment-number" aria-hidden="true">${index + 1}</span></button>
+              ${this.columns > 0 && (index + 1) % this.columns === 0 && index + 1 < this.segments.length
+                ? html`<span class="flow-wrap" aria-hidden="true">${index + 1} &#8629; ${index + 2}</span>`
+                : null}
             `;
             },
           )}
@@ -165,6 +189,7 @@ export class GoveePaintedSegmentEditor extends LitElement {
     }
 
     button {
+      position: relative;
       min-width: 0;
       min-height: var(--studio-paint-segment-height);
       padding: 0;
@@ -173,6 +198,39 @@ export class GoveePaintedSegmentEditor extends LitElement {
       border-radius: var(--studio-swatch-radius);
       background: var(--segment-colour);
       cursor: crosshair;
+    }
+
+    .segment-number {
+      position: absolute;
+      right: var(--studio-micro-gap);
+      bottom: var(--studio-micro-gap);
+      padding: 0 var(--studio-micro-gap);
+      border-radius: var(--studio-micro-gap);
+      background: rgb(0 0 0 / 65%);
+      color: #fff;
+      font-size: var(--studio-caption-size);
+      font-weight: var(--studio-font-weight-semibold);
+      line-height: var(--studio-label-line-height);
+      pointer-events: none;
+    }
+
+    .flow-wrap {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--studio-compact-gap);
+      color: var(--studio-muted);
+      font-size: var(--studio-caption-size);
+      line-height: var(--studio-label-line-height);
+      pointer-events: none;
+    }
+
+    .flow-wrap::before,
+    .flow-wrap::after {
+      content: "";
+      flex: 1;
+      border-top: var(--studio-border-width) solid var(--studio-border);
     }
 
     button:focus-visible {

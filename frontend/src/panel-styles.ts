@@ -541,6 +541,10 @@ export const effectStudioPanelStyles = [
       margin-top: var(--studio-section-gap);
     }
 
+    .controls > :only-child {
+      grid-column: 1 / -1;
+    }
+
     .single-effect-settings {
       margin-bottom: var(--studio-section-gap);
     }
