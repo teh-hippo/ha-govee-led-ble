@@ -12,7 +12,7 @@
 | Model | Status |
 | --- | --- |
 | **H1A42** | ✅ Supported |
-| **H1771** | [🚧 Experimental](https://github.com/teh-hippo/ha-govee-led-ble/issues/558) |
+| **H1771** | ✅ Supported |
 | **H600A** | ✅ Supported |
 | **H601C** | ✅ Supported |
 | **H6046** | ✅ Supported |
