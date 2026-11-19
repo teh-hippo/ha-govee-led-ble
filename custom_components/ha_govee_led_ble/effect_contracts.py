@@ -18,9 +18,9 @@ from .effect_limits import (
     MAX_SCENE_CATALOGUE_ENTRIES,
 )
 
-EDITOR_API_VERSION: Final = 18
-EDITOR_ASSET_VERSION: Final = 33
-EFFECT_COMPILER_VERSION: Final = 7
+EDITOR_API_VERSION: Final = 19
+EDITOR_ASSET_VERSION: Final = 34
+EFFECT_COMPILER_VERSION: Final = 8
 RELEASE_CAPABILITY_SCHEMA_VERSION: Final = 1
 
 
@@ -1083,7 +1083,7 @@ def device_effect_capabilities(
         display_name=display_name,
         segment_count=segment_count,
         physical_ic_count=physical_ic_count,
-        static_composition=profile.supports_segments,
+        static_composition=profile.supports_segments and profile.supports_rgb,
         painted=studio_apply_capability_state(model, CapabilityWorkflow.PAINTED, profile=profile)
         if profile.supports_custom_effects
         else CapabilityState.UNSUPPORTED,

@@ -25,6 +25,7 @@ import type {
   OpaqueContent,
   PaletteDiyEffectContent,
   PaintedContent,
+  StaticRgbContent,
   RGB,
   VideoProfileContent,
   WorkshopContent,
@@ -54,16 +55,19 @@ type ProfileContent =
   | MusicProfileContent
   | VideoProfileContent;
 export type EditableEffectContent =
+  | StaticRgbContent
   | CustomEffectContent
   | ProfileContent
   | AdvancedEditableContent;
 export type NewEffectKind =
+  | StaticRgbContent["kind"]
   | CustomEffectContent["kind"]
   | PaletteDiyEffectContent["kind"]
   | MusicProfileContent["kind"]
   | AdvancedContent["kind"];
 export type CustomEffectCategory =
   | "all"
+  | "static"
   | "music"
   | "single-layer"
   | "multi-layer"
@@ -128,6 +132,7 @@ export function effectContentEligible(
   model: string,
   segmentCount: number,
 ): boolean {
+  if (content.kind === "static_rgb") return content.segments.length === segmentCount && content.segments.some(colour => colour !== null);
   if (content.kind === "native_effect") {
     if (content.model === "H60B0") {
       if (catalogue?.sku !== model || model !== content.model) return false;
@@ -446,7 +451,7 @@ function cloneWorkshop(content: WorkshopContent): WorkshopContent {
 export function cloneEditableEffect(
   content: EditableEffectContent,
 ): EditableEffectContent {
-  if (content.kind === "native_effect") {
+  if (content.kind === "static_rgb" || content.kind === "native_effect") {
     return structuredClone(content);
   }
   if (content.kind === "advanced") {
@@ -614,6 +619,7 @@ export function isEditableEffectContent(
       content !== null &&
       "kind" in content &&
       (isAdvancedEditableKind(content.kind) ||
+        content.kind === "static_rgb" ||
         content.kind === "palette_diy" ||
         content.kind === "native_effect" ||
         content.kind === "music_profile" ||
@@ -641,6 +647,7 @@ function isKnownEffectKind(kind: string): boolean {
   return (
     isCustomEffectKind(kind) ||
     isAdvancedEditableKind(kind) ||
+    kind === "static_rgb" ||
     kind === "palette_diy" ||
     kind === "native_effect" ||
     kind === "music_profile" ||
@@ -652,6 +659,8 @@ function isKnownEffectKind(kind: string): boolean {
 
 export function customKindLabel(kind: unknown): string {
   switch (kind) {
+    case "static_rgb":
+      return "Static RGB";
     case "h617a_painted":
       return "Paint";
     case "h617a_single":
@@ -677,6 +686,7 @@ export function customKindLabel(kind: unknown): string {
 
 export function isMyEffectKind(kind: string): boolean {
   return (
+    kind === "static_rgb" ||
     isCustomEffectKind(kind) ||
     isAdvancedEditableKind(kind) ||
     kind === "palette_diy" ||
@@ -689,6 +699,7 @@ export function isMyEffectKind(kind: string): boolean {
 export function customEffectCategoryForKind(
   kind: string,
 ): Exclude<CustomEffectCategory, "all" | "my-effects"> {
+  if (kind === "static_rgb") return "static";
   if (kind === "h617a_multi" || kind === "h6179_mixed_diy") {
     return "multi-layer";
   }

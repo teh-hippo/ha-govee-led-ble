@@ -31,6 +31,7 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     PaintedEffect,
     SingleEffect,
     SourceKind,
+    StaticRgbComposition,
 )
 from custom_components.ha_govee_led_ble.effect_migration import (
     LEGACY_DRAFT_STORE_KEY,
@@ -56,6 +57,22 @@ from custom_components.ha_govee_led_ble.effect_template_defaults import (
 from tests.storage_test_double import InMemoryVersionedDocumentStore
 
 TIMESTAMP = "2026-08-17T00:00:00+00:00"
+
+
+async def test_static_rgb_persistence_rejects_partial_updates_without_changing_the_saved_layout() -> None:
+    store = InMemoryVersionedDocumentStore()
+    repository = EffectLibraryRepository(store)
+    await repository.async_load()
+    item = LibraryItem.new("Tricolour", StaticRgbComposition(((255, 0, 0), (0, 255, 0), (0, 0, 255)), 25))
+    await repository.async_create(item)
+    partial = replace(item, version=2, content=StaticRgbComposition(((255, 0, 0), None, None)), content_hash="")
+    with pytest.raises(EffectStorageError, match="Paint every segment"):
+        await repository.async_update(partial, expected_version=1, expected_updated_at=item.updated_at)
+    with pytest.raises(EffectStorageError, match="Paint every segment"):
+        await repository.async_create(LibraryItem.new("Partial", partial.content))
+    restored = EffectLibraryRepository(store)
+    assert (await restored.async_load()).items == (item,)
+    assert LibraryItem.from_dict(partial.to_dict()) == partial
 
 
 def _item(name: str = "Test", *, updated_at: str = TIMESTAMP) -> LibraryItem:

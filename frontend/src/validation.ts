@@ -853,6 +853,15 @@ export function decodeEffectContent(value: unknown): EffectContent {
     MAX_IDENTIFIER_LENGTH,
   );
   switch (kind) {
+    case "static_rgb": {
+      const segments = arrayValue(content.segments, "static RGB segments", MAX_JSON_COLLECTION_ITEMS);
+      if (segments.length === 0) invalid("static RGB composition must not be empty");
+      return {
+        kind,
+        segments: segments.map((colour, index) => colour === null ? null : rgbValue(colour, `static RGB segment ${index}`)),
+        rgb_scale: integerValue(content.rgb_scale, "RGB scale", 0, 100),
+      };
+    }
     case "native_effect":
       return nativeEffectContent(content);
     case "h617a_painted":

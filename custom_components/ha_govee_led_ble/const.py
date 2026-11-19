@@ -74,7 +74,9 @@ EFFECT_CATEGORIES = (
 EFFECT_CATEGORY_CONTENT_KINDS = {
     EFFECT_CATEGORY_SCENES: frozenset({"scene_builtin", "scene_palette", "scene_layered"}),
     EFFECT_CATEGORY_VIDEO: frozenset({"video_profile"}),
-    EFFECT_CATEGORY_EFFECTS: frozenset({"h617a_painted", "h617a_single", "h6179_single_diy", "palette_diy"}),
+    EFFECT_CATEGORY_EFFECTS: frozenset(
+        {"static_rgb", "h617a_painted", "h617a_single", "h6179_single_diy", "palette_diy"}
+    ),
     EFFECT_CATEGORY_MULTI_LAYERED: frozenset({"h617a_multi", "h6179_mixed_diy"}),
     EFFECT_CATEGORY_REACTIVE: frozenset({"music_profile"}),
     EFFECT_CATEGORY_ADVANCED: frozenset({"advanced", "workshop"}),
@@ -3712,7 +3714,7 @@ def supported_effect_families(model: str) -> frozenset[str]:
 def supported_effect_categories(model: str, *, profile: ModelProfile | None = None) -> tuple[str, ...]:
     profile = get_profile(model) if profile is None else profile
     categories: set[str] = set()
-    if profile.supports_custom_effects:
+    if profile.supports_custom_effects or profile.supports_segments and profile.supports_rgb:
         categories.add(EFFECT_CATEGORY_EFFECTS)
     if profile.supports_scenes:
         categories.add(EFFECT_CATEGORY_SCENES)

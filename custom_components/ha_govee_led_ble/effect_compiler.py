@@ -55,6 +55,7 @@ from .effect_domain import (
     PaletteDiyEffect,
     PaletteScene,
     SingleEffect,
+    StaticRgbComposition,
     VideoProfile,
     WorkshopEffect,
     effect_content_workflow,
@@ -64,6 +65,7 @@ from .h60a6_effects import encode_native_body
 from .h60b0_effects import H60b0SceneBody
 from .layered_scene import CatalogueRef
 from .layered_scene_decoder import encode_layered_scene, encode_workshop_effect
+from .light_commands import scale_segment_groups
 from .music_commands import build_zoned_music_body, resolve_music_profile
 from .music_protocol import music_code_for
 from .music_semantics import music_parameters_depend_on_ic, music_variant
@@ -205,11 +207,33 @@ class CompiledVideoProfile:
         )
 
 
-CompiledApplication = CompiledEffect | CompiledMusicProfile | CompiledVideoProfile
+@dataclass(frozen=True, slots=True)
+class CompiledStaticRgb:
+    item_id: str
+    item_version: int
+    model: str
+    segments: tuple[tuple[int, int, int] | None, ...]
+    groups: tuple[tuple[tuple[int, ...], tuple[int, int, int]], ...]
+    artifact_sha256: str
+    content_kind: str = "static_rgb"
+    diy_code: None = None
+    compiler_version: int = EFFECT_COMPILER_VERSION
+    physical_ic_count: None = None
+
+    @property
+    def progress_total(self) -> int:
+        return 1
+
+
+CompiledApplication = CompiledEffect | CompiledMusicProfile | CompiledVideoProfile | CompiledStaticRgb
 
 
 def validate_compiled_geometry(compiled: CompiledApplication, profile: ModelProfile) -> None:
     """Reject prepared work after incompatible permission, encoding or geometry changes."""
+    if isinstance(compiled, CompiledStaticRgb):
+        if not profile.supports_segments or not profile.supports_rgb or len(compiled.segments) != profile.segment_count:
+            raise ValueError("Device no longer supports this static RGB segment layout")
+        return
     profiled_layers = False
     if isinstance(compiled, CompiledEffect):
         profiled_layers = (compiled.rgbic_scene_v0 is not None or profile.rgbic_scene_v0 is not None) and (
@@ -320,6 +344,14 @@ def require_native_scenes(model: str, profile: ModelProfile) -> None:
 
 def compatibility(item: LibraryItem, model: str, *, profile: ModelProfile | None = None) -> CompatibilityResult:
     profile = get_profile(model) if profile is None else profile
+    if isinstance(item.content, StaticRgbComposition):
+        supported = (
+            profile.supports_segments and profile.supports_rgb and len(item.content.segments) == profile.segment_count
+        )
+        return CompatibilityResult(
+            CompatibilityState.COMPATIBLE if supported else CompatibilityState.INCOMPATIBLE,
+            () if supported else ("Static RGB requires matching logical segment geometry and RGB controls",),
+        )
     if profile.command_operations is not None and not supported_effect_categories(model, profile=profile):
         return CompatibilityResult(CompatibilityState.INCOMPATIBLE, ("Device profile supports no effects",))
     content = item.content
@@ -613,6 +645,10 @@ def resolve_diy_code(
 ) -> int | None:
     """Resolve a custom selector; scene and profile applications return None."""
     content = item.content
+    if isinstance(content, StaticRgbComposition):
+        if requested is not None:
+            raise ValueError("Static RGB compositions do not use a DIY slot")
+        return None
     if isinstance(content, NativeEffect):
         if content.template is not None:
             if requested is not None:
@@ -1269,6 +1305,9 @@ def compile_application(
     diy_code: int | None = None,
     profile: ModelProfile | None = None,
 ) -> CompiledApplication:
+    if isinstance(item.content, StaticRgbComposition):
+        resolve_diy_code(item, diy_code, model=model, profile=profile)
+        return compile_static_rgb(item, model, profile=profile)
     if isinstance(item.content, MusicProfile):
         return compile_music_profile(item, model, profile=profile)
     if isinstance(item.content, VideoProfile):
@@ -1282,6 +1321,30 @@ def compile_application(
         if diy_code is None:
             raise ValueError("custom-effect application requires a DIY code")
     return compile_effect(item, model, diy_code=diy_code, profile=profile)
+
+
+def compile_static_rgb(item: LibraryItem, model: str, *, profile: ModelProfile | None = None) -> CompiledStaticRgb:
+    profile = get_profile(model) if profile is None else profile
+    content = item.content
+    if not isinstance(content, StaticRgbComposition):
+        raise ValueError("Expected a static RGB composition")
+    result = compatibility(item, model, profile=profile)
+    if result.state is not CompatibilityState.COMPATIBLE:
+        raise ValueError("; ".join(result.reasons))
+    grouped: dict[tuple[int, int, int], list[int]] = {}
+    for index, colour in enumerate(content.segments, start=1):
+        if colour is not None:
+            grouped.setdefault(colour, []).append(index)
+    groups = tuple(
+        (tuple(indices), colour)
+        for indices, colour in scale_segment_groups(
+            ((indices, colour) for colour, indices in grouped.items()), content.rgb_scale
+        )
+    )
+    colours = {index: colour for indices, colour in groups for index in indices}
+    segments = tuple(colours.get(index) for index in range(1, len(content.segments) + 1))
+    digest = sha256(json.dumps({"model": model, "segments": segments}, separators=(",", ":")).encode()).hexdigest()
+    return CompiledStaticRgb(str(item.id), item.version, model, segments, groups, digest)
 
 
 def compile_music_profile(

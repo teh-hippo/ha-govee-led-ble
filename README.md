@@ -56,9 +56,14 @@ Normal release-mode idle disconnects retain that history, with identity and layo
 Effect off restores that original layout, including different area and segment colours, even after switching between effects.
 If recovery state is unavailable, including after restarting while an effect is running, establish a complete static colour and brightness layout through the integration first.
 Devices without full readback can use successfully delivered static controls.
-Live retains extra readback requirements for source layouts and configurable segments; Apply remains available for complete write-only layouts.
+Live effect selections retain extra readback requirements for source layouts and configurable segments; Apply remains available for complete write-only layouts.
 Disabling Live or closing the editor stops further Live changes without undoing completed changes.
 Restoring a previously off light may briefly illuminate it before turning it off again.
+
+Choose **Static RGB** to paint native logical segments and save complete colour compositions for recall.
+Partial Apply and Live leave unpainted segments unchanged; Save requires every segment to have a colour.
+These compositions store RGB colours and their input scale, not power, main brightness, relative segment levels or native white settings.
+They use ordinary static controls, so they do not need an effect-recovery baseline or Paint at speed zero.
 
 ![Effect Studio custom effect editor](docs/images/effect-studio-effects.png)
 

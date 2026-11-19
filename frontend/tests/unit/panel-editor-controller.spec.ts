@@ -62,6 +62,32 @@ function editor(
   });
 }
 
+test("native static RGB uses the normal workspace without a DIY catalogue and saves only complete geometry", () => {
+  const model = new PanelModel(() => undefined);
+  const target = { ...device("static", "H9908"), segment_count: 7, static_composition: true };
+  model.devices = [target];
+  model.selectedDeviceId = target.config_entry_id;
+  model.isAdmin = true;
+  model.liveApplyEnabled = false;
+  const controller = editor(model);
+  expect(model.customEffectCategoryAvailable("static")).toBe(true);
+  expect(model.customEffectCategoryAvailable("single-layer")).toBe(false);
+  controller.newCustomEffect("static");
+  expect(model.content).toEqual({ kind: "static_rgb", rgb_scale: 100, segments: Array(7).fill(null) });
+  expect(model.editorAction("save")?.enabled).toBe(false);
+  model.paintColour = [200, 10, 0];
+  controller.setSegmentColour(0, "committed");
+  expect(model.previewCapability).toBe("supported");
+  expect(model.canSaveCurrentDraft).toBe(false);
+  controller.fillStaticSegments(model.paintColour);
+  controller.updateStaticScale(25, "committed");
+  expect(model.content).toEqual({ kind: "static_rgb", rgb_scale: 25, segments: Array(7).fill([200, 10, 0]) });
+  expect(model.editorAction("save")?.enabled).toBe(true);
+  controller.fillStaticSegments(null);
+  expect(model.previewCapability).toBe("unsupported");
+  expect(model.canSaveCurrentDraft).toBe(false);
+});
+
 test("actual paint and single controller paths use target defaults on open, reset and mode changes", () => {
   const model = new PanelModel(() => undefined);
   model.isAdmin = true;

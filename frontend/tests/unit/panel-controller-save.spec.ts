@@ -17,6 +17,32 @@ function installPaintCatalogue(model: PanelModel): void {
   model.customCatalogue!.models.H617A.apply.painted = "supported";
 }
 
+test("Auto Save keeps partial native paints out of the saved library and resumes after the layout is complete", async () => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  model.liveApplyEnabled = false;
+  model.autoSaveEnabled = true;
+  const { controller, editorController } = panelControllerHarness(model);
+  const saved: LibraryItem = {
+    ...item(painted()), content: { kind: "static_rgb", segments: Array.from({ length: 15 }, () => [255, 0, 0]), rgb_scale: 100 },
+  };
+  const updateItem = vi.fn(async (base: LibraryItem, name: string, content: LibraryItem["content"]) =>
+    ({ ...base, name, content, version: base.version + 1 }));
+  controller.api = { updateItem } as unknown as EffectStudioApi;
+  editorController.applyLibraryItem(saved);
+  editorController.fillStaticSegments(null);
+  controller.contentCommitted("committed");
+  expect(updateItem).not.toHaveBeenCalled();
+  expect(model.dirty).toBe(true);
+  expect(model.editorAction("saveAs")?.enabled).toBe(false);
+  editorController.fillStaticSegments([0, 0, 255]);
+  controller.contentCommitted("committed");
+  await vi.waitFor(() => expect(model.dirty).toBe(false));
+  expect(updateItem).toHaveBeenCalledTimes(1);
+  expect(model.currentItem?.content).toEqual({ kind: "static_rgb", segments: Array(15).fill([0, 0, 255]), rgb_scale: 100 });
+  controller.disconnect();
+});
+
 test.each(["manual save", "reload"])("autosave uses the accepted item version after %s", async (transition) => {
   const model = new PanelModel(() => undefined);
   model.isAdmin = true;

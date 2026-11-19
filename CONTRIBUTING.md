@@ -101,7 +101,9 @@ Keep real product differences without turning each product into a separate imple
   Keep cold recovery preparation under ownership and retain its layout context through leading attributes and restoration.
   Missing recovery state is temporary readiness, not unsupported hardware; basic static controls remain available to establish it.
   Keep this baseline distinct from deployment-failure immediate-prior recovery.
-  Live retains the original static baseline with its capability-specific independent-colour/layout requirements; cancel and close stop future work without undo writes.
+  Live effect selections retain the original static baseline with its capability-specific independent-colour/layout requirements; cancel and close stop future work without undo writes.
+  Native static RGB authoring uses ordinary segment controls, not effect admission or a stationary effect encoding.
+  Transient paints may leave segments unchanged, but saved RGB compositions must define every logical segment; they do not capture brightness, power or native white intent.
   Preserve historical evidence quality across effect transitions rather than promoting delivered colours to observed state.
   Internal recovery consumes its own prepared authority rather than admitting another selection or publishing a replacement baseline.
   Final power-off requires independent confirmation where readable and completed delivery otherwise.

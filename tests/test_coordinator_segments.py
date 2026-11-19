@@ -1,6 +1,7 @@
 """Coordinator segment observation, writes and confirmation tests."""
 
 import asyncio
+import time
 from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -13,6 +14,15 @@ from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
+from custom_components.ha_govee_led_ble.effect_compiler import compile_application, validate_compiled_geometry
+from custom_components.ha_govee_led_ble.effect_deployments import (
+    DeploymentPhase,
+    EffectDeploymentRepository,
+    ObservationConfidence,
+)
+from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, StaticRgbComposition
+from custom_components.ha_govee_led_ble.effect_preview import PreviewPhase
+from custom_components.ha_govee_led_ble.effect_runtime import EffectDeploymentEngine
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_segment_query,
     parse_status,
@@ -27,8 +37,132 @@ from custom_components.ha_govee_led_ble.light_commands import (
 )
 from custom_components.ha_govee_led_ble.transport import WRITE_UUID
 from tests.coordinator_test_support import _CONFIGURATION_URL, _packet
+from tests.test_effect_preview import _manager, _open
 
 M = "custom_components.ha_govee_led_ble.coordinator"
+
+
+@pytest.mark.parametrize("readback", ["matching", "stale", "incomplete"])
+async def test_static_rgb_observation_requires_a_fresh_complete_palette(coord, segment_client, readback):
+    expected = [(255, 0, 0)] * coord.profile.segment_count
+    coord.segment_colors = list(expected)
+    coord.segment_state_source = "observed"
+
+    async def query(**kwargs):
+        assert kwargs["query_segments"] is True
+        if readback != "stale":
+            coord._field_revisions["segment_colors"] = coord._field_revisions.get("segment_colors", 0) + 1
+            coord._field_received_at["segment_colors"] = time.monotonic()
+        if readback == "incomplete":
+            coord.segment_colors.pop()
+        return True
+
+    with patch.object(coord, "_send_state_queries", side_effect=query):
+        result = await coord.async_observe_effect({"segment_colors": expected}, timeout=0.1)
+    assert result is (True if readback == "matching" else None if readback == "stale" else False)
+
+
+async def test_partial_static_live_uses_guarded_native_writes_without_an_effect_baseline(
+    hass, monkeypatch, coord, segment_client
+):
+    coord.profile = replace(coord.profile, read_domains=frozenset(), setup_required_read_domains=frozenset())
+    coord.segment_brightness = [22] + [75] * 14
+    before = list(coord.segment_colors)
+    manager, _cache = await _manager(hass, monkeypatch, coord)
+    events = []
+    owner = object()
+    session = _open(manager, owner, events)
+    with (
+        patch.object(
+            coord, "async_refresh_segments", side_effect=AssertionError("Write-only controls do not need readback")
+        ),
+        patch.object(coord, "async_admit_effect_selection", side_effect=AssertionError("Static RGB is not an effect")),
+    ):
+        try:
+            await manager.async_queue_snapshot(
+                session_id=session,
+                owner=owner,
+                config_entry_id="entry-a",
+                sequence=1,
+                updated_at="2026-11-19T00:00:00Z",
+                item=LibraryItem.new("Partial", StaticRgbComposition((None,) * 14 + ((0, 0, 255),))),
+            )
+            await manager.async_wait_idle("entry-a")
+            assert events[-1].phase is PreviewPhase.WRITTEN
+            assert events[-1].confidence is ObservationConfidence.WRITE_COMPLETED
+            assert coord.segment_colors == before[:14] + [(0, 0, 255)]
+            assert coord.segment_brightness == [22] + [75] * 14
+            assert [call.args[1] for call in segment_client.write_gatt_char.await_args_list] == build_segment_paint(
+                [([15], (0, 0, 255))]
+            )
+        finally:
+            await manager.async_shutdown()
+
+
+@pytest.mark.parametrize("observed", [False, True])
+async def test_saved_static_rgb_uses_native_paint_without_an_effect_recovery_baseline(
+    hass, coord, segment_client, observed
+):
+    profile = replace(
+        coord.profile,
+        supports_custom_effects=False,
+        read_domains=coord.profile.read_domains if observed else frozenset(),
+        setup_required_read_domains=frozenset(),
+    )
+    coord.profile = profile
+    coord.is_on = True
+    colours = ((200, 10, 0),) * 5 + ((0, 200, 0),) * 5 + ((0, 0, 200),) * 5
+    item = LibraryItem.new("Tricolour", StaticRgbComposition(colours, 25))
+    compiled = compile_application(item, coord.model, profile=profile)
+    repository = EffectDeploymentRepository(hass)
+    await repository.async_load()
+    engine = EffectDeploymentEngine(repository)
+    levels = list(coord.segment_brightness)
+
+    async def refresh():
+        coord.segment_state_source = "observed"
+        coord._field_revisions["segment_colors"] = coord._field_revisions.get("segment_colors", 0) + 1
+        return True
+
+    with (
+        patch.object(coord, "async_refresh_segments", side_effect=refresh),
+        patch.object(coord, "async_admit_effect_selection", side_effect=AssertionError("Static RGB is not an effect")),
+    ):
+        result = await engine.async_apply_saved(
+            coord, item, config_entry_id="entry-a", updated_at="2026-11-19T00:00:00Z", compiled=compiled
+        )
+    assert result.phase is (DeploymentPhase.CONFIRMED if observed else DeploymentPhase.APPLIED)
+    assert result.verification_confidence is (
+        ObservationConfidence.SETTINGS_MATCH if observed else ObservationConfidence.WRITE_COMPLETED
+    )
+    assert coord.segment_colors == [(50, 3, 0)] * 5 + [(0, 50, 0)] * 5 + [(0, 0, 50)] * 5
+    assert coord.segment_brightness == levels
+    expected = build_segment_paint(
+        [(range(1, 6), (50, 3, 0)), (range(6, 11), (0, 50, 0)), (range(11, 16), (0, 0, 50))],
+        profile=profile,
+    )
+    assert [call.args[1] for call in segment_client.write_gatt_char.await_args_list] == expected
+    state = engine.reconcile_current(
+        coord, config_entry_id="entry-a", observed_at=result.updated_at, refreshed=observed
+    )
+    if observed:
+        assert state.active_effect is not None
+        assert state.active_effect.item_id == item.id
+        assert state.active_effect.confidence is ObservationConfidence.SETTINGS_MATCH
+        coord.segment_colors[0] = (1, 2, 3)
+        changed = engine.reconcile_current(
+            coord, config_entry_id="entry-a", observed_at=result.updated_at, refreshed=True
+        )
+        assert changed.active_effect is None
+    else:
+        assert state.active_effect is None
+    for changed_profile in (
+        replace(profile, segment_count=profile.segment_count - 1),
+        replace(profile, supports_segment_writes=False),
+        replace(profile, supports_rgb=False),
+    ):
+        with pytest.raises(ValueError, match="static RGB segment layout"):
+            validate_compiled_geometry(compiled, changed_profile)
 
 
 @pytest.mark.parametrize("operation", ["whole-kelvin", "rgb", "brightness"])
