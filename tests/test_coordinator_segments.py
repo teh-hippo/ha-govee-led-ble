@@ -21,6 +21,7 @@ from custom_components.ha_govee_led_ble.effect_deployments import (
     ObservationConfidence,
 )
 from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, StaticRgbComposition
+from custom_components.ha_govee_led_ble.effect_identity import EffectDeviceCache
 from custom_components.ha_govee_led_ble.effect_preview import PreviewPhase
 from custom_components.ha_govee_led_ble.effect_runtime import EffectDeploymentEngine
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
@@ -118,7 +119,11 @@ async def test_saved_static_rgb_uses_native_paint_without_an_effect_recovery_bas
     compiled = compile_application(item, coord.model, profile=profile)
     repository = EffectDeploymentRepository(hass)
     await repository.async_load()
-    engine = EffectDeploymentEngine(repository)
+    cache = EffectDeviceCache(hass)
+    await cache.async_load()
+    engine = EffectDeploymentEngine(repository, cache)
+    published = MagicMock()
+    unsubscribe = coord.async_add_listener(lambda: published(cache.get("entry-a")))
     levels = list(coord.segment_brightness)
 
     async def refresh():
@@ -126,13 +131,18 @@ async def test_saved_static_rgb_uses_native_paint_without_an_effect_recovery_bas
         coord._field_revisions["segment_colors"] = coord._field_revisions.get("segment_colors", 0) + 1
         return True
 
-    with (
-        patch.object(coord, "async_refresh_segments", side_effect=refresh),
-        patch.object(coord, "async_admit_effect_selection", side_effect=AssertionError("Static RGB is not an effect")),
-    ):
-        result = await engine.async_apply_saved(
-            coord, item, config_entry_id="entry-a", updated_at="2026-11-19T00:00:00Z", compiled=compiled
-        )
+    try:
+        with (
+            patch.object(coord, "async_refresh_segments", side_effect=refresh),
+            patch.object(
+                coord, "async_admit_effect_selection", side_effect=AssertionError("Static RGB is not an effect")
+            ),
+        ):
+            result = await engine.async_apply_saved(
+                coord, item, config_entry_id="entry-a", updated_at="2026-11-19T00:00:00Z", compiled=compiled
+            )
+    finally:
+        unsubscribe()
     assert result.phase is (DeploymentPhase.CONFIRMED if observed else DeploymentPhase.APPLIED)
     assert result.verification_confidence is (
         ObservationConfidence.SETTINGS_MATCH if observed else ObservationConfidence.WRITE_COMPLETED
@@ -146,9 +156,9 @@ async def test_saved_static_rgb_uses_native_paint_without_an_effect_recovery_bas
         profile=profile,
     )
     assert [call.args[1] for call in segment_client.write_gatt_char.await_args_list] == expected
-    state = engine.reconcile_current(
-        coord, config_entry_id="entry-a", observed_at=result.updated_at, refreshed=observed
-    )
+    state = cache.get("entry-a")
+    assert state is not None
+    assert published.call_args.args[0] == state
     if observed:
         assert state.active_effect is not None
         assert state.active_effect.item_id == item.id
