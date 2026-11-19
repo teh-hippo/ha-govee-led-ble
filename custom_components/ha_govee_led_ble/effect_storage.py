@@ -20,6 +20,7 @@ from .effect_domain import (
     LibraryItem,
     Origin,
     SourceKind,
+    StaticRgbComposition,
     TargetHint,
     effect_content_from_dict,
     effect_content_hash,
@@ -322,6 +323,8 @@ def _validate_library(data: object) -> LibrarySnapshot:
             raise EffectStorageError(f"effect {key} is invalid: {exc}") from exc
         if str(item.id) != str(key):
             raise EffectStorageError(f"effect {key} has mismatched identity")
+        if isinstance(item.content, StaticRgbComposition) and None in item.content.segments:
+            raise EffectStorageError("Paint every segment before saving a static RGB composition")
         items.append(item)
     return LibrarySnapshot(tuple(items), generation)
 

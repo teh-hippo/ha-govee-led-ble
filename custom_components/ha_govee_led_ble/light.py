@@ -67,6 +67,7 @@ from .effect_backend import EffectBackend
 from .effect_catalogue import MODEL_EFFECT_CATALOGUES
 from .effect_compiler import (
     CompiledMusicProfile,
+    CompiledStaticRgb,
     CompiledVideoProfile,
     compile_application,
     resolve_diy_code,
@@ -1215,14 +1216,16 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                         self.coordinator,
                         ControlIntent.USER,
                     ),
-                    self.coordinator.async_mode_transition(purpose=ModeTransitionPurpose.SELECTION),
+                    self.coordinator.async_mode_transition(
+                        purpose=None if isinstance(compiled, CompiledStaticRgb) else ModeTransitionPurpose.SELECTION
+                    ),
                 ):
                     guard()
                     await self._async_supersede_preview()
                     if turn_on_kwargs is not None:
                         await self._async_turn_on(
-                            effect_write_guard=guard,
-                            native_write_guard=native_write_guard,
+                            effect_write_guard=None if isinstance(compiled, CompiledStaticRgb) else guard,
+                            native_write_guard=guard if isinstance(compiled, CompiledStaticRgb) else native_write_guard,
                             source_colour=source_colour,
                             **turn_on_kwargs,
                         )
@@ -1265,7 +1268,8 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             self._library_snapshot = self._effect_backend.application.library_snapshot()
         self._require_support(
             "apply_custom_effect",
-            supported=self.coordinator.profile.supports_custom_effects,
+            supported=self.coordinator.profile.supports_custom_effects
+            or (self.coordinator.profile.supports_segments and self.coordinator.profile.supports_rgb),
         )
         if self._effect_backend is None or self._config_entry_id is None:
             raise ServiceValidationError(

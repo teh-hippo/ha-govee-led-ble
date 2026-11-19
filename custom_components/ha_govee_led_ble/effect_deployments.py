@@ -869,8 +869,8 @@ class DeploymentRecord:
             maximum=MAX_IDENTIFIER_LENGTH,
             error_type=EffectStorageError,
         )
-        if self.target_mode not in {"custom", "scene", "music", "video"}:
-            raise EffectStorageError("deployment target mode must be custom, scene, music or video")
+        if self.target_mode not in {"colour", "custom", "scene", "music", "video"}:
+            raise EffectStorageError("deployment target mode must be colour, custom, scene, music or video")
         if self.target_effect is not None:
             validate_bounded_string(
                 self.target_effect,

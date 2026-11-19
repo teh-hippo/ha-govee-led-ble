@@ -15,6 +15,7 @@ export interface CustomEffectListContext {
   model?: ModelSku;
   catalogue?: ModelEffectCatalogue;
   libraryItems: LibrarySummary[];
+  staticComposition?: boolean;
 }
 
 export type CustomEffectListEntry =
@@ -155,6 +156,8 @@ export function customEffectCategoryAvailable(
   category: CustomEffectCategory,
 ): boolean {
   switch (category) {
+    case "static":
+      return context.staticComposition === true;
     case "all":
       return customEffectsAvailable(context);
     case "music":
@@ -188,6 +191,7 @@ export function customEffectKindAvailable(
   context: CustomEffectListContext,
   kind: string,
 ): boolean {
+  if (kind === "static_rgb") return context.staticComposition === true;
   const catalogue = context.catalogue;
   if (!catalogue) {
     return false;
@@ -256,6 +260,7 @@ export function newEffectKindForCategory(
   context: CustomEffectListContext,
   category: CustomEffectCategory,
 ): NewEffectKind | undefined {
+  if (category === "static") return context.staticComposition ? "static_rgb" : undefined;
   if (context.catalogue?.workflows.some((workflow) => workflow.content_kind === "native_effect")) {
     return undefined;
   }

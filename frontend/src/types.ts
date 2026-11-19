@@ -131,6 +131,12 @@ export interface ActiveEffectWorkspace {
   confidence: ObservationConfidence;
 }
 
+export interface StaticRgbContent {
+  kind: "static_rgb";
+  segments: (RGB | null)[];
+  rgb_scale: number;
+}
+
 export interface PaintedContent {
   kind: "h617a_painted";
   effect: import("./validation-constants").PaintedEffectId;
@@ -612,6 +618,7 @@ export interface RippleLayer {
 }
 
 export type KnownEffectContent =
+  | StaticRgbContent
   | CustomEffectContent
   | PaletteDiyEffectContent
   | NativeEffectContent

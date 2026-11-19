@@ -406,10 +406,12 @@ export class PanelEditorController {
     if (existingTransitionEpoch === undefined) this.beginTransition();
     if (
       !this.options.apiReady() || !this.model.isAdmin || !this.model.customEffectKindAvailable(kind) ||
-      (kind !== "advanced" && !this.model.modelCatalogue)
+      (kind !== "advanced" && kind !== "static_rgb" && !this.model.modelCatalogue)
     ) return;
     const content = initial?.content ?? (
-      kind === "advanced"
+      kind === "static_rgb"
+        ? { kind: "static_rgb" as const, segments: Array.from({ length: this.model.selectedDevice!.segment_count }, () => null), rgb_scale: 100 }
+        : kind === "advanced"
         ? blankAdvancedContent()
         : kind === "music_profile"
           ? this.musicTemplateContent(this.model.modelCatalogue!.music_modes[0]?.id ?? "")
@@ -418,14 +420,16 @@ export class PanelEditorController {
           : blankCustomEffect(kind, this.model.modelCatalogue!)
     );
     if (!content) return;
-    const name = initial?.name ?? `New ${customKindLabel(kind)} effect`;
+    const name = initial?.name ?? (kind === "static_rgb" ? "New Static RGB composition" : `New ${customKindLabel(kind)} effect`);
     if (content.kind === "h617a_painted" && content.addressing === "physical_ic") {
       this.model.paintColour = [255, 0, 0];
     }
     const owner: EditorOwner = {
       section: "custom",
       category:
-        kind === "music_profile"
+        kind === "static_rgb"
+          ? "static"
+          : kind === "music_profile"
           ? "music"
           : kind === "h617a_multi" || kind === "h6179_mixed_diy"
             ? "multi-layer"
@@ -438,7 +442,7 @@ export class PanelEditorController {
       editorSource: { kind: "new", owner },
       name,
       content: cloneEditableEffect(content),
-      paintBrushOff: kind === "h617a_painted" ? false : this.model.paintBrushOff,
+      paintBrushOff: kind === "h617a_painted" || kind === "static_rgb" ? false : this.model.paintBrushOff,
       savedBaseline: serialiseEditable(name, content),
       resetBaseline: cloneEditableEffect(content),
       resetNameBaseline: name,
@@ -690,7 +694,8 @@ export class PanelEditorController {
   }
 
   public setSegmentColour(index: number, interaction: LivePreviewInteraction): boolean {
-    if (this.model.content.kind !== "h617a_painted") return false;
+    if (this.model.content.kind !== "h617a_painted" && this.model.content.kind !== "static_rgb") return false;
+    if (!Number.isInteger(index) || index < 0 || index >= this.model.content.segments.length) return false;
     const segments = this.model.content.segments.map((segment) =>
       segment === null ? null : [...segment] as RGB,
     );
@@ -742,6 +747,19 @@ export class PanelEditorController {
     if (this.model.content.kind === "h617a_painted") {
       this.installEditedContent({ ...this.model.content, ...update }, interaction);
     }
+  }
+
+  public fillStaticSegments(colour: RGB | null): void {
+    if (this.model.content.kind !== "static_rgb") return;
+    this.installEditedContent({
+      ...this.model.content,
+      segments: this.model.content.segments.map(() => colour === null ? null : [...colour] as RGB),
+    }, "committed");
+  }
+
+  public updateStaticScale(value: number, interaction: LivePreviewInteraction): void {
+    if (this.model.content.kind !== "static_rgb") return;
+    this.installEditedContent({ ...this.model.content, rgb_scale: value }, interaction);
   }
 
   private switchCustomMode(kind: CustomEffectContent["kind"], schedulePreview = true): void {

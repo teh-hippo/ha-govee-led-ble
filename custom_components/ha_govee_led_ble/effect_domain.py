@@ -19,6 +19,7 @@ from .effect_limits import (
     MAX_EFFECT_KIND_LENGTH,
     MAX_EFFECT_NAME_LENGTH,
     MAX_IDENTIFIER_LENGTH,
+    MAX_JSON_COLLECTION_ITEMS,
     validate_bounded_string,
     validate_json_document,
     validate_revision,
@@ -117,6 +118,22 @@ class TargetHint:
         )
         if self.segment_count is not None and self.segment_count < 1:
             raise EffectValidationError("target segment count must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class StaticRgbComposition:
+    segments: tuple[RGB | None, ...]
+    rgb_scale: int = 100
+
+    def __post_init__(self) -> None:
+        if not 1 <= len(self.segments) <= MAX_JSON_COLLECTION_ITEMS:
+            raise EffectValidationError(
+                f"static RGB composition must contain 1 to {MAX_JSON_COLLECTION_ITEMS} segments"
+            )
+        _validate_percent(self.rgb_scale, "RGB scale")
+        for colour in self.segments:
+            if colour is not None:
+                _validate_rgb(colour, "static segment")
 
 
 @dataclass(frozen=True, slots=True)
@@ -592,7 +609,8 @@ class OpaqueContent:
 
 
 type EffectContent = (
-    PaintedEffect
+    StaticRgbComposition
+    | PaintedEffect
     | NativeEffect
     | SingleEffect
     | PaletteDiyEffect
@@ -636,7 +654,7 @@ def effect_content_workflow(content: EffectContent) -> str | None:
             return "native_music"
         case VideoProfile():
             return "video"
-        case OpaqueContent():
+        case StaticRgbComposition() | OpaqueContent():
             return None
         case _:
             assert_never(content)
@@ -853,6 +871,12 @@ def _validate_palette_scene_palette(palette: Sequence[RGB]) -> None:
 
 
 def _content_to_dict(content: EffectContent) -> dict[str, JsonValue]:
+    if isinstance(content, StaticRgbComposition):
+        return {
+            "kind": "static_rgb",
+            "segments": [None if colour is None else list(colour) for colour in content.segments],
+            "rgb_scale": content.rgb_scale,
+        }
     if isinstance(content, NativeEffect):
         return native_effect_to_value(content)
     if isinstance(content, PaintedEffect):
@@ -1016,6 +1040,11 @@ def _content_to_dict(content: EffectContent) -> dict[str, JsonValue]:
 
 def _content_from_dict(raw: Mapping[str, Any]) -> EffectContent:
     kind = _required_str(raw, "kind")
+    if kind == "static_rgb":
+        return StaticRgbComposition(
+            segments=_painted_segments_from_value(raw.get("segments")),
+            rgb_scale=_required_int(raw, "rgb_scale"),
+        )
     if kind == "native_effect":
         return native_effect_from_value(raw)
     if kind == "h617a_painted":

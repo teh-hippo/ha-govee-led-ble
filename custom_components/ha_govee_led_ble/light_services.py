@@ -197,9 +197,7 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
                 if guard is not None:
                     guard()
                 async with async_control_intent(self.coordinator, ControlIntent.USER):
-                    await self.coordinator.async_paint_segments(
-                        resolved, **({"write_guard": guard} if guard is not None else {})
-                    )
+                    await self.coordinator.async_paint_segments(resolved, write_guard=guard)
         except GoveeCryptoError as err:
             raise HomeAssistantError(translation_domain=DOMAIN, translation_key="device_command_failed") from err
         except (KeyError, TypeError, ValueError) as err:

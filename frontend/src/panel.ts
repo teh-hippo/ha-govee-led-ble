@@ -59,7 +59,6 @@ import {
   lightControlEntityId,
   scrollSelectedIntoView,
   showHomeAssistantHeader,
-  staticCompositionRequest,
 } from "./ui-utils";
 import { MAX_EDITOR_DEVICES, MAX_IDENTIFIER_LENGTH } from "./validation-constants";
 
@@ -98,17 +97,6 @@ export class GoveeLedEffectStudio extends LitElement {
 
   @state()
   private modelRevision = 0;
-
-  @state()
-  private staticPalette: (RGB | null)[] = [];
-
-  @state()
-  private staticScale = 100;
-
-  @state()
-  private staticApplying = false;
-
-  private staticDeviceId?: string;
 
   private readonly model = new PanelModel(() => {
     this.loadComponentsForCurrentView();
@@ -224,13 +212,6 @@ export class GoveeLedEffectStudio extends LitElement {
       void this.controller.load(this.hass, this.isAdmin);
     }
     if (changed.has("modelRevision")) {
-      const device = this.model.selectedDevice;
-      if (this.staticDeviceId !== undefined && device &&
-          (this.staticDeviceId !== device.config_entry_id || this.staticPalette.length !== device.segment_count)) {
-        this.staticDeviceId = device.config_entry_id;
-        this.staticPalette = Array.from({ length: device.segment_count }, () => null);
-        this.staticScale = 100;
-      }
       this.modal.syncScrollLock();
       this.syncSingleEffectSelects();
       this.syncVideoSelectionVisibility();
@@ -254,6 +235,7 @@ export class GoveeLedEffectStudio extends LitElement {
       case "workshop":
         this.requestComponentGroup("advanced");
         break;
+      case "static_rgb":
       case "h617a_painted":
         this.requestComponentGroup("painted");
         break;
@@ -539,69 +521,7 @@ export class GoveeLedEffectStudio extends LitElement {
             : nothing}
         </div>
       </div>
-      ${showAdminControls && device?.static_composition && lightEntityId
-        ? this.renderStaticComposition(lightEntityId) : nothing}
     `;
-  }
-
-  private renderStaticComposition(entityId: string) {
-    const device = this.model.selectedDevice!;
-    const current = this.staticDeviceId === device.config_entry_id && this.staticPalette.length === device.segment_count;
-    return html`
-      <details @toggle=${(event: Event) => {
-        if (!(event.target as HTMLDetailsElement).open) return;
-        this.requestComponentGroup("painted");
-        if (!current) {
-          this.staticDeviceId = device.config_entry_id;
-          this.staticPalette = Array.from({ length: device.segment_count }, () => null);
-          this.staticScale = 100;
-        }
-      }}>
-        <summary>Static RGB composition</summary>
-        <p>Paint explicit logical segments, then Apply. Unpainted segments are left unchanged.
-          This replaces the active effect. RGB scale is an input, not measured brightness.</p>
-        <govee-painted-segment-editor .segments=${current ? this.staticPalette : []} .emptyLabel=${"unchanged"} .disabled=${this.staticApplying}
-          @segment-selected=${(event: CustomEvent<{ index: number }>) => {
-            if (!current || this.staticApplying) return;
-            const palette = [...this.staticPalette];
-            palette[event.detail.index] = [...this.model.paintColour];
-            this.staticPalette = palette;
-          }}
-        ></govee-painted-segment-editor>
-        <govee-single-colour-field label="Static paint colour" .colour=${this.model.paintColour}
-          .disabled=${this.staticApplying}
-          @colour-changed=${(event: CustomEvent<{ colour: RGB }>) => this.editor.paintColourChanged(event.detail.colour)}
-        ></govee-single-colour-field>
-        <button type="button" ?disabled=${!current || this.staticApplying} @click=${() => {
-          this.staticPalette = this.staticPalette.map(() => [...this.model.paintColour]);
-        }}>Fill all logical segments</button>
-        <button type="button" ?disabled=${!current || this.staticApplying} @click=${() => {
-          this.staticPalette = this.staticPalette.map(() => null);
-        }}>Clear selection</button>
-        <govee-slider-control label="RGB scale" .value=${this.staticScale} .minimum=${0} .maximum=${100}
-          .disabled=${this.staticApplying}
-          @value-changed=${(event: CustomEvent<SliderControlChange>) => { this.staticScale = event.detail.value; }}
-        ></govee-slider-control>
-        <button type="button" ?disabled=${!current || this.staticApplying || !this.staticPalette.some(colour => colour !== null)}
-          @click=${() => void this.applyStaticComposition(entityId)}>Apply static RGB</button>
-      </details>
-    `;
-  }
-
-  private async applyStaticComposition(entityId: string): Promise<void> {
-    if (!this.hass || !this.isAdmin || this.staticApplying ||
-        this.staticDeviceId !== this.model.selectedDeviceId || !this.model.selectedDevice?.static_composition) return;
-    this.staticApplying = true;
-    try {
-      this.model.patch({ liveApplyEnabled: false });
-      this.preview.beginEditorTransition(false);
-      await this.preview.cancel(this.staticDeviceId, true);
-      await this.hass.callWS(staticCompositionRequest(entityId, this.staticPalette, this.staticScale));
-    } catch (error: unknown) {
-      this.modal.showError(error instanceof Error ? error.message : "Static RGB composition failed.");
-    } finally {
-      this.staticApplying = false;
-    }
   }
 
   private renderLightControl(displayName: string, entityId: string) {
@@ -869,6 +789,7 @@ export class GoveeLedEffectStudio extends LitElement {
 
   private renderCurrentCustomEditor() {
     if (this.content.kind === "native_effect") return this.renderNativeEditor();
+    if (this.content.kind === "static_rgb") return this.renderPaintedEditor();
     if (isCustomEffectContent(this.content)) {
       return this.content.kind === "h617a_painted"
         ? this.renderPaintedEditor()
@@ -1493,15 +1414,17 @@ export class GoveeLedEffectStudio extends LitElement {
   }
 
   private renderPaintedEditor() {
-    if (this.content.kind !== "h617a_painted") {
+    if (this.content.kind !== "h617a_painted" && this.content.kind !== "static_rgb") {
       return nothing;
     }
     const content = this.content;
-    const physical = content.addressing === "physical_ic";
+    const isStatic = content.kind === "static_rgb";
+    const physical = content.kind === "h617a_painted" && content.addressing === "physical_ic";
     return html`
       ${this.renderEditorHeading()}
 
-      ${this.renderSingleEffectSelector()}
+      ${isStatic ? html`<p>Applying replaces the active effect. Unpainted segments are unchanged. Paint every segment to save a complete composition.
+        RGB scale adjusts the supplied colours, not the light's brightness or relative segment levels.</p>` : this.renderSingleEffectSelector()}
 
       ${physical && !this.model.selectedDevice?.physical_ic_count ? html`
         <p role="status">Graffiti requires the device's physical IC count. Refresh the device before painting or applying.</p>
@@ -1509,7 +1432,8 @@ export class GoveeLedEffectStudio extends LitElement {
 
       <govee-painted-segment-editor
         .segments=${this.content.segments}
-        .background=${content.background ?? [0, 0, 0]}
+        .background=${content.kind === "h617a_painted" ? content.background ?? [0, 0, 0] : [0, 0, 0]}
+        .emptyLabel=${isStatic ? "unchanged" : "off"}
         .physical=${physical}
         .disabled=${this.editorDisabled}
         @segment-selected=${(
@@ -1550,14 +1474,26 @@ export class GoveeLedEffectStudio extends LitElement {
               @click=${() => this.editor.selectPaintOff()}
             >
               <span class="paint-off-swatch" aria-hidden="true"></span>
-              ${physical ? "Background" : "Off"}
+              ${isStatic ? "Unchanged" : physical ? "Background" : "Off"}
             </button>
+            ${isStatic ? html`
+              <button class="paint-off" type="button" ?disabled=${this.editorDisabled}
+                @click=${() => this.editor.fillStaticSegments(this.model.paintColour)}>Fill all</button>
+              <button class="paint-off" type="button" ?disabled=${this.editorDisabled}
+                @click=${() => this.editor.fillStaticSegments(null)}>Clear all</button>
+            ` : nothing}
           </div>
         </section>
 
         <section class="card">
           <div class="parameter-stack">
-            ${this.renderPaintedVariationField()}
+            ${isStatic ? html`
+              <govee-slider-control label="RGB scale" .value=${content.rgb_scale} .minimum=${0} .maximum=${100}
+                .disabled=${this.editorDisabled}
+                @value-changing=${(event: CustomEvent<SliderControlChange>) => this.editor.updateStaticScale(event.detail.value, "changing")}
+                @value-changed=${(event: CustomEvent<SliderControlChange>) => this.editor.updateStaticScale(event.detail.value, "committed")}
+              ></govee-slider-control>
+            ` : this.renderPaintedVariationField()}
             ${physical ? html`
               <govee-single-colour-field
                 label="Background colour"
@@ -1569,12 +1505,14 @@ export class GoveeLedEffectStudio extends LitElement {
                   this.editor.updatePaintedContent({ background: event.detail.colour }, "committed")}
               ></govee-single-colour-field>
             ` : nothing}
-            ${this.sliderField("Speed", "speed", this.content.speed)}
+            ${content.kind === "h617a_painted" ? html`
+            ${this.sliderField("Speed", "speed", content.speed)}
             ${this.sliderField(
               "Brightness",
               "brightness",
-              this.content.brightness,
+              content.brightness,
             )}
+            ` : nothing}
           </div>
         </section>
       </div>

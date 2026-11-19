@@ -265,6 +265,7 @@ function workspaceStudioLocation(
   if (content.kind === "music_profile") {
     return { section: "custom", category: "music" };
   }
+  if (content.kind === "static_rgb") return { section: "custom", category: "static" };
   if (
     content.kind === "h617a_painted" ||
     content.kind === "h617a_single" ||
