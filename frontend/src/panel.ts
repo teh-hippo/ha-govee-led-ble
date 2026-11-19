@@ -176,7 +176,7 @@ export class GoveeLedEffectStudio extends LitElement {
   private get isAdmin() { return this.hass?.user?.is_admin === true; }
   private get editorReadOnly() { return this.model.editorReadOnly; }
   private get editorDisabled() {
-    return this.editorReadOnly || this.model.saving;
+    return this.editorReadOnly || (this.model.saving && !this.model.autoSaveInProgress);
   }
   private get canMutate() {
     return this.isAdmin && !this.model.stateUpdatesUnavailable;

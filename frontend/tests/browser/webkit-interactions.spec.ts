@@ -55,6 +55,101 @@ async function mountFeedbackPanel(page: Page, model = "H7025", showFeedback = tr
   }, { model, showFeedback });
 }
 
+test("Auto Save keeps keyboard editing responsive and serialises the latest draft", async ({ page }) => {
+  await page.evaluate(async () => {
+    const modulePath = "/src/panel.ts";
+    const { GoveeLedEffectStudio } = await import(modulePath);
+    const contracts = await fetch("/tests/fixtures/backend-contracts.json").then(response => response.json());
+    const device = contracts.responses.devices.find((item: { model: string }) => item.model === "H617A");
+    let saved = contracts.responses.library_item;
+    let generation = 1;
+    const updates: Array<{ speed: number; version: number }> = [];
+    const library = () => ({
+      generation,
+      items: [{ ...contracts.responses.library_snapshot.items[0], name: saved.name, version: saved.version, content_hash: saved.content_hash }],
+    });
+    const userState = {
+      owner_id: "test-owner",
+      recent_colours: [],
+      selected_config_entry_id: device.config_entry_id,
+      navigation: { section: "custom", custom_category: "single-layer", auto_save: true },
+    };
+    const panel = new GoveeLedEffectStudio() as GoveeLedEffectStudio;
+    panel.hass = {
+      user: { is_admin: true },
+      async callWS<T>(message: Record<string, unknown>): Promise<T> {
+        const type = String(message.type).replace("ha_govee_led_ble/editor/", "");
+        if (type === "library/update") {
+          const content = message.content as { speed: number };
+          updates.push({ speed: content.speed, version: Number(message.expected_version) });
+          panel.dataset.updates = JSON.stringify(updates);
+          await new Promise<void>(resolve => {
+            document.addEventListener("release-studio-save", () => resolve(), { once: true });
+          });
+          if (message.expected_version !== saved.version) throw new Error("Stale saved version");
+          saved = {
+            ...saved,
+            name: message.name,
+            content: message.content,
+            version: saved.version + 1,
+            content_hash: String(saved.version + 1).padStart(64, "0"),
+          };
+          generation += 1;
+          panel.dataset.savedSpeed = String(content.speed);
+          return { item: saved, library: library() } as T;
+        }
+        const responses: Record<string, unknown> = {
+          info: contracts.responses.editor_info,
+          devices: { devices: [device] },
+          device: { device },
+          "library/list": library(),
+          "library/get": { item: saved },
+          "custom/catalogue": { catalogue: contracts.responses.custom_catalogue },
+          "user_state/get": { user_state: userState },
+          "user_state/update": { user_state: userState },
+          "preview/cancel": { cancelled: true },
+        };
+        if (!(type in responses)) throw new Error(`Unexpected WebSocket call: ${type}`);
+        return structuredClone(responses[type]) as T;
+      },
+      async callService() { throw new Error("Saving must not control a light"); },
+      connection: { async subscribeMessage() { return () => undefined; } },
+    } as HomeAssistant;
+    document.body.replaceChildren(panel);
+  });
+  const panel = page.locator("ha-govee-led-ble-editor");
+  const live = page.getByRole("button", { name: "Live", exact: true });
+  await expect(live).toBeVisible();
+  if (await live.getAttribute("aria-pressed") === "true") await live.click();
+  await page.getByRole("button", { name: "Canonical painted effect User-created effect", exact: true }).click();
+  const speed = page.getByRole("slider", { name: "Speed", exact: true });
+  const initialSpeed = Number(await speed.inputValue());
+  await speed.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(panel).toHaveAttribute("data-updates", JSON.stringify([{ speed: initialSpeed + 1, version: 1 }]));
+  await expect(speed).toBeEnabled();
+  await expect(speed).toBeFocused();
+  await page.keyboard.press("ArrowRight");
+  await expect(speed).toHaveValue(String(initialSpeed + 2));
+  await page.evaluate(() => document.dispatchEvent(new Event("release-studio-save")));
+  await expect(panel).toHaveAttribute("data-updates", JSON.stringify([
+    { speed: initialSpeed + 1, version: 1 },
+    { speed: initialSpeed + 2, version: 2 },
+  ]));
+  await expect(speed).toHaveValue(String(initialSpeed + 2));
+  await page.evaluate(() => document.dispatchEvent(new Event("release-studio-save")));
+  await expect(page.getByRole("button", { name: "Auto Save", exact: true })).toHaveAttribute("aria-busy", "false");
+  await expect(panel).toHaveAttribute("data-saved-speed", String(initialSpeed + 2));
+  await expect(speed).toBeFocused();
+
+  await page.getByRole("button", { name: "Auto Save", exact: true }).click();
+  await speed.press("ArrowRight");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(speed).toBeDisabled();
+  await page.evaluate(() => document.dispatchEvent(new Event("release-studio-save")));
+  await expect(speed).toBeEnabled();
+});
+
 for (const viewport of [{ width: 320, height: 844 }, { width: 1280, height: 900 }]) {
   test(`compact feedback remains copyable and links to one issue at ${viewport.width}px`, async ({ page }) => {
     await page.setViewportSize(viewport);
