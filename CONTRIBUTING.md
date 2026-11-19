@@ -214,6 +214,9 @@ There are three publication paths:
   Python Semantic Release calculates versions and release notes from Conventional Commits; `feat`, `fix`, `perf`, `build` and breaking changes drive releases.
   Documentation or maintenance alone does not force a candidate.
   To request the same candidate path manually, select `release_type=rc` in `Release`; the manual default remains stable and neither path forces a maintenance-only version.
+  For an explicitly requested major version, select `force_major=true`; this uses Semantic Release's standard override and cumulative notes from the last stable.
+  Continue later candidates normally, and repeat that selection when publishing the intended major as stable.
+  Publication rejects a calculated version below current master; see [major-version selection](docs/release-candidates.md#intentionally-starting-a-major-version).
 - **Optional PR candidates:** request a reviewed, exact-SHA build when hardware testing is needed before merge.
   `Prerelease Package` publishes `v<version>-pr-<PR number>.<candidate number>` tags, for example `v7.40.1-pr-145.1`.
   The master release checkout excludes these preview tags locally so they cannot affect master numbering or release notes; remote tags remain untouched.
@@ -221,7 +224,7 @@ There are three publication paths:
 - **Stable releases:** the operator decides when current validated `master` is ready.
   Manually run `Release` on `master` (`gh workflow run release.yml --ref master`).
   Python Semantic Release creates the stable version, release commit, tag and notes; do not promote by editing a prerelease checkbox or choosing a version by hand.
-  The stable checkout also excludes master-candidate tag refs locally, so its normal generated notes cover changes since the previous stable release.
+  Stable and explicitly forced-major checkouts also exclude master-candidate tag refs locally, so their generated notes cover changes since the previous stable release.
   Automatic candidates retain those refs for native RC numbering; all remote tags remain untouched.
 
 Each PR branch and each master publication type has its own concurrency group.
