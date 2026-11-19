@@ -56,7 +56,7 @@ async function mountFeedbackPanel(page: Page, model = "H7025", showFeedback = tr
 }
 
 for (const width of [320, 1280]) {
-  test(`Static RGB saves and recalls in the normal workspace at ${width}px`, async ({ page }) => {
+  test(`Canvas saves and recalls in the normal workspace at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.evaluate(async () => {
       const modulePath = "/src/panel.ts";
@@ -107,7 +107,7 @@ for (const width of [320, 1280]) {
     const live = page.getByRole("button", { name: "Live", exact: true });
     await expect(live).toBeVisible();
     if (await live.getAttribute("aria-pressed") === "true") await live.click();
-    await page.getByRole("button", { name: "Static RGB", exact: true }).click();
+    await page.getByRole("button", { name: "Canvas", exact: true }).click();
     await page.getByRole("button", { name: "New", exact: true }).click();
     const save = page.getByRole("button", { name: "Save", exact: true });
     await expect(save).toBeDisabled();
@@ -121,7 +121,7 @@ for (const width of [320, 1280]) {
     await save.click();
     await expect(panel).toHaveAttribute("data-saved", /"kind":"static_rgb".*"rgb_scale":99/);
     await page.getByRole("button", { name: "New", exact: true }).click();
-    await page.getByRole("button", { name: "New Static RGB composition User-created effect", exact: true }).click();
+    await page.getByRole("button", { name: "New Canvas User-created effect", exact: true }).click();
     await expect(scale).toHaveValue("99");
     await page.getByRole("button", { name: "Clear all", exact: true }).click();
     await expect(save).toBeDisabled();

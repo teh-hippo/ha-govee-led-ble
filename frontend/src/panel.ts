@@ -1423,8 +1423,7 @@ export class GoveeLedEffectStudio extends LitElement {
     return html`
       ${this.renderEditorHeading()}
 
-      ${isStatic ? html`<p>Applying replaces the active effect. Unpainted segments are unchanged. Paint every segment to save a complete composition.
-        RGB scale adjusts the supplied colours, not the light's brightness or relative segment levels.</p>` : this.renderSingleEffectSelector()}
+      ${isStatic ? nothing : this.renderSingleEffectSelector()}
 
       ${physical && !this.model.selectedDevice?.physical_ic_count ? html`
         <p role="status">Graffiti requires the device's physical IC count. Refresh the device before painting or applying.</p>
