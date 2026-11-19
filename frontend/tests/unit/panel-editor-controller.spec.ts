@@ -83,6 +83,13 @@ test("native static RGB uses the normal workspace without a DIY catalogue and sa
   controller.updateStaticScale(25, "committed");
   expect(model.content).toEqual({ kind: "static_rgb", rgb_scale: 25, segments: Array(7).fill([200, 10, 0]) });
   expect(model.editorAction("save")?.enabled).toBe(true);
+  controller.selectPaintOff();
+  controller.setSegmentColour(0, "committed");
+  expect(model.content).toMatchObject({ segments: [[0, 0, 0], ...Array(6).fill([200, 10, 0])] });
+  expect(model.canSaveCurrentDraft).toBe(true);
+  controller.fillStaticSegments(model.activePaintBrush);
+  expect(model.content).toMatchObject({ segments: Array(7).fill([0, 0, 0]) });
+  expect(model.canSaveCurrentDraft).toBe(true);
   controller.fillStaticSegments(null);
   expect(model.previewCapability).toBe("unsupported");
   expect(model.canSaveCurrentDraft).toBe(false);
