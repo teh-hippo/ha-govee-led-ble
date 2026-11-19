@@ -255,7 +255,7 @@ async def lifecycle(hass, monkeypatch, request):
     c._present = True
     c._note_advertisement(
         SimpleNamespace(
-            manufacturer_data={34818: bytes.fromhex("ec00010100" if c.model == "H6159" else "ec00020100")},
+            manufacturer_data={34818: bytes.fromhex("ec00010100" if c.model in {"H6159", "H6182"} else "ec00020100")},
             source="test",
             time=hass.loop.time(),
         )
@@ -280,13 +280,15 @@ async def lifecycle(hass, monkeypatch, request):
             for group in range(1, c.profile.segment_group_count + 1)
         }
     )
-    if c.model == "H6159":
+    if c.model in {"H6159", "H6182"}:
         replies = {
             build_hardware_query(c.model): frame("aa0703" + b"1.00.02".hex()),
             build_firmware_query(c.model): frame("aa06" + b"1.07.02".hex()),
             build_power_query(c.model): frame("aa0101"),
             build_brightness_query(c.model): frame("aa0480"),
-            build_colour_mode_query(c.model): frame("aa05020c223800000000"),
+            build_colour_mode_query(c.model): frame(
+                "aa05020c223800000000" if c.model == "H6159" else "aa050d0c223800000000"
+            ),
         }
     clients, packets, timers = [], [], []
 

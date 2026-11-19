@@ -51,6 +51,14 @@ _MODULE_PREFIX = "" if _GENERATED_DIR else "custom_components.ha_govee_led_ble.g
 @pytest.mark.parametrize(
     "module,class_name,payload,envelope",
     [
+        ("h6182_command_write", "H6182CommandWrite", "33050dffffff0a8cffae547f", True),
+        ("h6182_command_write", "H6182CommandWrite", "330502ffffff01ffae547f", True),
+        ("h6182_command_write", "H6182CommandWrite", "33050301630102037f", True),
+        ("h6182_status_reply", "H6182StatusReply", "aa050dffffff01ffae547f", True),
+        ("h6182_status_reply", "H6182StatusReply", "aa050301630102037f", True),
+        ("h6182_modern_status_reply", "H6182ModernStatusReply", "aa050dffffff0a8cffae547f", True),
+        ("h6182_modern_status_reply", "H6182ModernStatusReply", "aa051330327f", True),
+        ("h6182_diy_body", "H6182DiyBody", "2a00003203ff0000007f", False),
         ("h6159_wire_write", "H6159WireWrite", "330502ffffff01ffae547f", True),
         ("h6159_wire_write", "H6159WireWrite", "33050301630102037f", True),
         ("h6159_wire_write", "H6159WireWrite", "33050e0132010102037f", True),
@@ -65,7 +73,7 @@ _MODULE_PREFIX = "" if _GENERATED_DIR else "custom_components.ha_govee_led_ble.g
         ("h6181_music_body", "H6181MusicBody", "0102413001ff00000a507f", False),
     ],
 )
-def test_h6181_exact_model_roots_preserve_unqualified_suffixes(module, class_name, payload, envelope):
+def test_whole_strip_exact_model_roots_preserve_unqualified_suffixes(module, class_name, payload, envelope):
     raw = bytes.fromhex(payload)
     if envelope:
         raw = raw.ljust(19, b"\0")

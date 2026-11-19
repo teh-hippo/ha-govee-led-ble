@@ -180,6 +180,31 @@ H6181_MUSIC_VARIANTS = (
     ),
 )
 
+H6182_MUSIC_VARIANTS = (
+    MusicVariant(0, "H6182 onboard sound response"),
+    MusicVariant(1, "H6182 later-controller soft selector"),
+    MusicVariant(
+        48,
+        "H6182 revision-qualified Bloom palette",
+        "h6181_music_body",
+        bytes.fromhex("3001ff00000a50"),
+        supports_style=True,
+        style_companions=(80, 20),
+        palette_bounds=(1, 8),
+        supports_fixed_colour=False,
+    ),
+    MusicVariant(
+        49,
+        "H6182 revision-qualified Radiant palette",
+        "h6181_music_body",
+        bytes.fromhex("3101ff000005640a"),
+        supports_style=True,
+        style_companions=(0x0564, 0x1446),
+        palette_bounds=(1, 8),
+        supports_fixed_colour=False,
+    ),
+)
+
 _H60B2_PALETTE = "07ff0000ff7f00ffff0000ff000000ff00ffff8b00ff"
 H60B2_MUSIC_VARIANTS = tuple(
     MusicVariant(

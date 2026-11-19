@@ -10,7 +10,6 @@ from bleak import BleakClient
 from .const import (
     NATIVE_ZONE_CONTROLS,
     PERCENT_BRIGHTNESS_STATUS_GRAMMARS,
-    WHOLE_BULB_GRAMMARS,
     ReadDomain,
     get_profile,
     profile_with_physical_ic_count,
@@ -384,8 +383,8 @@ class _NotificationMixin(_CoordinatorBase):
                     ):
                         self.segment_kelvin = [static_values["color_temp_kelvin"]] * self.profile.segment_count
                 if (
-                    self.profile.status_grammar in WHOLE_BULB_GRAMMARS | {"H6181-modern"}
-                    and parsed.color_temp_kelvin is not None
+                    static_values.get("color_temp_kelvin") is not None
+                    and "rgb_color" not in static_values
                     and self.rgb_color_source == "observed"
                 ):
                     self.rgb_color_source = "retained"

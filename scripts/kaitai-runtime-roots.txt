@@ -1,4 +1,8 @@
 command_write
+speculative/h6182_command_write
+speculative/h6182_status_reply
+speculative/h6182_modern_status_reply
+speculative/h6182_diy_body
 speculative/h6159_wire_write
 speculative/h6159_status_reply
 speculative/h6127_wire_write
