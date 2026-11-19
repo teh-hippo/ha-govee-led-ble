@@ -707,7 +707,8 @@ export class PanelModel {
   }
 
   public get activePaintBrush(): PaintedSegmentDraft {
-    return this.paintBrushOff ? null : [...this.paintColour];
+    if (!this.paintBrushOff) return [...this.paintColour];
+    return this.content.kind === "static_rgb" ? [0, 0, 0] : null;
   }
 
 }

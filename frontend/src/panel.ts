@@ -1473,11 +1473,11 @@ export class GoveeLedEffectStudio extends LitElement {
               @click=${() => this.editor.selectPaintOff()}
             >
               <span class="paint-off-swatch" aria-hidden="true"></span>
-              ${isStatic ? "Unchanged" : physical ? "Background" : "Off"}
+              ${physical ? "Background" : "Off"}
             </button>
             ${isStatic ? html`
               <button class="paint-off" type="button" ?disabled=${this.editorDisabled}
-                @click=${() => this.editor.fillStaticSegments(this.model.paintColour)}>Fill all</button>
+                @click=${() => this.editor.fillStaticSegments(this.model.activePaintBrush)}>Fill all</button>
               <button class="paint-off" type="button" ?disabled=${this.editorDisabled}
                 @click=${() => this.editor.fillStaticSegments(null)}>Clear all</button>
             ` : nothing}

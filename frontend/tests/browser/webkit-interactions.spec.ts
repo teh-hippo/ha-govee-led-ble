@@ -115,14 +115,28 @@ for (const width of [320, 1280]) {
     await expect(panel.locator("header details")).toHaveCount(0);
     await page.getByRole("button", { name: "Fill all", exact: true }).click();
     await expect(save).toBeEnabled();
+    const underlineOffset = await panel.locator(".editable-title").evaluate(row => {
+      const underline = [row, ...row.children].find(element => Number.parseFloat(getComputedStyle(element).borderBottomWidth) > 0)!;
+      return underline.getBoundingClientRect().right - row.getBoundingClientRect().right;
+    });
+    expect(Math.abs(underlineOffset)).toBeLessThan(1);
+    await page.getByRole("button", { name: "Off", exact: true }).click();
+    await panel.locator("govee-painted-segment-editor button").first().click();
+    await expect(save).toBeEnabled();
     const scale = page.getByRole("slider", { name: "RGB scale", exact: true });
     await scale.focus();
     await scale.press("ArrowLeft");
     await save.click();
     await expect(panel).toHaveAttribute("data-saved", /"kind":"static_rgb".*"rgb_scale":99/);
+    expect(JSON.parse((await panel.getAttribute("data-saved"))!).segments[0]).toEqual([0, 0, 0]);
     await page.getByRole("button", { name: "New", exact: true }).click();
     await page.getByRole("button", { name: "New Canvas User-created effect", exact: true }).click();
     await expect(scale).toHaveValue("99");
+    await expect(panel.locator("govee-painted-segment-editor button").first()).toHaveAttribute("aria-label", "Segment 1, #000000");
+    await page.getByRole("button", { name: "Off", exact: true }).click();
+    await page.getByRole("button", { name: "Fill all", exact: true }).click();
+    await expect(panel.getByRole("button", { name: /^Segment \d+, #000000$/ })).toHaveCount(15);
+    await expect(save).toBeEnabled();
     await page.getByRole("button", { name: "Clear all", exact: true }).click();
     await expect(save).toBeDisabled();
     await expect(page.getByRole("button", { name: "Save As", exact: true })).toBeDisabled();

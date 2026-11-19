@@ -379,6 +379,7 @@ export const studioEditorStyles = css`
     align-items: center;
     gap: var(--studio-tight-gap);
     min-width: 0;
+    border-bottom: var(--studio-border-width) solid var(--studio-border);
   }
 
   .dirty-marker {
@@ -396,10 +397,10 @@ export const studioEditorStyles = css`
 
   .editor-name {
     width: min(var(--studio-editor-name-max-width), 100%);
+    min-width: 0;
     min-height: var(--studio-control-height);
     padding: var(--studio-compact-gap) 0;
     border: 0;
-    border-bottom: var(--studio-border-width) solid var(--studio-border);
     border-radius: 0;
     color: var(--primary-text-color);
     background: transparent;
