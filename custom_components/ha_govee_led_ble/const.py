@@ -3538,12 +3538,13 @@ def device_profile(
         profile = replace(
             profile,
             status_grammar="H6182-modern" if later else "H6182",
+            profile_identity_fields=profile.profile_identity_fields if later else frozenset({"hw_version"}),
             brightness_wire_range=wire_range,
             outbound_transform=whole_rgb_outbound_transform(
                 wire_range, legacy_colour=False, music_version=None if later else 0
             ),
         )
-        if fw is None or hw is None:
+        if hw is None or later and fw is None:
             basic = _basic_revision_profile(profile)
             return (
                 replace(
@@ -3558,9 +3559,11 @@ def device_profile(
         palette_hardware = 20100 <= hardware_number < 20200 or (
             30000 <= hardware_number < 40000 and not 30400 <= hardware_number < 30500
         )
-        palette_music = later and palette_hardware and fw >= FirmwareVersion((2, 4))
+        palette_music = later and palette_hardware and fw is not None and fw >= FirmwareVersion((2, 4))
         modes = profile.music_modes if palette_music else ("dynamic", "soft") if later else ("dynamic",)
-        uploaded_scenes = not telink and (not later or pact_code != 1 or fw >= FirmwareVersion((1, 3)))
+        uploaded_scenes = not telink and (
+            not later or pact_code != 1 or fw is not None and fw >= FirmwareVersion((1, 3))
+        )
         local_scenes = (
             profile.local_scenes
             if telink

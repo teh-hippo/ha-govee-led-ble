@@ -181,7 +181,7 @@ async def test_legacy_colour_allows_untransformed_identity_queries_and_power(leg
 
 @pytest.mark.parametrize("lifecycle", ["H6159", "H6182"], indirect=True)
 @pytest.mark.parametrize("control", ["studio", "rgb", "kelvin"])
-@pytest.mark.parametrize("identity_returns", [False, True])
+@pytest.mark.parametrize("identity_returns", ["none", "hardware", "complete"])
 async def test_whole_strip_controls_prepare_identity_after_basic_setup(
     lifecycle,  # noqa: F811
     monkeypatch,
@@ -200,8 +200,11 @@ async def test_whole_strip_controls_prepare_identity_after_basic_setup(
     await coordinator._async_update_data()
     assert coordinator.available
     assert not coordinator.profile.supports_custom_effects
-    if identity_returns:
+    if identity_returns == "complete":
         replies.update(identity)
+    elif identity_returns == "hardware":
+        query = build_hardware_query(coordinator.model)
+        replies[query] = identity[query]
     if control == "kelvin":
         replies[build_colour_mode_query(coordinator.model)] = frame(bytes.fromhex("aa0502ffffff01ffae54"))
     packets.clear()
@@ -218,14 +221,16 @@ async def test_whole_strip_controls_prepare_identity_after_basic_setup(
                 **({"rgb_color": (12, 34, 56)} if control == "rgb" else {"color_temp_kelvin": 2700})
             )
 
-    if not identity_returns:
+    if identity_returns == "none" or coordinator.model == "H6159" and identity_returns != "complete":
         with pytest.raises(HomeAssistantError):
             await apply()
         assert packets and all(packet[0] == 0xAA for packet in packets)
         return
     await apply()
     assert coordinator.profile.supports_custom_effects
-    assert coordinator.identity_fields_confirmed(frozenset({"fw_version", "hw_version"}))
+    assert coordinator.identity_fields_confirmed(coordinator.profile.profile_identity_fields)
+    if identity_returns == "hardware":
+        assert coordinator.fw_version is None
     if control == "studio":
         assert packets and all(packet[0] == 0xAA for packet in packets)
     else:
@@ -262,7 +267,49 @@ async def test_whole_strip_power_survives_disconnect_without_optional_revision_i
     await light._async_turn_on()
     assert frame(bytes.fromhex("330101")) in packets
     assert coordinator.is_on
-    assert coordinator.identity_fields_confirmed(frozenset({"fw_version", "hw_version"})) is fresh_identity
+    assert coordinator.identity_fields_confirmed(coordinator.profile.profile_identity_fields) is fresh_identity
+
+
+@pytest.mark.parametrize("lifecycle", ["H6182"], indirect=True)
+@pytest.mark.parametrize("hardware_returns", [False, True])
+async def test_whole_strip_recovery_qualifies_hardware_without_optional_firmware(
+    lifecycle,  # noqa: F811
+    monkeypatch,
+    hardware_returns,
+):
+    coordinator, replies, clients, packets = lifecycle
+    del replies[build_firmware_query(coordinator.model)]
+    monkeypatch.setattr(
+        "custom_components.ha_govee_led_ble.coordinator.bluetooth.async_last_service_info",
+        lambda *_args, **_kwargs: None,
+    )
+    await coordinator._async_update_data()
+    original_rgb, original_brightness = coordinator.rgb_color, coordinator.brightness_pct
+    assert coordinator.fw_version is None
+    await coordinator.async_apply_native_scene("movie")
+    assert coordinator._pre_mode_snapshot is not None
+    receive = clients[-1].start_notify.call_args.args[1]
+    receive(None, bytearray(frame(b"\xaa\x06" + b"1.02.16")))
+    assert coordinator.fw_version == "1.02.16" and coordinator._pre_mode_snapshot is not None
+    await coordinator._async_disconnect_on_timeout(coordinator._disconnect_generation)
+    assert coordinator._client is None and coordinator._pre_mode_needs_qualification
+    if not hardware_returns:
+        del replies[build_hardware_query(coordinator.model)]
+    packets.clear()
+    light = GoveeBLELight(coordinator)
+    monkeypatch.setattr(light, "_notify_state_changed", MagicMock())
+    if not hardware_returns:
+        with pytest.raises(HomeAssistantError):
+            await light.async_turn_on(effect="off")
+        assert packets and all(packet[0] == 0xAA for packet in packets)
+        return
+    await light.async_turn_on(effect="off")
+    assert build_hardware_query(coordinator.model) in packets
+    assert coordinator.identity_fields_confirmed(frozenset({"hw_version"}))
+    assert not coordinator.identity_fields_confirmed(frozenset({"fw_version"}))
+    assert coordinator.static_mode_confirmed()
+    assert (coordinator.rgb_color, coordinator.brightness_pct) == (original_rgb, original_brightness)
+    assert coordinator.rgb_color_source == "observed" and coordinator._pre_mode_snapshot is None
 
 
 @pytest.mark.parametrize(
@@ -315,6 +362,7 @@ def test_whole_strip_revision_codecs_do_not_inherit_segment_commands(
 @pytest.mark.parametrize(
     "pact,firmware,hardware,raw_brightness,modes,transport,scene_codes",
     [
+        ((1, 1), None, "1.00.01", 136, ("dynamic",), "a1_02", {4, 5, 7, 8, 9, 10, 16}),
         ((1, 1), "1.02.16", "1.00.01", 136, ("dynamic",), "a1_02", {4, 5, 7, 8, 9, 10, 16}),
         ((1, 1), "1.07.00", "1.02.07", 136, ("dynamic",), "a1_02", {4, 5, 7, 8, 9, 10, 16}),
         ((2, 1), "2.03.99", "2.01.01", 50, ("dynamic", "soft"), "a3", None),
