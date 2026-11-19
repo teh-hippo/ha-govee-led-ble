@@ -188,7 +188,7 @@ _QUALIFIED_CONTEXTS: tuple[tuple[str, str, int | None, int | None, str | None, s
     ("H6159-modern-palette", "H6159", 2, 1, "2.04.00", "2.01.01"),
     ("H6182-bootstrap", "H6182", None, None, None, None),
     ("H6182-hardware-only", "H6182", 1, 1, None, "1.00.01"),
-    ("H6182-owner-revision", "H6182", 1, 1, "1.02.16", "1.00.01"),
+    ("H6182-later-hardware-only", "H6182", 2, 1, None, "2.01.01"),
     ("H6182-later-local-scenes", "H6182", 2, 1, "1.02.99", "2.01.01"),
     ("H6182-later-rgb-scenes", "H6182", 2, 1, "1.03.00", "2.01.01"),
     ("H6182-later-palette-music", "H6182", 2, 1, "2.04.00", "2.01.01"),
