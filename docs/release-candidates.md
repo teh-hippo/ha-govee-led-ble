@@ -26,6 +26,20 @@ If publication already created a tag or draft before failing, use the same-tag r
 Wait for the complete `Release` workflow and verify its ZIP and checksum before sharing the tag.
 Stable publication is a separate operator decision, not a prerequisite for hardware testing.
 
+### Intentionally starting a major version
+
+Select `force_major=true` only when the operator explicitly wants the next major version.
+For example, `gh workflow run release.yml --ref master -f release_type=rc -f force_major=true` uses Python Semantic Release's standard `--major` option.
+That run excludes earlier candidate refs locally, so its generated notes cover everything since the last stable release.
+Normal automatic candidates then continue the new major's RC numbering; do not keep forcing major versions.
+No synthetic breaking-change commit or hand-edited version is needed.
+
+When that candidate is ready for stable, select `release_type=stable` and `force_major=true` again.
+An intentional major override is not a breaking-change commit, so normal stable calculation alone may select a lower version.
+The workflow rejects a version below current master instead of publishing it, and refuses to recreate an existing forced version.
+Stable notes still cover all changes since the previous stable release.
+Keep existing tags immutable and use same-tag recovery after a failed publication.
+
 ## Building an optional PR candidate
 
 Run the **Prerelease Package** workflow (`workflow_dispatch`) on the branch, after the final `make check` and with the reviewed commit pushed.
@@ -46,7 +60,7 @@ That shared interface accepts RC versions, so `7.40.1-pr-145.2` uses the interna
 The build metadata records that packaging input and the exact source SHA; the public tag identifies the PR and candidate.
 It does not commit preview versions to the feature branch.
 The master release checkout removes PR preview tags locally before running Semantic Release, preserving normal master numbering and release notes without changing remote tags.
-For stable publication, that checkout also removes master-candidate tag refs locally so generated stable notes include the changes delivered through RCs.
+For stable publication or an explicitly forced major, that checkout also removes master-candidate tag refs locally so generated notes include the changes delivered through RCs.
 Automatic master candidates retain their RC refs for native numbering.
 The build checks package integrity; it does not replace the required prior review and `make check`.
 

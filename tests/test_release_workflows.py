@@ -121,10 +121,18 @@ def test_pr_candidate_revision_reuses_exact_sha_or_advances(tmp_path: Path, new_
 
 
 @pytest.mark.parametrize(
-    ("event", "channel"),
-    [("workflow_run", "rc"), ("workflow_dispatch", "stable"), ("workflow_dispatch", "rc")],
+    ("event", "channel", "force_major"),
+    [
+        ("workflow_run", "rc", False),
+        ("workflow_dispatch", "stable", False),
+        ("workflow_dispatch", "rc", False),
+        ("workflow_dispatch", "rc", True),
+        ("workflow_dispatch", "stable", True),
+    ],
 )
-def test_release_history_keeps_rc_tags_only_for_candidates(tmp_path: Path, event: str, channel: str) -> None:
+def test_release_history_keeps_rc_tags_only_for_normal_candidates(
+    tmp_path: Path, event: str, channel: str, force_major: bool
+) -> None:
     setup = _run(
         "git init -b master; git config user.name Fixture; git config user.email fixture@example.invalid; "
         "git config tag.gpgsign false; git config core.hooksPath /dev/null; "
@@ -139,13 +147,13 @@ def test_release_history_keeps_rc_tags_only_for_candidates(tmp_path: Path, event
     result = _run(
         _step_script("release.yml", "Select release history"),
         tmp_path,
-        {**os.environ, "RELEASE_EVENT": event, "RELEASE_CHANNEL": channel},
+        {**os.environ, "RELEASE_EVENT": event, "RELEASE_CHANNEL": channel, "FORCE_MAJOR": str(force_major).lower()},
     )
 
     assert result.returncode == 0, result.stderr
     tags = _run("git tag --list", tmp_path, dict(os.environ))
     expected = {"v1.2.2", "unrelated"}
-    if channel == "rc":
+    if channel == "rc" and not force_major:
         expected |= {"v1.2.3-rc.1", "v1.2.3-rc.2"}
     assert set(tags.stdout.splitlines()) == expected
     remote_tags = _run("git --git-dir=remote.git tag --list", tmp_path, dict(os.environ))
@@ -211,10 +219,27 @@ def test_master_release_requires_current_validated_commit(
 
 
 @pytest.mark.parametrize(
-    ("event", "channel"),
-    [("workflow_run", "rc"), ("workflow_dispatch", "stable"), ("workflow_dispatch", "rc")],
+    ("event", "channel", "force_major", "current_version", "next_version", "existing_tag", "accepted"),
+    [
+        ("workflow_run", "rc", False, "7.42.0-rc.26", "7.42.0-rc.27", False, True),
+        ("workflow_dispatch", "stable", False, "7.42.0-rc.26", "7.42.0", False, True),
+        ("workflow_dispatch", "rc", True, "7.42.0-rc.26", "8.0.0-rc.1", False, True),
+        ("workflow_run", "rc", False, "8.0.0-rc.1", "8.0.0-rc.2", False, True),
+        ("workflow_dispatch", "stable", True, "8.0.0-rc.2", "8.0.0", False, True),
+        ("workflow_dispatch", "stable", False, "8.0.0-rc.2", "7.42.0", False, False),
+        ("workflow_dispatch", "rc", True, "8.0.0-rc.1", "8.0.0-rc.1", True, False),
+    ],
 )
-def test_selected_master_publication_channel(tmp_path: Path, event: str, channel: str) -> None:
+def test_selected_master_publication_channel(
+    tmp_path: Path,
+    event: str,
+    channel: str,
+    force_major: bool,
+    current_version: str,
+    next_version: str,
+    existing_tag: bool,
+    accepted: bool,
+) -> None:
     workflow = load_yaml(_REPO / ".github/workflows/release.yml")
     assert isinstance(workflow, dict)
     dispatch = workflow[True]["workflow_dispatch"]  # YAML 1.1 reads the "on" key as True.
@@ -224,23 +249,45 @@ def test_selected_master_publication_channel(tmp_path: Path, event: str, channel
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     uvx = bin_dir / "uvx"
-    uvx.write_text('#!/usr/bin/env bash\nprintf "%s\\n" "$@" > "$ARGUMENTS"\n')
+    uvx.write_text(
+        '#!/usr/bin/env bash\nprintf "%s\\n" "$@" > "$ARGUMENTS"\n'
+        'if [[ "$*" == *" --print" ]]; then\n'
+        '  printf "%s\\n" "$NEXT_VERSION"\n'
+        '  [[ "$GITHUB_OUTPUT" == /dev/null ]]\n'
+        'else\n  touch "$PUBLISHED"\nfi\n'
+    )
     uvx.chmod(0o755)
+    git = bin_dir / "git"
+    git.write_text(
+        '#!/usr/bin/env bash\n[[ "$*" == "ls-remote origin refs/tags/v$NEXT_VERSION" ]] || exit 1\n'
+        'printf "%s" "$EXISTING_TAG"\n'
+    )
+    git.chmod(0o755)
+    manifest = tmp_path / "custom_components/ha_govee_led_ble/manifest.json"
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text(json.dumps({"version": current_version}))
     arguments = tmp_path / "arguments"
+    published = tmp_path / "published"
     env = {
         **os.environ,
         "PATH": f"{bin_dir}:{os.environ['PATH']}",
         "RELEASE_EVENT": event,
         "RELEASE_CHANNEL": channel,
+        "FORCE_MAJOR": str(force_major).lower(),
+        "NEXT_VERSION": next_version,
+        "EXISTING_TAG": _SOURCE_SHA if existing_tag else "",
         "ARGUMENTS": str(arguments),
+        "PUBLISHED": str(published),
     }
 
     result = _run(_step_script("release.yml", "Python Semantic Release"), tmp_path, env)
 
-    assert result.returncode == 0, result.stderr
+    assert (result.returncode == 0) is accepted, result.stdout + result.stderr
+    assert published.exists() is accepted
     args = arguments.read_text().splitlines()
     assert ("--as-prerelease" in args) is (channel == "rc")
     assert "--patch" not in args and "--prerelease" not in args
+    assert ("--major" in args) is force_major
     assert "--no-vcs-release" in args
 
 

@@ -11,6 +11,11 @@ on:
         options:
           - stable
           - rc
+      force_major:
+        description: Intentionally start the next major version, with notes since the last stable release
+        required: false
+        default: false
+        type: boolean
   workflow_run:
     workflows: [Validate]
     types: [completed]
@@ -41,6 +46,7 @@ jobs:
     env:
       SOURCE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
       RELEASE_CHANNEL: ${{ github.event_name == 'workflow_run' && 'rc' || inputs.release_type || 'stable' }}
+      FORCE_MAJOR: ${{ github.event_name == 'workflow_dispatch' && inputs.force_major || false }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -77,7 +83,8 @@ jobs:
         run: |
           while IFS= read -r tag; do
             if [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-pr-[0-9]+\.[0-9]+$ ]] ||
-               [[ "$RELEASE_CHANNEL" == stable && "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]]; then
+               [[ ( "$RELEASE_CHANNEL" == stable || "$FORCE_MAJOR" == true ) &&
+                  "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]]; then
               git tag --delete "$tag"
             fi
           done < <(git tag --list)
@@ -91,10 +98,26 @@ jobs:
           if [[ "$RELEASE_CHANNEL" == "rc" ]]; then
             args+=(--as-prerelease --prerelease-token rc)
           fi
-          uvx \
-            --from python-semantic-release==10.6.1 \
-            --with gitpython==3.1.59 \
-            semantic-release "${args[@]}"
+          case "$FORCE_MAJOR" in
+            false) ;;
+            true) args+=(--major) ;;
+            *) echo "::error::Unknown major-release selection"; exit 1 ;;
+          esac
+          semantic_release=(uvx --from python-semantic-release==10.6.1 --with gitpython==3.1.59 semantic-release)
+          next_version="$(GITHUB_OUTPUT=/dev/null "${semantic_release[@]}" "${args[@]}" --print)"
+          current_version="$(jq -er .version custom_components/ha_govee_led_ble/manifest.json)"
+          if ! printf '%s\n' "${current_version%%-*}" "${next_version%%-*}" | sort -V -C; then
+            echo "::error::Calculated version is older than master. Select force_major to finalise an intentional major candidate."
+            exit 1
+          fi
+          if [[ "$FORCE_MAJOR" == true ]]; then
+            existing_tag="$(git ls-remote origin "refs/tags/v$next_version")"
+            if [[ -n "$existing_tag" ]]; then
+              echo "::error::That version already exists. Use normal RC calculation or same-tag recovery, not another forced major."
+              exit 1
+            fi
+          fi
+          "${semantic_release[@]}" "${args[@]}"
 
       - name: Save release identity and generated notes
         if: ${{ steps.semantic_release.outputs.released == 'true' }}
