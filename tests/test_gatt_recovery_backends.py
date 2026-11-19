@@ -32,7 +32,7 @@ from custom_components.ha_govee_led_ble.ble_connection import async_clear_gatt_c
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.govee_encryption import GoveeCryptoError, GoveeTransportError
 from custom_components.ha_govee_led_ble.govee_encryption.session import GoveeEncryptionSession
-from custom_components.ha_govee_led_ble.transport import ENCRYPTION_UUID, READ_UUID, WRITE_UUID
+from custom_components.ha_govee_led_ble.transport import READ_UUID, WRITE_UUID
 from tests.test_govee_encryption import M, client
 
 ADDRESS = "AA:BB:CC:DD:EE:FF"
@@ -231,7 +231,7 @@ async def test_crypto_suppressed_stale_error_reaches_coordinator_recovery(
     assert events == ["clear", "disconnect"]
     device.clear_cache.assert_awaited_once_with()
     device.disconnect.assert_awaited_once_with()
-    device.read_gatt_char.assert_awaited_once_with(ENCRYPTION_UUID)
+    device.read_gatt_char.assert_awaited_once_with(device.services[0].characteristics[0])
     if phase == "select":
         device.start_notify.assert_not_awaited()
         device.write_gatt_char.assert_not_awaited()
