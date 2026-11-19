@@ -420,7 +420,7 @@ export class PanelEditorController {
           : blankCustomEffect(kind, this.model.modelCatalogue!)
     );
     if (!content) return;
-    const name = initial?.name ?? (kind === "static_rgb" ? "New Static RGB composition" : `New ${customKindLabel(kind)} effect`);
+    const name = initial?.name ?? (kind === "static_rgb" ? "New Canvas" : `New ${customKindLabel(kind)} effect`);
     if (content.kind === "h617a_painted" && content.addressing === "physical_ic") {
       this.model.paintColour = [255, 0, 0];
     }

@@ -660,7 +660,7 @@ function isKnownEffectKind(kind: string): boolean {
 export function customKindLabel(kind: unknown): string {
   switch (kind) {
     case "static_rgb":
-      return "Static RGB";
+      return "Canvas";
     case "h617a_painted":
       return "Paint";
     case "h617a_single":

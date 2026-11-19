@@ -61,7 +61,7 @@ Live effect selections retain extra readback requirements for source layouts and
 Disabling Live or closing the editor stops further Live changes without undoing completed changes.
 Restoring a previously off light may briefly illuminate it before turning it off again.
 
-Choose **Static RGB** to paint native logical segments and save complete colour compositions for recall.
+Choose **Canvas** to paint native logical segments and save complete colour compositions for recall.
 Partial Apply and Live leave unpainted segments unchanged; Save requires every segment to have a colour.
 These compositions store RGB colours and their input scale, not power, main brightness, relative segment levels or native white settings.
 They use ordinary static controls, so they do not need an effect-recovery baseline or Paint at speed zero.
