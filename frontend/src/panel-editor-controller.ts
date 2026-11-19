@@ -761,11 +761,6 @@ export class PanelEditorController {
     }, "committed");
   }
 
-  public updateStaticScale(value: number, interaction: LivePreviewInteraction): void {
-    if (this.model.content.kind !== "static_rgb") return;
-    this.installEditedContent({ ...this.model.content, rgb_scale: value }, interaction);
-  }
-
   private switchCustomMode(kind: CustomEffectContent["kind"], schedulePreview = true): void {
     const catalogue = this.model.modelCatalogue;
     if (

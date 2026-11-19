@@ -3,6 +3,7 @@ import type { GoveeCustomEffectEditor } from "../../src/custom-effect-editor";
 import type { NativeEffectContent } from "../../src/types";
 import type { HomeAssistant } from "../../src/types";
 import type { GoveeLedEffectStudio } from "../../src/panel";
+import type { GoveePaintedSegmentEditor } from "../../src/painted-segment-editor";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/tests/browser/fixtures/palette-editor.html");
@@ -112,6 +113,13 @@ for (const width of [320, 1280]) {
     const save = page.getByRole("button", { name: "Save", exact: true });
     await expect(save).toBeEnabled();
     await expect(page.getByRole("slider", { name: "Speed", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("slider", { name: "RGB scale", exact: true })).toHaveCount(0);
+    await expect(panel.locator("govee-painted-segment-editor button")).toHaveText(
+      Array.from({ length: 15 }, (_, index) => String(index + 1)),
+    );
+    await expect(panel.locator("govee-painted-segment-editor .flow-wrap")).toHaveText(
+      width < 600 ? ["5 ↵ 6", "10 ↵ 11"] : [],
+    );
     await expect(panel.locator("header details")).toHaveCount(0);
     for (let index = 0; index < 7; index++) {
       await panel.locator("govee-painted-segment-editor button").nth(index).click();
@@ -122,17 +130,13 @@ for (const width of [320, 1280]) {
       return underline.getBoundingClientRect().right - row.getBoundingClientRect().right;
     });
     expect(Math.abs(underlineOffset)).toBeLessThan(1);
-    const scale = page.getByRole("slider", { name: "RGB scale", exact: true });
-    await scale.focus();
-    await scale.press("ArrowLeft");
     await save.click();
-    await expect(panel).toHaveAttribute("data-saved", /"kind":"static_rgb".*"rgb_scale":99/);
+    await expect(panel).toHaveAttribute("data-saved", /"kind":"static_rgb".*"rgb_scale":100/);
     const savedSegments = JSON.parse((await panel.getAttribute("data-saved"))!).segments;
     expect(savedSegments[0]).not.toEqual([0, 0, 0]);
     expect(savedSegments.slice(7)).toEqual(Array(8).fill([0, 0, 0]));
     await page.getByRole("button", { name: "New", exact: true }).click();
     await page.getByRole("button", { name: "New Canvas User-created effect", exact: true }).click();
-    await expect(scale).toHaveValue("99");
     await expect(panel.locator("govee-painted-segment-editor button").nth(7)).toHaveAttribute("aria-label", "Segment 8, #000000");
     await page.getByRole("button", { name: "Off", exact: true }).click();
     await page.getByRole("button", { name: "Fill all", exact: true }).click();
@@ -444,33 +448,59 @@ test("painted segment taps finish with a committed interaction", async ({
   );
 });
 
-test("painted segment drags commit once and release for the next gesture", async ({
+test("painted segment flow follows rendered columns through resize and geometry changes", async ({ page }) => {
+  const editor = page.getByTestId("painted-context").locator("govee-painted-segment-editor");
+  await page.setViewportSize({ width: 390, height: 900 });
+  await editor.evaluate(element => {
+    const painted = element as GoveePaintedSegmentEditor;
+    painted.physical = true;
+    painted.segments = Array.from({ length: 22 }, () => null);
+  });
+  await expect(editor.getByRole("button")).toHaveText(Array.from({ length: 22 }, (_, index) => String(index + 1)));
+  await expect(editor.getByRole("button", { name: "IC 22, background", exact: true })).toBeVisible();
+  await expect(editor.locator(".flow-wrap")).toHaveText(["5 ↵ 6", "10 ↵ 11", "15 ↵ 16", "20 ↵ 21"]);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await expect(editor.locator(".flow-wrap")).toHaveText(["15 ↵ 16"]);
+  await editor.locator(".segments").evaluate(element => {
+    (element as HTMLElement).style.gridTemplateColumns = "repeat(7, minmax(0, 1fr))";
+  });
+  await page.setViewportSize({ width: 1000, height: 900 });
+  await expect(editor.locator(".flow-wrap")).toHaveText(["7 ↵ 8", "14 ↵ 15", "21 ↵ 22"]);
+  await editor.evaluate(element => {
+    (element as GoveePaintedSegmentEditor).segments = Array.from({ length: 4 }, () => null);
+  });
+  await expect(editor.getByRole("button")).toHaveText(["1", "2", "3", "4"]);
+  await expect(editor.locator(".flow-wrap")).toHaveCount(0);
+});
+
+test("painted segment drags across a row wrap commit once and release for the next gesture", async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 390, height: 900 });
   const context = page.getByTestId("painted-context");
-  const first = context.locator('[data-segment="0"]');
-  const third = context.getByRole("button", { name: "Segment 3, off" });
+  const lastInRow = context.locator('[data-segment="4"] .segment-number');
+  const firstInNextRow = context.getByRole("button", { name: "Segment 6, off" });
 
-  await mouseDrag(page, first, third);
+  await mouseDrag(page, lastInRow, firstInNextRow);
 
   const firstEvents = await jsonOutput<
     Array<{ index: number; interaction: string }>
   >(context.getByTestId("painted-events"));
-  expect(firstEvents[0]).toEqual({ index: 0, interaction: "changing" });
+  expect(firstEvents[0]).toEqual({ index: 4, interaction: "changing" });
   expect(firstEvents.at(-1)).toEqual({
-    index: 2,
+    index: 5,
     interaction: "committed",
   });
   expect(
     firstEvents.filter((event) => event.interaction === "committed"),
   ).toHaveLength(1);
 
-  await context.getByRole("button", { name: "Segment 5, off" }).tap();
+  await context.getByRole("button", { name: /^Segment 1,/ }).tap();
   const nextEvents = await jsonOutput<
     Array<{ index: number; interaction: string }>
   >(context.getByTestId("painted-events"));
   expect(nextEvents.at(-1)).toEqual({
-    index: 4,
+    index: 0,
     interaction: "committed",
   });
 });

@@ -1483,15 +1483,9 @@ export class GoveeLedEffectStudio extends LitElement {
           </div>
         </section>
 
-        <section class="card">
+        ${!isStatic ? html`<section class="card">
           <div class="parameter-stack">
-            ${isStatic ? html`
-              <govee-slider-control label="RGB scale" .value=${content.rgb_scale} .minimum=${0} .maximum=${100}
-                .disabled=${this.editorDisabled}
-                @value-changing=${(event: CustomEvent<SliderControlChange>) => this.editor.updateStaticScale(event.detail.value, "changing")}
-                @value-changed=${(event: CustomEvent<SliderControlChange>) => this.editor.updateStaticScale(event.detail.value, "committed")}
-              ></govee-slider-control>
-            ` : this.renderPaintedVariationField()}
+            ${this.renderPaintedVariationField()}
             ${physical ? html`
               <govee-single-colour-field
                 label="Background colour"
@@ -1512,7 +1506,7 @@ export class GoveeLedEffectStudio extends LitElement {
             )}
             ` : nothing}
           </div>
-        </section>
+        </section>` : nothing}
       </div>
     `;
   }
