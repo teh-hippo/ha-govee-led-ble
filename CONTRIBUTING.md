@@ -126,6 +126,7 @@ Keep real product differences without turning each product into a separate imple
 - Scope mutable state, locks and reservations to the resource they protect.
   Keep unrelated devices and items independent; do not retain collection-wide locks during device I/O when only one item needs a reservation.
   Cache derived results at their owning layer, invalidate on meaningful changes, and avoid repeated parsing, serialisation, whole-history rebuilding or persistence for unchanged observations.
+  Background persistence must preserve authoring focus and accept newer edits while serialising writes; reserve editor locking for foreground operations.
 
 ### Transport, recovery and lifecycle
 

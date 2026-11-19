@@ -135,6 +135,27 @@ test("canonical backend responses decode through the production validators", () 
   }
 });
 
+test.each(["preview", "device health"])("%s preserves full recovery diagnostics without accepting oversized strings", (kind) => {
+  const message = "Live needs a complete original static layout with its required colour observations; "
+    + "establish static state first or use Apply for supported write-only layouts";
+  const device = cloneObject(responses.devices[0]);
+  const decode = (error_message: string) => kind === "preview"
+    ? decodePreviewStatus({ ...responses.preview_status, phase: "failed", error_code: "state_not_restorable", error_message })
+    : decodeDevices([{
+        ...device,
+        preview_health: {
+          ...cloneObject(device.preview_health),
+          phase: "degraded",
+          incident_id: "recovery-incident",
+          error_code: "state_not_restorable",
+          error_message,
+        },
+      }])[0].preview_health;
+
+  expect(decode(message).error_message).toBe(message);
+  expect(() => decode("x".repeat(16_385))).toThrow(/error message must contain/);
+});
+
 test.each([false, true])("saved Apply preserves its route and carries Live evidence policy (%s)", async (live) => {
   const callWS = vi.fn().mockResolvedValue(undefined);
   const api = new EffectStudioApi({

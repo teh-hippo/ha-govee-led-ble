@@ -3,7 +3,7 @@ import type { CapabilityState } from "./types";
 const MAX_JSON_DEPTH = 16;
 const MAX_JSON_NODES = 4096;
 export const MAX_JSON_COLLECTION_ITEMS = 1024;
-const MAX_JSON_STRING_LENGTH = 16_384;
+export const MAX_JSON_STRING_LENGTH = 16_384;
 
 export const MAX_SAFE_REVISION = Number.MAX_SAFE_INTEGER;
 

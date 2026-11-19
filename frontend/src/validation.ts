@@ -48,6 +48,7 @@ import {
   integerValue,
   invalid,
   MAX_JSON_COLLECTION_ITEMS,
+  MAX_JSON_STRING_LENGTH,
   MAX_SAFE_REVISION,
   nullableInteger,
   objectValue,
@@ -622,7 +623,7 @@ export function decodePreviewStatus(value: unknown): PreviewStatus {
           : boundedString(
               status.error_message,
               "preview error message",
-              MAX_EFFECT_NAME_LENGTH,
+              MAX_JSON_STRING_LENGTH,
             ),
     write_disposition: enumString(
       status.write_disposition,
@@ -705,7 +706,7 @@ export function decodePreviewHealthStatus(
         : boundedString(
             status.error_message,
             "preview health error message",
-            MAX_EFFECT_NAME_LENGTH,
+            MAX_JSON_STRING_LENGTH,
           ),
     write_disposition: enumString(
       status.write_disposition,
