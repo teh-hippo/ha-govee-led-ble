@@ -34,6 +34,7 @@ from .music_semantics import (
     H6127_MUSIC_VARIANTS,
     H6159_MUSIC_VARIANTS,
     H6181_MUSIC_VARIANTS,
+    H6182_MUSIC_VARIANTS,
     H7020_MUSIC_VARIANTS,
     H7025_MUSIC_VARIANTS,
     MusicVariant,
@@ -2533,6 +2534,57 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         diy_requires_upload_ack=True,
         effect_retry_after_upload=False,
     ),
+    "H6182": ModelProfile(
+        "H6182 RGB TV Backlight",
+        confirmation_issue=654,
+        reconciles_marker_pact=True,
+        command_grammar="H6181",
+        command_operations=frozenset({"power", "brightness", "static", "scene", "diy", "music", "effect_upload"}),
+        status_grammar="H6182-modern",
+        effect_grammar="H6181",
+        profile_identity_fields=frozenset({"fw_version", "hw_version"}),
+        profile_pact_dependent=True,
+        colour_mode_query_selector=1,
+        read_domains=frozenset(
+            {ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE, ReadDomain.FIRMWARE, ReadDomain.HARDWARE}
+        ),
+        setup_required_read_domains=frozenset({ReadDomain.POWER}),
+        supports_rgb=True,
+        supports_color_temperature=True,
+        color_temp_range=KELVIN_RANGE_2000_9000,
+        static_readback_echoes_color=True,
+        static_readback_kelvin=True,
+        static_readback_zero_kelvin_is_rgb=True,
+        supports_scenes=True,
+        scene_catalogue_sku="H6182",
+        local_scenes=(
+            (4, "Movie"),
+            (5, "Date"),
+            (9, "Candle"),
+            (7, "Romantic"),
+            (10, "Breathing"),
+            (8, "Blink"),
+            (16, "Energetic"),
+        ),
+        authored_palette_scene_selector=198,
+        supports_custom_effects=True,
+        supports_multi_layered_effects=True,
+        effect_workflows=frozenset({"native_scenes", "edited_palette_scenes", "single", "multi", "native_music"}),
+        diy_upload_transport="a3",
+        diy_requires_upload_ack=True,
+        effect_retry_after_upload=False,
+        effect_readback="diy_code_only",
+        music_modes=("dynamic", "soft", "bloom", "radiant"),
+        music_variants=H6182_MUSIC_VARIANTS,
+        music_readback_ambiguous=True,
+        music_upload_before_selector=True,
+        music_requires_upload_ack=True,
+        music_retry_after_upload=False,
+        music_params_require_activation=True,
+        music_sensitivity_max=99,
+        supports_music_color=True,
+        connection_idle_timeout=IDLE_TIMEOUT_STANDARD,
+    ),
     "H6179": ModelProfile(
         "H6179 RGB TV Backlight",
         color_temp_range=KELVIN_RANGE_2000_9000,
@@ -2888,7 +2940,21 @@ _EFFECT_ACTIVATION_GRAMMARS = {
 }
 MODE_COMMAND_GRAMMARS = WHOLE_BULB_GRAMMARS | {"H6046", "H6099", "H6199"}
 PERCENT_BRIGHTNESS_STATUS_GRAMMARS = frozenset(
-    {"H1771", "H60B0", "H600A", "H6046", "H6097", "H6099", "H6159", "H6181", "H6181-modern", "H6199", "H66A0"}
+    {
+        "H1771",
+        "H60B0",
+        "H600A",
+        "H6046",
+        "H6097",
+        "H6099",
+        "H6159",
+        "H6181",
+        "H6181-modern",
+        "H6182",
+        "H6182-modern",
+        "H6199",
+        "H66A0",
+    }
 )
 
 
@@ -3415,7 +3481,7 @@ def device_profile(
 ) -> ModelProfile:
     """Resolve exact-product capabilities from evidenced revision context."""
     if model == "H6159":
-        from .protocol_transforms import h6159_outbound_transform
+        from .protocol_transforms import whole_rgb_outbound_transform
 
         profile = get_profile(model)
         fw, hw = FirmwareVersion.parse(firmware), FirmwareVersion.parse(hardware)
@@ -3426,7 +3492,9 @@ def device_profile(
                 replace(
                     profile,
                     brightness_wire_range=wire_range,
-                    outbound_transform=h6159_outbound_transform(wire_range, legacy_colour=not later, music_version=0),
+                    outbound_transform=whole_rgb_outbound_transform(
+                        wire_range, legacy_colour=not later, music_version=None if later else 0
+                    ),
                 )
             )
         hardware_number = hw.identity_number()
@@ -3443,8 +3511,8 @@ def device_profile(
         return replace(
             profile,
             brightness_wire_range=wire_range,
-            outbound_transform=h6159_outbound_transform(
-                wire_range, legacy_colour=not later, music_version=music_version
+            outbound_transform=whole_rgb_outbound_transform(
+                wire_range, legacy_colour=not later, music_version=None if later else music_version
             ),
             diy_upload_transport="a3" if later or not telink else "a1_02",
             supports_multi_layered_effects=mixed,
@@ -3458,6 +3526,68 @@ def device_profile(
             music_variants=tuple(
                 variant for variant in profile.music_variants if palette_music or variant.mode_code < len(modes)
             ),
+        )
+    if model == "H6182":
+        from .protocol_transforms import whole_rgb_outbound_transform
+
+        profile = get_profile(model)
+        fw, hw = FirmwareVersion.parse(firmware), FirmwareVersion.parse(hardware)
+        later = pact_type is not None and pact_code is not None and pact_type >= 2 and pact_code >= 1
+        telink = hw is None or 10000 <= hw.identity_number() < 20000
+        wire_range = (20, 254) if telink else None
+        profile = replace(
+            profile,
+            status_grammar="H6182-modern" if later else "H6182",
+            brightness_wire_range=wire_range,
+            outbound_transform=whole_rgb_outbound_transform(
+                wire_range, legacy_colour=False, music_version=None if later else 0
+            ),
+        )
+        if fw is None or hw is None:
+            basic = _basic_revision_profile(profile)
+            return (
+                replace(
+                    basic,
+                    command_operations=frozenset({"power"}),
+                    read_domains=basic.read_domains - {ReadDomain.BRIGHTNESS},
+                )
+                if hw is None
+                else basic
+            )
+        hardware_number = hw.identity_number()
+        palette_hardware = 20100 <= hardware_number < 20200 or (
+            30000 <= hardware_number < 40000 and not 30400 <= hardware_number < 30500
+        )
+        palette_music = later and palette_hardware and fw >= FirmwareVersion((2, 4))
+        modes = profile.music_modes if palette_music else ("dynamic", "soft") if later else ("dynamic",)
+        uploaded_scenes = not telink and (not later or pact_code != 1 or fw >= FirmwareVersion((1, 3)))
+        local_scenes = (
+            profile.local_scenes
+            if telink
+            else (
+                (0, "Sunrise"),
+                (1, "Sunset"),
+                (4, "Movie"),
+                (5, "Date"),
+                (7, "Romantic"),
+                (8, "Blink"),
+                (9, "Candle"),
+            )
+        )
+        assert profile.effect_workflows is not None
+        return replace(
+            profile,
+            diy_upload_transport="a3" if later else "a1_02",
+            effect_workflows=profile.effect_workflows - (set() if uploaded_scenes else {"edited_palette_scenes"}),
+            selector_only_scene_bits=None if uploaded_scenes else 8 if telink else 16,
+            authored_palette_scene_selector=198 if uploaded_scenes else None,
+            local_scenes=local_scenes,
+            scene_codes=None if uploaded_scenes else frozenset(code for code, _name in local_scenes),
+            music_modes=modes,
+            music_variants=tuple(
+                variant for variant in profile.music_variants if palette_music or variant.mode_code < len(modes)
+            ),
+            music_readback_ambiguous=later,
         )
     if model == "H6181":
         profile = get_profile(model)

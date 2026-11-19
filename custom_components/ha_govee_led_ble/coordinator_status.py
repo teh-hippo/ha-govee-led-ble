@@ -362,7 +362,8 @@ def _parse_static_mode(detail: Any, profile: ModelProfile) -> ParsedColorModeRes
         rgb_color=_rgb_values(rgb)
         if rgb is not None
         and not (
-            profile.status_grammar in WHOLE_BULB_GRAMMARS | {"H6159", "H6181-modern", "H60B0"} and kelvin is not None
+            profile.status_grammar in WHOLE_BULB_GRAMMARS | {"H6159", "H6181-modern", "H6182-modern", "H60B0"}
+            and kelvin is not None
         )
         else None,
         color_temp_kelvin=kelvin,

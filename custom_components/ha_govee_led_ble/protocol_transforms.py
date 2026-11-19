@@ -27,8 +27,8 @@ from .protocol_core import (
 
 
 @cache
-def h6159_outbound_transform(
-    wire_range: tuple[int, int] | None, *, legacy_colour: bool, music_version: int
+def whole_rgb_outbound_transform(
+    wire_range: tuple[int, int] | None, *, legacy_colour: bool, music_version: int | None
 ) -> Callable[[bytes], bytes]:
     """Translate the compatible logical whole-strip contract to its revision's wire shape."""
 
@@ -45,7 +45,7 @@ def h6159_outbound_transform(
         detail = parsed.body.detail
         if mode == "static_colour" and legacy_colour:
             return _whole_rgb_colour_effect(parsed)
-        if mode != "music" or not legacy_colour:
+        if mode != "music" or music_version is None:
             return packet
         root = H6159WireWrite()
         root.header, root.opcode = b"\x33", H6159WireWrite.CommandOp.mode

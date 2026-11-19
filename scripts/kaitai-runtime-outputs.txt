@@ -1,5 +1,9 @@
 __init__.py
 command_write.py
+h6182_command_write.py
+h6182_status_reply.py
+h6182_modern_status_reply.py
+h6182_diy_body.py
 h6127_wire_write.py
 h6127_legacy_status_reply.py
 h6127_status_reply.py

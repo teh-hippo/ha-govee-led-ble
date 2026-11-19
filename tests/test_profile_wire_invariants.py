@@ -186,6 +186,12 @@ _QUALIFIED_CONTEXTS: tuple[tuple[str, str, int | None, int | None, str | None, s
     ("H6159-owner-revision", "H6159", 1, 1, "1.07.02", "1.00.02"),
     ("H6159-modern-basic", "H6159", 2, 1, "2.03.99", "2.01.01"),
     ("H6159-modern-palette", "H6159", 2, 1, "2.04.00", "2.01.01"),
+    ("H6182-bootstrap", "H6182", None, None, None, None),
+    ("H6182-hardware-only", "H6182", 1, 1, None, "1.00.01"),
+    ("H6182-owner-revision", "H6182", 1, 1, "1.02.16", "1.00.01"),
+    ("H6182-later-local-scenes", "H6182", 2, 1, "1.02.99", "2.01.01"),
+    ("H6182-later-rgb-scenes", "H6182", 2, 1, "1.03.00", "2.01.01"),
+    ("H6182-later-palette-music", "H6182", 2, 1, "2.04.00", "2.01.01"),
     ("H6199-pact1", "H6199", 1, 1, None, None),
     ("H6179-unqualified", "H6179", None, None, None, None),
     ("H6179-newer", "H6179", 10, 1, None, None),
@@ -321,7 +327,7 @@ def _status_color_mode_enum(profile: ModelProfile):
 
 
 def _status_music_enum(profile: ModelProfile):
-    if profile.status_grammar == "H6159":
+    if profile.status_grammar in {"H6159", "H6182"}:
         return protocol_core.H6159WireWrite.MusicMode
     if profile.status_grammar == "H60B0":
         return H60b0MusicBody.MusicMode
@@ -919,6 +925,10 @@ def test_every_advertised_music_mode_resolves_from_status_reply(hass, model: str
         assert coordinator.music_sensitivity == 50
 
     prior_mode = coordinator.music_mode
+    if profile.status_grammar == "H6182":
+        # Legacy music has no selector byte: its first field chooses automatic or fixed colour.
+        assert readable_modes == ("dynamic",)
+        return
     rejected_codes = [int(member) for member in status_music_enum if member.name not in readable_modes] + [0x7F]
     for bad_code in rejected_codes:
         bad_reply = _status(0x05, bytes([music_byte, bad_code, 50]))
@@ -1141,7 +1151,15 @@ def test_static_colour_and_kelvin_status_readback(hass, model: str, profile: Mod
     their declared Kelvin bounds on static temperature readback."""
     color_mode_enum = _status_color_mode_enum(profile)
     static_byte = int(getattr(color_mode_enum, "static", getattr(color_mode_enum, "static_colour", None)))
-    if profile.status_grammar in WHOLE_BULB_GRAMMARS | {"H6179", "H60B0", "H6159", "H6181-modern", "H6127-legacy"}:
+    if profile.status_grammar in WHOLE_BULB_GRAMMARS | {
+        "H6179",
+        "H60B0",
+        "H6159",
+        "H6181-modern",
+        "H6182",
+        "H6182-modern",
+        "H6127-legacy",
+    }:
         rgb_body = bytes([static_byte, 10, 20, 30, 0, 0])
     else:
         rgb_body = bytes([static_byte, 0, 0, 0])
@@ -1161,12 +1179,13 @@ def test_static_colour_and_kelvin_status_readback(hass, model: str, profile: Mod
             kelvin_bytes = kelvin.to_bytes(2, "big")
             body = (
                 bytes([static_byte, 255, 255, 255]) + kelvin_bytes
-                if profile.status_grammar in WHOLE_BULB_GRAMMARS | {"H6179", "H60B0", "H6159", "H6181-modern"}
+                if profile.status_grammar
+                in WHOLE_BULB_GRAMMARS | {"H6179", "H60B0", "H6159", "H6181-modern", "H6182-modern"}
                 else bytes([static_byte, 1]) + kelvin_bytes
             )
             if profile.status_grammar == "H6046":
                 body += kelvin_bytes
-            if profile.status_grammar == "H6181":
+            if profile.status_grammar in {"H6181", "H6182"}:
                 body = bytes([static_byte, 255, 255, 255, 1, *a.table_kelvin_rgb(kelvin)])
             reply = _status(0x05, body)
             decoded = decode_status_frame(reply, model, profile=profile)
@@ -1176,13 +1195,14 @@ def test_static_colour_and_kelvin_status_readback(hass, model: str, profile: Mod
             coordinator._notify_callback(None, bytearray(reply))
             assert coordinator.color_mode is ParsedMode.COLOUR and coordinator.color_temp_kelvin == kelvin
 
-        if profile.status_grammar == "H6181":
+        if profile.status_grammar in {"H6181", "H6182"}:
             return
         for out_of_range in (min_kelvin - 1, profile.max_color_temp_kelvin + 1):
             bad_bytes = out_of_range.to_bytes(2, "big")
             bad_body = (
                 bytes([static_byte, 255, 255, 255]) + bad_bytes
-                if profile.status_grammar in WHOLE_BULB_GRAMMARS | {"H6179", "H60B0", "H6159", "H6181-modern"}
+                if profile.status_grammar
+                in WHOLE_BULB_GRAMMARS | {"H6179", "H60B0", "H6159", "H6181-modern", "H6182-modern"}
                 else bytes([static_byte, 1]) + bad_bytes
             )
             if profile.status_grammar == "H6046":

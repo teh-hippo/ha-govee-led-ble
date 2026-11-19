@@ -797,7 +797,7 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
     *(capability for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H6179"),
     *(
         _capability(model, workflow, label, kind, route, strategy, _V.UNVERIFIED)
-        for model in ("H6159", "H6181")
+        for model in ("H6159", "H6181", "H6182")
         for workflow, label, kind, route, strategy in (
             (_W.NATIVE_SCENES, "Scenes", "scene_builtin", _R.STUDIO_SCENE_APPLY, _S.NATIVE_EFFECT_SELECTION),
             (

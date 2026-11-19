@@ -547,6 +547,30 @@ MODEL_EFFECT_CATALOGUES: Final = {
         workshop_templates=(),
         diy_slot_policy="approved_observed",
     ),
+    "H6182": ModelEffectCatalogue(
+        sku="H6182",
+        painted_effects=(),
+        effects=tuple(
+            replace(
+                family,
+                source_reference="tools/ble/kaitai/speculative/h6182_diy_body.ksy",
+                palette_min=1,
+                palette_max=8,
+            )
+            for family in H6181_DIY_FAMILIES
+        ),
+        music_modes=tuple(NativeModeOption(mode, mode.title()) for mode in ("dynamic", "soft", "bloom", "radiant")),
+        video_modes=(),
+        templates=(
+            *(_single_template("H6182", family) for family in H6181_DIY_FAMILIES),
+            *(
+                _music_template("H6182", NativeModeOption(mode, mode.title()))
+                for mode in ("dynamic", "soft", "bloom", "radiant")
+            ),
+        ),
+        workshop_templates=(),
+        diy_slot_policy="approved_observed",
+    ),
     "H6179": ModelEffectCatalogue(
         sku="H6179",
         painted_effects=(),
