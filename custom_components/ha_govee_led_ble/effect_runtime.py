@@ -703,7 +703,14 @@ class EffectDeploymentEngine:
                     ),
                 )
                 await transaction.store(result)
-                return result, static_rgb_matches(coordinator, compiled) is True
+                still_active = static_rgb_matches(coordinator, compiled) is True
+                self._reconcile_observation(
+                    coordinator,
+                    config_entry_id=record.config_entry_id,
+                    observed_at=record.updated_at,
+                    refreshed=still_active,
+                )
+                return result, still_active
         lock_acquired = False
         prior_origin: _PriorEffectOrigin | None = None
         try:
