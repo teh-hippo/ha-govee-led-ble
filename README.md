@@ -61,8 +61,7 @@ Disabling Live or closing the editor stops further Live changes without undoing 
 Restoring a previously off light may briefly illuminate it before turning it off again.
 
 Choose **Canvas** to paint native logical segments and save complete colour compositions for recall.
-Choose **Off** to paint segments black; these count as set colours and can be saved.
-Partial Apply and Live leave unpainted segments unchanged; Save requires every segment to have a colour.
+New canvases and **Clear all** set every segment Off (black), so you can paint only the segments you want lit and save the complete layout.
 These compositions store RGB colours and their input scale, not power, main brightness, relative segment levels or native white settings.
 They use ordinary static controls, so they do not need an effect-recovery baseline or Paint at speed zero.
 

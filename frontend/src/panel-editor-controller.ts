@@ -410,7 +410,11 @@ export class PanelEditorController {
     ) return;
     const content = initial?.content ?? (
       kind === "static_rgb"
-        ? { kind: "static_rgb" as const, segments: Array.from({ length: this.model.selectedDevice!.segment_count }, () => null), rgb_scale: 100 }
+        ? {
+          kind: "static_rgb" as const,
+          segments: Array.from({ length: this.model.selectedDevice!.segment_count }, (): RGB => [0, 0, 0]),
+          rgb_scale: 100,
+        }
         : kind === "advanced"
         ? blankAdvancedContent()
         : kind === "music_profile"

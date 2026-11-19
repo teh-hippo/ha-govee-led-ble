@@ -1432,7 +1432,6 @@ export class GoveeLedEffectStudio extends LitElement {
       <govee-painted-segment-editor
         .segments=${this.content.segments}
         .background=${content.kind === "h617a_painted" ? content.background ?? [0, 0, 0] : [0, 0, 0]}
-        .emptyLabel=${isStatic ? "unchanged" : "off"}
         .physical=${physical}
         .disabled=${this.editorDisabled}
         @segment-selected=${(
@@ -1479,7 +1478,7 @@ export class GoveeLedEffectStudio extends LitElement {
               <button class="paint-off" type="button" ?disabled=${this.editorDisabled}
                 @click=${() => this.editor.fillStaticSegments(this.model.activePaintBrush)}>Fill all</button>
               <button class="paint-off" type="button" ?disabled=${this.editorDisabled}
-                @click=${() => this.editor.fillStaticSegments(null)}>Clear all</button>
+                @click=${() => this.editor.fillStaticSegments([0, 0, 0])}>Clear all</button>
             ` : nothing}
           </div>
         </section>
