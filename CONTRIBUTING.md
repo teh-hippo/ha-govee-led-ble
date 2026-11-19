@@ -86,7 +86,7 @@ Keep real product differences without turning each product into a separate imple
   Keep accepted selector changes authoritative through activation, retry and rollback; uploads do not authorise a change of selector.
   Bind rollback to its starting observations, including source settings it may restore, before persisting recovery progress.
   Matching readback preserves verification; a contradiction revokes it, and a complete response without the required field cannot establish it.
-  Keep historical deployment confirmation separate from current active attribution; recheck the observation before publishing active state after persistence.
+  Keep historical deployment confirmation separate from current active attribution; recheck the observation and reconcile active identity before notifying entities after persistence.
   A static mode report after a partial exit is not proof of restoration; retain the incomplete target across planned release independently of the original effect baseline, and verify without repainting before clearing it on completion.
   An unavailable restoration target rejects before lighting writes; never substitute aggregate colour or an invented default.
   Enter task-owned operation contexts after acquiring device ownership, and release them before releasing that ownership.
