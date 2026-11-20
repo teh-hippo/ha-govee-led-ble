@@ -124,6 +124,30 @@ test("native templates stay available without unrestricted Advanced creation", (
   expect(newEffectKindForCategory(nativeContext, "advanced")).toBeUndefined();
 });
 
+test("native single effects do not hide independent mixed or advanced workflows", () => {
+  const mixed: CustomEffectListContext = {
+    ...context(),
+    catalogue: {
+      ...catalogue,
+      workflows: [
+        { id: "single", label: "Basic", content_kind: "native_effect", application: "home_assistant" },
+        { id: "multi", label: "Mixed", content_kind: "h617a_multi", application: "home_assistant" },
+      ],
+      templates: [{
+        id: "template:layered:shine",
+        label: "Shine",
+        category: "advanced",
+        content: { kind: "advanced", layers: [] },
+      }],
+    },
+  };
+  expect(newEffectKindForCategory(mixed, "single-layer")).toBeUndefined();
+  expect(customEffectKindAvailable(mixed, "h617a_multi")).toBe(true);
+  expect(newEffectKindForCategory(mixed, "multi-layer")).toBe("h617a_multi");
+  expect(newEffectKindForCategory(mixed, "advanced")).toBe("advanced");
+  expect(buildCustomEffectEntries(mixed, "advanced").map(entry => entry.label)).toEqual(["Shine"]);
+});
+
 test("saved effects remain available in their content category", () => {
   const entries = buildCustomEffectEntries(context([saved]), "single-layer");
 

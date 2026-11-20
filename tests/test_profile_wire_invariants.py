@@ -327,6 +327,8 @@ def _status_color_mode_enum(profile: ModelProfile):
 
 
 def _status_music_enum(profile: ModelProfile):
+    if profile.status_grammar == "H1AB2":
+        return protocol_core.H1ab2MusicWrite.MusicMode
     if profile.status_grammar in {"H6159", "H6182"}:
         return protocol_core.H6159WireWrite.MusicMode
     if profile.status_grammar == "H60B0":

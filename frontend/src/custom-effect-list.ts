@@ -63,7 +63,7 @@ export function buildCustomEffectEntries(
     ...(catalogue?.templates?.filter((template) =>
       (template.category === "single-layer" || template.category === "multi-layer" || template.category === "advanced") &&
       (template.content.kind === "native_effect" ||
-        template.content.kind === "advanced" && template.content.native_diy !== undefined),
+        template.content.kind === "advanced"),
     ).map((template): CustomEffectListEntry => ({
       kind: "native-diy", key: template.id, label: template.label,
       category: template.category === "multi-layer" ? "multi-layer" : template.category === "single-layer" ? "single-layer" : "advanced",
@@ -231,7 +231,8 @@ export function customEffectKindAvailable(
   if (kind === "h617a_multi") {
     return (
       !catalogue.workflows.some(
-        (workflow) => workflow.content_kind === "h6179_mixed_diy" || workflow.content_kind === "native_effect",
+        (workflow) => workflow.content_kind === "h6179_mixed_diy" ||
+          workflow.id === "multi" && workflow.content_kind === "native_effect",
       ) &&
       catalogue.supports.multi !== "unsupported" &&
       catalogue.apply.multi !== "unsupported"
@@ -261,7 +262,10 @@ export function newEffectKindForCategory(
   category: CustomEffectCategory,
 ): NewEffectKind | undefined {
   if (category === "static") return context.staticComposition ? "static_rgb" : undefined;
-  if (context.catalogue?.workflows.some((workflow) => workflow.content_kind === "native_effect")) {
+  const nativeWorkflow = category === "single-layer" ? "single" :
+    category === "multi-layer" ? "multi" : category === "advanced" ? "advanced" : undefined;
+  if (context.catalogue?.workflows.some((workflow) =>
+    workflow.id === nativeWorkflow && workflow.content_kind === "native_effect")) {
     return undefined;
   }
   if (category === "single-layer") {
@@ -329,7 +333,7 @@ function customEffectsAvailable(context: CustomEffectListContext): boolean {
         catalogue.music_modes.length ||
         catalogue.templates?.some((template) =>
           template.content.kind === "native_effect" ||
-          template.content.kind === "advanced" && template.content.native_diy !== undefined) ||
+          template.content.kind === "advanced") ||
         catalogue.supports.advanced !== "unsupported"),
   );
 }

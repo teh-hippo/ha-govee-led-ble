@@ -66,6 +66,7 @@ class MusicVariant:
     supports_fixed_colour: bool = True
     fixed_colour_default: tuple[int, int, int] | None = None
     physical_defaults: str | None = None
+    daynight_speed_default: int | None = None
 
 
 # Layouts whose A3 companion carries the effect's parameters; their selectors omit style and fixed colour.
@@ -79,6 +80,7 @@ COMPANION_MUSIC_LAYOUTS = frozenset(
         "h6097_music_parameters",
         "h66a0_music_parameters",
         "h1a42_music_parameters",
+        "h1ab2_music_parameters",
         "h61f5_music_parameters",
         "h7025_music_body",
         "h705a_music_body",
@@ -860,6 +862,124 @@ H1A42_MUSIC_VARIANTS = (
     ),
 )
 
+H1AB2_MUSIC_VARIANTS = (
+    MusicVariant(3, "H1AB2 Rhythm selector", supports_style=True),
+    MusicVariant(4, "H1AB2 Spectrum selector"),
+    MusicVariant(5, "H1AB2 Energetic selector"),
+    MusicVariant(6, "H1AB2 Rolling selector"),
+    MusicVariant(
+        0x30,
+        "H1AB2 Bloom counted palette and dynamic/calm speeds",
+        "h1ab2_music_parameters",
+        bytes.fromhex("30" + _H6099_PALETTE + "0a50"),
+        supports_style=True,
+        palette_bounds=(1, 8),
+        supports_fixed_colour=False,
+    ),
+    MusicVariant(
+        0x31,
+        "H1AB2 Shiny counted palette and dynamic/calm levels",
+        "h1ab2_music_parameters",
+        bytes.fromhex("31" + _H6099_PALETTE + "05640a"),
+        supports_style=True,
+        palette_bounds=(1, 8),
+        supports_fixed_colour=False,
+    ),
+    MusicVariant(
+        0x32,
+        "H1AB2 Separation point, gradient and geometry companion",
+        "h1ab2_music_parameters",
+        bytes.fromhex("32" + _H6099_PALETTE + "030063"),
+        (
+            MusicParamSpec("music_separation_point", "point", "point", "number", 3, 1, 5),
+            MusicParamSpec("music_separation_gradient", "gradient", "gradient", "switch", False),
+        ),
+        requires_physical_ic_count=True,
+        palette_bounds=(1, 8),
+        supports_fixed_colour=False,
+    ),
+    MusicVariant(
+        0x33,
+        "H1AB2 Hopping background, relative level and installed-IC geometry",
+        "h1ab2_music_parameters",
+        bytes.fromhex("33" + _H6099_PALETTE + "010101196201030000"),
+        (
+            MusicParamSpec("music_hopping_background", "background", "background", "number", 0x010101, 0, 0xFFFFFF),
+            MusicParamSpec("music_hopping_brightness", "relative_brightness", "rel_brightness", "number", 25, 0, 50),
+        ),
+        requires_physical_ic_count=True,
+        palette_bounds=(1, 8),
+        supports_fixed_colour=False,
+    ),
+    MusicVariant(
+        0x07,
+        "H1AB2 Piano Keys uses selector 07 with counted palette and native key geometry",
+        "h1ab2_music_parameters",
+        bytes.fromhex("07" + _H6099_PALETTE + "0000000000"),
+        (
+            MusicParamSpec("music_piano_key_count", "key_count", "key_count", "number", 0),
+            MusicParamSpec("music_piano_gradient", "gradient", "gradient", "switch", False),
+        ),
+        requires_physical_ic_count=True,
+        palette_bounds=(1, 8),
+        supports_fixed_colour=False,
+    ),
+    MusicVariant(
+        0x35,
+        "H1AB2 Fountain direction and installed-IC geometry",
+        "h1ab2_music_parameters",
+        bytes.fromhex("35" + _H6099_PALETTE + "01000000"),
+        (
+            MusicParamSpec(
+                "music_fountain_direction",
+                "direction",
+                "start_point",
+                "select",
+                "two_way",
+                options=("clockwise", "counterclockwise", "two_way"),
+            ),
+        ),
+        requires_physical_ic_count=True,
+        palette_bounds=(1, 8),
+        supports_fixed_colour=False,
+    ),
+    MusicVariant(
+        0x37,
+        "H1AB2 Day and Night piece count, speed and gradient",
+        "h1ab2_music_parameters",
+        bytes.fromhex("37" + _H6099_PALETTE + "073200"),
+        (
+            MusicParamSpec(
+                "music_daynight_segments",
+                "segment_count",
+                "piece_count",
+                "number",
+                7,
+                1,
+                10,
+                requires_physical_ic_count=True,
+            ),
+            MusicParamSpec("music_daynight_speed", "speed", "speed", "number", 50, 1, 100),
+            MusicParamSpec("music_daynight_gradient", "gradient", "gradient", "switch", False),
+        ),
+        requires_physical_ic_count=True,
+        palette_bounds=(1, 8),
+        supports_fixed_colour=False,
+        daynight_speed_default=50,
+    ),
+    *(
+        MusicVariant(
+            code,
+            f"H1AB2 {name} counted palette",
+            "h1ab2_music_parameters",
+            bytes.fromhex(f"{code:02x}" + _H6099_PALETTE),
+            palette_bounds=(1, 8),
+            supports_fixed_colour=False,
+        )
+        for code, name in ((0x84, "Splash"), (0xA3, "Orbit"), (0x92, "Ripple"), (0x85, "Spring"), (0x51, "Meteor"))
+    ),
+)
+
 # H61F5 music modes, hardware sweep.
 H61F5_MUSIC_VARIANTS = (
     *(
@@ -1336,11 +1456,17 @@ def music_variant(profile: ModelProfile, mode_code: int) -> MusicVariant | None:
     ic = profile.physical_ic_count
     if (
         variant
-        and mode_code == 0x34
+        and any(spec.profile_key == "key_count" for spec in variant.parameters)
         and ic is not None
         and (
             variant.layout
-            in {"h6097_music_parameters", "h6099_music_parameters", "h66a0_music_parameters", "h61f5_music_parameters"}
+            in {
+                "h6097_music_parameters",
+                "h6099_music_parameters",
+                "h66a0_music_parameters",
+                "h61f5_music_parameters",
+                "h1ab2_music_parameters",
+            }
             or any(spec.requires_physical_ic_count for spec in variant.parameters)
         )
     ):
@@ -1363,13 +1489,19 @@ def music_variant(profile: ModelProfile, mode_code: int) -> MusicVariant | None:
         variant
         and mode_code == 0x37
         and variant.layout
-        in {"h6097_music_parameters", "h6099_music_parameters", "h66a0_music_parameters", "h61f5_music_parameters"}
+        in {
+            "h6097_music_parameters",
+            "h6099_music_parameters",
+            "h66a0_music_parameters",
+            "h61f5_music_parameters",
+            "h1ab2_music_parameters",
+        }
         and variant.parameters
         and ic is not None
     ):
         max_value = max(1, ic // 2) if ic < 30 else ceil(ic / 5)
         default = max(1, ic // 2) if ic < 30 else ceil(ic * 7 / 50)
-        speed_default = 10 if ic < 30 else 20
+        speed_default = variant.daynight_speed_default or (10 if ic < 30 else 20)
         variant = replace(
             variant,
             parameters=(

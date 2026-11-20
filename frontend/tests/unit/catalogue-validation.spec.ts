@@ -20,6 +20,7 @@ test("canonical backend catalogue decodes through the production catalogue valid
   expect(Object.keys(decoded.models)).toEqual([
     "H1771",
     "H1A42",
+    "H1AB2",
     "H600A",
     "H601C",
     "H6046",
@@ -174,6 +175,7 @@ test("catalogue model keys are dynamic and embedded models must agree", () => {
   const futurePayload = structuredClone(
     backendContracts.responses.custom_catalogue,
   );
+  delete (futurePayload.models as Record<string, unknown>).H6199;
   (futurePayload.models as Record<string, unknown>).H7000 = futureModel;
   expect(decodeCatalogue(futurePayload).models.H7000.sku).toBe("H7000");
 
@@ -213,6 +215,7 @@ test("catalogue model keys are dynamic and embedded models must agree", () => {
   (invalidKey.models as Record<string, unknown>)["x".repeat(256)] = structuredClone(
     invalidKey.models.H6199,
   );
+  delete (invalidKey.models as Record<string, unknown>).H6199;
   expect(() => decodeCatalogue(invalidKey)).toThrow(
     "catalogue model key must contain 1 to 255 characters",
   );

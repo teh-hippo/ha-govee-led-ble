@@ -17,6 +17,11 @@ from .transport import (
 )
 
 CommandWrite = load_generated_class("command_write", "CommandWrite")
+H1ab2StatusReply = load_generated_class("h1ab2_status_reply", "H1ab2StatusReply")
+H1ab2Settings = load_generated_class("h1ab2_settings", "H1ab2Settings")
+H1ab2MusicWrite = load_generated_class("h1ab2_music_write", "H1ab2MusicWrite")
+H1ab2PaintBody = load_generated_class("h1ab2_paint_body", "H1ab2PaintBody")
+H1ab2DiyBody = load_generated_class("h1ab2_diy_body", "H1ab2DiyBody")
 
 H705aCommandWrite = load_generated_class("h705a_command_write", "H705aCommandWrite")
 H705aStatusQuery = load_generated_class("h705a_status_query", "H705aStatusQuery")
@@ -476,6 +481,7 @@ _STATUS_ROOTS = {
     "H6097": ("h6097_status_reply", H6097StatusReply),
     "H66A0": ("h66a0_status_reply", H66a0StatusReply),
     "H1A42": ("h1a42_status_reply", H1a42StatusReply),
+    "H1AB2": ("h1ab2_status_reply", H1ab2StatusReply),
     "H61F5": ("h61f5_status_reply", H61f5StatusReply),
     "H617A": ("status_reply", StatusReply),
     "H617C": ("h617c_status_reply", H617cStatusReply),
@@ -545,6 +551,7 @@ _MUSIC_WRITE_ROOTS = {
     "H6076": ("h6076_music_write", H6076MusicWrite),
     "H66A0": ("h66a0_music_write", H66a0MusicWrite),
     "H1A42": ("h1a42_music_write", H1a42MusicWrite),
+    "H1AB2": ("h1ab2_music_write", H1ab2MusicWrite),
     "H61F5": ("h61f5_music_write", H61f5MusicWrite),
     "H7025": ("h7025_music_write", H7025MusicWrite),
 }

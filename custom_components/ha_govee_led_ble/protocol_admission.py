@@ -20,6 +20,7 @@ from .protocol_core import (
     _MUSIC_WRITE_ROOTS,
     _STATUS_QUERY_ROOTS,
     CommandWrite,
+    H1ab2DiyBody,
     H60a6Control,
     H60a6EffectFrame,
     H60aBulk,
@@ -30,13 +31,14 @@ from .protocol_core import (
     H607cEffectUpload,
     H1771Bulk,
     H1771EffectUpload,
-    H6097Control,
     H6181DiyBody,
     _parse_xor_frame,
 )
 from .protocol_parsing import parse_command_result
 from .protocol_settings import (
     _NATIVE_SETTING_ROOTS,
+    _ORDINARY_SETTING_ROOTS,
+    _POWER_ON_QUERY_ROOTS,
     boolean_control_is_authorized,
     boolean_control_name,
     bulk_status_domains,
@@ -56,18 +58,37 @@ def _check_low_blue_light_packet(frame: bytes, profile: ModelProfile) -> bool:
     return False
 
 
-def _check_h6097_setting_packet(frame: bytes, profile: ModelProfile) -> bool:
-    """H6097 power-on setting frames."""
-    if profile.setting_grammar == "H6097":
-        roots = {"write": ("h6097_control", H6097Control), "query": ("h6097_control.query", H6097Control.Query)}
-        for grammar in roots:
-            setting = _parse_xor_frame(frame, grammar, roots).parsed
-            if setting is not None:
-                if not profile.supports_power_on_behaviour or (
-                    grammar == "write" and getattr(setting.body.state, "name", None) is None
-                ):
+def _check_ordinary_setting_packet(frame: bytes, profile: ModelProfile) -> bool:
+    """Admit independently declared register settings and installation operations."""
+    if profile.setting_grammar in _ORDINARY_SETTING_ROOTS:
+        setting = _parse_xor_frame(frame, profile.setting_grammar, _ORDINARY_SETTING_ROOTS).parsed
+        if setting is not None:
+            operation = getattr(setting.opcode, "name", None)
+            if operation == "power_on_behaviour":
+                if not profile.supports_power_on_behaviour or getattr(setting.body.state, "name", None) is None:
                     raise ValueError("Power-on setting is outside profile capabilities")
                 return True
+            if operation == "strip_calibration" and profile.strip_length_metres:
+                body = setting.body
+                action = getattr(body.operation, "name", None)
+                if action in {"start", "cancel", "confirm"}:
+                    return True
+                capacity = max(profile.strip_length_metres) * profile.strip_ics_per_metre
+                if action == "locate" and body.detail.source == 0 and 1 <= body.detail.ic_count <= capacity:
+                    return True
+                if (
+                    action in {"cut", "restore"}
+                    and body.detail.count == 1
+                    and body.detail.ic_counts[0]
+                    in {length * profile.strip_ics_per_metre for length in profile.strip_length_metres}
+                ):
+                    return True
+            raise ValueError("Ordinary setting is outside profile capabilities")
+        query = _parse_xor_frame(frame, profile.setting_grammar, _POWER_ON_QUERY_ROOTS).parsed
+        if query is not None:
+            if not profile.supports_power_on_behaviour:
+                raise ValueError("Power-on setting is outside profile capabilities")
+            return True
     return False
 
 
@@ -476,7 +497,7 @@ def _check_upload_packet(frame: bytes, profile: ModelProfile) -> bool:
             if upload.index == 0 and upload.body.subtype != H60a6EffectFrame.Subtype.native_effect:
                 raise ValueError("Native effect subtype is outside profile capabilities")
             return True
-        if upload is not None and profile.effect_grammar in {"H6046", "H617A", "H6181", "H60B2"}:
+        if upload is not None and profile.effect_grammar in {"H6046", "H617A", "H1AB2", "H6181", "H60B2"}:
             if upload.index == 0:
                 from .scenes import SCENE_ENTRIES, scene_supported
 
@@ -488,6 +509,11 @@ def _check_upload_packet(frame: bytes, profile: ModelProfile) -> bool:
                     and profile.selector_only_scene_bits is None
                 }
                 allowed = {
+                    **(
+                        {int(H1ab2DiyBody.UploadSubtype.native_diy): profile.supports_custom_effects}
+                        if profile.effect_grammar == "H1AB2"
+                        else {}
+                    ),
                     **(
                         {int(H60b2DiyBody.UploadSubtype.native_diy): profile.supports_custom_effects}
                         if profile.effect_grammar == "H60B2"
@@ -518,7 +544,7 @@ def require_profile_packet(frame: bytes, profile: ModelProfile) -> None:
     """
     for check in (
         _check_low_blue_light_packet,
-        _check_h6097_setting_packet,
+        _check_ordinary_setting_packet,
         _check_native_setting_packet,
         _check_bulk_query_packet,
         _check_h60a6_setting_packet,

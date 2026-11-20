@@ -76,6 +76,7 @@ from .coordinator_upload import PendingUploadAck, UploadAckTimeoutError
 from .effect_contracts import CapabilityState
 from .generated_protocol_adapter import (
     A3Sequence,
+    StripCalibrationRequest,
     build_black_border_query,
     build_blank_screen_query,
     build_brightness_query,
@@ -91,6 +92,8 @@ from .generated_protocol_adapter import (
     build_power_query,
     build_relative_brightness_query,
     build_segment_query,
+    build_strip_calibration,
+    build_strip_calibration_cancel,
     build_subordinate_query,
     build_white_balance_query,
     build_whole_relative_brightness,
@@ -2616,70 +2619,150 @@ class GoveeBLECoordinator(
                 self._mask_transaction = None
 
     async def async_set_configured_strings(self, count: int) -> None:
-        await self._async_change_installation(build_configured_strings(count, self.profile), expected_strings=count)
+        await self._async_change_installation((build_configured_strings(count, self.profile),), expected_strings=count)
 
     async def async_refresh_ic(self) -> None:
-        await self._async_change_installation(build_ic_refresh(self.profile))
+        await self._async_change_installation((build_ic_refresh(self.profile),))
 
-    async def _async_change_installation(self, packet: bytes, *, expected_strings: int | None = None) -> None:
-        command = parse_command_result(packet, self.model, profile=self.profile).parsed
-        if command is None:
-            raise ValueError("Invalid installation command")
-        opcode = int(command.opcode)
+    async def async_calibrate_strip(self, request: StripCalibrationRequest) -> None:
+        packets = build_strip_calibration(request, self.profile)
+        await self._async_change_installation(
+            packets,
+            expected_ic_count=request.expected_ic_count(self.profile),
+            cancel_packet=build_strip_calibration_cancel(self.profile) if request.final_ic_count is not None else None,
+        )
+
+    async def _read_installation_geometry(self, client: BleakClient, *, deadline: float) -> None:
+        if self.profile.configured_string_counts:
+            if not await self._read_configured_strings(client, deadline=deadline):
+                raise ValueError("Device did not provide fresh configured string count")
+            return
+        baseline = {"physical_ic_count": self._field_revisions.get("physical_ic_count", 0)}
+        token = self._notification_token
+        await self._async_write_packet(
+            client,
+            build_physical_ic_count_query(self.model, profile=self.profile),
+            cleanup_deadline=deadline,
+        )
+        if (
+            not await self._wait_for_revisions(baseline, {}, deadline)
+            or self.profile.physical_ic_count is None
+            or self._client is not client
+            or not client.is_connected
+            or self._notification_token is not token
+        ):
+            raise ValueError("Device did not provide fresh installed geometry")
+
+    async def _async_change_installation(
+        self,
+        packets: tuple[bytes, ...],
+        *,
+        expected_strings: int | None = None,
+        expected_ic_count: int | None = None,
+        cancel_packet: bytes | None = None,
+    ) -> None:
+        for packet in (*packets, *((cancel_packet,) if cancel_packet is not None else ())):
+            require_profile_packet(packet, self.profile)
+            if parse_command_result(packet, self.model, profile=self.profile).parsed is None:
+                raise ValueError("Invalid installation command")
         async with async_control_intent(self, ControlIntent.USER):
             await self._async_supersede_effect_preview()
             async with self._lock:
                 client = await self._ensure_connected()
-                future: asyncio.Future[bool] = asyncio.get_running_loop().create_future()
                 token = self._notification_token
                 attempted = False
-
-                def before_write() -> None:
-                    self._configured_strings_confirmed = False
-                    self._physical_ic_count_confirmed = False
-                    self._segment_query_generation = None
-                    self.segment_state_observed_at = None
-                    self._setting_ack = (client, token, opcode, future)
+                completed = False
 
                 def on_write() -> None:
                     nonlocal attempted
                     attempted = True
+                    self._configured_strings_confirmed = False
+                    self._physical_ic_count_confirmed = False
+                    self._segment_query_generation = None
+                    self._segment_groups_observed.clear()
+                    self._segment_query_colors = self._segment_query_brightness = None
+                    self.segment_state_observed_at = None
+                    self.segment_state_source = "initial"
+                    self.segment_brightness_readable = False
+                    self.segment_kelvin = [None] * self.profile.segment_count
+                    self.segment_brightness_known = [False] * self.profile.segment_count
+                    self._static_rgb_known = False
+                    self._music_palette = self._music_body = None
+                    self._expected_state.clear()
+                    for field in ("physical_ic_count", "segment_colors", "segment_brightness", "color_mode"):
+                        self._field_received_at.pop(field, None)
                     if self.profile.segment_count_ic_divisor is not None:
                         self._observed_physical_ic_count = None
                         self.profile = replace(self.profile, physical_ic_count=None)
 
+                async def write_setting(packet: bytes) -> None:
+                    command = parse_command_result(packet, self.model, profile=self.profile).parsed
+                    if command is None:
+                        raise ValueError("Invalid installation command")
+                    future: asyncio.Future[bool] = asyncio.get_running_loop().create_future()
+                    write_attempted = False
+
+                    def arm() -> None:
+                        if self._client is not client or self._notification_token is not token:
+                            raise ValueError("Installation subscription changed")
+                        self._setting_ack = (client, token, int(command.opcode), future)
+
+                    def attempt() -> None:
+                        nonlocal write_attempted
+                        write_attempted = True
+                        on_write()
+
+                    try:
+                        async with asyncio.timeout(4.0):
+                            try:
+                                await self._async_write_packet(
+                                    client, packet, arm_expected=True, before_write=arm, on_write=attempt
+                                )
+                            finally:
+                                if write_attempted and self._client is client and self._notification_token is token:
+                                    self._advance_profile_generation()
+                            if not await future:
+                                raise ValueError("Device rejected installation change")
+                            if self._client is not client or self._notification_token is not token:
+                                raise ValueError("Installation subscription changed")
+                    finally:
+                        self._setting_ack = None
+                        future.cancel()
+
                 try:
-                    async with asyncio.timeout(4.0):
-                        try:
-                            await self._async_write_packet(
-                                client, packet, arm_expected=True, before_write=before_write, on_write=on_write
-                            )
-                        finally:
-                            if attempted:
-                                self._advance_profile_generation()
-                        if not await future:
-                            raise ValueError("Device rejected installation change")
-                    deadline = time.monotonic() + STATE_QUERY_TIMEOUT
-                    if self.profile.configured_string_counts:
-                        if not await self._read_configured_strings(client, deadline=deadline):
-                            raise ValueError("Device did not provide fresh configured string count")
-                    else:
-                        baseline = {"physical_ic_count": self._field_revisions.get("physical_ic_count", 0)}
-                        await self._async_write_packet(
-                            client,
-                            build_physical_ic_count_query(self.model, profile=self.profile),
-                            cleanup_deadline=deadline,
-                        )
-                        if (
-                            not await self._wait_for_revisions(baseline, {}, deadline)
-                            or self.profile.physical_ic_count is None
-                        ):
-                            raise ValueError("Device did not provide fresh installed geometry")
+                    for packet in packets:
+                        await write_setting(packet)
+                    completed = True
+                    await self._read_installation_geometry(client, deadline=time.monotonic() + STATE_QUERY_TIMEOUT)
                     if expected_strings is not None and self.configured_strings != expected_strings:
                         raise ValueError("Device did not confirm requested string count")
-                finally:
-                    self._setting_ack = None
-                    future.cancel()
+                    if expected_ic_count is not None and self.profile.physical_ic_count != expected_ic_count:
+                        raise ValueError("Device did not confirm requested strip length")
+                except BaseException:
+                    if (
+                        attempted
+                        and expected_ic_count is not None
+                        and self._client is client
+                        and client.is_connected
+                        and self._notification_token is token
+                    ):
+                        try:
+                            if cancel_packet is not None and not completed:
+                                await write_setting(cancel_packet)
+                            await self._read_installation_geometry(
+                                client, deadline=time.monotonic() + STATE_QUERY_TIMEOUT
+                            )
+                            await self._send_state_queries(
+                                query_power=False,
+                                query_brightness=False,
+                                query_color_mode=True,
+                                query_segments=True,
+                                query_native_settings=False,
+                                deadline=time.monotonic() + STATE_QUERY_TIMEOUT,
+                            )
+                        except Exception:
+                            _LOGGER.debug("Installation reconciliation failed", exc_info=True)
+                    raise
             if not await self.async_refresh_segments():
                 raise ValueError("Installation changed but segment state could not be read")
 

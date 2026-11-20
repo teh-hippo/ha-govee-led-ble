@@ -205,23 +205,26 @@ async def test_setup_entry_rejects_unknown_model(hass: HomeAssistant, data):
 
 
 @pytest.mark.parametrize(
-    ("advertised_name", "expected_model"),
+    ("old_model", "advertised_name", "expected_model"),
     [
-        ("ihoment_H6125_311D", "H6125"),
-        ("Govee_H6102_ABCD", "H6102"),
-        ("GVH60A6_ABCD", "H60A6"),
+        ("H617A", "ihoment_H6125_311D", "H6125"),
+        ("H617A", "Govee_H6102_ABCD", "H6102"),
+        ("H617A", "GVH60A6_ABCD", "H60A6"),
+        ("H61F5", "Govee_H1AB2_ABCD", "H1AB2"),
+        ("H1A42", "Govee_H1AB2_ABCD", "H1AB2"),
     ],
 )
 async def test_setup_entry_migrates_known_advertised_model_mismatch(
     hass: HomeAssistant,
+    old_model: str,
     advertised_name: str,
     expected_model: str,
 ):
     entry = MockConfigEntry(
         domain=DOMAIN,
         unique_id="AA:BB:CC:DD:EE:FF",
-        title="Govee H617A",
-        data={CONF_MODEL: "H617A", CONF_H6102_APP_FIRMWARE: "1.03.01"},
+        title=f"Govee {old_model}",
+        data={CONF_MODEL: old_model, CONF_H6102_APP_FIRMWARE: "1.03.01"},
         options={"effect_categories": ["scenes", "video"], "effect_families": ["scenes"], "connection_mode": "hold"},
     )
     entry.add_to_hass(hass)

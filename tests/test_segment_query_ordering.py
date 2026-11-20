@@ -17,12 +17,16 @@ from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
+    StripCalibrationRequest,
     build_brightness_query,
     build_colour_mode_query,
     build_configured_strings_query,
     build_power_query,
     build_segment_query,
+    build_strip_calibration,
+    build_strip_calibration_cancel,
     parse_command,
+    require_profile_packet,
 )
 from custom_components.ha_govee_led_ble.govee_encryption.session import GoveeEncryptionSession
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
@@ -271,6 +275,132 @@ async def test_installation_refresh_requires_ack_then_independent_geometry(devic
     with pytest.raises(ValueError, match="not supported"):
         await c.async_refresh_ic()
     assert sum(packet[0] == 0x33 for packet in sent) == 1
+
+
+@pytest.mark.parametrize("device", ["H1AB2"], indirect=True)
+@pytest.mark.parametrize("length,final_ic", [(1, None), (5, None), (2, 17)])
+async def test_strip_calibration_uses_complete_wire_sequence_then_observed_geometry(
+    device, monkeypatch, length, final_ic
+):
+    c, client, receive = device
+    request = StripCalibrationRequest(length, final_ic)
+    expected_count = final_ic if final_ic is not None else length * 10
+    expected_bodies = (
+        [[6, 1, 0, expected_count]] if final_ic is None else [[5, 1, 0, length * 10], [0], [1, 0, 0, final_ic], [4]]
+    )
+    expected_packets = tuple(_packet(0x33, 0x5A, body) for body in expected_bodies)
+    assert build_strip_calibration(request, c.profile) == expected_packets
+    for packet in expected_packets:
+        require_profile_packet(packet, c.profile)
+        with pytest.raises(ValueError):
+            require_profile_packet(packet, replace(c.profile, strip_length_metres=()))
+    c.segment_state_source = "observed"
+    c.segment_state_observed_at = 1
+    c._static_rgb_known = True
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet[0] == 0x33:
+            assert c.profile.physical_ic_count is None
+            assert c.segment_state_source == "initial"
+            assert not c._static_rgb_known and c.segment_state_observed_at is None
+            receive(None, bytearray(_packet(0x33, 0x5A, [0])))
+        elif packet[1] == 0x40:
+            receive(None, bytearray(_packet(0xAA, 0x40, [0, expected_count])))
+
+    client.write_gatt_char = AsyncMock(side_effect=write)
+    monkeypatch.setattr(c, "async_refresh_segments", AsyncMock(return_value=True))
+    await c.async_calibrate_strip(request)
+    assert (
+        tuple(call.args[1] for call in client.write_gatt_char.await_args_list if call.args[1][0] == 0x33)
+        == expected_packets
+    )
+    assert c._physical_ic_count_confirmed and c.profile.physical_ic_count == expected_count
+    assert c.profile.segment_count == min(expected_count, 10)
+    c.async_refresh_segments.assert_awaited_once()
+
+
+@pytest.mark.parametrize("device", ["H1AB2"], indirect=True)
+@pytest.mark.parametrize("outcome", ["rejected", "ambiguous", "mismatch", "missing"])
+async def test_calibration_failures_do_not_replay_or_reuse_previous_geometry(device, monkeypatch, outcome):
+    c, client, receive = device
+    request = StripCalibrationRequest(2, 17)
+    packets = build_strip_calibration(request, c.profile)
+    cancel = build_strip_calibration_cancel(c.profile)
+    expected = [*packets[:3], cancel] if outcome in {"rejected", "ambiguous"} else list(packets)
+    original_error = TimeoutError("ambiguous endpoint attempt")
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet == packets[2] and outcome == "ambiguous":
+            raise original_error
+        if packet[0] == 0x33:
+            status = 1 if packet == packets[2] and outcome == "rejected" else 0
+            receive(None, bytearray(_packet(0x33, 0x5A, [status])))
+        elif packet[1] == 0x40 and outcome != "missing":
+            receive(None, bytearray(_packet(0xAA, 0x40, [0, 18])))
+
+    client.write_gatt_char = AsyncMock(side_effect=write)
+    monkeypatch.setattr(c, "_send_state_queries", AsyncMock(return_value=True))
+    monkeypatch.setattr(c, "async_refresh_segments", AsyncMock(return_value=True))
+    if outcome == "missing":
+        monkeypatch.setattr(c, "_wait_for_revisions", AsyncMock(return_value=False))
+    with pytest.raises((ValueError, TimeoutError)) as error:
+        await c.async_calibrate_strip(request)
+    if outcome == "ambiguous":
+        assert error.value is original_error
+    assert [call.args[1] for call in client.write_gatt_char.await_args_list if call.args[1][0] == 0x33] == expected
+    assert c._setting_ack is None
+    assert c.segment_state_source == "initial" and c.segment_state_observed_at is None
+    assert c.profile.physical_ic_count == (None if outcome == "missing" else 18)
+    c.async_refresh_segments.assert_not_awaited()
+
+
+@pytest.mark.parametrize("device", ["H1AB2"], indirect=True)
+@pytest.mark.parametrize("length,final_ic", [(0, None), (6, None), (True, None), (2, 0), (2, 21), (2, True)])
+async def test_invalid_calibration_preserves_active_work_without_writing(device, monkeypatch, length, final_ic):
+    c, client, _receive = device
+    client.write_gatt_char = AsyncMock()
+    monkeypatch.setattr(c, "_async_supersede_effect_preview", AsyncMock())
+    original_profile = c.profile
+    with pytest.raises(ValueError):
+        await c.async_calibrate_strip(StripCalibrationRequest(length, final_ic))
+    assert c.profile == original_profile
+    client.write_gatt_char.assert_not_awaited()
+    c._async_supersede_effect_preview.assert_not_awaited()
+
+
+@pytest.mark.parametrize("device", ["H1AB2"], indirect=True)
+async def test_interrupted_calibration_does_not_invalidate_a_replacement_subscription(device, monkeypatch):
+    c, client, receive = device
+    request = StripCalibrationRequest(2, 17)
+    packets = build_strip_calibration(request, c.profile)
+    replacement_client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(), disconnect=AsyncMock())
+    replacement_profile = c.profile
+    replacement_generation = None
+
+    async def write(_uuid, packet, **_kwargs):
+        nonlocal replacement_generation
+        if packet == packets[2]:
+            c._client = replacement_client
+            c._notification_token = object()
+            c.profile = replacement_profile
+            c._profile_generation += 1
+            replacement_generation = c._profile_generation
+            c.segment_state_source = "observed"
+            c.segment_state_observed_at = 2
+            c._static_colour_known = True
+            raise TimeoutError("old subscription lost during calibration")
+        receive(None, bytearray(_packet(0x33, 0x5A, [0])))
+
+    client.write_gatt_char = AsyncMock(side_effect=write)
+    monkeypatch.setattr(c, "async_refresh_segments", AsyncMock(return_value=True))
+    with pytest.raises(TimeoutError):
+        await c.async_calibrate_strip(request)
+    assert c._profile_generation == replacement_generation and c.profile == replacement_profile
+    assert c.segment_state_source == "observed" and c.segment_state_observed_at == 2
+    assert c._static_colour_known
+    assert [call.args[1] for call in client.write_gatt_char.await_args_list] == list(packets[:3])
+    replacement_client.write_gatt_char.assert_not_awaited()
+    c.async_refresh_segments.assert_not_awaited()
 
 
 @pytest.mark.parametrize("device", ["H705A"], indirect=True)

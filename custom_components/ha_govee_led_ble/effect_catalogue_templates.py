@@ -63,7 +63,7 @@ def _single_template(
     variation = family.variations[0]
     content: EffectContent
     grammar = get_profile(model).effect_grammar if grammar is None else grammar
-    if grammar in {"H6046", "H617A", "H6099", "H6181"}:
+    if grammar in {"H6046", "H617A", "H1AB2", "H6099", "H6181"}:
         content = SingleEffect(
             family=family.family,
             variant=variation.variant,
@@ -171,6 +171,32 @@ def _h617a_catalogue_templates(
         *(_music_template(model, mode) for mode in music_modes),
     )
 
+
+H1AB2_LAYERED_TEMPLATES: Final = tuple(
+    CatalogueTemplate(
+        id=f"template:layered:{name}",
+        label=label,
+        category="advanced",
+        content=decode_workshop_effect("H1AB2", base64.b64decode(seed))[0],
+    )
+    for name, label, seed in (
+        (
+            "shine",
+            "Shine",
+            "AikAAgoFAgH/AAPIAQEBAAEG/wAA/38A//8AAP8AAP//AAD/AACAAADvABoAAAABAAEzMwAAFBQAABQBAAD/AACAAACAAA==",
+        ),
+        (
+            "meteor_shower",
+            "Meteor shower",
+            "BR0gAAABAgH/CgIAAQEAyGQC/38AAP//AACAEAD8AB0iAAABAgH/CgIAAQEAyGQC/wAAAP8AAACAEAD8AB0kAAABAgH/CgIAAQEAyGQC//8AiwD/AACAEAD8AB0mAAABAgH/CgIAAQEAyGQCAP8A/38AAACAEAD8AB0oAAABAgH/CgIAAQEAyGQCAAD/iwD/AACAEAD8AA==",
+        ),
+        (
+            "spin",
+            "Spin",
+            "BSwgAAABAgH/AAOACgoA8xQH/wAA/38A//8AAP8AAAD/AP//iwD/FwD8AACAACwiAAABAgH/AAOACgoA8xQH/wAA/38A//8AAP8AAAD/AP//iwD/FQD8AACAACwkAAABAgH/AAOACgoA8hQH/wAA/38A//8AAP8AAAD/AP//iwD/FwD8AACAACwmAAABAgH/AAOACgoA8xQH/wAA/38A//8AAP8AAAD/AP//iwD/FQD8AACAACwoAAABAgH/AAOACgoA8xQH/wAA/38A//8AAP8AAAD/AP//iwD/FwD8AACAAA==",
+        ),
+    )
+)
 
 # Native DIY seeds, in selector order.
 # Seed IC quantities are opaque preset values, never device geometry metadata.

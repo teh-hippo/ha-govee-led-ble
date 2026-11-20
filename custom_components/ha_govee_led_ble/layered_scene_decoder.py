@@ -124,7 +124,7 @@ def decode_workshop_effect(
 ) -> tuple[LayeredEffect, int]:
     """Decode a Workshop parameter through its model-specific generated structure."""
     grammar = get_profile(model).effect_grammar
-    if grammar in {"H6046", "H617A", "H60B2"}:
+    if grammar in {"H6046", "H617A", "H1AB2", "H60B2"}:
         parsed, trailing_padding = parse_workshop_body(raw_param)
         records = parsed.layers
     elif grammar == "H6199":
@@ -147,7 +147,7 @@ def encode_workshop_effect(
     profile = get_profile(model) if profile is None else profile
     grammar = profile.effect_grammar
     serializer: Callable[[Any], bytes]
-    if grammar in {"H6046", "H617A", "H60B2"}:
+    if grammar in {"H6046", "H617A", "H1AB2", "H60B2"}:
         root = WorkshopBody()
         root.a3_type = b"\x02"
         root.num_layers = len(layers)

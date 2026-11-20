@@ -50,6 +50,7 @@ from .protocol_parsing import parse_command_result as parse_command_result
 from .protocol_parsing import parse_status as parse_status
 from .protocol_parsing import parse_status_result as parse_status_result
 from .protocol_settings import BulkStatusCollector as BulkStatusCollector
+from .protocol_settings import StripCalibrationRequest as StripCalibrationRequest
 from .protocol_settings import boolean_control_is_authorized as boolean_control_is_authorized
 from .protocol_settings import boolean_control_name as boolean_control_name
 from .protocol_settings import build_black_border_query as build_black_border_query
@@ -75,6 +76,8 @@ from .protocol_settings import build_power_query as build_power_query
 from .protocol_settings import build_relative_brightness_query as build_relative_brightness_query
 from .protocol_settings import build_segment_query as build_segment_query
 from .protocol_settings import build_source_value as build_source_value
+from .protocol_settings import build_strip_calibration as build_strip_calibration
+from .protocol_settings import build_strip_calibration_cancel as build_strip_calibration_cancel
 from .protocol_settings import build_subordinate_query as build_subordinate_query
 from .protocol_settings import build_swap_bars as build_swap_bars
 from .protocol_settings import build_white_balance_query as build_white_balance_query

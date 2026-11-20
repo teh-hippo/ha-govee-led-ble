@@ -8,6 +8,7 @@ from typing import Final
 from .effect_catalogue_families import (
     DEFAULT_PALETTE,
     H1A42_DIY_FAMILIES,
+    H1AB2_DIY_FAMILIES,
     H60B2_DIY_FAMILIES,
     H61F5_DIY_FAMILIES,
     H66A0_DIY_FAMILIES,
@@ -52,6 +53,7 @@ from .effect_catalogue_families import (
 )
 from .effect_catalogue_models import CatalogueTemplate, ModelEffectCatalogue, NativeModeOption
 from .effect_catalogue_templates import (
+    H1AB2_LAYERED_TEMPLATES,
     H617A_CATALOGUE_TEMPLATES,
     H617C_NATIVE_DIY_TEMPLATES,
     H617E_CATALOGUE_TEMPLATES,
@@ -78,7 +80,7 @@ from .effect_catalogue_templates import (
 from .effect_domain import NativeEffect, PaintedEffect
 from .music_semantics import H60B0_ZONE_MUSIC_MODES
 from .native_effect import NativeDiyLayer
-from .protocol_core import H607cDiyBody, H607cPaintBody
+from .protocol_core import H1ab2DiyBody, H607cDiyBody, H607cPaintBody
 
 MODEL_EFFECT_CATALOGUES: Final = {
     "H705A": ModelEffectCatalogue(
@@ -335,6 +337,51 @@ MODEL_EFFECT_CATALOGUES: Final = {
             *(_music_template("H1A42", mode) for mode in _native_music_modes("H1A42")),
         ),
         workshop_templates=(),
+    ),
+    "H1AB2": ModelEffectCatalogue(
+        sku="H1AB2",
+        painted_addressing="physical_ic",
+        painted_effects=tuple(
+            {"id": name, "label": name.replace("_", " ").capitalize()}
+            for name in ("clockwise", "counter_clockwise", "cycle", "gradient", "twinkle", "breathe")
+        ),
+        effects=H1AB2_DIY_FAMILIES,
+        music_modes=_native_music_modes("H1AB2"),
+        video_modes=(),
+        templates=(
+            CatalogueTemplate(
+                "template:paint",
+                "Paint",
+                "single-layer",
+                PaintedEffect("clockwise", 50, 100, (None,), addressing="physical_ic", model="H1AB2"),
+            ),
+            *(_single_template("H1AB2", family) for family in H1AB2_DIY_FAMILIES if family.category == "single_layer"),
+            *(
+                CatalogueTemplate(
+                    f"template:native:accumulation:{variation}",
+                    label,
+                    "single-layer",
+                    NativeEffect(
+                        model="H1AB2",
+                        family=int(H1ab2DiyBody.CatalogueFamily.accumulation),
+                        layers=(
+                            NativeDiyLayer(
+                                kind=int(H1ab2DiyBody.Effect.accumulation),
+                                speed=50,
+                                parameter=variation,
+                                palette=DEFAULT_PALETTE,
+                            ),
+                        ),
+                    ),
+                )
+                for variation, label in ((0, "Accumulation"), (2, "Accumulation with return"))
+            ),
+            *H1AB2_LAYERED_TEMPLATES,
+            *(_music_template("H1AB2", mode) for mode in _native_music_modes("H1AB2")),
+        ),
+        workshop_templates=(),
+        native_zones=(("strip", 10, 50),),
+        temporary_diy_selector=int(H1ab2DiyBody.ActivationSelector.temporary),
     ),
     "H61F5": ModelEffectCatalogue(
         sku="H61F5",

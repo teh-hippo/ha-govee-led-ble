@@ -440,7 +440,7 @@ export interface PaletteDiyFamily {
   rate_min: number;
   multi_rate_min?: number;
   rate_max: number;
-  category: "single_layer";
+  category: "single_layer" | "native";
 }
 
 export type DiyEffectFamily = PaletteDiyFamily;

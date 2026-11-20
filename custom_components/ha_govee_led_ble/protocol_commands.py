@@ -843,7 +843,7 @@ def build_music_mode(
         multi.sub_body = selector
         root.body = multi
         return _serialize_xor(root)
-    if resolved in {"H6097", "H1A42", "H61F5", "H66A0", "H7025", "H705A"}:
+    if resolved in {"H6097", "H1A42", "H1AB2", "H61F5", "H66A0", "H7025", "H705A"}:
         root_cls = _MUSIC_WRITE_ROOTS[resolved][1]
         root = root_cls()
         root.header, root.opcode, root.sub = b"\x33", b"\x05", b"\x13"
@@ -855,7 +855,7 @@ def build_music_mode(
             selector.has_fixed_colour = int(colour is not None)
             if colour is not None:
                 selector.rgb = _rgb(selector, *colour)
-        elif resolved in {"H6097", "H1A42", "H61F5", "H66A0"} and colour is not None:
+        elif resolved in {"H6097", "H1A42", "H1AB2", "H61F5", "H66A0"} and colour is not None:
             raise ValueError(f"new {resolved} music selectors omit fixed colour")
         selector.unknown_tail = bytes(selector.write_tail_size)
         root.selector = selector

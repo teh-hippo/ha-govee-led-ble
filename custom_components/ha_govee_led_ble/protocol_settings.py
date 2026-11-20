@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 from kaitaistruct import KaitaiStructError
@@ -12,6 +13,7 @@ from .protocol_core import (
     _COMMAND_ROOTS,
     _STATUS_QUERY_ROOTS,
     CommandWrite,
+    H1ab2Settings,
     H60a6Control,
     H60aBulk,
     H60b0CommandWrite,
@@ -39,6 +41,70 @@ from .protocol_core import (
 from .protocol_h6199 import INSTALLATION_DIRECTIONS
 
 _NATIVE_SETTING_ROOTS = {"H607C": ("h607c_control", H607cControl), "H60B2": ("h60b2_control", H60b2Control)}
+_ORDINARY_SETTING_ROOTS = {"H6097": ("h6097_control", H6097Control), "H1AB2": ("h1ab2_settings", H1ab2Settings)}
+_POWER_ON_QUERY_ROOTS = {
+    "H6097": ("h6097_control.query", H6097Control.Query),
+    "H1AB2": ("h1ab2_settings.power_on_query", H1ab2Settings.PowerOnQuery),
+}
+
+
+@dataclass(frozen=True)
+class StripCalibrationRequest:
+    length_metres: int
+    final_ic_count: int | None = None
+
+    def expected_ic_count(self, profile: ModelProfile) -> int:
+        if (
+            type(self.length_metres) is not int
+            or self.length_metres not in profile.strip_length_metres
+            or profile.strip_ics_per_metre <= 0
+        ):
+            raise ValueError("Unsupported strip length")
+        count = self.length_metres * profile.strip_ics_per_metre
+        if self.final_ic_count is None:
+            return count
+        if type(self.final_ic_count) is not int or not 1 <= self.final_ic_count <= count:
+            raise ValueError("Final IC count is outside the selected strip length")
+        return self.final_ic_count
+
+
+def _build_strip_calibration_operation(operation: str, profile: ModelProfile, *, ic_count: int | None = None) -> bytes:
+    if profile.setting_grammar != "H1AB2" or not profile.strip_length_metres:
+        raise ValueError("Unsupported strip calibration")
+    root = H1ab2Settings()
+    root.header, root.opcode = b"\x33", H1ab2Settings.Command.strip_calibration
+    body = _child(H1ab2Settings.Calibration, root)
+    body.operation = H1ab2Settings.CalibrationOperation[operation]
+    if operation in {"cut", "restore"}:
+        body.detail = _child(H1ab2Settings.Length, body)
+        body.detail.count, body.detail.ic_counts = 1, [ic_count]
+        body.unknown_tail = bytes(13)
+    elif operation == "locate":
+        body.detail = _child(H1ab2Settings.Location, body)
+        body.detail.source, body.detail.ic_count = 0, ic_count
+        body.unknown_tail = bytes(13)
+    else:
+        body.unknown_tail = bytes(16)
+    root.body = body
+    return _serialize_xor(root)
+
+
+def build_strip_calibration(request: StripCalibrationRequest, profile: ModelProfile) -> tuple[bytes, ...]:
+    """Compile a complete restoration or cut/endpoint/confirmation operation."""
+    final_count = request.expected_ic_count(profile)
+    nominal_count = request.length_metres * profile.strip_ics_per_metre
+    if request.final_ic_count is None:
+        return (_build_strip_calibration_operation("restore", profile, ic_count=nominal_count),)
+    return (
+        _build_strip_calibration_operation("cut", profile, ic_count=nominal_count),
+        _build_strip_calibration_operation("start", profile),
+        _build_strip_calibration_operation("locate", profile, ic_count=final_count),
+        _build_strip_calibration_operation("confirm", profile),
+    )
+
+
+def build_strip_calibration_cancel(profile: ModelProfile) -> bytes:
+    return _build_strip_calibration_operation("cancel", profile)
 
 
 def boolean_control_name(operation: str) -> str | None:
@@ -460,6 +526,16 @@ def build_bulk_status_query(profile: ModelProfile, *, domains: tuple[str, ...] |
 
 
 def build_power_on_behaviour(value: str, profile: ModelProfile) -> bytes:
+    if profile.setting_grammar in _ORDINARY_SETTING_ROOTS:
+        if not profile.supports_power_on_behaviour or value not in H60aBulk.PowerOnState.__members__:
+            raise ValueError("Unsupported power-on behaviour")
+        root_type = _ORDINARY_SETTING_ROOTS[profile.setting_grammar][1]
+        root = root_type()
+        root.header, root.opcode = b"\x33", root_type.Command.power_on_behaviour
+        root.body = _child(H6097Control.PowerOnCommand, root)
+        root.body.selector, root.body.state = b"\x02", H60aBulk.PowerOnState[value]
+        root.body.unknown_tail = bytes(15)
+        return _serialize_xor(root)
     if profile.setting_grammar == "H60B0":
         if not profile.supports_power_on_behaviour or value not in H60b0CommandWrite.PowerOnState.__members__:
             raise ValueError("Unsupported power-on behaviour")
@@ -482,14 +558,13 @@ def build_power_on_behaviour(value: str, profile: ModelProfile) -> bytes:
         root.body.unknown_tail = bytes(15)
         return _serialize_xor(root)
     if (
-        profile.setting_grammar not in {"H60A6", "H6097", *_NATIVE_SETTING_ROOTS}
+        profile.setting_grammar not in {"H60A6", *_NATIVE_SETTING_ROOTS}
         or not profile.supports_power_on_behaviour
         or value not in H60aBulk.PowerOnState.__members__
     ):
         raise ValueError("Unsupported power-on behaviour")
     root_type = {
         "H60A6": H60a6Control,
-        "H6097": H6097Control,
         **{key: value[1] for key, value in _NATIVE_SETTING_ROOTS.items()},
     }[profile.setting_grammar]
     root = root_type()
@@ -505,6 +580,11 @@ def build_power_on_behaviour(value: str, profile: ModelProfile) -> bytes:
 def build_power_on_behaviour_query(profile: ModelProfile) -> bytes:
     if not profile.supports_power_on_behaviour:
         raise ValueError("Unsupported power-on behaviour")
+    if profile.setting_grammar in _POWER_ON_QUERY_ROOTS:
+        root = _POWER_ON_QUERY_ROOTS[profile.setting_grammar][1]()
+        root.header = b"\xaa\x41\x02" if profile.setting_grammar == "H6097" else b"\xaa\x41\x00"
+        root.unknown_tail = bytes(16)
+        return _serialize_xor(root)
     if profile.setting_grammar == "H60B0":
         return _build_status_query("power_on_behaviour", profile.command_grammar)
     if profile.setting_grammar in {"H1771", "H60A6"}:
@@ -514,12 +594,7 @@ def build_power_on_behaviour_query(profile: ModelProfile) -> bytes:
         root.header = b"\xaa\x41\x00"
         root.unknown_tail = bytes(16)
         return _serialize_xor(root)
-    if profile.setting_grammar != "H6097":
-        raise ValueError("Unsupported power-on setting grammar")
-    root = H6097Control.Query()
-    root.header = b"\xaa\x41\x02"
-    root.unknown_tail = bytes(16)
-    return _serialize_xor(root)
+    raise ValueError("Unsupported power-on setting grammar")
 
 
 def parse_zone_notification(frame: bytes, profile: ModelProfile) -> ProtocolParseResult:

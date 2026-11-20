@@ -234,6 +234,7 @@ export function effectContentEligible(
     const family = catalogue.effects.find((effect) => effect.family === pair.family);
     return (
       family !== undefined &&
+      family.category === "single_layer" &&
       family.variations.some((variation) => variation.variant === pair.variant) &&
       (content.kind !== "h617a_multi" || family.supports_multi) &&
       content.palette.length <= (family.palette_max ?? limits.palette_max) &&
