@@ -5,7 +5,7 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable, Generator, Mapping
 from contextlib import contextmanager, nullcontext
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import partial
 from typing import Any
 from uuid import UUID, uuid4
@@ -51,7 +51,7 @@ from .const import (
 )
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator import GoveeBLECoordinator
-from .coordinator_base import async_prepare_effect_profile
+from .coordinator_base import async_prepare_effect_profile, require_scene_command_identity
 from .coordinator_control import ControlStateSnapshot, ControlWriteRequest
 from .coordinator_modes import ModeTransitionPurpose
 from .coordinator_refresh import RefreshRequest
@@ -76,7 +76,7 @@ from .effect_compiler import (
 from .effect_contracts import CapabilityWorkflow, require_effect_route
 from .effect_deployments import DeploymentRecord
 from .effect_diagnostics import DiagnosticOutcome, DiagnosticStage
-from .effect_domain import EffectValidationError, LibraryItem, effect_content_to_dict
+from .effect_domain import BuiltinScene, CatalogueRef, EffectValidationError, LibraryItem, effect_content_to_dict
 from .effect_runtime import (
     active_workspace_matches,
     async_apply_compiled_profile,
@@ -109,7 +109,13 @@ from .music_semantics import music_variant
 from .native_profile_controls import apply_active_video_mode as apply_active_video_mode
 from .native_profile_controls import async_prepare_video_mode, async_require_video_controls
 from .native_scenes import build_native_scene_packets
-from .scenes import MODEL_SCENE_ALIASES, MODEL_SCENE_LABELS, MODEL_SCENES
+from .scenes import (
+    MODEL_SCENE_ALIASES,
+    MODEL_SCENE_LABELS,
+    MODEL_SCENES,
+    scene_command_identity_fields,
+    scene_for_profile,
+)
 from .video_applicability import (
     CameraUnavailableError,
     requested_video_controls,
@@ -556,7 +562,9 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         )
         return item if item is not None and self._saved_effect_visible(item) else None
 
-    def _selector_entries(self, *, active_custom: bool | None = None) -> tuple[EffectSelectorEntry, ...]:
+    def _selector_entries(
+        self, *, active_custom: bool | None = None, profile: ModelProfile | None = None
+    ) -> tuple[EffectSelectorEntry, ...]:
         if active_custom is None:
             active_custom = self._matching_active_workspace() is not None
         model = self.coordinator.model
@@ -567,7 +575,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         prefix_effect_names = getattr(self.coordinator, "prefix_effect_names", False) is True
         always_include_custom_effects = getattr(self.coordinator, "always_include_custom_effects", False) is True
         native_categories = self._native_selector_categories
-        profile = self.coordinator.profile
+        profile = self.coordinator.profile if profile is None else profile
         defaults = (
             self._effect_backend.template_defaults
             if profile.video_modes and self._effect_backend is not None and self._config_entry_id is not None
@@ -872,12 +880,21 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         return compiled
 
     async def _prepare_effect(
-        self, effect_name: str, *, video_guards: list[Callable[[], None]] | None = None
+        self, effect_name: str, *, effect_guards: list[Callable[[], None]] | None = None
     ) -> Callable[[], Awaitable[None]]:
         key = normalise_effect_name(effect_name)
         coordinator = self.coordinator
+        profile = coordinator.profile
         try:
             selected = resolve_effect_selector(self._selector_entries(), effect_name)
+            if selected is None and profile.scene_identity_fields:
+                ceiling = get_profile(coordinator.model).scene_command_versions
+                if ceiling != profile.scene_command_versions:
+                    candidate = resolve_effect_selector(
+                        self._selector_entries(profile=replace(profile, scene_command_versions=ceiling)), effect_name
+                    )
+                    if candidate is not None and candidate.source == "scene":
+                        selected = candidate
         except EffectValidationError as exc:
             raise ServiceValidationError(
                 translation_domain=DOMAIN,
@@ -885,8 +902,21 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 translation_placeholders={"effect": effect_name},
             ) from exc
         if selected is not None and selected.source == "scene":
-            require_effect_route(coordinator.model, CapabilityWorkflow.NATIVE_SCENES, profile=coordinator.profile)
             scene = MODEL_SCENES[coordinator.model][selected.value]
+            if scene_command_identity_fields(coordinator.model, scene):
+                profile = await async_prepare_effect_profile(
+                    coordinator,
+                    intent=ControlIntent.BACKGROUND,
+                    content=BuiltinScene(CatalogueRef(coordinator.model, scene.scene_id, scene.effect_id)),
+                )
+
+                def check_scene() -> None:
+                    require_scene_command_identity(coordinator, scene)
+                    scene_for_profile(scene, coordinator.effect_authorization_profile)
+
+                if effect_guards is not None:
+                    effect_guards.append(check_scene)
+            require_effect_route(coordinator.model, CapabilityWorkflow.NATIVE_SCENES, profile=profile)
             scene_default = (
                 scene_default_for(
                     self._effect_backend.scene_defaults,
@@ -903,7 +933,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 scene,
                 speed_index=scene_default.speed_index if scene_default is not None else None,
                 canonical_body=scene_default.canonical_body if scene_default is not None else None,
-                profile=coordinator.profile,
+                profile=profile,
             )
             return partial(
                 coordinator._async_apply_native_scene_locked,
@@ -938,8 +968,8 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                         require_video_controls(coordinator.profile, coordinator, controls)
                         retained_guard()
 
-                    if video_guards is not None:
-                        video_guards.append(check_default)
+                    if effect_guards is not None:
+                        effect_guards.append(check_default)
                 return partial(
                     async_apply_compiled_profile,
                     coordinator,
@@ -949,8 +979,8 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             _, _, _, check_retained = await async_prepare_video_mode(
                 coordinator, mode=selected.value, requested_values={}
             )
-            if video_guards is not None:
-                video_guards.append(check_retained)
+            if effect_guards is not None:
+                effect_guards.append(check_retained)
 
             async def apply_video() -> None:
                 check_retained()
@@ -965,8 +995,8 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         if selected is not None and selected.source == "music":
             compiled = self._compile_template_default(f"template:music:{selected.value}")
             if compiled is not None:
-                if video_guards is not None:
-                    video_guards.append(lambda: validate_compiled_geometry(compiled, coordinator.profile))
+                if effect_guards is not None:
+                    effect_guards.append(lambda: validate_compiled_geometry(compiled, coordinator.profile))
                 return partial(
                     async_apply_compiled_profile,
                     coordinator,
@@ -1118,9 +1148,9 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 kwargs, clear_workspace=clear_workspace, native_write_guard=native_write_guard
             )
             return
-        video_guards: list[Callable[[], None]] = []
+        effect_guards: list[Callable[[], None]] = []
         prepared_effect = (
-            await self._prepare_effect(str(kwargs[ATTR_EFFECT]), video_guards=video_guards)
+            await self._prepare_effect(str(kwargs[ATTR_EFFECT]), effect_guards=effect_guards)
             if ATTR_EFFECT in kwargs
             else None
         )
@@ -1141,7 +1171,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             await self._async_turn_on(
                 clear_workspace_on_success=clear_workspace,
                 prepared_effect=prepared_effect,
-                effect_write_guard=video_guards[0] if video_guards else None,
+                effect_write_guard=effect_guards[0] if effect_guards else None,
                 native_write_guard=native_write_guard,
                 source_colour=source_colour,
                 **kwargs,
@@ -1200,7 +1230,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         assert self._config_entry_id is not None
         try:
             profile = await async_prepare_effect_profile(
-                self.coordinator, intent=ControlIntent.USER, content=item.content
+                self.coordinator, intent=ControlIntent.BACKGROUND, content=item.content
             )
             async with self._effect_backend.application.saved_effect_for_apply(
                 str(item.id),

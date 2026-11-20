@@ -14,6 +14,7 @@ import pytest
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import translation
 from homeassistant.setup import async_setup_component
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
@@ -24,7 +25,13 @@ from custom_components.ha_govee_led_ble.coordinator_modes import ModeTransitionS
 from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
 from custom_components.ha_govee_led_ble.effect_catalogue import resolve_catalogue_template
 from custom_components.ha_govee_led_ble.effect_contracts import EDITOR_API_VERSION
-from custom_components.ha_govee_led_ble.effect_domain import MusicProfile, SingleEffect, effect_content_to_dict
+from custom_components.ha_govee_led_ble.effect_domain import (
+    BuiltinScene,
+    CatalogueRef,
+    MusicProfile,
+    SingleEffect,
+    effect_content_to_dict,
+)
 from custom_components.ha_govee_led_ble.effect_preview import (
     PreviewError,
     PreviewOwnershipError,
@@ -50,6 +57,7 @@ from custom_components.ha_govee_led_ble.effect_websocket import (
     WS_LIBRARY_OVERWRITE,
     WS_LIBRARY_SUBSCRIBE,
     WS_LIBRARY_UPDATE,
+    WS_PREVIEW_APPLY_SCENE,
     WS_PREVIEW_APPLY_SNAPSHOT,
     WS_SCENE_APPLY,
     WS_SCENE_DEFAULT_SET,
@@ -749,6 +757,43 @@ async def test_apply_surfaces_item_version_conflict(
     assert response["success"] is False
     assert response["error"]["code"] == "conflict"
     backend.preview.async_supersede_device.assert_not_awaited()
+
+
+@pytest.mark.parametrize("operation", [WS_SCENE_APPLY, WS_PREVIEW_APPLY_SCENE, WS_APPLY])
+async def test_studio_reports_unconfirmed_scene_identity(hass, hass_ws_client, monkeypatch, operation):
+    backend = await _setup_backend(hass)
+    hass.config.components.add(DOMAIN)
+    await translation.async_load_integrations(hass, {DOMAIN})
+    supersede = AsyncMock()
+    monkeypatch.setattr(backend.preview, "async_supersede_device", supersede)
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model="H617A", configuration_url=None)
+    coordinator._client = physical = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
+    coordinator._observe_identity_field("fw_version", "3.02.24")
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=physical))
+    monkeypatch.setattr(coordinator, "_async_read_identity", AsyncMock())
+    entry = SimpleNamespace(entry_id="entry-a", domain=DOMAIN, state=ConfigEntryState.LOADED, runtime_data=coordinator)
+    monkeypatch.setattr(hass.config_entries, "async_get_entry", lambda _id: entry)
+    scene = next(scene for scene in SCENE_ENTRIES[coordinator.model] if scene.command_version == 1)
+    message: dict[str, Any] = {"type": operation, "config_entry_id": entry.entry_id}
+    if operation == WS_APPLY:
+        content = BuiltinScene(CatalogueRef(coordinator.model, scene.scene_id, scene.effect_id))
+        mutation = await backend.application.async_create_library_item(
+            name="Saved", content=effect_content_to_dict(content)
+        )
+        message.update(item_id=str(mutation.item.id), expected_version=1, updated_at=mutation.item.updated_at)
+    else:
+        message.update(scene_id=scene.scene_id, effect_id=scene.effect_id)
+        if operation == WS_PREVIEW_APPLY_SCENE:
+            message.update(session_id=str(uuid4()), sequence=1, updated_at="2026-11-17T00:00:00Z")
+
+    client = await hass_ws_client(hass)
+    await client.send_json_auto_id(message)
+    response = await client.receive_json()
+    assert response["success"] is False
+    assert response["error"]["code"] == ("preview_failed" if operation == WS_PREVIEW_APPLY_SCENE else "apply_failed")
+    assert "identity is not confirmed" in response["error"]["message"]
+    physical.write_gatt_char.assert_not_awaited()
+    supersede.assert_not_awaited()
 
 
 @pytest.mark.parametrize("operation", ["scene", "saved", "snapshot"])

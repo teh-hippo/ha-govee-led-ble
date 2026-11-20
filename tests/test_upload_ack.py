@@ -6,11 +6,13 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from bleak import BleakError
+from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.ha_govee_led_ble import coordinator as coordinator_module
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ModelProfile, device_profile
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
 from custom_components.ha_govee_led_ble.effect_catalogue import WORKSHOP_PROTOCOL_FIXTURES, resolve_catalogue_template
 from custom_components.ha_govee_led_ble.effect_compiler import DIY_ACK_EVIDENCE, compile_application, compile_effect
 from custom_components.ha_govee_led_ble.effect_deployments import (
@@ -21,6 +23,7 @@ from custom_components.ha_govee_led_ble.effect_deployments import (
 from custom_components.ha_govee_led_ble.effect_domain import BuiltinScene, LibraryItem, MusicProfile, SingleEffect
 from custom_components.ha_govee_led_ble.effect_preview import PreviewPhase
 from custom_components.ha_govee_led_ble.effect_runtime import EffectDeploymentEngine
+from custom_components.ha_govee_led_ble.effect_storage import LibrarySnapshot
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_music_mode,
     build_power,
@@ -31,6 +34,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     upload_ack_success,
 )
 from custom_components.ha_govee_led_ble.layered_scene import CatalogueRef
+from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.music_commands import prepare_music_request
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
 from custom_components.ha_govee_led_ble.transport import fragment_a3
@@ -133,6 +137,71 @@ async def test_identity_independent_native_scene_survives_scene_policy_change(se
     assert [call.args[1] for call in client.write_gatt_char.call_args_list] == [power, *compiled.packets]
     assert c.profile.rgbic_scene_v0 is True
     assert (c._profile_generation, c._authorization_generation) == (generation, authorization)
+
+
+@pytest.mark.parametrize("hardware", ["1.00.01", "3.01.01"])
+async def test_versioned_scene_waits_for_current_hardware_identity(selection_ready, monkeypatch, hardware):
+    c, client = selection_ready
+    c.is_on = True
+    c._confirmed_identity_fields.discard("hw_version")
+    monkeypatch.setattr(coordinator_module, "IDENTITY_QUERY_TIMEOUT", 0)
+    scene = next(scene for scene in SCENE_ENTRIES[c.model] if scene.command_version == 1)
+
+    with pytest.raises(HomeAssistantError) as error:
+        await c.async_apply_native_scene(scene.display_name, scene_entry=scene, verify=False)
+    assert error.value.translation_key == "identity_not_ready"
+    assert [call.args[1] for call in client.write_gatt_char.call_args_list] == [frame("aa0703")]
+    assert c.control_write_attempts == 0
+
+    client.write_gatt_char.reset_mock()
+    c._observe_identity_field("hw_version", hardware)
+    if hardware == "1.00.01":
+        with pytest.raises(ValueError, match="Scene is not supported"):
+            await c.async_apply_native_scene(scene.display_name, scene_entry=scene, verify=False)
+        client.write_gatt_char.assert_not_awaited()
+        return
+
+    item = LibraryItem.new("Scene", BuiltinScene(CatalogueRef(c.model, scene.scene_id, scene.effect_id)))
+    compiled = compile_effect(item, c.model, profile=c.effect_authorization_profile)
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet == compiled.upload_packets[-1]:
+            receive(client, DIY_OK)
+
+    client.write_gatt_char.side_effect = write
+    await c.async_apply_native_scene(scene.display_name, scene_entry=scene, verify=False)
+    assert [call.args[1] for call in client.write_gatt_char.call_args_list] == list(compiled.packets)
+
+
+@pytest.mark.parametrize("saved", [False, True])
+async def test_versioned_light_effect_checks_identity_before_writes(selection_ready, monkeypatch, saved):
+    c, client = selection_ready
+    c.is_on = False
+    c._confirmed_identity_fields.discard("hw_version")
+    monkeypatch.setattr(coordinator_module, "IDENTITY_QUERY_TIMEOUT", 0)
+    if saved:
+        backend = MagicMock(spec=EffectBackend)
+        name = "Saved"
+        item = LibraryItem.new(name, BuiltinScene(CatalogueRef(c.model, 1035, 1097)))
+        backend.application.library_snapshot.return_value = LibrarySnapshot((item,))
+        backend.active_workspaces.get.return_value = None
+        light = GoveeBLELight(c, config_entry_id="entry-a", effect_backend=backend)
+        assert name in light.effect_list
+    else:
+        c.profile = device_profile(c.model, None, None, firmware=c.fw_version)
+        light = GoveeBLELight(c)
+        name = "Flying"
+        assert name not in light.effect_list
+    supersede = AsyncMock()
+    monkeypatch.setattr(light, "_async_supersede_preview", supersede)
+    generation = c._control_arbiter.foreground_generation
+
+    with pytest.raises(HomeAssistantError) as error:
+        await light.async_turn_on(effect=name, brightness=128)
+    assert error.value.translation_key == "identity_not_ready"
+    assert [call.args[1] for call in client.write_gatt_char.call_args_list] == [frame("aa0703")]
+    supersede.assert_not_awaited()
+    assert c._control_arbiter.foreground_generation == generation
 
 
 @pytest.mark.parametrize("change", ["policy", "authority"])

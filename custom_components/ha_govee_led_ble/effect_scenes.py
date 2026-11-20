@@ -241,9 +241,11 @@ async def async_apply_scene(
     user_id: str,
     scene_defaults: NativeSceneDefaultRepository | None = None,
     before_apply: Callable[[], Awaitable[None]] | None = None,
+    profile: ModelProfile | None = None,
 ) -> tuple[ResolvedScene, int | None]:
     del hass, user_id
     coordinator = config_entry.runtime_data
+    profile = coordinator.profile if profile is None else profile
     resolved = resolve_scene(coordinator.model, scene_id, effect_id)
     scene_default = (
         scene_default_for(
@@ -260,16 +262,16 @@ async def async_apply_scene(
         resolved.entry,
         scene_default=scene_default,
         speed_index=speed_index,
-        profile=coordinator.profile,
+        profile=profile,
     )
 
-    require_effect_route(coordinator.model, CapabilityWorkflow.NATIVE_SCENES, profile=coordinator.profile)
+    require_effect_route(coordinator.model, CapabilityWorkflow.NATIVE_SCENES, profile=profile)
     build_native_scene_packets(
         coordinator.model,
         resolved.entry,
         speed_index=resolved_speed,
         canonical_body=canonical_body or None,
-        profile=coordinator.profile,
+        profile=profile,
     )
     if before_apply is not None:
         await before_apply()
