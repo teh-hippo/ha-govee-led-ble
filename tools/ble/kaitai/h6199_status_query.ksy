@@ -4,6 +4,7 @@ meta:
   endian: le
 doc: |
   H6199 20-byte status query.  The final byte is the XOR of bytes 0 through 18.
+  The mode selector 1 and A2 RGB-only segment query are used on Pact 1.
   direction30, position31, status32 and Gradient A3 queries are
   speculative reconstructed/direct-register evidence, not device-verified.
 seq:
@@ -19,7 +20,7 @@ seq:
       cases:
         'query_domain::power': zero_body
         'query_domain::brightness': zero_body
-        'query_domain::colour_mode': zero_body
+        'query_domain::colour_mode': colour_mode_query_body
         'query_domain::firmware': zero_body
         'query_domain::hardware': hardware_query_body
         'query_domain::identity': zero_body
@@ -28,6 +29,7 @@ seq:
         'query_domain::display_setting': display_setting_query_body
         'query_domain::relative_brightness': relative_brightness_query_body
         'query_domain::segments': segment_query_body
+        'query_domain::legacy_segments': segment_query_body
         'query_domain::strip_direction': zero_body
         'query_domain::camera_position': zero_body
         'query_domain::camera_status': zero_body
@@ -50,12 +52,23 @@ enums:
     0xa3: gradient
     0xa9: display_setting
     0xae: relative_brightness
+    0xa2: legacy_segments
     0xa5: segments
   display_setting:
     0x00: white_balance
     0x06: scalar_white_balance
     0x0a: blank_screen
 types:
+  colour_mode_query_body:
+    seq:
+      - id: selector
+        type: u1
+        valid:
+          max: 1
+      - id: zeros
+        type: u1
+        valid: 0
+        repeat: eos
   zero_body:
     seq:
       - id: zeros

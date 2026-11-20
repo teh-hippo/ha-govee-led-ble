@@ -329,7 +329,7 @@ def _parse_music_mode(detail: Any, model: str, profile: ModelProfile) -> ParsedC
         )
     percent = profile.status_grammar in PERCENT_BRIGHTNESS_STATUS_GRAMMARS | {"H605C"}
     colour = None
-    if detail.has_fixed_colour:
+    if getattr(detail, "has_fixed_colour", False):
         colour = detail.fixed_colour if percent else detail.rgb
     style = getattr(detail, "is_calm" if percent else "style", None)
     return ParsedColorModeResponse(

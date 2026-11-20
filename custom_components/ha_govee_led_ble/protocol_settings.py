@@ -200,6 +200,7 @@ def _build_status_query(
         "H607C",
         "H60B0",
         "H617A",
+        "H6199",
         "H7020",
         "H705A",
     }:
@@ -946,6 +947,7 @@ def build_segment_query(group: int, model: str = "H617A", *, profile: ModelProfi
     if resolved in {"H1771", "H60B0", "H705A"} and not 1 <= group <= profile.segment_group_count:
         raise ValueError("segment query group is outside the selected geometry")
     try:
-        return _build_status_query("segments", resolved, segment_group=group)
+        domain = "legacy_segments" if profile.status_grammar == "H6199-Pact1" else "segments"
+        return _build_status_query(domain, resolved, segment_group=group)
     except KaitaiStructError as error:
         raise ValueError("segment query group is outside the selected grammar") from error

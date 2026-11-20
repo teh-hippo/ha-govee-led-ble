@@ -92,7 +92,7 @@ def h6181_outbound_transform(packet: bytes, *, colour_effect: bool = False) -> b
 
 
 def h6199_pact1_outbound_transform(packet: bytes) -> bytes:
-    """Re-encode authorised logical H6199 brightness and RGB through the legacy wire root."""
+    """Re-encode authorised H6199 controls that differ on Pact 1."""
 
     from .dreamview import is_legacy_dreamview_packet
     from .generated_protocol_adapter import parse_command, require_profile_packet
@@ -102,12 +102,15 @@ def h6199_pact1_outbound_transform(packet: bytes) -> bytes:
         return packet
     require_profile_packet(packet, profile)
     parsed = parse_command(packet, profile=profile)
-    if parsed is None or parsed.opcode.name == "power":
+    if parsed is None:
+        return packet
+    operation = parsed.body.sub_mode.name if parsed.opcode.name == "mode" else parsed.opcode.name
+    if operation in {"power", "scene"}:
         return packet
 
     root = H6199Pact1WireWrite()
     root.header = b"\x33"
-    if parsed.opcode.name == "brightness":
+    if operation == "brightness":
         root.opcode = H6199Pact1WireWrite.CommandOp.brightness
         body = _child(H6199Pact1WireWrite.BrightnessBody, root)
         wire_range = profile.brightness_wire_range
@@ -115,17 +118,40 @@ def h6199_pact1_outbound_transform(packet: bytes) -> bytes:
             raise ValueError("H6199 Pact 1 brightness register range is not declared")
         body.register = encode_wire_brightness(int(parsed.body.percent), wire_range)
         body.unknown_tail = bytes(16)
-    else:
+    elif operation == "static_colour":
         root.opcode = H6199Pact1WireWrite.CommandOp.mode
         body = _child(H6199Pact1WireWrite.ModeBody, root)
         body.sub_mode = H6199Pact1WireWrite.ModeSel.static_colour
         detail = _child(H6199Pact1WireWrite.StaticColourBody, body)
         colour = parsed.body.detail
-        detail.rgb = _rgb(detail, int(colour.red), int(colour.green), int(colour.blue))
-        detail.kelvin = 0
+        detail.kelvin = int(colour.kelvin)
+        detail.rgb = (
+            _rgb(detail, int(colour.preview.red), int(colour.preview.green), int(colour.preview.blue))
+            if detail.kelvin
+            else _rgb(detail, int(colour.red), int(colour.green), int(colour.blue))
+        )
         detail.segment_mask = int(colour.segment_mask)
         detail.unknown_tail = bytes(9)
         body.detail = detail
+    elif operation == "music":
+        root.opcode = H6199Pact1WireWrite.CommandOp.mode
+        body = _child(H6199Pact1WireWrite.ModeBody, root)
+        body.sub_mode = H6199Pact1WireWrite.ModeSel.music
+        detail = _child(H6199Pact1WireWrite.MusicBody, body)
+        music = parsed.body.detail
+        detail.mode = H6199Pact1WireWrite.MusicMode[music.mode.name]
+        detail.sensitivity = music.sensitivity
+        if detail.mode == H6199Pact1WireWrite.MusicMode.rhythm:
+            detail.is_calm = music.is_calm
+        if detail.mode != H6199Pact1WireWrite.MusicMode.energetic:
+            detail.has_fixed_colour = music.has_fixed_colour
+            detail.fixed_colour = _rgb(
+                detail, music.fixed_colour.red, music.fixed_colour.green, music.fixed_colour.blue
+            )
+        detail.unknown_tail = bytes(detail.write_tail_size)
+        body.detail = detail
+    else:
+        raise ValueError("Unsupported H6199 Pact 1 wire operation")
     root.body = body
     return _serialize_xor(root)
 
