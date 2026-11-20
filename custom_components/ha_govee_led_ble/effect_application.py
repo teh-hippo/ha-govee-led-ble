@@ -22,7 +22,7 @@ from .effect_domain import (
     LayeredScene,
     LibraryItem,
     Origin,
-    WorkshopEffect,
+    RetainedSceneEffect,
     effect_content_from_dict,
 )
 from .effect_identity import EffectDeviceCache
@@ -338,7 +338,7 @@ class EffectStudioApplication:
 
 def _authored_content_from_dict(raw: Mapping[str, Any]) -> EffectContent:
     content = effect_content_from_dict(raw)
-    layered = content.effect if isinstance(content, WorkshopEffect | LayeredScene) else content
+    layered = content.effect if isinstance(content, RetainedSceneEffect | LayeredScene) else content
     if not isinstance(layered, LayeredEffect):
         return content
     if not layered.layers:
@@ -358,7 +358,7 @@ def _extensions_with_layer_labels(
     if layer_labels is None:
         extensions.pop(EDITOR_EXTENSION_KEY, None)
         return extensions
-    layered = content.effect if isinstance(content, WorkshopEffect | LayeredScene) else content
+    layered = content.effect if isinstance(content, RetainedSceneEffect | LayeredScene) else content
     if not isinstance(layered, LayeredEffect):
         raise EffectValidationError("layer labels require layered editor content")
     if len(layer_labels) > MAX_JSON_COLLECTION_ITEMS:

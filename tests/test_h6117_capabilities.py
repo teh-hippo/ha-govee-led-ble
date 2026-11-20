@@ -470,13 +470,10 @@ async def test_studio_snapshot_qualifies_identity_before_applying(
         )
         assert [packet for packet in packets if packet[0] != 0xAA] == list(compiled.packets)
         assert coordinator.identity_fields_confirmed()
-    elif cold:
+    else:
         with pytest.raises(HomeAssistantError) as error:
             await apply()
         assert error.value.translation_key == "identity_not_ready"
-    else:
-        with pytest.raises(RuntimeError, match="current power, mode and brightness"):
-            await apply()
     if not identity_available:
         assert not any(packet[0] != 0xAA for packet in packets)
         assert coordinator.control_write_attempts == 0

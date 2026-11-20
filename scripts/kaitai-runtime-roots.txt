@@ -180,3 +180,4 @@ speculative/h6053_wire_write
 speculative/h6053_status_reply
 speculative/h6053_legacy_status_reply
 speculative/h6053_effect_upload
+speculative/h6053_command_ack

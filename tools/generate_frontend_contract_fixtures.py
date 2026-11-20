@@ -37,11 +37,11 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     PaintedEffect,
     PaletteDiyEffect,
     RelativeBrightness,
+    RetainedSceneEffect,
     SingleEffect,
     StaticRgbComposition,
     TargetHint,
     VideoProfile,
-    WorkshopEffect,
     effect_content_from_dict,
     effect_content_to_dict,
 )
@@ -82,6 +82,8 @@ CONTENT_FAMILIES = {
     "workshop",
     "workshop_rgb",
     "workshop_rgbic_v2",
+    "shared_scene_rgb",
+    "shared_scene_rgbic_v1",
     "scene_builtin",
     "scene_palette",
     "scene_layered",
@@ -220,10 +222,30 @@ def _content_samples(
         "advanced": effect_content_to_dict(workshop.effect),
         "workshop": workshop_payload,
         "workshop_rgb": effect_content_to_dict(
-            WorkshopEffect("H6053", "retained-rgb", None, bytes.fromhex("9301ffff800100ff0000"), carrier="rgb")
+            RetainedSceneEffect("H6053", "retained-rgb", None, bytes.fromhex("9301ffff800100ff0000"), carrier="rgb")
         ),
         "workshop_rgbic_v2": effect_content_to_dict(
-            WorkshopEffect("H6053", "retained-v2", v2_effect, v2_source, v2_padding, "rgbic_v2")
+            RetainedSceneEffect("H6053", "retained-v2", v2_effect, v2_source, v2_padding, "rgbic_v2")
+        ),
+        "shared_scene_rgb": effect_content_to_dict(
+            RetainedSceneEffect(
+                "H6053",
+                "shared-rgb",
+                None,
+                bytes.fromhex("9301ffff800100ff0000"),
+                carrier="rgb",
+                application="shared_scene",
+            )
+        ),
+        "shared_scene_rgbic_v1": effect_content_to_dict(
+            RetainedSceneEffect(
+                "H6053",
+                "shared-v1",
+                workshop.effect,
+                workshop.raw_param,
+                workshop.trailing_padding,
+                application="shared_scene",
+            )
         ),
         "scene_builtin": cast(dict[str, Any], scene_details["scene_builtin"]["content"]),
         "scene_palette": cast(dict[str, Any], scene_details["scene_palette"]["content"]),

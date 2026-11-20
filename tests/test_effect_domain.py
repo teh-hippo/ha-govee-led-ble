@@ -65,6 +65,7 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     PaletteDiyEffect,
     PaletteScene,
     RelativeBrightness,
+    RetainedSceneEffect,
     SceneStep,
     Selection,
     SelectionType,
@@ -73,7 +74,6 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     TargetHint,
     UnsupportedEffectSchemaError,
     VideoProfile,
-    WorkshopEffect,
     effect_content_from_dict,
     effect_content_to_dict,
 )
@@ -932,7 +932,7 @@ def test_explicit_workshop_carrier_uses_native_activation_without_legacy_suffix(
     entry = next(scene for scene in SCENE_ENTRIES["H60B2"] if scene.scene_type == 2)
     payload = base64.b64decode(entry.param)
     effect, padding = decode_workshop_effect("H60B2", payload)
-    content = WorkshopEffect("H60B2", "native-scene", effect, payload, padding)
+    content = RetainedSceneEffect("H60B2", "native-scene", effect, payload, padding)
     workshop = compile_effect(LibraryItem.new("Imported", content), "H60B2")
     authored = compile_effect(LibraryItem.new("Authored", effect), "H60B2")
     assert workshop.packets == authored.packets
@@ -977,6 +977,7 @@ def test_independent_diy_upload_prefix_does_not_choose_the_approved_activation_s
         validate_compiled_geometry(compiled, changed)
 
 
+@pytest.mark.parametrize("application", ["workshop", "shared_scene"])
 @pytest.mark.parametrize(
     "carrier,source,expected",
     [
@@ -1011,16 +1012,31 @@ def test_independent_diy_upload_prefix_does_not_choose_the_approved_activation_s
     ],
 )
 def test_retained_workshop_carriers_round_trip_and_compile_without_selector_or_prefix_inference(
-    carrier, source, expected
+    application, carrier, source, expected
 ):
     profile = device_profile("H6053", 2, 1, firmware="1.08.05", hardware="1.00.00")
     raw = bytes.fromhex(source)
     effect, padding = decode_workshop_effect("H6053", raw, carrier=carrier)
-    item = LibraryItem.new("Retained Workshop", WorkshopEffect("H6053", "retained", effect, raw, padding, carrier))
+    if application == "shared_scene" and carrier == "rgbic_v2":
+        with pytest.raises(EffectValidationError, match="application or carrier"):
+            RetainedSceneEffect("H6053", "retained", effect, raw, padding, carrier, application)
+        return
+    item = LibraryItem.new(
+        "Retained scene", RetainedSceneEffect("H6053", "retained", effect, raw, padding, carrier, application)
+    )
     restored = LibraryItem.from_dict(item.to_dict())
     assert restored == item
     compiled = compile_application(restored, "H6053", profile=profile)
+    if application == "shared_scene":
+        expected = (
+            *expected[:-1],
+            {
+                "rgb": "330504c7000000000000000000000000000000f5",
+                "rgbic_v1": "33050491010000000000000000000000000000a2",
+            }[carrier],
+        )
     assert compiled.packets == tuple(bytes.fromhex(frame) for frame in expected)
+    assert compiled.selector_kind == "scene"
     for packet in compiled.packets:
         require_profile_packet(packet, profile)
     validate_compiled_geometry(compiled, profile)
@@ -1029,14 +1045,39 @@ def test_retained_workshop_carriers_round_trip_and_compile_without_selector_or_p
             compiled,
             replace(
                 profile,
-                workshop_carriers=tuple(
-                    (name, subtype, selector + 1) for name, subtype, selector in profile.workshop_carriers
-                ),
+                **{
+                    f"{application}_carriers": tuple(
+                        (name, subtype, selector + 1)
+                        for name, subtype, selector in getattr(profile, f"{application}_carriers")
+                    )
+                },
             ),
         )
-    if carrier != "rgbic_v1":
+    if application == "shared_scene" or carrier != "rgbic_v1":
         with pytest.raises(ValueError, match="source model"):
             compile_application(item, "H617A")
+
+
+@pytest.mark.parametrize("firmware", ["1.00.11", "1.01.00", "1.08.05"])
+@pytest.mark.parametrize("carrier", ["rgb", "rgbic_v1"])
+def test_shared_retained_scenes_do_not_inherit_workshop_hardware_prerequisites(monkeypatch, firmware, carrier):
+    monkeypatch.setitem(SCENE_ENTRIES, "H6053", ())
+    profile = device_profile("H6053", 1, 1, firmware=firmware, hardware="0.00.00")
+    raw = bytes.fromhex(
+        "9301ffff800100ff0000" if carrier == "rgb" else "011a000100010001ffff0080010100800101ff000000008000008000"
+    )
+    effect, padding = decode_workshop_effect("H6053", raw, carrier=carrier)
+    content = RetainedSceneEffect("H6053", "shared", effect, raw, padding, carrier, "shared_scene")
+    item = LibraryItem.new("Shared scene", content)
+    if firmware == "1.00.11" and carrier == "rgbic_v1":
+        with pytest.raises(ValueError):
+            compile_application(item, "H6053", profile=profile)
+    else:
+        compiled = compile_application(item, "H6053", profile=profile)
+        for packet in compiled.packets:
+            require_profile_packet(packet, profile)
+    with pytest.raises(ValueError):
+        compile_application(replace(item, content=replace(content, application="workshop")), "H6053", profile=profile)
 
 
 def test_explicit_v2_identity_preserves_opaque_extensions_when_editing_common_layers():
@@ -1044,7 +1085,7 @@ def test_explicit_v2_identity_preserves_opaque_extensions_when_editing_common_la
     effect, padding = decode_workshop_effect("H6053", raw, carrier="rgbic_v2")
     assert effect is not None
     tail = bytes.fromhex("deadcafe")
-    content = WorkshopEffect("H6053", "retained", effect, raw + tail, padding, "rgbic_v2")
+    content = RetainedSceneEffect("H6053", "retained", effect, raw + tail, padding, "rgbic_v2")
     edited = replace(content, effect=replace(effect, layers=(replace(effect.layers[0], colour_speed=42),)))
     compiled = compile_application(LibraryItem.new("Edited", edited), "H6053")
     decoded, _ = decode_workshop_effect(
@@ -1057,7 +1098,7 @@ def test_explicit_v2_identity_preserves_opaque_extensions_when_editing_common_la
     v1, _ = decode_workshop_effect("H6053", raw[1:] + tail)
     assert v1 == effect
     v1_compiled = compile_application(
-        LibraryItem.new("V1", WorkshopEffect("H6053", "retained", v1, raw[1:] + tail)), "H6053"
+        LibraryItem.new("V1", RetainedSceneEffect("H6053", "retained", v1, raw[1:] + tail)), "H6053"
     )
     assert v1_compiled.diy_code == 402 and compiled.diy_code == 403
     assert reassemble_a3(compiled.upload_packets)[3 + len(raw) - 1 : 3 + len(raw) - 1 + len(tail)] == tail
@@ -1147,7 +1188,7 @@ def test_understood_workshop_layers_use_the_target_carrier_without_rewriting_the
         excess=b"",
         selected_movement=replace(original.selected_movement, unknown_flags=0),
     )
-    item = LibraryItem.new("Known Workshop", WorkshopEffect("H617A", "authored", LayeredEffect((layer,))))
+    item = LibraryItem.new("Known Workshop", RetainedSceneEffect("H617A", "authored", LayeredEffect((layer,))))
     stored = item.to_dict()
     compiled = compile_application(item, "H6199")
     assert compiled.diy_code == H6199_WORKSHOP_APPLY_CODE

@@ -450,12 +450,12 @@ async def async_prepare_effect_profile(
         LayeredEffect,
         LayeredScene,
         PaletteScene,
+        RetainedSceneEffect,
         StaticRgbComposition,
-        WorkshopEffect,
     )
 
     scene = None
-    scene_required = content is None or isinstance(content, LayeredEffect | WorkshopEffect)
+    scene_required = content is None or isinstance(content, LayeredEffect | RetainedSceneEffect)
     if isinstance(content, BuiltinScene | LayeredScene | PaletteScene):
         if resolved := resolve_scene_target(coordinator.model, content.template):
             _, scene = resolved

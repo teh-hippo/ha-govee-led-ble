@@ -55,7 +55,7 @@ from .effect_domain import (
     NativeEffect,
     PaletteDiyEffect,
     PaletteScene,
-    WorkshopEffect,
+    RetainedSceneEffect,
 )
 from .effect_identity import ActiveEffectHint, EffectDeviceCache, ObservedDeviceState
 from .effect_protocol_decoder import decode_effect_frames
@@ -66,6 +66,8 @@ from .generated_protocol_adapter import (
     build_relative_brightness,
     build_white_balance,
     build_whole_relative_brightness,
+    upload_ack_mode,
+    upload_ack_subtype,
     video_parameters_from_brightness,
 )
 from .music_commands import prepare_music_profile_writes
@@ -374,6 +376,10 @@ async def async_prepare_application(
     profile = await async_prepare_effect_profile(coordinator, intent=intent, content=item.content)
     resolved = resolve_diy_code(item, diy_code, model=coordinator.model, profile=profile)
     compiled = compile_application(item, coordinator.model, diy_code=resolved, profile=profile)
+    if isinstance(compiled, CompiledEffect) and DIY_ACK_EVIDENCE in compiled.evidence_codes:
+        index = len(compiled.upload_packets) - 1
+        upload_ack_subtype(compiled.upload_packets, index, coordinator.model, profile=profile)
+        upload_ack_mode(compiled.upload_packets, index, coordinator.model, profile=profile)
     if isinstance(compiled, CompiledVideoProfile):
         await async_require_video_controls(coordinator, requested_video_controls(compiled), intent=intent)
         require_video_mode(coordinator.profile, coordinator)
@@ -1361,7 +1367,7 @@ class EffectDeploymentEngine:
         if (
             workspace_matches
             and workspace is not None
-            and isinstance(workspace.content, WorkshopEffect | PaletteDiyEffect)
+            and isinstance(workspace.content, RetainedSceneEffect | PaletteDiyEffect)
             and scene_code is not None
             and workspace.observable_signature == f"scene-code:{scene_code}"
         ):
@@ -1924,7 +1930,7 @@ def _record_signature(record: DeploymentRecord, model: str) -> str | None:
     if record.target_mode == "custom" and record.diy_code is not None:
         if record.content_kind in {"h617a_painted", "h617a_single", "h617a_multi"} and model in {"H617A", "H617E"}:
             return f"custom:{record.diy_code}"
-        if (record.content_kind == "workshop" and model in {"H617A", "H617E", "H6199"}) or (
+        if record.content_kind in {"workshop", "shared_scene"} or (
             record.content_kind == "palette_diy" and model == "H6199"
         ):
             return f"scene-code:{record.diy_code}"

@@ -26,8 +26,8 @@ import type {
   SceneDetail,
   SceneSummary,
   VideoProfileContent,
-  WorkshopContent,
-  RgbWorkshopContent,
+  LayeredRetainedSceneContent,
+  RgbRetainedSceneContent,
 } from "./types";
 import { decodeCustomCataloguePayload, decodeModelEffectCatalogue, decodeMusicSettings } from "./catalogue-validation";
 import {
@@ -1153,8 +1153,9 @@ export function decodeEffectContent(value: unknown): EffectContent {
         layers: layerArray(content.layers, "Advanced layers"),
         ...(nativeDiy === undefined ? {} : { native_diy: nativeDiy }),
       } satisfies AdvancedContent;
-    case "workshop_rgb": {
-      if (content.effect !== null || content.trailing_padding !== 0) invalid("RGB Workshop content");
+    case "workshop_rgb":
+    case "shared_scene_rgb": {
+      if (content.effect !== null || content.trailing_padding !== 0) invalid("RGB retained scene content");
       return {
         kind,
         model: boundedString(content.model, "Workshop model", MAX_IDENTIFIER_LENGTH),
@@ -1162,9 +1163,10 @@ export function decodeEffectContent(value: unknown): EffectContent {
         effect: null,
         raw_param: hexString(content.raw_param, "Workshop source parameter"),
         trailing_padding: 0,
-      } satisfies RgbWorkshopContent;
+      } satisfies RgbRetainedSceneContent;
     }
     case "workshop":
+    case "shared_scene_rgbic_v1":
     case "workshop_rgbic_v2": {
       const effect = objectValue(content.effect, "Workshop effect");
       return {
@@ -1192,7 +1194,7 @@ export function decodeEffectContent(value: unknown): EffectContent {
           0,
           SCENE_TRAILING_PADDING_MAX,
         ),
-      } satisfies WorkshopContent;
+      } satisfies LayeredRetainedSceneContent;
     }
     case "scene_builtin":
       return {

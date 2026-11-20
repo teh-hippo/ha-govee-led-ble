@@ -24,11 +24,13 @@ from custom_components.ha_govee_led_ble.light_commands import (
     build_segment_brightness,
     build_segment_color,
     build_segment_color_temp,
+    normalize_kelvin,
     parse_static_write,
 )
 from custom_components.ha_govee_led_ble.light_service_dispatch import _dispatch_device_lights
 from custom_components.ha_govee_led_ble.light_source import GoveeBLESourceLight
 from custom_components.ha_govee_led_ble.transport import xor_checksum
+from tests.coordinator_test_support import frame
 
 LEFT = LightSource("left_bar", "left_bar_enabled", (1, 2, 3, 4, 5))
 RIGHT = LightSource("right_bar", "right_bar_enabled", (6, 7, 8, 9, 10))
@@ -597,6 +599,59 @@ async def test_failed_source_colour_write_releases_source_expectations(hass):
     payload = bytes.fromhex("aa0515000fa00fa0").ljust(19, b"\x00")
     coordinator._notify_callback(None, bytearray(payload + bytes((xor_checksum(payload),))))
     assert coordinator.segment_kelvin[:5] == [4000] * 5
+
+
+@pytest.mark.parametrize("modern", [False, True])
+@pytest.mark.parametrize("kelvin", [2199, 3123, 4000])
+async def test_native_kelvin_survives_non_table_palette_and_recovery_projection(hass, monkeypatch, modern, kelvin):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6053", configuration_url=None)
+    coordinator.pact_type, coordinator.pact_code = 2 if modern else 1, 1
+    coordinator.fw_version, coordinator.hw_version = "1.08.05" if modern else "1.00.11", "1.00.00"
+    coordinator._resolve_device_profile()
+    coordinator._notification_token = object()
+    coordinator._notify_started_monotonic = time.monotonic() - 1
+    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
+    coordinator._client = client
+    coordinator._observe_pact(2 if modern else 1, 1)
+    coordinator._observe_identity_field("fw_version", coordinator.fw_version)
+    coordinator._observe_identity_field("hw_version", coordinator.hw_version)
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
+    monkeypatch.setattr(coordinator, "_renew_foreground_lease", MagicMock())
+
+    def observe(value):
+        for data in ("aa0101", "aa0432" if modern else "aa0488", "aa3311"):
+            coordinator._notify_callback(None, bytearray(frame(data)))
+        status = f"aa051500{value:04x}{value:04x}" if modern else f"aa050dffffff{value:04x}ffffff{value:04x}"
+        coordinator._notify_callback(None, bytearray(frame(status)))
+        if modern:
+            for group in range(1, 4):
+                coordinator._notify_callback(None, bytearray(frame(f"aaa5{group:02x}" + "32ffffff" * 4)))
+
+    observe(kelvin)
+    assert coordinator.segment_colors == [(255, 255, 255)] * coordinator.profile.segment_count
+    assert coordinator.segment_kelvin == [kelvin] * coordinator.profile.segment_count
+    state = coordinator.capture_effect_control_state()
+    assert state.left_bar_kelvin == state.right_bar_kelvin == kelvin
+    prepared = coordinator._prepare_static_colour(state)
+    assert prepared is not None
+    expected = (normalize_kelvin(kelvin, coordinator.profile),) * coordinator.profile.segment_count
+    assert prepared.state.segment_kelvin == expected
+    assert prepared.state.static_segment_kelvin(coordinator.profile) == expected
+    assert coordinator.segment_kelvin == [kelvin] * coordinator.profile.segment_count
+
+    async def refresh(_request):
+        observe(expected[0])
+        return True
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet[:2] == bytes.fromhex("aa33"):
+            coordinator._notify_callback(None, bytearray(frame("aa3311")))
+
+    client.write_gatt_char.side_effect = write
+    monkeypatch.setattr(coordinator, "refresh_state", AsyncMock(side_effect=refresh))
+    monkeypatch.setattr(coordinator, "async_refresh_segments", AsyncMock(return_value=True))
+    assert await coordinator.async_restore_effect_control_state(prepared, overwritten_diy_code=None)
+    assert coordinator._same_static_appearance(prepared.state, coordinator.capture_effect_control_state())
 
 
 @pytest.mark.parametrize("failure", [TimeoutError, asyncio.CancelledError])

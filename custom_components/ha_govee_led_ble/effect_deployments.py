@@ -516,8 +516,12 @@ class PriorControlState:
                     intent = 0
                 if intent is None or native is not None and native != intent:
                     return None
-                if intent and not kelvin_rendering_matches(
-                    self.segment_colors[index], normalize_kelvin(intent, profile), profile
+                if (
+                    intent
+                    and native != intent
+                    and not kelvin_rendering_matches(
+                        self.segment_colors[index], normalize_kelvin(intent, profile), profile
+                    )
                 ):
                     return None
                 intents[index] = normalize_kelvin(intent, profile) if intent else 0

@@ -12,6 +12,7 @@ from custom_components.ha_govee_led_ble import coordinator as coordinator_module
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ModelProfile, device_profile
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator_modes import ModeTransitionSupersededError
 from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
 from custom_components.ha_govee_led_ble.effect_catalogue import WORKSHOP_PROTOCOL_FIXTURES, resolve_catalogue_template
 from custom_components.ha_govee_led_ble.effect_compiler import DIY_ACK_EVIDENCE, compile_application, compile_effect
@@ -20,7 +21,13 @@ from custom_components.ha_govee_led_ble.effect_deployments import (
     EffectDeploymentRepository,
     PriorControlState,
 )
-from custom_components.ha_govee_led_ble.effect_domain import BuiltinScene, LibraryItem, MusicProfile, SingleEffect
+from custom_components.ha_govee_led_ble.effect_domain import (
+    BuiltinScene,
+    LibraryItem,
+    MusicProfile,
+    RetainedSceneEffect,
+    SingleEffect,
+)
 from custom_components.ha_govee_led_ble.effect_preview import PreviewPhase
 from custom_components.ha_govee_led_ble.effect_runtime import EffectDeploymentEngine
 from custom_components.ha_govee_led_ble.effect_storage import LibrarySnapshot
@@ -34,6 +41,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     upload_ack_success,
 )
 from custom_components.ha_govee_led_ble.layered_scene import CatalogueRef
+from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_workshop_effect
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.music_commands import prepare_music_request
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
@@ -50,9 +58,11 @@ DIY_NO = frame("a30201")
 
 @pytest.fixture
 async def connected(hass, monkeypatch, request):
-    c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", getattr(request, "param", "H617A"), configuration_url=None)
-    if c.model in {"H6097", "H6046"}:
-        c.pact_type, c.pact_code = 2, 1
+    model = getattr(request, "param", "H617A")
+    model, pact = model if isinstance(model, tuple) else (model, 2)
+    c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", model, configuration_url=None)
+    if c.model in {"H6097", "H6046", "H6053"}:
+        c.pact_type, c.pact_code = pact, 1
         c._resolve_device_profile()
     client = MagicMock(is_connected=True, start_notify=AsyncMock(), write_gatt_char=AsyncMock())
     c._client = client
@@ -61,6 +71,10 @@ async def connected(hass, monkeypatch, request):
         c._note_identity(fw_version="3.02.24", hw_version="3.01.01")
         c._observe_identity_field("fw_version", c.fw_version)
         c._observe_identity_field("hw_version", c.hw_version)
+    if c.model == "H6053":
+        c._observe_pact(pact, 1)
+        c._observe_identity_field("fw_version", "1.08.05")
+        c._observe_identity_field("hw_version", "1.00.00")
     monkeypatch.setattr(c, "_ensure_connected", AsyncMock(return_value=client))
     monkeypatch.setattr(c, "_renew_foreground_lease", MagicMock())
     monkeypatch.setattr(coordinator_module, "UPLOAD_ACK_TIMEOUT", 0.02)
@@ -314,6 +328,103 @@ async def test_h6181_revision_uploads_require_matching_success_before_activation
     assert c._upload_ack is None
 
 
+@pytest.mark.parametrize(
+    "connected,carrier",
+    [(("H6053", 1), "diy"), ("H6053", "diy"), ("H6053", "rgb"), ("H6053", "rgbic_v1"), ("H6053", "rgbic_v2")],
+    indirect=["connected"],
+)
+@pytest.mark.parametrize("response", ["accepted", "rejected", "wrong_protocol"])
+async def test_retained_and_revision_uploads_wait_for_their_exact_ack(selection_ready, carrier, response):
+    c, client = selection_ready
+    if carrier == "diy":
+        content = SingleEffect(0, 0, 50, ((1, 2, 3),))
+    else:
+        raw = bytes.fromhex(
+            {
+                "rgb": "9301ffff800100ff0000",
+                "rgbic_v1": "011a000100010001ffff0080010100800101ff000000008000008000",
+                "rgbic_v2": "0a011e000100010001ffff0080010100800101ff00000000800000800000010000",
+            }[carrier]
+        )
+        effect, padding = decode_workshop_effect(c.model, raw, carrier=carrier)
+        content = RetainedSceneEffect(c.model, "retained", effect, raw, padding, carrier)
+    compiled = compile_application(
+        LibraryItem.new("Upload", content),
+        c.model,
+        diy_code=37 if carrier == "diy" else None,
+        profile=c.profile,
+    )
+    last_upload = len(compiled.upload_packets) - 1
+    subtype = upload_ack_subtype(compiled.upload_packets, last_upload, c.model, profile=c.profile)
+    assert upload_ack_mode(compiled.upload_packets, last_upload, c.model, profile=c.profile) is None
+    protocol = compiled.upload_packets[-1][0]
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet == compiled.upload_packets[-1]:
+            assert compiled.activation_packet not in [call.args[1] for call in client.write_gatt_char.call_args_list]
+            ack_protocol = (0xA3 if protocol == 0xA1 else 0xA1) if response == "wrong_protocol" else protocol
+            receive(client, frame(f"{ack_protocol:02x}{subtype:02x}{'01' if response == 'rejected' else '00'}"))
+
+    client.write_gatt_char.side_effect = write
+
+    async def apply():
+        await c.async_write_effect_sequence(
+            compiled.packets, intent=ControlIntent.APPLY, require_upload_ack=True, upload_ack_index=last_upload
+        )
+
+    if response == "accepted":
+        await apply()
+    else:
+        with pytest.raises((RuntimeError, TimeoutError)):
+            await apply()
+    sent = [call.args[1] for call in client.write_gatt_char.await_args_list]
+    assert sent == list(compiled.packets if response == "accepted" else compiled.upload_packets)
+    assert c._upload_ack is None
+
+
+@pytest.mark.parametrize("connected", [("H6053", 1), "H6053"], indirect=True)
+async def test_newer_scene_during_final_activation_invalidates_upload_completion(
+    selection_ready, monkeypatch, virtual_clock
+):
+    c, client = selection_ready
+    c.is_on = True
+    receive(client, frame("aa050a2500"))
+    item = LibraryItem.new("Superseded", SingleEffect(0, 0, 50, ((1, 2, 3),)))
+    compiled = compile_application(
+        item,
+        c.model,
+        diy_code=37,
+        profile=c.profile,
+    )
+    index = len(compiled.upload_packets) - 1
+    subtype = upload_ack_subtype(compiled.upload_packets, index, c.model, profile=c.profile)
+    protocol = compiled.upload_packets[-1][0]
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet == compiled.upload_packets[-1]:
+            receive(client, frame(f"{protocol:02x}{subtype:02x}00"))
+        elif packet == compiled.activation_packet:
+            for field in ("color_mode", "effect", "scene_code", "unknown_scene_code"):
+                if field in c._expected_state:
+                    virtual_clock.vtime = max(virtual_clock.vtime, c._expected_state[field][1])
+            receive(client, frame("aa05041800"))
+            assert c.scene_code == 24
+            assert c.diy_code is None
+
+    client.write_gatt_char.side_effect = write
+    repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
+    await repository.async_load()
+    engine = EffectDeploymentEngine(repository)
+    monkeypatch.setattr(engine, "_async_prepare_prior_state", AsyncMock(return_value=False))
+    monkeypatch.setattr(c, "async_restore_effect_control_state", AsyncMock(return_value=False))
+    with pytest.raises(ModeTransitionSupersededError):
+        await engine.async_apply_snapshot(
+            c, item, config_entry_id="entry-a", updated_at="2026-09-16T00:00:00Z", diy_code=37
+        )
+    assert c.scene_code == 24
+    assert c.diy_code is None
+
+
 @pytest.mark.parametrize("connected", ["H6097", "H600A"], indirect=True)
 @pytest.mark.parametrize("fault", ["missing", "rejected", "write_timeout", "disconnect"])
 async def test_diy_upload_requires_result_without_uncertain_replay(connected, fault):
@@ -445,13 +556,14 @@ async def test_h600a_connection_failure_before_upload_can_retry(connected):
     assert [call.args[1] for call in client.write_gatt_char.await_args_list] == list(compiled.packets)
 
 
-@pytest.mark.parametrize("connected", ["H6097", "H7025", "H6046"], indirect=True)
+@pytest.mark.parametrize("connected", ["H6097", "H7025", "H6046", ("H6053", 1), "H6053"], indirect=True)
 @pytest.mark.parametrize("accepted", [False, True])
 async def test_h7025_music_waits_for_positive_upload_result(selection_ready, accepted):
     c, client = selection_ready
     c.music_sensitivity = 42
-    mode, code = ("torch", "50") if c.model == "H6046" else ("hopping", "48")
-    expected = prepare_music_request(c.model, mode, 42, None, False, {})
+    mode, code = ("torch", "50") if c.model in {"H6046", "H6053"} else ("hopping", "48")
+    expected = prepare_music_request(c.model, mode, 42, None, False, {}, profile=c.profile)
+    selector = c.profile.outbound_transform(expected[-1]) if c.profile.outbound_transform else expected[-1]
 
     async def write(_uuid, packet, **_kwargs):
         if packet == expected[-2]:
@@ -466,15 +578,15 @@ async def test_h7025_music_waits_for_positive_upload_result(selection_ready, acc
             await c.async_select_music_slug(mode)
         assert c.music_body is None
     sent = [call.args[1] for call in client.write_gatt_char.await_args_list]
-    assert (expected[-1] in sent) is accepted
+    assert (selector in sent) is accepted
 
 
-@pytest.mark.parametrize("connected", ["H6097", "H7025", "H6046"], indirect=True)
+@pytest.mark.parametrize("connected", ["H6097", "H7025", "H6046", ("H6053", 1), "H6053"], indirect=True)
 @pytest.mark.parametrize("fault", ["missing_ack", "write_timeout", "disconnect"])
 async def test_h7025_uncertain_upload_is_not_automatically_replayed(selection_ready, fault):
     c, client = selection_ready
-    mode = "torch" if c.model == "H6046" else "hopping"
-    expected = prepare_music_request(c.model, mode, 99, None, False, {})
+    mode = "torch" if c.model in {"H6046", "H6053"} else "hopping"
+    expected = prepare_music_request(c.model, mode, 99, None, False, {}, profile=c.profile)
 
     async def reconnect():
         if c._client is not client:

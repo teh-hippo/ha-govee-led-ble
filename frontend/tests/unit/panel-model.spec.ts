@@ -6,7 +6,7 @@ import { decodeCustomCatalogue, decodeDevices, decodeEffectContent } from "../..
 import type { HomeAssistant, MusicProfileContent } from "../../src/types";
 import { device, painted, videoProfile, installH6199Catalogue, item, flowWorkspaceDevice, installFlowCatalogue } from "./panel-test-support";
 
-test.each(["workshop_rgb", "workshop_rgbic_v2"] as const)("retained %s content remains applicable and lossless without a fabricated body editor", (kind) => {
+test.each(["workshop_rgb", "workshop_rgbic_v2", "shared_scene_rgb", "shared_scene_rgbic_v1"] as const)("retained %s content remains applicable and lossless without a fabricated body editor", (kind) => {
   const model = new PanelModel(() => undefined);
   const target = device("retained", "H6053");
   target.custom_effects.workshop = "supported";
@@ -16,6 +16,10 @@ test.each(["workshop_rgb", "workshop_rgbic_v2"] as const)("retained %s content r
   model.editorSource = { kind: "saved", owner: { section: "custom", category: "advanced" }, itemId: "retained" };
   model.liveApplyEnabled = false;
   model.customCatalogue = decodeCustomCatalogue(backendContracts.responses.custom_catalogue);
+  if (kind.startsWith("shared_scene_")) {
+    target.custom_effects.workshop = "unsupported";
+    target.catalogue = model.customCatalogue.models.H6053;
+  }
   model.content = decodeEffectContent(backendContracts.content_samples[kind]);
   expect(isEditableEffectContent(model.content)).toBe(true);
   if (!isEditableEffectContent(model.content)) throw new Error("Missing retained content support");

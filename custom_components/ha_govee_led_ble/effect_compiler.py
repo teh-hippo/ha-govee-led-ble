@@ -53,10 +53,10 @@ from .effect_domain import (
     PaintedEffect,
     PaletteDiyEffect,
     PaletteScene,
+    RetainedSceneEffect,
     SingleEffect,
     StaticRgbComposition,
     VideoProfile,
-    WorkshopEffect,
     effect_content_workflow,
 )
 from .generated_protocol_adapter import build_diy_activation, build_scene_activation
@@ -139,7 +139,7 @@ class CompiledEffect:
     native_effect_revision: int = 0
     authored_diy: SingleEffect | MultiEffect | None = None
     upload_prefix: int | None = None
-    workshop_carrier: str | None = None
+    retained_scene: tuple[str, str] | None = None
 
     @property
     def packets(self) -> tuple[bytes, ...]:
@@ -240,7 +240,7 @@ def validate_compiled_geometry(compiled: CompiledApplication, profile: ModelProf
     profiled_layers = False
     if isinstance(compiled, CompiledEffect):
         profiled_layers = (compiled.rgbic_scene_v0 is not None or profile.rgbic_scene_v0 is not None) and (
-            compiled.content_kind in {"advanced", "workshop", "scene_layered"}
+            compiled.content_kind in {"advanced", "workshop", "shared_scene", "scene_layered"}
             or (compiled.scene_entry is not None and compiled.scene_entry.scene_type == 2)
         )
         if (
@@ -283,11 +283,11 @@ def validate_compiled_geometry(compiled: CompiledApplication, profile: ModelProf
             raise ValueError("Device native effect grammar changed since compilation")
         if compiled.native_effect_revision and compiled.native_effect_revision != profile.native_effect_revision:
             raise ValueError("Device native effect revision changed since compilation")
-        if compiled.content_kind == "workshop" and (
+        if compiled.retained_scene is not None and (
             compiled.upload_subtype,
             compiled.diy_code,
-        ) != _workshop_upload_route(compiled.model, compiled.workshop_carrier or "rgbic_v1", profile=profile):
-            raise ValueError("Device Workshop carrier changed since compilation")
+        ) != _retained_scene_upload_route(compiled.model, *compiled.retained_scene, profile=profile):
+            raise ValueError("Device retained scene carrier changed since compilation")
         if compiled.scene_entry is not None:
             entry = scene_for_profile(compiled.scene_entry, profile)
             selector = scene_selector_code(
@@ -433,14 +433,14 @@ def _target_compatibility(item: LibraryItem, model: str, *, profile: ModelProfil
         except ValueError as error:
             return CompatibilityResult(CompatibilityState.INCOMPATIBLE, (str(error),))
         return CompatibilityResult(CompatibilityState.COMPATIBLE)
-    if isinstance(content, WorkshopEffect):
+    if isinstance(content, RetainedSceneEffect):
         if content.model != model:
             return CompatibilityResult(
                 CompatibilityState.INCOMPATIBLE,
                 (f"Workshop effect targets {content.model}, not {model}",),
             )
         try:
-            _workshop_upload_route(model, content.carrier, profile=profile)
+            _retained_scene_upload_route(model, content.application, content.carrier, profile=profile)
         except ValueError as error:
             return CompatibilityResult(CompatibilityState.INCOMPATIBLE, (str(error),))
         return CompatibilityResult(CompatibilityState.COMPATIBLE)
@@ -627,9 +627,9 @@ def compile_effect(
         if isinstance(item.content, LayeredEffect) and item.content.native_diy is not None:
             resolved_diy_code = resolve_diy_code(item, diy_code, model=model, profile=profile)
         return compile_scene_effect(item, model, diy_code=resolved_diy_code, profile=profile)
-    if isinstance(item.content, WorkshopEffect):
+    if isinstance(item.content, RetainedSceneEffect):
         resolve_diy_code(item, diy_code, model=model, profile=profile)
-        return _compile_workshop_effect(item, model, profile=profile)
+        return _compile_retained_scene(item, model, profile=profile)
     raise ValueError("unsupported effect content")
 
 
@@ -647,9 +647,20 @@ def _has_fixed_diy_slot(model: str, *, profile: ModelProfile | None = None) -> b
     )
 
 
-def _workshop_upload_route(model: str, carrier: str, *, profile: ModelProfile | None = None) -> tuple[int, int]:
-    """Require Workshop authorization and an evidenced grammar/activation pair."""
+def _retained_scene_upload_route(
+    model: str, application: str, carrier: str, *, profile: ModelProfile | None = None
+) -> tuple[int, int]:
+    """Keep retained body format independent of its authorised application route."""
     profile = get_profile(model) if profile is None else profile
+    if application == "shared_scene":
+        workflow = CapabilityWorkflow.NATIVE_SCENES if carrier == "rgb" else CapabilityWorkflow.LAYERED_SCENES
+        require_effect_route(model, workflow, profile=profile)
+        for name, subtype, selector in profile.shared_scene_carriers:
+            if name == carrier:
+                return subtype, selector
+        raise ValueError(f"{model} has no {carrier} shared-scene carrier")
+    if application != "workshop":
+        raise ValueError("Unknown retained scene application")
     grammar = require_effect_route(model, CapabilityWorkflow.WORKSHOP, profile=profile)
     if profile.workshop_carriers:
         for name, subtype, selector in profile.workshop_carriers:
@@ -735,12 +746,12 @@ def resolve_diy_code(
         if not isinstance(requested, int) or isinstance(requested, bool) or not 0 <= requested <= 0xFFFF:
             raise ValueError("DIY code must be an integer from 0 to 65535")
         return requested
-    if isinstance(content, WorkshopEffect | PaletteDiyEffect):
+    if isinstance(content, RetainedSceneEffect | PaletteDiyEffect):
         model = content.model if model is None else model
         if content.model != model:
             raise ValueError(f"effect targets {content.model}, not {model}")
-        if isinstance(content, WorkshopEffect):
-            _, expected = _workshop_upload_route(model, content.carrier, profile=profile)
+        if isinstance(content, RetainedSceneEffect):
+            _, expected = _retained_scene_upload_route(model, content.application, content.carrier, profile=profile)
         else:
             require_effect_route(model, CapabilityWorkflow.PALETTE_DIY, ("H6199",), profile=profile)
             expected = H6199_PALETTE_DIY_APPLY_CODE
@@ -797,7 +808,7 @@ def resolve_diy_code(
     return None
 
 
-def _compile_workshop_effect(
+def _compile_retained_scene(
     item: LibraryItem,
     model: str,
     *,
@@ -805,8 +816,8 @@ def _compile_workshop_effect(
 ) -> CompiledEffect:
     profile = get_profile(model) if profile is None else profile
     content = item.content
-    if isinstance(content, WorkshopEffect):
-        body_kind, diy_code = _workshop_upload_route(model, content.carrier, profile=profile)
+    if isinstance(content, RetainedSceneEffect):
+        body_kind, diy_code = _retained_scene_upload_route(model, content.application, content.carrier, profile=profile)
         if content.model != model:
             raise ValueError(f"Workshop effect targets {content.model}, not {model}")
         payload = encode_workshop_effect(
@@ -818,7 +829,7 @@ def _compile_workshop_effect(
             raw_param=content.raw_param,
         )
         upload = tuple(fragment_a3(body_kind, payload))
-        content_kind = "workshop"
+        content_kind = content.application
     else:
         raise ValueError("content is not an upload-only effect")
 
@@ -827,7 +838,8 @@ def _compile_workshop_effect(
         diy_code,
         H6199_WORKSHOP_APPLY_MUSIC_CODE,
         scene_type=H617A_WORKSHOP_SCENE_TYPE
-        if profile.workshop_scene_selector is None
+        if content.application == "workshop"
+        and profile.workshop_scene_selector is None
         and profile.command_grammar in {"H6072", "H6072-legacy", "H607C", "H617A", "H7020"}
         else 0,
         profile=profile,
@@ -851,7 +863,7 @@ def _compile_workshop_effect(
             *((DIY_ACK_EVIDENCE,) if profile.diy_requires_upload_ack else ()),
         ),
         upload_subtype=body_kind,
-        workshop_carrier=content.carrier,
+        retained_scene=(content.application, content.carrier),
         rgbic_scene_v0=profile.rgbic_scene_v0,
         physical_ic_count=profile.physical_ic_count if profile.rgbic_scene_v0 is not None else None,
     )

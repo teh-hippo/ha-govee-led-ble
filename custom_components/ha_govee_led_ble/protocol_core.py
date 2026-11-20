@@ -433,6 +433,7 @@ H6053WireWrite = load_generated_class("h6053_wire_write", "H6053WireWrite")
 H6053StatusReply = load_generated_class("h6053_status_reply", "H6053StatusReply")
 H6053LegacyStatusReply = load_generated_class("h6053_legacy_status_reply", "H6053LegacyStatusReply")
 H6053EffectUpload = load_generated_class("h6053_effect_upload", "H6053EffectUpload")
+H6053CommandAck = load_generated_class("h6053_command_ack", "H6053CommandAck")
 
 H6072CommandWrite = load_generated_class("h6072_command_write", "H6072CommandWrite")
 H607cSceneBody = load_generated_class("h607c_scene_body", "H607cSceneBody")
@@ -577,6 +578,7 @@ _COMMAND_ACK_ROOTS = {
     "H600A": ("h600a_command_ack", H600aCommandAck),
     "H607C": ("h607c_command_ack", H607cCommandAck),
     "H6046": ("h6046_command_ack", H6046CommandAck),
+    "H6053": ("h6053_command_ack", H6053CommandAck),
     "H60A6": ("h60a6_command_ack", H60a6CommandAck),
     "H6125": ("h6125_command_ack", H6125CommandAck),
     "H6099": ("h6099_command_ack", H6099CommandAck),

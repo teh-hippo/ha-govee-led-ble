@@ -176,8 +176,7 @@ def encode_workshop_effect(
     raw_param: bytes = b"",
 ) -> bytes:
     """Serialize Workshop layers through the model-specific generated structure."""
-    profile = get_profile(model) if profile is None else profile
-    grammar = profile.effect_grammar
+    grammar = (get_profile(model) if profile is None else profile).effect_grammar
     if grammar == "H6053":
         source = parse_h6053_workshop_body(raw_param, carrier) if raw_param else None
         if carrier == "rgb":
@@ -219,7 +218,7 @@ def encode_workshop_effect(
         value = content
     else:
         raise ValueError(f"{model} has no Workshop grammar")
-    if profile.workshop_brightness_algorithm is not None:
+    if profile is not None and profile.workshop_brightness_algorithm is not None:
         for record in records:
             record.body.layer_flags = GoveeShared.BrightnessFlagsWithAlgorithm(
                 record.body.layer_flags, profile.workshop_brightness_algorithm

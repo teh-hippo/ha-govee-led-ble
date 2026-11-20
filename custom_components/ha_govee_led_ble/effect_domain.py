@@ -490,20 +490,30 @@ class MultiEffect:
         _validate_palette(self.palette)
 
 
+_RETAINED_SCENE_KINDS = {
+    ("workshop", "rgb"): "workshop_rgb",
+    ("workshop", "rgbic_v1"): "workshop",
+    ("workshop", "rgbic_v2"): "workshop_rgbic_v2",
+    ("shared_scene", "rgb"): "shared_scene_rgb",
+    ("shared_scene", "rgbic_v1"): "shared_scene_rgbic_v1",
+}
+
+
 @dataclass(frozen=True, slots=True)
-class WorkshopEffect:
+class RetainedSceneEffect:
     model: str
     template: str
     effect: LayeredEffect | None
     raw_param: bytes = b""
     trailing_padding: int = 0
     carrier: str = "rgbic_v1"
+    application: str = "workshop"
 
     def __post_init__(self) -> None:
-        _validate_supported_model(self.model, "Workshop")
-        _validate_identifier(self.template, "Workshop template")
-        if self.carrier not in {"rgb", "rgbic_v1", "rgbic_v2"}:
-            raise EffectValidationError("Unknown Workshop carrier")
+        _validate_supported_model(self.model, "Retained scene")
+        _validate_identifier(self.template, "Retained scene template")
+        if (self.application, self.carrier) not in _RETAINED_SCENE_KINDS:
+            raise EffectValidationError("Unknown retained scene application or carrier")
         if self.carrier == "rgb":
             if self.effect is not None or not self.raw_param or self.trailing_padding:
                 raise EffectValidationError("RGB Workshop requires retained source bytes without layered content")
@@ -626,7 +636,7 @@ type EffectContent = (
     | H6179MixedDiyEffect
     | MultiEffect
     | LayeredEffect
-    | WorkshopEffect
+    | RetainedSceneEffect
     | BuiltinScene
     | PaletteScene
     | LayeredScene
@@ -648,8 +658,14 @@ def effect_content_workflow(content: EffectContent) -> str | None:
             return "palette_diy"
         case LayeredEffect():
             return "advanced"
-        case WorkshopEffect():
-            return "workshop"
+        case RetainedSceneEffect():
+            return (
+                "workshop"
+                if content.application == "workshop"
+                else "native_scenes"
+                if content.carrier == "rgb"
+                else "layered_scenes"
+            )
         case BuiltinScene():
             return "native_scenes"
         case PaletteScene():
@@ -785,8 +801,8 @@ class LibraryItem:
         if (
             content_hash
             and content_hash != effect_content_hash(content)
-            and isinstance(content, LayeredEffect | LayeredScene | WorkshopEffect)
-            and (not isinstance(content, WorkshopEffect) or content.effect is not None)
+            and isinstance(content, LayeredEffect | LayeredScene | RetainedSceneEffect)
+            and (not isinstance(content, RetainedSceneEffect) or content.effect is not None)
         ):
             legacy = _content_to_dict(content)
             body = legacy if isinstance(content, LayeredEffect) else cast(dict[str, Any], legacy["effect"])
@@ -1003,9 +1019,9 @@ def _content_to_dict(content: EffectContent) -> dict[str, JsonValue]:
             "speed": content.speed,
             "palette": [list(colour) for colour in content.palette],
         }
-    if isinstance(content, WorkshopEffect):
+    if isinstance(content, RetainedSceneEffect):
         return {
-            "kind": {"rgb": "workshop_rgb", "rgbic_v2": "workshop_rgbic_v2"}.get(content.carrier, "workshop"),
+            "kind": _RETAINED_SCENE_KINDS[content.application, content.carrier],
             "model": content.model,
             "template": content.template,
             "effect": layered_effect_to_value(content.effect) if content.effect is not None else None,
@@ -1155,8 +1171,9 @@ def _content_from_dict(raw: Mapping[str, Any]) -> EffectContent:
             speed=_required_int(raw, "speed"),
             palette=_palette_from_value(raw.get("palette")),
         )
-    if kind in {"workshop", "workshop_rgb", "workshop_rgbic_v2"}:
-        return WorkshopEffect(
+    if kind in _RETAINED_SCENE_KINDS.values():
+        application, carrier = next(key for key, value in _RETAINED_SCENE_KINDS.items() if value == kind)
+        return RetainedSceneEffect(
             model=_required_str(raw, "model"),
             template=_required_str(raw, "template"),
             effect=layered_effect_from_value(_required_mapping(raw, "effect"))
@@ -1164,7 +1181,8 @@ def _content_from_dict(raw: Mapping[str, Any]) -> EffectContent:
             else None,
             raw_param=_hex_bytes(raw.get("raw_param", ""), "Workshop source parameter"),
             trailing_padding=_optional_int(raw, "trailing_padding") or 0,
-            carrier={"workshop_rgb": "rgb", "workshop_rgbic_v2": "rgbic_v2"}.get(kind, "rgbic_v1"),
+            carrier=carrier,
+            application=application,
         )
     if kind == "advanced":
         return layered_effect_from_value(raw)

@@ -38,6 +38,8 @@ const knownContentFamilies = [
   "workshop",
   "workshop_rgb",
   "workshop_rgbic_v2",
+  "shared_scene_rgb",
+  "shared_scene_rgbic_v1",
   "scene_builtin",
   "scene_palette",
   "scene_layered",

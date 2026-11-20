@@ -11,6 +11,7 @@ from .const import ReadDomain, get_profile, same_control_profile
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator_base import _CoordinatorBase
 from .coordinator_refresh import RefreshRequest
+from .coordinator_sources import segment_colour_matches
 from .coordinator_status import ParsedMode
 from .light_commands import (
     SegmentColorGroup,
@@ -18,7 +19,6 @@ from .light_commands import (
     build_segment_paint,
     kelvin_rendering_matches,
     parse_static_write,
-    static_colour_matches,
 )
 from .native_profile_controls import ProfileWriter
 
@@ -197,7 +197,10 @@ class _SegmentMixin(_CoordinatorBase):
                 expectation = self._expected_state.get(f"segment_colour_{index}")
                 if expectation is not None:
                     expected, deadline = expectation
-                    if static_colour_matches(rendered, expected, self.profile) or time.monotonic() < deadline:
+                    if (
+                        segment_colour_matches(self._as_coordinator, index, rendered, expected)
+                        or time.monotonic() < deadline
+                    ):
                         continue
                     self._expected_state.pop(f"segment_colour_{index}", None)
                 if (
@@ -205,7 +208,7 @@ class _SegmentMixin(_CoordinatorBase):
                     and (previous != rendered or expectation is not None)
                     or intent is not None
                     and intent > 0
-                    and not kelvin_rendering_matches(rendered, intent, self.profile)
+                    and not segment_colour_matches(self._as_coordinator, index, rendered, intent)
                 ):
                     self.segment_kelvin[index] = None
         if self._static_rgb_known and self.segment_colors != colours:
