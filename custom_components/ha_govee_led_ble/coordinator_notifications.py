@@ -1023,7 +1023,14 @@ class _NotificationMixin(_CoordinatorBase):
                 )
                 if self._accept_expected("is_on", value):
                     self.is_on = value
-                    observed = ("is_on",)
+                    observed += ("is_on",)
+                if self.profile.setting_grammar == "H6093":
+                    sound, volume = int(generated.body.sound_code), int(generated.body.volume)
+                    self.local_sound = sound if 1 <= sound <= len(self.profile.local_sound_options) else None
+                    bounds = self.profile.local_volume_range
+                    self.local_volume = volume if bounds is not None and bounds[0] <= volume <= bounds[1] else None
+                    self.local_sound_playing = bool(generated.body.sound_playing)
+                    observed += ("local_sound", "local_volume")
             elif domain is StatusDomain.BRIGHTNESS:
                 if not self.profile.can_read(ReadDomain.BRIGHTNESS):
                     self._record_parsed_status(frame, decoded, parser)

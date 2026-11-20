@@ -33,7 +33,7 @@ _CONTROL_FIELDS = {
 
 
 def control_value(coordinator: GoveeBLECoordinator, control: ProjectorControl) -> int | bool | None:
-    value = current_appearance(coordinator)
+    value = presented_appearance(coordinator)
     if value is None:
         return None
     group, field = _CONTROL_FIELDS[control]
@@ -98,20 +98,26 @@ def source_state(
             if coordinator._power_known or coordinator.source_field_fresh("is_on")
             else (None, None, None)
         )
-    value = current_appearance(coordinator)
-    if value is None and coordinator.projector_mode_active and coordinator._projector_profile is not None:
-        if same_control_profile(coordinator._projector_profile, coordinator.profile):
-            value = coordinator.projector_appearance
+    value = presented_appearance(coordinator)
     if value is None:
         return None, None, None
     if key == "stars":
         return value.stars.enabled, value.stars.brightness, None
     if key == "coarse_aurora":
-        return value.enabled and value.coarse_enabled, None, None
+        return value.enabled and (value.fine is None or value.coarse_enabled), None, None
     if key == "fine_aurora":
-        return value.enabled and value.fine_enabled, None, None
+        return value.enabled and (value.fine is None or value.fine_enabled), None, None
     colours = (*value.coarse, *(value.fine or ()))
-    return value.enabled, value.brightness, colours[0] if colours and len(set(colours)) == 1 else None
+    enabled = value.enabled and (value.fine is None or value.coarse_enabled or value.fine_enabled)
+    return enabled, value.brightness, colours[0] if colours and len(set(colours)) == 1 else None
+
+
+def presented_appearance(coordinator: GoveeBLECoordinator) -> ProjectorAppearance | None:
+    value = current_appearance(coordinator)
+    if value is None and coordinator.projector_mode_active and coordinator._projector_profile is not None:
+        if same_control_profile(coordinator._projector_profile, coordinator.profile):
+            value = coordinator.projector_appearance
+    return value
 
 
 def qualified_profile(coordinator: GoveeBLECoordinator) -> ModelProfile:
@@ -322,16 +328,21 @@ async def source_request(
             colour = request.rgb_color if request is not None else None
             brightness = request.brightness_pct if request is not None else None
             enabling_pattern = enabled and key in {"coarse_aurora", "fine_aurora"}
+            if key in {"coarse_aurora", "fine_aurora"} and value.fine is None:
+                value = replace(value, fine=value.coarse, coarse_enabled=True, fine_enabled=True)
+            enabling_empty_aurora = enabled and key == "aurora" and not (value.coarse_enabled or value.fine_enabled)
             value = replace(
                 value,
                 enabled=enabled if key == "aurora" else True if enabled else value.enabled,
                 coarse_enabled=(
                     enabled
                     if key == "coarse_aurora"
-                    else value.coarse_enabled and (value.enabled or not enabling_pattern)
+                    else enabling_empty_aurora or value.coarse_enabled and (value.enabled or not enabling_pattern)
                 ),
                 fine_enabled=(
-                    enabled if key == "fine_aurora" else value.fine_enabled and (value.enabled or not enabling_pattern)
+                    enabled
+                    if key == "fine_aurora"
+                    else enabling_empty_aurora or value.fine_enabled and (value.enabled or not enabling_pattern)
                 ),
                 brightness=value.brightness if brightness is None else brightness,
                 coarse=value.coarse if colour is None else (colour,),

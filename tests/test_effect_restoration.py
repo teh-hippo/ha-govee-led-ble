@@ -39,6 +39,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
 )
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.light_commands import parse_static_write
+from custom_components.ha_govee_led_ble.light_source import GoveeBLESourceLight
 from custom_components.ha_govee_led_ble.music_commands import edit_music_body
 from custom_components.ha_govee_led_ble.music_semantics import music_variant
 from custom_components.ha_govee_led_ble.projector import ProjectorAppearance, ProjectorStars
@@ -222,6 +223,10 @@ def physical(hass, monkeypatch, request):
             native=True,
             upload=[],
             speaker=True,
+            sound_enabled=False,
+            sound_code=1,
+            volume=50,
+            settings={"pairing_prompt": False, "quiet_start": False, "dreamview_laser": False},
         )
 
     async def transmit(_uuid, packet, **_kwargs):
@@ -250,6 +255,21 @@ def physical(hass, monkeypatch, request):
                     state["speaker"] = False
             elif packet[1:3] == b"\x30\x01" and model == "H6093":
                 state["on"] = bool(packet[3])
+            elif packet[1] == 0x30 and model == "H6093":
+                setting = {3: "pairing_prompt", 4: "quiet_start", 6: "sound_enabled", 7: "dreamview_laser"}[packet[2]]
+                if fault != "setting":
+                    if setting == "sound_enabled":
+                        state[setting] = bool(packet[3])
+                        state["speaker"] = bool(packet[3])
+                    else:
+                        state["settings"][setting] = bool(packet[3])
+            elif packet[1] == 0x31 and model == "H6093":
+                if fault != "setting":
+                    state["speaker"] = bool(packet[2])
+                    state["sound_code"] = 1 if fault == "sound_selection" else packet[3]
+            elif packet[1] == 0x32 and model == "H6093":
+                if fault != "setting":
+                    state["volume"] = packet[2]
             elif packet[1] == 4 and fault != "brightness":
                 state["brightness"] = packet[2]
             elif packet[1:3] == b"\x05\x04":
@@ -291,8 +311,25 @@ def physical(hass, monkeypatch, request):
             if domain == 1 and fault != "missing_power":
                 coordinator._notify_callback(None, reply(1, [int(state["on"])]))
             elif domain == 0x34 and model == "H6093" and fault != "missing_power":
+                flags = (
+                    (0x40 if state["on"] else 0)
+                    | (4 if state["sound_enabled"] else 0)
+                    | (8 if state["settings"]["pairing_prompt"] else 0)
+                    | (32 if state["settings"]["quiet_start"] else 0)
+                    | (2 if state["settings"]["dreamview_laser"] else 0)
+                )
                 coordinator._notify_callback(
-                    None, reply(0x34, [(0x40 if state["on"] else 0) | 4, state["brightness"], 128, 1, 50])
+                    None,
+                    reply(
+                        0x34,
+                        [
+                            flags,
+                            state["brightness"],
+                            128 if state["speaker"] else 0,
+                            state["sound_code"],
+                            state["volume"],
+                        ],
+                    ),
                 )
             elif domain == 4 and fault != "missing_brightness":
                 coordinator._notify_callback(None, reply(4, [state["brightness"]]))
@@ -522,6 +559,140 @@ async def test_individual_projector_pattern_enable_keeps_its_effectively_off_sib
     value = state["projector"]
     assert value.enabled and value.coarse_enabled
     assert not value.fine_enabled and value.fine is not None
+
+
+@pytest.mark.parametrize("physical", [("H6093", (1, 2)), ("H6093", (2, 1))], indirect=True)
+@pytest.mark.parametrize("unified", [False, True])
+async def test_projector_source_power_composes_effective_child_output(physical, unified):
+    coordinator, state = physical
+    await initialise(coordinator)
+    if unified:
+        await apply_appearance(coordinator, replace(state["projector"], fine=None))
+    aurora = GoveeBLESourceLight(coordinator, "aurora")
+    coarse = GoveeBLESourceLight(coordinator, "coarse_aurora")
+    fine = GoveeBLESourceLight(coordinator, "fine_aurora")
+    await fine.async_turn_off()
+    assert state["projector"].fine is not None and not state["projector"].fine_enabled
+    assert coarse.is_on and not fine.is_on and aurora.is_on
+    await coarse.async_turn_off()
+    assert not aurora.is_on
+    await aurora.async_turn_on()
+    assert aurora.is_on and coarse.is_on and fine.is_on
+    assert state["projector"].coarse_enabled and state["projector"].fine_enabled
+    await fine.async_turn_off()
+    await aurora.async_turn_off()
+    await aurora.async_turn_on()
+    assert coarse.is_on and not fine.is_on
+
+
+@pytest.mark.parametrize("physical", ["H6093"], indirect=True)
+async def test_planned_projector_release_retains_all_appearance_presentation_not_authority(physical):
+    from custom_components.ha_govee_led_ble.projector import ProjectorControl
+    from custom_components.ha_govee_led_ble.projector_runtime import control_value
+
+    coordinator, state = physical
+    await apply_appearance(coordinator, state["projector"])
+    before = {control: control_value(coordinator, control) for control in ProjectorControl}
+    coordinator._present = True
+    coordinator._clear_client_state(coordinator._client, preserve_static_baseline=True)
+    assert coordinator.available
+    assert {control: control_value(coordinator, control) for control in ProjectorControl} == before
+    assert not coordinator.projector_appearance_observed
+    with pytest.raises(HomeAssistantError):
+        qualified_profile(coordinator)
+    coordinator._advance_profile_generation()
+    assert all(control_value(coordinator, control) is None for control in ProjectorControl)
+
+
+@pytest.mark.parametrize("physical", [("H6093", (1, 1)), ("H6093", (1, 2)), ("H6093", (2, 1))], indirect=True)
+async def test_local_audio_and_settings_use_verified_controls_without_appearance(physical):
+    from custom_components.ha_govee_led_ble.number import GoveeBLELocalVolume
+    from custom_components.ha_govee_led_ble.select import GoveeBLELocalSoundSelect
+    from custom_components.ha_govee_led_ble.switch import GoveeBLEControlSwitch
+
+    coordinator, state = physical
+    entry = MagicMock(runtime_data=coordinator)
+    sound = GoveeBLELocalSoundSelect(entry)
+    volume = GoveeBLELocalVolume(entry)
+    playback = GoveeBLEControlSwitch(entry, "local_sound_enabled")
+    light_before = state["projector"]
+    await sound.async_select_option("train")
+    assert sound.current_option == "train" and state["sound_code"] == 18 and playback.is_on
+    assert frame("33300601") in state["packets"]
+    assert frame("33310112") in state["packets"]
+    await volume.async_set_native_value(0)
+    assert volume.native_value == 0 and state["volume"] == 0
+    assert frame("333200") in state["packets"]
+    await playback.async_turn_off()
+    assert not playback.is_on and not state["speaker"]
+    await playback.async_turn_on()
+    assert playback.is_on and state["speaker"] and state["sound_code"] == 18
+    for setting in ("quiet_start", "pairing_prompt"):
+        entity = GoveeBLEControlSwitch(entry, setting)
+        await entity.async_turn_on()
+        assert entity.is_on and state["settings"][setting]
+        await entity.async_turn_off()
+        assert not entity.is_on and not state["settings"][setting]
+    assert state["projector"] == light_before and state["on"]
+    assert coordinator.projector_appearance is None
+    assert not any(packet[0] == 0xA3 for packet in state["packets"])
+    state["fault"] = "setting"
+    with pytest.raises(HomeAssistantError):
+        await volume.async_set_native_value(100)
+
+
+@pytest.mark.parametrize("physical", ["H6093"], indirect=True)
+async def test_local_sound_sequence_rejects_invalid_input_and_replacement_subscription(physical):
+    coordinator, state = physical
+    for control, value in (("local_sound", 0), ("local_sound", 19), ("local_volume", 101), ("local_volume", True)):
+        with pytest.raises(ValueError):
+            await coordinator.async_set_local_audio(control, value)
+    assert state["packets"] == []
+    transmit = coordinator._client.write_gatt_char.side_effect
+
+    async def replace_subscription(uuid, packet, **kwargs):
+        await transmit(uuid, packet, **kwargs)
+        if packet[:4] == b"\x33\x30\x06\x01":
+            coordinator._notification_token = object()
+
+    coordinator._client.write_gatt_char.side_effect = replace_subscription
+    with pytest.raises(ValueError, match="sequence authority changed"):
+        await coordinator.async_set_local_audio("local_sound", 18)
+    assert not any(packet[:2] == b"\x33\x31" for packet in state["packets"])
+    assert coordinator.local_sound is None
+    assert coordinator.boolean_control_state.get("local_sound_enabled") is None
+
+
+@pytest.mark.parametrize("physical", ["H6093"], indirect=True)
+async def test_playback_start_rejects_a_different_reported_track_without_replay(physical):
+    coordinator, state = physical
+    await coordinator.async_set_local_audio("local_sound", 18)
+    state["fault"] = "sound_selection"
+    state["packets"].clear()
+    with pytest.raises(ValueError, match="selected local sound"):
+        await coordinator.async_set_boolean_control("local_sound_enabled", True)
+    assert state["speaker"] and state["sound_code"] == 1
+    assert state["packets"].count(frame("33310112")) == 1
+
+
+@pytest.mark.parametrize("physical", [("H6093", (1, 1)), ("H6093", (1, 2)), ("H6093", (2, 1))], indirect=True)
+async def test_dreamview_laser_setting_requires_fresh_exact_revision(physical):
+    coordinator, state = physical
+    permitted = (coordinator.pact_type, coordinator.pact_code) == (2, 1)
+    packet = frame("33300701")
+    coordinator._connection_pacts.clear()
+    coordinator._confirmed_identity_fields.clear()
+    with pytest.raises(HomeAssistantError):
+        coordinator._validate_authorized_packet(packet)
+    state["packets"].clear()
+    if permitted:
+        await coordinator.async_set_boolean_control("dreamview_laser", True)
+        assert state["settings"]["dreamview_laser"]
+        assert any(value[:2] == b"\xaa\xef" for value in state["packets"])
+    else:
+        with pytest.raises(ValueError):
+            await coordinator.async_set_boolean_control("dreamview_laser", True)
+        assert not any(value[0] == 0x33 for value in state["packets"])
 
 
 @pytest.mark.parametrize("physical", ["H617A", "H1771"], indirect=True)

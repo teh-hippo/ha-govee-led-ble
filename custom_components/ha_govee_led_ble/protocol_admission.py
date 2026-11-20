@@ -60,16 +60,36 @@ def _check_low_blue_light_packet(frame: bytes, profile: ModelProfile) -> bool:
 
 
 def _check_projector_packet(frame: bytes, profile: ModelProfile) -> bool:
-    if profile.projector_grammar != "H6093":
+    if profile.projector_grammar != "H6093" and profile.setting_grammar != "H6093":
         return False
     power = _parse_xor_frame(
         frame, "power", {"power": ("h6093_projector.setting_write", H6093Projector.SettingWrite)}
     ).parsed
     if power is not None:
-        if power.body.selector != H6093Projector.Setting.projection_power or "power" not in (
-            profile.command_operations or ()
+        setting = getattr(power.body.selector, "name", None)
+        if not (
+            setting == "projection_power"
+            and "power" in (profile.command_operations or ())
+            or profile.setting_grammar == "H6093"
+            and setting in profile.boolean_controls
         ):
-            raise ValueError("Projection power is outside the profile")
+            raise ValueError("Projector setting is outside the profile")
+        return True
+    audio = _parse_xor_frame(
+        frame, "audio", {"audio": ("h6093_projector.audio_write", H6093Projector.AudioWrite)}
+    ).parsed
+    if audio is not None:
+        if profile.setting_grammar != "H6093":
+            raise ValueError("Local audio is outside the profile")
+        if audio.opcode == H6093Projector.Command.local_sound:
+            allowed = 1 <= audio.body.code <= len(profile.local_sound_options)
+        else:
+            allowed = (
+                profile.local_volume_range is not None
+                and profile.local_volume_range[0] <= audio.body.level <= profile.local_volume_range[1]
+            )
+        if not allowed:
+            raise ValueError("Local audio is outside the product bounds")
         return True
     query = _parse_xor_frame(
         frame, "query", {"query": ("h6093_projector.power_query", H6093Projector.PowerQuery)}

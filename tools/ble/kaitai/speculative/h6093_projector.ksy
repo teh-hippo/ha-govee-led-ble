@@ -28,8 +28,14 @@ enums:
   command:
     0x05: mode
     0x30: setting
+    0x31: local_sound
+    0x32: local_volume
   setting:
     1: projection_power
+    3: pairing_prompt
+    4: quiet_start
+    6: local_sound_enabled
+    7: dreamview_laser
   upload_kind:
     0x05: scene
     0x0c: appearance
@@ -48,6 +54,39 @@ enums:
     3: flash
     4: steady
 types:
+  audio_write:
+    seq:
+      - id: header
+        contents: [0x33]
+      - id: opcode
+        type: u1
+        enum: command
+        valid:
+          any-of: [command::local_sound, command::local_volume]
+      - id: body
+        type:
+          switch-on: opcode
+          cases:
+            'command::local_sound': sound_body
+            'command::local_volume': volume_body
+      - id: checksum
+        type: u1
+  sound_body:
+    seq:
+      - id: playing
+        type: u1
+        valid:
+          any-of: [0, 1]
+      - id: code
+        type: u1
+      - id: opaque_tail
+        size: 15
+  volume_body:
+    seq:
+      - id: level
+        type: u1
+      - id: opaque_tail
+        size: 16
   setting_write:
     seq:
       - id: header

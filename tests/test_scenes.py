@@ -1,6 +1,7 @@
 import base64
 from collections import Counter
 from typing import cast
+from uuid import uuid4
 
 import pytest
 from kaitaistruct import KaitaiStructError
@@ -8,6 +9,7 @@ from kaitaistruct import KaitaiStructError
 from custom_components.ha_govee_led_ble.const import get_profile
 from custom_components.ha_govee_led_ble.effect_compiler import require_native_scenes
 from custom_components.ha_govee_led_ble.effect_domain import (
+    LibraryItem,
     NativeEffect,
     effect_content_from_dict,
     effect_content_to_dict,
@@ -67,6 +69,28 @@ def test_projector_catalogue_round_trips_native_optics_and_uses_its_own_scene_se
             assert reassemble_a3(packets[:-1])[2] == 5
     assert MODEL_SCENES["H6093"]["forest"].code != MODEL_SCENES["H600A"]["forest"].code
     assert MODEL_SCENES["H6093"]["rainbow"].code != MODEL_SCENES["H600A"]["rainbow"].code
+
+
+def test_projector_combined_templates_preserve_independent_patterns():
+    from custom_components.ha_govee_led_ble.effect_compiler import compile_native_effect
+    from custom_components.ha_govee_led_ble.projector_protocol import decode_projector
+    from custom_components.ha_govee_led_ble.projector_templates import projector_templates
+
+    templates = projector_templates()
+    compiled = {
+        preset: compile_native_effect(
+            LibraryItem(uuid4(), 1, "2026-11-20T00:00:00+00:00", "Pattern", templates[preset - 1].content),
+            "H6093",
+        )
+        for preset in (10, 11, 12, 13)
+    }
+    assert len({value.upload_packets for value in compiled.values()}) == 4
+    for preset, patterns in ((12, (1, 2)), (13, (2, 1))):
+        raw = reassemble_a3(compiled[preset].upload_packets)
+        layer = decode_projector(b"\x48" + raw[3:]).projector_layers[0]
+        assert layer.fine is not None
+        assert layer.coarse.enabled and layer.fine.enabled
+        assert (layer.coarse.pattern, layer.fine.pattern) == patterns
 
 
 def test_catalogue_valid():

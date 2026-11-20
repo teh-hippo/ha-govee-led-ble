@@ -358,6 +358,8 @@ class ModelProfile:
     effect_retry_after_upload: bool = True
     packet_write_delay: float = 0.0
     boolean_controls: frozenset[str] = frozenset()
+    local_sound_options: tuple[str, ...] = ()
+    local_volume_range: tuple[int, int] | None = None
     restarting_boolean_controls: frozenset[str] = frozenset()
     supports_power_on_behaviour: bool = False
     supports_ripple_speed: bool = False
@@ -467,10 +469,25 @@ class ModelProfile:
             raise ValueError("unknown DIY upload transport")
         if not self.restarting_boolean_controls <= self.boolean_controls:
             raise ValueError("restarting settings must be declared boolean controls")
+        if self.local_sound_options and (
+            len(self.local_sound_options) > 255
+            or len(set(self.local_sound_options)) != len(self.local_sound_options)
+            or any(not isinstance(option, str) or not option for option in self.local_sound_options)
+        ):
+            raise ValueError("Local sound options must be unique named byte selectors")
+        if (
+            self.local_volume_range is not None
+            and not 0 <= self.local_volume_range[0] <= self.local_volume_range[1] <= 255
+        ):
+            raise ValueError("Local volume range must fit the native byte level")
         if not self.boolean_controls <= {
             "gradual",
             "limit",
             "power_off_memory",
+            "pairing_prompt",
+            "quiet_start",
+            "local_sound_enabled",
+            "dreamview_laser",
             *NATIVE_ZONE_CONTROLS,
         }:
             raise ValueError("unknown boolean device setting")
@@ -973,6 +990,29 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         reconciles_marker_pact=True,
         profile_pact_dependent=True,
         projector_grammar="H6093",
+        setting_grammar="H6093",
+        local_volume_range=(0, 100),
+        boolean_controls=frozenset({"pairing_prompt", "quiet_start", "local_sound_enabled", "dreamview_laser"}),
+        local_sound_options=(
+            "deep_water",
+            "night_sky",
+            "lullaby",
+            "woodland_birds",
+            "summer_insects",
+            "light_rain",
+            "running_water",
+            "ocean_surf",
+            "fire",
+            "rain_drops",
+            "bird_calls",
+            "waterside_breeze",
+            "wind",
+            "calm",
+            "upbeat",
+            "night_music",
+            "clock",
+            "train",
+        ),
         light_sources=(
             LightSource("aurora", "aurora_enabled", (), color_modes=frozenset({"rgb"}), native_control=True),
             LightSource(
@@ -3648,7 +3688,12 @@ def device_profile(
         sources = tuple(
             source for source in profile.light_sources if revision != 0 or source.key in {"aurora", "stars"}
         )
-        return replace(profile, projector_control_revision=revision, light_sources=sources)
+        controls = (
+            profile.boolean_controls
+            if (pact_type, pact_code) == (2, 1)
+            else profile.boolean_controls - {"dreamview_laser"}
+        )
+        return replace(profile, projector_control_revision=revision, light_sources=sources, boolean_controls=controls)
     if model == "H6159":
         from .protocol_transforms import whole_rgb_outbound_transform
 

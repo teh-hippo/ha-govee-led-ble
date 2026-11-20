@@ -48,6 +48,11 @@ def parse_command_result(
         setting = _parse_xor_frame(frame, effective_profile.setting_grammar, _ORDINARY_SETTING_ROOTS)
         if setting.parsed is not None and getattr(setting.parsed.opcode, "name", None) is not None:
             return setting
+    if effective_profile.setting_grammar == "H6093":
+        for kind, root in (("setting_write", H6093Projector.SettingWrite), ("audio_write", H6093Projector.AudioWrite)):
+            setting = _parse_xor_frame(frame, kind, {kind: (f"h6093_projector.{kind}", root)})
+            if setting.parsed is not None:
+                return setting
     if effective_profile.projector_grammar == "H6093":
         activation = _parse_xor_frame(
             frame, "projector", {"projector": ("h6093_projector.activation", H6093Projector.Activation)}

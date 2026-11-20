@@ -42,6 +42,9 @@ def projector_templates() -> tuple[CatalogueTemplate, ...]:
             selected_stars = replace(
                 stars, enabled=True, flicker_enabled=preset in (10, 12), movement_enabled=preset in (11, 13)
             )
+        if preset in (12, 13):
+            coarse = replace(source, pattern=1 if preset == 12 else 2)
+            fine = replace(source, pattern=2 if preset == 12 else 1)
         content = NativeEffect(
             model="H6093",
             family=712,

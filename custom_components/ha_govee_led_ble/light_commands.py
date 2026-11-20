@@ -341,7 +341,7 @@ def static_write_from_command(generated: Any, profile: ModelProfile) -> ParsedSt
                 else None,
             )
     if profile.command_grammar in WHOLE_BULB_GRAMMARS:
-        if not generated.is_static:
+        if generated.opcode.name != "mode" or not generated.is_static:
             return None
         detail = generated.body.detail
         rgb = (int(detail.rgb.red), int(detail.rgb.green), int(detail.rgb.blue))
