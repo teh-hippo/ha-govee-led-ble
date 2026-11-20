@@ -20,6 +20,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - uses: home-assistant/actions/hassfest@f6f29a7ee3fa0eccadf3620a7b9ee00ab54ec03b  # master pinned 2026-05-07
 
   hacs:
@@ -27,6 +29,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - uses: hacs/action@dcb30e72781db3f207d5236b861172774ab0b485  # main pinned 2026-05-07
         with:
           category: integration
@@ -35,12 +39,14 @@ jobs:
 
   browser:
     name: Browser tests
-    needs: core
+    needs: fixtures
     runs-on: ubuntu-latest
     container:
       image: mcr.microsoft.com/playwright:v1.64.1-noble@sha256:2f05f8a734509a7b3f26a912639488ee08f58a7b292d14d62271bcff9038768f
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version-file: .node-version
@@ -48,41 +54,40 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
-          artifact-ids: ${{ needs.core.outputs.fixture_artifact_id }}
+          artifact-ids: ${{ needs.fixtures.outputs.artifact_id }}
           path: frontend/tests/fixtures
       - run: npm --prefix frontend ci --ignore-scripts
       - run: npm --prefix frontend run test:browser
 
-  core:
-    name: Core checks
+  fixtures:
+    name: Contract fixtures
     needs: build
     runs-on: ubuntu-latest
     outputs:
-      fixture_artifact_id: ${{ steps.fixtures.outputs.artifact-id }}
+      artifact_id: ${{ steps.fixtures.outputs.artifact-id }}
     env:
       UV_CACHE_DIR: /tmp/.uv-cache
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
-          node-version-file: .node-version
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          persist-credentials: false
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: false
-      - id: runner-image
-        run: echo "os=$ImageOS" >> "$GITHUB_OUTPUT"
-      # Release commits change uv.lock, so fall back to the newest cache with the same image and Python.
+      - name: Resolve Python cache identity
+        id: cache-identity
+        run: |
+          echo "os=$ImageOS" >> "$GITHUB_OUTPUT"
+          uv run --no-sync python -c \
+            'import platform, sysconfig; print("python="+platform.python_version()+"-"+str(sysconfig.get_config_var("SOABI")))' \
+            >> "$GITHUB_OUTPUT"
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ${{ env.UV_CACHE_DIR }}
-          key: uv-${{ steps.runner-image.outputs.os }}-${{ runner.arch }}-${{ hashFiles('.python-version') }}-${{ hashFiles('uv.lock') }}
-          restore-keys: uv-${{ steps.runner-image.outputs.os }}-${{ runner.arch }}-${{ hashFiles('.python-version') }}-
+          key: uv-v2-${{ steps.cache-identity.outputs.os }}-${{ runner.arch }}-${{ steps.cache-identity.outputs.python }}-${{ hashFiles('uv.lock', 'pyproject.toml', 'uv.toml', '.python-version') }}
+          restore-keys: uv-v2-${{ steps.cache-identity.outputs.os }}-${{ runner.arch }}-${{ steps.cache-identity.outputs.python }}-
       - name: Install project dependencies
-        run: |
-          uv sync --locked
-          npm --prefix frontend ci --ignore-scripts
+        run: uv sync --locked
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           artifact-ids: ${{ needs.build.outputs.artifact_id }}
@@ -97,13 +102,7 @@ jobs:
           uv run --no-sync python scripts/package.py \
             --source custom_components/ha_govee_led_ble \
             --verify-archive .build/ci-package/ha_govee_led_ble.zip
-      # mypy validates each cached module itself, so any earlier cache is a safe starting point.
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: .mypy_cache
-          key: mypy-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
-          restore-keys: mypy-${{ runner.os }}-${{ runner.arch }}-
-      - run: make check-code
+      - run: make fixtures
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         id: fixtures
         with:
@@ -113,20 +112,97 @@ jobs:
           retention-days: 7
       - run: uv cache prune --ci
 
+  core:
+    name: Core checks
+    needs: [build, fixtures]
+    runs-on: ubuntu-latest
+    env:
+      UV_CACHE_DIR: /tmp/.uv-cache
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: false
+      - name: Resolve Python cache identity
+        id: cache-identity
+        run: |
+          echo "os=$ImageOS" >> "$GITHUB_OUTPUT"
+          uv run --no-sync python -c \
+            'import platform, sysconfig; print("python="+platform.python_version()+"-"+str(sysconfig.get_config_var("SOABI")))' \
+            >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ env.UV_CACHE_DIR }}
+          key: uv-v2-${{ steps.cache-identity.outputs.os }}-${{ runner.arch }}-${{ steps.cache-identity.outputs.python }}-${{ hashFiles('uv.lock', 'pyproject.toml', 'uv.toml', '.python-version') }}
+          restore-keys: uv-v2-${{ steps.cache-identity.outputs.os }}-${{ runner.arch }}-${{ steps.cache-identity.outputs.python }}-
+      - name: Install project dependencies
+        run: |
+          uv sync --locked
+          npm --prefix frontend ci --ignore-scripts
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          artifact-ids: ${{ needs.build.outputs.artifact_id }}
+          path: .build/ci-package
+      - name: Verify build artifact checksum
+        working-directory: .build/ci-package
+        run: sha256sum --check ha_govee_led_ble.zip.sha256
+      - name: Restore generated build outputs
+        run: |
+          unzip -q -n -DD .build/ci-package/ha_govee_led_ble.zip -d custom_components/ha_govee_led_ble
+          uv run --no-sync python scripts/package.py \
+            --source custom_components/ha_govee_led_ble \
+            --verify-archive .build/ci-package/ha_govee_led_ble.zip
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          artifact-ids: ${{ needs.fixtures.outputs.artifact_id }}
+          path: frontend/tests/fixtures
+      # mypy validates each cached module itself, so any earlier cache is a safe starting point.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: .mypy_cache
+          key: mypy-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
+          restore-keys: mypy-${{ runner.os }}-${{ runner.arch }}-
+      - run: make check-code
+      - run: uv cache prune --ci
+
+  workflow-lint:
+    name: Workflow lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@90f833d396d0cc3674b631d2d225e306476c303a # v5
+        with:
+          install_args: actionlint zizmor
+      - run: make check-workflows
+
   check:
     name: Check
     if: ${{ always() }}
-    needs: [core, browser, package]
+    needs: [fixtures, core, browser, package, workflow-lint]
     runs-on: ubuntu-latest
     steps:
-      - name: Require code, browser and reproducibility checks
+      - name: Require complete validation
         env:
+          FIXTURES_RESULT: ${{ needs.fixtures.result }}
           CORE_RESULT: ${{ needs.core.result }}
           BROWSER_RESULT: ${{ needs.browser.result }}
           PACKAGE_RESULT: ${{ needs.package.result }}
+          WORKFLOW_LINT_RESULT: ${{ needs.workflow-lint.result }}
         run: |
-          if [[ "$CORE_RESULT" != "success" || "$BROWSER_RESULT" != "success" || "$PACKAGE_RESULT" != "success" ]]; then
-            echo "::error::Core checks: $CORE_RESULT; browser tests: $BROWSER_RESULT; package: $PACKAGE_RESULT"
+          if [[ "$FIXTURES_RESULT" != "success" || "$CORE_RESULT" != "success" ||
+                "$BROWSER_RESULT" != "success" || "$PACKAGE_RESULT" != "success" ||
+                "$WORKFLOW_LINT_RESULT" != "success" ]]; then
+            echo "::error::Fixtures: $FIXTURES_RESULT; core: $CORE_RESULT; browser: $BROWSER_RESULT"
+            echo "::error::Package: $PACKAGE_RESULT; workflow lint: $WORKFLOW_LINT_RESULT"
             exit 1
           fi
 
@@ -137,6 +213,8 @@ jobs:
       artifact_id: ${{ steps.upload.outputs.artifact-id }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version-file: .node-version
@@ -172,6 +250,8 @@ jobs:
       UV_CACHE_DIR: /tmp/.uv-cache
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version-file: .node-version
@@ -180,14 +260,18 @@ jobs:
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: false
-      - id: runner-image
-        run: echo "os=$ImageOS" >> "$GITHUB_OUTPUT"
-      # Release commits change uv.lock, so fall back to the newest cache with the same image and Python.
+      - name: Resolve Python cache identity
+        id: cache-identity
+        run: |
+          echo "os=$ImageOS" >> "$GITHUB_OUTPUT"
+          uv run --no-sync python -c \
+            'import platform, sysconfig; print("python="+platform.python_version()+"-"+str(sysconfig.get_config_var("SOABI")))' \
+            >> "$GITHUB_OUTPUT"
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ${{ env.UV_CACHE_DIR }}
-          key: uv-${{ steps.runner-image.outputs.os }}-${{ runner.arch }}-${{ hashFiles('.python-version') }}-${{ hashFiles('uv.lock') }}
-          restore-keys: uv-${{ steps.runner-image.outputs.os }}-${{ runner.arch }}-${{ hashFiles('.python-version') }}-
+          key: uv-v2-${{ steps.cache-identity.outputs.os }}-${{ runner.arch }}-${{ steps.cache-identity.outputs.python }}-${{ hashFiles('uv.lock', 'pyproject.toml', 'uv.toml', '.python-version') }}
+          restore-keys: uv-v2-${{ steps.cache-identity.outputs.os }}-${{ runner.arch }}-${{ steps.cache-identity.outputs.python }}-
       - uses: jdx/mise-action@90f833d396d0cc3674b631d2d225e306476c303a # v5
         with:
           install_args: github:kaitai-io/kaitai_struct_compiler

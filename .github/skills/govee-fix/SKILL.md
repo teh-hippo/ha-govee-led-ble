@@ -26,7 +26,7 @@ Task list:
    Otherwise justify a narrow, typed, capability-selected override that preserves the shared validation, transport and recovery boundaries.
    Migrate affected callers.
    Protect the corrected contract in existing shared tests; characterise genuine device constraints without creating a test suite or permanent workaround for each report.
-3. Review, commit, `make check`, PR (references the issue without an automatic closing keyword).
+3. Close independent acceptance review following `CONTRIBUTING.md`, commit, `make check`, PR (references the issue without an automatic closing keyword).
 4. Follow `CONTRIBUTING.md` release policy.  If reporter testing is needed before merge, obtain approval for an optional PR candidate (`docs/release-candidates.md`).  Otherwise, merge the green PR and use its automatic master candidate.  Verify the published workflow and assets; do not publish stable.
 5. Draft a short reply for the reporter and show it to the operator; post it only once they approve:
    > This should fix `<the problem>`. Install `<RC tag>` through HACS, restart Home Assistant and confirm whether it works.

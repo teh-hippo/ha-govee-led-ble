@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./test";
 
 test("calibration and zone sliders emit intermediate and committed edits", async ({ page }) => {
   await page.goto("/tests/browser/fixtures/video-profile-editor.html?alternate");

@@ -153,6 +153,10 @@ import sys
 from pathlib import Path
 
 root = Path.cwd()
+args = sys.argv[1:]
+if log_path := os.environ.get("FAKE_GATE_LOG"):
+    with Path(log_path).open("a") as log:
+        log.write("npm " + " ".join(args) + "\\n")
 if "--version" in sys.argv:
     print("11.17.0")
     raise SystemExit
@@ -162,6 +166,10 @@ if "ci" in sys.argv:
     shutil.copy2(root / "frontend/package-lock.json", destination)
     raise SystemExit
 if "build" not in sys.argv:
+    if any(command in args for command in ("typecheck", "test:unit", "test:browser")):
+        assert (root / "custom_components/ha_govee_led_ble/generated_protocol/sample.py").is_file()
+        assert (root / "frontend/tests/fixtures/backend-contracts.json").is_file()
+        raise SystemExit(1 if os.environ.get("FAKE_GATE_FAILURE") in args else 0)
     raise SystemExit(f"unsupported npm invocation: {sys.argv[1:]}")
 output = Path(os.environ["FRONTEND_OUT_DIR"])
 output.mkdir(parents=True, exist_ok=True)
@@ -179,9 +187,29 @@ digest = hashlib.sha256(source).hexdigest()[:8]
     )
     _executable(
         bin_dir / "uv",
+        """#!/usr/bin/env python3
+import os
+import sys
+from pathlib import Path
+
+args = sys.argv[1:]
+if log_path := os.environ.get("FAKE_GATE_LOG"):
+    with Path(log_path).open("a") as log:
+        log.write("uv " + " ".join(args) + "\\n")
+if "tools.generate_frontend_contract_fixtures" in args:
+    assert Path("custom_components/ha_govee_led_ble/generated_protocol/sample.py").is_file()
+    path = Path("frontend/tests/fixtures/backend-contracts.json")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("{}\\n")
+if os.environ.get("FAKE_GATE_FAILURE") == "ruff" and "ruff" in args:
+    raise SystemExit(1)
+""",
+    )
+    _executable(
+        bin_dir / "mise",
         """#!/usr/bin/env bash
 set -euo pipefail
-exit 0
+[[ "$*" == "exec -- actionlint" || "$*" == "exec -- zizmor --no-progress .github/workflows" ]]
 """,
     )
 
@@ -225,6 +253,44 @@ def _make_fails(root: Path, env: dict[str, str], *targets: str) -> subprocess.Co
     )
     assert result.returncode != 0, f"{result.stdout}\n{result.stderr}"
     return result
+
+
+@pytest.mark.parametrize(
+    ("target", "failure"), [("check-fast", ""), ("check", "ruff"), ("check", "typecheck"), ("check", "")]
+)
+def test_gate_prepares_once_and_fails_before_expensive_checks(
+    build_repo: tuple[Path, dict[str, str]], target: str, failure: str
+) -> None:
+    root, env = build_repo
+    fixture = root / "frontend/tests/fixtures/backend-contracts.json"
+    fixture.unlink()
+    log = root / "gate.log"
+    env.update(FAKE_GATE_LOG=str(log), FAKE_GATE_FAILURE=failure)
+
+    (_make_fails if failure else _make)(root, env, target)
+
+    commands = log.read_text().splitlines()
+    assert commands.count("uv sync --locked") == 1
+    if failure == "ruff":
+        assert not fixture.exists()
+        assert not any(path.exists() for path in _generated_files(root))
+    else:
+        assert fixture.is_file()
+        assert all(path.is_file() for path in _generated_files(root))
+        assert commands.count("uv run --no-sync python -m tools.generate_frontend_contract_fixtures") == 1
+    if failure or target == "check-fast":
+        assert not (root / ".build/verify-protocol").exists()
+        assert not any("pytest" in command or "test:browser" in command for command in commands)
+    else:
+        assert commands.count("npm --prefix frontend run test:unit") == 1
+        verification = next(command for command in commands if "pytest tests/test_kaitai_protocol.py" in command)
+        full_tests = next(command for command in commands if "pytest tests/ -n" in command)
+        assert (
+            commands.index("npm --prefix frontend run typecheck")
+            < commands.index(verification)
+            < commands.index(full_tests)
+        )
+        assert commands.index(full_tests) < commands.index("npm --prefix frontend run test:browser")
 
 
 def test_build_is_incremental_and_rebuilds_missing_outputs(build_repo: tuple[Path, dict[str, str]]) -> None:

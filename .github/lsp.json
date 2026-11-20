@@ -1,0 +1,15 @@
+{
+  "lspServers": {
+    "typescript": {
+      "command": "mise",
+      "args": ["exec", "--", "typescript-language-server", "--stdio"],
+      "cwd": "frontend",
+      "fileExtensions": {
+        ".ts": "typescript",
+        ".tsx": "typescriptreact",
+        ".mts": "typescript",
+        ".cts": "typescript"
+      }
+    }
+  }
+}

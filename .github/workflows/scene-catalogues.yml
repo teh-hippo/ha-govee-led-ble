@@ -24,6 +24,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           python-version-file: .python-version
@@ -45,6 +46,7 @@ jobs:
           git switch -C "$DRIFT_BRANCH"
           git add custom_components/ha_govee_led_ble/scene_catalogues
           git commit -m "chore: refresh scene catalogues"
+          gh auth setup-git
 
           remote_sha="$(git ls-remote --heads origin "refs/heads/$DRIFT_BRANCH" | awk '{print $1}')"
           if [[ -n "$remote_sha" ]]; then

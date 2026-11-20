@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./test";
 import type { GoveePaintedSegmentEditor } from "../../src/painted-segment-editor";
 import type { GoveeCustomEffectEditor } from "../../src/custom-effect-editor";
 

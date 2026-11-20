@@ -26,8 +26,8 @@ Task list:
    Complete support should normally add product declarations and evidenced codecs, not another entity, coordinator, editor or recovery path.
    Where existing machinery cannot express a capability, correct or extend that machinery for all affected callers; keep an override only for evidenced semantic differences.
 4. Run `govee-audit` on both completeness and special treatment in the result.
-   Fix supported root causes as fixups to the support commit, remove superseded code, re-review, and repeat until no actionable findings remain.
-5. Review, commit, `make check`, PR (references the request without automatic issue-closing keywords).
+   Fix every supported coupled root cause, remove superseded code and re-review invalidated acceptance following `CONTRIBUTING.md`.
+5. Complete independent acceptance review through that audit or fresh-context code review, commit, `make check`, PR (references the request without automatic issue-closing keywords).
 6. When the PR is green, merge it to `master`.
 7. Follow `CONTRIBUTING.md` release policy: wait for the automatic master candidate containing the merge and verify its workflow and assets.  Do not dispatch another master RC or publish stable.
 8. Show the requester reply draft to the operator; after approval, post it on the request and leave it open:
