@@ -2839,6 +2839,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     ),
     "H6182": ModelProfile(
         "H6182 RGB TV Backlight",
+        support_quality=SupportQuality.SUPPORTED,
         confirmation_issue=654,
         reconciles_marker_pact=True,
         command_grammar="H6181",
