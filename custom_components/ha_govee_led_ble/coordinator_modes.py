@@ -49,6 +49,7 @@ if TYPE_CHECKING:
 
 
 class ModeTransitionPurpose(StrEnum):
+    STATIC_EDIT = "static_edit"
     SELECTION = "selection"
     PREVIEW = "preview"
     RECOVERY = "recovery"

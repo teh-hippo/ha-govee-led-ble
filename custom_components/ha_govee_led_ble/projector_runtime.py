@@ -11,6 +11,7 @@ from homeassistant.exceptions import HomeAssistantError
 
 from .const import DOMAIN, ReadDomain, same_control_profile
 from .control_arbiter import ControlIntent, async_control_intent
+from .coordinator_modes import ModeTransitionPurpose
 from .coordinator_refresh import STATE_QUERY_TIMEOUT, RefreshRequest
 from .generated_protocol_adapter import BulkStatusCollector, build_brightness, build_power, require_profile_packet
 from .projector import ProjectorAppearance, ProjectorControl, ProjectorStars
@@ -42,17 +43,10 @@ def control_value(coordinator: GoveeBLECoordinator, control: ProjectorControl) -
 
 
 async def required_appearance(coordinator: GoveeBLECoordinator) -> ProjectorAppearance:
-    value = current_appearance(coordinator)
-    if value is None and coordinator.projector_appearance is not None:
-        await prepare_baseline(coordinator)
-        value = current_appearance(coordinator)
-    if value is None and coordinator._pre_mode_snapshot is not None:
-        async with coordinator._async_qualified_static_history():
-            value = coordinator.require_static_baseline().projector_appearance
-    if value is None and qualified_profile(coordinator).projector_control_revision == 0:
-        value = await read_appearance(coordinator)
+    baseline = await coordinator.async_prepare_static_baseline()
+    value = baseline.projector_appearance
     if value is None:
-        raise HomeAssistantError(translation_domain=DOMAIN, translation_key="recovery_not_ready")
+        raise coordinator._static_recovery_error()
     return value
 
 
@@ -65,7 +59,10 @@ async def set_control(coordinator: GoveeBLECoordinator, control: ProjectorContro
         4 if field == "pattern" else 100
     ):
         raise ValueError("Projector level is outside its bounds")
-    async with async_control_intent(coordinator, ControlIntent.USER):
+    async with (
+        async_control_intent(coordinator, ControlIntent.USER),
+        coordinator.async_mode_transition(purpose=ModeTransitionPurpose.STATIC_EDIT),
+    ):
         async with coordinator._lock:
             client = await coordinator._ensure_connected()
             await coordinator._async_confirm_pact(client)
@@ -128,7 +125,7 @@ def qualified_profile(coordinator: GoveeBLECoordinator) -> ModelProfile:
         or coordinator._h607c_pact_conflict
         or not coordinator.identity_fields_confirmed(frozenset({"pact"}))
     ):
-        raise HomeAssistantError(translation_domain=DOMAIN, translation_key="recovery_not_ready")
+        raise HomeAssistantError(translation_domain=DOMAIN, translation_key="identity_not_ready")
     return coordinator.profile
 
 
@@ -295,7 +292,10 @@ async def initialise(coordinator: GoveeBLECoordinator) -> None:
 async def source_request(
     coordinator: GoveeBLECoordinator, key: str, enabled: bool, request: SourceTurnOnRequest | None = None
 ) -> None:
-    async with async_control_intent(coordinator, ControlIntent.USER):
+    async with (
+        async_control_intent(coordinator, ControlIntent.USER),
+        coordinator.async_mode_transition(purpose=ModeTransitionPurpose.STATIC_EDIT),
+    ):
         async with coordinator._lock:
             client = await coordinator._ensure_connected()
             await coordinator._async_confirm_pact(client)
@@ -377,4 +377,4 @@ async def prepare_baseline(coordinator: GoveeBLECoordinator) -> None:
     ):
         install_appearance(coordinator, retained, observed=False)
     if refreshed is not True or current_appearance(coordinator) is None:
-        raise HomeAssistantError(translation_domain=DOMAIN, translation_key="recovery_not_ready")
+        raise coordinator._static_recovery_error()

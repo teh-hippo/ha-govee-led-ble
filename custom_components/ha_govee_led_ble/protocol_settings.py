@@ -723,7 +723,11 @@ def parse_boolean_control(generated: Any, model: str, *, profile: ModelProfile |
     domain = getattr(generated, "domain", None)
     domain = domain if isinstance(domain, str) else getattr(domain, "name", "")
     if profile.setting_grammar == "H6093" and domain == "power":
-        return {name: bool(getattr(generated.body, name)) for name in profile.boolean_controls}
+        return {
+            name: bool(getattr(generated.body, name))
+            for name in profile.boolean_controls
+            if hasattr(generated.body, name)
+        }
     if profile.setting_grammar == "H60B2" and domain == "zone_enable":
         if any(getattr(generated.body, name) not in (0, 1) for name in ("bottom", "middle", "top")):
             raise ValueError("Invalid source power flags")

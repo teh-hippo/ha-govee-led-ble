@@ -1,10 +1,15 @@
 """Shared base entity for the Govee BLE integration."""
 
+import logging
 from collections.abc import Awaitable, Callable, Hashable
 
+from bleak.exc import BleakError
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .coordinator import GoveeBLECoordinator
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class GoveeBLEEntity(CoordinatorEntity[GoveeBLECoordinator]):
@@ -23,4 +28,15 @@ class GoveeBLEEntity(CoordinatorEntity[GoveeBLECoordinator]):
 
     async def _async_latest(self, operation: Callable[[], Awaitable[None]], *key: Hashable) -> None:
         """Send this request unless a newer request for the same control replaces it while queued."""
-        await self.coordinator.latest_requests.run((self.unique_id, *key), operation)
+        try:
+            await self.coordinator.latest_requests.run((self.unique_id, *key), operation)
+        except (BleakError, ValueError, TimeoutError, HomeAssistantError) as error:
+            cause = error.__cause__ if isinstance(error, HomeAssistantError) else error
+            if isinstance(cause, BleakError | ValueError | TimeoutError):
+                _LOGGER.warning(
+                    "Device command failed operation=%s model=%s failure=%s",
+                    type(self).__name__,
+                    self.coordinator.model,
+                    type(cause).__name__,
+                )
+            raise

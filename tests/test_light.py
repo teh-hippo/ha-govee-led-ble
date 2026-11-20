@@ -556,17 +556,25 @@ async def test_mixed_colour_and_effect_request_finishes_in_effect_mode(light, mo
     assert light.effect == "Rainbow"
 
 
-async def test_power_rollback(light, mock_coordinator):
+async def test_power_rollback(light, mock_coordinator, caplog):
+    caplog.clear()
     mock_coordinator.send_command = AsyncMock(side_effect=[None, BleakError("fail")])
     with pytest.raises(HomeAssistantError) as turn_on:
         await light.async_turn_on(brightness=128)
     assert turn_on.value.translation_key == "device_command_failed"
+    assert f"operation=GoveeBLELight model={mock_coordinator.model} failure=BleakError" in caplog.text
+    assert mock_coordinator.address not in caplog.text
     assert mock_coordinator.is_on is False and mock_coordinator.brightness_pct == 100
     mock_coordinator.is_on = True
-    mock_coordinator.send_command = AsyncMock(side_effect=BleakError("timeout"))
+    cause = BleakError("private arbitrary error text")
+    mock_coordinator.send_command = AsyncMock(side_effect=cause)
+    caplog.clear()
     with pytest.raises(HomeAssistantError) as turn_off:
         await light.async_turn_off()
     assert turn_off.value.translation_key == "device_command_failed"
+    assert turn_off.value.__cause__ is cause
+    assert f"operation=GoveeBLELight model={mock_coordinator.model} failure=BleakError" in caplog.text
+    assert "private arbitrary error text" not in caplog.text and mock_coordinator.address not in caplog.text
     assert mock_coordinator.is_on is True
 
 

@@ -16,12 +16,20 @@ from .protocol_core import (
     H66a0VideoCommand,
     H605cVideoCommand,
     H6093Projector,
+    H6093StatusReply,
     ProtocolParseRejection,
     ProtocolParseResult,
     _has_unknown_discriminator,
     _parse_xor_frame,
 )
 from .protocol_settings import _NATIVE_SETTING_ROOTS, _ORDINARY_SETTING_ROOTS
+
+_STATUS_NOTIFICATION_ROOTS: dict[str | None, tuple[tuple[str, Any], ...]] = {
+    "H6093": (
+        ("h6093_status_reply.brightness_notification", H6093StatusReply.BrightnessNotification),
+        ("h6093_status_reply.power_notification", H6093StatusReply.PowerNotification),
+    ),
+}
 
 
 def parse_status_result(
@@ -33,7 +41,13 @@ def parse_status_result(
     setting = parse_setting(frame, profile)
     if setting.parsed is not None:
         return setting
-    return _parse_xor_frame(frame, profile.status_grammar, _STATUS_ROOTS)
+    result = _parse_xor_frame(frame, profile.status_grammar, _STATUS_ROOTS)
+    if result.parsed is None:
+        for name, root in _STATUS_NOTIFICATION_ROOTS.get(profile.status_grammar, ()):
+            notification = _parse_xor_frame(frame, name, {name: (name, root)})
+            if notification.parsed is not None:
+                return notification
+    return result
 
 
 def parse_status(frame: bytes, model: str = "H617A", *, profile: ModelProfile | None = None) -> Any | None:
