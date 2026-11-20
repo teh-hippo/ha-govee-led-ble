@@ -94,7 +94,10 @@ def build_h617a_diy_painted(
     groups: Sequence[DiyPaintGroup] = (),
     *,
     segment_count: int = SEGMENT_COUNT,
+    grammar: str = "H617A",
 ) -> list[bytes]:
+    if grammar == "H607C":
+        return build_h607c_diy_painted(effect, speed, brightness, background, groups, segment_count=segment_count)
     if not isinstance(segment_count, int) or isinstance(segment_count, bool) or not 1 <= segment_count <= 255:
         raise ValueError("painted address count must be from 1 to 255")
     if effect not in DIY_PAINTED_EFFECTS:
@@ -116,7 +119,7 @@ def build_h617a_diy_painted(
                 raise ValueError(f"painted segment {segment} appears in more than one group")
             seen_segments.add(segment)
         encoded_groups.append((group.fill, segments))
-    body = build_h617a_diy_painted_body(effect, speed, brightness, background, encoded_groups)
+    body = build_h617a_diy_painted_body(effect, speed, brightness, background, encoded_groups, grammar=grammar)
     return fragment_a3(0x03, body)
 
 

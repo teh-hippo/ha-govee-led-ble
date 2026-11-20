@@ -31,6 +31,8 @@ H66a0MusicParameters = load_generated_class("h66a0_music_parameters", "H66a0Musi
 H66a0MusicWrite = load_generated_class("h66a0_music_write", "H66a0MusicWrite")
 H1a42MusicParameters = load_generated_class("h1a42_music_parameters", "H1a42MusicParameters")
 H1a42MusicWrite = load_generated_class("h1a42_music_write", "H1a42MusicWrite")
+H1ab2MusicWrite = load_generated_class("h1ab2_music_write", "H1ab2MusicWrite")
+H1ab2MusicParameters = load_generated_class("h1ab2_music_parameters", "H1ab2MusicParameters")
 H61f5MusicParameters = load_generated_class("h61f5_music_parameters", "H61f5MusicParameters")
 H61f5MusicWrite = load_generated_class("h61f5_music_write", "H61f5MusicWrite")
 MusicBody = load_generated_class("music_body", "MusicBody")
@@ -73,6 +75,7 @@ MUSIC_MODE_CODES_BY_MODEL: Final[Mapping[str, Mapping[str, int]]] = MappingProxy
         "H6097": MappingProxyType({mode.name: int(mode) for mode in H6097MusicWrite.MusicMode}),
         "H66A0": MappingProxyType({mode.name: int(mode) for mode in H66a0MusicWrite.MusicMode}),
         "H1A42": MappingProxyType({mode.name: int(mode) for mode in H1a42MusicWrite.MusicMode}),
+        "H1AB2": MappingProxyType({mode.name: int(mode) for mode in H1ab2MusicWrite.MusicMode}),
         "H61F5": MappingProxyType({mode.name: int(mode) for mode in H61f5MusicWrite.MusicMode}),
         "H6076": _H6076_MODE_CODES,
         "H6072": _H6076_MODE_CODES,
@@ -102,6 +105,13 @@ _MUSIC_STYLE_CODES_BY_MODEL: Final[Mapping[str, frozenset[int]]] = MappingProxyT
         "H6097": _H617A_STYLE_CODES,
         "H66A0": frozenset({int(H66a0MusicWrite.MusicMode.rhythm), int(H66a0MusicWrite.MusicMode.bloom)}),
         "H1A42": frozenset({int(H1a42MusicWrite.MusicMode.rhythm)}),
+        "H1AB2": frozenset(
+            {
+                int(H1ab2MusicWrite.MusicMode.rhythm),
+                int(H1ab2MusicWrite.MusicMode.bloom),
+                int(H1ab2MusicWrite.MusicMode.shiny),
+            }
+        ),
         "H61F5": _H617A_STYLE_CODES,
         "H6076": frozenset({int(H6076MusicWrite.MusicMode.rhythm)}),
         "H6072": frozenset({int(H6076MusicWrite.MusicMode.rhythm)}),
@@ -125,6 +135,7 @@ _MUSIC_PARAMETER_WRITE_CODES_BY_MODEL: Final[Mapping[str, frozenset[int]]] = Map
         "H6097": frozenset(int(mode) for mode in H6097MusicParameters.CompanionMode),
         "H66A0": frozenset(int(mode) for mode in H66a0MusicParameters.MusicMode),
         "H1A42": frozenset(int(mode) for mode in H1a42MusicParameters.MusicMode),
+        "H1AB2": frozenset(int(mode) for mode in H1ab2MusicParameters.MusicMode),
         "H61F5": frozenset(int(mode) for mode in H61f5MusicParameters.MusicMode),
         "H6076": frozenset(int(mode) for mode in H6076MusicBody.MusicMode),
         "H6072": frozenset(int(mode) for mode in H6076MusicBody.MusicMode),

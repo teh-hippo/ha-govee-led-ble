@@ -60,6 +60,30 @@ H = bytes.fromhex
 
 
 @pytest.mark.parametrize(
+    "ic,mode,parameters,tail",
+    [
+        (50, "piano_keys", {"key_count": 30, "gradient": True}, "011e23010f"),
+        (12, "piano_keys", {"key_count": 12, "gradient": False}, "000c0a0306"),
+        (50, "day_and_night", {"speed": 100}, "076400"),
+        (12, "day_and_night", {}, "063200"),
+    ],
+)
+def test_native_strip_music_keeps_exact_selector_geometry_and_independent_speed_default(ic, mode, parameters, tail):
+    profile = replace(MODEL_PROFILES["H1AB2"], physical_ic_count=ic)
+    compiled = compile_music_profile(
+        LibraryItem.new("Onboard", MusicProfile("H1AB2", mode, 42, parameters=parameters, palette=((1, 2, 3),))),
+        "H1AB2",
+        profile=profile,
+    )
+    code = 7 if mode == "piano_keys" else 55
+    expected_body = bytes((code, 1, 1, 2, 3)) + H(tail)
+    assert reassemble_a3(compiled.packets[1:-1]) == (H("010241") + expected_body).ljust(34, b"\0")
+    selector = bytes((0x33, 5, 0x13, code, 42)).ljust(19, b"\0")
+    assert compiled.packets[-1] == selector + bytes((xor_checksum(selector),))
+    assert expectations_from_packet(compiled.packets[-1], "H1AB2")["music_mode"] == mode
+
+
+@pytest.mark.parametrize(
     "mode,code,parameters,tail",
     [
         ("shiny", 49, {}, "0a6408"),

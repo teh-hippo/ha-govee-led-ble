@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 
 import backendContracts from "../fixtures/backend-contracts.json";
 import { EffectStudioApi } from "../../src/api";
+import { effectContentEligible } from "../../src/effect-editor-model";
 import {
   decodeCustomCatalogue,
   decodeDevices,
@@ -54,6 +55,17 @@ test("custom catalogue admission remains bounded with the complete model invento
   expect(() => decodeCustomCatalogue(catalogue)).toThrow(/custom-effect catalogue must not exceed .* bytes/);
 });
 
+test("Mixed speed zero remains eligible independently of Basic speed bounds", () => {
+  const catalogue = decodeCustomCatalogue(responses.custom_catalogue).models.H1AB2;
+  const palette: [number, number, number][] = [[255, 0, 0], [0, 0, 255]];
+  expect(effectContentEligible({
+    kind: "h617a_multi", effects: [{ family: 0, variant: 0 }], speed: 0, palette,
+  }, catalogue, "H1AB2", 10)).toBe(true);
+  expect(effectContentEligible({
+    kind: "h617a_single", family: 0, variant: 0, speed: 0, palette,
+  }, catalogue, "H1AB2", 10)).toBe(false);
+});
+
 test("canonical backend responses decode through the production validators", () => {
   const info = decodeEditorApiInfo(responses.editor_info);
   expect(isCompatibleEditorInfo(info)).toBe(true);
@@ -72,6 +84,7 @@ test("canonical backend responses decode through the production validators", () 
     "H6099",
     "H66A0",
     "H1A42",
+    "H1AB2",
     "H61F5",
     "H6117",
     "H6125",

@@ -245,7 +245,7 @@ def test_snapshot_omits_an_unverified_default_rewrite(monkeypatch):
     }
 
 
-@pytest.mark.parametrize("sku", ["H1771", "H60A1", "H7020", "H7025"])
+@pytest.mark.parametrize("sku", ["H1AB2", "H1771", "H60A1", "H7020", "H7025"])
 def test_snapshot_uses_metadata_defaults_without_enabling_other_skus(monkeypatch, sku):
     monkeypatch.setattr(
         "tools.ble.refresh_scene_catalogues._parse_scene_records",

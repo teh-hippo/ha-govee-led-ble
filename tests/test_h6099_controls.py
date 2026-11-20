@@ -40,8 +40,11 @@ from tests.coordinator_test_support import frame
 
 @pytest.mark.parametrize("value,code", [("previous", 0), ("on", 1), ("off", 2)])
 @pytest.mark.parametrize("reply", ["match", "mismatch", "unavailable", "unknown", "missing"])
-async def test_h6097_power_on_setting_requires_fresh_ordinary_readback(hass, monkeypatch, value, code, reply):
-    c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6097", configuration_url=None)
+@pytest.mark.parametrize("model,query_hex", [("H6097", "aa4102"), ("H1AB2", "aa4100")])
+async def test_power_on_setting_requires_fresh_ordinary_readback(
+    hass, monkeypatch, value, code, reply, model, query_hex
+):
+    c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", model, configuration_url=None)
     c.pact_type, c.pact_code = 2, 1
     c._resolve_device_profile()
     c._notify_started_monotonic = time.monotonic()
@@ -52,7 +55,7 @@ async def test_h6097_power_on_setting_requires_fresh_ordinary_readback(hass, mon
     c.power_on_behaviour = value
     write = build_power_on_behaviour(value, c.profile)
     query = build_power_on_behaviour_query(c.profile)
-    assert write == frame(f"334102{code:02x}") and query == frame("aa4102")
+    assert write == frame(f"334102{code:02x}") and query == frame(query_hex)
     for packet in (write, query):
         require_profile_packet(packet, c.profile)
         with pytest.raises(ValueError):

@@ -15,6 +15,7 @@ from .const import DOMAIN
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator import GoveeBLECoordinator
 from .dreamview_services import async_register_dreamview_services
+from .generated_protocol_adapter import StripCalibrationRequest
 from .govee_encryption import GoveeCryptoError
 from .h6099_controls import (
     async_read_installation_controls,
@@ -53,6 +54,17 @@ def _rgb_scale(value: int | str) -> int:
             value = int(value)
         if type(value) is not int or not 0 <= value <= 100:
             raise ValueError("RGB scale must be an integer from 0 to 100")
+    except (TypeError, ValueError) as err:
+        raise vol.Invalid(str(err)) from err
+    return value
+
+
+def _positive_integer(value: int | str) -> int:
+    try:
+        if isinstance(value, str):
+            value = int(value)
+        if type(value) is not int or value < 1:
+            raise ValueError("value must be a positive integer")
     except (TypeError, ValueError) as err:
         raise vol.Invalid(str(err)) from err
     return value
@@ -108,6 +120,14 @@ def async_register_light_services(hass: HomeAssistant) -> None:
     )
     async_register_dreamview_services(hass)
     for name, schema, method in (
+        (
+            "calibrate_strip",
+            {
+                vol.Required("length_metres"): _positive_integer,
+                vol.Optional("final_ic_count"): _positive_integer,
+            },
+            "async_calibrate_strip",
+        ),
         ("swap_light_bars", {}, "async_swap_light_bars"),
         ("paint_segments", _PAINT_SEGMENTS_SCHEMA, "async_paint_segments"),
         ("set_segment_color", _SET_SEGMENT_COLOR_SCHEMA, "async_set_segment_color"),
@@ -160,6 +180,23 @@ class _GoveeLightOwner:
 
 class _GoveeLightServicesMixin(_GoveeLightOwner):
     """Entity-service methods for the Govee BLE light."""
+
+    async def async_calibrate_strip(self, length_metres: int, final_ic_count: int | None = None) -> None:
+        request = StripCalibrationRequest(length_metres, final_ic_count)
+        self._require_support("calibrate_strip", supported=bool(self.coordinator.profile.strip_length_metres))
+        try:
+            request.expected_ic_count(self.coordinator.profile)
+        except ValueError as error:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN, translation_key="invalid_control_request"
+            ) from error
+        try:
+            await self.coordinator.async_calibrate_strip(request)
+        except HomeAssistantError:
+            raise
+        except Exception as error:
+            raise HomeAssistantError(translation_domain=DOMAIN, translation_key="device_command_failed") from error
+        self._notify_state_changed()
 
     async def async_swap_light_bars(self) -> None:
         from .generated_protocol_adapter import build_swap_bars

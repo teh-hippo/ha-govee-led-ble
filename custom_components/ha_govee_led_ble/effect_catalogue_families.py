@@ -319,6 +319,47 @@ H1A42_DIY_FAMILIES: Final = tuple(
     )
 )
 
+H1AB2_DIY_FAMILIES: Final = (
+    *(
+        DiyEffectFamily(
+            name,
+            label,
+            family,
+            tuple(
+                DiyEffectVariation(str(variant), f"Variation {index + 1}", variant)
+                for index, variant in enumerate(variants)
+            ),
+            True,
+            rate_min=1,
+            multi_rate_min=0,
+            palette_max=8,
+            source_reference="H1AB2 basic and mixed DIY controls",
+        )
+        for name, label, family, variants in (
+            ("fade", "Fade", 0, (0, 1, 2)),
+            ("jumping", "Jumping", 1, (0, 2)),
+            ("blinking", "Blinking", 2, (0, 2)),
+            ("marquee", "Marquee", 3, (3, 4, 5)),
+            ("stream", "Stream", 8, (9, 10)),
+            ("flow", "Flow", 9, (9, 10)),
+        )
+    ),
+    DiyEffectFamily(
+        "accumulation",
+        "Accumulation",
+        0x22,
+        tuple(
+            DiyEffectVariation(str(index), label, index)
+            for index, label in enumerate(("Forward", "Reverse", "Forward with return", "Reverse with return"))
+        ),
+        False,
+        category="native",
+        rate_min=1,
+        palette_max=8,
+        source_reference="H1AB2 native Accumulation controls",
+    ),
+)
+
 # H61F6 DIY lists.
 H61F5_DIY_FAMILIES: Final = tuple(
     replace(

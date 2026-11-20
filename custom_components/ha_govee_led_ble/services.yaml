@@ -14,6 +14,16 @@ read_installation_controls:
   name: Read Installation Controls
   description: Read H6099 installation direction and camera health over BLE. Returns direction 2..5 or null, and camera health absent (0), healthy (1), incompatible (2), or unknown for an unrecognized or missing reply. Camera position is separate and is not queried.
   target: {entity: {integration: ha_govee_led_ble, domain: light}}
+calibrate_strip:
+  name: Calibrate Strip Length
+  description: Set the installed strip length over BLE on eligible devices. H1AB2 accepts 1-5 metres. Without final_ic_count, restore that length directly. For a cut strip, supply its final physical IC count to run endpoint selection and confirmation. This changes device installation settings, may temporarily change its appearance, and discards retained effect restoration state. Requires acceptance replies and independent geometry readback; uncertain attempts are not replayed.
+  target: {entity: {integration: ha_govee_led_ble, domain: light}}
+  fields:
+    length_metres:
+      required: true
+      selector: {number: {min: 1, max: 5, step: 1, unit_of_measurement: m, mode: box}}
+    final_ic_count:
+      selector: {number: {min: 1, max: 50, step: 1, mode: box}}
 paint_segments:
   name: Paint Segments
   description: Apply the supplied RGB palette to selected logical segments.  RGB scale is an absolute percentage of those supplied colours, not measured brightness.  Zero paints black without changing native power flags.

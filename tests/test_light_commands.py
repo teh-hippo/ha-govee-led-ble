@@ -82,7 +82,7 @@ def test_h6199_subordinate_queries_exclude_identity_domain() -> None:
         build_subordinate_query(0x14, "H6199")
 
 
-@pytest.mark.parametrize("model", ["H66A0", "H1A42", "H61F5"])
+@pytest.mark.parametrize("model", ["H66A0", "H1A42", "H1AB2", "H61F5"])
 @pytest.mark.parametrize("requested,expected,rgb", [(3049, 3000, "ffb969"), (3050, 3100, "ffbd6f")])
 def test_native_kelvin_rounds_companion_and_mask_consistently(model, requested, expected, rgb):
     whole = parse_static_write(build_color_temp(requested, model), model)
@@ -115,8 +115,9 @@ def test_segment_kelvin_is_offered_only_where_the_profile_declares_it(model):
 
 
 @pytest.mark.parametrize("kelvin,rgb", [(1000, "ff3300"), (10000, "cfdaff")])
-def test_h1a42_full_kelvin_palette(kelvin, rgb):
-    static = parse_static_write(build_segment_color_temp([4], kelvin, "H1A42"), "H1A42")
+@pytest.mark.parametrize("model", ["H1A42", "H1AB2"])
+def test_full_kelvin_palette(model, kelvin, rgb):
+    static = parse_static_write(build_segment_color_temp([4], kelvin, model), model)
     assert static is not None and static.kelvin_companion_rgb == tuple(H(rgb))
 
 

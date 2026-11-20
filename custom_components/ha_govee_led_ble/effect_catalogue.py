@@ -154,7 +154,7 @@ def validate_effect_eligibility(
                     if content.template is None:
                         raise ValueError("native effect speed must be at least one")
             return
-        if content.model != model or profile.effect_grammar not in {"H607C", "H60B2"}:
+        if content.model != model or profile.effect_grammar not in {"H1AB2", "H607C", "H60B2"}:
             raise ValueError("native zone content does not match the effective profile")
         if not any(isinstance(layer, NativeDiyLayer) and layer.enabled for layer in content.layers):
             raise ValueError("select at least one native effect section")
@@ -209,7 +209,11 @@ def validate_effect_eligibility(
             family = next(
                 (family for family in catalogue.effects_for_profile(profile) if family.family == pair.family), None
             )
-            if family is None or pair.variant not in {variation.variant for variation in family.variations}:
+            if (
+                family is None
+                or family.category != "single_layer"
+                or pair.variant not in {variation.variant for variation in family.variations}
+            ):
                 raise ValueError(f"{model} family {pair.family} variation {pair.variant} is not supported")
             if multi and not family.supports_multi:
                 raise ValueError(f"{model} family {pair.family} does not support Multi")

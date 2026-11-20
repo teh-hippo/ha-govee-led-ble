@@ -112,10 +112,13 @@ def parse_music_parameters(variant: MusicVariant, body: bytes) -> Any:
         "h6099_music_parameters",
         "h66a0_music_parameters",
         "h1a42_music_parameters",
+        "h1ab2_music_parameters",
         "h61f5_music_parameters",
     }:
         root_type = (
-            load_generated_class("h6097_music_parameters", "H6097MusicParameters")
+            load_generated_class("h1ab2_music_parameters", "H1ab2MusicParameters")
+            if variant.layout == "h1ab2_music_parameters"
+            else load_generated_class("h6097_music_parameters", "H6097MusicParameters")
             if variant.layout == "h6097_music_parameters"
             else load_generated_class("h61f5_music_parameters", "H61f5MusicParameters")
             if variant.layout == "h61f5_music_parameters"
@@ -216,6 +219,7 @@ def encode_music_parameters(
         "h6099_music_parameters",
         "h66a0_music_parameters",
         "h1a42_music_parameters",
+        "h1ab2_music_parameters",
         "h61f5_music_parameters",
     }:
         return _encode_h6099_music_parameters(
@@ -344,7 +348,7 @@ def _encode_h6099_music_parameters(
                 if "segment_count" not in parameters:
                     tail.piece_count = max(1, ic // 2) if ic < 30 else ceil(ic * 7 / 50)
                 if "speed" not in parameters:
-                    tail.speed = 10 if ic < 30 else 20
+                    tail.speed = variant.daynight_speed_default or (10 if ic < 30 else 20)
     if any(
         type(value) is int and not 0 <= value <= 255 for key, value in vars(tail).items() if not key.startswith("_")
     ):

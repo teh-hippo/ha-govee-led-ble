@@ -20,7 +20,7 @@ from .protocol_core import (
     _has_unknown_discriminator,
     _parse_xor_frame,
 )
-from .protocol_settings import _NATIVE_SETTING_ROOTS
+from .protocol_settings import _NATIVE_SETTING_ROOTS, _ORDINARY_SETTING_ROOTS
 
 
 def parse_status_result(
@@ -43,6 +43,10 @@ def parse_command_result(
     frame: bytes, model: str = "H617A", *, profile: ModelProfile | None = None
 ) -> ProtocolParseResult:
     effective_profile = profile or get_profile(model)
+    if effective_profile.setting_grammar in _ORDINARY_SETTING_ROOTS:
+        setting = _parse_xor_frame(frame, effective_profile.setting_grammar, _ORDINARY_SETTING_ROOTS)
+        if setting.parsed is not None and getattr(setting.parsed.opcode, "name", None) is not None:
+            return setting
     if effective_profile.setting_grammar in _NATIVE_SETTING_ROOTS:
         root_type = _NATIVE_SETTING_ROOTS[effective_profile.setting_grammar][1]
         setting = _parse_xor_frame(frame, effective_profile.setting_grammar, _NATIVE_SETTING_ROOTS)

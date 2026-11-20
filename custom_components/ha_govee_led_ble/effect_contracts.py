@@ -19,7 +19,7 @@ from .effect_limits import (
 )
 
 EDITOR_API_VERSION: Final = 19
-EDITOR_ASSET_VERSION: Final = 38
+EDITOR_ASSET_VERSION: Final = 39
 EFFECT_COMPILER_VERSION: Final = 8
 RELEASE_CAPABILITY_SCHEMA_VERSION: Final = 1
 
@@ -712,6 +712,19 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         _V.SELECTION_ONLY,
     ),
     *(
+        _capability("H1AB2", workflow, label, kind, route, strategy, _V.UNVERIFIED)
+        for workflow, label, kind, route, strategy in (
+            (_W.NATIVE_SCENES, "Scenes", "scene_builtin", _R.STUDIO_SCENE_APPLY, _S.NATIVE_EFFECT_SELECTION),
+            (_W.LAYERED_SCENES, "Layered scenes", "scene_layered", _R.HOME_ASSISTANT_CONTROL, _S.MODEL_SCENE_ENGINE),
+            (_W.PAINTED, "Paint", "h617a_painted", _R.HOME_ASSISTANT_CONTROL, _S.A3_EFFECT_UPLOAD),
+            (_W.SINGLE, "Basic", "native_effect", _R.HOME_ASSISTANT_CONTROL, _S.A3_EFFECT_UPLOAD),
+            (_W.MULTI, "Mixed", "h617a_multi", _R.HOME_ASSISTANT_CONTROL, _S.A3_EFFECT_UPLOAD),
+            (_W.ADVANCED, "Advanced", "advanced", _R.HOME_ASSISTANT_CONTROL, _S.MODEL_SCENE_ENGINE),
+            (_W.WORKSHOP, "Workshop", "workshop", _R.HOME_ASSISTANT_CONTROL, _S.MODEL_SCENE_ENGINE),
+            (_W.NATIVE_MUSIC, "Music", "music_profile", _R.HOME_ASSISTANT_CONTROL, _S.COORDINATOR_WRITER),
+        )
+    ),
+    *(
         _capability("H7025", workflow, label, kind, route, strategy, _V.SELECTION_ONLY)
         for workflow, label, kind, route, strategy in (
             (_W.NATIVE_SCENES, "Scenes", "scene_builtin", _R.STUDIO_SCENE_APPLY, _S.NATIVE_EFFECT_SELECTION),
@@ -909,6 +922,7 @@ def require_effect_route(
     grammars: tuple[str, ...] = (
         "H6046",
         "H617A",
+        "H1AB2",
         "H6199",
         "H6099",
         "H6179",

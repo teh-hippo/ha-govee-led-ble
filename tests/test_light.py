@@ -2104,6 +2104,7 @@ def test_registers_light_services_during_integration_setup():
     async_register_light_services(hass)
     registered = {call.args[1] for call in hass.services.async_register.call_args_list}
     assert registered == {
+        "calibrate_strip",
         "swap_light_bars",
         "paint_segments",
         "set_segment_brightness",
@@ -2131,6 +2132,22 @@ def test_segment_service_schema_preserves_integer_strings_only():
     for invalid in ([], [0], [33], [True], [False], [1.5], [1.0], ["1.5"]):
         with pytest.raises(vol.Invalid):
             schema(invalid)
+
+
+def test_calibration_service_accepts_one_without_accepting_booleans_or_fractional_values():
+    hass = MagicMock(data={})
+    async_register_light_services(hass)
+    registration = next(
+        call for call in hass.services.async_register.call_args_list if call.args[1] == "calibrate_strip"
+    )
+    schema = registration.args[3]
+    target = {"entity_id": "light.strip"}
+    assert schema({**target, "length_metres": 1})["length_metres"] == 1
+    assert schema({**target, "length_metres": "2", "final_ic_count": 1})["final_ic_count"] == 1
+    for key in ("length_metres", "final_ic_count"):
+        for value in (True, False, 0, 1.0, 1.5, "1.5"):
+            with pytest.raises(vol.Invalid):
+                schema({**target, "length_metres": 2, key: value})
 
 
 def test_paint_scale_schema_accepts_zero_and_one_but_not_boolean_or_fractional_values():

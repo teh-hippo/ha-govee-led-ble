@@ -18,6 +18,8 @@ from .protocol_core import (
     DiyType03,
     DiyType04,
     GoveeCommon,
+    H1ab2DiyBody,
+    H1ab2PaintBody,
     H60a6EffectFrame,
     H60b0CommandAck,
     H60b0CommandWrite,
@@ -235,13 +237,14 @@ def parse_a3_effect_envelope(envelope: bytes, model: str, *, profile: ModelProfi
         if envelope[2] != 0x04:
             raise ValueError("H6179 A3 uploads require a type-04 DIY body")
         root_type = DiyType04
-    elif grammar in {"H617A", "H6181", "H60B2"}:
+    elif grammar in {"H617A", "H6181", "H60B2", "H1AB2"}:
         root_type = {
             0x01: SceneType1Body,
             0x02: SceneBody,
-            0x03: DiyType03,
+            0x03: H1ab2PaintBody if grammar == "H1AB2" else DiyType03,
             0x04: DiyType04,
             **({int(H60b2DiyBody.UploadSubtype.native_diy): H60b2EffectUpload} if grammar == "H60B2" else {}),
+            **({int(H1ab2DiyBody.UploadSubtype.native_diy): H1ab2DiyBody.Upload} if grammar == "H1AB2" else {}),
         }.get(envelope[2])
         if root_type is None:
             raise ValueError(f"H617A A3 body type 0x{envelope[2]:02x} is not supported")
@@ -385,12 +388,15 @@ def build_h617a_diy_painted_body(
     brightness: int,
     background: tuple[int, int, int],
     groups: list[tuple[tuple[int, int, int], list[int]]],
+    *,
+    grammar: str = "H617A",
 ) -> bytes:
     """Serialize the diy_type03 fields after its A3 type byte."""
-    root = DiyType03()
+    root_type = H1ab2PaintBody if grammar == "H1AB2" else DiyType03
+    root = root_type()
     root.header = _a3_header(root)
     root.body_type = b"\x03"
-    root.effect = getattr(DiyType03.Effect, effect)
+    root.effect = getattr(root_type.Effect, effect)
     root.speed = speed
     root.brightness = brightness
     root.background = _rgb(root, *background)

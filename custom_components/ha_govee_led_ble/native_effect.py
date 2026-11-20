@@ -211,6 +211,34 @@ class NativeEffect:
                 or self.show_type != 1
             ):
                 raise LayeredSceneValidationError("unrepresented native zone background fields")
+        elif self.model == "H1AB2":
+            from .protocol_core import H1ab2DiyBody
+
+            if (
+                self.family != H1ab2DiyBody.CatalogueFamily.accumulation
+                or len(self.layers) != 1
+                or not isinstance(self.layers[0], NativeDiyLayer)
+                or self.layers[0].kind != H1ab2DiyBody.Effect.accumulation
+                or self.layers[0].parameter not in H1ab2DiyBody.Variation
+                or self.layers[0].parameters
+                or self.layers[0].flag
+                or self.layers[0].points
+                or self.layers[0].direction
+                or self.layers[0].angle
+                or self.layers[0].opaque
+                or not self.layers[0].enabled
+                or self.layers[0].secondary_palette
+                or self.backgrounds
+                or self.background_flag
+                or self.background != (0, 0, 0)
+                or self.background_brightness != 100
+                or self.show_type != 1
+                or self.template is not None
+                or self.preset_id is not None
+                or self.speed_index is not None
+                or self.opaque
+            ):
+                raise LayeredSceneValidationError("invalid native Accumulation structure")
         elif self.model == "H60B2":
             if (
                 self.family != 803
@@ -245,7 +273,7 @@ class NativeEffect:
             raise LayeredSceneValidationError("native effect exceeds its layer or background count field")
         expected = (
             NativeDiyLayer
-            if self.family == 797 or self.model in {"H607C", "H1771", "H60B0", "H60B2"}
+            if self.family == 797 or self.model in {"H1AB2", "H607C", "H1771", "H60B0", "H60B2"}
             else NativePaintLayer
         )
         if any(not isinstance(layer, expected | NativeOpaqueLayer) for layer in self.layers):

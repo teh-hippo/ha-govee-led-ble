@@ -27,7 +27,6 @@ from .effect_catalogue import (
 )
 from .effect_commands import (
     DiyPaintGroup,
-    build_h607c_diy_painted,
     build_h617a_diy_multi,
     build_h617a_diy_painted,
     build_h617a_diy_single,
@@ -77,6 +76,7 @@ from .native_scenes import (
     native_scene_prefers_selector,
 )
 from .protocol_core import (
+    H1ab2DiyBody,
     H60a6EffectFrame,
     H60b0CommandAck,
     H60b2DiyBody,
@@ -478,7 +478,7 @@ def compatibility(item: LibraryItem, model: str, *, profile: ModelProfile | None
                     else CapabilityWorkflow.SINGLE
                     if isinstance(content, SingleEffect)
                     else CapabilityWorkflow.MULTI,
-                    ("H6046", "H617A", "H6099", "H6181"),
+                    ("H6046", "H617A", "H1AB2", "H6099", "H6181"),
                     profile=profile,
                 )
             else:
@@ -546,7 +546,7 @@ def _prepare_native_effect(item: LibraryItem, model: str, profile: ModelProfile)
     content = item.content
     if not isinstance(content, NativeEffect):
         raise ValueError("native compiler requires native content")
-    if profile.effect_grammar in {"H60B0", "H60B2", "H607C"}:
+    if profile.effect_grammar in {"H1AB2", "H60B0", "H60B2", "H607C"}:
         require_effect_route(model, _effect_workflow(content), (profile.effect_grammar,), profile=profile)
         validate_effect_eligibility(content, model, profile=profile)
     elif profile.effect_grammar == "H1771":
@@ -721,7 +721,7 @@ def resolve_diy_code(
         grammar = require_effect_route(
             "H617A" if model is None else model,
             workflow,
-            ("H6046", "H617A", "H6099", "H607C", "H6181"),
+            ("H6046", "H617A", "H1AB2", "H6099", "H607C", "H6181"),
             profile=profile,
         )
         if grammar == "H607C":
@@ -1021,6 +1021,8 @@ def compile_native_effect(
         if profile.effect_grammar == "H60B0"
         else int(H60b2DiyBody.UploadSubtype.native_diy)
         if profile.effect_grammar == "H60B2"
+        else int(H1ab2DiyBody.UploadSubtype.native_diy)
+        if profile.effect_grammar == "H1AB2"
         else int(H607cDiyBody.UploadSubtype.native_diy)
         if profile.effect_grammar == "H607C"
         else int(H1771EffectUpload.UploadKind.native_diy)
@@ -1105,13 +1107,14 @@ def compile_h617a(
         upload = build_diy(content, diy_code, profile)
     elif isinstance(content, PaintedEffect):
         content_kind = "h617a_painted"
-        upload = (build_h607c_diy_painted if profile.effect_grammar == "H607C" else build_h617a_diy_painted)(
+        upload = build_h617a_diy_painted(
             content.effect,
             content.speed,
             content.brightness,
             content.background,
             _paint_groups(content.segments),
             segment_count=len(content.segments),
+            grammar=profile.effect_grammar or "",
         )
     elif isinstance(content, SingleEffect):
         content_kind = "h617a_single"

@@ -25,6 +25,8 @@ from .layered_scene_decoder import decode_workshop_effect
 from .protocol_core import (
     DiyType03,
     DiyType04,
+    H1ab2DiyBody,
+    H1ab2PaintBody,
     H60a6DiyBody,
     H60a6EffectFrame,
     H607cEffectUpload,
@@ -137,8 +139,14 @@ def decode_a3_effect(tree: Any, model: str) -> EffectContent:
         # The upload omits total IC count; retain the already validated source
         # rather than infer topology from the highest painted index.
         raise UnsupportedA3EffectError("H6099 upload requires source topology or catalogue identity")
-    if grammar in {"H617A", "H6181"}:
-        if isinstance(tree, DiyType03):
+    if grammar in {"H617A", "H6181", "H1AB2"}:
+        if isinstance(tree, H1ab2DiyBody.Upload):
+            from .h1ab2_effects import decode_accumulation
+
+            if any(tree.padding):
+                raise UnsupportedA3EffectError("Native upload has unrepresented trailing data")
+            return decode_accumulation(serialize_native_body(tree.body))
+        if isinstance(tree, DiyType03 | H1ab2PaintBody):
             from .effect_catalogue import MODEL_EFFECT_CATALOGUES
 
             catalogue = MODEL_EFFECT_CATALOGUES.get(model)

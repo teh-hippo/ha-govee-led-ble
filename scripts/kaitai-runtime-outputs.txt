@@ -1,5 +1,11 @@
 __init__.py
 command_write.py
+h1ab2_status_reply.py
+h1ab2_settings.py
+h1ab2_music_write.py
+h1ab2_music_parameters.py
+h1ab2_paint_body.py
+h1ab2_diy_body.py
 h6182_command_write.py
 h6182_status_reply.py
 h6182_modern_status_reply.py

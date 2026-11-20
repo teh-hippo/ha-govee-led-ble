@@ -84,7 +84,8 @@ from custom_components.ha_govee_led_ble.effect_limits import (
     MAX_PREVIEW_SEQUENCE,
     MAX_SCENE_CATALOGUE_ENTRIES,
 )
-from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_h617a_scene
+from custom_components.ha_govee_led_ble.effect_protocol_decoder import decode_a3_effect_frames
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_h617a_scene, require_profile_packet
 from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_workshop_effect
 from custom_components.ha_govee_led_ble.native_effect import NativeDiyLayer, NativeEffect
 from custom_components.ha_govee_led_ble.protocol_h6199 import build_h6199_scene
@@ -151,6 +152,62 @@ def test_length_prefixed_native_palette_compiles_through_shared_application(kind
     assert compiled.packets[-1] == bytes.fromhex("33050afe000000000000000000000000000000c2")
     assert effect_content_from_dict(effect_content_to_dict(content)) == content
     validate_compiled_geometry(compiled, MODEL_PROFILES["H60B2"])
+
+
+@pytest.mark.parametrize("variation,direction,return_enabled", [(0, 1, 0), (1, 2, 0), (2, 1, 1), (3, 2, 1)])
+def test_native_accumulation_uses_its_own_body_with_shared_application_and_round_trip(
+    variation, direction, return_enabled
+):
+    content = NativeEffect(
+        model="H1AB2",
+        family=948,
+        layers=(NativeDiyLayer(34, 50, ((255, 0, 0), (0, 0, 255)), parameter=variation),),
+    )
+    compiled = compile_application(LibraryItem.new("Accumulation", content), "H1AB2")
+    expected_body = bytes((34, 50, direction, return_enabled, 2, 255, 0, 0, 0, 0, 255))
+    assert reassemble_a3(compiled.upload_packets) == (bytes.fromhex("010258") + expected_body).ljust(34, b"\0")
+    assert compiled.activation_packet == bytes.fromhex("33050afe000000000000000000000000000000c2")
+    assert decode_a3_effect_frames(compiled.upload_packets, "H1AB2") == content
+    for packet in compiled.packets:
+        require_profile_packet(packet, MODEL_PROFILES["H1AB2"])
+    with pytest.raises(ValueError, match="grammar and activation route"):
+        compile_application(LibraryItem.new("Wrong target", content), "H61F5")
+
+
+@pytest.mark.parametrize("change", [{"speed": 0}, {"palette": ((1, 2, 3),) * 9}])
+def test_native_accumulation_rejects_unqualified_authoring_before_compilation(change):
+    layer = replace(NativeDiyLayer(34, 50, ((255, 0, 0),)), **change)
+    content = NativeEffect(model="H1AB2", family=948, layers=(layer,))
+    with pytest.raises(ValueError, match="rate|palette"):
+        compile_application(LibraryItem.new("Invalid accumulation", content), "H1AB2")
+
+
+@pytest.mark.parametrize("speed", [0, 1, 100])
+def test_mixed_rate_boundary_is_independent_of_basic_and_native_rate(speed):
+    palette = ((255, 0, 0), (0, 0, 255))
+    mixed = MultiEffect((EffectPair(0, 0),), speed, palette)
+    compiled = compile_application(LibraryItem.new("Mixed", mixed), "H1AB2")
+    for packet in compiled.packets:
+        require_profile_packet(packet, MODEL_PROFILES["H1AB2"])
+    basic = SingleEffect(0, 0, speed, palette)
+    if speed == 0:
+        with pytest.raises(ValueError, match="speed"):
+            compile_application(LibraryItem.new("Basic", basic), "H1AB2")
+    else:
+        compile_application(LibraryItem.new("Basic", basic), "H1AB2")
+
+
+@pytest.mark.parametrize(
+    "effect,selector",
+    [("clockwise", 57), ("counter_clockwise", 58), ("cycle", 59), ("gradient", 60), ("twinkle", 61), ("breathe", 62)],
+)
+def test_painted_motion_uses_exact_product_enums_without_changing_shared_layout(effect, selector):
+    content = PaintedEffect(effect, 50, 100, ((1, 2, 3),) * 50, addressing="physical_ic", model="H1AB2")
+    compiled = compile_application(LibraryItem.new("Paint", content), "H1AB2")
+    envelope = reassemble_a3(compiled.upload_packets)
+    assert envelope[2:10] == bytes((3, selector, 50, 100, 0, 0, 0, 1))
+    assert envelope[10:14] == bytes((50, 1, 2, 3))
+    assert envelope[14:64] == bytes(range(50))
 
 
 @pytest.mark.parametrize(

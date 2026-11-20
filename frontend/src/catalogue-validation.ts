@@ -456,9 +456,6 @@ function decodeCatalogueTemplates(
       ) {
         invalid(`${name}[${index}] content does not target ${model}`);
       }
-      if (content.kind === "advanced" && content.native_diy === undefined) {
-        invalid(`${name}[${index}] native DIY template identity`);
-      }
       return {
         id: boundedString(
           template.id,
@@ -635,9 +632,9 @@ function decodePaletteDiyFamilies(
         ) as "speed" | "sensitivity",
         category: enumString(
           effect.category,
-          ["single_layer"],
+          ["single_layer", "native"],
           `${name}[${index}] category`,
-        ) as "single_layer",
+        ) as "single_layer" | "native",
       };
       requireUnique(
         decoded.variations,

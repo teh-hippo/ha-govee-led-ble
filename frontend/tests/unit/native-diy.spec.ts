@@ -13,7 +13,7 @@ import { decodeLibrarySnapshot } from "../../src/validation";
 
 test("native saved items retain workflow through listing, selection and summary adoption", () => {
   const catalogues = decodeCustomCataloguePayload(backendContracts.responses.custom_catalogue, decodeEffectContent).models;
-  for (const model of ["H607C", "H60B0", "H1771", "H60A6"] as const) {
+  for (const model of ["H1AB2", "H607C", "H60B0", "H1771", "H60A6"] as const) {
     const catalogue = catalogues[model];
     for (const template of catalogue.templates ?? []) {
       if (template.content.kind !== "native_effect") continue;
