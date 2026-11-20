@@ -220,6 +220,24 @@ def test_segment_colors_initial_state(coord, h6199):
     assert len(coord.segment_colors) == coord.profile.segment_count
 
 
+@pytest.mark.parametrize("direct_rgb", [False, True])
+def test_main_rgb_projection_does_not_replace_a_mixed_observed_palette(coord, direct_rgb):
+    coord.color_mode = ParsedMode.COLOUR
+    coord.rgb_color = (255, 141, 11)
+    coord.rgb_color_source = "observed" if direct_rgb else "segment"
+    coord.segment_state_source = "observed"
+    coord.segment_colors = [(0, 255, 0), *([(217, 225, 255)] * 14)]
+    coord.segment_kelvin = [0, *([9000] * 14)]
+    coord.segment_brightness = [100] * 14 + [20]
+    light = GoveeBLELight(coord)
+    before = coord.capture_effect_control_state()
+    assert light.rgb_color == (coord.rgb_color if direct_rgb else None)
+    assert coord.capture_effect_control_state() == before
+    coord.segment_colors = [(10, 20, 30)] * 15
+    coord.rgb_color = (10, 20, 30)
+    assert light.rgb_color == (10, 20, 30)
+
+
 def test_segment_colors_empty_for_unsupported(hass):
     flat = replace(MODEL_PROFILES["H617A"], segment_count=0, scene_identity_fields=frozenset())
     with patch(f"{M}.get_profile", return_value=flat):
