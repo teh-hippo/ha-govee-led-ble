@@ -23,6 +23,7 @@ from .music_semantics import (
     H705A_MUSIC_VARIANTS,
     H1771_MUSIC_VARIANTS,
     H6046_MUSIC_VARIANTS,
+    H6053_MUSIC_VARIANTS,
     H6072_LEGACY_MUSIC_VARIANTS,
     H6072_MUSIC_VARIANTS,
     H6076_LEGACY_MUSIC_VARIANTS,
@@ -345,12 +346,14 @@ class ModelProfile:
     local_scenes: tuple[tuple[int, str], ...] = ()
     advanced_scene_carrier: tuple[int, int] | None = None
     workshop_scene_selector: int | None = None
+    workshop_carriers: tuple[tuple[str, int, int], ...] = ()
     workshop_brightness_algorithm: int | None = None
     advanced_diy_selector: int | None = None
     authored_palette_scene_selector: int | None = None
     rgbic_scene_v0: bool | None = None
     # When set, Type04 custom effects upload as A1 command-02 frames led by this selector and activate with it.
     a1_diy_selector: int | None = None
+    a1_diy_prefix: int | None = None
     diy_family_variants: tuple[tuple[int, tuple[int, ...]], ...] | None = None
     diy_palette_max: int | None = None
     diy_upload_transport: str | None = None
@@ -467,6 +470,13 @@ class ModelProfile:
             raise ValueError("source power constraints require declared sources and valid limits")
         if self.diy_upload_transport not in {None, "a1_02", "a3", "single"}:
             raise ValueError("unknown DIY upload transport")
+        if self.a1_diy_prefix is not None and (
+            type(self.a1_diy_prefix) is not int
+            or not 0 <= self.a1_diy_prefix <= 255
+            or self.diy_upload_transport != "a1_02"
+            or self.a1_diy_selector is not None
+        ):
+            raise ValueError("Independent A1 prefix requires a byte and an A1 upload without a fixed selector")
         if not self.restarting_boolean_controls <= self.boolean_controls:
             raise ValueError("restarting settings must be declared boolean controls")
         if self.local_sound_options and (
@@ -517,6 +527,15 @@ class ModelProfile:
             type(self.workshop_scene_selector) is not int or not 0 <= self.workshop_scene_selector <= 65535
         ):
             raise ValueError("Workshop scene selector must be an unsigned 16-bit value")
+        if len({carrier for carrier, _, _ in self.workshop_carriers}) != len(self.workshop_carriers) or any(
+            carrier not in {"rgb", "rgbic_v1", "rgbic_v2"}
+            or type(subtype) is not int
+            or not 0 <= subtype <= 255
+            or type(selector) is not int
+            or not 0 <= selector <= 65535
+            for carrier, subtype, selector in self.workshop_carriers
+        ):
+            raise ValueError("Workshop carriers require distinct formats and unsigned upload/selector values")
         if self.workshop_brightness_algorithm is not None and (
             type(self.workshop_brightness_algorithm) is not int or not 0 <= self.workshop_brightness_algorithm <= 2
         ):
@@ -1203,6 +1222,85 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         ),
         music_modes=("energetic", "rhythm", "impact", "spray", "beat", "torch", "rainbow_ring", "glitter"),
         music_variants=H6046_MUSIC_VARIANTS,
+        music_sensitivity_min=0,
+        music_sensitivity_max=99,
+        supports_music_color=True,
+        music_upload_before_selector=True,
+        music_requires_upload_ack=True,
+        music_retry_after_upload=False,
+    ),
+    "H6053": ModelProfile(
+        "H6053 TV Light Bars",
+        color_temp_range=KELVIN_RANGE_2200_6500,
+        support_quality=SupportQuality.EXPERIMENTAL,
+        confirmation_issue=662,
+        command_grammar="H6046",
+        command_ack_grammar="H6046",
+        command_operations=frozenset(
+            {"power", "brightness", "static", "scene", "diy", "music", "effect_upload", "bar_enable", "swap_bars"}
+        ),
+        status_grammar="H6053",
+        setting_grammar="H6046",
+        effect_grammar="H6053",
+        effect_workflows=frozenset(
+            {
+                "native_scenes",
+                "edited_palette_scenes",
+                "layered_scenes",
+                "single",
+                "multi",
+                "native_music",
+                "advanced",
+                "workshop",
+            }
+        ),
+        music_grammar="H6046",
+        profile_identity_fields=frozenset({"fw_version", "hw_version"}),
+        profile_pact_dependent=True,
+        requires_qualified_identity=True,
+        requires_pact_confirmation=True,
+        colour_mode_query_selector=1,
+        read_domains=frozenset(
+            {
+                ReadDomain.POWER,
+                ReadDomain.BRIGHTNESS,
+                ReadDomain.COLOUR_MODE,
+                ReadDomain.FIRMWARE,
+                ReadDomain.HARDWARE,
+                ReadDomain.SEGMENTS,
+            }
+        ),
+        setup_required_read_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE}),
+        supports_rgb=True,
+        supports_color_temperature=True,
+        kelvin_verification_reads_colour_mode=True,
+        supports_segment_writes=True,
+        supports_segment_brightness=True,
+        supports_segment_color_temperature=True,
+        segment_colour_mode_ambiguous=True,
+        supports_scenes=True,
+        supports_custom_effects=True,
+        supports_multi_layered_effects=True,
+        supports_advanced_effects=True,
+        static_readback_kelvin=True,
+        static_readback_zero_kelvin_is_rgb=True,
+        segment_count=12,
+        segment_group_size=4,
+        scene_catalogue_sku="H6053",
+        advanced_diy_selector=402,
+        workshop_scene_selector=402,
+        workshop_carriers=(("rgb", 1, 198), ("rgbic_v1", 2, 402), ("rgbic_v2", 10, 403)),
+        diy_upload_transport="a3",
+        diy_requires_upload_ack=True,
+        effect_retry_after_upload=False,
+        effect_readback="diy_code_only",
+        boolean_controls=frozenset({"left_bar_enabled", "right_bar_enabled"}),
+        light_sources=(
+            LightSource("left_bar", "left_bar_enabled", (1, 2, 3, 4, 5, 6)),
+            LightSource("right_bar", "right_bar_enabled", (7, 8, 9, 10, 11, 12)),
+        ),
+        music_modes=("energetic", "rhythm", "impact", "spray", "beat", "torch", "rainbow_ring", "glitter"),
+        music_variants=H6053_MUSIC_VARIANTS,
         music_sensitivity_min=0,
         music_sensitivity_max=99,
         supports_music_color=True,
@@ -3148,6 +3246,8 @@ PERCENT_BRIGHTNESS_STATUS_GRAMMARS = frozenset(
         "H600A",
         "H6093",
         "H6046",
+        "H6053",
+        "H6053-legacy",
         "H6097",
         "H6099",
         "H6159",
@@ -3715,6 +3815,61 @@ def device_profile(
     hardware: str | None = None,
 ) -> ModelProfile:
     """Resolve exact-product capabilities from evidenced revision context."""
+    if model == "H6053":
+        from .protocol_transforms import h6053_outbound_transform
+
+        profile = get_profile(model)
+        known_pact = (pact_type, pact_code) in _STANDARD_PACTS
+        legacy_pact = (pact_type, pact_code) == (1, 1)
+        wire_range = (20, 254) if legacy_pact else None
+        fw, hw = FirmwareVersion.parse(firmware), FirmwareVersion.parse(hardware)
+        modern_static = (
+            fw is not None and hw is not None and fw >= FirmwareVersion((1, 0, 12)) and hw >= FirmwareVersion((1,))
+        )
+        profile = replace(
+            profile,
+            brightness_wire_range=wire_range,
+            outbound_transform=h6053_outbound_transform(
+                wire_range, legacy_colour=not modern_static, legacy_music=legacy_pact
+            ),
+        )
+        if not known_pact or fw is None or hw is None:
+            basic = _basic_revision_profile(profile)
+            return (
+                replace(
+                    basic,
+                    command_operations=frozenset({"power"}),
+                    read_domains=basic.read_domains - {ReadDomain.BRIGHTNESS},
+                    setup_required_read_domains=basic.setup_required_read_domains - {ReadDomain.BRIGHTNESS},
+                )
+                if not known_pact
+                else basic
+            )
+        uploaded_scenes = fw >= FirmwareVersion((1, 1))
+        expanded_music = fw >= FirmwareVersion((1, 8))
+        workshop = uploaded_scenes and hw.identity_number() > 0
+        assert profile.effect_workflows is not None
+        return replace(
+            profile,
+            status_grammar="H6053" if modern_static else "H6053-legacy",
+            supports_segment_brightness=modern_static,
+            segment_count=12 if modern_static else 2,
+            segment_group_size=4 if modern_static else 2,
+            light_sources=profile.light_sources
+            if modern_static
+            else (
+                LightSource("left_bar", "left_bar_enabled", (1,)),
+                LightSource("right_bar", "right_bar_enabled", (2,)),
+            ),
+            effect_workflows=profile.effect_workflows
+            - (set() if uploaded_scenes else {"layered_scenes"})
+            - (set() if workshop else {"advanced", "workshop"}),
+            scene_command_versions=None if uploaded_scenes else frozenset(),
+            diy_upload_transport="a1_02" if legacy_pact else "a3",
+            a1_diy_prefix=254 if legacy_pact else None,
+            music_modes=profile.music_modes if expanded_music else profile.music_modes[:4],
+            music_variants=profile.music_variants if expanded_music else profile.music_variants[:4],
+        )
     if model == "H6093":
         revision = 0 if (pact_type, pact_code) == (1, 1) else 1 if (pact_type, pact_code) in {(1, 2), (2, 1)} else None
         profile = get_profile(model)

@@ -280,7 +280,7 @@ function workspaceStudioLocation(
   ) {
     return { section: "custom", category: "multi-layer" };
   }
-  if (content.kind === "advanced" || content.kind === "workshop") {
+  if (content.kind === "advanced" || content.kind === "workshop" || content.kind === "workshop_rgb" || content.kind === "workshop_rgbic_v2") {
     return { section: "custom", category: "advanced" };
   }
   return undefined;

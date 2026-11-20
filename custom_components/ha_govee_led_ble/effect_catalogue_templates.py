@@ -63,7 +63,7 @@ def _single_template(
     variation = family.variations[0]
     content: EffectContent
     grammar = get_profile(model).effect_grammar if grammar is None else grammar
-    if grammar in {"H6046", "H617A", "H1AB2", "H6099", "H6181"}:
+    if grammar in {"H6046", "H6053", "H617A", "H1AB2", "H6099", "H6181"}:
         content = SingleEffect(
             family=family.family,
             variant=variation.variant,

@@ -285,6 +285,10 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
 
         def _apply_segment_group(self, generated: Any) -> tuple[str, ...]: ...
 
+        def _apply_segment_palette(
+            self, colours: list[tuple[int, int, int]], brightness: list[int] | None = None
+        ) -> tuple[str, ...]: ...
+
         def _project_segment_palette(self) -> tuple[str, ...]: ...
 
         def _accept_expected_values(self, values: dict[str, Any]) -> bool: ...
@@ -462,6 +466,7 @@ async def async_prepare_effect_profile(
     if (
         content is not None
         and coordinator.profile.supports_rgb
+        and not coordinator._authorization_profile().basic_controls_only
         and not scene_required
         and not isinstance(content, StaticRgbComposition)
     ):
@@ -479,7 +484,7 @@ async def async_prepare_effect_profile(
             or not coordinator._authorization_profile().basic_controls_only
         )
     ):
-        return coordinator.profile
+        return coordinator.effect_authorization_profile
     async with async_control_intent(coordinator, intent):
         async with coordinator._lock:
             client = await coordinator._ensure_connected()

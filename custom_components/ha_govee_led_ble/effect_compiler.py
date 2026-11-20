@@ -138,6 +138,8 @@ class CompiledEffect:
     rgbic_scene_v0: bool | None = None
     native_effect_revision: int = 0
     authored_diy: SingleEffect | MultiEffect | None = None
+    upload_prefix: int | None = None
+    workshop_carrier: str | None = None
 
     @property
     def packets(self) -> tuple[bytes, ...]:
@@ -281,6 +283,11 @@ def validate_compiled_geometry(compiled: CompiledApplication, profile: ModelProf
             raise ValueError("Device native effect grammar changed since compilation")
         if compiled.native_effect_revision and compiled.native_effect_revision != profile.native_effect_revision:
             raise ValueError("Device native effect revision changed since compilation")
+        if compiled.content_kind == "workshop" and (
+            compiled.upload_subtype,
+            compiled.diy_code,
+        ) != _workshop_upload_route(compiled.model, compiled.workshop_carrier or "rgbic_v1", profile=profile):
+            raise ValueError("Device Workshop carrier changed since compilation")
         if compiled.scene_entry is not None:
             entry = scene_for_profile(compiled.scene_entry, profile)
             selector = scene_selector_code(
@@ -300,8 +307,10 @@ def validate_compiled_geometry(compiled: CompiledApplication, profile: ModelProf
             if compiled.authored_diy is not None:
                 validate_effect_eligibility(compiled.authored_diy, compiled.model, profile=profile)
             transport = profile.diy_upload_transport or ("a1_02" if profile.a1_diy_selector is not None else "a3")
-            if compiled.upload_transport != transport or (
-                profile.a1_diy_selector is not None and compiled.diy_code != profile.a1_diy_selector
+            if (
+                compiled.upload_transport != transport
+                or (profile.a1_diy_selector is not None and compiled.diy_code != profile.a1_diy_selector)
+                or compiled.upload_prefix != profile.a1_diy_prefix
             ):
                 raise ValueError("Device upload transport or selector changed since compilation")
         if compiled.content_kind in {"h6179_single_diy", "h6179_mixed_diy"}:
@@ -431,7 +440,7 @@ def _target_compatibility(item: LibraryItem, model: str, *, profile: ModelProfil
                 (f"Workshop effect targets {content.model}, not {model}",),
             )
         try:
-            workshop_apply_code(model, profile=profile)
+            _workshop_upload_route(model, content.carrier, profile=profile)
         except ValueError as error:
             return CompatibilityResult(CompatibilityState.INCOMPATIBLE, (str(error),))
         return CompatibilityResult(CompatibilityState.COMPATIBLE)
@@ -485,7 +494,7 @@ def _target_compatibility(item: LibraryItem, model: str, *, profile: ModelProfil
                     else CapabilityWorkflow.SINGLE
                     if isinstance(content, SingleEffect)
                     else CapabilityWorkflow.MULTI,
-                    ("H6046", "H617A", "H1AB2", "H6099", "H6181"),
+                    ("H6046", "H6053", "H617A", "H1AB2", "H6099", "H6181"),
                     profile=profile,
                 )
             else:
@@ -638,13 +647,21 @@ def _has_fixed_diy_slot(model: str, *, profile: ModelProfile | None = None) -> b
     )
 
 
-def workshop_apply_code(model: str, *, profile: ModelProfile | None = None) -> int:
+def _workshop_upload_route(model: str, carrier: str, *, profile: ModelProfile | None = None) -> tuple[int, int]:
     """Require Workshop authorization and an evidenced grammar/activation pair."""
     profile = get_profile(model) if profile is None else profile
     grammar = require_effect_route(model, CapabilityWorkflow.WORKSHOP, profile=profile)
+    if profile.workshop_carriers:
+        for name, subtype, selector in profile.workshop_carriers:
+            if name == carrier:
+                return subtype, selector
+        raise ValueError(f"{model} has no {carrier} Workshop carrier")
+    if carrier != "rgbic_v1":
+        raise ValueError(f"{model} has no {carrier} Workshop carrier")
+    subtype = int(H6199EffectUpload.BodyKind.scene) if grammar == "H6199" else int(SceneBody.SceneType.scene_v2)
     if profile.workshop_scene_selector is not None:
-        return profile.workshop_scene_selector
-    return H617A_WORKSHOP_APPLY_CODE if grammar in {"H6046", "H617A"} else H6199_WORKSHOP_APPLY_CODE
+        return subtype, profile.workshop_scene_selector
+    return subtype, H617A_WORKSHOP_APPLY_CODE if grammar in {"H6046", "H617A"} else H6199_WORKSHOP_APPLY_CODE
 
 
 def resolve_diy_code(
@@ -723,7 +740,7 @@ def resolve_diy_code(
         if content.model != model:
             raise ValueError(f"effect targets {content.model}, not {model}")
         if isinstance(content, WorkshopEffect):
-            expected = workshop_apply_code(model, profile=profile)
+            _, expected = _workshop_upload_route(model, content.carrier, profile=profile)
         else:
             require_effect_route(model, CapabilityWorkflow.PALETTE_DIY, ("H6199",), profile=profile)
             expected = H6199_PALETTE_DIY_APPLY_CODE
@@ -736,7 +753,7 @@ def resolve_diy_code(
         grammar = require_effect_route(
             "H617A" if model is None else model,
             workflow,
-            ("H6046", "H617A", "H1AB2", "H6099", "H607C", "H6181"),
+            ("H6046", "H6053", "H617A", "H1AB2", "H6099", "H607C", "H6181"),
             profile=profile,
         )
         if grammar == "H607C":
@@ -787,10 +804,9 @@ def _compile_workshop_effect(
     profile: ModelProfile | None = None,
 ) -> CompiledEffect:
     profile = get_profile(model) if profile is None else profile
-    diy_code = workshop_apply_code(model, profile=profile)
-    grammar = profile.effect_grammar
     content = item.content
     if isinstance(content, WorkshopEffect):
+        body_kind, diy_code = _workshop_upload_route(model, content.carrier, profile=profile)
         if content.model != model:
             raise ValueError(f"Workshop effect targets {content.model}, not {model}")
         payload = encode_workshop_effect(
@@ -798,8 +814,9 @@ def _compile_workshop_effect(
             content.effect,
             trailing_padding=content.trailing_padding,
             profile=profile,
+            carrier=content.carrier,
+            raw_param=content.raw_param,
         )
-        body_kind = int(H6199EffectUpload.BodyKind.scene) if grammar == "H6199" else int(SceneBody.SceneType.scene_v2)
         upload = tuple(fragment_a3(body_kind, payload))
         content_kind = "workshop"
     else:
@@ -834,6 +851,7 @@ def _compile_workshop_effect(
             *((DIY_ACK_EVIDENCE,) if profile.diy_requires_upload_ack else ()),
         ),
         upload_subtype=body_kind,
+        workshop_carrier=content.carrier,
         rgbic_scene_v0=profile.rgbic_scene_v0,
         physical_ic_count=profile.physical_ic_count if profile.rgbic_scene_v0 is not None else None,
     )
@@ -1131,6 +1149,7 @@ def compile_h617a(
         raise ValueError("; ".join(result.reasons))
 
     content = item.content
+    upload_prefix = profile.a1_diy_prefix if profile.a1_diy_prefix is not None else profile.a1_diy_selector
     if profile.effect_grammar == "H6181" and isinstance(content, SingleEffect | MultiEffect):
         from .h6181_effects import build_diy
 
@@ -1157,7 +1176,7 @@ def compile_h617a(
                 content.variant,
                 content.speed,
                 content.palette,
-                a1_selector=profile.a1_diy_selector,
+                a1_selector=upload_prefix,
             )
         )
     elif isinstance(content, MultiEffect):
@@ -1166,7 +1185,7 @@ def compile_h617a(
             tuple((effect.family, effect.variant) for effect in content.effects),
             content.speed,
             content.palette,
-            a1_selector=profile.a1_diy_selector,
+            a1_selector=upload_prefix,
         )
     else:
         raise ValueError("unsupported H617A effect content")
@@ -1209,6 +1228,7 @@ def compile_h617a(
             else None
         ),
         authored_diy=content if isinstance(content, SingleEffect | MultiEffect) else None,
+        upload_prefix=profile.a1_diy_prefix,
     )
 
 

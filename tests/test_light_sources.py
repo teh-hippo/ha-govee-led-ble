@@ -8,7 +8,7 @@ from homeassistant.components.light import ColorMode
 from homeassistant.core import ServiceCall
 from homeassistant.exceptions import HomeAssistantError
 
-from custom_components.ha_govee_led_ble.const import DOMAIN, MODEL_PROFILES, LightSource, device_profile
+from custom_components.ha_govee_led_ble.const import DOMAIN, MODEL_PROFILES, LightSource, ReadDomain, device_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
@@ -551,6 +551,37 @@ async def test_stale_kelvin_status_cannot_override_new_source_rgb(hass):
     assert GoveeBLESourceLight(coordinator, "left_bar").color_mode is ColorMode.RGB
     coordinator._arm_expected(build_scene_activation("H6046", 1, profile=coordinator.profile))
     assert "source_kelvin_left_bar" not in coordinator._expected_state
+
+
+@pytest.mark.parametrize("left_kelvin,right_kelvin", [(0, 0), (2199, 2199), (3123, 0), (3123, 4000)])
+def test_inline_bar_readback_qualifies_complete_geometry_and_exact_mixed_intent(hass, left_kelvin, right_kelvin):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6053", configuration_url=None)
+    coordinator.pact_type, coordinator.pact_code = 1, 1
+    coordinator.fw_version, coordinator.hw_version = "1.00.11", "1.00.00"
+    coordinator._resolve_device_profile()
+    coordinator._notify_started_monotonic = time.monotonic() - 1
+    coordinator._client = MagicMock(is_connected=True)
+    payload = (
+        bytes.fromhex("aa050d112233")
+        + left_kelvin.to_bytes(2, "big")
+        + bytes.fromhex("445566")
+        + right_kelvin.to_bytes(2, "big")
+    ).ljust(19, b"\0")
+    coordinator._notify_callback(None, bytearray(payload + bytes((xor_checksum(payload),))))
+    assert coordinator.segment_colors == [(17, 34, 51), (68, 85, 102)]
+    assert coordinator.segment_kelvin == [left_kelvin, right_kelvin]
+    assert coordinator.segment_state_source == "observed" and not coordinator.segment_brightness_readable
+    assert coordinator._domain_revisions[ReadDomain.SEGMENTS] == 1
+    assert coordinator.source_field_fresh("segment_colors")
+    for key, kelvin in (("left_bar", left_kelvin), ("right_bar", right_kelvin)):
+        source = GoveeBLESourceLight(coordinator, key)
+        assert source.color_mode is (ColorMode.COLOR_TEMP if kelvin else ColorMode.RGB)
+        assert source.color_temp_kelvin == (kelvin or None)
+    observed = list(coordinator.segment_colors)
+    rejected = bytes.fromhex("aa050dffffff00000102030001").ljust(19, b"\0")
+    coordinator._notify_callback(None, bytearray(rejected + bytes((xor_checksum(rejected),))))
+    assert coordinator.segment_colors == observed
+    assert coordinator._domain_revisions[ReadDomain.SEGMENTS] == 1
 
 
 async def test_failed_source_colour_write_releases_source_expectations(hass):

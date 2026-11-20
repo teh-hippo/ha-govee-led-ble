@@ -1,10 +1,31 @@
 import { expect, test, vi } from "vitest";
 import backendContracts from "../fixtures/backend-contracts.json";
 import { PanelModel } from "../../src/panel-model";
-import { serialiseEditable } from "../../src/effect-editor-model";
-import { decodeCustomCatalogue, decodeDevices } from "../../src/validation";
+import { cloneEditableEffect, isEditableEffectContent, serialiseEditable } from "../../src/effect-editor-model";
+import { decodeCustomCatalogue, decodeDevices, decodeEffectContent } from "../../src/validation";
 import type { HomeAssistant, MusicProfileContent } from "../../src/types";
 import { device, painted, videoProfile, installH6199Catalogue, item, flowWorkspaceDevice, installFlowCatalogue } from "./panel-test-support";
+
+test.each(["workshop_rgb", "workshop_rgbic_v2"] as const)("retained %s content remains applicable and lossless without a fabricated body editor", (kind) => {
+  const model = new PanelModel(() => undefined);
+  const target = device("retained", "H6053");
+  target.custom_effects.workshop = "supported";
+  model.devices = [target];
+  model.selectedDeviceId = target.config_entry_id;
+  model.isAdmin = true;
+  model.editorSource = { kind: "saved", owner: { section: "custom", category: "advanced" }, itemId: "retained" };
+  model.liveApplyEnabled = false;
+  model.customCatalogue = decodeCustomCatalogue(backendContracts.responses.custom_catalogue);
+  model.content = decodeEffectContent(backendContracts.content_samples[kind]);
+  expect(isEditableEffectContent(model.content)).toBe(true);
+  if (!isEditableEffectContent(model.content)) throw new Error("Missing retained content support");
+  expect(cloneEditableEffect(model.content)).toEqual(model.content);
+  expect(JSON.parse(serialiseEditable("Retained", model.content)).content).toEqual(backendContracts.content_samples[kind]);
+  expect(model.previewCapability).toBe("supported");
+  expect(model.editorAction("apply")?.enabled).toBe(true);
+  model.devices = [{ ...target, model: "H617A" }];
+  expect(model.previewCapability).toBe("unsupported");
+});
 
 test("experimental feedback stays visible without enabled workflows and uses only explicit report fields", () => {
   const model = new PanelModel(() => undefined);

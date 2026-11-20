@@ -176,3 +176,7 @@ speculative/h705a_status_query.ksy
 speculative/h705a_status_reply.ksy
 speculative/h705a_music_write.ksy
 speculative/h705a_music_body.ksy
+speculative/h6053_wire_write
+speculative/h6053_status_reply
+speculative/h6053_legacy_status_reply
+speculative/h6053_effect_upload

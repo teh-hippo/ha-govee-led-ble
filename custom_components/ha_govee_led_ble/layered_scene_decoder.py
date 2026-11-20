@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 from collections.abc import Callable
 from dataclasses import replace
-from typing import Any
+from typing import Any, Literal, overload
 
 from .const import ModelProfile, get_profile
 from .generated_protocol_adapter import (
@@ -30,13 +30,18 @@ from .layered_scene import (
 from .protocol_core import (
     GoveeShared,
     H607cSceneBody,
+    H6046EffectUpload,
+    H6053EffectUpload,
     H6199EffectUpload,
     SceneBody,
     SceneParameterTooLargeError,
     WorkshopBody,
+    _set_effect_layer_lengths,
     new_child,
     new_rgb,
+    serialize_native_body,
 )
+from .protocol_effect_bodies import parse_h6053_workshop_body, validate_h6053_workshop_v2
 from .protocol_h6199 import parse_h6199_workshop_content, serialize_h6199_workshop_content
 from .scenes import SceneEntry
 
@@ -118,12 +123,38 @@ def encode_layered_scene(scene: LayeredScene, *, scene_type: int = 2, profile: M
         raise LayeredSceneValidationError(str(error)) from error
 
 
+@overload
+def decode_workshop_effect(
+    model: str, raw_param: bytes, *, carrier: Literal["rgbic_v1", "rgbic_v2"] = "rgbic_v1"
+) -> tuple[LayeredEffect, int]: ...
+
+
+@overload
+def decode_workshop_effect(model: str, raw_param: bytes, *, carrier: Literal["rgb"]) -> tuple[None, int]: ...
+
+
+@overload
+def decode_workshop_effect(model: str, raw_param: bytes, *, carrier: str) -> tuple[LayeredEffect | None, int]: ...
+
+
 def decode_workshop_effect(
     model: str,
     raw_param: bytes,
-) -> tuple[LayeredEffect, int]:
+    *,
+    carrier: str = "rgbic_v1",
+) -> tuple[LayeredEffect | None, int]:
     """Decode a Workshop parameter through its model-specific generated structure."""
     grammar = get_profile(model).effect_grammar
+    if grammar == "H6053":
+        parsed = parse_h6053_workshop_body(raw_param, carrier)
+        if carrier == "rgb":
+            return None, 0
+        return (
+            LayeredEffect(tuple(_decode_layer(record.body) for record in parsed.blocks)),
+            len(parsed.unknown_tail) if not any(parsed.unknown_tail) else 0,
+        )
+    if carrier != "rgbic_v1":
+        raise ValueError(f"{model} has no {carrier} Workshop grammar")
     if grammar in {"H6046", "H617A", "H1AB2", "H60B2"}:
         parsed, trailing_padding = parse_workshop_body(raw_param)
         records = parsed.layers
@@ -137,15 +168,36 @@ def decode_workshop_effect(
 
 def encode_workshop_effect(
     model: str,
-    effect: LayeredEffect,
+    effect: LayeredEffect | None,
     *,
     trailing_padding: int = 0,
     profile: ModelProfile | None = None,
+    carrier: str = "rgbic_v1",
+    raw_param: bytes = b"",
 ) -> bytes:
     """Serialize Workshop layers through the model-specific generated structure."""
-    layers = _profile_layers(effect, profile)
     profile = get_profile(model) if profile is None else profile
     grammar = profile.effect_grammar
+    if grammar == "H6053":
+        source = parse_h6053_workshop_body(raw_param, carrier) if raw_param else None
+        if carrier == "rgb":
+            if effect is not None or source is None or trailing_padding:
+                raise ValueError("RGB Workshop requires its complete retained source")
+            return serialize_native_body(source)
+        if effect is None or carrier not in {"rgbic_v1", "rgbic_v2"}:
+            raise ValueError("Workshop requires layered content and a known carrier")
+        layers = _profile_layers(effect, profile)
+        root = H6053EffectUpload.SceneContent()
+        root.num_blocks = len(layers)
+        root.blocks = [_encode_record(H6046EffectUpload.Block, root, layer) for layer in layers]
+        root.unknown_tail = source.unknown_tail if source is not None else bytes(trailing_padding)
+        _set_effect_layer_lengths(root.blocks)
+        if carrier == "rgbic_v2":
+            validate_h6053_workshop_v2(root)
+        return serialize_native_body(root)
+    if carrier != "rgbic_v1" or effect is None:
+        raise ValueError(f"{model} has no {carrier} Workshop grammar")
+    layers = _profile_layers(effect, profile)
     serializer: Callable[[Any], bytes]
     if grammar in {"H6046", "H617A", "H1AB2", "H60B2"}:
         root = WorkshopBody()

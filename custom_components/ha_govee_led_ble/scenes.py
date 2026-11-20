@@ -278,7 +278,8 @@ def scene_supported(scene: SceneEntry, profile: ModelProfile) -> bool:
     if profile.effect_workflows is not None and "native_scenes" not in profile.effect_workflows:
         return False
     if profile.scene_command_versions is not None and (
-        scene.command_version not in profile.scene_command_versions
+        scene.scene_type == 2
+        and scene.command_version not in profile.scene_command_versions
         or (scene.command_version != 0 and scene.scene_type != 2)
     ):
         return False

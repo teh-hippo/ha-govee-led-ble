@@ -127,6 +127,15 @@ _QUALIFIED_CONTEXTS: tuple[tuple[str, str, int | None, int | None, str | None, s
     ("H6072-low-blue-unknown-static", "H6072", None, None, "2.04.07", None),
     ("H6072-low-blue-legacy-static", "H6072", 2, 1, "2.04.07", "1.00.00"),
     ("H6046-unqualified", "H6046", None, None, None, None),
+    ("H6053-bootstrap", "H6053", None, None, None, None),
+    ("H6053-pact1-identity-pending", "H6053", 1, 1, None, None),
+    ("H6053-pact2-identity-pending", "H6053", 2, 1, None, None),
+    ("H6053-pact1-legacy-static", "H6053", 1, 1, "1.00.11", "1.00.00"),
+    ("H6053-pact2-legacy-static", "H6053", 2, 1, "1.00.12", "0.99.99"),
+    ("H6053-pact1-modern-static", "H6053", 1, 1, "1.00.12", "1.00.00"),
+    ("H6053-pact2-modern-scenes", "H6053", 2, 1, "1.01.00", "1.00.00"),
+    ("H6053-pact1-reported-firmware", "H6053", 1, 1, "1.08.05", "1.00.00"),
+    ("H6053-pact2-expanded-music", "H6053", 2, 1, "1.08.00", "2.00.00"),
     ("H60A1-2200k", "H60A1", None, None, None, "1.04.02"),
     ("H60A1-segmented", "H60A1", 1, 1, "1.02.20", "1.04.03"),
     ("H60A1-segmented-2200k", "H60A1", 2, 1, "1.02.20", "1.04.02"),
@@ -347,7 +356,7 @@ def _status_music_enum(profile: ModelProfile):
         return protocol_core.H607cMusicWrite.MusicMode
     if profile.status_grammar == "H705A":
         return protocol_core.H705aMusicWrite.MusicMode
-    if profile.status_grammar == "H6046":
+    if profile.status_grammar in {"H6046", "H6053", "H6053-legacy"}:
         return protocol_core.H6046CommandWrite.MusicMode
     if profile.status_grammar == "H6097":
         return protocol_core.H6097MusicWrite.MusicMode
@@ -360,6 +369,8 @@ def _status_music_enum(profile: ModelProfile):
 
 
 def _segment_domain_byte(profile: ModelProfile) -> int:
+    if profile.status_grammar == "H6053-legacy":
+        return 0x05
     root_type = _status_root_type(profile)
     domain_enum = getattr(root_type, "AaDomain", getattr(root_type, "StatusDomain", None))
     assert domain_enum is not None
@@ -370,6 +381,8 @@ def _segment_pages(profile: ModelProfile) -> list[bytes]:
     """Full segment pages: segment 0 is a real black/off record, remaining meaningful
     records carry distinct R/G/B channels, and unused slots are zero-filled."""
     domain_byte = _segment_domain_byte(profile)
+    if domain_byte == 0x05:
+        return [_status(0x05, bytes.fromhex("0d00000000000203040000"))]
     rgb_only = domain_byte == 0xA2
     pages = []
     for group in range(1, profile.segment_group_count + 1):
@@ -513,7 +526,12 @@ def test_every_claimed_read_domain_has_a_typed_body(model: str, profile: ModelPr
             )
             decoded = decode_status_frame(frame, model, profile=profile)
             assert decoded is not None
-            assert decoded.domain is domain and decoded.raw_domain == (
+            expected_domain = (
+                ReadDomain.COLOUR_MODE
+                if domain is ReadDomain.SEGMENTS and profile.status_grammar == "H6053-legacy"
+                else domain
+            )
+            assert decoded.domain is expected_domain and decoded.raw_domain == (
                 int(raw.parsed.domain) if a.is_bulk_status_frame(frame, profile) else frame[1]
             )
             if profile.status_grammar == "H6179":
@@ -539,6 +557,10 @@ def test_declared_segment_paging_matches_the_grammar_it_reads_through(model: str
             f"{profile.segment_count} segments at {profile.segment_group_size} a page"
         )
         body = result.parsed.body
+        if profile.status_grammar == "H6053-legacy":
+            assert len(body.detail.sources) == profile.segment_count
+            assert len(parse_color_mode(result.parsed, model, profile=profile).segment_colors) == profile.segment_count
+            continue
         offset = (group - 1) * profile.segment_group_size
         meaningful = min(profile.segment_group_size, profile.segment_count - offset)
         capacity = profile.segment_count_capacity or profile.segment_count
@@ -547,7 +569,7 @@ def test_declared_segment_paging_matches_the_grammar_it_reads_through(model: str
             f"{model} ({profile.name}) page {group}: root reads {body.num_segments} records "
             f"where the qualified envelope holds {envelope_count} and the installed layout requires {meaningful}"
         )
-        if _segment_domain_byte(profile) == 0xA2:
+        if _segment_domain_byte(profile) in {0xA2, 0x05}:
             assert len(body.segments) * 3 + len(body.unknown_tail) == 16
         else:
             assert len(body.segments) * 4 + len(body.unused) == 16
@@ -573,7 +595,7 @@ def test_segment_pages_reach_observed_state(hass, model: str, profile: ModelProf
     expected_colors = [(0, 0, 0)] + [(index + 1, index + 2, index + 3) for index in range(1, profile.segment_count)]
     expected_brightness = [0] + [50 + index for index in range(1, profile.segment_count)]
     assert coordinator.segment_colors == expected_colors
-    if _segment_domain_byte(profile) == 0xA2:
+    if _segment_domain_byte(profile) in {0xA2, 0x05}:
         assert not coordinator.segment_brightness_readable
         assert coordinator.segment_brightness == [100] * profile.segment_count
     else:
@@ -666,8 +688,14 @@ def test_every_claimed_read_domain_can_actually_be_asked_for(model: str, profile
                 f"{model} ({profile.name}) {domain.value} query rejected by {profile.command_grammar} query root"
             )
             domain_name = getattr(parsed.parsed.domain, "name", "")
-            assert _STATUS_DOMAIN_NAMES.get(domain_name) is domain or (
-                domain is ReadDomain.MODE and _STATUS_DOMAIN_NAMES.get(domain_name) is ReadDomain.COLOUR_MODE
+            assert (
+                _STATUS_DOMAIN_NAMES.get(domain_name) is domain
+                or (domain is ReadDomain.MODE and _STATUS_DOMAIN_NAMES.get(domain_name) is ReadDomain.COLOUR_MODE)
+                or (
+                    domain is ReadDomain.SEGMENTS
+                    and profile.status_grammar == "H6053-legacy"
+                    and domain_name == "colour_mode"
+                )
             )
             if profile.outbound_transform is not None:
                 wire = profile.outbound_transform(query)
@@ -1083,6 +1111,33 @@ def test_legacy_strip_register_and_rgb_commands_follow_exact_product_policy(hard
         build_color_temp(4000, "H6127", profile=profile)
 
 
+@pytest.mark.parametrize("pact", [1, 2])
+@pytest.mark.parametrize(
+    "firmware,hardware,modern",
+    [
+        ("1.00.11", "1.00.00", False),
+        ("1.00.12", "0.99.99", False),
+        ("1.00.12", "1.00.00", True),
+        ("1.08.05", "1.00.00", True),
+    ],
+)
+def test_bar_static_revision_and_music_pact_select_independent_wire_shapes(pact, firmware, hardware, modern):
+    profile = device_profile("H6053", pact, 1, firmware=firmware, hardware=hardware)
+    assert profile.outbound_transform is not None
+    for percent, register in ((1, 20), (50, 136), (100, 254)):
+        packet = profile.outbound_transform(a.build_brightness(percent, "H6053", profile=profile))
+        assert packet == _xor(bytes((0x33, 4, register if pact == 1 else percent)).ljust(19, b"\0"))
+    colour = build_segment_color(profile.light_sources[1].segments, 12, 34, 56, "H6053", profile=profile)
+    expected = "330515010c22380000000000c00f" if modern else "33050d100c22380000"
+    assert profile.outbound_transform(colour) == _xor(bytes.fromhex(expected).ljust(19, b"\0"))
+    music = a.build_music_mode(5, 99, None, False, "H6053", profile=profile)
+    assert profile.outbound_transform(music) == bytes.fromhex(
+        "33050c0063000000000000000000000000000059" if pact == 1 else "3305130563000000000000000000000000000043"
+    )
+    query = a.build_colour_mode_query("H6053", profile=profile)
+    assert query == _xor(bytes.fromhex("aa0501").ljust(19, b"\0"))
+
+
 def test_original_whole_strip_colour_and_music_use_their_own_wire_shapes():
     profile = device_profile("H6127", 1, 1, firmware="1.01.20", hardware="1.00.01")
     assert profile.outbound_transform is not None
@@ -1196,7 +1251,7 @@ def test_static_colour_and_kelvin_status_readback(hass, model: str, profile: Mod
                 in WHOLE_BULB_GRAMMARS | {"H6093", "H6179", "H60B0", "H6159", "H6181-modern", "H6182-modern"}
                 else bytes([static_byte, 1]) + kelvin_bytes
             )
-            if profile.status_grammar == "H6046":
+            if profile.status_grammar in {"H6046", "H6053", "H6053-legacy"}:
                 body += kelvin_bytes
             if profile.status_grammar in {"H6181", "H6182"}:
                 body = bytes([static_byte, 255, 255, 255, 1, *a.table_kelvin_rgb(kelvin)])
@@ -1218,7 +1273,7 @@ def test_static_colour_and_kelvin_status_readback(hass, model: str, profile: Mod
                 in WHOLE_BULB_GRAMMARS | {"H6093", "H6179", "H60B0", "H6159", "H6181-modern", "H6182-modern"}
                 else bytes([static_byte, 1]) + bad_bytes
             )
-            if profile.status_grammar == "H6046":
+            if profile.status_grammar in {"H6046", "H6053", "H6053-legacy"}:
                 bad_body += bad_bytes
             bad_reply = _status(0x05, bad_body)
             coordinator._notify_callback(None, bytearray(bad_reply))

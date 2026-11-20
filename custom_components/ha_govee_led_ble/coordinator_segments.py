@@ -177,6 +177,15 @@ class _SegmentMixin(_CoordinatorBase):
         self._segment_groups_observed.add(group)
         if len(self._segment_groups_observed) != self._segment_group_count:
             return ()
+        return self._apply_segment_palette(colours, brightness if page_brightness is not None else None)
+
+    def _apply_segment_palette(
+        self, colours: list[tuple[int, int, int]], brightness: list[int] | None = None
+    ) -> tuple[str, ...]:
+        if len(colours) != self.profile.segment_count or (
+            brightness is not None and len(brightness) != self.profile.segment_count
+        ):
+            raise ValueError("Observed segment palette does not match the profile")
         self._segment_query_colors = None
         self._segment_query_brightness = None
         self._segment_groups_observed.clear()
@@ -202,16 +211,16 @@ class _SegmentMixin(_CoordinatorBase):
         if self._static_rgb_known and self.segment_colors != colours:
             self._static_rgb_known = False
         self.segment_colors = colours
-        if page_brightness is not None:
+        if brightness is not None:
             self.segment_brightness = brightness
             self.segment_brightness_known = [True] * self.profile.segment_count
-        self.segment_brightness_readable = page_brightness is not None
+        self.segment_brightness_readable = brightness is not None
         self.segment_state_source = "observed"
         for source in self.profile.light_sources:
             self._h607c_uncertain_state_fields.discard(f"source_colour_{source.key}")
         self.segment_state_observed_at = datetime.now().astimezone().isoformat()
         observed = ["segment_colors"]
-        if page_brightness is not None:
+        if brightness is not None:
             observed.append("segment_brightness")
         return (*observed, *self._project_segment_palette())
 

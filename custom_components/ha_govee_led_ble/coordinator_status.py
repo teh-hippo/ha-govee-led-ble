@@ -160,6 +160,7 @@ class ParsedColorModeResponse:
     multi_effect_flag: int | None = None
     left_bar_kelvin: int | None = None
     right_bar_kelvin: int | None = None
+    segment_colors: tuple[tuple[int, int, int], ...] | None = None
     raw_mode: int | None = None
     source_values: dict[str, int] | None = None
     native_projector: bool = False
@@ -303,7 +304,7 @@ def _parse_music_mode(detail: Any, model: str, profile: ModelProfile) -> ParsedC
     music_mode = getattr(mode_id, "name", None)
     if music_mode not in (profile.readback_music_modes or profile.music_modes):
         raise ValueError("music selector is unsupported for model")
-    if profile.status_grammar == "H6046":
+    if hasattr(detail, "is_base"):
         music_values: dict[str, Any] = {}
         if detail.is_base:
             music_values["music_fixed_colour"] = bool(detail.has_fixed_colour)
@@ -346,7 +347,26 @@ def _parse_static_mode(detail: Any, profile: ModelProfile) -> ParsedColorModeRes
         return ParsedColorModeResponse(mode=ParsedMode.COLOUR)
     if detail is None:
         raise ValueError("Static status has no details")
-    if profile.status_grammar == "H6046":
+    sources = getattr(detail, "sources", None)
+    if sources is not None:
+        if len(sources) != len(profile.light_sources):
+            raise ValueError("Static source count does not match the profile")
+        colours: dict[int, tuple[int, int, int]] = {}
+        temperatures = []
+        for source, record in zip(profile.light_sources, sources, strict=True):
+            temperatures.append(_readback_kelvin(int(record.kelvin)) if record.kelvin else 0)
+            colours.update((index, _rgb_values(record.colour)) for index in source.segments)
+        if set(colours) != set(range(1, profile.segment_count + 1)) or len(temperatures) != 2:
+            raise ValueError("Static source colours do not cover the current geometry")
+        left, right = temperatures
+        return ParsedColorModeResponse(
+            mode=ParsedMode.COLOUR,
+            color_temp_kelvin=left if left == right and left else None,
+            left_bar_kelvin=left,
+            right_bar_kelvin=right,
+            segment_colors=tuple(colours[index] for index in range(1, profile.segment_count + 1)),
+        )
+    if hasattr(detail, "left_kelvin") and hasattr(detail, "right_kelvin"):
         left, right = (
             _readback_kelvin(value) if value else 0 for value in (int(detail.left_kelvin), int(detail.right_kelvin))
         )

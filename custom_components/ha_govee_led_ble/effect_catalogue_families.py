@@ -175,6 +175,30 @@ H6046_DIY_FAMILIES: Final = tuple(
     )
 )
 
+H6053_DIY_FAMILIES: Final = tuple(
+    DiyEffectFamily(
+        name,
+        label,
+        family,
+        (DiyEffectVariation("default", "Default", 0),),
+        True,
+        rate_min=1,
+        palette_max=8,
+        source_reference="tools/ble/kaitai/speculative/h6053_effect_upload.ksy",
+    )
+    for name, label, family in (
+        ("fade", "Fade", 0),
+        ("jumping", "Jumping", 1),
+        ("blinking", "Blinking", 2),
+        ("breathing", "Breathing", 5),
+        ("stream", "Stream", 8),
+        ("flow", "Flow", 9),
+        ("chase", "Chase", 10),
+        ("snow", "Snow", 11),
+        ("aurora", "Aurora", 13),
+    )
+)
+
 H605C_DIY_FAMILIES: Final = tuple(
     DiyEffectFamily(
         name,

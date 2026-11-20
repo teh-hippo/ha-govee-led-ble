@@ -135,9 +135,17 @@ def test_three_head_music_companions_keep_exact_mode_and_tail(mode, code, calm, 
 
 
 @pytest.mark.parametrize("mode", ["energetic", "rhythm", "impact", "spray"])
-def test_h6046_per_bar_selectors_are_one_ordered_request_with_packet_specific_state(mode):
+@pytest.mark.parametrize("model,pact", [("H6046", 1), ("H6053", 1), ("H6053", 2)])
+def test_per_bar_selectors_are_one_ordered_request_with_packet_specific_state(mode, model, pact):
+    profile = device_profile(model, pact, 1, firmware="1.08.05", hardware="1.00.00")
     writes = prepare_music_profile_writes(
-        "H6046", mode, 42, None, mode == "rhythm", {"left_colour": 0x112233, "right_colour": 0x445566}
+        model,
+        mode,
+        42,
+        None,
+        mode == "rhythm",
+        {"left_colour": 0x112233, "right_colour": 0x445566},
+        profile=profile,
     )
     assert len(writes) == 3
     left, right = writes[1:]
@@ -148,8 +156,8 @@ def test_h6046_per_bar_selectors_are_one_ordered_request_with_packet_specific_st
     assert "music_right_colour" not in left[1]
     assert right[1]["music_right_colour"] == 0x445566
     assert "music_left_colour" not in right[1]
-    assert expectations_from_packet(left[0], "H6046")["music_left_colour"] == 0x112233
-    assert "music_right_colour" not in expectations_from_packet(left[0], "H6046")
+    assert expectations_from_packet(left[0], model, profile=profile)["music_left_colour"] == 0x112233
+    assert "music_right_colour" not in expectations_from_packet(left[0], model, profile=profile)
 
 
 def test_h6046_equal_bar_colours_collapse_and_omitted_bar_is_not_invented():
@@ -172,31 +180,63 @@ def test_h6046_equal_bar_colours_collapse_and_omitted_bar_is_not_invented():
 @pytest.mark.parametrize(
     ("mode", "code", "minimum"), [("beat", 73, 2), ("torch", 80, 1), ("rainbow_ring", 81, 6), ("glitter", 82, 1)]
 )
-def test_h6046_palette_bounds_upload_before_selector_and_retained_body(mode, code, minimum):
+@pytest.mark.parametrize("model,pact", [("H6046", 1), ("H6053", 1), ("H6053", 2)])
+def test_bar_palette_bounds_upload_before_selector_and_retained_body(mode, code, minimum, model, pact):
+    profile = device_profile(model, pact, 1, firmware="1.08.05", hardware="1.00.00")
     for size in (minimum, 8):
         palette = [(1, 2, 3)] * size
-        writes = prepare_music_profile_writes("H6046", mode, 0, None, False, {}, palette=palette)
+        writes = prepare_music_profile_writes(model, mode, 0, None, False, {}, palette=palette, profile=profile)
         envelope = reassemble_a3([packet for packet, _ in writes[1:-1]])
         assert envelope[2 : 6 + 3 * size] == bytes((0x41, code, size)) + H("010203") * size + b"\x00"
         assert writes[-1][0][:5] == bytes((0x33, 5, 0x13, code, 0))
         assert writes[-1][0][5:19] == bytes(14)
         assert "_music_body" not in writes[-1][1]
         assert writes.body is not None and writes.body[0] == mode
-        assert upload_ack_mode([packet for packet, _ in writes], len(writes) - 2, "H6046") == code
+        assert upload_ack_mode([packet for packet, _ in writes], len(writes) - 2, model, profile=profile) == code
     for size in (minimum - 1, 9):
         with pytest.raises(ValueError):
-            prepare_music_request("H6046", mode, 99, None, False, {}, palette=[(1, 2, 3)] * size)
+            prepare_music_request(model, mode, 99, None, False, {}, palette=[(1, 2, 3)] * size, profile=profile)
     with pytest.raises(ValueError, match="sensitivity"):
-        prepare_music_request("H6046", mode, 100, None, False, {})
+        prepare_music_request(model, mode, 100, None, False, {}, profile=profile)
 
 
-def test_h6046_music_ack_matches_mode_and_separate_zero_result():
+@pytest.mark.parametrize("model", ["H6046", "H6053"])
+def test_bar_music_ack_matches_mode_and_separate_zero_result(model):
     for mode, status in ((73, 0), (73, 1), (80, 0)):
         raw = bytes((0xA3, 0x41, mode, status)) + bytes(15)
-        parsed = parse_command_ack_result(raw + bytes((xor_checksum(raw),)), "H6046").parsed
+        parsed = parse_command_ack_result(raw + bytes((xor_checksum(raw),)), model).parsed
         assert parsed is not None
         assert upload_ack_success(parsed, 0x41, 73, protocol=0xA3) is ((status == 0) if mode == 73 else None)
         assert upload_ack_success(parsed, 0x41, 73, protocol=0xAA) is None
+
+
+@pytest.mark.parametrize("pact", [1, 2])
+def test_pact_qualified_music_full_frames_keep_expanded_upload_and_targeted_selector_independent(pact):
+    profile = device_profile("H6053", pact, 1, firmware="1.08.05", hardware="1.00.00")
+    assert profile.outbound_transform is not None
+    writes = prepare_music_profile_writes("H6053", "beat", 99, None, False, {}, profile=profile)
+    assert tuple(packet for packet, _ in writes[1:-1]) == (
+        H("a3000102414903ff000000ff000000ff00000054"),
+        H("a3ff00000000000000000000000000000000005c"),
+    )
+    assert profile.outbound_transform(writes[-1][0]) == H(
+        "33050c4963000000000000000000000000000010" if pact == 1 else "330513496300000000000000000000000000000f"
+    )
+    fixed = prepare_music_profile_writes(
+        "H6053",
+        "rhythm",
+        50 if pact == 1 else 99,
+        None,
+        pact == 1,
+        {"right_colour": 0x0C2238} if pact == 1 else {"left_colour": 0xFF0000},
+        profile=profile,
+    )
+    assert profile.outbound_transform(fixed[-1][0]) == H(
+        "33050c05320101100c223800000000000000000b" if pact == 1 else "3305130363000101ff00000000000000000000ba"
+    )
+    older = device_profile("H6053", pact, 1, firmware="1.07.99", hardware="1.00.00")
+    with pytest.raises(ValueError, match="support"):
+        prepare_music_profile_writes("H6053", "beat", 99, None, False, {}, profile=older)
 
 
 def test_h6046_two_colour_readback_and_persistence_keep_unequal_siblings():

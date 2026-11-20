@@ -451,9 +451,10 @@ def _check_status_query_packet(frame: bytes, profile: ModelProfile) -> bool:
     ).parsed
     if query is not None:
         domain = getattr(query.domain, "name", "")
-        if profile.command_grammar == "H6199":
-            if domain == "colour_mode" and query.body.selector != profile.colour_mode_query_selector:
+        if domain == "colour_mode" and profile.command_grammar in {"H6046", "H6199", "H1771", "H60B0"}:
+            if query.body.selector != profile.colour_mode_query_selector:
                 raise ValueError("colour mode query selector is outside the profile")
+        if profile.command_grammar == "H6199":
             if domain in {"segments", "legacy_segments"}:
                 if (domain == "legacy_segments") != (profile.status_grammar == "H6199-Pact1"):
                     raise ValueError("segment query format is outside the profile")
@@ -470,8 +471,6 @@ def _check_status_query_packet(frame: bytes, profile: ModelProfile) -> bool:
         if profile.command_grammar in {"H1771", "H60B0"}:
             if domain == "segments" and not 1 <= query.body.group <= profile.segment_group_count:
                 raise ValueError("segment query group is outside the selected geometry")
-            if domain == "colour_mode" and query.body.selector != profile.colour_mode_query_selector:
-                raise ValueError("colour mode query selector is outside the profile")
         if domain == "bar_enable":
             if profile.setting_grammar == "H6046" and profile.boolean_controls:
                 return True
@@ -492,13 +491,11 @@ def _check_status_query_packet(frame: bytes, profile: ModelProfile) -> bool:
 
 def _check_upload_packet(frame: bytes, profile: ModelProfile) -> bool:
     """A3 music-parameter and effect uploads."""
-    if profile.effect_grammar == "H6181" and profile.diy_upload_transport == "a1_02":
+    if profile.diy_upload_transport == "a1_02":
         legacy = _parse_xor_frame(frame, "H6181", {"H6181": ("h6181_diy_body.frame", H6181DiyBody.Frame)}).parsed
         if legacy is not None:
-            if (
-                profile.supports_custom_effects
-                and profile.command_operations is not None
-                and "effect_upload" in profile.command_operations
+            if profile.supports_custom_effects and (
+                profile.command_operations is None or "effect_upload" in profile.command_operations
             ):
                 return True
             raise ValueError("Palette DIY upload is outside profile capabilities")
@@ -571,7 +568,7 @@ def _check_upload_packet(frame: bytes, profile: ModelProfile) -> bool:
             if upload.index == 0 and upload.body.subtype != H60a6EffectFrame.Subtype.native_effect:
                 raise ValueError("Native effect subtype is outside profile capabilities")
             return True
-        if upload is not None and profile.effect_grammar in {"H6046", "H617A", "H1AB2", "H6181", "H60B2"}:
+        if upload is not None and profile.effect_grammar in {"H6046", "H6053", "H617A", "H1AB2", "H6181", "H60B2"}:
             if upload.index == 0:
                 from .scenes import SCENE_ENTRIES, scene_supported
 
@@ -593,7 +590,11 @@ def _check_upload_packet(frame: bytes, profile: ModelProfile) -> bool:
                         if profile.effect_grammar == "H60B2"
                         else {}
                     ),
-                    1: profile.supports_scenes and 1 in scene_types,
+                    **{subtype: profile.supports_advanced_effects for _, subtype, _ in profile.workshop_carriers},
+                    1: profile.supports_scenes
+                    and 1 in scene_types
+                    or profile.supports_advanced_effects
+                    and any(subtype == 1 for _, subtype, _ in profile.workshop_carriers),
                     2: (profile.supports_scenes and 2 in scene_types)
                     or profile.supports_advanced_effects
                     or profile.command_grammar == "H7020",

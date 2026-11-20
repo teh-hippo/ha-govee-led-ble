@@ -30,6 +30,7 @@ from custom_components.ha_govee_led_ble.coordinator import (
     RX_STALE_TIMEOUT,
     GoveeBLECoordinator,
 )
+from custom_components.ha_govee_led_ble.coordinator_base import async_prepare_effect_profile
 from custom_components.ha_govee_led_ble.coordinator_expectations import expectations_from_packet
 from custom_components.ha_govee_led_ble.coordinator_h6102 import H6102InitialIdentity
 from custom_components.ha_govee_led_ble.coordinator_refresh import DEFAULT_REFRESH_REQUEST, RefreshRequest
@@ -287,6 +288,37 @@ async def test_h6125_reconnect_retains_profile_but_limits_writes_until_identity_
     monkeypatch.setattr("custom_components.ha_govee_led_ble.coordinator.async_establish_ble_connection", establish)
     with pytest.raises(RuntimeError, match="stop before connecting"):
         await h6125._ensure_connected()
+
+
+async def test_cached_effect_profile_without_geometry_conversion_requalifies_before_compilation(hass, monkeypatch):
+    coordinator = GoveeBLECoordinator(hass, "22:33:44:55:66:77", "H6053", configuration_url=None)
+    coordinator.pact_type, coordinator.pact_code = 2, 1
+    coordinator.fw_version, coordinator.hw_version = "1.08.05", "1.00.00"
+    coordinator._resolve_device_profile()
+    cached = coordinator.profile
+    assert cached.rgbic_scene_v0 is None and cached.supports_custom_effects
+    assert not coordinator.effect_authorization_profile.supports_custom_effects
+    client = MagicMock(is_connected=True)
+    coordinator._client = client
+    coordinator._notification_token = object()
+
+    async def connect():
+        coordinator._confirmed_identity_fields.add("pact")
+        return client
+
+    async def read_identity(fields):
+        assert fields == frozenset({"fw_version", "hw_version"})
+        coordinator._notify_callback(None, bytearray(_packet(0xAA, 0x06, list(b"1.08.05\0"))))
+        coordinator._notify_callback(None, bytearray(_packet(0xAA, 0x07, [3, *b"1.00.00\0"])))
+
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(side_effect=connect))
+    read = AsyncMock(side_effect=read_identity)
+    monkeypatch.setattr(coordinator, "_async_read_identity", read)
+    content = SingleEffect(0, 0, 50, ((255, 0, 0),))
+    profile = await async_prepare_effect_profile(coordinator, intent=ControlIntent.APPLY, content=content)
+    read.assert_awaited_once()
+    assert profile == cached and coordinator.effect_authorization_profile == cached
+    assert compile_application(LibraryItem.new("Fade", content), "H6053", diy_code=37, profile=profile).packets
 
 
 @pytest.fixture

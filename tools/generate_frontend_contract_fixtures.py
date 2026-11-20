@@ -41,6 +41,7 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     StaticRgbComposition,
     TargetHint,
     VideoProfile,
+    WorkshopEffect,
     effect_content_from_dict,
     effect_content_to_dict,
 )
@@ -58,6 +59,7 @@ from custom_components.ha_govee_led_ble.effect_websocket_payloads import (
     device_catalogue_settings,
     library_snapshot_payload,
 )
+from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_workshop_effect
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -78,6 +80,8 @@ CONTENT_FAMILIES = {
     "video_profile",
     "advanced",
     "workshop",
+    "workshop_rgb",
+    "workshop_rgbic_v2",
     "scene_builtin",
     "scene_palette",
     "scene_layered",
@@ -162,7 +166,10 @@ def _content_samples(
     scene_details: dict[str, dict[str, Any]],
 ) -> dict[str, dict[str, Any]]:
     workshop = WORKSHOP_PROTOCOL_FIXTURES[0].content("H617A")
+    assert workshop.effect is not None
     workshop_payload = effect_content_to_dict(workshop)
+    v2_source = bytes.fromhex("0a011e000100010001ffff0080010100800101ff00000000800000800000010000")
+    v2_effect, v2_padding = decode_workshop_effect("H6053", v2_source, carrier="rgbic_v2")
 
     samples = {
         "static_rgb": effect_content_to_dict(
@@ -212,6 +219,12 @@ def _content_samples(
         ),
         "advanced": effect_content_to_dict(workshop.effect),
         "workshop": workshop_payload,
+        "workshop_rgb": effect_content_to_dict(
+            WorkshopEffect("H6053", "retained-rgb", None, bytes.fromhex("9301ffff800100ff0000"), carrier="rgb")
+        ),
+        "workshop_rgbic_v2": effect_content_to_dict(
+            WorkshopEffect("H6053", "retained-v2", v2_effect, v2_source, v2_padding, "rgbic_v2")
+        ),
         "scene_builtin": cast(dict[str, Any], scene_details["scene_builtin"]["content"]),
         "scene_palette": cast(dict[str, Any], scene_details["scene_palette"]["content"]),
         "scene_layered": cast(dict[str, Any], scene_details["scene_layered"]["content"]),

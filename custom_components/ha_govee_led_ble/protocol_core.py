@@ -429,6 +429,10 @@ H6046StatusReply = load_generated_class("h6046_status_reply", "H6046StatusReply"
 H6046CommandAck = load_generated_class("h6046_command_ack", "H6046CommandAck")
 H6046EffectUpload = load_generated_class("h6046_effect_upload", "H6046EffectUpload")
 H6046MusicBody = load_generated_class("h6046_music_body", "H6046MusicBody")
+H6053WireWrite = load_generated_class("h6053_wire_write", "H6053WireWrite")
+H6053StatusReply = load_generated_class("h6053_status_reply", "H6053StatusReply")
+H6053LegacyStatusReply = load_generated_class("h6053_legacy_status_reply", "H6053LegacyStatusReply")
+H6053EffectUpload = load_generated_class("h6053_effect_upload", "H6053EffectUpload")
 
 H6072CommandWrite = load_generated_class("h6072_command_write", "H6072CommandWrite")
 H607cSceneBody = load_generated_class("h607c_scene_body", "H607cSceneBody")
@@ -469,6 +473,8 @@ _STATUS_ROOTS = {
     "H6072": ("h6072_status_reply", H6072StatusReply),
     "H607C": ("h607c_status_reply", H607cStatusReply),
     "H6046": ("h6046_status_reply", H6046StatusReply),
+    "H6053": ("h6053_status_reply", H6053StatusReply),
+    "H6053-legacy": ("h6053_legacy_status_reply", H6053LegacyStatusReply),
     "H60A1": ("h60a1_status_reply", H60a1StatusReply),
     "H60A6": ("h60a6_status_reply", H60a6StatusReply),
     "H601C": ("h601c_status_reply", H601cStatusReply),

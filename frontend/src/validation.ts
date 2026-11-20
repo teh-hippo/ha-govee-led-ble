@@ -27,6 +27,7 @@ import type {
   SceneSummary,
   VideoProfileContent,
   WorkshopContent,
+  RgbWorkshopContent,
 } from "./types";
 import { decodeCustomCataloguePayload, decodeModelEffectCatalogue, decodeMusicSettings } from "./catalogue-validation";
 import {
@@ -1152,7 +1153,19 @@ export function decodeEffectContent(value: unknown): EffectContent {
         layers: layerArray(content.layers, "Advanced layers"),
         ...(nativeDiy === undefined ? {} : { native_diy: nativeDiy }),
       } satisfies AdvancedContent;
-    case "workshop": {
+    case "workshop_rgb": {
+      if (content.effect !== null || content.trailing_padding !== 0) invalid("RGB Workshop content");
+      return {
+        kind,
+        model: boundedString(content.model, "Workshop model", MAX_IDENTIFIER_LENGTH),
+        template: boundedString(content.template, "Workshop template", MAX_IDENTIFIER_LENGTH),
+        effect: null,
+        raw_param: hexString(content.raw_param, "Workshop source parameter"),
+        trailing_padding: 0,
+      } satisfies RgbWorkshopContent;
+    }
+    case "workshop":
+    case "workshop_rgbic_v2": {
       const effect = objectValue(content.effect, "Workshop effect");
       return {
         kind,

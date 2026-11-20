@@ -36,6 +36,7 @@ from .protocol_core import (
     H6046CommandAck,
     H6046EffectUpload,
     H6046MusicBody,
+    H6053EffectUpload,
     H6072MusicAck,
     H6072MusicBody,
     H6076MusicAck,
@@ -259,6 +260,8 @@ def parse_a3_effect_envelope(envelope: bytes, model: str, *, profile: ModelProfi
         root_type = H6199EffectUpload
     elif grammar == "H6046":
         root_type = H6046EffectUpload
+    elif grammar == "H6053":
+        root_type = H6053EffectUpload
     elif grammar == "H60A6":
         root_type = H60a6EffectFrame.A3Envelope
     elif grammar == "H607C":
@@ -307,12 +310,43 @@ def parse_a3_effect_envelope(envelope: bytes, model: str, *, profile: ModelProfi
                 for record in parsed.content.records:
                     trailer = H607cSceneBody.LayerTrailer.from_bytes(record.body.excess)
                     trailer._read()
+        if grammar == "H6053" and parsed.kind == H6053EffectUpload.BodyKind.scene_v2:
+            validate_h6053_workshop_v2(parsed.content)
     except KaitaiStructError as error:
         raise ValueError(f"invalid {model} A3 effect envelope") from error
     if not parsed._io.is_eof():
         raise ValueError(f"{model} A3 effect grammar did not consume the envelope")
     if grammar == "H60A6" and any(parsed.padding):
         raise ValueError("Native A3 effect envelope contains non-zero transport fill")
+    return parsed
+
+
+def validate_h6053_workshop_v2(content: Any) -> None:
+    """Validate explicit V2 extensions without reclassifying V1 layer excess."""
+    for record in content.blocks:
+        extension = H6053EffectUpload.V2Extension.from_bytes(record.body.excess)
+        extension._read()
+
+
+def parse_h6053_workshop_body(raw_param: bytes, carrier: str) -> Any:
+    """Parse an explicitly identified retained carrier without guessing from layer tails."""
+    root_type = {
+        "rgb": H6053EffectUpload.RgbContent,
+        "rgbic_v1": H6053EffectUpload.SceneContent,
+        "rgbic_v2": H6053EffectUpload.SceneV2Source,
+    }.get(carrier)
+    if root_type is None or not isinstance(raw_param, bytes) or len(raw_param) > MAX_SCENE_PARAM_BYTES:
+        raise ValueError("Invalid retained Workshop carrier or parameter")
+    try:
+        parsed = root_type(KaitaiStream(io.BytesIO(raw_param)))
+        parsed._read()
+        if not parsed._io.is_eof():
+            raise ValueError("Workshop carrier has unrepresented trailing data")
+        if carrier == "rgbic_v2":
+            parsed = parsed.content
+            validate_h6053_workshop_v2(parsed)
+    except (KaitaiStructError, EOFError) as error:
+        raise ValueError("Invalid retained Workshop body") from error
     return parsed
 
 

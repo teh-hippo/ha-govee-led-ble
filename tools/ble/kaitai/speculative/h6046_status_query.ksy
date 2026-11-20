@@ -24,7 +24,7 @@ seq:
       cases:
         'query_domain::power': zero_body
         'query_domain::brightness': zero_body
-        'query_domain::colour_mode': zero_body
+        'query_domain::colour_mode': colour_mode_query_body
         'query_domain::firmware': zero_body
         'query_domain::hardware': hardware_query_body
         'query_domain::identity': zero_body
@@ -47,6 +47,17 @@ enums:
     0x33: bar_enable
     0xa5: segments
 types:
+  colour_mode_query_body:
+    doc: The exact profile selects zero or one; compatible H6053 controls use one.
+    seq:
+      - id: selector
+        type: u1
+        valid:
+          any-of: [0, 1]
+      - id: zeros
+        type: u1
+        valid: 0
+        repeat: eos
   zero_body:
     seq:
       - id: zeros

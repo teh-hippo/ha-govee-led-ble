@@ -667,6 +667,8 @@ export class PanelModel {
         }
         return device.profiles.video;
       case "workshop":
+      case "workshop_rgb":
+      case "workshop_rgbic_v2":
         return device.custom_effects.workshop;
     }
   }

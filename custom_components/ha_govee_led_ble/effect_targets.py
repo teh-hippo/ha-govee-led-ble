@@ -81,6 +81,10 @@ def resolve_target_item(item: LibraryItem, model: str, profile: ModelProfile | N
             source.effect_grammar != profile.effect_grammar
             or source.workshop_brightness_algorithm != profile.workshop_brightness_algorithm
         )
+        if content.carrier != "rgbic_v1":
+            raise ValueError("Retained Workshop carrier is bound to its source model")
+        if content.effect is None:
+            raise ValueError("Workshop has no transferable layered content")
         if different_format and any(
             layer.unknown_flags
             or layer.excess

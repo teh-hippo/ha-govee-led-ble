@@ -245,17 +245,6 @@ class _NotificationMixin(_CoordinatorBase):
                 self.rgb_color_source = "retained"
             if self.color_temp_kelvin_source == "observed":
                 self.color_temp_kelvin_source = "retained"
-        if parsed.mode is ParsedMode.COLOUR:
-            for source in self.profile.light_sources:
-                field = f"{source.control.removesuffix('_enabled')}_kelvin"
-                reported = (parsed.source_values or {}).get(field, getattr(parsed, field, None))
-                if type(reported) is not int or not self._accept_expected(f"source_kelvin_{source.key}", reported):
-                    continue
-                if len(self.segment_kelvin) != self.profile.segment_count:
-                    self.segment_kelvin = [None] * self.profile.segment_count
-                for index in source.segments:
-                    if index <= len(self.segment_kelvin):
-                        self.segment_kelvin[index - 1] = reported
         self.color_mode = parsed.mode
         if parsed.mode is not ParsedMode.SCENE:
             self._scene_code = None
@@ -328,7 +317,7 @@ class _NotificationMixin(_CoordinatorBase):
                         setattr(self, attr, value)
                         observed.append(attr)
         if parsed.mode is ParsedMode.COLOUR:
-            if self.profile.status_grammar == "H6046":
+            if parsed.left_bar_kelvin is not None and parsed.right_bar_kelvin is not None:
                 self.left_bar_kelvin, self.right_bar_kelvin = parsed.left_bar_kelvin, parsed.right_bar_kelvin
                 if parsed.left_bar_kelvin or parsed.right_bar_kelvin:
                     self._static_rgb_known = False
@@ -381,7 +370,11 @@ class _NotificationMixin(_CoordinatorBase):
                     or self.profile.static_readback_kelvin
                     and self.profile.static_readback_zero_kelvin_is_rgb
                 )
-                and not (self.profile.status_grammar == "H6046" and parsed.left_bar_kelvin != parsed.right_bar_kelvin)
+                and not (
+                    parsed.left_bar_kelvin is not None
+                    and parsed.right_bar_kelvin is not None
+                    and parsed.left_bar_kelvin != parsed.right_bar_kelvin
+                )
             ):
                 static_values["color_temp_kelvin"] = parsed.color_temp_kelvin
             accepted_values = dict(static_values)
@@ -419,6 +412,18 @@ class _NotificationMixin(_CoordinatorBase):
                 ):
                     self.color_temp_kelvin_source = "retained"
                 observed.extend(static_values)
+            if parsed.segment_colors is not None:
+                observed.extend(self._apply_segment_palette(list(parsed.segment_colors)))
+            for source in self.profile.light_sources:
+                field = f"{source.control.removesuffix('_enabled')}_kelvin"
+                reported = (parsed.source_values or {}).get(field, getattr(parsed, field, None))
+                if type(reported) is not int or not self._accept_expected(f"source_kelvin_{source.key}", reported):
+                    continue
+                if len(self.segment_kelvin) != self.profile.segment_count:
+                    self.segment_kelvin = [None] * self.profile.segment_count
+                for index in source.segments:
+                    if index <= len(self.segment_kelvin):
+                        self.segment_kelvin[index - 1] = reported
         return tuple(observed)
 
     def _handle_bulk_notification(self, frame: bytes) -> bool:

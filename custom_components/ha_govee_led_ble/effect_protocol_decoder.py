@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from kaitaistruct import KaitaiStructError
+
 from .const import get_profile
 from .effect_domain import (
     H617A_SEGMENT_COUNT,
@@ -32,6 +34,7 @@ from .protocol_core import (
     H607cEffectUpload,
     H1771EffectUpload,
     H6046EffectUpload,
+    H6053EffectUpload,
     H6199EffectUpload,
     SceneBody,
     SceneType1Body,
@@ -69,6 +72,13 @@ def decode_effect_frames(
     if transport == "a3":
         return decode_a3_effect_frames(frames, model)
     if transport == "a1_02":
+        if get_profile(model).effect_grammar == "H6053":
+            try:
+                root = H6053EffectUpload.A1DiyBody.from_bytes(reassemble_a1_02(frames))
+                root._read()
+            except (KaitaiStructError, EOFError) as error:
+                raise ValueError("Invalid A1 DIY body") from error
+            return _decode_flat_diy(root.body)
         if get_profile(model).effect_grammar == "H6181":
             from .h6181_effects import decode_diy
 
@@ -108,21 +118,13 @@ def decode_a3_effect(tree: Any, model: str) -> EffectContent:
         if isinstance(content, SingleEffect):
             return H6179SingleDiyEffect(model, content.family, content.variant, content.speed, content.palette)
         return H6179MixedDiyEffect(model, content.effects, content.speed, content.palette)
-    if grammar == "H6046":
+    if grammar in {"H6046", "H6053"}:
         if tree.kind == H6046EffectUpload.BodyKind.scene:
             return _decode_layered_tree(tree, model)
         if tree.kind == H6046EffectUpload.BodyKind.diy:
-            body = tree.content
-            if any(body.unknown_tail):
-                raise UnsupportedA3EffectError("H6046 DIY has unrepresented trailing data")
-            palette = tuple(_rgb(colour) for colour in body.palette)
-            if body.family == H6046EffectUpload.EffectFamily.mixed:
-                return MultiEffect(
-                    effects=tuple(EffectPair(int(pair.family), pair.variant) for pair in body.pairs),
-                    speed=body.speed,
-                    palette=palette,
-                )
-            return SingleEffect(family=int(body.family), variant=body.variant, speed=body.speed, palette=palette)
+            return _decode_flat_diy(tree.content)
+        if grammar == "H6053" and tree.kind == H6053EffectUpload.BodyKind.scene_v2:
+            raise UnsupportedA3EffectError("V2 Workshop upload requires its retained carrier identity")
         raise UnsupportedA3EffectError("H6046 built-in parameters require catalogue identity")
     if grammar == "H60A6":
         if isinstance(tree, H60a6DiyBody):
@@ -178,6 +180,19 @@ def decode_a3_effect(tree: Any, model: str) -> EffectContent:
         raise UnsupportedA3EffectError(f"H6199 A3 body kind {int(tree.kind)} is not supported")
 
     raise ValueError(f"{model} has no canonical A3 effect decoder")
+
+
+def _decode_flat_diy(body: Any) -> SingleEffect | MultiEffect:
+    if any(body.unknown_tail):
+        raise UnsupportedA3EffectError("Flat DIY has unrepresented trailing data")
+    palette = tuple(_rgb(colour) for colour in body.palette)
+    if body.family == H6046EffectUpload.EffectFamily.mixed:
+        return MultiEffect(
+            effects=tuple(EffectPair(int(pair.family), pair.variant) for pair in body.pairs),
+            speed=body.speed,
+            palette=palette,
+        )
+    return SingleEffect(family=int(body.family), variant=body.variant, speed=body.speed, palette=palette)
 
 
 def _decode_h617a_painted(tree: Any) -> PaintedEffect:
