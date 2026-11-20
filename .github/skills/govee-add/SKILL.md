@@ -16,40 +16,23 @@ Goal: complete Experimental support, merged and available in a master release ca
 Task list:
 
 1. Build the device brief.
-2. Create the confirmation issue (wording below) under tracker #442, with the SKU label (create it if missing: colour `5319e7`, description `Govee <SKU> device support`).  Its number goes in the profile's `confirmation_issue`.
+2. Use the original exact-SKU support request for implementation and owner verification.
+   If there is no request, create one using `.github/ISSUE_TEMPLATE/model-support.md`, with the SKU in its title and description.
+   Do not create a follow-on confirmation issue, attach it to a parent tracker, or create or apply a model label.
+   Its number goes in the profile's `confirmation_issue` and README Experimental link.
+   For existing paired issues, follow `CONTRIBUTING.md` consolidation policy rather than abandoning active owner discussion.
 3. Map the device brief onto existing capability declarations, codecs and shared operations before implementing.
    Follow the shared design workflow; cover every row of the checklist below or say why a row does not apply.
    Complete support should normally add product declarations and evidenced codecs, not another entity, coordinator, editor or recovery path.
    Where existing machinery cannot express a capability, correct or extend that machinery for all affected callers; keep an override only for evidenced semantic differences.
 4. Run `govee-audit` on both completeness and special treatment in the result.
    Fix supported root causes as fixups to the support commit, remove superseded code, re-review, and repeat until no actionable findings remain.
-5. Review, commit, `make check`, PR (references the request and the confirmation issue).
+5. Review, commit, `make check`, PR (references the request without automatic issue-closing keywords).
 6. When the PR is green, merge it to `master`.
 7. Follow `CONTRIBUTING.md` release policy: wait for the automatic master candidate containing the merge and verify its workflow and assets.  Do not dispatch another master RC or publish stable.
-8. Show the requester reply draft to the operator; after approval, post it on the request (not the confirmation issue), then close the request:
-   > Experimental support for `<SKU>` is available in `<master RC tag>`. @`<requester>`, install it through HACS, restart Home Assistant and report feedback on #`<confirmation issue>`.
-
-## Confirmation issue
-
-Title: `<SKU>: owner confirmations by hardware and firmware revision`
-
-```
-Tracks Experimental <SKU> BLE support and owner confirmation for each hardware/firmware revision.
-Originating support request: #<request>.
-Parent tracker: #442.
-
-Please report:
-- Printed model, separately identified hardware/firmware versions, integration version and version source.
-- Controls tested and visible results: discovery, power/brightness, RGB/segments, eligible Kelvin, scenes/speed, onboard music, DIY/advanced effects and gradual.
-- State/readback, reconnect or restoration problems, and features not tested.
-- Sanitised diagnostics where useful.
-
-Successful writes or an optimistic UI are not hardware confirmation.
-Do not post Bluetooth addresses, serial numbers, account details or other unique identifiers.
-Support remains Experimental until owner confirmation and maintainer review.
-```
-
-Drop the request line when there is no request.
+8. Show the requester reply draft to the operator; after approval, post it on the request and leave it open:
+   > Experimental support for `<SKU>` is available in `<master RC tag>`. @`<requester>`, install it through HACS, restart Home Assistant and report results here, including hardware/firmware versions, controls tested and visible behaviour.
+   Hardware confirmation and Supported shipment are handled by `govee-resolve`; lack of a reply does not close the request or promote support.
 
 ## New-model integration checklist
 

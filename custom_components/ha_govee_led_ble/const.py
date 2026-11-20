@@ -2586,7 +2586,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     ),
     "H6159": ModelProfile(
         "H6159 RGB LED Strip",
-        confirmation_issue=640,
+        confirmation_issue=636,
         reconciles_marker_pact=True,
         command_grammar="H6181",
         command_operations=frozenset({"power", "brightness", "static", "scene", "diy", "music", "effect_upload"}),
@@ -2984,7 +2984,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     ),
     "H705A": ModelProfile(
         "H705A Permanent Outdoor Lights",
-        confirmation_issue=607,
+        confirmation_issue=596,
         command_grammar="H705A",
         command_ack_grammar="H705A",
         status_grammar="H705A",

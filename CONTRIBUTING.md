@@ -2,9 +2,14 @@
 
 ## Requesting support or suggesting fixes
 
-Request a new model with a support-request issue and the exact SKU label; pull requests for a specific model carry the same label.
+Request a new model with a support-request issue containing the exact SKU in its title and description.
+Use one issue per exact SKU for the request, implementation and owner verification; do not create a separate confirmation issue or attach it to a parent tracker.
+Set the model's `confirmation_issue` and README Experimental link to that request so the integration directs later owners to the same discussion.
+Identify affected models in issue and pull request descriptions, not with device-model labels.
 For a device-specific problem on a supported model, open an issue or pull request describing the behaviour you saw, with diagnostics.  Fixes are welcome as suggestions, and protocol corrections belong in the model's `.ksy` file.
-Owner confirmations go on the model's confirmation child under [the owner-confirmation tracker](https://github.com/teh-hippo/ha-govee-led-ble/issues/442), not in new issues.
+Existing model threads with active owner discussion remain their feedback issue; when consolidating a request and a separate confirmation issue, keep the active discussion and prefer the original request if neither is active.
+Retain discussion history on the closed issue, link it from the survivor, and update integration and README links when the feedback destination changes.
+New bugs or feature requests for Supported models get fresh issues without replacing the historical model-feedback link.
 Do not post Bluetooth addresses, serial numbers, account details or other unique identifiers.
 
 ## Architecture
@@ -158,7 +163,11 @@ Keep real product differences without turning each product into a separate imple
 
 ## Support status
 
-New models merge as `Experimental`.  An owner confirms working hardware in the model's confirmation issue, and a maintainer then sets `SupportQuality.SUPPORTED` in `const.py` and updates the README table.
+New models merge to `master` as `Experimental` and ship through the existing master-candidate release path.
+Reference the request in the implementation PR without automatic issue-closing keywords; merging or publishing Experimental support does not close it.
+An owner confirms working hardware in the same issue, and a maintainer then sets `SupportQuality.SUPPORTED` in `const.py` and updates the README table.
+Keep the issue open until that promotion has merged and shipped in a verified release.
+Without hardware confirmation, leave both the support status Experimental and the issue open so later owners can contribute.
 An accepted write or another SKU's report is not confirmation.
 
 ## Repository non-goals
