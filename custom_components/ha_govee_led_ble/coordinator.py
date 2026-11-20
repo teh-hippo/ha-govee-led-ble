@@ -1338,6 +1338,9 @@ class GoveeBLECoordinator(
         received_at = time.monotonic()
         self._domain_revisions[domain] = self._domain_revisions.get(domain, 0) + 1
         self._domain_received_at[domain] = received_at
+        if domain is not StatusDomain.SEGMENTS and "segment_colors" in fields:
+            self._domain_revisions[StatusDomain.SEGMENTS] = self._domain_revisions.get(StatusDomain.SEGMENTS, 0) + 1
+            self._domain_received_at[StatusDomain.SEGMENTS] = received_at
         for field in fields:
             self._field_revisions[field] = self._field_revisions.get(field, 0) + 1
             self._field_received_at[field] = received_at
@@ -2550,7 +2553,7 @@ class GoveeBLECoordinator(
 
     @property
     def effect_authorization_profile(self) -> ModelProfile:
-        return self._authorization_profile() if self.profile.rgbic_scene_v0 is not None else self.profile
+        return self._authorization_profile()
 
     def _validate_authorized_packet(
         self, packet: bytes, validator: Callable[[bytes, ModelProfile], None] = require_profile_packet

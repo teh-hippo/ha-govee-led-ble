@@ -86,7 +86,7 @@ from custom_components.ha_govee_led_ble.effect_limits import (
     MAX_PREVIEW_SEQUENCE,
     MAX_SCENE_CATALOGUE_ENTRIES,
 )
-from custom_components.ha_govee_led_ble.effect_protocol_decoder import decode_a3_effect_frames
+from custom_components.ha_govee_led_ble.effect_protocol_decoder import decode_a3_effect_frames, decode_effect_frames
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_h617a_scene, require_profile_packet
 from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_workshop_effect
 from custom_components.ha_govee_led_ble.native_effect import NativeDiyLayer, NativeEffect
@@ -940,9 +940,135 @@ def test_explicit_workshop_carrier_uses_native_activation_without_legacy_suffix(
     assert reassemble_a3(workshop.upload_packets)[3 : 3 + len(payload)] == payload
 
 
+@pytest.mark.parametrize(
+    "pact,expected",
+    [
+        (
+            1,
+            (
+                "a1020001000000000000000000000000000000a2",
+                "a10201fe00003206ff00000000ff000000000068",
+                "a102ff000000000000000000000000000000005c",
+            ),
+        ),
+        (
+            2,
+            (
+                "a30001020400003206ff00000000ff0000000090",
+                "a3ff00000000000000000000000000000000005c",
+            ),
+        ),
+    ],
+)
+def test_independent_diy_upload_prefix_does_not_choose_the_approved_activation_slot(pact, expected):
+    profile = device_profile("H6053", pact, 1, firmware="1.08.05", hardware="1.00.00")
+    item = LibraryItem.new("Two colours", SingleEffect(0, 0, 50, ((255, 0, 0), (0, 0, 255))))
+    with pytest.raises(ValueError, match="approved"):
+        compile_application(item, "H6053", profile=profile)
+    compiled = compile_application(item, "H6053", diy_code=37, profile=profile)
+    assert compiled.upload_packets == tuple(bytes.fromhex(frame) for frame in expected)
+    assert compiled.activation_packet == bytes.fromhex("33050a2500000000000000000000000000000019")
+    assert decode_effect_frames(compiled.upload_packets, "H6053", compiled.upload_transport) == item.content
+    for packet in compiled.packets:
+        require_profile_packet(packet, profile)
+    validate_compiled_geometry(compiled, profile)
+    changed = device_profile("H6053", 3 - pact, 1, firmware="1.08.05", hardware="1.00.00")
+    with pytest.raises(ValueError, match="transport"):
+        validate_compiled_geometry(compiled, changed)
+
+
+@pytest.mark.parametrize(
+    "carrier,source,expected",
+    [
+        (
+            "rgb",
+            "9301ffff800100ff0000",
+            (
+                "a3000102019301ffff800100ff0000000000004d",
+                "a3ff00000000000000000000000000000000005c",
+                "330504c6000000000000000000000000000000f4",
+            ),
+        ),
+        (
+            "rgbic_v1",
+            "011a000100010001ffff0080010100800101ff000000008000008000",
+            (
+                "a300010202011a000100010001ffff0080010138",
+                "a3ff00800101ff00000000800000800000000023",
+                "33050492010000000000000000000000000000a1",
+            ),
+        ),
+        (
+            "rgbic_v2",
+            "0a011e000100010001ffff0080010100800101ff00000000800000800000010000",
+            (
+                "a30001030a011e000100010001ffff0080010135",
+                "a30100800101ff000000008000008000000100dc",
+                "a3ff00000000000000000000000000000000005c",
+                "33050493010000000000000000000000000000a0",
+            ),
+        ),
+    ],
+)
+def test_retained_workshop_carriers_round_trip_and_compile_without_selector_or_prefix_inference(
+    carrier, source, expected
+):
+    profile = device_profile("H6053", 2, 1, firmware="1.08.05", hardware="1.00.00")
+    raw = bytes.fromhex(source)
+    effect, padding = decode_workshop_effect("H6053", raw, carrier=carrier)
+    item = LibraryItem.new("Retained Workshop", WorkshopEffect("H6053", "retained", effect, raw, padding, carrier))
+    restored = LibraryItem.from_dict(item.to_dict())
+    assert restored == item
+    compiled = compile_application(restored, "H6053", profile=profile)
+    assert compiled.packets == tuple(bytes.fromhex(frame) for frame in expected)
+    for packet in compiled.packets:
+        require_profile_packet(packet, profile)
+    validate_compiled_geometry(compiled, profile)
+    with pytest.raises(ValueError, match="carrier"):
+        validate_compiled_geometry(
+            compiled,
+            replace(
+                profile,
+                workshop_carriers=tuple(
+                    (name, subtype, selector + 1) for name, subtype, selector in profile.workshop_carriers
+                ),
+            ),
+        )
+    if carrier != "rgbic_v1":
+        with pytest.raises(ValueError, match="source model"):
+            compile_application(item, "H617A")
+
+
+def test_explicit_v2_identity_preserves_opaque_extensions_when_editing_common_layers():
+    raw = bytes.fromhex("0a011e000100010001ffff0080010100800101ff0000000080000080000001ab7f")
+    effect, padding = decode_workshop_effect("H6053", raw, carrier="rgbic_v2")
+    assert effect is not None
+    tail = bytes.fromhex("deadcafe")
+    content = WorkshopEffect("H6053", "retained", effect, raw + tail, padding, "rgbic_v2")
+    edited = replace(content, effect=replace(effect, layers=(replace(effect.layers[0], colour_speed=42),)))
+    compiled = compile_application(LibraryItem.new("Edited", edited), "H6053")
+    decoded, _ = decode_workshop_effect(
+        "H6053",
+        b"\x0a" + reassemble_a3(compiled.upload_packets)[3 : 3 + len(raw) - 1 + len(tail)],
+        carrier="rgbic_v2",
+    )
+    assert decoded == edited.effect
+    assert decoded is not None and decoded.layers[0].excess == effect.layers[0].excess
+    v1, _ = decode_workshop_effect("H6053", raw[1:] + tail)
+    assert v1 == effect
+    v1_compiled = compile_application(
+        LibraryItem.new("V1", WorkshopEffect("H6053", "retained", v1, raw[1:] + tail)), "H6053"
+    )
+    assert v1_compiled.diy_code == 402 and compiled.diy_code == 403
+    assert reassemble_a3(compiled.upload_packets)[3 + len(raw) - 1 : 3 + len(raw) - 1 + len(tail)] == tail
+    with pytest.raises(ValueError, match="Invalid retained Workshop"):
+        decode_workshop_effect("H6053", raw[:-1], carrier="rgbic_v2")
+
+
 @pytest.mark.parametrize("model", ["H617A", "H6199"])
 def test_workshop_edit_preserves_reserved_layer_data(model: str) -> None:
     content = WORKSHOP_PROTOCOL_FIXTURES[0].content(model)
+    assert content.effect is not None
     first = content.effect.layers[0]
     edited = replace(
         content,

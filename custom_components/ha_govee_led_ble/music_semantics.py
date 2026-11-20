@@ -346,6 +346,34 @@ H6046_MUSIC_VARIANTS = (
     ),
 )
 
+H6053_MUSIC_VARIANTS = (
+    *(
+        MusicVariant(
+            code,
+            "H6053 independent-bar music selector",
+            selector_parameters=_H6046_BAR_COLOURS,
+            supports_style=code == 3,
+        )
+        for code in (5, 3, 8, 9)
+    ),
+    *(
+        MusicVariant(
+            code,
+            "H6053 onboard music palette",
+            "h6046_music_body",
+            bytes.fromhex(f"{code:02x}" + palette + "00"),
+            palette_bounds=bounds,
+            supports_fixed_colour=False,
+        )
+        for code, palette, bounds in (
+            (0x49, "03ff000000ff000000ff", (2, 8)),
+            (0x50, "07ff0000ff7f00ffff0000ff000000ff00ffff8b00ff", (1, 8)),
+            (0x51, "07ff0000ff7f00ffff0000ff000000ff00ffff8b00ff", (6, 8)),
+            (0x52, "07ff0000ff7f00ffff0000ff000000ff00ffff8b00ff", (1, 8)),
+        )
+    ),
+)
+
 # Observed values, not values calculated from logical colour zones or guessed IC counts.
 H617A_MUSIC_VARIANTS = (
     MusicVariant(0x03, "H617A qualified selector style", supports_style=True),

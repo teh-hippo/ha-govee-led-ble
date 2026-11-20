@@ -427,8 +427,7 @@ export interface NativeDiyTemplateContract {
   rate_default: number;
 }
 
-export interface WorkshopContent {
-  kind: "workshop";
+interface WorkshopFields {
   model: ModelSku;
   template: string;
   effect: {
@@ -436,6 +435,15 @@ export interface WorkshopContent {
   };
   raw_param: string;
   trailing_padding: number;
+}
+
+export type WorkshopContent = WorkshopFields & (
+  { kind: "workshop" } | { kind: "workshop_rgbic_v2" }
+);
+
+export interface RgbWorkshopContent extends Omit<WorkshopFields, "effect"> {
+  kind: "workshop_rgb";
+  effect: null;
 }
 
 export type CustomEffectContent =
@@ -656,6 +664,7 @@ export type KnownEffectContent =
   | VideoProfileContent
   | AdvancedContent
   | WorkshopContent
+  | RgbWorkshopContent
   | BuiltinSceneContent
   | PaletteSceneContent
   | LayeredSceneContent;

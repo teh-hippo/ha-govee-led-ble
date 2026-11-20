@@ -494,14 +494,20 @@ class MultiEffect:
 class WorkshopEffect:
     model: str
     template: str
-    effect: LayeredEffect
+    effect: LayeredEffect | None
     raw_param: bytes = b""
     trailing_padding: int = 0
+    carrier: str = "rgbic_v1"
 
     def __post_init__(self) -> None:
         _validate_supported_model(self.model, "Workshop")
         _validate_identifier(self.template, "Workshop template")
-        if not isinstance(self.effect, LayeredEffect):
+        if self.carrier not in {"rgb", "rgbic_v1", "rgbic_v2"}:
+            raise EffectValidationError("Unknown Workshop carrier")
+        if self.carrier == "rgb":
+            if self.effect is not None or not self.raw_param or self.trailing_padding:
+                raise EffectValidationError("RGB Workshop requires retained source bytes without layered content")
+        elif not isinstance(self.effect, LayeredEffect):
             raise EffectValidationError("Workshop effect must be layered content")
         if not isinstance(self.raw_param, bytes):
             raise EffectValidationError("Workshop source parameter must be bytes")
@@ -780,6 +786,7 @@ class LibraryItem:
             content_hash
             and content_hash != effect_content_hash(content)
             and isinstance(content, LayeredEffect | LayeredScene | WorkshopEffect)
+            and (not isinstance(content, WorkshopEffect) or content.effect is not None)
         ):
             legacy = _content_to_dict(content)
             body = legacy if isinstance(content, LayeredEffect) else cast(dict[str, Any], legacy["effect"])
@@ -998,10 +1005,10 @@ def _content_to_dict(content: EffectContent) -> dict[str, JsonValue]:
         }
     if isinstance(content, WorkshopEffect):
         return {
-            "kind": "workshop",
+            "kind": {"rgb": "workshop_rgb", "rgbic_v2": "workshop_rgbic_v2"}.get(content.carrier, "workshop"),
             "model": content.model,
             "template": content.template,
-            "effect": layered_effect_to_value(content.effect),
+            "effect": layered_effect_to_value(content.effect) if content.effect is not None else None,
             "raw_param": content.raw_param.hex(),
             "trailing_padding": content.trailing_padding,
         }
@@ -1148,13 +1155,16 @@ def _content_from_dict(raw: Mapping[str, Any]) -> EffectContent:
             speed=_required_int(raw, "speed"),
             palette=_palette_from_value(raw.get("palette")),
         )
-    if kind == "workshop":
+    if kind in {"workshop", "workshop_rgb", "workshop_rgbic_v2"}:
         return WorkshopEffect(
             model=_required_str(raw, "model"),
             template=_required_str(raw, "template"),
-            effect=layered_effect_from_value(_required_mapping(raw, "effect")),
+            effect=layered_effect_from_value(_required_mapping(raw, "effect"))
+            if raw.get("effect") is not None
+            else None,
             raw_param=_hex_bytes(raw.get("raw_param", ""), "Workshop source parameter"),
             trailing_padding=_optional_int(raw, "trailing_padding") or 0,
+            carrier={"workshop_rgb": "rgb", "workshop_rgbic_v2": "rgbic_v2"}.get(kind, "rgbic_v1"),
         )
     if kind == "advanced":
         return layered_effect_from_value(raw)

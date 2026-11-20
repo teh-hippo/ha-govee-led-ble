@@ -234,6 +234,7 @@ export class GoveeLedEffectStudio extends LitElement {
       case "advanced":
       case "scene_layered":
       case "workshop":
+      case "workshop_rgbic_v2":
         this.requestComponentGroup("advanced");
         break;
       case "static_rgb":
@@ -807,6 +808,10 @@ export class GoveeLedEffectStudio extends LitElement {
     }
     if (isAdvancedEditableContent(this.content)) {
       return this.renderAdvancedEditor();
+    }
+    if (this.content.kind === "workshop_rgb") {
+      return html`${this.renderEditorHeading()}
+        <p class="read-only-copy">Original RGB Workshop parameters are preserved. This format has no editable layer controls.</p>`;
     }
     return this.content.kind === "opaque"
       ? this.renderOpaqueEditor(this.content)

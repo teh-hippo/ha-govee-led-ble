@@ -195,6 +195,7 @@ def _build_status_query(
         body.selector = b"\x01"
         body.zeros = [0] * 16
     elif domain == "colour_mode" and grammar in WHOLE_BULB_GRAMMARS | {
+        "H6046",
         "H6072",
         "H6072-legacy",
         "H607C",
@@ -941,6 +942,10 @@ def build_black_border_query(model: str, *, profile: ModelProfile | None = None)
 
 def build_segment_query(group: int, model: str = "H617A", *, profile: ModelProfile | None = None) -> bytes:
     profile = profile or get_profile(model)
+    if profile.status_grammar == "H6053-legacy":
+        if type(group) is not int or group != 1:
+            raise ValueError("Legacy source colours have exactly one complete observation")
+        return build_colour_mode_query(model, profile=profile)
     resolved = profile.command_grammar
     if resolved not in _STATUS_QUERY_ROOTS or (
         resolved not in {"H6072-legacy", "H60B0"} and not hasattr(_STATUS_QUERY_ROOTS[resolved][1], "SegmentQueryBody")

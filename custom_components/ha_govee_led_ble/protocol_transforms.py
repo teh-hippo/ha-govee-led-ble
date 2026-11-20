@@ -10,6 +10,8 @@ from .const import H6199_PACT1_PROFILE
 from .protocol_core import (
     _STATUS_QUERY_ROOTS,
     H60a6LegacyWrite,
+    H6046CommandWrite,
+    H6053WireWrite,
     H6102WireWrite,
     H6117WireWrite,
     H6125LegacySegmentQuery,
@@ -209,6 +211,70 @@ def _register_brightness(root_type: Any, percent: int, wire_range: tuple[int, in
     body.padding = bytes(16)
     root.body = body
     return _serialize_xor(root)
+
+
+@cache
+def h6053_outbound_transform(
+    wire_range: tuple[int, int] | None, *, legacy_colour: bool, legacy_music: bool
+) -> Callable[[bytes], bytes]:
+    """Translate independently selected brightness and two-bar colour wire formats."""
+
+    def transform(packet: bytes) -> bytes:
+        command = _parse_xor_frame(packet, "H6046", {"H6046": ("h6046_command_write", H6046CommandWrite)}).parsed
+        if command is None:
+            return packet
+        if command.opcode == H6046CommandWrite.CommandOp.brightness and wire_range is not None:
+            return _register_brightness(H6053WireWrite, int(command.body.percent), wire_range)
+        if (
+            legacy_music
+            and command.opcode == H6046CommandWrite.CommandOp.mode
+            and command.body.sub_mode == H6046CommandWrite.ModeSel.music
+        ):
+            root = H6053WireWrite()
+            root.header, root.opcode = b"\x33", H6053WireWrite.CommandOp.mode
+            mode = _child(H6053WireWrite.ModeBody, root)
+            mode.sub_mode = H6053WireWrite.ModeSel.legacy_music
+            detail = _child(H6053WireWrite.LegacyMusic, mode)
+            music = command.body.detail
+            detail.mode = H6053WireWrite.MusicMode[music.mode.name]
+            detail.sensitivity = music.sensitivity
+            if detail.is_base:
+                if detail.mode == H6053WireWrite.MusicMode.rhythm:
+                    detail.is_calm = music.is_calm
+                detail.has_fixed_colour = music.has_fixed_colour
+                if music.has_fixed_colour:
+                    detail.bar_mask = music.bar_mask
+                    detail.fixed_colour = _rgb(
+                        detail, music.fixed_colour.red, music.fixed_colour.green, music.fixed_colour.blue
+                    )
+            detail.unknown_tail = bytes(detail.write_tail_size)
+            mode.detail, root.body = detail, mode
+            return _serialize_xor(root)
+        if (
+            not legacy_colour
+            or command.opcode != H6046CommandWrite.CommandOp.mode
+            or command.body.sub_mode != H6046CommandWrite.ModeSel.static_colour
+        ):
+            return packet
+        static = command.body.detail
+        if static.operation != H6046CommandWrite.StaticOperation.colour or not 1 <= static.segment_mask <= 3:
+            raise ValueError("Legacy bar colour requires one or both complete bar targets")
+        flags = H6053WireWrite.BarFlag
+        root = H6053WireWrite()
+        root.header, root.opcode = b"\x33", H6053WireWrite.CommandOp.mode
+        mode = _child(H6053WireWrite.ModeBody, root)
+        mode.sub_mode = H6053WireWrite.ModeSel.legacy_colour
+        detail = _child(H6053WireWrite.LegacyColour, mode)
+        detail.bar_mask = (int(flags.left) if static.segment_mask & 1 else 0) | (
+            int(flags.right) if static.segment_mask & 2 else 0
+        )
+        colour = static.preview if static.kelvin else static
+        detail.rgb = _rgb(detail, int(colour.red), int(colour.green), int(colour.blue))
+        detail.kelvin, detail.unknown_tail = int(static.kelvin), bytes(10)
+        mode.detail, root.body = detail, mode
+        return _serialize_xor(root)
+
+    return transform
 
 
 def _h6125_wire_colour(static: Any, *, root_type: Any = H6125WireWrite, body_type: Any = None) -> bytes:
