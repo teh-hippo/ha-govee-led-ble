@@ -23,6 +23,10 @@
       "ring": {"name": "Ring"}
     },
     "switch": {
+      "pairing_prompt": {"name": "Speaker pairing prompt"},
+      "quiet_start": {"name": "Quiet startup"},
+      "local_sound_enabled": {"name": "Local sound playback"},
+      "dreamview_laser": {"name": "Stars in DreamView"},
       "projector_star_flicker": {"name": "Star flicker"},
       "projector_star_movement": {"name": "Star movement"},
       "top_enabled": {"name": "Top enabled"},
@@ -43,6 +47,7 @@
       "source_1_enabled": {"name": "Light source 2 enabled"}
     },
     "number": {
+      "local_volume": {"name": "Speaker volume"},
       "projector_aurora_movement": {"name": "Aurora movement"},
       "projector_aurora_effect_speed": {"name": "Aurora effect speed"},
       "projector_star_flicker_speed": {"name": "Star flicker speed"},
@@ -51,6 +56,14 @@
       "low_blue_light_level": {"name": "Low-blue-light level"}
     },
     "select": {
+      "local_sound": {"name": "Local sound", "state": {
+        "deep_water": "Deep water", "night_sky": "Night sky", "lullaby": "Lullaby",
+        "woodland_birds": "Woodland birds", "summer_insects": "Summer insects", "light_rain": "Light rain",
+        "running_water": "Running water", "ocean_surf": "Ocean surf", "fire": "Fire",
+        "rain_drops": "Rain drops", "bird_calls": "Bird calls", "waterside_breeze": "Waterside breeze",
+        "wind": "Wind", "calm": "Calm", "upbeat": "Upbeat", "night_music": "Night music",
+        "clock": "Clock", "train": "Train"
+      }},
       "projector_aurora_pattern": {"name": "Aurora pattern", "state": {"fade": "Fade", "breathe": "Breathe", "flash": "Flash", "steady": "Steady"}},
       "strip_direction": {"name": "Strip direction", "state": {"clockwise": "Clockwise", "anticlockwise": "Anticlockwise"}},
       "camera_position": {"name": "Camera position", "state": {"top": "Top", "bottom": "Bottom"}},

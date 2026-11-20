@@ -81,6 +81,7 @@ SEGMENT  # layered_scene.py
 # Fields decoded from device frames. They are populated by the parser and kept so a received frame round-trips
 # losslessly, even where no feature reads the value yet.
 
+_.playing  # protocol_settings.py generated local sound playback selector
 _.a3_type  # layered_scene_decoder.py
 _.applied_area  # layered_scene_decoder.py
 _.area_count  # dreamview.py

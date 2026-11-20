@@ -47,6 +47,9 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     bottom_kelvin: int | None
     top_kelvin: int | None
     ripple_speed: int | None
+    local_sound: int | None
+    local_volume: int | None
+    local_sound_playing: bool | None
     profile: ModelProfile
     _mode_transition: _ModeTransition | None
     address: str

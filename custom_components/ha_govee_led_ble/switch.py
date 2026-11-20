@@ -55,6 +55,8 @@ class GoveeBLEControlSwitch(GoveeBLEEntity, SwitchEntity):
         if control in NATIVE_ZONE_CONTROLS:
             self._attr_entity_category = None
             self._attr_entity_registry_visible_default = False
+        if control == "local_sound_enabled":
+            self._attr_entity_category = None
 
     @property
     def available(self) -> bool:

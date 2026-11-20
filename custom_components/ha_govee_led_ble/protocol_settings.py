@@ -27,6 +27,7 @@ from .protocol_core import (
     H6046CommandWrite,
     H6072CommandWrite,
     H6072StatusQuery,
+    H6093Projector,
     H6097Control,
     H6099CommandWrite,
     H6179CommandWrite,
@@ -269,6 +270,15 @@ def build_boolean_control(
 ) -> bytes:
     """Build a qualified shared register write; revision gating belongs to the profile."""
     profile = profile or get_profile(model)
+    if profile.setting_grammar == "H6093":
+        if control not in profile.boolean_controls or type(enabled) is not bool:
+            raise ValueError("Unsupported projector setting")
+        root = H6093Projector.SettingWrite()
+        root.header, root.opcode = b"\x33", H6093Projector.Command.setting
+        root.body = _child(H6093Projector.SettingBody, root)
+        root.body.selector = H6093Projector.Setting[control]
+        root.body.enabled, root.body.opaque_tail = int(enabled), bytes(15)
+        return _serialize_xor(root)
     if profile.setting_grammar == "H60B0":
         if control not in profile.boolean_controls or type(enabled) is not bool:
             raise ValueError("Unsupported native source control")
@@ -394,6 +404,12 @@ def build_boolean_control(
 def build_boolean_control_query(control: str, model: str, *, profile: ModelProfile | None = None) -> bytes:
     """Read a declared boolean register independently of ordinary read domains."""
     profile = profile or get_profile(model)
+    if profile.setting_grammar == "H6093":
+        if control not in profile.boolean_controls:
+            raise ValueError("Unsupported projector setting")
+        from .projector_protocol import projection_power_wire
+
+        return projection_power_wire(build_power_query(model, profile=profile))
     if profile.setting_grammar == "H60B0":
         if control not in profile.boolean_controls:
             raise ValueError("Unsupported native source control")
@@ -705,6 +721,8 @@ def parse_boolean_control(generated: Any, model: str, *, profile: ModelProfile |
     profile = profile or get_profile(model)
     domain = getattr(generated, "domain", None)
     domain = domain if isinstance(domain, str) else getattr(domain, "name", "")
+    if profile.setting_grammar == "H6093" and domain == "power":
+        return {name: bool(getattr(generated.body, name)) for name in profile.boolean_controls}
     if profile.setting_grammar == "H60B2" and domain == "zone_enable":
         if any(getattr(generated.body, name) not in (0, 1) for name in ("bottom", "middle", "top")):
             raise ValueError("Invalid source power flags")
@@ -744,6 +762,36 @@ def parse_boolean_control(generated: Any, model: str, *, profile: ModelProfile |
     if flag not in (0, 1):
         raise ValueError("boolean register reply must be 0 or 1")
     return {control: bool(flag)}
+
+
+def build_local_audio(control: str, value: int, profile: ModelProfile) -> bytes:
+    if profile.setting_grammar != "H6093" or type(value) is not int:
+        raise ValueError("Unsupported local audio setting")
+    root = H6093Projector.AudioWrite()
+    root.header = b"\x33"
+    if control == "local_sound" and 1 <= value <= len(profile.local_sound_options):
+        root.opcode = H6093Projector.Command.local_sound
+        root.body = _child(H6093Projector.SoundBody, root)
+        root.body.playing, root.body.code, root.body.opaque_tail = 1, value, bytes(15)
+    elif (
+        control == "local_volume"
+        and profile.local_volume_range is not None
+        and profile.local_volume_range[0] <= value <= profile.local_volume_range[1]
+    ):
+        root.opcode = H6093Projector.Command.local_volume
+        root.body = _child(H6093Projector.VolumeBody, root)
+        root.body.level, root.body.opaque_tail = value, bytes(16)
+    else:
+        raise ValueError("Local audio value is outside the product bounds")
+    return _serialize_xor(root)
+
+
+def build_local_audio_query(profile: ModelProfile) -> bytes:
+    from .projector_protocol import projection_power_wire
+
+    if profile.setting_grammar != "H6093" or not (profile.local_sound_options or profile.local_volume_range):
+        raise ValueError("Unsupported local audio readback")
+    return projection_power_wire(build_power_query("H6093", profile=profile))
 
 
 def build_configured_strings_query(profile: ModelProfile) -> bytes:

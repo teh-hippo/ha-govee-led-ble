@@ -35,9 +35,13 @@ async def async_setup_entry(
     strings_added = False
     power_on_added = False
     projector_added = False
+    sound_added = False
 
     def add_qualified() -> None:
-        nonlocal added, strings_added, power_on_added, projector_added
+        nonlocal added, strings_added, power_on_added, projector_added, sound_added
+        if not sound_added and coordinator.profile.local_sound_options:
+            sound_added = True
+            async_add_entities([GoveeBLELocalSoundSelect(entry)])
         if not projector_added and coordinator.profile.projector_grammar is not None:
             projector_added = True
             async_add_entities([GoveeBLEProjectorPatternSelect(entry)])
@@ -82,6 +86,37 @@ class GoveeBLEProjectorPatternSelect(GoveeBLEEntity, SelectEntity):
         try:
             await self._async_latest(
                 partial(set_control, self.coordinator, ProjectorControl.AURORA_PATTERN, self.options.index(option) + 1)
+            )
+        except (BleakError, ValueError, TimeoutError) as error:
+            raise HomeAssistantError(translation_domain=DOMAIN, translation_key="device_command_failed") from error
+
+
+class GoveeBLELocalSoundSelect(GoveeBLEEntity, SelectEntity):
+    _attr_translation_key = "local_sound"
+
+    def __init__(self, entry: GoveeBLEConfigEntry) -> None:
+        super().__init__(entry.runtime_data)
+        self._attr_unique_id = f"{self.coordinator.address.replace(':', '').lower()}_local_sound"
+
+    @property
+    def options(self) -> list[str]:
+        return list(self.coordinator.profile.local_sound_options)
+
+    @property
+    def available(self) -> bool:
+        return bool(self.options) and super().available
+
+    @property
+    def current_option(self) -> str | None:
+        value = self.coordinator.local_sound
+        return self.options[value - 1] if value is not None and 1 <= value <= len(self.options) else None
+
+    async def async_select_option(self, option: str) -> None:
+        if option not in self.options:
+            raise ServiceValidationError(translation_domain=DOMAIN, translation_key="invalid_control_request")
+        try:
+            await self._async_latest(
+                partial(self.coordinator.async_set_local_audio, "local_sound", self.options.index(option) + 1)
             )
         except (BleakError, ValueError, TimeoutError) as error:
             raise HomeAssistantError(translation_domain=DOMAIN, translation_key="device_command_failed") from error

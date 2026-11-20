@@ -283,6 +283,9 @@ class GoveeBLECoordinator(
         self._h607c_uncertain_state_fields: set[str] = set()
         self._h607c_failed_color_write = False
         self.boolean_control_state: dict[str, bool] = {}
+        self.local_sound: int | None = None
+        self.local_volume: int | None = None
+        self.local_sound_playing: bool | None = None
         self.bottom_brightness: int | None = None
         self.bottom_kelvin: int | None = None
         self.top_kelvin: int | None = None
@@ -1282,6 +1285,8 @@ class GoveeBLECoordinator(
             self.strip_direction = self.camera_position = self.gradient = None
             self.camera_status = "unknown"
             self.boolean_control_state.clear()
+            self.local_sound = self.local_volume = None
+            self.local_sound_playing = None
             self.low_blue_light = None
             self.power_on_behaviour = None
             self.power_on_open_flag = None
@@ -2511,6 +2516,7 @@ class GoveeBLECoordinator(
             return replace(
                 self.profile,
                 projector_control_revision=None,
+                boolean_controls=self.profile.boolean_controls - {"dreamview_laser"},
                 command_operations=(
                     self.profile.command_operations - {"projector"}
                     if self.profile.command_operations is not None
@@ -2801,7 +2807,17 @@ class GoveeBLECoordinator(
         if type(enabled) is not bool:
             raise ValueError("Boolean setting requires a boolean")
         guard = await self.async_prepare_identity_gated_control() if self.identity_gated_controls else None
+        if control == "dreamview_laser":
+            async with async_control_intent(self, ControlIntent.USER):
+                async with self._lock:
+                    client = await self._ensure_connected()
+                    await self._async_confirm_pact(client)
+                await self._async_set_verified_setting(control, enabled, write_guard=guard)
+            return
         await self._async_set_verified_setting(control, enabled, write_guard=guard)
+
+    async def async_set_local_audio(self, control: str, value: int) -> None:
+        await self._async_set_verified_setting(control, value)
 
     def _fresh_source_power(self) -> dict[str, bool] | None:
         controls = {source.control for source in self.profile.light_sources}
@@ -2968,15 +2984,18 @@ class GoveeBLECoordinator(
                 raise
 
     async def _async_set_verified_setting(
-        self, control: str, value: bool | str, *, write_guard: Callable[[], None] | None = None
+        self, control: str, value: bool | str | int, *, write_guard: Callable[[], None] | None = None
     ) -> None:
         from .generated_protocol_adapter import (
             build_boolean_control,
             build_boolean_control_query,
             build_power_on_behaviour_query,
         )
+        from .protocol_settings import build_local_audio, build_local_audio_query
 
         source_power: dict[str, bool] | None = None
+        audio = control in {"local_sound", "local_volume"}
+        expected_sound: int | None = value if control == "local_sound" and type(value) is int else None
 
         def qualified() -> None:
             if write_guard is not None:
@@ -2984,6 +3003,10 @@ class GoveeBLECoordinator(
             if not (
                 self.profile.supports_power_on_behaviour
                 if control == "power_on_behaviour"
+                else self.profile.local_volume_range is not None
+                if control == "local_volume"
+                else bool(self.profile.local_sound_options)
+                if audio
                 else control in self.profile.boolean_controls
             ):
                 raise ValueError("Device profile does not support this setting")
@@ -2996,7 +3019,11 @@ class GoveeBLECoordinator(
                 raise ValueError("Boolean setting requires a boolean")
             await self._async_set_bar_control(control, value)
             return
-        if control == "power_on_behaviour":
+        if audio:
+            if type(value) is not int:
+                raise ValueError("Local audio requires an integer")
+            packet = build_local_audio(control, value, self.profile)
+        elif control == "power_on_behaviour":
             if not isinstance(value, str):
                 raise ValueError("Power-on behaviour requires an option")
             packet = build_power_on_behaviour(value, self.profile)
@@ -3012,7 +3039,7 @@ class GoveeBLECoordinator(
                 source_power = await self.async_validate_source_power(control, value)
             await self._async_supersede_effect_preview()
             generation = self._profile_generation
-            field = control if control == "power_on_behaviour" else f"boolean_{control}"
+            field = control if control == "power_on_behaviour" or audio else f"boolean_{control}"
             baseline = {field: self._field_revisions.get(field, 0)}
             if control in self.profile.restarting_boolean_controls:
                 async with self._lock:
@@ -3025,15 +3052,55 @@ class GoveeBLECoordinator(
                     baseline[field] = self._field_revisions.get(field, 0)
                     self.boolean_control_state.pop(control, None)
             else:
+                packets: tuple[bytes, ...] = (packet,)
+                if control == "local_sound":
+                    packets = (
+                        build_boolean_control("local_sound_enabled", True, self.model, profile=self.profile),
+                        packet,
+                    )
+                elif control == "local_sound_enabled" and value is True:
+                    async with self._lock:
+                        read_client = await self._ensure_connected()
+                        if not await self._async_read_setting_fields(
+                            read_client,
+                            build_local_audio_query(self.profile),
+                            ("local_sound",),
+                            deadline=time.monotonic() + 4.0,
+                            write_guard=qualified,
+                        ):
+                            raise ValueError("Device did not provide local sound selection")
+                    selected = self.local_sound
+                    if selected is None:
+                        selected = 1
+                    expected_sound = selected
+                    packets = (packet, build_local_audio("local_sound", selected, self.profile))
+                for prepared_packet in packets:
+                    require_profile_packet(prepared_packet, self.profile)
+                baseline[field] = self._field_revisions.get(field, 0)
+                if expected_sound is not None:
+                    baseline["local_sound"] = self._field_revisions.get("local_sound", 0)
+                sequence_profile, sequence_client, sequence_token = self.profile, self._client, self._notification_token
+
+                def sequence_guard() -> None:
+                    qualified()
+                    if len(packets) > 1 and (
+                        not same_control_profile(self.profile, sequence_profile)
+                        or self._client is not sequence_client
+                        or self._notification_token is not sequence_token
+                    ):
+                        raise ValueError("Setting sequence authority changed")
 
                 def expire() -> None:
-                    fields = {field} if type(value) is bool else set()
+                    fields = {field} if type(value) is bool or audio else set()
+                    if control in {"local_sound", "local_sound_enabled"}:
+                        fields.update({"local_sound", "local_sound_playing", "boolean_local_sound_enabled"})
                     if source_power is not None:
                         fields.update(f"boolean_{name}" for name in source_power)
                     self._expire_optional_observations({name: self._field_revisions.get(name, 0) for name in fields})
 
                 try:
-                    await self.send_command(packet, write_guard=qualified, on_write=expire)
+                    for prepared_packet in packets:
+                        await self.send_command(prepared_packet, write_guard=sequence_guard, on_write=expire)
                 finally:
                     source_power = None
             async with self._lock:
@@ -3076,6 +3143,8 @@ class GoveeBLECoordinator(
                         client,
                         build_power_on_behaviour_query(self.profile)
                         if control == "power_on_behaviour"
+                        else build_local_audio_query(self.profile)
+                        if audio
                         else build_boolean_control_query(control, self.model, profile=self.profile),
                     )
                 if (
@@ -3089,10 +3158,18 @@ class GoveeBLECoordinator(
                 actual = (
                     self.power_on_behaviour
                     if control == "power_on_behaviour"
+                    else getattr(self, control)
+                    if audio
                     else self.boolean_control_state.get(control)
                 )
                 if actual != value:
                     raise ValueError("Device did not confirm the requested setting")
+                if (control == "local_sound" or control == "local_sound_enabled" and value is True) and not (
+                    self.boolean_control_state.get("local_sound_enabled") and self.local_sound_playing
+                ):
+                    raise ValueError("Device did not confirm local sound playback")
+                if expected_sound is not None and self.local_sound != expected_sound:
+                    raise ValueError("Device did not confirm the selected local sound")
 
     async def _async_supersede_effect_preview(self) -> None:
         if self.config_entry is None:

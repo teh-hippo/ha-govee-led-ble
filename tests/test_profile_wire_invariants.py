@@ -1264,6 +1264,26 @@ def test_declared_boolean_controls_round_trip(hass, model: str, profile: ModelPr
             )
             assert len(cmd) == 20 and xor_checksum(cmd) == 0
             a.require_profile_packet(cmd, profile)
+            if profile.setting_grammar == "H6093":
+                expected = {name: name == control and enabled for name in profile.boolean_controls}
+                flags = sum(
+                    mask
+                    for name, mask in (
+                        ("pairing_prompt", 8),
+                        ("quiet_start", 32),
+                        ("local_sound_enabled", 4),
+                        ("dreamview_laser", 2),
+                    )
+                    if expected.get(name)
+                )
+                reply = _status(domain_byte, bytes([flags | 64, 50, 128, 1, 50]))
+                decoded = decode_status_frame(reply, model, profile=profile)
+                assert decoded is not None and status_is_authorized(decoded, profile)
+                assert a.parse_boolean_control(decoded.generated, model, profile=profile) == expected
+                _consume_status(coordinator, reply)
+                assert coordinator.boolean_control_state == expected
+                assert all(coordinator._field_revisions[f"boolean_{name}"] > 0 for name in expected)
+                continue
             if profile.setting_grammar == "H60B0":
                 expected = {name: True for name in profile.boolean_controls} | {control: enabled}
                 mask = 0x80 | sum(
@@ -1352,7 +1372,7 @@ def test_declared_boolean_controls_round_trip(hass, model: str, profile: ModelPr
             assert coordinator.packet_log[-1]["reason"] == "semantic_rejected"
             assert coordinator.boolean_control_state[control] is True
             continue
-        if profile.setting_grammar == "H6046":
+        if profile.setting_grammar in {"H6046", "H6093"}:
             continue
         if profile.setting_grammar == "H60B2":
             bad_reply = _status(domain_byte, bytes((1, 2, 1)))

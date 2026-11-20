@@ -33,6 +33,9 @@ async def async_setup_entry(
     added: set[str] = set()
 
     def add_qualified() -> None:
+        if "local_volume" not in added and entry.runtime_data.profile.local_volume_range is not None:
+            added.add("local_volume")
+            async_add_entities([GoveeBLELocalVolume(entry)])
         if entry.runtime_data.profile.projector_grammar is not None:
             for control in _PROJECTOR_LEVELS:
                 if control not in added:
@@ -121,3 +124,27 @@ class GoveeBLEProjectorLevel(_GoveeBLELevel):
 
     async def async_set_native_value(self, value: float) -> None:
         await self._async_set_level(value, partial(set_control, self.coordinator, self._control))
+
+
+class GoveeBLELocalVolume(_GoveeBLELevel):
+    _attr_translation_key = "local_volume"
+    _attr_native_unit_of_measurement = "%"
+
+    @property
+    def native_min_value(self) -> float:
+        return (self.coordinator.profile.local_volume_range or (0, 0))[0]
+
+    @property
+    def native_max_value(self) -> float:
+        return (self.coordinator.profile.local_volume_range or (0, 0))[1]
+
+    @property
+    def available(self) -> bool:
+        return self.coordinator.profile.local_volume_range is not None and super().available
+
+    @property
+    def native_value(self) -> float | None:
+        return self.coordinator.local_volume
+
+    async def async_set_native_value(self, value: float) -> None:
+        await self._async_set_level(value, partial(self.coordinator.async_set_local_audio, "local_volume"))

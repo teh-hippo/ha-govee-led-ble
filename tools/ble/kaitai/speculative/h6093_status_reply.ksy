@@ -62,3 +62,13 @@ types:
     instances:
       is_on:
         value: (flags & 0x40) != 0
+      pairing_prompt:
+        value: (flags & 0x08) != 0
+      quiet_start:
+        value: (flags & 0x20) != 0
+      local_sound_enabled:
+        value: (flags & 0x04) != 0
+      dreamview_laser:
+        value: (flags & 0x02) != 0
+      sound_playing:
+        value: (speaker_status & 0x80) != 0
