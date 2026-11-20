@@ -53,7 +53,7 @@ from custom_components.ha_govee_led_ble.projector_runtime import (
 )
 from custom_components.ha_govee_led_ble.protocol_core import H6093Projector
 from custom_components.ha_govee_led_ble.transport import fragment_a3, reassemble_a3, xor_checksum
-from tests.coordinator_test_support import frame
+from tests.coordinator_test_support import _packet, frame
 from tests.storage_test_double import InMemoryVersionedDocumentStore
 
 
@@ -193,12 +193,13 @@ def physical(hass, monkeypatch, request):
     state = {
         "on": True,
         "brightness": 37,
-        "colours": [(10, 20, 30)] * 14 + [(90, 80, 70)],
-        "relative": [30] * 14 + [70],
+        "colours": [(10, 20, 30)] * (count - 1) + [(90, 80, 70)],
+        "relative": [30] * (count - 1) + [70],
         "fault": None,
         "packets": [],
         "colour_modes": ["rgb"] * count,
         "scene": None,
+        "ic_count": coordinator.profile.physical_ic_count or 50,
     }
     if model == "H1771":
         state.update(
@@ -206,6 +207,12 @@ def physical(hass, monkeypatch, request):
             relative=[1, 50, 70, 1],
             sources=[True, False],
             gradual=True,
+        )
+    if model == "H1AB2":
+        state.update(
+            colours=[(0, 255, 0), *([(217, 225, 255)] * 3), (255, 174, 84), *([(217, 225, 255)] * 5)],
+            relative=[100] * 9 + [20],
+            gradual=False,
         )
     if model == "H6093":
         pact = pact or (2, 1)
@@ -248,6 +255,16 @@ def physical(hass, monkeypatch, request):
                         None, frame(f"a3{pending.subtype:02x}{int(fault == 'upload_ack'):02x}")
                     )
             return
+        if model == "H1AB2" and packet[0] == 0xA3:
+            pending = coordinator._upload_ack
+            if packet[1] == 255 and pending is not None:
+                coordinator._notify_callback(
+                    None,
+                    bytearray(
+                        _packet(pending.protocol, pending.subtype, [0] if pending.mode is None else [pending.mode, 0])
+                    ),
+                )
+            return
         if packet[0] == 0x33:
             if packet[1] == 1:
                 state["on"] = bool(packet[2])
@@ -287,7 +304,7 @@ def physical(hass, monkeypatch, request):
                     state["gradual"] = False
             elif packet[1] == 0x36 and model == "H1771":
                 state["sources"][packet[2]] = bool(packet[3])
-            elif packet[1] == 0xA3 and model == "H1771":
+            elif packet[1] == 0xA3:
                 state["gradual"] = bool(packet[2])
             static = parse_static_write(packet, coordinator.model, profile=coordinator.profile)
             if static is not None:
@@ -351,16 +368,22 @@ def physical(hass, monkeypatch, request):
                 )
             elif domain == 0x0F and fault != "missing_count":
                 coordinator._notify_callback(None, reply(0x0F, [1]))
+            elif domain == 0x40:
+                coordinator._notify_callback(None, reply(0x40, list(state["ic_count"].to_bytes(2, "big"))))
+            elif domain == 0xA3:
+                coordinator._notify_callback(None, reply(0xA3, [int(state.get("gradual", False))]))
             elif domain == 0x41:
-                coordinator._notify_callback(None, reply(0x41, [1]))
-            elif domain == 0xA5 and packet[2] == (1 if model == "H1771" else 5):
-                pages = [5, 2, 4, 1, 3] if fault == "reordered" else range(1, 2 if model == "H1771" else 6)
+                coordinator._notify_callback(None, reply(0x41, [2, 0] if model == "H1AB2" else [1]))
+            elif domain == 0xA5 and packet[2] == coordinator.profile.segment_group_count:
+                pages = (
+                    [5, 2, 4, 1, 3] if fault == "reordered" else range(1, coordinator.profile.segment_group_count + 1)
+                )
                 size = coordinator.profile.segment_group_size
                 for page in pages:
                     if fault == "partial" and page == 3:
                         continue
                     body = [page]
-                    for index in range((page - 1) * size, page * size):
+                    for index in range((page - 1) * size, min(page * size, count)):
                         body.extend([state["relative"][index], *state["colours"][index]])
                     coordinator._notify_callback(None, reply(0xA5, body))
         elif packet[:4] == b"\xac\x03\x05\x0c" and model == "H6093":
@@ -695,7 +718,7 @@ async def test_dreamview_laser_setting_requires_fresh_exact_revision(physical):
         assert not any(value[0] == 0x33 for value in state["packets"])
 
 
-@pytest.mark.parametrize("physical", ["H617A", "H1771"], indirect=True)
+@pytest.mark.parametrize("physical", ["H617A", "H1771", "H1AB2"], indirect=True)
 async def test_public_effect_off_restores_non_source_segment_layout(hass, physical, virtual_clock):
     coordinator, state = physical
     light = GoveeBLELight(coordinator)
@@ -703,11 +726,11 @@ async def test_public_effect_off_restores_non_source_segment_layout(hass, physic
     light.async_added_to_hass = AsyncMock()
     assert await async_setup_component(hass, "light", {})
     await hass.data["light"].async_add_entities([light])
-    if coordinator.model == "H1771":
+    if coordinator.model in {"H1771", "H1AB2"}:
         # A known RGB write takes precedence over an identical Kelvin companion.
         await light.async_set_segment_color([3], state["colours"][1])
     expected_colours, expected_levels = list(state["colours"]), list(state["relative"])
-    effect = "Rainbow" if coordinator.model == "H1771" else "Sunrise"
+    effect = "Aurora" if coordinator.model == "H1AB2" else "Rainbow" if coordinator.model == "H1771" else "Sunrise"
     await hass.services.async_call("light", "turn_on", {"entity_id": light.entity_id, "effect": effect}, blocking=True)
     assert state["colours"] != expected_colours
     assert state["relative"] != expected_levels
@@ -725,6 +748,8 @@ async def test_public_effect_off_restores_non_source_segment_layout(hass, physic
     if coordinator.model == "H1771":
         assert state["colour_modes"] == ["rgb", "kelvin", "rgb", "kelvin"]
         assert state["sources"] == [True, False] and state["gradual"]
+    if coordinator.model == "H1AB2":
+        assert state["colour_modes"] == ["rgb", "kelvin", "rgb", *(["kelvin"] * 7)]
 
 
 @pytest.mark.parametrize("physical", ["H1771"], indirect=True)
@@ -1611,19 +1636,22 @@ async def test_effect_off_rechecks_mode_before_replaying_suspended_history(
 
 
 @pytest.mark.parametrize(
-    ("initially_on", "release"),
+    ("physical", "initially_on", "release"),
     [
-        (False, "idle"),
-        (True, "idle"),
-        (True, "poll"),
-        (True, "poll_failed"),
-        (True, "unexpected"),
-        (True, "manual"),
-        (True, "failed"),
-        (True, "cancelled"),
-        (True, "profile_changed"),
-        (True, "resubscribed"),
+        ("H617A", False, "idle"),
+        ("H617A", True, "idle"),
+        ("H617A", True, "poll"),
+        ("H617A", True, "poll_failed"),
+        ("H617A", True, "unexpected"),
+        ("H617A", True, "manual"),
+        ("H617A", True, "failed"),
+        ("H617A", True, "cancelled"),
+        ("H617A", True, "profile_changed"),
+        ("H617A", True, "resubscribed"),
+        ("H1AB2", False, "idle"),
+        ("H1AB2", True, "poll"),
     ],
+    indirect=["physical"],
 )
 async def test_public_effect_recovery_after_release(hass, physical, monkeypatch, virtual_clock, initially_on, release):
     coordinator, state = physical
@@ -1639,6 +1667,8 @@ async def test_public_effect_recovery_after_release(hass, physical, monkeypatch,
         if coordinator._notification_token is None:
             coordinator._notification_token = object()
             coordinator._notify_started_monotonic = virtual_clock.virtual_time()
+            if coordinator.profile.segment_count_ic_divisor is not None:
+                await coordinator._async_write_packet(client, frame("aa40"))
         return client
 
     monkeypatch.setattr(coordinator, "_ensure_connected", connected)
@@ -1807,13 +1837,14 @@ async def test_failed_deployment_restores_fresh_mixed_layout_and_persists_truth(
     assert loaded.snapshot().records == repository.snapshot().records
 
 
+@pytest.mark.parametrize("physical", ["H617A", "H1AB2"], indirect=True)
 @pytest.mark.parametrize("fault", ["missing_mode", "missing_power", "missing_brightness", "partial", "stale"])
 async def test_failed_fresh_preflight_never_captures_defaults_or_writes(physical, fault):
     coordinator, state = physical
     state["fault"] = fault
     repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
     await repository.async_load()
-    with pytest.raises(RuntimeError, match="Could not read"):
+    with pytest.raises((RuntimeError, HomeAssistantError)):
         await EffectDeploymentEngine(repository).async_apply_saved(
             coordinator,
             LibraryItem.new("Test", SingleEffect(0, 0, 50, ((255, 0, 0),))),

@@ -389,6 +389,13 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         if self.coordinator.profile.main_colour_sources:
             value = main_source_colour(self.coordinator)
             return value if isinstance(value, tuple) and self.color_mode == ColorMode.RGB else None
+        if (
+            self.coordinator.profile.supports_segments
+            and self.coordinator.segment_state_source == "observed"
+            and self.coordinator.rgb_color_source != "observed"
+            and len(set(self.coordinator.segment_colors)) > 1
+        ):
+            return None
         return self.coordinator.rgb_color if self.color_mode == ColorMode.RGB else None
 
     @property

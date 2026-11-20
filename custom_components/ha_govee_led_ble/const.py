@@ -1949,6 +1949,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         music_grammar="H1AB2",
         kelvin_verification_reads_colour_mode=True,
         segment_colour_mode_ambiguous=True,
+        static_palette_recovery=True,
         static_readback_nonzero_kelvin=True,
         static_readback_gradual=True,
         read_domains=frozenset(
