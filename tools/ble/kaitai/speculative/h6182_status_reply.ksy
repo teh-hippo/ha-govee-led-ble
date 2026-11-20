@@ -6,7 +6,8 @@ meta:
     - h6181_status_reply
     - h6159_wire_write
 doc: |
-  SPECULATIVE H6182 legacy status, awaiting recorded device traffic.
+  SPECULATIVE H6182 legacy status. Owner reports include mode 02 with
+  the applied RGB and mode 0D with black after an ineffective colour write.
   Both colour selectors report RGB, a temperature flag and companion RGB,
   not a Kelvin integer. Music mode 03 reports fixed-colour flag,
   sensitivity and optional RGB, without a separate effect selector.

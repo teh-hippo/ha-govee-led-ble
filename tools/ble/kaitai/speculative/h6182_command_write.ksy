@@ -6,11 +6,11 @@ meta:
     - h6181_command_write
     - h6159_wire_write
 doc: |
-  SPECULATIVE H6182 contract, awaiting recorded device traffic.
-  Ordinary colour uses mode 0D with RGB, Kelvin BE16 and companion RGB.
-  The older controller and colour-effect route use mode 02 with RGB,
-  a temperature flag and companion RGB. No revision boundary between
-  those colour write routes has been established.
+  SPECULATIVE H6182 contract. Legacy static RGB and Kelvin use mode 02
+  with direct RGB, a temperature flag and companion RGB. Later controllers
+  (Pact type >= 2 and code >= 1) use mode 0D with Kelvin BE16 instead
+  of the flag. On reported legacy hardware, a mode 0D acknowledgement
+  did not indicate an applied colour change.
   Telink brightness uses a 20..254 register; other hardware uses percent.
   Legacy onboard music uses mode 03, fixed-colour flag, sensitivity 0..99
   and optional RGB. Later Pact controllers use mode 13 and may qualify

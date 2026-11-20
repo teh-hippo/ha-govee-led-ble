@@ -234,11 +234,7 @@ async def test_whole_strip_controls_prepare_identity_after_basic_setup(
     if control == "studio":
         assert packets and all(packet[0] == 0xAA for packet in packets)
     else:
-        payload = (
-            ("3305020c2238" if control == "rgb" else "330502ffffff01ffae54")
-            if coordinator.model == "H6159"
-            else ("33050d0c2238" if control == "rgb" else "33050dffffff0a8cffae54")
-        )
+        payload = "3305020c2238" if control == "rgb" else "330502ffffff01ffae54"
         assert frame(bytes.fromhex(payload)) in packets
 
 
@@ -256,7 +252,7 @@ async def test_whole_strip_power_survives_disconnect_without_optional_revision_i
     monkeypatch.setattr(light, "_notify_state_changed", MagicMock())
     await light._async_turn_on(brightness=128, rgb_color=(12, 34, 56))
     assert frame(bytes.fromhex("330480" if coordinator.model == "H6159" else "330488")) in packets
-    assert frame(bytes.fromhex("3305020c2238" if coordinator.model == "H6159" else "33050d0c2238")) in packets
+    assert frame(bytes.fromhex("3305020c2238")) in packets
     await light.async_turn_off()
     await coordinator.disconnect()
     assert not clients[-1].is_connected
@@ -363,8 +359,9 @@ def test_whole_strip_revision_codecs_do_not_inherit_segment_commands(
     "pact,firmware,hardware,raw_brightness,modes,transport,scene_codes",
     [
         ((1, 1), None, "1.00.01", 136, ("dynamic",), "a1_02", {4, 5, 7, 8, 9, 10, 16}),
-        ((1, 1), "1.02.16", "1.00.01", 136, ("dynamic",), "a1_02", {4, 5, 7, 8, 9, 10, 16}),
+        ((None, None), "1.02.16", "1.00.01", 136, ("dynamic",), "a1_02", {4, 5, 7, 8, 9, 10, 16}),
         ((1, 1), "1.07.00", "1.02.07", 136, ("dynamic",), "a1_02", {4, 5, 7, 8, 9, 10, 16}),
+        ((2, 1), "1.02.16", "1.00.01", 136, ("dynamic", "soft"), "a3", {4, 5, 7, 8, 9, 10, 16}),
         ((2, 1), "2.03.99", "2.01.01", 50, ("dynamic", "soft"), "a3", None),
         ((2, 1), "2.04.00", "2.01.01", 50, ("dynamic", "soft", "bloom", "radiant"), "a3", None),
         ((2, 1), "2.04.00", "3.04.01", 50, ("dynamic", "soft"), "a3", None),
@@ -380,13 +377,14 @@ def test_rgb_backlight_revision_controls_keep_independent_wire_contracts(
     transform = profile.outbound_transform
     assert transform is not None
     assert transform(build_brightness(50, "H6182", profile=profile)) == frame(bytes([0x33, 4, raw_brightness]))
-    assert transform(build_color_rgb(12, 34, 56, "H6182", profile=profile)) == frame(bytes.fromhex("33050d0c2238"))
-    assert transform(build_color_temp(2700, "H6182", profile=profile)) == frame(bytes.fromhex("33050dffffff0a8cffae54"))
+    legacy = pact in {(None, None), (1, 1)}
+    rgb = "330502ff0714" if legacy else "33050dff0714"
+    kelvin = "330502ffffff01ffae54" if legacy else "33050dffffff0a8cffae54"
+    assert transform(build_color_rgb(255, 7, 20, "H6182", profile=profile)) == frame(bytes.fromhex(rgb))
+    assert transform(build_color_temp(2700, "H6182", profile=profile)) == frame(bytes.fromhex(kelvin))
     _, _, packets = resolve_music_profile("H6182", "dynamic", 73, (12, 34, 56), None, {}, profile=profile)
-    assert transform(packets[-1]) == frame(
-        bytes.fromhex("33050301490c2238" if pact[0] == 1 else "330513004900010c2238")
-    )
-    if pact[0] == 1:
+    assert transform(packets[-1]) == frame(bytes.fromhex("33050301490c2238" if legacy else "330513004900010c2238"))
+    if legacy:
         decoded = decode_status_frame(frame(bytes.fromhex("aa050301490c2238")), "H6182", profile=profile)
         assert decoded is not None
         music = parse_color_mode(decoded.generated, "H6182", profile=profile)

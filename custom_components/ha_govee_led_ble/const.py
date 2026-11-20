@@ -3544,7 +3544,7 @@ def device_profile(
             profile_identity_fields=profile.profile_identity_fields if later else frozenset({"hw_version"}),
             brightness_wire_range=wire_range,
             outbound_transform=whole_rgb_outbound_transform(
-                wire_range, legacy_colour=False, music_version=None if later else 0
+                wire_range, legacy_colour=not later, music_version=None if later else 0
             ),
         )
         if hw is None or later and fw is None:
