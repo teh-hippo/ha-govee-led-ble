@@ -27,6 +27,7 @@ from .light_commands import (
     kelvin_rendering_matches,
     normalize_kelvin,
     scale_segment_groups,
+    static_colour_matches,
 )
 
 if TYPE_CHECKING:
@@ -155,6 +156,24 @@ def prepare_source_colour(
     if not writes:
         raise ValueError("No source supports the requested colour")
     return PreparedSourceColour(profile, tuple(writes))
+
+
+def segment_colour_matches(
+    coordinator: GoveeBLECoordinator,
+    index: int,
+    actual: tuple[int, int, int],
+    expected: tuple[int, int, int] | int,
+) -> bool:
+    return (
+        type(expected) is int
+        and expected > 0
+        and any(
+            index + 1 in source.segments
+            and getattr(coordinator, field := f"{source.key}_kelvin", None) == expected
+            and coordinator.source_field_fresh(field)
+            for source in coordinator.profile.light_sources
+        )
+    ) or static_colour_matches(actual, expected, coordinator.profile)
 
 
 def source_color_temp_kelvin(coordinator: GoveeBLECoordinator, source: LightSource) -> int | None:

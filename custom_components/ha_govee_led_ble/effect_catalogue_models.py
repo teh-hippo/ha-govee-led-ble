@@ -26,9 +26,9 @@ from .effect_domain import (
     NativeEffect,
     PaintedEffect,
     PaletteDiyEffect,
+    RetainedSceneEffect,
     SingleEffect,
     VideoProfile,
-    WorkshopEffect,
     effect_content_to_dict,
 )
 from .layered_scene_decoder import decode_workshop_effect
@@ -113,10 +113,10 @@ class WorkshopTemplate:
     label: str
     raw_param_b64: str
 
-    def content(self, model: str) -> WorkshopEffect:
+    def content(self, model: str) -> RetainedSceneEffect:
         raw_param = base64.b64decode(self.raw_param_b64, validate=True)
         effect, trailing_padding = decode_workshop_effect(model, raw_param)
-        return WorkshopEffect(
+        return RetainedSceneEffect(
             model=model,
             template=self.id,
             effect=effect,
@@ -442,7 +442,7 @@ def _template_available(template: CatalogueTemplate, profile: ModelProfile) -> b
         workflow = CapabilityWorkflow.MULTI
     elif isinstance(content, PaletteDiyEffect):
         workflow = CapabilityWorkflow.PALETTE_DIY
-    elif isinstance(content, WorkshopEffect):
+    elif isinstance(content, RetainedSceneEffect):
         workflow = CapabilityWorkflow.WORKSHOP
     else:
         raise ValueError("unsupported catalogue template content")

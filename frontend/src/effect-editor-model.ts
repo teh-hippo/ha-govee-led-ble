@@ -28,8 +28,8 @@ import type {
   StaticRgbContent,
   RGB,
   VideoProfileContent,
-  WorkshopContent,
-  RgbWorkshopContent,
+  LayeredRetainedSceneContent,
+  RgbRetainedSceneContent,
 } from "./types";
 import { clonePalette, cloneRgb, sameRgb } from "./ui-utils";
 import { LEGACY_CUSTOM_CATALOGUE_SKU } from "./validation-constants";
@@ -37,7 +37,7 @@ import { LEGACY_CUSTOM_CATALOGUE_SKU } from "./validation-constants";
 type AdvancedEditableContent =
   | AdvancedContent
   | LayeredSceneContent
-  | WorkshopContent;
+  | LayeredRetainedSceneContent;
 
 export function paintNativeLayerPoint(layer: NativePaintLayer, index: number, colour: RGB | null): NativePaintLayer {
   if (!Number.isInteger(index) || index < 0 || index >= 133) throw new Error("Native paint point is outside the 133-point geometry.");
@@ -59,7 +59,7 @@ export type EditableEffectContent =
   | StaticRgbContent
   | CustomEffectContent
   | ProfileContent
-  | RgbWorkshopContent
+  | RgbRetainedSceneContent
   | AdvancedEditableContent;
 export type NewEffectKind =
   | StaticRgbContent["kind"]
@@ -134,6 +134,11 @@ export function effectContentEligible(
   model: string,
   segmentCount: number,
 ): boolean {
+  if (content.kind === "shared_scene_rgb" || content.kind === "shared_scene_rgbic_v1") {
+    const workflow = content.kind === "shared_scene_rgb" ? "native_scenes" : "layered_scenes";
+    return content.model === model && catalogue?.sku === model &&
+      catalogue.workflows.some(candidate => candidate.id === workflow && candidate.application !== "planned");
+  }
   if (content.kind === "workshop_rgb" || content.kind === "workshop_rgbic_v2") {
     return content.model === model && catalogue?.apply.workshop === "supported";
   }
@@ -448,7 +453,7 @@ export function clonePaletteDiy(
   };
 }
 
-function cloneWorkshop(content: WorkshopContent): WorkshopContent {
+function cloneWorkshop(content: LayeredRetainedSceneContent): LayeredRetainedSceneContent {
   return {
     ...content,
     effect: {
@@ -463,7 +468,7 @@ function cloneWorkshop(content: WorkshopContent): WorkshopContent {
 export function cloneEditableEffect(
   content: EditableEffectContent,
 ): EditableEffectContent {
-  if (content.kind === "static_rgb" || content.kind === "native_effect" || content.kind === "workshop_rgb") {
+  if (content.kind === "static_rgb" || content.kind === "native_effect" || content.kind === "workshop_rgb" || content.kind === "shared_scene_rgb") {
     return structuredClone(content);
   }
   if (content.kind === "advanced") {
@@ -472,7 +477,7 @@ export function cloneEditableEffect(
   if (content.kind === "scene_layered") {
     return cloneLayeredSceneContent(content);
   }
-  if (content.kind === "workshop" || content.kind === "workshop_rgbic_v2") {
+  if (content.kind === "workshop" || content.kind === "workshop_rgbic_v2" || content.kind === "shared_scene_rgbic_v1") {
     return cloneWorkshop(content);
   }
   if (content.kind === "palette_diy") {
@@ -512,7 +517,7 @@ export function updateAdvancedEditorContent(
   if (current.kind === "advanced") {
     return cloneAdvancedContent(edited);
   }
-  if (current.kind === "workshop" || current.kind === "workshop_rgbic_v2") {
+  if (current.kind === "workshop" || current.kind === "workshop_rgbic_v2" || current.kind === "shared_scene_rgbic_v1") {
     return {
       ...cloneWorkshop(current),
       effect: {
@@ -632,6 +637,7 @@ export function isEditableEffectContent(
       "kind" in content &&
       (isAdvancedEditableKind(content.kind) ||
         content.kind === "workshop_rgb" ||
+        content.kind === "shared_scene_rgb" ||
         content.kind === "static_rgb" ||
         content.kind === "palette_diy" ||
         content.kind === "native_effect" ||
@@ -647,6 +653,7 @@ function isAdvancedEditableKind(
     kind === "advanced" ||
     kind === "scene_layered" ||
     kind === "workshop" ||
+    kind === "shared_scene_rgbic_v1" ||
     kind === "workshop_rgbic_v2"
   );
 }
@@ -662,6 +669,7 @@ function isKnownEffectKind(kind: string): boolean {
     isCustomEffectKind(kind) ||
     isAdvancedEditableKind(kind) ||
     kind === "workshop_rgb" ||
+    kind === "shared_scene_rgb" ||
     kind === "static_rgb" ||
     kind === "palette_diy" ||
     kind === "native_effect" ||
@@ -696,6 +704,9 @@ export function customKindLabel(kind: unknown): string {
     case "workshop_rgb":
     case "workshop_rgbic_v2":
       return "Workshop";
+    case "shared_scene_rgb":
+    case "shared_scene_rgbic_v1":
+      return "Shared scene";
     default:
       return "Custom";
   }
@@ -707,6 +718,7 @@ export function isMyEffectKind(kind: string): boolean {
     isCustomEffectKind(kind) ||
     isAdvancedEditableKind(kind) ||
     kind === "workshop_rgb" ||
+    kind === "shared_scene_rgb" ||
     kind === "palette_diy" ||
     kind === "native_effect" ||
     kind === "music_profile" ||
@@ -829,6 +841,8 @@ export function libraryItemModel(item: LibraryItem): ModelSku | undefined {
     content.kind === "workshop" ||
     content.kind === "workshop_rgb" ||
     content.kind === "workshop_rgbic_v2" ||
+    content.kind === "shared_scene_rgb" ||
+    content.kind === "shared_scene_rgbic_v1" ||
     content.kind === "music_profile" ||
     content.kind === "video_profile"
   ) {

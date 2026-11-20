@@ -427,7 +427,7 @@ export interface NativeDiyTemplateContract {
   rate_default: number;
 }
 
-interface WorkshopFields {
+interface RetainedSceneFields {
   model: ModelSku;
   template: string;
   effect: {
@@ -437,14 +437,15 @@ interface WorkshopFields {
   trailing_padding: number;
 }
 
-export type WorkshopContent = WorkshopFields & (
-  { kind: "workshop" } | { kind: "workshop_rgbic_v2" }
+export type LayeredRetainedSceneContent = RetainedSceneFields & (
+  { kind: "workshop" } | { kind: "workshop_rgbic_v2" } | { kind: "shared_scene_rgbic_v1" }
 );
 
-export interface RgbWorkshopContent extends Omit<WorkshopFields, "effect"> {
-  kind: "workshop_rgb";
+export type RgbRetainedSceneContent = Omit<RetainedSceneFields, "effect"> & (
+  { kind: "workshop_rgb" } | { kind: "shared_scene_rgb" }
+) & {
   effect: null;
-}
+};
 
 export type CustomEffectContent =
   | PaintedContent
@@ -491,7 +492,7 @@ export interface EffectStudioModeOption {
 export interface WorkshopTemplate {
   id: string;
   label: string;
-  content: WorkshopContent;
+  content: LayeredRetainedSceneContent;
 }
 
 export type CatalogueTemplateContent =
@@ -663,8 +664,8 @@ export type KnownEffectContent =
   | MusicProfileContent
   | VideoProfileContent
   | AdvancedContent
-  | WorkshopContent
-  | RgbWorkshopContent
+  | LayeredRetainedSceneContent
+  | RgbRetainedSceneContent
   | BuiltinSceneContent
   | PaletteSceneContent
   | LayeredSceneContent;

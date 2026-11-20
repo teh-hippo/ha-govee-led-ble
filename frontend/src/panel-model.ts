@@ -670,6 +670,9 @@ export class PanelModel {
       case "workshop_rgb":
       case "workshop_rgbic_v2":
         return device.custom_effects.workshop;
+      case "shared_scene_rgb":
+      case "shared_scene_rgbic_v1":
+        return "supported";
     }
   }
 

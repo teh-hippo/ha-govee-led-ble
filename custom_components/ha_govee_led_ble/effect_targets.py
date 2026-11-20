@@ -14,9 +14,9 @@ from .effect_domain import (
     MusicProfile,
     PaintedEffect,
     PaletteDiyEffect,
+    RetainedSceneEffect,
     SingleEffect,
     VideoProfile,
-    WorkshopEffect,
 )
 from .music_protocol import music_code_for
 from .music_semantics import compile_music_parameters, music_variant
@@ -75,13 +75,13 @@ def resolve_target_item(item: LibraryItem, model: str, profile: ModelProfile | N
         if parameters != target_parameters:
             raise ValueError("The target introduces different implicit music parameters")
         projected = replace(content, model=model, parameters=parameters)
-    elif isinstance(content, WorkshopEffect) and content.model != model:
+    elif isinstance(content, RetainedSceneEffect) and content.model != model:
         source = get_profile(content.model)
         different_format = (
             source.effect_grammar != profile.effect_grammar
             or source.workshop_brightness_algorithm != profile.workshop_brightness_algorithm
         )
-        if content.carrier != "rgbic_v1":
+        if content.application != "workshop" or content.carrier != "rgbic_v1":
             raise ValueError("Retained Workshop carrier is bound to its source model")
         if content.effect is None:
             raise ValueError("Workshop has no transferable layered content")

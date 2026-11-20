@@ -17,9 +17,9 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     LibraryItem,
     MultiEffect,
     PaintedEffect,
+    RetainedSceneEffect,
     SingleEffect,
     TargetHint,
-    WorkshopEffect,
 )
 from custom_components.ha_govee_led_ble.effect_protocol_decoder import decode_effect_frames
 from custom_components.ha_govee_led_ble.effect_websocket_payloads import item_summary
@@ -146,7 +146,7 @@ def test_workshop_uses_the_command_selector_contract_independently_of_upload(pac
     scene = next(entry for entry in SCENE_ENTRIES["H605C"] if entry.scene_id == 29884)
     raw = base64.b64decode(scene.param)
     effect, padding = decode_workshop_effect("H605C", raw)
-    content = WorkshopEffect("H605C", "candidate", effect, raw_param=raw, trailing_padding=padding)
+    content = RetainedSceneEffect("H605C", "candidate", effect, raw_param=raw, trailing_padding=padding)
     compiled = compile_effect(LibraryItem.new("Workshop", content), "H605C", profile=profile)
     assert compiled.activation_packet == frame("3305049201")
     assert reassemble_a3(compiled.upload_packets)[2] == 2

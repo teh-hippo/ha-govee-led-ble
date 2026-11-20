@@ -15,8 +15,8 @@ from .effect_domain import (
     EffectContent,
     Origin,
     PaletteDiyEffect,
+    RetainedSceneEffect,
     SourceKind,
-    WorkshopEffect,
     effect_content_from_dict,
     effect_content_hash,
     effect_content_to_dict,
@@ -122,7 +122,7 @@ class ActiveEffectWorkspace:
         signature = required_persisted_string(raw, "observable_signature")
         model = required_persisted_string(raw, "model")
         if signature.startswith("custom:") and (
-            isinstance(content, WorkshopEffect)
+            isinstance(content, RetainedSceneEffect)
             and content.model == model
             and model in {"H617A", "H617E", "H6199"}
             or isinstance(content, PaletteDiyEffect)

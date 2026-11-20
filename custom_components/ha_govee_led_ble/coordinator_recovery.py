@@ -20,6 +20,7 @@ from .coordinator_sources import (
     PreparedSourceValue,
     has_segmented_sources,
     native_source_fields,
+    segment_colour_matches,
     source_kelvin_hint_fields,
 )
 from .coordinator_status import (
@@ -42,7 +43,6 @@ from .light_commands import (
     build_segment_kelvin_packets,
     build_segment_paint,
     normalize_kelvin,
-    static_colour_matches,
 )
 from .music_commands import MusicWriteSequence, prepare_music_profile_writes
 from .music_protocol import music_code_for
@@ -459,14 +459,27 @@ class _RecoveryMixin(_CoordinatorBase):
             *source_kelvin_hint_fields(profile),
             *(("left_bar_kelvin", "right_bar_kelvin") if profile.setting_grammar == "H6046" else ()),
         )
+        target_intents = target.static_segment_kelvin(profile) if profile.supports_segments else None
+        matching_palette = (
+            current.segment_colors is not None
+            and target.segment_colors is not None
+            and target_intents is not None
+            and len(current.segment_colors) == len(target.segment_colors) == len(target_intents)
+            and all(
+                not profile.static_palette_recovery and intent > 0 or actual == expected
+                for actual, expected, intent in zip(
+                    current.segment_colors, target.segment_colors, target_intents, strict=True
+                )
+            )
+        )
         return (
             current.mode == target.mode == "colour"
             and all(getattr(current, field) == getattr(target, field) for field in fields)
             and (target.static_gradual is None or current.static_gradual == target.static_gradual)
             and (
-                current.segment_colors == target.segment_colors
+                matching_palette
                 and current.segment_brightness == target.segment_brightness
-                and current.static_segment_kelvin(profile) == target.static_segment_kelvin(profile)
+                and current.static_segment_kelvin(profile) == target_intents
                 if profile.supports_segments
                 else current.color_temp_kelvin == target.color_temp_kelvin
                 and (
@@ -494,7 +507,7 @@ class _RecoveryMixin(_CoordinatorBase):
             and self._observed_mode_profile_generation == self._profile_generation
         )
         guarded_colours = any(
-            not static_colour_matches(self.segment_colors[index], expected[0], self.profile)
+            not segment_colour_matches(self._as_coordinator, index, self.segment_colors[index], expected[0])
             for index in range(len(self.segment_colors))
             if (expected := self._expected_state.get(f"segment_colour_{index}")) is not None
         )
@@ -606,7 +619,7 @@ class _RecoveryMixin(_CoordinatorBase):
             segment_kelvin=tuple(
                 value
                 if (expected := self._expected_state.get(f"segment_colour_{index}")) is None
-                or static_colour_matches(self.segment_colors[index], expected[0], self.profile)
+                or segment_colour_matches(self._as_coordinator, index, self.segment_colors[index], expected[0])
                 else None
                 for index, value in enumerate(self.segment_kelvin)
             )
@@ -1429,9 +1442,11 @@ class _RecoveryMixin(_CoordinatorBase):
                 if kelvin:
                     target_colours[index] = table_kelvin_rgb(kelvin)
         left, right = state.left_bar_kelvin, state.right_bar_kelvin
+        if source_restore or bar_restore:
+            left = normalize_kelvin(left, self.profile) if left else left
+            right = normalize_kelvin(right, self.profile) if right else right
         if bar_restore:
             assert left is not None and right is not None
-            left, right = normalize_kelvin(left, self.profile), normalize_kelvin(right, self.profile)
             half = self.profile.segment_count // 2
             target_colours = [table_kelvin_rgb(left)] * half + [table_kelvin_rgb(right)] * half
         whole = target_intents[0] if kelvin_restore else state.color_temp_kelvin
@@ -1537,11 +1552,14 @@ class _RecoveryMixin(_CoordinatorBase):
                 self.brightness_pct == state.brightness_pct
                 and len(self.segment_colors) == len(expected_colours)
                 and all(
-                    static_colour_matches(
-                        actual, expected if self.profile.static_palette_recovery else intent or expected, self.profile
+                    segment_colour_matches(
+                        self._as_coordinator,
+                        index,
+                        actual,
+                        expected if self.profile.static_palette_recovery else intent or expected,
                     )
-                    for actual, expected, intent in zip(
-                        self.segment_colors, expected_colours, target_intents, strict=True
+                    for index, (actual, expected, intent) in enumerate(
+                        zip(self.segment_colors, expected_colours, target_intents, strict=True)
                     )
                 )
                 and (state.segment_brightness is None or tuple(self.segment_brightness) == state.segment_brightness)

@@ -36,6 +36,7 @@ from .protocol_core import (
     H6046CommandAck,
     H6046EffectUpload,
     H6046MusicBody,
+    H6053CommandAck,
     H6053EffectUpload,
     H6072MusicAck,
     H6072MusicBody,
@@ -163,10 +164,11 @@ def upload_ack_subtype(packets: Sequence[bytes], index: int, model: str, *, prof
             parsed = H6181DiyBody.from_bytes(body)
             parsed._read()
             return A1_02_COMMAND
-        if profile.a1_diy_selector is None or profile.command_ack_grammar not in _COMMAND_ACK_ROOTS:
+        prefix = profile.a1_diy_prefix if profile.a1_diy_prefix is not None else profile.a1_diy_selector
+        if prefix is None or profile.command_ack_grammar not in _COMMAND_ACK_ROOTS:
             raise ValueError("A1 upload acknowledgement is not qualified for this profile")
         body = reassemble_a1_02_upload(packets, index)
-        if body[0] != profile.a1_diy_selector:
+        if body[0] != prefix:
             raise ValueError("A1 upload selector does not match the profile")
         return A1_02_COMMAND
     return _complete_a3_upload(packets, index, model, profile)[0]
@@ -176,6 +178,8 @@ def upload_ack_mode(
     packets: Sequence[bytes], index: int, model: str, *, profile: ModelProfile | None = None
 ) -> int | None:
     """Return the music mode an exact-model acknowledgement must repeat, if its schema carries one."""
+    if packets[index][0] != A3_PREFIX:
+        return None
     grammar = (profile or get_profile(model)).music_grammar
     if grammar not in {"H6072", "H6076", "H6046", "H607C", "H60B0"}:
         return None
@@ -210,7 +214,7 @@ def upload_ack_success(
         or isinstance(parsed, H60b0CommandAck)
         and getattr(parsed, "mode", None) is not None
         or (isinstance(parsed, H607cCommandAck) and getattr(parsed, "mode", None) is not None)
-        or (isinstance(parsed, H6046CommandAck) and getattr(parsed, "mode", None) is not None)
+        or (isinstance(parsed, H6046CommandAck | H6053CommandAck) and getattr(parsed, "mode", None) is not None)
     ):
         return (
             bool(parsed.is_success)

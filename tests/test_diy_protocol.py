@@ -41,8 +41,8 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     MultiEffect,
     PaintedEffect,
     PaletteDiyEffect,
+    RetainedSceneEffect,
     SingleEffect,
-    WorkshopEffect,
     effect_content_from_dict,
     effect_content_to_dict,
 )
@@ -587,7 +587,7 @@ def test_basic_grammars_do_not_supply_effect_grammar(monkeypatch, model) -> None
 def test_custom_authorization_without_supported_grammar_pair_is_rejected(monkeypatch, model, content, field, grammar):
     item = LibraryItem.new("Custom", content)
     independent_scene_codec = grammar == "other" and (
-        isinstance(content, WorkshopEffect) or isinstance(content, PaletteDiyEffect) and field == "command_grammar"
+        isinstance(content, RetainedSceneEffect) or isinstance(content, PaletteDiyEffect) and field == "command_grammar"
     )
     if grammar == "other":
         grammar = "H6199" if model == "H617A" else "H617A"

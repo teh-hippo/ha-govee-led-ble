@@ -347,6 +347,7 @@ class ModelProfile:
     advanced_scene_carrier: tuple[int, int] | None = None
     workshop_scene_selector: int | None = None
     workshop_carriers: tuple[tuple[str, int, int], ...] = ()
+    shared_scene_carriers: tuple[tuple[str, int, int], ...] = ()
     workshop_brightness_algorithm: int | None = None
     advanced_diy_selector: int | None = None
     authored_palette_scene_selector: int | None = None
@@ -527,15 +528,16 @@ class ModelProfile:
             type(self.workshop_scene_selector) is not int or not 0 <= self.workshop_scene_selector <= 65535
         ):
             raise ValueError("Workshop scene selector must be an unsigned 16-bit value")
-        if len({carrier for carrier, _, _ in self.workshop_carriers}) != len(self.workshop_carriers) or any(
-            carrier not in {"rgb", "rgbic_v1", "rgbic_v2"}
-            or type(subtype) is not int
-            or not 0 <= subtype <= 255
-            or type(selector) is not int
-            or not 0 <= selector <= 65535
-            for carrier, subtype, selector in self.workshop_carriers
-        ):
-            raise ValueError("Workshop carriers require distinct formats and unsigned upload/selector values")
+        for carriers in (self.workshop_carriers, self.shared_scene_carriers):
+            if len({carrier for carrier, _, _ in carriers}) != len(carriers) or any(
+                carrier not in {"rgb", "rgbic_v1", "rgbic_v2"}
+                or type(subtype) is not int
+                or not 0 <= subtype <= 255
+                or type(selector) is not int
+                or not 0 <= selector <= 65535
+                for carrier, subtype, selector in carriers
+            ):
+                raise ValueError("Retained scene carriers require distinct formats and unsigned upload/selector values")
         if self.workshop_brightness_algorithm is not None and (
             type(self.workshop_brightness_algorithm) is not int or not 0 <= self.workshop_brightness_algorithm <= 2
         ):
@@ -1235,7 +1237,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         support_quality=SupportQuality.EXPERIMENTAL,
         confirmation_issue=662,
         command_grammar="H6046",
-        command_ack_grammar="H6046",
+        command_ack_grammar="H6053",
         command_operations=frozenset(
             {"power", "brightness", "static", "scene", "diy", "music", "effect_upload", "bar_enable", "swap_bars"}
         ),
@@ -1290,6 +1292,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         advanced_diy_selector=402,
         workshop_scene_selector=402,
         workshop_carriers=(("rgb", 1, 198), ("rgbic_v1", 2, 402), ("rgbic_v2", 10, 403)),
+        shared_scene_carriers=(("rgb", 1, 199), ("rgbic_v1", 2, 401)),
         diy_upload_transport="a3",
         diy_requires_upload_ack=True,
         effect_retry_after_upload=False,
@@ -3865,6 +3868,9 @@ def device_profile(
             - (set() if uploaded_scenes else {"layered_scenes"})
             - (set() if workshop else {"advanced", "workshop"}),
             scene_command_versions=None if uploaded_scenes else frozenset(),
+            shared_scene_carriers=profile.shared_scene_carriers
+            if uploaded_scenes
+            else tuple(route for route in profile.shared_scene_carriers if route[0] == "rgb"),
             diy_upload_transport="a1_02" if legacy_pact else "a3",
             a1_diy_prefix=254 if legacy_pact else None,
             music_modes=profile.music_modes if expanded_music else profile.music_modes[:4],
