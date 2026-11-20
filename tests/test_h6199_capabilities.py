@@ -286,9 +286,7 @@ async def lifecycle(hass, monkeypatch, request):
             build_firmware_query(c.model): frame("aa06" + b"1.07.02".hex()),
             build_power_query(c.model): frame("aa0101"),
             build_brightness_query(c.model): frame("aa0480"),
-            build_colour_mode_query(c.model): frame(
-                "aa05020c223800000000" if c.model == "H6159" else "aa050d0c223800000000"
-            ),
+            build_colour_mode_query(c.model): frame("aa05020c223800000000"),
         }
     clients, packets, timers = [], [], []
 
@@ -310,11 +308,8 @@ async def lifecycle(hass, monkeypatch, request):
             if c.model == "H6182":
                 if packet[:2] == b"\x33\x04":
                     replies[build_brightness_query(c.model)] = frame("aa04" + packet[2:3].hex())
-                elif packet[:2] == b"\x33\x05":
-                    body = packet[2:19]
-                    if body[0] == 13:
-                        body = body[:4] + bytes([int(any(body[4:6]))]) + body[6:9]
-                    replies[build_colour_mode_query(c.model)] = frame("aa05" + body.hex())
+                elif packet[:2] == b"\x33\x05" and packet[2] != 0x0D:
+                    replies[build_colour_mode_query(c.model)] = frame("aa" + packet[1:-1].hex())
             if packet in replies:
                 # A GATT write completes before the separate BLE notification arrives.
                 loop = asyncio.get_running_loop()
