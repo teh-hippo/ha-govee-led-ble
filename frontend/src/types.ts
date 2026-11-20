@@ -48,6 +48,8 @@ export interface EditorApiInfo {
 }
 
 export interface DeviceCapabilities {
+  effect_compatibilities?: Record<string, EffectCompatibility>;
+  compatibility_revision?: string;
   physical_ic_count?: number | null;
   catalogue?: ModelEffectCatalogue;
   music_settings?: Record<string, MusicSettings>;
@@ -703,6 +705,13 @@ export interface LibrarySummary {
 export interface LibrarySnapshot {
   items: LibrarySummary[];
   generation?: number;
+}
+
+export interface EffectCompatibility {
+  state: "compatible" | "incompatible" | "unknown";
+  reasons: string[];
+  version?: number;
+  template?: CatalogueRef;
 }
 
 export interface LibraryMutationResult {

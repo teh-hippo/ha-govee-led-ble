@@ -442,19 +442,15 @@ async def async_prepare_effect_profile(
         StaticRgbComposition,
         WorkshopEffect,
     )
-    from .scenes import resolve_scene_identity
+    from .scenes import resolve_scene_target
 
     scene_required = content is None or isinstance(content, LayeredEffect | WorkshopEffect)
     if isinstance(content, BuiltinScene | LayeredScene | PaletteScene):
         reference = content.template
-        resolved = resolve_scene_identity(coordinator.model, reference.scene_id, reference.effect_id)
-        scene_required = (
-            reference.sku == coordinator.model
-            and resolved is not None
-            and (
-                resolved[1].command_version != 0
-                or (resolved[1].scene_type == 2 and coordinator.profile.rgbic_scene_v0 is not None)
-            )
+        resolved = resolve_scene_target(coordinator.model, reference)
+        scene_required = resolved is not None and (
+            resolved[1].command_version != 0
+            or (resolved[1].scene_type == 2 and coordinator.profile.rgbic_scene_v0 is not None)
         )
 
     if (

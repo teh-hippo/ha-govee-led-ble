@@ -84,6 +84,14 @@ export class PanelController {
   private autoSaveDrain?: Promise<boolean>;
   private lastSaveCancelled = false;
   private stateUpdatesGeneration = 0;
+  private compatibilityRunning = false;
+  private compatibilityQueued?: {
+    api: EffectStudioApi;
+    deviceId: string;
+    revision: string | undefined;
+    content: import("./types").EffectContent;
+  };
+  private compatibilityRequested?: PanelController["compatibilityQueued"];
   private pendingTransition?: PendingTransition;
   private deviceRefresh?: {
     api: EffectStudioApi;
@@ -116,6 +124,51 @@ export class PanelController {
     this.modal.setTransitionDialogTeardown(() => {
       this.pendingTransition = undefined;
     });
+  }
+
+  public refreshContentCompatibility(): void {
+    const api = this.api;
+    const device = this.model.selectedDevice;
+    if (!api || !device || device.effect_compatibilities === undefined ||
+        this.model.editorSource.kind === "none" || !isEditableEffectContent(this.model.content)) return;
+    const previous = this.compatibilityRequested;
+    if (previous?.api === api && previous.deviceId === device.config_entry_id &&
+        previous.revision === device.compatibility_revision && previous.content === this.model.content) return;
+    const request = {api, deviceId: device.config_entry_id, revision: device.compatibility_revision, content: this.model.content};
+    this.compatibilityRequested = request;
+    this.model.contentCompatibility = undefined;
+    const item = this.model.currentItem;
+    const saved = item && !this.model.dirty ? device.effect_compatibilities[item.id] : undefined;
+    if (saved && item && saved.version === item.version) {
+      this.compatibilityQueued = undefined;
+      this.model.contentCompatibility = {deviceId: request.deviceId, content: request.content, result: saved};
+      return;
+    }
+    this.compatibilityQueued = request;
+    if (!this.compatibilityRunning) void this.resolveContentCompatibility();
+  }
+
+  private async resolveContentCompatibility(): Promise<void> {
+    this.compatibilityRunning = true;
+    try {
+      while (this.compatibilityQueued) {
+        const request = this.compatibilityQueued;
+        this.compatibilityQueued = undefined;
+        let result: import("./types").EffectCompatibility;
+        try {
+          result = await request.api.contentCompatibility(request.deviceId, request.content);
+        } catch (error) {
+          result = {state: "unknown", reasons: [errorMessage(error)]};
+        }
+        if (this.api !== request.api || this.model.selectedDeviceId !== request.deviceId ||
+            this.model.selectedDevice?.compatibility_revision !== request.revision ||
+            this.model.content !== request.content) continue;
+        this.model.patch({contentCompatibility: {deviceId: request.deviceId, content: request.content, result}});
+        if (result.state === "compatible") this.preview.scheduleEdited();
+      }
+    } finally {
+      this.compatibilityRunning = false;
+    }
   }
 
   public async load(hass: HomeAssistant, isAdmin: boolean): Promise<void> {
@@ -484,7 +537,9 @@ export class PanelController {
       (candidate) =>
         candidate.kind === "scene_builtin" || candidate.kind === "scene_palette" || candidate.kind === "scene_layered" ||
           candidate.kind === "native_effect" && candidate.template !== undefined
-          ? candidate.template?.sku === this.model.selectedModel
+          ? candidate.template?.sku === this.model.selectedModel ||
+            device.effect_compatibilities?.[candidate.id]?.version === candidate.version &&
+            device.effect_compatibilities[candidate.id].state === "compatible"
           : this.model.libraryItemAvailable(candidate),
       this.model.modelCatalogue,
     );
@@ -2002,10 +2057,14 @@ export class PanelController {
     transitionEpoch: number,
   ): Promise<boolean> {
     const device = this.model.selectedDevice;
-    if (!this.api || !device) {
+    const api = this.api;
+    const document = this.currentEditorDocument();
+    const selectedItem = this.model.currentItem;
+    if (!api || !device) {
       return false;
     }
-    if (!effectContentEligible(item.content, this.model.modelCatalogue, device.model, device.segment_count)) return false;
+    if (device.effect_compatibilities === undefined &&
+        !effectContentEligible(item.content, this.model.modelCatalogue, device.model, device.segment_count)) return false;
     const configEntryId = device.config_entry_id;
     if (!this.model.liveApplyEnabled) {
       return false;
@@ -2018,7 +2077,13 @@ export class PanelController {
       return false;
     }
     try {
-      await this.api.applySavedEffect(configEntryId, item, diyCode, true);
+      if (device.effect_compatibilities !== undefined) {
+        const result = await api.contentCompatibility(configEntryId, item.content);
+        if (result.state !== "compatible" || this.model.selectedDeviceId !== configEntryId ||
+            transitionEpoch !== this.model.editorTransitionEpoch || !this.model.liveApplyEnabled || this.api !== api ||
+            this.currentEditorDocument() !== document || this.model.currentItem !== selectedItem) return false;
+      }
+      await api.applySavedEffect(configEntryId, item, diyCode, true);
       if (
         !this.model.liveApplyEnabled ||
         this.model.selectedDeviceId !== configEntryId ||

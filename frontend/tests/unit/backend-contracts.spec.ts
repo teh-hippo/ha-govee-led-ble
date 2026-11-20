@@ -25,6 +25,7 @@ type JsonObject = Record<string, unknown>;
 const responses = backendContracts.responses;
 const contentSamples: Record<string, unknown> = backendContracts.content_samples;
 const knownContentFamilies = [
+  "static_rgb",
   "h617a_painted",
   "h617a_single",
   "h617a_multi",

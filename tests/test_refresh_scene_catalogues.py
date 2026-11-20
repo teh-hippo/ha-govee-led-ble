@@ -7,7 +7,23 @@ import pytest
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, supported_effect_categories
 from custom_components.ha_govee_led_ble.native_scenes import apply_scene_speed
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES, _load_speed
-from tools.ble.refresh_scene_catalogues import SNAPSHOT_DIR, _snapshot_speed, build_snapshot
+from tools.ble.refresh_scene_catalogues import SNAPSHOT_DIR, _snapshot_speed, build_snapshot, retain_shared_identities
+
+
+@pytest.mark.parametrize("changed", [False, True])
+def test_shared_scene_identity_survives_only_an_unchanged_effect_contract(changed):
+    previous = {
+        "sku": "H617A",
+        "effects": [
+            {"scene_id": 1042, "effect_id": 1104, "code": 9, "scene_type": 0, "shared_identity": "native:candlelight"}
+        ],
+    }
+    current = {
+        "sku": "H617A",
+        "effects": [{"scene_id": 1042, "effect_id": 1104, "code": 10 if changed else 9, "scene_type": 0}],
+    }
+    retain_shared_identities(current, previous)
+    assert ("shared_identity" in current["effects"][0]) is not changed
 
 
 def _effect(effect_id: int, code: int, variant: str = "") -> dict[str, object]:

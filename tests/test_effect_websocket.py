@@ -24,7 +24,7 @@ from custom_components.ha_govee_led_ble.coordinator_modes import ModeTransitionS
 from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
 from custom_components.ha_govee_led_ble.effect_catalogue import resolve_catalogue_template
 from custom_components.ha_govee_led_ble.effect_contracts import EDITOR_API_VERSION
-from custom_components.ha_govee_led_ble.effect_domain import SingleEffect, effect_content_to_dict
+from custom_components.ha_govee_led_ble.effect_domain import MusicProfile, SingleEffect, effect_content_to_dict
 from custom_components.ha_govee_led_ble.effect_preview import (
     PreviewError,
     PreviewOwnershipError,
@@ -39,6 +39,7 @@ from custom_components.ha_govee_led_ble.effect_websocket import (
     WS_APPLY,
     WS_APPLY_SNAPSHOT,
     WS_CUSTOM_CATALOGUE,
+    WS_DEVICE,
     WS_DEVICE_SUBSCRIBE,
     WS_INFO,
     WS_LIBRARY_CREATE,
@@ -76,6 +77,29 @@ async def _setup_backend(hass: HomeAssistant) -> EffectBackend:
 
 def _content(speed: int = 50) -> dict[str, Any]:
     return effect_content_to_dict(SingleEffect(0, 0, speed, ((255, 0, 0),)))
+
+
+async def test_draft_target_resolution_is_read_only(hass, hass_ws_client, monkeypatch):
+    backend = await _setup_backend(hass)
+    coordinator = _EffectCoordinator(model="H6199", profile=get_profile("H6199"))
+    entry = SimpleNamespace(entry_id="entry-b", domain=DOMAIN, state=ConfigEntryState.LOADED, runtime_data=coordinator)
+    monkeypatch.setattr(hass.config_entries, "async_get_entry", lambda _id: entry)
+    supersede = AsyncMock()
+    monkeypatch.setattr(backend.preview, "async_supersede_device", supersede)
+    original = backend.application.library_snapshot()
+    client = await hass_ws_client(hass)
+    await client.send_json_auto_id(
+        {
+            "type": WS_DEVICE,
+            "config_entry_id": entry.entry_id,
+            "content": effect_content_to_dict(MusicProfile("H617A", "spectrum", 50, (10, 20, 30))),
+        }
+    )
+    response = await client.receive_json()
+    assert response["success"]
+    assert response["result"]["compatibility"]["state"] == "compatible"
+    assert backend.application.library_snapshot() == original
+    supersede.assert_not_awaited()
 
 
 @pytest.mark.parametrize(

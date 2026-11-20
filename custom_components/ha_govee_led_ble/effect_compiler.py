@@ -89,7 +89,7 @@ from .protocol_core import (
     SceneBody,
 )
 from .protocol_effect_bodies import build_inline_diy
-from .scenes import MODEL_SCENES, SceneEntry, resolve_scene_identity, scene_for_profile, scene_selector_code
+from .scenes import MODEL_SCENES, SceneEntry, scene_for_profile, scene_selector_code
 from .transport import fragment_a3
 
 DIY_ACK_EVIDENCE = "native_diy_positive_ack_required"
@@ -344,6 +344,16 @@ def require_native_scenes(model: str, profile: ModelProfile) -> None:
 
 
 def compatibility(item: LibraryItem, model: str, *, profile: ModelProfile | None = None) -> CompatibilityResult:
+    from .effect_targets import resolve_target_item
+
+    try:
+        item = resolve_target_item(item, model, profile)
+    except ValueError as error:
+        return CompatibilityResult(CompatibilityState.INCOMPATIBLE, (str(error),))
+    return _target_compatibility(item, model, profile=profile)
+
+
+def _target_compatibility(item: LibraryItem, model: str, *, profile: ModelProfile | None = None) -> CompatibilityResult:
     profile = get_profile(model) if profile is None else profile
     if isinstance(item.content, StaticRgbComposition):
         supported = (
@@ -368,7 +378,9 @@ def compatibility(item: LibraryItem, model: str, *, profile: ModelProfile | None
                 (f"music profile targets {content.model}, not {model}",),
             )
         try:
-            resolve_music_profile(
+            from .music_commands import validate_music_profile_request
+
+            validate_music_profile_request(
                 model,
                 content.mode,
                 content.sensitivity,
@@ -377,10 +389,9 @@ def compatibility(item: LibraryItem, model: str, *, profile: ModelProfile | None
                 content.parameters,
                 profile=profile,
                 palette=content.palette,
-                original_body=build_zoned_music_body(profile, content.mode, content.zones)
-                if content.zones is not None
-                else None,
             )
+            if content.zones is not None:
+                build_zoned_music_body(profile, content.mode, content.zones)
         except ValueError as error:
             return CompatibilityResult(CompatibilityState.INCOMPATIBLE, (str(error),))
         return CompatibilityResult(CompatibilityState.COMPATIBLE)
@@ -426,7 +437,7 @@ def compatibility(item: LibraryItem, model: str, *, profile: ModelProfile | None
         return CompatibilityResult(CompatibilityState.COMPATIBLE)
     if isinstance(content, NativeEffect):
         try:
-            _prepare_native_effect(item, model, profile)
+            _validate_native_effect(item, model, profile)
         except ValueError as error:
             return CompatibilityResult(CompatibilityState.INCOMPATIBLE, (str(error),))
         return CompatibilityResult(CompatibilityState.COMPATIBLE)
@@ -435,11 +446,6 @@ def compatibility(item: LibraryItem, model: str, *, profile: ModelProfile | None
             return CompatibilityResult(
                 CompatibilityState.INCOMPATIBLE,
                 (f"{model} native scenes are not supported",),
-            )
-        if content.template.sku != model:
-            return CompatibilityResult(
-                CompatibilityState.INCOMPATIBLE,
-                (f"scene targets {content.template.sku}, not {model}",),
             )
         try:
             require_native_scenes(model, profile)
@@ -494,11 +500,6 @@ def compatibility(item: LibraryItem, model: str, *, profile: ModelProfile | None
                 CompatibilityState.INCOMPATIBLE,
                 (f"{model} authored scenes are not supported",),
             )
-        if content.template.sku != model:
-            return CompatibilityResult(
-                CompatibilityState.INCOMPATIBLE,
-                (f"scene targets {content.template.sku}, not {model}",),
-            )
         try:
             require_effect_route(
                 model,
@@ -543,7 +544,7 @@ def _effect_workflow(content: EffectContent) -> CapabilityWorkflow:
     return CapabilityWorkflow(workflow)
 
 
-def _prepare_native_effect(item: LibraryItem, model: str, profile: ModelProfile) -> bytes:
+def _validate_native_effect(item: LibraryItem, model: str, profile: ModelProfile) -> None:
     content = item.content
     if not isinstance(content, NativeEffect):
         raise ValueError("native compiler requires native content")
@@ -574,6 +575,12 @@ def _prepare_native_effect(item: LibraryItem, model: str, profile: ModelProfile)
         elif any(isinstance(layer, NativeDiyLayer) and not 1 <= len(layer.palette) <= 8 for layer in content.layers):
             raise ValueError("native DIY palette must contain 1 to 8 colours")
     resolve_diy_code(item, model=model, profile=profile)
+
+
+def _prepare_native_effect(item: LibraryItem, model: str, profile: ModelProfile) -> bytes:
+    _validate_native_effect(item, model, profile)
+    content = item.content
+    assert isinstance(content, NativeEffect)
     return encode_native_body(content)
 
 
@@ -584,6 +591,9 @@ def compile_effect(
     diy_code: int | None = None,
     profile: ModelProfile | None = None,
 ) -> CompiledEffect:
+    from .effect_targets import resolve_target_item
+
+    item = resolve_target_item(item, model, profile)
     if isinstance(item.content, H6179SingleDiyEffect | H6179MixedDiyEffect):
         if diy_code is None:
             raise ValueError("H6179 DIY application requires an approved disposable DIY code")
@@ -645,6 +655,10 @@ def resolve_diy_code(
     profile: ModelProfile | None = None,
 ) -> int | None:
     """Resolve a custom selector; scene and profile applications return None."""
+    if model is not None:
+        from .effect_targets import resolve_target_item
+
+        item = resolve_target_item(item, model, profile)
     content = item.content
     if isinstance(content, StaticRgbComposition):
         if requested is not None:
@@ -1108,6 +1122,9 @@ def compile_h617a(
     model: str = "H617A",
     profile: ModelProfile | None = None,
 ) -> CompiledEffect:
+    from .effect_targets import resolve_target_item
+
+    item = resolve_target_item(item, model, profile)
     profile = get_profile(model) if profile is None else profile
     result = compatibility(item, model, profile=profile)
     if result.state is not CompatibilityState.COMPATIBLE:
@@ -1196,6 +1213,9 @@ def compile_h617a(
 
 
 def compile_h6179(item: LibraryItem, diy_code: int, *, profile: ModelProfile | None = None) -> CompiledEffect:
+    from .effect_targets import resolve_target_item
+
+    item = resolve_target_item(item, "H6179", profile)
     profile = profile or get_profile("H6179")
     result = compatibility(item, "H6179", profile=profile)
     if result.state is not CompatibilityState.COMPATIBLE:
@@ -1241,6 +1261,9 @@ def compile_h6199(
     model: str = "H6199",
     profile: ModelProfile | None = None,
 ) -> CompiledEffect:
+    from .effect_targets import resolve_target_item
+
+    item = resolve_target_item(item, model, profile)
     result = compatibility(item, model, profile=profile)
     if result.state is not CompatibilityState.COMPATIBLE:
         raise ValueError("; ".join(result.reasons))
@@ -1291,7 +1314,9 @@ def _resolve_scene(
         raise ValueError(f"catalogue schema version {template.catalogue_schema_version} is not supported")
     if model not in MODEL_SCENES:
         raise ValueError(f"{model} has no scene catalogue")
-    resolved = resolve_scene_identity(model, template.scene_id, template.effect_id)
+    from .scenes import resolve_scene_target
+
+    resolved = resolve_scene_target(model, template)
     if resolved is None:
         raise ValueError(f"{model} scene identity ({template.scene_id}, {template.effect_id}) was not found")
     key, entry = resolved
@@ -1322,6 +1347,9 @@ def compile_application(
     diy_code: int | None = None,
     profile: ModelProfile | None = None,
 ) -> CompiledApplication:
+    from .effect_targets import resolve_target_item
+
+    item = resolve_target_item(item, model, profile)
     if isinstance(item.content, StaticRgbComposition):
         resolve_diy_code(item, diy_code, model=model, profile=profile)
         return compile_static_rgb(item, model, profile=profile)
@@ -1367,6 +1395,9 @@ def compile_static_rgb(item: LibraryItem, model: str, *, profile: ModelProfile |
 def compile_music_profile(
     item: LibraryItem, model: str, *, profile: ModelProfile | None = None
 ) -> CompiledMusicProfile:
+    from .effect_targets import resolve_target_item
+
+    item = resolve_target_item(item, model, profile)
     profile = get_profile(model) if profile is None else profile
     content = item.content
     if not isinstance(content, MusicProfile):
@@ -1416,6 +1447,9 @@ def compile_music_profile(
 def compile_video_profile(
     item: LibraryItem, model: str, *, profile: ModelProfile | None = None
 ) -> CompiledVideoProfile:
+    from .effect_targets import resolve_target_item
+
+    item = resolve_target_item(item, model, profile)
     profile = get_profile(model) if profile is None else profile
     result = compatibility(item, model, profile=profile)
     if result.state is not CompatibilityState.COMPATIBLE:

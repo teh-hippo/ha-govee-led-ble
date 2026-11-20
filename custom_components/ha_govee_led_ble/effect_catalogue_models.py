@@ -43,6 +43,7 @@ class DiyEffectVariation:
     id: str
     label: str
     variant: int
+    shared_identity: str | None = None
 
     def to_dict(self) -> dict[str, JsonValue]:
         return {

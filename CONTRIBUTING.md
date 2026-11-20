@@ -47,6 +47,9 @@ Keep real product differences without turning each product into a separate imple
   Required BLE companion colours remain protocol data, not Home Assistant RGB approximations.
   A white-mode indicator without a qualified temperature is not RGB or an exact Kelvin observation; never restore it from an unrelated retained colour.
 - Give each fact one authority.
+  Shared library designs retain their authored content, identity and source metadata; resolve target-local values without rewriting the design or another device's defaults.
+  Qualify shared behaviour and parameter meaning independently of display names and wire numbers.
+  Keep authored catalogue references separate from resolved target scene identities through selection, application, attribution and reload.
   Derive catalogue support and apply projections from the release contract, narrowed by the effective profile, rather than maintaining parallel capability flags.
   Project catalogue defaults and direct template resolution from the same effective contract; every advertised default must compile within its bounds.
   Evaluate authoring workflows independently; a native encoding for one workflow must not hide another workflow that the product supports.
@@ -135,6 +138,8 @@ Keep real product differences without turning each product into a separate imple
   Missing confirmation alone never justifies blind rollback or retransmission.
   Verification must compare complete shapes and companion values, not a matching subset.
 - Scope mutable state, locks and reservations to the resource they protect.
+  Derived compatibility views follow library generations and effective profiles, not independently maintained SKU filters.
+  Background capability updates revalidate dependent work without discarding authoring focus or unsaved content.
   Keep unrelated devices and items independent; do not retain collection-wide locks during device I/O when only one item needs a reservation.
   Cache derived results at their owning layer, invalidate on meaningful changes, and avoid repeated parsing, serialisation, whole-history rebuilding or persistence for unchanged observations.
   Background persistence must preserve authoring focus and accept newer edits while serialising writes; reserve editor locking for foreground operations.
@@ -189,6 +194,7 @@ Decode-only Kaitai documentation of these is fine; runtime control is not.
 
 Run `make protocol` after a fresh clone, a new worktree or any `.ksy` change, and `make check` before finishing.
 Run independent pytest processes serially within one checkout because Home Assistant fixtures share test storage.
+The full gate owns its browser test server; do not qualify an exact build through an unrelated or reused preview server.
 If parallel workers collide on filesystem-backed storage, run the complete gate with `make check PYTEST_WORKERS=1`.
 Keep virtual event-loop clocks out of real HTTP/WebSocket tests; use them only around simulated transport work.
 Invalidate the editor asset generation when its imported module contract changes, not just the backend compiler version.

@@ -10,7 +10,9 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 from uuid import UUID
 
+from .const import ModelProfile
 from .coordinator import GoveeBLECoordinator
+from .effect_compiler import compatibility
 from .effect_deployments import DeploymentRecord, EffectDeploymentRepository
 from .effect_domain import (
     EffectContent,
@@ -50,6 +52,28 @@ EDITOR_EXTENSION_KEY = "ha_govee_led_ble.editor"
 MAX_EDITOR_LAYER_LABEL = 0xFF
 
 
+def effect_compatibility_payload(item: LibraryItem, model: str, profile: ModelProfile) -> dict[str, Any]:
+    from .effect_domain import BuiltinScene, PaletteScene
+    from .scenes import resolve_scene_target
+
+    result = compatibility(item, model, profile=profile)
+    payload: dict[str, Any] = {
+        "version": item.version,
+        "state": result.state.value,
+        "reasons": list(result.reasons),
+    }
+    if isinstance(item.content, BuiltinScene | PaletteScene | LayeredScene):
+        resolved = resolve_scene_target(model, item.content.template)
+        if resolved is not None:
+            payload["template"] = {
+                "sku": model,
+                "scene_id": resolved[1].scene_id,
+                "effect_id": resolved[1].effect_id,
+                "catalogue_schema_version": item.content.template.catalogue_schema_version,
+            }
+    return payload
+
+
 @dataclass(slots=True)
 class EffectStudioApplication:
     library: EffectLibraryRepository
@@ -58,9 +82,25 @@ class EffectStudioApplication:
     device_cache: EffectDeviceCache | None = None
     _library_condition: asyncio.Condition = field(default_factory=asyncio.Condition, init=False, repr=False)
     _applying_items: dict[UUID, int] = field(default_factory=dict, init=False, repr=False)
+    _target_cache: dict[str, tuple[int, ModelProfile, dict[str, Any]]] = field(
+        default_factory=dict, init=False, repr=False
+    )
+    _target_library: LibrarySnapshot | None = field(default=None, init=False, repr=False)
 
     def library_snapshot(self) -> LibrarySnapshot:
         return self.library.snapshot()
+
+    def target_compatibilities(self, model: str, profile: ModelProfile) -> dict[str, Any]:
+        generation = self.library.generation
+        cached = self._target_cache.get(model)
+        if cached is not None and cached[0] == generation and cached[1] == profile:
+            return cached[2]
+        if self._target_library is None or self._target_library.generation != generation:
+            self._target_library = self.library_snapshot()
+        snapshot = self._target_library
+        results = {str(item.id): effect_compatibility_payload(item, model, profile) for item in snapshot.items}
+        self._target_cache[model] = (generation, profile, results)
+        return results
 
     def subscribe_library(
         self,

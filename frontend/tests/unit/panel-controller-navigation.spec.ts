@@ -62,6 +62,47 @@ function workspaceModel(selected: DeviceCapabilities): PanelModel {
   return model;
 }
 
+test("draft eligibility coalesces changes and never publishes an old recipient's result", async () => {
+  let publish!: () => void;
+  const published = new Promise<void>(resolve => {publish = resolve;});
+  const model = new PanelModel(() => {
+    if (model.contentCompatibility?.deviceId === "entry-b") publish();
+  });
+  model.isAdmin = true;
+  model.liveApplyEnabled = false;
+  model.devices = ["entry-a", "entry-b"].map(id => ({
+    ...device(id, "H6199"), effect_compatibilities: {}, compatibility_revision: "1:1",
+  }));
+  model.selectedDeviceId = "entry-a";
+  installH6199Catalogue(model);
+  const {controller, editorController} = panelControllerHarness(model);
+  editorController.newEffect("palette_diy");
+  let finishFirst!: (value: unknown) => void;
+  let finishSecond!: (value: unknown) => void;
+  let enteredSecond!: () => void;
+  const entered = new Promise<void>(resolve => {enteredSecond = resolve;});
+  const first = new Promise(resolve => {finishFirst = resolve;});
+  const second = new Promise(resolve => {finishSecond = resolve;});
+  const resolveContent = vi.fn()
+    .mockReturnValueOnce(first)
+    .mockImplementationOnce(() => {enteredSecond(); return second;});
+  controller.api = {contentCompatibility: resolveContent} as unknown as EffectStudioApi;
+  controller.refreshContentCompatibility();
+  model.content = {...model.content, speed: 21} as PaletteDiyEffectContent;
+  controller.refreshContentCompatibility();
+  model.selectedDeviceId = "entry-b";
+  controller.refreshContentCompatibility();
+  expect(resolveContent).toHaveBeenCalledTimes(1);
+  finishFirst({state: "compatible", reasons: []});
+  await entered;
+  expect(model.contentCompatibility).toBeUndefined();
+  expect(resolveContent).toHaveBeenLastCalledWith("entry-b", model.content);
+  finishSecond({state: "incompatible", reasons: ["Target palette limit"]});
+  await published;
+  expect(model.previewCapability).toBe("unsupported");
+  expect(model.compatibilityNotice).toBe("Target palette limit");
+});
+
 test.each(["cancel", "subscribe", "remember"])("a superseded device transition stops after %s", async (pause) => {
   const model = new PanelModel(() => undefined);
   model.devices = ["entry-a", "entry-b", "entry-c"].map(id => device(id, "H6199"));

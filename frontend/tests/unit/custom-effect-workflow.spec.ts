@@ -175,6 +175,16 @@ test("content-kind capabilities allow model-independent protocol effects", () =>
   ).toBe(false);
 });
 
+test("recipient results admit portable profiles but stale results do not override source filtering", () => {
+  const profile = {...saved, kind: "music_profile"};
+  const recipient: CustomEffectListContext = {
+    model: "H6199", catalogue: {...catalogue, sku: "H6199"}, libraryItems: [profile],
+    compatibilities: {[profile.id]: {version: profile.version, state: "compatible", reasons: []}},
+  };
+  expect(libraryItemAvailable(recipient, profile)).toBe(true);
+  expect(libraryItemAvailable(recipient, {...profile, version: profile.version + 1})).toBe(false);
+});
+
 test("H6179 exposes only its single, mixed, and music surfaces", () => {
   const h6179Catalogue: ModelEffectCatalogue = {
     ...catalogue,

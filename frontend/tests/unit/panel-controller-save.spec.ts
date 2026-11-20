@@ -645,6 +645,7 @@ test("saved item selection applies identity only while Live is enabled", async (
     contentCommitted: (interaction) =>
       controller.contentCommitted(interaction),
   });
+
   controller = new PanelController(
     model,
     editorController,
@@ -680,6 +681,38 @@ test("saved item selection applies identity only while Live is enabled", async (
     undefined,
     true,
   );
+});
+
+test("saved Live validation does not apply an earlier document after an intervening edit", async () => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  model.liveApplyEnabled = true;
+  const saved = item(painted());
+  model.devices = [{
+    ...device("entry-a", "H617A"), effect_compatibilities: {
+      [saved.id]: {version: saved.version, state: "compatible", reasons: []},
+    },
+  }];
+  model.selectedDeviceId = "entry-a";
+  installPaintCatalogue(model);
+  const {controller, editorController} = panelControllerHarness(model);
+  let entered!: () => void;
+  let finish!: (result: unknown) => void;
+  const waiting = new Promise<void>(resolve => {entered = resolve;});
+  const validation = new Promise(resolve => {finish = resolve;});
+  const applySavedEffect = vi.fn().mockResolvedValue(undefined);
+  controller.api = {
+    item: vi.fn().mockResolvedValue(saved),
+    contentCompatibility: vi.fn(() => {entered(); return validation;}),
+    applySavedEffect,
+  } as unknown as EffectStudioApi;
+  const selection = controller.selectItem(saved.id);
+  await waiting;
+  editorController.customContentChanged({...model.content, speed: 21} as PaintedContent);
+  finish({state: "compatible", reasons: []});
+  await selection;
+  expect(applySavedEffect).not.toHaveBeenCalled();
+  expect((model.content as PaintedContent).speed).toBe(21);
 });
 
 test("enabling Live on a clean saved item applies its stable identity", async () => {

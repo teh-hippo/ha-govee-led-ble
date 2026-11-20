@@ -28,6 +28,7 @@ from custom_components.ha_govee_led_ble.effect_active_workspace import (
     ActiveEffectWorkspace,
     ActiveEffectWorkspaceRepository,
 )
+from custom_components.ha_govee_led_ble.effect_application import effect_compatibility_payload
 from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
 from custom_components.ha_govee_led_ble.effect_catalogue import MODEL_EFFECT_CATALOGUES
 from custom_components.ha_govee_led_ble.effect_compiler import CompiledMusicProfile, CompiledVideoProfile
@@ -1251,7 +1252,12 @@ async def test_workspace_identity_agrees_between_device_payload_and_light_effect
     backend = cast(
         EffectBackend,
         SimpleNamespace(
-            application=SimpleNamespace(library_snapshot=MagicMock(return_value=LibrarySnapshot((sena,)))),
+            application=SimpleNamespace(
+                library_snapshot=MagicMock(return_value=LibrarySnapshot((sena,))),
+                target_compatibilities=lambda model, _profile: {
+                    str(sena.id): effect_compatibility_payload(sena, model, mock_coordinator.profile)
+                },
+            ),
             device_cache=cache,
             active_workspaces=active_workspaces,
             engine=engine,
@@ -1353,7 +1359,9 @@ async def test_ambiguous_workspace_agrees_across_runtime_light_and_device(
         mock_coordinator, config_entry_id="entry-a", observed_at="2026-08-26T00:02:00Z", refreshed=True
     )
     backend = SimpleNamespace(
-        application=SimpleNamespace(library_snapshot=lambda: LibrarySnapshot(())),
+        application=SimpleNamespace(
+            library_snapshot=lambda: LibrarySnapshot(()), target_compatibilities=lambda *_args: {}
+        ),
         device_cache=cache,
         active_workspaces=workspaces,
         engine=engine,

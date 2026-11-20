@@ -592,7 +592,7 @@ export class PanelEditorController {
   public musicModeChanged(mode: string): void {
     const source = this.model.editorSource;
     const current = this.model.content;
-    const catalogue = this.model.modelCatalogue;
+    const catalogue = this.model.editorCatalogue;
     const selected = catalogue?.music_modes.find((candidate) => candidate.id === mode);
     if (
       (source.kind !== "new" && source.kind !== "saved") ||
@@ -604,7 +604,7 @@ export class PanelEditorController {
     ) {
       return;
     }
-    const defaults = this.musicTemplateContent(mode);
+    const defaults = this.musicTemplateContent(mode, catalogue);
     if (!defaults) {
       return;
     }
@@ -676,7 +676,7 @@ export class PanelEditorController {
       });
       return;
     }
-    const family = this.model.modelCatalogue?.effects.find((effect) => effect.id === selected);
+    const family = this.model.editorCatalogue?.effects.find((effect) => effect.id === selected);
     const variation = family?.variations[0];
     if (!family || !variation) return;
     if (this.model.content.kind === "h617a_painted") this.switchCustomMode("h617a_single", false);
@@ -872,9 +872,8 @@ export class PanelEditorController {
     });
   }
 
-  private musicTemplateContent(mode: string): MusicProfileContent | undefined {
-    const selectedModel = this.model.selectedModel;
-    const catalogue = this.model.modelCatalogue;
+  private musicTemplateContent(mode: string, catalogue = this.model.modelCatalogue): MusicProfileContent | undefined {
+    const selectedModel = catalogue?.sku;
     if (
       !selectedModel ||
       !catalogue ||

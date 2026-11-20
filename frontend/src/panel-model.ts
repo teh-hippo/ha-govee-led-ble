@@ -18,6 +18,7 @@ import {
   blankPainted,
   effectContentEligible,
   isEditableEffectContent,
+  libraryItemModel,
   serialiseEditable,
   type CustomEffectCategory,
   type EditableEffectContent,
@@ -119,6 +120,11 @@ export class PanelModel {
   public savedSceneSelection?: LibraryItem;
   public name = "";
   public content: EffectContent = blankPainted();
+  public contentCompatibility?: {
+    deviceId: string;
+    content: EffectContent;
+    result: import("./types").EffectCompatibility;
+  };
   public h6179ApprovedDiyCode?: number;
   public paintColour: RGB = [255, 69, 58];
   public paintBrushOff = false;
@@ -310,11 +316,11 @@ export class PanelModel {
       (
         (
           (this.content.kind === "h6179_single_diy" ||
-            this.content.kind === "h6179_mixed_diy") &&
-          this.content.model === this.selectedModel
+            this.content.kind === "h6179_mixed_diy")
         ) ||
         this.content.kind === "h617a_single" ||
         this.content.kind === "h617a_multi" ||
+        this.content.kind === "palette_diy" ||
         (this.content.kind === "advanced" && this.content.native_diy !== undefined)
       )
     );
@@ -395,6 +401,7 @@ export class PanelModel {
     if (device?.catalogue) {
       return {...device.catalogue, physical_ic_count: device.physical_ic_count};
     }
+
     const model = this.selectedModel;
     const catalogue = model ? this.customCatalogue?.models[model] : undefined;
     return catalogue && (catalogue.painted_addressing === "physical_ic" || this.selectedDevice?.music_settings !== undefined)
@@ -408,6 +415,19 @@ export class PanelModel {
             this.selectedDevice?.music_settings === undefined || template.content.mode in this.selectedDevice.music_settings),
         }
       : catalogue;
+  }
+
+  public get editorCatalogue(): ModelEffectCatalogue | undefined {
+    const source = this.currentItem ? libraryItemModel(this.currentItem) : undefined;
+    return source && source !== this.selectedModel
+      ? this.customCatalogue?.models[source] ?? this.modelCatalogue
+      : this.modelCatalogue;
+  }
+
+  public get compatibilityNotice(): string | undefined {
+    const result = this.contentCompatibility;
+    return result !== undefined && result.deviceId === this.selectedDeviceId && result.content === this.content && result.result.state !== "compatible"
+      ? result.result.reasons.join(" ") : undefined;
   }
 
   public get videoAvailable(): boolean {
@@ -449,6 +469,7 @@ export class PanelModel {
       catalogue: this.modelCatalogue,
       libraryItems: this.library.items,
       staticComposition: this.selectedDevice?.static_composition,
+      compatibilities: this.selectedDevice?.effect_compatibilities,
     };
   }
 
@@ -584,7 +605,17 @@ export class PanelModel {
     if (!device) {
       return undefined;
     }
-    if (!effectContentEligible(this.content, this.modelCatalogue, device.model, device.segment_count)) {
+    if (device.effect_compatibilities !== undefined) {
+      const result = this.contentCompatibility;
+      if (result?.deviceId === device.config_entry_id && result.content === this.content) {
+        if (result.result.state !== "compatible") return result.result.state === "unknown" ? "unknown" : "unsupported";
+        if (this.content.kind !== "video_profile") return "supported";
+      } else {
+        return undefined;
+      }
+    }
+    if (device.effect_compatibilities === undefined &&
+        !effectContentEligible(this.content, this.modelCatalogue, device.model, device.segment_count)) {
       return "unsupported";
     }
     switch (this.content.kind) {

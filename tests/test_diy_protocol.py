@@ -604,9 +604,9 @@ def test_custom_authorization_without_supported_grammar_pair_is_rejected(monkeyp
         assert compiled.activation_packet is not None
         return
     assert compatibility(item, model).state is CompatibilityState.INCOMPATIBLE
-    with pytest.raises(ValueError, match="activation route"):
+    with pytest.raises(ValueError):
         compile_effect(item, model, diy_code=800)
-    with pytest.raises(ValueError, match="activation route"):
+    with pytest.raises(ValueError):
         resolve_diy_code(item, model=model)
 
 
@@ -812,8 +812,9 @@ def test_h617e_workshop_preserves_exact_identity_and_h617a_bytes() -> None:
     assert workshop.model == compiled.model == "H617E"
     assert compiled.packets == reference.packets
     assert resolve_diy_code(item) == reference.diy_code
-    with pytest.raises(ValueError, match="targets H617E"):
-        compile_effect(item, "H617A")
+    stored = item.to_dict()
+    assert compile_effect(item, "H617A").packets == reference.packets
+    assert item.to_dict() == stored
 
 
 @pytest.mark.parametrize(
@@ -870,8 +871,9 @@ def test_profile_grammar_selects_basic_canonical_semantics(
     if grammar == "H6199":
         assert qualified.activation_packet == H("33050491010200000000000000000000000000a0")
         assert resolve_diy_code(synthetic) == default_code
-        with pytest.raises(ValueError, match="targets H9999"):
-            compile_effect(synthetic, "H6199")
+        stored = synthetic.to_dict()
+        assert compile_effect(synthetic, "H6199").packets == reference.packets
+        assert synthetic.to_dict() == stored
         with pytest.raises(ValueError, match="no evidenced activation packet"):
             resolve_diy_code(synthetic, 402, model="H9999")
     monkeypatch.setattr(

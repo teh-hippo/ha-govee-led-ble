@@ -196,6 +196,8 @@ export class GoveeSceneBrowser extends LitElement {
       !sameSceneDeviceIdentity(previousDevice, this.device);
     if (deviceIdentityChanged || changed.has("api")) {
       this.workflow.configure(this.api, this.device);
+    } else if (changed.has("device")) {
+      this.workflow.updateDevice(this.device);
     }
     if (changed.has("initialSelection")) {
       this.workflow.setInitialSelection(this.initialSelection);

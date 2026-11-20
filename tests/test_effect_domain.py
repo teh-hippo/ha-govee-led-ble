@@ -17,6 +17,7 @@ from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.effect_catalogue import (
     H617A_WORKSHOP_APPLY_CODE,
     H617A_WORKSHOP_SCENE_TYPE,
+    H6199_PALETTE_DIY_APPLY_CODE,
     H6199_WORKSHOP_APPLY_CODE,
     MODEL_EFFECT_CATALOGUES,
     WORKSHOP_PROTOCOL_FIXTURES,
@@ -24,6 +25,7 @@ from custom_components.ha_govee_led_ble.effect_catalogue import (
 from custom_components.ha_govee_led_ble.effect_compiler import (
     ActivationMode,
     CompatibilityState,
+    CompiledEffect,
     compatibility,
     compile_application,
     compile_effect,
@@ -780,13 +782,22 @@ def test_h617a_compiler_covers_palette_effects(content) -> None:
     assert compiled.upload_packets
 
 
-def test_h6199_is_explicitly_incompatible() -> None:
-    item = LibraryItem.new("Test", SingleEffect(0, 0, 50, ((255, 0, 0),)))
+@pytest.mark.parametrize("variant,compatible", [(0, True), (1, False)])
+def test_palette_portability_requires_an_equivalent_variant(variant, compatible) -> None:
+    item = LibraryItem.new("Test", SingleEffect(0, variant, 50, ((255, 0, 0),)))
+    original = item.to_dict()
 
     result = compatibility(item, "H6199")
 
-    assert result.state is CompatibilityState.INCOMPATIBLE
-    assert "not supported" in result.reasons[0]
+    assert (result.state is CompatibilityState.COMPATIBLE) is compatible
+    if compatible:
+        compiled = compile_application(item, "H6199")
+        assert compiled.content_kind == "palette_diy"
+        assert compiled.diy_code == H6199_PALETTE_DIY_APPLY_CODE
+    else:
+        with pytest.raises(ValueError, match="equivalent"):
+            compile_application(item, "H6199")
+    assert item.to_dict() == original
 
 
 @pytest.mark.parametrize(
@@ -795,7 +806,7 @@ def test_h6199_is_explicitly_incompatible() -> None:
         (
             LibraryItem.new("Music", MusicProfile("H617A", "separation", 50)),
             "H6199",
-            "targets H617A",
+            "does not support music mode",
         ),
         (
             LibraryItem.new("Music", MusicProfile("H617A", "future_mode", 50)),
@@ -829,10 +840,10 @@ def test_profile_compatibility_rejects_model_or_mode_mismatches(item, model, rea
     assert reason in result.reasons[0]
 
 
-def test_compile_application_requires_the_matching_application_route() -> None:
+def test_compile_application_retains_the_target_slot_constraints() -> None:
     custom = LibraryItem.new("Custom", SingleEffect(0, 0, 50, ((255, 0, 0),)))
 
-    with pytest.raises(ValueError, match="H6199 single application is not supported"):
+    with pytest.raises(ValueError, match="expected 401"):
         compile_application(custom, "H6199", diy_code=24)
     with pytest.raises(ValueError, match="requires a DIY code"):
         compile_application(custom, "H617A")
@@ -970,11 +981,63 @@ def test_upload_only_compilers_reject_invented_activation(item: LibraryItem, mod
         compile_effect(item, model, diy_code=800)
 
 
-def test_model_mismatch_fails_before_a_packet_can_be_compiled() -> None:
+def test_workshop_opaque_fields_remain_source_format_bound() -> None:
     workshop = LibraryItem.new("Workshop", WORKSHOP_PROTOCOL_FIXTURES[0].content("H617A"))
 
-    with pytest.raises(ValueError, match="targets H617A"):
+    with pytest.raises(ValueError, match="Opaque Workshop"):
         compile_effect(workshop, "H6199")
+
+
+@pytest.mark.parametrize(
+    ("content", "model", "code"),
+    [
+        (MusicProfile("H617A", "spectrum", 50, (10, 20, 30)), "H6199", None),
+        (PaletteDiyEffect("H6199", 0, 0, 50, ((10, 20, 30),)), "H617A", 24),
+        (BuiltinScene(CatalogueRef("H617A", 1042, 1104)), "H6199", None),
+        (BuiltinScene(CatalogueRef("H6199", 153, 135)), "H617A", None),
+    ],
+)
+def test_target_resolution_preserves_the_complete_saved_source(content, model, code) -> None:
+    item = LibraryItem.new("Portable", content, extensions={"retained": {"labels": [9, 2]}})
+    original = item.to_dict()
+    assert compatibility(item, model).state is CompatibilityState.COMPATIBLE
+    compiled = compile_application(item, model, diy_code=code)
+    assert compiled.model == model
+    assert compiled.item_id == str(item.id)
+    assert compiled.item_version == item.version
+    if isinstance(content, BuiltinScene):
+        assert isinstance(compiled, CompiledEffect)
+        native = next(entry for entry in SCENE_ENTRIES[model] if entry.name == "Candlelight")
+        assert compiled.scene_entry == native
+        assert (native.scene_id, native.effect_id) != (content.template.scene_id, content.template.effect_id)
+    assert item.to_dict() == original
+
+
+def test_understood_workshop_layers_use_the_target_carrier_without_rewriting_the_source() -> None:
+    original = _layered_effect().layers[0]
+    layer = replace(
+        original,
+        unknown_flags=0,
+        excess=b"",
+        selected_movement=replace(original.selected_movement, unknown_flags=0),
+    )
+    item = LibraryItem.new("Known Workshop", WorkshopEffect("H617A", "authored", LayeredEffect((layer,))))
+    stored = item.to_dict()
+    compiled = compile_application(item, "H6199")
+    assert compiled.diy_code == H6199_WORKSHOP_APPLY_CODE
+    assert compiled.upload_packets
+    assert item.to_dict() == stored
+
+
+def test_music_eligibility_does_not_construct_device_packets(monkeypatch) -> None:
+    from custom_components.ha_govee_led_ble import music_commands
+
+    def unexpected(*args, **kwargs):
+        raise AssertionError("Eligibility must not build device packets")
+
+    monkeypatch.setattr(music_commands, "build_power", unexpected)
+    item = LibraryItem.new("Spectrum", MusicProfile("H617A", "spectrum", 50, (10, 20, 30)))
+    assert compatibility(item, "H6199").state is CompatibilityState.COMPATIBLE
 
 
 @pytest.mark.parametrize("model", ["H6179"])

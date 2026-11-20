@@ -167,6 +167,12 @@ export function decodeDevices(value: unknown): DeviceCapabilities[] {
         `devices[${index}].light_entity_id`,
       ),
       model,
+      ...(device.effect_compatibilities === undefined ? {} : {
+        effect_compatibilities: decodeEffectCompatibilities(device.effect_compatibilities),
+      }),
+      ...(device.compatibility_revision === undefined ? {} : {
+        compatibility_revision: boundedString(device.compatibility_revision, "compatibility revision", MAX_IDENTIFIER_LENGTH),
+      }),
       ...(device.static_composition === undefined ? {} : {
         static_composition: booleanValue(device.static_composition, "static composition capability"),
       }),
@@ -266,6 +272,25 @@ export function decodeDevices(value: unknown): DeviceCapabilities[] {
   });
   requireUnique(devices, (device) => device.config_entry_id, "device IDs");
   return devices;
+}
+
+export function decodeEffectCompatibility(value: unknown): import("./types").EffectCompatibility {
+  const result = objectValue(value, "effect compatibility");
+  return {
+    state: enumString(result.state, ["compatible", "incompatible", "unknown"] as const, "compatibility state"),
+    reasons: arrayValue(result.reasons, "compatibility reasons", MAX_JSON_COLLECTION_ITEMS).map(reason =>
+      boundedString(reason, "compatibility reason", MAX_JSON_STRING_LENGTH)),
+    ...(result.version === undefined ? {} : {version: integerValue(result.version, "compatibility version", 1, MAX_SAFE_REVISION)}),
+    ...(result.template === undefined ? {} : {template: catalogueRef(result.template, "target scene template")}),
+  };
+}
+
+function decodeEffectCompatibilities(value: unknown): Record<string, import("./types").EffectCompatibility> {
+  const results = objectValue(value, "effect compatibilities");
+  if (Object.keys(results).length > MAX_LIBRARY_ITEMS) invalid("Too many effect compatibility results");
+  return Object.fromEntries(Object.entries(results).map(([id, result]) => [
+    boundedString(id, "effect compatibility ID", MAX_IDENTIFIER_LENGTH), decodeEffectCompatibility(result),
+  ]));
 }
 
 export function decodeRetainedMusicEdit(value: unknown): import("./types").RetainedMusicEdit | null {

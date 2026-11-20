@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from .const import MODEL_PROFILES, ModelProfile
+from .layered_scene import CatalogueRef
 
 CATALOGUE_DIR = Path(__file__).with_name("scene_catalogues")
 
@@ -113,6 +114,7 @@ class SceneEntry:
     local_only: bool = False
     diy_effect_codes: tuple[int, ...] = ()
     command_version: int = 0
+    shared_identity: str = ""
 
     @property
     def display_name(self) -> str:
@@ -177,6 +179,7 @@ def _load_catalogue(sku: str) -> tuple[SceneEntry, ...]:
             selector_only=profile.selector_only_scene_bits is not None,
             diy_effect_codes=tuple(int(code) for code in effect.get("diy_effect_codes", [])),
             command_version=int(effect.get("command_version", 0)),
+            shared_identity=str(effect.get("shared_identity", "")),
         )
         for effect in data["effects"]
     )
@@ -206,6 +209,27 @@ SCENE_ENTRIES: dict[str, tuple[SceneEntry, ...]] = {
     for model, profile in MODEL_PROFILES.items()
     if profile.scene_catalogue_sku is not None
 }
+
+
+def resolve_scene_target(model: str, reference: CatalogueRef) -> tuple[str, SceneEntry] | None:
+    profile = MODEL_PROFILES.get(model)
+    if (
+        reference.sku == model
+        or profile is not None
+        and reference.sku in {profile.scene_catalogue_sku, profile.legacy_scene_catalogue_sku}
+    ):
+        return resolve_scene_identity(model, reference.scene_id, reference.effect_id)
+    source = resolve_scene_identity(reference.sku, reference.scene_id, reference.effect_id)
+    if source is None or not source[1].shared_identity:
+        return None
+    matches = tuple(
+        (key, entry)
+        for key, entry in MODEL_SCENES.get(model, {}).items()
+        if entry.shared_identity == source[1].shared_identity
+        and entry.scene_type == source[1].scene_type
+        and entry.speed == source[1].speed
+    )
+    return matches[0] if len(matches) == 1 else None
 
 
 def _legacy_h617a_key(entry: SceneEntry) -> str:

@@ -385,6 +385,32 @@ def build_snapshot(raw: dict[str, Any], sku: str) -> dict[str, Any]:
     }
 
 
+def retain_shared_identities(snapshot: dict[str, Any], previous: dict[str, Any]) -> None:
+    if previous.get("sku") != snapshot["sku"]:
+        return
+    originals = {
+        (entry["scene_id"], entry["effect_id"]): entry
+        for entry in previous.get("effects", [])
+        if entry.get("shared_identity")
+    }
+    defaults: dict[str, Any] = {
+        "code": None,
+        "param": "",
+        "scene_type": None,
+        "music_code": 0,
+        "variant": "",
+        "command_version": 0,
+        "speed": None,
+        "diy_effect_codes": [],
+    }
+    for entry in snapshot["effects"]:
+        source = originals.get((entry["scene_id"], entry["effect_id"]))
+        if source is not None and all(
+            source.get(key, default) == entry.get(key, default) for key, default in defaults.items()
+        ):
+            entry["shared_identity"] = source["shared_identity"]
+
+
 def render_snapshot(snapshot: dict[str, Any]) -> str:
     fields = []
     for key, value in snapshot.items():
@@ -414,8 +440,10 @@ def main() -> None:
     stale = False
     for sku in args.skus:
         snapshot = build_snapshot(fetch_library(sku), sku)
-        rendered = render_snapshot(snapshot)
         path = args.out_dir / f"{sku}.json"
+        if path.exists():
+            retain_shared_identities(snapshot, json.loads(path.read_text(encoding="utf-8")))
+        rendered = render_snapshot(snapshot)
         if args.check:
             if not path.exists() or path.read_text(encoding="utf-8") != rendered:
                 stale = True

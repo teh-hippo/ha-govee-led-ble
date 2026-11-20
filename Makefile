@@ -96,7 +96,7 @@ fixtures:
 	uv run --no-sync python -m tools.generate_frontend_contract_fixtures
 
 check: check-core
-	$(NPM) --prefix frontend run test:browser
+	CI=true $(NPM) --prefix frontend run test:browser
 	@printf '\nAll checks passed.\n'
 
 check-core:
