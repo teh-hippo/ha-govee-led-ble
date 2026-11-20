@@ -99,6 +99,7 @@ export class GoveeLedEffectStudio extends LitElement {
   private modelRevision = 0;
 
   private readonly model = new PanelModel(() => {
+    this.controller?.refreshContentCompatibility();
     this.loadComponentsForCurrentView();
     this.syncUnloadProtection();
     this.modelRevision += 1;
@@ -293,6 +294,9 @@ export class GoveeLedEffectStudio extends LitElement {
         <h1 class="visually-hidden">Effect Studio</h1>
 
         ${this.renderStudioToolbar()}
+        ${this.model.compatibilityNotice
+          ? html`<p role="status">${this.model.compatibilityNotice}</p>`
+          : nothing}
         ${this.model.showFeedbackNotice
           ? html`
               <p class="support-notice" role="note">
@@ -934,7 +938,7 @@ export class GoveeLedEffectStudio extends LitElement {
       ${this.renderProfileHeading()}
       <govee-music-profile-editor
         .content=${this.content}
-        .catalogue=${this.model.modelCatalogue}
+        .catalogue=${this.model.editorCatalogue}
         .retainedEdit=${this.model.selectedDevice?.retained_music_edit}
         .configEntryId=${this.model.selectedDeviceId}
         @retained-music-edit=${async (event: CustomEvent<{
@@ -1380,7 +1384,7 @@ export class GoveeLedEffectStudio extends LitElement {
     if (this.content.kind !== "native_effect") return nothing;
     return html`
       ${this.renderEditorHeading()}
-      <govee-custom-effect-editor .nativeContent=${this.content} .catalogue=${this.model.modelCatalogue}
+      <govee-custom-effect-editor .nativeContent=${this.content} .catalogue=${this.model.editorCatalogue}
         .disabled=${this.editorDisabled}
         @native-content-changed=${(event: CustomEvent<{ content: NativeEffectContent; interaction?: LivePreviewInteraction }>) =>
           this.editor.nativeContentChanged(event.detail.content, event.detail.interaction, this.currentScenePreviewRequest())}
@@ -1531,7 +1535,7 @@ export class GoveeLedEffectStudio extends LitElement {
 
       <govee-custom-effect-editor
         .content=${content}
-        .catalogue=${this.model.modelCatalogue}
+        .catalogue=${this.model.editorCatalogue}
         .disabled=${this.editorDisabled}
         @content-changed=${(
           event: CustomEvent<{
@@ -1565,7 +1569,7 @@ export class GoveeLedEffectStudio extends LitElement {
     const effectFamilies =
       this.currentItem?.content.kind === "h617a_painted"
         ? []
-        : this.model.modelCatalogue?.effects.filter(
+        : this.model.editorCatalogue?.effects.filter(
             (effect) => effect.category === "single_layer",
           ) ?? [];
     const familyAvailable = effectFamilies.some(
@@ -1677,7 +1681,7 @@ export class GoveeLedEffectStudio extends LitElement {
       return nothing;
     }
     const content = this.content;
-    const variations = this.model.modelCatalogue?.painted_effects ?? [];
+    const variations = this.model.editorCatalogue?.painted_effects ?? [];
     const knownVariation = variations.some(
       (variation) => variation.id === content.effect,
     );
@@ -1971,8 +1975,8 @@ export class GoveeLedEffectStudio extends LitElement {
       <govee-slider-control
         .label=${label}
         .value=${value}
-        .minimum=${this.model.modelCatalogue?.limits[`${key}_min`] ?? 0}
-        .maximum=${this.model.modelCatalogue?.limits[`${key}_max`] ?? 100}
+        .minimum=${this.model.editorCatalogue?.limits[`${key}_min`] ?? 0}
+        .maximum=${this.model.editorCatalogue?.limits[`${key}_max`] ?? 100}
         .disabled=${this.editorDisabled}
         @value-changed=${(event: CustomEvent<SliderControlChange>) =>
           this.editor.updatePaintedContent(

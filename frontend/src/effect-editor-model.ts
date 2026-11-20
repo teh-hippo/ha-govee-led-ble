@@ -807,7 +807,7 @@ export function upsertSummary(
   ].sort((left, right) => left.name.localeCompare(right.name));
 }
 
-function libraryItemModel(item: LibraryItem): ModelSku | undefined {
+export function libraryItemModel(item: LibraryItem): ModelSku | undefined {
   const content = item.content;
   if (content.kind === "h617a_painted" && content.model !== undefined) return content.model;
   if (

@@ -12,6 +12,7 @@ import type {
 import { compareLabels } from "./ui-utils";
 
 export interface CustomEffectListContext {
+  compatibilities?: import("./types").DeviceCapabilities["effect_compatibilities"];
   model?: ModelSku;
   catalogue?: ModelEffectCatalogue;
   libraryItems: LibrarySummary[];
@@ -133,7 +134,11 @@ export function libraryItemAvailable(
   context: CustomEffectListContext,
   item: LibrarySummary,
 ): boolean {
+  const resolved = context.compatibilities?.[item.id];
+  if (resolved?.version === item.version && resolved.state === "compatible") return true;
   const modelIndependentContent = [
+    "static_rgb",
+    "advanced",
     "h617a_painted",
     "h617a_single",
     "h617a_multi",

@@ -551,7 +551,7 @@ def test_exact_qualified_scene_routes_share_native_and_authored_activation(
         assert compiled.activation_packet == expected_activation
         if workflow is not CapabilityWorkflow.ADVANCED:
             assert compiled.packets == native_packets
-            with pytest.raises(ValueError, match=f"targets {model}"):
+            with pytest.raises(ValueError, match="identity"):
                 compile_effect(item, grammar)
         profile = MODEL_PROFILES[model]
         for field in ("effect_grammar", "command_grammar"):

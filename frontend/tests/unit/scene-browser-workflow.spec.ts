@@ -3,6 +3,7 @@ import { describe, expect, test, vi } from "vitest";
 import type { EffectStudioApi } from "../../src/api";
 import { blankLayer } from "../../src/advanced-effect-model";
 import { SceneBrowserWorkflow } from "../../src/scene-browser-workflow";
+import {device as deviceFixture} from "./panel-test-support";
 import type {
   BuiltinSceneContent,
   DeviceCapabilities,
@@ -134,6 +135,61 @@ function harness(api: EffectStudioApi) {
 }
 
 describe("SceneBrowserWorkflow", () => {
+  test("portable saved scenes apply with target IDs while rename and reload preserve their source reference", async () => {
+    const candle: SceneSummary = {
+      ...firstScene, scene_id: 153, effect_id: 135, name: "Candlelight", display_name: "Candlelight", scene_type: 0, speed: null,
+    };
+    const source = libraryItem("portable-candle", candle, "Portable Candle");
+    source.content = {kind: "scene_builtin", template: {
+      sku: "H617A", scene_id: 1042, effect_id: 1104, catalogue_schema_version: 1,
+    }, speed_index: null};
+    const renamed = {...source, version: 2, name: "Renamed Candle"};
+    const targetTemplate = {...(source.content as BuiltinSceneContent).template, sku: "H6199", scene_id: 153, effect_id: 135};
+    const recipient = {
+      ...deviceFixture("recipient", "H6199"),
+      config_entry_id: "recipient", model: "H6199",
+      effect_compatibilities: {[source.id]: {version: 1, state: "compatible", reasons: [], template: targetTemplate}},
+    } as DeviceCapabilities;
+    const targetContent: BuiltinSceneContent = {kind: "scene_builtin", template: targetTemplate, speed_index: null};
+    const applySavedEffect = vi.fn().mockResolvedValue(undefined);
+    const updateItem = vi.fn().mockResolvedValue(renamed);
+    const api = {
+      sceneCatalogue: vi.fn().mockResolvedValue({...catalogue, sku: "H6199", scenes: [candle]}),
+      sceneDetail: vi.fn().mockResolvedValue({
+        scene: candle, content: targetContent, catalogue_content: targetContent, has_default: false,
+      }),
+      item: vi.fn().mockResolvedValue(source), applySavedEffect, updateItem,
+    } as unknown as EffectStudioApi;
+    const {workflow} = harness(api);
+    workflow.configure(api, recipient);
+    workflow.setLibrary({items: [summary(source)]});
+    await workflow.loadCatalogue();
+    await expect(workflow.selectCustom(summary(source))).resolves.toBe(true);
+    expect(workflow.hasCurrentSceneContent()).toBe(true);
+    expect(workflow.previewRequest(true)?.kind).toBe("scene");
+    await expect(workflow.applyCurrent(true)).resolves.toBe(true);
+    expect(applySavedEffect).toHaveBeenCalledWith("recipient", source);
+    expect(workflow.state.content?.template).toEqual(source.content.template);
+    workflow.setName(renamed.name);
+    await expect(workflow.save(true)).resolves.toBe(true);
+    expect(updateItem).toHaveBeenCalledWith(source, renamed.name, expect.objectContaining({template: source.content.template}), expect.any(Function));
+    workflow.setLibrary({items: [summary(renamed)]});
+    workflow.updateDevice({...recipient, effect_compatibilities: {
+      [source.id]: {version: 2, state: "compatible", reasons: [], template: targetTemplate},
+    }});
+    expect(workflow.state.selectedItem).toEqual(renamed);
+    expect(workflow.state.content?.template).toEqual(source.content.template);
+    expect(workflow.hasCurrentSceneContent()).toBe(true);
+    for (const result of [
+      {version: 2, state: "incompatible" as const, reasons: ["Unqualified scene"]},
+      {version: 3, state: "compatible" as const, reasons: [], template: targetTemplate},
+    ]) {
+      workflow.updateDevice({...recipient, effect_compatibilities: {[source.id]: result}});
+      expect(workflow.hasCurrentSceneContent()).toBe(false);
+      expect(workflow.previewRequest(true)).toBeUndefined();
+    }
+  });
+
   test.each([2, 6])("opens the shared layer editor for catalogue type %s", async (sceneType) => {
     const scene: SceneSummary = { ...firstScene, scene_type: sceneType, parameter_kind: "layers" };
     const layered: LayeredSceneContent = {
@@ -336,7 +392,7 @@ describe("SceneBrowserWorkflow", () => {
     expect(workflow.state.notice).toBeUndefined();
   });
 
-  test("an existing custom scene blocks edits during save and adopts the returned version", async () => {
+  test.each([false, true])("an owned source save survives a profile revision update (%s)", async (profileUpdate) => {
     const pending = deferred<LibraryItem>();
     const original = libraryItem("saved-copy", firstScene, "Glacier custom");
     const saved = {
@@ -358,6 +414,7 @@ describe("SceneBrowserWorkflow", () => {
     workflow.setName("Renamed");
 
     const save = workflow.save(true);
+    if (profileUpdate) workflow.updateDevice({...device, compatibility_revision: "2:2"});
     workflow.setName("Ignored");
     workflow.setSpeedIndex(2);
     pending.resolve(saved);

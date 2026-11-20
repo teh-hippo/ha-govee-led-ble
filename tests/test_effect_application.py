@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from hashlib import sha256
 from types import SimpleNamespace
 from typing import Any, cast
@@ -99,6 +100,48 @@ async def _application() -> EffectStudioApplication:
     await user_state.async_load()
     await device_cache.async_load()
     return EffectStudioApplication(library, deployments, user_state, device_cache)
+
+
+async def test_target_view_follows_item_revisions_and_effective_capabilities():
+    application = await _application()
+    created = await application.async_create_library_item(name="Portable cache", content=CONTENT)
+    item = created.item
+    profile = get_profile("H6199")
+    first = application.target_compatibilities("H6199", profile)
+    assert first[str(item.id)]["state"] == "compatible"
+    restricted = replace(profile, effect_workflows=frozenset({"native_music"}))
+    assert application.target_compatibilities("H6199", restricted)[str(item.id)]["state"] == "incompatible"
+    changed = await application.async_update_library_item(
+        item_id=str(item.id),
+        name=item.name,
+        content={**CONTENT, "variant": 1},
+        expected_version=item.version,
+        expected_updated_at=item.updated_at,
+    )
+    current = application.target_compatibilities("H6199", profile)[str(item.id)]
+    assert current["version"] == changed.item.version
+    assert current["state"] == "incompatible"
+
+
+async def test_unknown_source_catalogue_cannot_disable_other_saved_designs():
+    application = await _application()
+    unknown = await application.async_create_library_item(
+        name="Future palette",
+        content={
+            "kind": "palette_diy",
+            "model": "future_model",
+            "family": 0,
+            "variant": 0,
+            "speed": 50,
+            "palette": [[1, 2, 3]],
+        },
+    )
+    original = unknown.item.to_dict()
+    known = await application.async_create_library_item(name="Known palette", content=CONTENT)
+    results = application.target_compatibilities("H6199", get_profile("H6199"))
+    assert results[str(unknown.item.id)]["state"] == "incompatible"
+    assert results[str(known.item.id)]["state"] == "compatible"
+    assert application.get_saved_effect(str(unknown.item.id)).to_dict() == original
 
 
 async def test_library_use_cases_publish_current_versions_and_hard_delete() -> None:

@@ -10,6 +10,7 @@ from typing import Any, cast
 from uuid import UUID
 
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ModelProfile, device_profile
+from custom_components.ha_govee_led_ble.effect_application import effect_compatibility_payload
 from custom_components.ha_govee_led_ble.effect_catalogue import (
     MODEL_EFFECT_CATALOGUES,
     WORKSHOP_PROTOCOL_FIXTURES,
@@ -37,6 +38,7 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     PaletteDiyEffect,
     RelativeBrightness,
     SingleEffect,
+    StaticRgbComposition,
     TargetHint,
     VideoProfile,
     effect_content_from_dict,
@@ -65,6 +67,7 @@ TIMESTAMP = "2026-08-17T00:00:00Z"
 ITEM_ID = UUID("00000000-0000-4000-8000-000000000001")
 DEPLOYMENT_ID = UUID("00000000-0000-4000-8000-000000000003")
 CONTENT_FAMILIES = {
+    "static_rgb",
     "h617a_painted",
     "h617a_single",
     "h617a_multi",
@@ -162,6 +165,9 @@ def _content_samples(
     workshop_payload = effect_content_to_dict(workshop)
 
     samples = {
+        "static_rgb": effect_content_to_dict(
+            StaticRgbComposition(((10, 20, 30),) * MODEL_PROFILES["H617A"].segment_count)
+        ),
         "h617a_painted": effect_content_to_dict(
             PaintedEffect(
                 "clockwise",
@@ -305,6 +311,11 @@ def rendered_data() -> str:
     for model in MODELS:
         device = _device_payload(model, MODEL_PROFILES[model], f"{model.lower()}-main")
         device["active_state"] = active_state.to_public_dict() if model == "H617A" else None
+        device["effect_compatibilities"] = {
+            str(saved.id): effect_compatibility_payload(saved, model, MODEL_PROFILES[model])
+            for saved in library_snapshot.items
+        }
+        device["compatibility_revision"] = "0:0"
         devices.append(device)
     document = {
         "schema_version": 1,

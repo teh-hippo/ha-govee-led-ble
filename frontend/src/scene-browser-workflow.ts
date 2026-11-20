@@ -41,6 +41,7 @@ type SceneRequestState = {
   deviceId: string;
   category: CategorySelection;
   selectionIdentity?: string;
+  targetProfile?: {revision: string | undefined};
 };
 type SceneRequestContext = AsyncRequestToken<SceneRequestState>;
 
@@ -183,7 +184,32 @@ export class SceneBrowserWorkflow {
   }
 
   public get compatibleCustomScenes(): LibrarySummary[] {
-    return compatibleCustomScenes(this.library.items, this.stateValue.catalogue);
+    return compatibleCustomScenes(this.library.items, this.stateValue.catalogue, this.device);
+  }
+
+  public updateDevice(device: DeviceCapabilities | undefined): void {
+    const previous = this.device;
+    this.device = device;
+    if (previous?.compatibility_revision !== device?.compatibility_revision) {
+      this.defaultRefreshGeneration += 1;
+      if (this.stateValue.loading && !this.stateValue.saving) void this.loadCatalogue();
+    }
+    const selected = this.stateValue.selectedItem;
+    const summary = selected && this.library.items.find(item => item.id === selected.id);
+    if (selected && summary && summary.version !== selected.version && !this.sceneDirty && !this.stateValue.saving) {
+      void this.reloadSelectedCustom(summary, selected);
+    }
+    this.patch({});
+  }
+
+  private catalogueSceneForItem(item: LibraryItem): SceneSummary | undefined {
+    const catalogue = this.stateValue.catalogue;
+    if (!catalogue || !isSceneContent(item.content)) return undefined;
+    const result = this.device?.effect_compatibilities?.[item.id];
+    const reference = result?.version === item.version && result.state === "compatible" && result.template
+      ? result.template : item.content.template;
+    if (reference.sku !== catalogue.sku) return undefined;
+    return findCatalogueScene(catalogue, item.content, reference);
   }
 
   public get sceneDirty(): boolean {
@@ -231,6 +257,10 @@ export class SceneBrowserWorkflow {
   }
 
   public hasCurrentSceneContent(): boolean {
+    const item = this.stateValue.selectedItem;
+    const result = item && this.device?.effect_compatibilities?.[item.id];
+    if (item && !this.sceneDirty && this.device?.effect_compatibilities !== undefined &&
+        (result?.version !== item.version || result.state !== "compatible")) return false;
     return hasCurrentSceneContent(this.stateValue, this.activeSelectionIdentity);
   }
 
@@ -238,7 +268,7 @@ export class SceneBrowserWorkflow {
     isAdmin: boolean,
     persistDefault = false,
   ): ScenePreviewRequest | undefined {
-    if (!this.stateUpdatesAvailable) {
+    if (!this.stateUpdatesAvailable || !this.hasCurrentSceneContent()) {
       return undefined;
     }
     const request = buildScenePreviewRequest(
@@ -312,12 +342,11 @@ export class SceneBrowserWorkflow {
     if (
       selectedItem?.id !== item.id ||
       !catalogue ||
-      !isSceneContent(item.content) ||
-      item.content.template.sku !== catalogue.sku
+      !isSceneContent(item.content)
     ) {
       return;
     }
-    const scene = findCatalogueScene(catalogue, item.content);
+    const scene = this.catalogueSceneForItem(item);
     if (!scene) {
       return;
     }
@@ -423,6 +452,7 @@ export class SceneBrowserWorkflow {
       this.defaultBaseline = this.snapshotFromDetail(detail);
       this.patch({
         selectedScene: detail.scene,
+        sceneReferences: undefined,
         content: detail.content,
         catalogueContent: detail.catalogue_content,
         hasDefault: detail.has_default,
@@ -443,7 +473,6 @@ export class SceneBrowserWorkflow {
     if (!this.api || !this.device || !this.stateValue.catalogue) {
       return false;
     }
-    const catalogue = this.stateValue.catalogue;
     const category = visibleCategoryForCustom(this.stateValue.category);
     if (category !== this.stateValue.category) {
       this.invalidateRequests();
@@ -469,17 +498,14 @@ export class SceneBrowserWorkflow {
         throw new Error("This custom scene uses an unsupported definition.");
       }
       const content = item.content;
-      if (content.template.sku !== catalogue.sku) {
-        throw new Error(`This custom scene targets ${content.template.sku}, not ${catalogue.sku}.`);
-      }
-      const scene = findCatalogueScene(catalogue, content);
+      const scene = this.catalogueSceneForItem(item);
       if (!scene) {
         throw new Error("The source scene is not in this device catalogue.");
       }
       const detail = await request.api.sceneDetail(
         request.deviceId,
-        content.template.scene_id,
-        content.template.effect_id,
+        scene.scene_id,
+        scene.effect_id,
       );
       if (!this.requestIsCurrent(request) || sceneKey(detail.scene) !== sceneKey(scene)) {
         return false;
@@ -738,7 +764,7 @@ export class SceneBrowserWorkflow {
       return;
     }
 
-    const request = this.captureRequest();
+    const request = this.captureTargetRequest();
     const selectionRevision = this.defaultSelectionRevision;
     const writerGeneration = this.defaultWriter.currentGeneration;
     const refreshGeneration = ++this.defaultRefreshGeneration;
@@ -1010,25 +1036,22 @@ export class SceneBrowserWorkflow {
     if (!this.api || !this.device || !this.stateValue.catalogue) {
       return;
     }
-    const request = this.captureRequest();
-    const catalogue = this.stateValue.catalogue;
+    const request = this.captureTargetRequest();
     try {
       const item = await request.api.item(summary.id);
+      if (!this.requestIsCurrent(request)) return;
       if (!isSceneContent(item.content)) {
         throw new Error("This custom scene uses an unsupported definition.");
       }
       const content = item.content;
-      if (content.template.sku !== catalogue.sku) {
-        throw new Error(`This custom scene targets ${content.template.sku}, not ${catalogue.sku}.`);
-      }
-      const scene = findCatalogueScene(catalogue, content);
+      const scene = this.catalogueSceneForItem(item);
       if (!scene) {
         throw new Error("The source scene is not in this device catalogue.");
       }
       const detail = await request.api.sceneDetail(
         request.deviceId,
-        content.template.scene_id,
-        content.template.effect_id,
+        scene.scene_id,
+        scene.effect_id,
       );
       const currentItem = this.stateValue.selectedItem;
       if (
@@ -1056,6 +1079,10 @@ export class SceneBrowserWorkflow {
   private commitCustomSelection(item: LibraryItem, scene: SceneSummary, content: SceneContent): void {
     const selectedContent = cloneSceneContent(content);
     this.patch({
+      sceneReferences: {
+        source: {...content.template},
+        target: {...content.template, sku: this.stateValue.catalogue!.sku, scene_id: scene.scene_id, effect_id: scene.effect_id},
+      },
       category: visibleCategoryForCustom(this.stateValue.category),
       selectedScene: scene,
       selectedItem: item,
@@ -1070,11 +1097,19 @@ export class SceneBrowserWorkflow {
   private beginRequest(selectionIdentity?: string): SceneRequestContext {
     this.invalidateDefaultWrites();
     this.activeSelectionIdentity = selectionIdentity;
-    return this.requests.begin(this.requestState());
+    return this.requests.begin(this.targetRequestState());
   }
 
   private captureRequest(): SceneRequestContext {
     return this.requests.capture(this.requestState());
+  }
+
+  private captureTargetRequest(): SceneRequestContext {
+    return this.requests.capture(this.targetRequestState());
+  }
+
+  private targetRequestState(): SceneRequestState {
+    return {...this.requestState(), targetProfile: {revision: this.device?.compatibility_revision}};
   }
 
   private invalidateRequests(): void {
@@ -1084,7 +1119,8 @@ export class SceneBrowserWorkflow {
   }
 
   private requestIsCurrent(request: SceneRequestContext): boolean {
-    return Boolean(this.api && this.device && this.requests.isCurrent(request, this.requestState()));
+    return Boolean(this.api && this.device && this.requests.isCurrent(request, this.requestState()) &&
+      (request.targetProfile === undefined || request.targetProfile.revision === this.device.compatibility_revision));
   }
 
   private requestState(): SceneRequestState {

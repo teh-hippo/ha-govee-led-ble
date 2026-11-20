@@ -1576,7 +1576,10 @@ def active_workspace_matches(
     content = workspace.content
     identity: tuple[int, int] | None
     if isinstance(content, BuiltinScene | PaletteScene | LayeredScene):
-        identity = (content.template.scene_id, content.template.effect_id)
+        from .scenes import resolve_scene_target
+
+        resolved_scene = resolve_scene_target(workspace.model, content.template)
+        identity = (resolved_scene[1].scene_id, resolved_scene[1].effect_id) if resolved_scene else None
     elif isinstance(content, LayeredEffect):
         if content.native_diy is not None:
             if requires_approved_diy_slot(workspace.model):

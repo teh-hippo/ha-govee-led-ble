@@ -215,6 +215,52 @@ def _prepare_music_request(
     )
 
 
+def validate_music_profile_request(
+    model: str,
+    mode: str,
+    sensitivity: int,
+    colour: tuple[int, int, int] | None,
+    calm: bool | None,
+    parameters: Mapping[str, Any],
+    *,
+    profile: ModelProfile | None = None,
+    palette: Sequence[tuple[int, int, int]] | None = None,
+) -> tuple[bool, dict[str, int | bool | str]]:
+    """Validate authoring settings without constructing device packets."""
+    profile = get_profile(model) if profile is None else profile
+    if mode not in profile.music_modes:
+        raise ValueError(f"{model} does not support music mode {mode}")
+    mode_code = music_code_for(model, mode, profile=profile)
+    variant = music_variant(profile, mode_code)
+    if calm is not None and (variant is None or not variant.supports_style):
+        raise ValueError(f"music mode {mode} does not support a style setting")
+    if colour is not None and not (profile.supports_music_color and (variant is None or variant.supports_fixed_colour)):
+        raise ValueError(f"{model} does not support a fixed music colour")
+    if not profile.music_sensitivity_min <= sensitivity <= profile.music_sensitivity_max:
+        raise ValueError("Music sensitivity is outside this device profile's range")
+    if colour is None and variant is not None and variant.fixed_colour_default is not None:
+        raise ValueError("This music mode requires a fixed colour")
+    if palette is not None:
+        if variant is None or variant.palette_bounds is None:
+            raise ValueError("music mode does not support an authored palette")
+        if not variant.palette_bounds[0] <= len(palette) <= variant.palette_bounds[1]:
+            raise ValueError("Music palette is outside this device profile's bounds")
+        if not music_parameters_available(profile, variant):
+            raise ValueError("music parameters require known physical IC count")
+    if (
+        variant is not None
+        and variant.layout is not None
+        and music_parameters_available(profile, variant)
+        and music_mode_has_parameter_write(model, mode_code, profile=profile)
+    ):
+        try:
+            parse_music_parameters(variant, variant.template)
+        except (KaitaiStructError, EOFError) as error:
+            raise ValueError("music parameter layout or palette is invalid") from error
+    resolved_calm = calm if calm is not None else variant.calm_default if variant and variant.supports_style else False
+    return resolved_calm, compile_music_parameters(parameters, mode_code, profile)
+
+
 def resolve_music_profile(
     model: str,
     mode: str,
@@ -227,17 +273,11 @@ def resolve_music_profile(
     palette: Sequence[tuple[int, int, int]] | None = None,
     original_body: bytes | None = None,
 ) -> tuple[bool, dict[str, int | bool | str], tuple[bytes, ...]]:
-    """Resolve and validate the complete target request without changing device state."""
+    """Resolve the complete validated request into the target's device operations."""
     profile = get_profile(model) if profile is None else profile
-    if mode not in profile.music_modes:
-        raise ValueError(f"{model} does not support music mode {mode}")
-    mode_code = music_code_for(model, mode, profile=profile)
-    variant = music_variant(profile, mode_code)
-    if calm is not None and (variant is None or not variant.supports_style):
-        raise ValueError(f"music mode {mode} does not support a style setting")
-    if colour is not None and not (profile.supports_music_color and (variant is None or variant.supports_fixed_colour)):
-        raise ValueError(f"{model} does not support a fixed music colour")
-    resolved_calm = calm if calm is not None else variant.calm_default if variant and variant.supports_style else False
+    resolved_calm, compiled = validate_music_profile_request(
+        model, mode, sensitivity, colour, calm, parameters, profile=profile, palette=palette
+    )
     if original_body is None:
         prepared = _prepare_music_request(
             model,
@@ -251,7 +291,6 @@ def resolve_music_profile(
             palette=palette,
         )
         return resolved_calm, prepared.parameters, prepared.packets
-    compiled = compile_music_parameters(parameters, mode_code, profile)
     packets = tuple(
         packet
         for packet, _ in prepare_music_profile_writes(

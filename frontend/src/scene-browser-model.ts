@@ -65,6 +65,7 @@ export interface NativeSceneAction {
 }
 
 export interface SceneBrowserViewState {
+  sceneReferences?: {source: SceneContent["template"]; target: SceneContent["template"]};
   catalogue?: SceneCatalogue;
   category: CategorySelection;
   selectedScene?: SceneSummary;
@@ -112,12 +113,16 @@ export function normaliseSceneName(value: string): string {
   return value.trim().replace(/\s+/g, " ").toLocaleLowerCase();
 }
 
-export function compatibleCustomScenes(items: LibrarySummary[], catalogue: SceneCatalogue | undefined): LibrarySummary[] {
-  return items.filter(
-    (item) =>
-      isSceneKind(item.kind) &&
-      item.template?.sku === catalogue?.sku,
-  );
+export function compatibleCustomScenes(
+  items: LibrarySummary[], catalogue: SceneCatalogue | undefined, device?: DeviceCapabilities,
+): LibrarySummary[] {
+  if (!catalogue) return [];
+  return items.filter(item => {
+    if (!isSceneKind(item.kind)) return false;
+    if (item.template?.sku === catalogue.sku) return true;
+    const result = device?.effect_compatibilities?.[item.id];
+    return result?.version === item.version && result.state === "compatible" && result.template?.sku === catalogue.sku;
+  });
 }
 
 export function sceneBrowserCategories(
@@ -171,11 +176,13 @@ export function visibleCategoryForCustom(
   return category === "all" || category === "custom" ? category : "custom";
 }
 
-export function findCatalogueScene(catalogue: SceneCatalogue, content: SceneContent): SceneSummary | undefined {
+export function findCatalogueScene(
+  catalogue: SceneCatalogue, content: SceneContent, reference = content.template,
+): SceneSummary | undefined {
   return catalogue.scenes.find(
     (scene) =>
-      scene.scene_id === content.template.scene_id &&
-      scene.effect_id === content.template.effect_id,
+      scene.scene_id === reference.scene_id &&
+      scene.effect_id === reference.effect_id,
   );
 }
 
@@ -292,13 +299,19 @@ export function sceneContentAtSpeed(content: SceneContent, speedIndex: number | 
 
 export function hasCurrentSceneContent(state: SceneBrowserViewState, activeSelectionIdentity: string | undefined): boolean {
   const { catalogue, selectedScene, content } = state;
+  const reference = state.sceneReferences?.target ?? content?.template;
+  const source = state.sceneReferences?.source ?? content?.template;
   return Boolean(
     catalogue &&
       selectedScene &&
       content &&
-      content.template?.sku === catalogue.sku &&
-      content.template?.scene_id === selectedScene.scene_id &&
-      content.template?.effect_id === selectedScene.effect_id &&
+      content.template?.sku === source?.sku &&
+      content.template?.scene_id === source?.scene_id &&
+      content.template?.effect_id === source?.effect_id &&
+      content.template?.catalogue_schema_version === source?.catalogue_schema_version &&
+      reference?.sku === catalogue.sku &&
+      reference?.scene_id === selectedScene.scene_id &&
+      reference?.effect_id === selectedScene.effect_id &&
       activeSelectionIdentity === sceneSelectionKey(state),
   );
 }

@@ -562,7 +562,7 @@ def test_native_paint_keeps_exact_model_identity_through_library_and_compilation
     assert restored.content.model == "H607C"
     compiled = compile_application(restored, "H607C")
     assert compiled.diy_code == 900
-    with pytest.raises(ValueError, match="identity"):
+    with pytest.raises(ValueError, match="addressing format"):
         compile_application(
             restored, "H6099", diy_code=900, profile=replace(get_profile("H6099"), physical_ic_count=144)
         )

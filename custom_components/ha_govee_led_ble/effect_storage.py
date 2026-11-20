@@ -85,6 +85,10 @@ class EffectLibraryRepository:
     def snapshot(self) -> LibrarySnapshot:
         return _snapshot_from_data(self._require_loaded())
 
+    @property
+    def generation(self) -> int:
+        return _library_generation(self._require_loaded())
+
     def subscribe(self, listener: Callable[[LibrarySnapshot], None]) -> Callable[[], None]:
         self._listeners.add(listener)
         return lambda: self._listeners.discard(listener)

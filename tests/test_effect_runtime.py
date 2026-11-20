@@ -2653,7 +2653,7 @@ async def test_workshop_uses_evidenced_model_application(
 
 @pytest.mark.parametrize(
     ("target", "source", "reason"),
-    [("H6199", "H617A", "targets H617A"), ("H6179", "H6179", "Workshop application is not supported")],
+    [("H6199", "H617A", "Opaque Workshop"), ("H6179", "H6179", "Workshop application is not supported")],
 )
 async def test_incompatible_workshop_is_rejected_before_any_write(
     hass: HomeAssistant,
@@ -2664,6 +2664,7 @@ async def test_incompatible_workshop_is_rejected_before_any_write(
     repository, cache = await _repositories(hass)
     coordinator = _coordinator()
     coordinator.model = target
+    coordinator.profile = get_profile(target)
     item = LibraryItem.new("Workshop", replace(WORKSHOP_PROTOCOL_FIXTURES[0].content("H617A"), model=source))
 
     with pytest.raises(ValueError, match=reason):

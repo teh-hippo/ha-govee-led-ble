@@ -25,6 +25,7 @@ import {
   decodeCustomCatalogue,
   decodeCatalogueTemplateDefaultDetail,
   decodeDevices,
+  decodeEffectCompatibility,
   decodeRetainedMusicEdit,
   decodeEditorApiInfo,
   decodeEffectUserState,
@@ -75,6 +76,11 @@ export class EffectStudioApi {
     });
     const devices = decodeDevices([resultField(result, "device")]);
     return devices[0];
+  }
+
+  public async contentCompatibility(configEntryId: string, content: EffectContent) {
+    const result = await this.call("device", {config_entry_id: configEntryId, content: effectContentToWire(content)});
+    return decodeEffectCompatibility(resultField(result, "compatibility"));
   }
 
   public subscribeDevice(

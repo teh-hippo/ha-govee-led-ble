@@ -196,6 +196,7 @@ async def ws_editor_devices(
     {
         vol.Required("type"): WS_DEVICE,
         vol.Required("config_entry_id"): IDENTIFIER,
+        vol.Optional("content"): EFFECT_CONTENT,
     }
 )
 @async_response
@@ -207,6 +208,19 @@ async def ws_editor_device(
     entry = hass.config_entries.async_get_entry(msg["config_entry_id"])
     if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
         _send_error(hass, connection, msg, "not_found", "target config entry is not loaded")
+        return
+    if "content" in msg:
+        from .effect_application import EffectStudioApplication, effect_compatibility_payload
+
+        try:
+            item = EffectStudioApplication.new_authored_item(name="Draft", content=msg["content"])
+            result = effect_compatibility_payload(
+                item, entry.runtime_data.model, entry.runtime_data.effect_authorization_profile
+            )
+        except ValueError as error:
+            _send_error(hass, connection, msg, "invalid_format", error)
+            return
+        connection.send_result(msg["id"], {"compatibility": result})
         return
     connection.send_result(
         msg["id"],
@@ -239,6 +253,12 @@ def _device_payload(
         profile=coordinator.profile,
     ).to_dict()
     device["show_experimental_feedback"] = entry.options.get(CONF_SHOW_EXPERIMENTAL_FEEDBACK, True)
+    device["effect_compatibilities"] = backend.application.target_compatibilities(
+        coordinator.model, coordinator.effect_authorization_profile
+    )
+    device["compatibility_revision"] = (
+        f"{getattr(coordinator, '_profile_generation', 0)}:{getattr(coordinator, '_authorization_generation', 0)}"
+    )
     device["hw_version"] = coordinator.hw_version
     device["fw_version"] = coordinator.fw_version
     device["subordinate_20_version"] = coordinator.subordinate_20_version
@@ -320,11 +340,13 @@ def ws_device_subscribe(
             )
 
     unsubscribe = entry.runtime_data.async_add_listener(schedule_forward)
+    unsubscribe_library = backend.application.subscribe_library(lambda _snapshot: schedule_forward())
 
     @callback
     def unsubscribe_all() -> None:
         nonlocal cancel_forward
         unsubscribe()
+        unsubscribe_library()
         if cancel_forward is not None:
             cancel_forward()
             cancel_forward = None

@@ -132,7 +132,7 @@ test("two controller revisions use their complete device catalogues without chan
   expect(() => decodeDevices([foreign])).toThrow();
 });
 
-test("live video conditions reject requested settings without stripping persisted content", () => {
+test.each([false, true])("live video conditions narrow resolved compatibility without stripping content (%s)", (resolved) => {
   const model = new PanelModel(() => undefined);
   const target = device("video", "H6199");
   installH6199Catalogue(model);
@@ -142,17 +142,40 @@ test("live video conditions reject requested settings without stripping persiste
   model.devices = [target];
   model.selectedDeviceId = "video";
   model.content = videoProfile("H6199", "movie");
+  const resolve = () => {
+    if (resolved) {
+      target.effect_compatibilities = {};
+      model.contentCompatibility = {deviceId: "video", content: model.content, result: {state: "compatible", reasons: []}};
+    }
+  };
+  resolve();
   expect(model.previewCapability).toBe("evidence_gap");
   expect(model.content.white_balance_position).toBe(17);
   target.video_control_states.white_balance = "unsupported";
   expect(model.previewCapability).toBe("unsupported");
   model.content = {...model.content, white_balance_position: null};
+  resolve();
   expect(model.previewCapability).toBe("supported");
   model.content = {
     kind: "palette_diy", model: "H6199", family: 1, variant: 0,
     speed: 50, palette: [[255, 0, 0]],
   };
+  resolve();
   expect(model.previewCapability).toBe("supported");
+});
+
+test("portable H6179 content requires the recipient's observed-slot approval", () => {
+  const model = new PanelModel(() => undefined);
+  installH6199Catalogue(model);
+  model.customCatalogue!.models.H6181 = {...model.customCatalogue!.models.H6199, sku: "H6181", diy_slot_policy: "approved_observed"};
+  const recipient = {...flowWorkspaceDevice("recipient"), model: "H6181"};
+  model.devices = [recipient];
+  model.selectedDeviceId = recipient.config_entry_id;
+  model.content = {kind: "h6179_single_diy", model: "H6179", family: 2, variant: 0, speed: 50, palette: [[1, 2, 3]]};
+  expect(model.h6179DiyCodeRequired).toBe(true);
+  expect(model.h6179DiyCode).toBeUndefined();
+  model.h6179ApprovedDiyCode = model.h6179ObservedDiyCode;
+  expect(model.h6179DiyCode).toBe(model.h6179ObservedDiyCode);
 });
 
 test("unknown border firmware blocks only profiles requesting border removal", () => {
