@@ -54,6 +54,8 @@ This preview identifier is not a prediction of the eventual stable version.
 An explicit `version` cannot be a stable version.
 Set `publish=true` to create the `v<version>` tag and prerelease, which is what Marketplace installs.
 Set `publish=false` for a build-only run: it uploads the package, checksum and metadata as a run artefact (`gh run download <run id>`) without releasing.
+Leave `cache_dependencies=true` for compatible wheel reuse; set it to `false` only for an approved controlled cold-build comparison.
+Compare the same exact SHA and version, archive bytes and checksums, and actual dependency compilation logs rather than cache-hit messages alone.
 Publish another RC for later fixes rather than reusing a tag or hotpatching an installation.
 The workflow delegates packaging to a pinned [shared prerelease workflow](https://github.com/teh-hippo/common-repo-configs), which checks that the exact SHA belongs to the branch and stamps only the build's manifest.
 That shared interface accepts RC versions, so `7.40.1-pr-145.2` uses the internal packaging input `7.40.1-rc.2.pr-145`, producing manifest version `7.40.1rc2`.

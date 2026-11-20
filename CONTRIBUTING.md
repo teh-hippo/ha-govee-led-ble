@@ -193,9 +193,13 @@ Decode-only Kaitai documentation of these is fine; runtime control is not.
 ## Development
 
 Run `make protocol` after a fresh clone, a new worktree or any `.ksy` change, and `make check` before finishing.
-Run independent pytest processes serially within one checkout because Home Assistant fixtures share test storage.
+Use `make check-fast` for iteration: it prepares dependencies, generated outputs and contract fixtures before static and frontend contract checks.
+It is not a completion gate; `make check` also runs independent generated-output verification, full Python tests with branch coverage and mobile WebKit.
+CI generates verified exact-run contract fixtures after Build, then runs Core and Browser concurrently; independent Package reproducibility and workflow lint remain required by the fail-closed Check job.
+Run independent pytest processes serially within one checkout because generated outputs and coverage files still share the checkout.
+Keep mutable test storage local to each test and browser servers owned by the gate, with OS-assigned ports and explicit readiness.
 The full gate owns its browser test server; do not qualify an exact build through an unrelated or reused preview server.
-If parallel workers collide on filesystem-backed storage, run the complete gate with `make check PYTEST_WORKERS=1`.
+Use `PYTEST_WORKERS=1` only to diagnose collisions; fix resource ownership rather than making serial execution the normal gate.
 Keep virtual event-loop clocks out of real HTTP/WebSocket tests; use them only around simulated transport work.
 Invalidate the editor asset generation when its imported module contract changes, not just the backend compiler version.
 Log handled backend failures with their operation, model and failure classification without changing browser feedback.
@@ -221,6 +225,33 @@ Keep request bodies, unique identifiers and arbitrary exception text out of diag
 - Review both the exception and the proposed abstraction.
   Justify any remaining special treatment with evidence, check that equivalent capability combinations use the same core, and remove superseded branches, adapters, state and tests.
   Prefer a smaller implementation, but do not trade away explicit product declarations or safety boundaries to meet a line-count target.
+
+Before editing, record required observable contracts, affected capability partitions, evidence and unresolved blockers in a small plan/PR acceptance table.
+Independent review challenges that scope's completeness and the complete resulting paths, including callers, ownership boundaries and equivalent partitions.
+Resolve every supported coupled finding; changed requirements or relevant inputs reopen acceptance across the contract's dependency reach, not just edited lines.
+Broaden review when a shared invariant changes.
+Only demonstrably independent findings become proposed follow-ups requiring scope approval; uncertainty is not a reason to exclude a blocker.
+New models still need the complete device brief and completeness audit across evidenced revisions.
+An independent completeness audit can also satisfy fresh-context code review only if it covers both completeness and implementation correctness.
+Further passes follow supported findings and invalidated evidence, not an arbitrary audit limit or a new broad discovery pass by default.
+Standalone requested audits retain their requested scope.
+Software acceptance remains separate from owner hardware confirmation and does not establish that no bugs remain.
+
+Consolidate related corrections before another full gate or push, reconcile upstream at readiness and validate the resulting tree.
+Do not repeat unchanged local proof for fetch/status or a proven no-op rebase.
+Source, dependency, toolchain and other relevant input changes reopen the corresponding checks; rewritten commits still require their exact-SHA CI.
+Keep public drafts subject to operator approval and wait on known run/check IDs rather than repeatedly rediscovering workflow state.
+
+### Dependency caches
+
+Locked native dependencies may need compilation on Python 3.15; do not remove Home Assistant verification or override dependency pins to obtain wheels.
+Validation and packaging share the `uv-v2` runner-image OS, architecture, resolved Python version and SOABI cache prefix.
+Exact keys include root Python/dependency declarations; compatible fallback lets project-version-only changes reuse built wheels while uv selects locked, ABI-compatible packages.
+Master packaging adds a release suffix to retain Semantic Release's own dependency builds without isolating it from compatible validation wheels.
+Cache only dependency downloads/builds and prune with `uv cache prune --ci`, never virtual environments, generated outputs, archives or passing checks.
+GitHub's workflow-ref scope limits master publication to trusted default-branch caches; selected-branch builds cannot populate that cache.
+A matching key is not authentication, and a cache hit never replaces clean generation, verification or exact-SHA acceptance.
+Cold builds and genuine dependency/interpreter changes still require compilation.
 
 ## Releases
 

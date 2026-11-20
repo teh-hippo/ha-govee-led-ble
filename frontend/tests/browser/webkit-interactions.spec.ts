@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "./test";
 import type { GoveeCustomEffectEditor } from "../../src/custom-effect-editor";
 import type { NativeEffectContent } from "../../src/types";
 import type { HomeAssistant } from "../../src/types";

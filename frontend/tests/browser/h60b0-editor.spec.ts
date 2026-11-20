@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./test";
 import type { GoveeCustomEffectEditor } from "../../src/custom-effect-editor";
 
 test("three-source DIY edits bottom temperatures without changing the side", async ({ page }) => {

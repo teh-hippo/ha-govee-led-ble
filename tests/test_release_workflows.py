@@ -36,6 +36,32 @@ def _run(script: str, root: Path, env: dict[str, str]) -> subprocess.CompletedPr
 
 
 @pytest.mark.parametrize(
+    ("stage", "result"),
+    [
+        ("", "success"),
+        *(
+            (stage, result)
+            for stage in ("FIXTURES_RESULT", "CORE_RESULT", "BROWSER_RESULT", "PACKAGE_RESULT", "WORKFLOW_LINT_RESULT")
+            for result in ("failure", "cancelled", "skipped", "")
+        ),
+    ],
+)
+def test_validation_aggregation_rejects_incomplete_required_stages(tmp_path: Path, stage: str, result: str) -> None:
+    env = {
+        **os.environ,
+        **dict.fromkeys(
+            ("FIXTURES_RESULT", "CORE_RESULT", "BROWSER_RESULT", "PACKAGE_RESULT", "WORKFLOW_LINT_RESULT"), "success"
+        ),
+    }
+    if stage:
+        env[stage] = result
+
+    run = _run(_step_script("validate.yml", "Require complete validation"), tmp_path, env)
+
+    assert (run.returncode == 0) is (not stage), run.stdout + run.stderr
+
+
+@pytest.mark.parametrize(
     ("version", "accepted"),
     [("1.2.3", False), ("1.2.3-rc.4.branch", False), ("1.2.3-pr-145.4", True), ("1.2.3-pr-146.4", False)],
 )

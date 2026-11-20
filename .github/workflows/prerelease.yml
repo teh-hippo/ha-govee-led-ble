@@ -23,6 +23,11 @@ on:
         required: false
         default: ""
         type: string
+      cache_dependencies:
+        description: Reuse compatible dependency wheels (disable for a controlled cold build)
+        required: false
+        default: true
+        type: boolean
 
 concurrency:
   group: prerelease-${{ github.ref }}
@@ -44,6 +49,7 @@ jobs:
         with:
           ref: ${{ inputs.target_sha || github.sha }}
           fetch-depth: 0
+          persist-credentials: false
       - name: Identify selected PR
         env:
           GH_TOKEN: ${{ github.token }}
@@ -100,7 +106,7 @@ jobs:
 
   package:
     needs: prepare
-    uses: teh-hippo/common-repo-configs/.github/workflows/ha-prerelease.yml@13fb2aefcc3338175d823cf867c841868ff6d4c8 # v3.5.17
+    uses: teh-hippo/common-repo-configs/.github/workflows/ha-prerelease.yml@cdc6cb21f67428d53742baec302ab074f93014e6 # v3.5.19
     permissions:
       contents: write
     with:
@@ -110,6 +116,7 @@ jobs:
       publish: false
       release_notes: ${{ needs.prepare.outputs.release_notes }}
       make_target: package
+      cache_dependencies: ${{ inputs.cache_dependencies }}
       node_version_file: .node-version
       mise_install_args: github:kaitai-io/kaitai_struct_compiler
 

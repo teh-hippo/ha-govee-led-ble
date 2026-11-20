@@ -1,5 +1,6 @@
 import asyncio
 from dataclasses import replace
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
@@ -17,6 +18,11 @@ from custom_components.ha_govee_led_ble.const import (
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.h6199_calibration import WHITE_BALANCE_RESET
 from tests.coordinator_test_support import _CONFIGURATION_URL
+
+
+@pytest.fixture
+def hass_config_dir(tmp_path: Path) -> str:
+    return str(tmp_path)
 
 
 @pytest.fixture

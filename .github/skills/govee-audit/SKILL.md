@@ -41,4 +41,5 @@ Mark items only hardware can settle, uncertainty, intentional policy and possibl
 End with what you compared and what you did not.
 Private references go in the evidence folder's notes, not in the report or anything published.
 
-Run on its own, the audit is a report: the operator decides per item whether to raise an issue or fix it now.  When `govee-add` runs it, `govee-add` fixes the findings.
+Run on its own, the audit is a report: the operator decides per item whether to raise an issue or fix it now.
+When `govee-add` runs it, follow `CONTRIBUTING.md` acceptance closure: fix all supported coupled findings and re-review invalidated contracts without narrowing device completeness.

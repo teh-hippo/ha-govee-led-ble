@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./test";
 import type { GoveeMusicProfileEditor } from "../../src/music-profile-editor";
 
 test("fixed-colour-only music keeps its picker without offering automatic colour", async ({ page }) => {
