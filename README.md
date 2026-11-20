@@ -39,7 +39,7 @@
 | **H617E** | ✅ Supported |
 | **H617F** | ✅ Supported |
 | **H6181** | ✅ Supported |
-| **H6182** | [🚧 Experimental](https://github.com/teh-hippo/ha-govee-led-ble/issues/654) |
+| **H6182** | ✅ Supported |
 | **H619A** | [🚧 Experimental](https://github.com/teh-hippo/ha-govee-led-ble/issues/567) |
 | **H6199** | ✅ Supported |
 | **H61F5** | ✅ Supported |
