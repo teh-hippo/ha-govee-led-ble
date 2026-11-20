@@ -172,6 +172,9 @@
     "recovery_not_ready": {
       "message": "The previous static layout cannot be restored safely. Set a complete static colour and brightness before selecting an effect."
     },
+    "projector_recovery_not_ready": {
+      "message": "The complete projector lighting settings are unavailable. Use Initialise projector lighting to establish a restorable layout. This replaces the current lighting settings."
+    },
     "recovery_read_failed": {
       "message": "The current static layout could not be read completely. Check the Bluetooth connection and try again before selecting an effect."
     },

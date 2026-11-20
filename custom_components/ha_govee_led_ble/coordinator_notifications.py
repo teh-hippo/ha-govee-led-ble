@@ -265,6 +265,8 @@ class _NotificationMixin(_CoordinatorBase):
         # None because HA rejects one outside effect_list.
         unknown_scene_code = parsed.scene_code if scene_effect is None else None
         observed: list[str] = ["color_mode"]
+        if self.profile.projector_grammar is not None:
+            observed.append("projector_mode_active")
         if parsed.source_values is not None and self._accept_expected_values(parsed.source_values):
             for source_field, source_value in parsed.source_values.items():
                 setattr(self, source_field, source_value)
@@ -1024,7 +1026,7 @@ class _NotificationMixin(_CoordinatorBase):
                 if self._accept_expected("is_on", value):
                     self.is_on = value
                     observed += ("is_on",)
-                if self.profile.setting_grammar == "H6093":
+                if self.profile.setting_grammar == "H6093" and hasattr(generated.body, "sound_code"):
                     sound, volume = int(generated.body.sound_code), int(generated.body.volume)
                     self.local_sound = sound if 1 <= sound <= len(self.profile.local_sound_options) else None
                     bounds = self.profile.local_volume_range

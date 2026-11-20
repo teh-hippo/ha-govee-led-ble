@@ -5,10 +5,15 @@ meta:
   imports:
     - h600a_status_reply
 doc: |
-  SPECULATIVE: exact-model status without attributable BLE traffic.
+  SPECULATIVE: partial exact-model status contract. AA34, AA04, AA05, AAEF,
+  EE20 and EE30 envelopes are recorded on Pact 2/1, hardware 3.03.02 and
+  firmware 1.00.16; other revision details remain unconfirmed.
   AA34 carries the projection-power flag independently of speaker playback.
   Brightness, mode, firmware and hardware retain their compatible basic
   envelopes. Unrecognised flags, modes and suffixes remain opaque.
+  Recorded EE20 notifications carry percentage brightness. EE30 has an opaque
+  prefix followed by independent overall-power and projection-power flags.
+  Neither notification confirms settings, speaker state or projector appearance.
 seq:
   - id: header
     contents: [0xaa]
@@ -37,6 +42,42 @@ enums:
     0x07: hardware
     0xef: pact
 types:
+  brightness_notification:
+    seq:
+      - id: header
+        contents: [0xee, 0x20]
+      - id: body
+        size: 17
+        type: h600a_status_reply::brightness_body
+      - id: checksum
+        type: u1
+    instances:
+      domain:
+        value: domain::brightness
+  power_notification:
+    seq:
+      - id: header
+        contents: [0xee, 0x30]
+      - id: body
+        type: power_change
+      - id: checksum
+        type: u1
+    instances:
+      domain:
+        value: domain::power
+  power_change:
+    seq:
+      - id: unknown_prefix
+        type: u1
+      - id: overall_flags
+        type: u1
+      - id: projection_flags
+        type: u1
+      - id: unknown_tail
+        size: 14
+    instances:
+      is_on:
+        value: (projection_flags & 0x01) != 0
   pact_info:
     seq:
       - id: pact_type

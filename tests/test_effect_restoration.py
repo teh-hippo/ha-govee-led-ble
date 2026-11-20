@@ -42,13 +42,14 @@ from custom_components.ha_govee_led_ble.light_commands import parse_static_write
 from custom_components.ha_govee_led_ble.light_source import GoveeBLESourceLight
 from custom_components.ha_govee_led_ble.music_commands import edit_music_body
 from custom_components.ha_govee_led_ble.music_semantics import music_variant
-from custom_components.ha_govee_led_ble.projector import ProjectorAppearance, ProjectorStars
+from custom_components.ha_govee_led_ble.projector import ProjectorAppearance, ProjectorControl, ProjectorStars
 from custom_components.ha_govee_led_ble.projector_protocol import decode_appearance
 from custom_components.ha_govee_led_ble.projector_runtime import (
     apply_appearance,
     initialise,
     qualified_profile,
     read_appearance,
+    set_control,
     source_request,
 )
 from custom_components.ha_govee_led_ble.protocol_core import H6093Projector
@@ -522,12 +523,12 @@ async def test_native_appearance_read_is_completed_when_its_profile_authority_ch
     assert coordinator._bulk_query_incomplete
 
 
-@pytest.mark.parametrize("physical", ["H6093"], indirect=True)
+@pytest.mark.parametrize("physical", [("H6093", (1, 1)), ("H6093", (1, 2)), ("H6093", (2, 1))], indirect=True)
 @pytest.mark.parametrize("mode", ["static", "scene"])
 async def test_planned_release_requalifies_delivered_native_appearance_before_effect_selection(physical, mode):
     coordinator, state = physical
     coordinator._connection_pacts.clear()
-    coordinator._h607c_marker_pact = (2, 1)
+    coordinator._h607c_marker_pact = coordinator.pact_type, coordinator.pact_code
     coordinator._resolve_h607c_pact(preserve_state=True)
     prior = state["projector"]
     await apply_appearance(coordinator, prior)
@@ -536,16 +537,18 @@ async def test_planned_release_requalifies_delivered_native_appearance_before_ef
     if mode == "scene":
         await light.async_turn_on(effect="Forest")
     client = coordinator._client
-    coordinator._clear_client_state(client, preserve_static_baseline=True)
+    client.disconnect.side_effect = lambda: setattr(client, "is_connected", False)
+    await coordinator._disconnect_locked(planned_release=True)
     assert coordinator._projector_token is None
     if mode == "static":
         assert coordinator.projector_appearance == prior
     else:
         assert coordinator._pre_mode_snapshot is not None
         assert coordinator._pre_mode_snapshot.projector_appearance == prior
+    client.is_connected = True
     coordinator._client = client
-    coordinator._notification_token = object()
-    coordinator._notify_started_monotonic = time.monotonic() - 1
+    client.start_notify = AsyncMock()
+    await coordinator._start_notify()
     state["packets"].clear()
     await light.async_turn_on(effect="Forest" if mode == "static" else "off")
     assert any(packet[:2] == b"\xaa\xef" for packet in state["packets"])
@@ -557,6 +560,142 @@ async def test_planned_release_requalifies_delivered_native_appearance_before_ef
 
 
 @pytest.mark.parametrize("physical", ["H6093"], indirect=True)
+@pytest.mark.parametrize("release", ["unexpected", "failed", "changed"])
+async def test_native_appearance_does_not_survive_an_unqualified_release(physical, release):
+    coordinator, state = physical
+    await initialise(coordinator)
+    client = coordinator._client
+
+    async def disconnect():
+        if release == "failed":
+            raise BleakError("Disconnect failed")
+        if release == "changed":
+            coordinator._advance_profile_generation()
+        client.is_connected = False
+
+    client.disconnect.side_effect = disconnect
+    await coordinator._disconnect_locked(planned_release=release != "unexpected")
+    assert coordinator.projector_appearance is None
+    assert coordinator._projector_profile is None
+
+
+@pytest.mark.parametrize("physical", [("H6093", (1, 1)), ("H6093", (1, 2)), ("H6093", (2, 1))], indirect=True)
+async def test_cold_projector_source_uses_independent_appearance_or_actionable_initialisation(physical, caplog):
+    coordinator, state = physical
+    if coordinator.profile.projector_control_revision == 0:
+        await source_request(coordinator, "stars", False)
+        assert not state["projector"].stars.enabled
+    else:
+        with pytest.raises(HomeAssistantError) as caught:
+            await source_request(coordinator, "stars", False)
+        assert caught.value.translation_key == "projector_recovery_not_ready"
+        light = GoveeBLELight(coordinator)
+        with pytest.raises(HomeAssistantError) as caught:
+            await light.async_turn_on(effect="Forest")
+        assert caught.value.translation_key == "projector_recovery_not_ready"
+        assert not any(packet[0] in (0x33, 0xA3) for packet in state["packets"])
+        assert not any(record.name.endswith(".entity") for record in caplog.records)
+
+
+@pytest.mark.parametrize("physical", [("H6093", (1, 1)), ("H6093", (1, 2)), ("H6093", (2, 1))], indirect=True)
+@pytest.mark.parametrize("mode", ["scene", "diy"])
+async def test_cold_effect_selection_requires_projector_initialisation_not_scalar_rgb(physical, mode):
+    coordinator, state = physical
+    transmit = coordinator._client.write_gatt_char.side_effect
+
+    async def active_effect(uuid, packet, **kwargs):
+        if packet[:2] == b"\xaa\x05":
+            state["packets"].append(packet)
+            coordinator._notify_callback(None, reply(5, [4, 0xC7, 0x21] if mode == "scene" else [10, 254, 0]))
+        else:
+            await transmit(uuid, packet, **kwargs)
+
+    coordinator._client.write_gatt_char.side_effect = active_effect
+    with pytest.raises(HomeAssistantError) as caught:
+        await GoveeBLELight(coordinator).async_turn_on(effect="Forest")
+    assert caught.value.translation_key == "projector_recovery_not_ready"
+    assert not any(packet[0] in (0x33, 0xA3) for packet in state["packets"])
+
+
+@pytest.mark.parametrize("physical", [("H6093", (1, 1)), ("H6093", (1, 2)), ("H6093", (2, 1))], indirect=True)
+@pytest.mark.parametrize("control", ["source", "scalar"])
+@pytest.mark.parametrize("starting_mode", ["native", "scene"])
+@pytest.mark.parametrize("external_change", ["none", "released", "prepared", "attempted", "activated"])
+async def test_native_attribute_edits_qualify_and_guard_historical_appearance(
+    physical, control, starting_mode, external_change, virtual_clock
+):
+    coordinator, state = physical
+    await initialise(coordinator)
+    if control == "source":
+        await source_request(coordinator, "stars", False)
+    light = GoveeBLELight(coordinator)
+    light.async_write_ha_state = MagicMock()
+    if starting_mode == "scene":
+        await light.async_turn_on(effect="Forest")
+    client = coordinator._client
+    client.disconnect.side_effect = lambda: setattr(client, "is_connected", False)
+    await coordinator._disconnect_locked(planned_release=True)
+    client.is_connected = True
+    coordinator._client = client
+    client.start_notify = AsyncMock()
+    await coordinator._start_notify()
+    transmit = client.write_gatt_char.side_effect
+    write = coordinator._async_write_packet
+    interrupted = False
+
+    async def external_static(uuid, packet, **kwargs):
+        nonlocal interrupted
+        if packet[:2] == b"\xaa\x05" and external_change == "released":
+            state["packets"].append(packet)
+            coordinator._notify_callback(None, reply(5, [0x0D, 255, 0, 0]))
+        else:
+            await transmit(uuid, packet, **kwargs)
+            if packet[0] in (0x33, 0xA3) and external_change == "attempted" and not interrupted:
+                interrupted = True
+                coordinator._notify_callback(None, reply(5, [0x0D, 255, 0, 0]))
+            if packet[:3] == b"\x33\x05\x0c" and external_change == "activated":
+                virtual_clock.vtime = max(
+                    virtual_clock.vtime, *(deadline for _, deadline in coordinator._expected_state.values())
+                )
+                state["native"] = False
+                state["scene"] = None
+                coordinator._notify_callback(None, reply(5, [0x0D, 255, 0, 0]))
+
+    async def change_before_upload(client, packet, **kwargs):
+        if packet[0] in (0x33, 0xA3) and external_change == "prepared":
+            coordinator._notify_callback(None, reply(5, [0x0D, 255, 0, 0]))
+        await write(client, packet, **kwargs)
+
+    client.write_gatt_char.side_effect = external_static
+    coordinator._async_write_packet = change_before_upload
+    state["packets"].clear()
+    operation = (
+        source_request(coordinator, "stars", True)
+        if control == "source"
+        else set_control(coordinator, ProjectorControl.STAR_MOVEMENT_SPEED, 73)
+    )
+    if external_change == "none":
+        await operation
+        assert (
+            state["projector"].stars.enabled if control == "source" else state["projector"].stars.movement_speed == 73
+        )
+    else:
+        with pytest.raises(HomeAssistantError if external_change == "released" else ModeTransitionSupersededError):
+            await operation
+        if external_change in {"attempted", "activated"}:
+            if external_change == "attempted":
+                assert sum(packet[0] in (0x33, 0xA3) for packet in state["packets"]) == 1
+                assert not any(packet[:3] == b"\x33\x05\x0c" for packet in state["packets"])
+            else:
+                assert sum(packet[:3] == b"\x33\x05\x0c" for packet in state["packets"]) == 1
+                assert not state["native"] and coordinator.rgb_color == (255, 0, 0)
+            assert not coordinator.projector_mode_active and coordinator.projector_appearance is None
+        else:
+            assert not any(packet[0] in (0x33, 0xA3) for packet in state["packets"])
+    assert any(packet[:2] == b"\xaa\x05" for packet in state["packets"])
+
+
+@pytest.mark.parametrize("physical", ["H6093"], indirect=True)
 async def test_cached_pact_does_not_authorise_native_writes_but_keeps_bootstrap_power_available(physical):
     coordinator, state = physical
     coordinator._connection_pacts.clear()
@@ -565,8 +704,9 @@ async def test_cached_pact_does_not_authorise_native_writes_but_keeps_bootstrap_
     coordinator._subscription_advertised_pact = None
     coordinator._h607c_advertisement_observations = {"cached": (coordinator._notify_started_monotonic - 1, {(2, 1)})}
     coordinator._h607c_advertised_pacts = {(2, 1)}
-    with pytest.raises(HomeAssistantError):
+    with pytest.raises(HomeAssistantError) as caught:
         qualified_profile(coordinator)
+    assert caught.value.translation_key == "identity_not_ready"
     assert coordinator.profile.projector_control_revision == 1
     await coordinator.send_command(build_power(True, "H6093"))
     assert state["on"] and state["speaker"]
@@ -662,6 +802,25 @@ async def test_local_audio_and_settings_use_verified_controls_without_appearance
     state["fault"] = "setting"
     with pytest.raises(HomeAssistantError):
         await volume.async_set_native_value(100)
+
+
+@pytest.mark.parametrize("physical", [("H6093", (1, 1)), ("H6093", (1, 2)), ("H6093", (2, 1))], indirect=True)
+async def test_power_notification_cannot_confirm_a_suppressed_setting_write(physical, virtual_clock):
+    coordinator, state = physical
+    transmit = coordinator._client.write_gatt_char.side_effect
+    state["fault"] = "setting"
+
+    async def partial_only(uuid, packet, **kwargs):
+        if packet[:2] == b"\xaa\x34":
+            coordinator._notify_callback(None, frame("ee30030101"))
+        else:
+            await transmit(uuid, packet, **kwargs)
+
+    coordinator._client.write_gatt_char.side_effect = partial_only
+    with pytest.raises(ValueError, match="fresh setting readback"):
+        await coordinator.async_set_boolean_control("pairing_prompt", True)
+    assert not state["settings"]["pairing_prompt"]
+    assert coordinator.boolean_control_state.get("pairing_prompt") is not True
 
 
 @pytest.mark.parametrize("physical", ["H6093"], indirect=True)

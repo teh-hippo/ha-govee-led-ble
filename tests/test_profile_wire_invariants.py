@@ -1247,6 +1247,43 @@ async def test_native_sources_without_gradual_do_not_expose_or_write_it(hass, mo
     assert coordinator.control_write_attempts == 0
 
 
+@pytest.mark.parametrize("pact", [(1, 1), (1, 2), (2, 1)])
+def test_partial_notifications_observe_only_their_qualified_fields(hass, pact):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6093", configuration_url=None)
+    coordinator.profile = device_profile("H6093", *pact)
+    _consume_status(coordinator, _status(0x34, bytes([0xEE, 100, 128, 18, 67])))
+    settings = dict(coordinator.boolean_control_state)
+    for payload, fields in (
+        ("ee2014", {"brightness_pct"}),
+        ("ee30010100", {"is_on"}),
+        ("ee30010001", {"is_on"}),
+        ("ee30030100", {"is_on"}),
+    ):
+        before = dict(coordinator._field_revisions)
+        _consume_status(coordinator, _xor(bytes.fromhex(payload).ljust(19, b"\0")))
+        changed = {field for field, revision in coordinator._field_revisions.items() if revision != before.get(field)}
+        assert changed == fields
+        assert (coordinator.local_sound, coordinator.local_volume, coordinator.local_sound_playing) == (18, 67, True)
+        assert coordinator.boolean_control_state == settings
+        assert coordinator.projector_appearance is None
+    assert coordinator.brightness_pct == 20
+    assert coordinator.is_on is False
+
+
+@pytest.mark.parametrize("model", ["H6093", "H600A"])
+def test_partial_notifications_do_not_grant_unknown_or_malformed_state(hass, model):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url=None)
+    for payload in ("ee2065", "aa300101", "ee310101"):
+        _consume_status(coordinator, _xor(bytes.fromhex(payload).ljust(19, b"\0")))
+        assert not coordinator._field_revisions
+    valid = _xor(bytes.fromhex("ee2014").ljust(19, b"\0"))
+    _consume_status(coordinator, valid[:-1] + bytes([valid[-1] ^ 1]))
+    assert not coordinator._field_revisions
+    if model == "H600A":
+        _consume_status(coordinator, valid)
+        assert not coordinator._field_revisions
+
+
 @pytest.mark.parametrize(("model", "profile"), _BOOLEAN_CONTROL_PROFILES)
 def test_declared_boolean_controls_round_trip(hass, model: str, profile: ModelProfile) -> None:
     """Every declared boolean control must build valid write and query frames and decode

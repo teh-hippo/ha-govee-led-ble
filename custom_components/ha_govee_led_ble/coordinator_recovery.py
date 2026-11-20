@@ -122,9 +122,17 @@ class PreparedStaticRecovery:
 
 
 class _RecoveryMixin(_CoordinatorBase):
+    def _static_recovery_error(self) -> HomeAssistantError:
+        return HomeAssistantError(
+            translation_domain=DOMAIN,
+            translation_key="projector_recovery_not_ready"
+            if self.profile.projector_grammar is not None
+            else "recovery_not_ready",
+        )
+
     def require_static_baseline(self) -> PriorControlState:
         if self._pre_mode_snapshot is None:
-            raise HomeAssistantError(translation_domain=DOMAIN, translation_key="recovery_not_ready")
+            raise self._static_recovery_error()
         return self._pre_mode_snapshot
 
     def static_mode_confirmed(self) -> bool:
@@ -154,17 +162,17 @@ class _RecoveryMixin(_CoordinatorBase):
                     )
                 )
             except BleakError as error:
-                raise HomeAssistantError(translation_domain=DOMAIN, translation_key="recovery_not_ready") from error
+                raise self._static_recovery_error() from error
             if (
                 refreshed is not True
                 or self._field_revisions.get("color_mode", 0) <= revision
                 or not self.source_field_fresh("color_mode")
             ):
-                raise HomeAssistantError(translation_domain=DOMAIN, translation_key="recovery_not_ready")
+                raise self._static_recovery_error()
             static = self.static_mode_confirmed()
             snapshot = None if static else self.require_static_baseline()
             if not static and self._observed_color_mode in (None, ParsedMode.UNKNOWN, ParsedMode.COLOUR):
-                raise HomeAssistantError(translation_domain=DOMAIN, translation_key="recovery_not_ready")
+                raise self._static_recovery_error()
             selector_revision = self._selector_revision
             subscription = self._notification_token
             generation = self._profile_generation
@@ -180,7 +188,7 @@ class _RecoveryMixin(_CoordinatorBase):
                         else self._selector_revision != selector_revision or self._pre_mode_snapshot is not snapshot
                     )
                 ):
-                    raise HomeAssistantError(translation_domain=DOMAIN, translation_key="recovery_not_ready")
+                    raise self._static_recovery_error()
 
             return check
 
@@ -234,7 +242,7 @@ class _RecoveryMixin(_CoordinatorBase):
                 raise ValueError("Static restoration observations changed; refresh and retry")
             if self._pre_mode_needs_qualification:
                 if not self._static_history_profile_current():
-                    raise HomeAssistantError(translation_domain=DOMAIN, translation_key="recovery_not_ready")
+                    raise self._static_recovery_error()
                 self._pre_mode_needs_qualification = False
             yield
 
@@ -281,7 +289,7 @@ class _RecoveryMixin(_CoordinatorBase):
             target = replace(state, brightness_pct=brightness_pct) if brightness_pct is not None else state
             prepared = self._prepare_static_colour(target)
             if prepared is None:
-                raise HomeAssistantError(translation_domain=DOMAIN, translation_key="recovery_not_ready")
+                raise self._static_recovery_error()
             attempts = self.control_write_attempts
 
             def check_before_first_write() -> None:
@@ -327,14 +335,14 @@ class _RecoveryMixin(_CoordinatorBase):
             ):
                 raise HomeAssistantError(translation_domain=DOMAIN, translation_key="recovery_read_failed")
         if not same_control_profile(profile, self.profile):
-            raise HomeAssistantError(translation_domain=DOMAIN, translation_key="recovery_not_ready")
+            raise self._static_recovery_error()
         if self.color_mode is ParsedMode.COLOUR and profile.projector_grammar is not None:
             from .projector_runtime import prepare_baseline
 
             await prepare_baseline(self._as_coordinator)
             projector_baseline = self.capture_effect_control_state()
             if projector_baseline.projector_appearance is None:
-                raise HomeAssistantError(translation_domain=DOMAIN, translation_key="recovery_not_ready")
+                raise self._static_recovery_error()
             return self._qualify_static_baseline(projector_baseline)
         if self.color_mode is not ParsedMode.COLOUR:
             baseline = self._pre_mode_snapshot
@@ -376,7 +384,7 @@ class _RecoveryMixin(_CoordinatorBase):
             else:
                 refreshed = True
             if not same_control_profile(profile, self.profile):
-                raise HomeAssistantError(translation_domain=DOMAIN, translation_key="recovery_not_ready")
+                raise self._static_recovery_error()
             if refreshed is not True or any(not fresh(field) for field in fields):
                 raise HomeAssistantError(translation_domain=DOMAIN, translation_key="recovery_read_failed")
             baseline = self._pre_mode_snapshot
@@ -419,7 +427,7 @@ class _RecoveryMixin(_CoordinatorBase):
                     if baseline is None or getattr(baseline, name) is None
                 ),
             )
-            raise HomeAssistantError(translation_domain=DOMAIN, translation_key="recovery_not_ready")
+            raise self._static_recovery_error()
         if transition is not None and transition.purpose is not ModeTransitionPurpose.RECOVERY:
             selector_revision = self._selector_revision
             from_static = self.color_mode is ParsedMode.COLOUR

@@ -1369,6 +1369,7 @@ class GoveeBLECoordinator(
                 self.music_mode,
                 self.video_mode,
                 self.diy_companion if self.color_mode is ParsedMode.DIY else None,
+                self.projector_mode_active if self.color_mode is ParsedMode.COLOUR else None,
             )
             if selector != self._observed_selector:
                 self._observed_selector = selector
@@ -1700,7 +1701,12 @@ class GoveeBLECoordinator(
         if (
             arm_expected
             and transition is not None
-            and transition.purpose in (ModeTransitionPurpose.SELECTION, ModeTransitionPurpose.PREVIEW)
+            and transition.purpose
+            in (
+                ModeTransitionPurpose.STATIC_EDIT,
+                ModeTransitionPurpose.SELECTION,
+                ModeTransitionPurpose.PREVIEW,
+            )
         ):
             # From the first physical attempt the snapshot is history, not an expectation of the current lamp.
             transition.observations_match = None
@@ -1723,6 +1729,8 @@ class GoveeBLECoordinator(
                 }
                 if mode is ParsedMode.DIY:
                     transition.written_selector["diy_code"] = detail
+                if parsed.static is not None:
+                    transition.written_selector["projector_mode_active"] = parsed.static.kind == "projector"
         if arm_expected and "color_mode" in requested:
             self._mode_write_generation += 1
         if arm_expected and "is_on" in requested:
@@ -3840,7 +3848,7 @@ class GoveeBLECoordinator(
         subtype, ack_mode, protocol = self._upload_ack_expectation(packets, require_upload_ack, upload_ack_index)
         async with (
             async_control_intent(self, intent),
-            self.async_mode_transition(),
+            self.async_mode_transition() as transition,
             self._a3_upload_transaction(packets) as sequence,
         ):
             # Preview writers acquire _lock themselves. The existing control intent
@@ -4016,6 +4024,7 @@ class GoveeBLECoordinator(
                     )
                     if progress is not None:
                         await progress(len(packets) + 1)
+                transition.require_current()
 
     async def async_observe_effect(
         self,
@@ -4344,6 +4353,7 @@ class GoveeBLECoordinator(
     async def _disconnect_locked(self, *, clear_cache: bool = False, planned_release: bool = False) -> None:
         client = self._client
         snapshot, partial = self._pre_mode_snapshot, self._incomplete_static_exit
+        appearance = self.projector_appearance
         generation = self._profile_generation
         released = False
         self._static_rgb_known = False
@@ -4387,9 +4397,10 @@ class GoveeBLECoordinator(
                     and client is not None
                     and not client.is_connected
                     and self._client is client
-                    and (snapshot is not None or partial is not None)
+                    and (snapshot is not None or partial is not None or appearance is not None)
                     and self._pre_mode_snapshot is snapshot
                     and self._incomplete_static_exit is partial
+                    and self.projector_appearance is appearance
                     and self._profile_generation == generation
                 ),
             )
