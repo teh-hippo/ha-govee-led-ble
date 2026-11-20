@@ -28,6 +28,12 @@ from tests.test_h6199_capabilities import lifecycle as transition_lifecycle  # n
 from tests.test_h6199_capabilities import set_qualified_identity
 from tests.test_h6199_pact1 import advertise
 
+PACT1_STATE_REPLIES = {
+    frame("aa04"): frame("aa0488"),
+    frame("aa0501"): frame("aa050b00"),
+    **{frame(f"aaa2{group:02x}"): frame(f"aaa2{group:02x}" + "010203" * 4) for group in range(1, 5)},
+}
+
 
 @pytest.fixture
 def device(hass, monkeypatch):
@@ -70,17 +76,23 @@ async def test_colour_preparation_preserves_nontracked_protocol_identity(hass, m
 
 async def test_setup_rebuilds_after_narrowing_during_power_query(device):
     c, client = device
+    power_query = build_power_query(c.model)
 
     async def write(_uuid, packet, **kwargs):
-        assert packet == build_power_query(c.model)
-        advertise(c, 1)
-        c._notify_callback(None, bytearray(frame("aa0101")))
+        if packet == power_query:
+            advertise(c, 1)
+            reply = frame("aa0101")
+        else:
+            reply = PACT1_STATE_REPLIES[packet]
+        c._notify_callback(None, bytearray(reply))
 
     client.write_gatt_char.side_effect = write
     await c._async_update_data()
     assert c.profile == device_profile(c.model, 1, 1, firmware=c.fw_version, hardware=c.hw_version)
     assert c.is_on and c.available
-    assert client.write_gatt_char.await_count == 2
+    packets = [call.args[1] for call in client.write_gatt_char.await_args_list]
+    assert packets.count(power_query) == 2
+    assert set(packets) == {power_query, *PACT1_STATE_REPLIES}
     assert c._client is client and not c._lock.locked() and not c._control_arbiter.locked()
 
 
@@ -101,6 +113,7 @@ async def test_setup_transition_retry_is_bounded(device):
 
 async def test_identity_batch_rebuilds_with_real_setup(transition_lifecycle):  # noqa: F811
     c, replies, clients, packets = transition_lifecycle
+    replies.update(PACT1_STATE_REPLIES)
     original = c._async_write_packet
     changed = False
 
@@ -115,7 +128,12 @@ async def test_identity_batch_rebuilds_with_real_setup(transition_lifecycle):  #
     await c._async_update_data()
     assert c.is_on and c.available
     assert c.profile == device_profile(c.model, 1, 1, firmware=c.fw_version, hardware=c.hw_version)
-    assert set(packets) == {build_power_query(c.model), build_hardware_query(c.model), build_firmware_query(c.model)}
+    assert set(packets) == {
+        build_power_query(c.model),
+        build_hardware_query(c.model),
+        build_firmware_query(c.model),
+        *PACT1_STATE_REPLIES,
+    }
     assert len(clients) == 1 and c._client is None
 
 

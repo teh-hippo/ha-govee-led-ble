@@ -359,6 +359,8 @@ def _check_command_packet(frame: bytes, profile: ModelProfile) -> bool:
                     not in profile.music_modes
                 ):
                     raise ValueError("music mode selector is outside profile capabilities")
+                if not profile.music_sensitivity_min <= detail.sensitivity <= profile.music_sensitivity_max:
+                    raise ValueError("music sensitivity is outside profile capabilities")
                 variant = music_variant(profile, int(mode_id))
                 if variant is not None and variant.fixed_colour_default is not None and not detail.has_fixed_colour:
                     raise ValueError("This music mode requires a fixed colour")
@@ -374,6 +376,8 @@ def _check_command_packet(frame: bytes, profile: ModelProfile) -> bool:
             code = getattr(detail, "code", getattr(detail, "scene_id", None))
             if code not in profile.scene_codes:
                 raise ValueError("scene selector is outside the confirmed revision")
+            if profile.selector_only_scene_bits is not None and getattr(detail, "music_code", 0) != 0:
+                raise ValueError("selector-only scene does not accept a companion music code")
         static = static_write_from_command(command, profile)
         if (
             profile.command_operations is None
@@ -447,6 +451,13 @@ def _check_status_query_packet(frame: bytes, profile: ModelProfile) -> bool:
     ).parsed
     if query is not None:
         domain = getattr(query.domain, "name", "")
+        if profile.command_grammar == "H6199":
+            if domain == "colour_mode" and query.body.selector != profile.colour_mode_query_selector:
+                raise ValueError("colour mode query selector is outside the profile")
+            if domain in {"segments", "legacy_segments"}:
+                if (domain == "legacy_segments") != (profile.status_grammar == "H6199-Pact1"):
+                    raise ValueError("segment query format is outside the profile")
+                return profile.can_read(ReadDomain.SEGMENTS) and 1 <= query.body.group <= profile.segment_group_count
         if profile.command_grammar == "H60B0" and domain in {"source_info", "power_on_behaviour"}:
             if (
                 domain == "source_info"

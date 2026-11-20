@@ -305,6 +305,8 @@ async def lifecycle(hass, monkeypatch, request):
             packets.append(packet)
             if packet[:3] == b"\x33\x05\x00":
                 replies[build_colour_mode_query(c.model)] = frame("aa" + packet[1:-1].hex())
+            if c.model == "H6199" and c.pact_type == 1 and packet[:2] == b"\x33\x05":
+                replies[frame("aa0501")] = frame("aa050b00") if packet[2] == 0x0B else frame("aa" + packet[1:-1].hex())
             if c.model == "H6182":
                 if packet[:2] == b"\x33\x04":
                     replies[build_brightness_query(c.model)] = frame("aa04" + packet[2:3].hex())

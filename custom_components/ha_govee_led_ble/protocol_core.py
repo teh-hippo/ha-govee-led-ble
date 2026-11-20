@@ -89,6 +89,9 @@ H6199CommandWrite = load_generated_class("h6199_command_write", "H6199CommandWri
 H6199Pact1WireWrite = load_generated_class("h6199_pact1_wire_write", "H6199Pact1WireWrite")
 
 
+H6199Pact1StatusReply = load_generated_class("h6199_pact1_status_reply", "H6199Pact1StatusReply")
+
+
 H6179CommandWrite = load_generated_class("h6179_command_write", "H6179CommandWrite")
 
 
@@ -491,6 +494,7 @@ _STATUS_ROOTS = {
     "H7025": ("h7025_status_reply", H7025StatusReply),
     "H6179": ("h6179_status_reply", H6179StatusReply),
     "H6199": ("h6199_status_reply", H6199StatusReply),
+    "H6199-Pact1": ("h6199_pact1_status_reply", H6199Pact1StatusReply),
     "H7020": ("h7020_status_reply", H7020StatusReply),
 }
 

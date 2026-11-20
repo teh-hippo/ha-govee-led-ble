@@ -331,6 +331,8 @@ def _status_color_mode_enum(profile: ModelProfile):
 
 
 def _status_music_enum(profile: ModelProfile):
+    if profile.status_grammar == "H6199-Pact1":
+        return protocol_core.H6199Pact1WireWrite.MusicMode
     if profile.status_grammar == "H1AB2":
         return protocol_core.H1ab2MusicWrite.MusicMode
     if profile.status_grammar in {"H6159", "H6182"}:
@@ -361,7 +363,7 @@ def _segment_domain_byte(profile: ModelProfile) -> int:
     root_type = _status_root_type(profile)
     domain_enum = getattr(root_type, "AaDomain", getattr(root_type, "StatusDomain", None))
     assert domain_enum is not None
-    return int(domain_enum.segments)
+    return int(domain_enum["segments" if "segments" in domain_enum.__members__ else "legacy_segments"])
 
 
 def _segment_pages(profile: ModelProfile) -> list[bytes]:
@@ -409,6 +411,8 @@ def _status_frames_for_domain(domain: ReadDomain, model: str, profile: ModelProf
     if domain in {ReadDomain.COLOUR_MODE, ReadDomain.MODE}:
         if profile.status_grammar == "H601C":
             return (_status(0x05, bytes.fromhex("0dff00000000000000")),)
+        if profile.status_grammar == "H6199-Pact1":
+            return (_status(0x05, bytes.fromhex("0b00")),)
         return (_status(0x05, bytes.fromhex("0a2003"), profile=profile),)
     if domain is ReadDomain.FIRMWARE:
         return (bytes.fromhex("aa06332e30322e3234000000000000000000009b"),)
@@ -668,7 +672,7 @@ def test_every_claimed_read_domain_can_actually_be_asked_for(model: str, profile
             if profile.outbound_transform is not None:
                 wire = profile.outbound_transform(query)
                 assert len(wire) == 20 and xor_checksum(wire) == 0
-                if domain is ReadDomain.SEGMENTS and _segment_domain_byte(profile) == 0xA2:
+                if wire != query and domain is ReadDomain.SEGMENTS and _segment_domain_byte(profile) == 0xA2:
                     legacy_query = protocol_core.H6125LegacySegmentQuery.from_bytes(wire)
                     legacy_query._read()
                     assert legacy_query.domain.name == "segments"
