@@ -26,6 +26,12 @@ def _rgb(value: Any) -> tuple[int, int, int]:
 
 def decode_native_scene(scene_ref: CatalogueRef, payload: bytes, *, family: int) -> NativeEffect:
     """Decode catalogue bytes without discarding their scene activation identity."""
+    if scene_ref.sku == "H6093":
+        from .projector_protocol import decode_projector
+
+        if family != 712:
+            raise ValueError("unknown native projector family")
+        return replace(decode_projector(payload), template=scene_ref)
     if scene_ref.sku == "H1771":
         from .h1771_effects import decode_h1771_scene
         from .protocol_core import H1771DiyBody
@@ -133,6 +139,10 @@ def encode_native_body(content: NativeEffect) -> bytes:
         from .h1ab2_effects import encode_accumulation
 
         return encode_accumulation(content)
+    if content.model == "H6093":
+        from .projector_protocol import encode_projector
+
+        return encode_projector(content)
     if content.model == "H60B2":
         from .h60b2_effects import encode_h60b2_diy
 

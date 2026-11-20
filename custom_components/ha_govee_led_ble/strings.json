@@ -1,9 +1,14 @@
 {
   "entity": {
     "button": {
+      "initialise_projector": {"name": "Initialise projector lighting"},
       "refresh_installation": {"name": "Refresh installed lights"}
     },
     "light": {
+      "aurora": {"name": "Aurora"},
+      "coarse_aurora": {"name": "Coarse aurora"},
+      "fine_aurora": {"name": "Fine aurora"},
+      "stars": {"name": "Stars"},
       "top": {"name": "Top"},
       "middle": {"name": "Middle"},
       "side": {"name": "Side"},
@@ -18,6 +23,8 @@
       "ring": {"name": "Ring"}
     },
     "switch": {
+      "projector_star_flicker": {"name": "Star flicker"},
+      "projector_star_movement": {"name": "Star movement"},
       "top_enabled": {"name": "Top enabled"},
       "middle_enabled": {"name": "Middle enabled"},
       "side_enabled": {"name": "Side enabled"},
@@ -36,10 +43,15 @@
       "source_1_enabled": {"name": "Light source 2 enabled"}
     },
     "number": {
+      "projector_aurora_movement": {"name": "Aurora movement"},
+      "projector_aurora_effect_speed": {"name": "Aurora effect speed"},
+      "projector_star_flicker_speed": {"name": "Star flicker speed"},
+      "projector_star_movement_speed": {"name": "Star movement speed"},
       "ripple_speed": {"name": "Ripple speed"},
       "low_blue_light_level": {"name": "Low-blue-light level"}
     },
     "select": {
+      "projector_aurora_pattern": {"name": "Aurora pattern", "state": {"fade": "Fade", "breathe": "Breathe", "flash": "Flash", "steady": "Steady"}},
       "strip_direction": {"name": "Strip direction", "state": {"clockwise": "Clockwise", "anticlockwise": "Anticlockwise"}},
       "camera_position": {"name": "Camera position", "state": {"top": "Top", "bottom": "Bottom"}},
       "gradient": {"name": "Gradient", "state": {"off": "Off", "on": "On"}},

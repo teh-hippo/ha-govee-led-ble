@@ -84,6 +84,7 @@ from .protocol_core import (
     H607cPaintBody,
     H607cSceneBody,
     H1771EffectUpload,
+    H6093Projector,
     H6199EffectUpload,
     SceneBody,
 )
@@ -546,7 +547,7 @@ def _prepare_native_effect(item: LibraryItem, model: str, profile: ModelProfile)
     content = item.content
     if not isinstance(content, NativeEffect):
         raise ValueError("native compiler requires native content")
-    if profile.effect_grammar in {"H1AB2", "H60B0", "H60B2", "H607C"}:
+    if profile.effect_grammar in {"H1AB2", "H60B0", "H60B2", "H607C", "H6093"}:
         require_effect_route(model, _effect_workflow(content), (profile.effect_grammar,), profile=profile)
         validate_effect_eligibility(content, model, profile=profile)
     elif profile.effect_grammar == "H1771":
@@ -1015,7 +1016,9 @@ def compile_native_effect(
     body = _prepare_native_effect(item, model, profile)
     route = "a4" if content.family == 798 and profile.effect_grammar == "H60A6" else "a3"
     subtype = (
-        int(H60b0SceneBody.UploadSubtype.combined)
+        int(H6093Projector.UploadKind.diy)
+        if profile.effect_grammar == "H6093"
+        else int(H60b0SceneBody.UploadSubtype.combined)
         if profile.effect_grammar == "H60B0" and content.family == 81
         else int(H60b0CommandAck.UploadKind.native_diy)
         if profile.effect_grammar == "H60B0"
@@ -1045,6 +1048,12 @@ def compile_native_effect(
             from .protocol_core import serialize_native_body
 
             body = serialize_native_body(_parse_native_scene_body(body, content.family).body)
+        elif profile.effect_grammar == "H6093":
+            from .native_scenes import _parse_native_scene_body
+
+            parsed = _parse_native_scene_body(body, content.family)
+            body = body[len(parsed.marker) :]
+            subtype = int(H6093Projector.UploadKind.scene)
         selector = scene_selector_code(model, entry, profile=profile)
         activation = build_scene_activation(model, selector, entry.music_code, profile=profile)
     else:
@@ -1056,6 +1065,11 @@ def compile_native_effect(
             if content.model == "H60B0" and content.family == 81
             else build_diy_activation(selector, model, profile=profile)
         )
+    if profile.effect_grammar == "H6093" and entry is None:
+        from .native_scenes import _parse_native_scene_body
+
+        parsed = _parse_native_scene_body(body, content.family)
+        body = body[len(parsed.marker) :]
     upload = tuple((fragment_a4 if route == "a4" else fragment_a3)(subtype, body)) if body else ()
     return CompiledEffect(
         item_id=str(item.id),

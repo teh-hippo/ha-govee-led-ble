@@ -635,7 +635,10 @@ class BulkStatusCollector:
     """Collect one bounded subscription-local response before interpreting any records."""
 
     def __init__(self, grammar: str = "H60A") -> None:
+        from .protocol_core import H6093Projector
+
         roots = {"H60A": ("h60a_bulk", H60aBulk), "H1771": ("h1771_bulk", H1771Bulk)}
+        roots["H6093"] = ("h6093_projector.read_frame", H6093Projector.ReadFrame)
         if grammar not in roots:
             raise ValueError("Unknown bulk status grammar")
         self._grammar = grammar

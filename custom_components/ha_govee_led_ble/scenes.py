@@ -42,14 +42,38 @@ class ScenePage:
 
 
 @dataclass(frozen=True, slots=True)
+class ProjectorSpeed:
+    aurora: tuple[int, ...]
+    stars: tuple[int, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class SceneSpeed:
     default_index: int
     pages: tuple[ScenePage, ...] = ()
     layer_speeds: tuple[tuple[int, ...], ...] = ()
+    projector_speeds: tuple[tuple[ProjectorSpeed, ...], ...] = ()
 
     @property
     def option_count(self) -> int:
-        if self.layer_speeds:
+        if self.projector_speeds:
+            if self.pages or self.layer_speeds:
+                raise ValueError("Projector Speed cannot combine incompatible option shapes")
+            counts = {len(row) for row in self.projector_speeds}
+            if len(counts) != 1 or 0 in counts:
+                raise ValueError("Projector Speed rows disagree on layer count")
+            for row in self.projector_speeds:
+                for layer in row:
+                    if (
+                        not 1 <= len(layer.aurora) <= 3
+                        or not 1 <= len(layer.stars) <= 2
+                        or any(
+                            type(value) is not int or not 0 <= value <= 100 for value in (*layer.aurora, *layer.stars)
+                        )
+                    ):
+                        raise ValueError("Projector Speed values are outside their bounds")
+            count = len(self.projector_speeds)
+        elif self.layer_speeds:
             if self.pages:
                 raise ValueError("Scene Speed cannot combine page and per-layer options")
             counts = {len(row) for row in self.layer_speeds}
@@ -120,6 +144,10 @@ def _load_speed(data: dict[str, Any] | None) -> SceneSpeed | None:
         default_index=int(data["default_index"]),
         pages=pages,
         layer_speeds=tuple(tuple(int(value) for value in row) for row in data.get("layer_speeds", [])),
+        projector_speeds=tuple(
+            tuple(ProjectorSpeed(tuple(layer["aurora"]), tuple(layer["stars"])) for layer in row)
+            for row in data.get("projector_speeds", [])
+        ),
     )
     _ = speed.option_count
     return speed

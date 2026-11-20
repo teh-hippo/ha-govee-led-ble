@@ -1455,6 +1455,9 @@ async def test_only_current_subscription_advertisements_can_confirm_pact(hass):
         frozenset({(1, 2)}),
     )
     coordinator._resolve_h607c_pact()
+    assert not coordinator.identity_fields_confirmed()
+    coordinator._notification_token = object()
+    coordinator._resolve_h607c_pact()
     assert coordinator.identity_fields_confirmed()
     coordinator._h607c_marker_pact = (1, 3)
     coordinator._resolve_h607c_pact()

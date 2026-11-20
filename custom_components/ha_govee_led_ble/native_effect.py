@@ -21,6 +21,13 @@ from .layered_scene import (
     layered_scene_from_value,
     layered_scene_to_value,
 )
+from .projector import (
+    ProjectorLayer,
+    source_from_value,
+    source_to_value,
+    stars_from_value,
+    stars_to_value,
+)
 
 type RGB = tuple[int, int, int]
 
@@ -145,10 +152,13 @@ class NativeEffect:
     model: str = "H60A6"
     revision: int = 0
     combined: LayeredScene | None = None
+    projector_layers: tuple[ProjectorLayer, ...] = ()
 
     def __post_init__(self) -> None:
         _number(self.family, 65535, "native family")
         _number(self.revision, 3, "native revision")
+        if self.model != "H6093" and self.projector_layers:
+            raise LayeredSceneValidationError("projector layers require the exact model")
         if self.model != "H60B0" and (
             self.revision
             or self.combined is not None
@@ -267,9 +277,26 @@ class NativeEffect:
                 or self.preset_id is not None
             ):
                 raise LayeredSceneValidationError("invalid native dual-source DIY structure")
+        elif self.model == "H6093":
+            if (
+                self.family != 712
+                or self.layers
+                or not 1 <= len(self.projector_layers) <= 255
+                or any(not isinstance(layer, ProjectorLayer) for layer in self.projector_layers)
+                or self.backgrounds
+                or self.background_flag
+                or self.background != (0, 0, 0)
+                or self.background_brightness != 100
+                or self.show_type != 1
+                or self.section_tail
+            ):
+                raise LayeredSceneValidationError("invalid native projector effect")
         elif self.model != "H60A6" or self.family not in (797, 798):
             raise LayeredSceneValidationError("unsupported native effect model or family")
-        if not (0 if self.combined is not None else 1) <= len(self.layers) <= 255 or len(self.backgrounds) > 255:
+        if (
+            not (0 if self.combined is not None or self.projector_layers else 1) <= len(self.layers) <= 255
+            or len(self.backgrounds) > 255
+        ):
             raise LayeredSceneValidationError("native effect exceeds its layer or background count field")
         expected = (
             NativeDiyLayer
@@ -304,6 +331,8 @@ class NativeEffect:
             return "layered_scenes"
         if self.model == "H1771":
             return "multi"
+        if self.model == "H6093":
+            return "advanced" if self.preset_id is None else "single"
         if self.model == "H60B0":
             return (
                 "advanced"
@@ -371,6 +400,24 @@ def native_effect_to_value(content: NativeEffect) -> dict[str, Any]:
         "model": content.model,
         "family": content.family,
         "layers": layers,
+        **(
+            {
+                "projector_layers": [
+                    {
+                        "movement_speed": layer.movement_speed,
+                        "direction": layer.direction,
+                        "coarse": source_to_value(layer.coarse),
+                        "fine": None if layer.fine is None else source_to_value(layer.fine),
+                        "stars": stars_to_value(layer.stars),
+                        "duration": layer.duration,
+                        "opaque": layer.opaque.hex(),
+                    }
+                    for layer in content.projector_layers
+                ]
+            }
+            if content.model == "H6093"
+            else {}
+        ),
         "backgrounds": [list(colour) for colour in content.backgrounds],
         "background_flag": content.background_flag,
         "background": list(content.background),
@@ -441,6 +488,19 @@ def native_effect_from_value(raw: Mapping[str, Any]) -> NativeEffect:
             raise LayeredSceneValidationError("unsupported native layer type")
     return NativeEffect(
         model=_required_str(raw, "model"),
+        projector_layers=tuple(
+            ProjectorLayer(
+                movement_speed=_required_int(layer, "movement_speed"),
+                direction=_required_int(layer, "direction"),
+                coarse=source_from_value(layer.get("coarse")),
+                fine=None if layer.get("fine") is None else source_from_value(layer["fine"]),
+                stars=stars_from_value(layer.get("stars")),
+                duration=_required_int(layer, "duration"),
+                opaque=_hex_bytes(layer.get("opaque", ""), "projector layer opaque"),
+            )
+            for value in raw.get("projector_layers", ())
+            for layer in (_as_mapping(value, "projector layer"),)
+        ),
         revision=_optional_int(raw, "revision") or 0,
         combined=layered_scene_from_value(_as_mapping(raw["combined"], "native combined content"))
         if "combined" in raw

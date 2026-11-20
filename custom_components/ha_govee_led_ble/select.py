@@ -15,6 +15,8 @@ from .control_arbiter import ControlIntent, async_control_intent
 from .effect_contracts import CapabilityState
 from .effect_setup import get_effect_backend
 from .entity import GoveeBLEEntity
+from .projector import ProjectorControl
+from .projector_runtime import control_value, set_control
 from .video_applicability import h6199_camera_controls_state
 
 PARALLEL_UPDATES = 0
@@ -32,9 +34,13 @@ async def async_setup_entry(
     added = False
     strings_added = False
     power_on_added = False
+    projector_added = False
 
     def add_qualified() -> None:
-        nonlocal added, strings_added, power_on_added
+        nonlocal added, strings_added, power_on_added, projector_added
+        if not projector_added and coordinator.profile.projector_grammar is not None:
+            projector_added = True
+            async_add_entities([GoveeBLEProjectorPatternSelect(entry)])
         if not power_on_added and coordinator.native_presentation_profile.supports_power_on_behaviour:
             power_on_added = True
             async_add_entities([GoveeBLEPowerOnBehaviourSelect(entry)])
@@ -51,6 +57,34 @@ async def async_setup_entry(
 
     add_qualified()
     entry.async_on_unload(coordinator.async_add_listener(add_qualified))
+
+
+class GoveeBLEProjectorPatternSelect(GoveeBLEEntity, SelectEntity):
+    _attr_translation_key = "projector_aurora_pattern"
+    _attr_options = ["fade", "breathe", "flash", "steady"]
+
+    def __init__(self, entry: GoveeBLEConfigEntry) -> None:
+        super().__init__(entry.runtime_data)
+        self._attr_unique_id = f"{self.coordinator.address.replace(':', '').lower()}_projector_aurora_pattern"
+
+    @property
+    def available(self) -> bool:
+        return self.coordinator.profile.projector_grammar is not None and super().available
+
+    @property
+    def current_option(self) -> str | None:
+        value = control_value(self.coordinator, ProjectorControl.AURORA_PATTERN)
+        return self.options[value - 1] if type(value) is int and 1 <= value <= len(self.options) else None
+
+    async def async_select_option(self, option: str) -> None:
+        if option not in self.options:
+            raise ServiceValidationError(translation_domain=DOMAIN, translation_key="invalid_control_request")
+        try:
+            await self._async_latest(
+                partial(set_control, self.coordinator, ProjectorControl.AURORA_PATTERN, self.options.index(option) + 1)
+            )
+        except (BleakError, ValueError, TimeoutError) as error:
+            raise HomeAssistantError(translation_domain=DOMAIN, translation_key="device_command_failed") from error
 
 
 class GoveeBLEControlSelect(GoveeBLEEntity, SelectEntity):

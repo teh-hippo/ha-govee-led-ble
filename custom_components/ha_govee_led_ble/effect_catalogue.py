@@ -121,6 +121,14 @@ def validate_effect_eligibility(
     if catalogue is None:
         raise ValueError(f"{model} has no custom-effect catalogue")
     if isinstance(content, NativeEffect):
+        if model == "H6093" and content.model == model and profile.effect_grammar == "H6093":
+            content.__post_init__()
+            if not any(
+                layer.coarse.enabled or layer.fine is not None and layer.fine.enabled or layer.stars.enabled
+                for layer in content.projector_layers
+            ):
+                raise ValueError("Select at least one projector light source")
+            return
         if model == "H60B0":
             from .h60b0_diy import validate_h60b0_diy
 

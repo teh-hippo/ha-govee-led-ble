@@ -28,6 +28,7 @@ seq:
         'query_domain::colour_mode': colour_mode_query_body
         'query_domain::firmware': zero_body
         'query_domain::hardware': hardware_query_body
+        'query_domain::pact': zero_body
         'query_domain::subordinate_20': zero_body
         'query_domain::subordinate_21': zero_body
         'query_domain::light_count': zero_body
@@ -45,6 +46,7 @@ enums:
     0x05: colour_mode
     0x06: firmware
     0x07: hardware
+    0xef: pact
     0x0e: limit
     0x0f: light_count
     0x20: subordinate_20

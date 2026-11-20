@@ -19,7 +19,7 @@ from .effect_limits import (
 )
 
 EDITOR_API_VERSION: Final = 19
-EDITOR_ASSET_VERSION: Final = 39
+EDITOR_ASSET_VERSION: Final = 40
 EFFECT_COMPILER_VERSION: Final = 8
 RELEASE_CAPABILITY_SCHEMA_VERSION: Final = 1
 
@@ -482,6 +482,15 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         )
     ),
     *(
+        _capability("H6093", workflow, label, kind, route, strategy, _V.UNVERIFIED)
+        for workflow, label, kind, route, strategy in (
+            (_W.NATIVE_SCENES, "Scenes", "scene_builtin", _R.STUDIO_SCENE_APPLY, _S.NATIVE_EFFECT_SELECTION),
+            (_W.LAYERED_SCENES, "Projector scenes", "native_effect", _R.STUDIO_CUSTOM_APPLY, _S.MODEL_SCENE_ENGINE),
+            (_W.SINGLE, "Projector presets", "native_effect", _R.STUDIO_CUSTOM_APPLY, _S.A3_EFFECT_UPLOAD),
+            (_W.ADVANCED, "Projector effects", "native_effect", _R.STUDIO_CUSTOM_APPLY, _S.A3_EFFECT_UPLOAD),
+        )
+    ),
+    *(
         _capability("H600A", workflow, label, kind, route, strategy, _V.SELECTION_ONLY)
         for workflow, label, kind, route, strategy in (
             (_W.NATIVE_SCENES, "Scenes", "scene_builtin", _R.STUDIO_SCENE_APPLY, _S.NATIVE_EFFECT_SELECTION),
@@ -932,6 +941,7 @@ def require_effect_route(
         "H60B2",
         "H607C",
         "H1771",
+        "H6093",
     ),
     *,
     profile: ModelProfile | None = None,

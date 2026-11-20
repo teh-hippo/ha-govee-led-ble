@@ -14,6 +14,15 @@ from . import GoveeBLEConfigEntry
 from .const import DOMAIN
 from .entity import GoveeBLEEntity
 from .low_blue_light import Setting
+from .projector import ProjectorControl
+from .projector_runtime import control_value, set_control
+
+_PROJECTOR_LEVELS = (
+    ProjectorControl.AURORA_MOVEMENT,
+    ProjectorControl.AURORA_EFFECT_SPEED,
+    ProjectorControl.STAR_FLICKER_SPEED,
+    ProjectorControl.STAR_MOVEMENT_SPEED,
+)
 
 PARALLEL_UPDATES = 0
 
@@ -24,6 +33,11 @@ async def async_setup_entry(
     added: set[str] = set()
 
     def add_qualified() -> None:
+        if entry.runtime_data.profile.projector_grammar is not None:
+            for control in _PROJECTOR_LEVELS:
+                if control not in added:
+                    added.add(control)
+                    async_add_entities([GoveeBLEProjectorLevel(entry, control)])
         if "low_blue_light" not in added and entry.runtime_data.profile.supports_low_blue_light:
             added.add("low_blue_light")
             async_add_entities([GoveeBLELowBlueLightLevel(entry)])
@@ -86,3 +100,24 @@ class GoveeBLERippleSpeed(_GoveeBLELevel):
 
     async def async_set_native_value(self, value: float) -> None:
         await self._async_set_level(value, partial(self.coordinator.async_set_source_value, "top", "ripple_speed"))
+
+
+class GoveeBLEProjectorLevel(_GoveeBLELevel):
+    _attr_native_min_value = 0
+    _attr_native_max_value = 100
+
+    def __init__(self, entry: GoveeBLEConfigEntry, control: ProjectorControl) -> None:
+        self._attr_translation_key = control
+        self._control = control
+        super().__init__(entry)
+
+    @property
+    def available(self) -> bool:
+        return self.coordinator.profile.projector_grammar is not None and super().available
+
+    @property
+    def native_value(self) -> float | None:
+        return control_value(self.coordinator, self._control)
+
+    async def async_set_native_value(self, value: float) -> None:
+        await self._async_set_level(value, partial(set_control, self.coordinator, self._control))

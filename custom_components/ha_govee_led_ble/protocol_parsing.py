@@ -15,6 +15,7 @@ from .protocol_core import (
     _STATUS_ROOTS,
     H66a0VideoCommand,
     H605cVideoCommand,
+    H6093Projector,
     ProtocolParseRejection,
     ProtocolParseResult,
     _has_unknown_discriminator,
@@ -47,6 +48,12 @@ def parse_command_result(
         setting = _parse_xor_frame(frame, effective_profile.setting_grammar, _ORDINARY_SETTING_ROOTS)
         if setting.parsed is not None and getattr(setting.parsed.opcode, "name", None) is not None:
             return setting
+    if effective_profile.projector_grammar == "H6093":
+        activation = _parse_xor_frame(
+            frame, "projector", {"projector": ("h6093_projector.activation", H6093Projector.Activation)}
+        )
+        if activation.parsed is not None:
+            return activation
     if effective_profile.setting_grammar in _NATIVE_SETTING_ROOTS:
         root_type = _NATIVE_SETTING_ROOTS[effective_profile.setting_grammar][1]
         setting = _parse_xor_frame(frame, effective_profile.setting_grammar, _NATIVE_SETTING_ROOTS)

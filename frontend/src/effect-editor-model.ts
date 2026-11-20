@@ -134,6 +134,12 @@ export function effectContentEligible(
 ): boolean {
   if (content.kind === "static_rgb") return content.segments.length === segmentCount && content.segments.some(colour => colour !== null);
   if (content.kind === "native_effect") {
+    if (content.projector_layers) {
+      const workflow = nativeEffectWorkflow(content);
+      return catalogue?.sku === model && content.model === model &&
+        catalogue.workflows.some(candidate => candidate.id === workflow && candidate.content_kind === "native_effect") &&
+        content.projector_layers.some(layer => layer.coarse.enabled || layer.fine?.enabled || layer.stars.enabled);
+    }
     if (content.model === "H60B0") {
       if (catalogue?.sku !== model || model !== content.model) return false;
       if (content.layers.some(layer => layer.type !== "diy")) return false;
@@ -720,6 +726,7 @@ export function customEffectCategoryForKind(
 
 export function nativeEffectWorkflow(content: NativeEffectContent): NonNullable<LibrarySummary["native_workflow"]> {
   if (content.template !== null) return "layered_scenes";
+  if (content.projector_layers) return content.preset_id === null ? "advanced" : "single";
   if (content.model === "H1771") return "multi";
   if (content.model === "H60B0") {
     return [13, 923].includes(content.family) ? "advanced" : content.family === 81 || content.revision === 3 ? "multi" : "single";

@@ -1,6 +1,7 @@
 """Fresh physical-state recovery through the real coordinator and deployment path."""
 
 import asyncio
+import io
 import time
 from dataclasses import replace
 from unittest.mock import AsyncMock, MagicMock
@@ -9,6 +10,7 @@ import pytest
 from bleak.exc import BleakError
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.setup import async_setup_component
+from kaitaistruct import KaitaiStream
 
 from custom_components.ha_govee_led_ble.const import device_profile, get_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
@@ -39,7 +41,17 @@ from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.light_commands import parse_static_write
 from custom_components.ha_govee_led_ble.music_commands import edit_music_body
 from custom_components.ha_govee_led_ble.music_semantics import music_variant
-from custom_components.ha_govee_led_ble.transport import fragment_a3, xor_checksum
+from custom_components.ha_govee_led_ble.projector import ProjectorAppearance, ProjectorStars
+from custom_components.ha_govee_led_ble.projector_protocol import decode_appearance
+from custom_components.ha_govee_led_ble.projector_runtime import (
+    apply_appearance,
+    initialise,
+    qualified_profile,
+    read_appearance,
+    source_request,
+)
+from custom_components.ha_govee_led_ble.protocol_core import H6093Projector
+from custom_components.ha_govee_led_ble.transport import fragment_a3, reassemble_a3, xor_checksum
 from tests.coordinator_test_support import frame
 from tests.storage_test_double import InMemoryVersionedDocumentStore
 
@@ -169,7 +181,8 @@ async def test_resident_palette_program_reselection_never_restores_an_overwritte
 
 @pytest.fixture
 def physical(hass, monkeypatch, request):
-    model = getattr(request, "param", "H617A")
+    target = getattr(request, "param", "H617A")
+    model, pact = target if isinstance(target, tuple) else (target, None)
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url="test")
     if model == "H7020":
         coordinator.pact_type = coordinator.pact_code = 1
@@ -193,19 +206,62 @@ def physical(hass, monkeypatch, request):
             sources=[True, False],
             gradual=True,
         )
+    if model == "H6093":
+        pact = pact or (2, 1)
+        state.update(
+            projector=ProjectorAppearance(
+                ProjectorStars(True, 61, False, 25, True, 39),
+                True,
+                17,
+                42,
+                2,
+                53,
+                ((10, 20, 30), (40, 50, 60)),
+                None if pact == (1, 1) else ((70, 80, 90),),
+            ),
+            native=True,
+            upload=[],
+            speaker=True,
+        )
 
     async def transmit(_uuid, packet, **_kwargs):
         state["packets"].append(packet)
         fault = state["fault"]
+        if model == "H6093" and packet[0] == 0xA3:
+            if packet[1] == 0:
+                state["upload"] = []
+            state["upload"].append(packet)
+            if packet[1] == 255:
+                envelope = reassemble_a3(state["upload"])
+                if envelope[2] == 0x0C:
+                    appearance = H6093Projector.Appearance(pact != (1, 1), KaitaiStream(io.BytesIO(envelope[3:])))
+                    appearance._read()
+                    state["projector"] = replace(decode_appearance(appearance), opaque=b"")
+                pending = coordinator._upload_ack
+                if pending is not None:
+                    coordinator._notify_callback(
+                        None, frame(f"a3{pending.subtype:02x}{int(fault == 'upload_ack'):02x}")
+                    )
+            return
         if packet[0] == 0x33:
             if packet[1] == 1:
                 state["on"] = bool(packet[2])
+                if model == "H6093":
+                    state["speaker"] = False
+            elif packet[1:3] == b"\x30\x01" and model == "H6093":
+                state["on"] = bool(packet[3])
             elif packet[1] == 4 and fault != "brightness":
                 state["brightness"] = packet[2]
             elif packet[1:3] == b"\x05\x04":
                 state["scene"] = list(packet[3:5])
                 state["colours"] = [(255, 0, 0)] * count
                 state["relative"] = [100] * count
+                if model == "H6093":
+                    state["projector"] = replace(
+                        state["projector"],
+                        coarse=((255, 0, 0),),
+                        stars=replace(state["projector"].stars, brightness=100),
+                    )
                 if model == "H1771":
                     state["sources"] = [True, True]
                     state["gradual"] = False
@@ -216,6 +272,8 @@ def physical(hass, monkeypatch, request):
             static = parse_static_write(packet, coordinator.model, profile=coordinator.profile)
             if static is not None:
                 state["scene"] = None
+                if model == "H6093":
+                    state["native"] = static.kind == "projector"
                 for index in range(count):
                     if static.segment_mask & (1 << index):
                         if static.rgb is not None and fault != "colour":
@@ -232,8 +290,14 @@ def physical(hass, monkeypatch, request):
                 return
             if domain == 1 and fault != "missing_power":
                 coordinator._notify_callback(None, reply(1, [int(state["on"])]))
+            elif domain == 0x34 and model == "H6093" and fault != "missing_power":
+                coordinator._notify_callback(
+                    None, reply(0x34, [(0x40 if state["on"] else 0) | 4, state["brightness"], 128, 1, 50])
+                )
             elif domain == 4 and fault != "missing_brightness":
                 coordinator._notify_callback(None, reply(4, [state["brightness"]]))
+            elif domain == 0xEF and model == "H6093" and fault != "missing_pact":
+                coordinator._notify_callback(None, reply(0xEF, [*pact[0].to_bytes(2, "big"), pact[1]]))
             elif domain == 5 and fault != "missing_mode":
                 coordinator._notify_callback(
                     None,
@@ -243,6 +307,8 @@ def physical(hass, monkeypatch, request):
                         if fault == "mode"
                         else [0x04, *state["scene"]]
                         if state["scene"] is not None
+                        else [0x0C]
+                        if model == "H6093" and state["native"]
                         else [0x15, 0, *state.get("kelvin", 0).to_bytes(2, "big")],
                     ),
                 )
@@ -260,6 +326,36 @@ def physical(hass, monkeypatch, request):
                     for index in range((page - 1) * size, page * size):
                         body.extend([state["relative"][index], *state["colours"][index]])
                     coordinator._notify_callback(None, reply(0xA5, body))
+        elif packet[:4] == b"\xac\x03\x05\x0c" and model == "H6093":
+            value = state["projector"]
+            stars = value.stars
+            raw = bytes(
+                [
+                    stars.enabled,
+                    stars.brightness,
+                    stars.flicker_enabled,
+                    stars.flicker_speed,
+                    stars.movement_enabled,
+                    stars.movement_speed,
+                    value.enabled,
+                    value.movement_speed,
+                    value.brightness,
+                    value.pattern,
+                    value.effect_speed,
+                    len(value.coarse),
+                    *(channel for colour in value.coarse for channel in colour),
+                ]
+            )
+            chunks = [raw[:12], *(raw[index : index + 17] for index in range(12, len(raw), 17))]
+            coordinator._notify_callback(
+                None, frame(f"ac00{len(chunks).to_bytes(2, 'little').hex()}{len(chunks[-1]):02x}0305{chunks[0].hex()}")
+            )
+            for index, chunk in enumerate(chunks[1:], 1):
+                if fault == "projector_read":
+                    break
+                coordinator._notify_callback(
+                    None, frame(f"ac{255 if index == len(chunks) - 1 else index:02x}{chunk.hex()}")
+                )
         elif packet[:2] == b"\xac\x03" and model == "H1771":
             first, second = state["sources"]
             flags = int(state["on"]) | (int(first) << 1) | (int(second) << 2)
@@ -281,6 +377,8 @@ def physical(hass, monkeypatch, request):
     coordinator._client = client
     coordinator._notification_token = object()
     coordinator._notify_started_monotonic = time.monotonic() - 1
+    if model == "H6093":
+        coordinator._observe_pact(*pact)
     monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
     monkeypatch.setattr(coordinator, "_renew_foreground_lease", MagicMock())
     refresh = coordinator.refresh_state
@@ -288,6 +386,142 @@ def physical(hass, monkeypatch, request):
     monkeypatch.setattr(coordinator, "refresh_state", lambda request: refresh(replace(request, timeout=0.02)))
     monkeypatch.setattr(coordinator, "async_refresh_segments", lambda: segments(timeout=0.02))
     return coordinator, state
+
+
+@pytest.mark.parametrize("physical", [("H6093", (1, 1)), ("H6093", (1, 2)), ("H6093", (2, 1))], indirect=True)
+async def test_projection_power_is_independent_of_speaker_and_initialisation_establishes_native_state(physical):
+    coordinator, state = physical
+    await initialise(coordinator)
+    assert state["on"] and state["speaker"]
+    assert state["projector"].coarse == ((0, 0, 255),)
+    assert state["projector"].stars.brightness == 50
+    assert not state["projector"].stars.flicker_enabled and not state["projector"].stars.movement_enabled
+    light = GoveeBLELight(coordinator)
+    light.async_write_ha_state = MagicMock()
+    await light.async_turn_off()
+    assert not state["on"] and state["speaker"]
+    assert any(packet[:4] == b"\x33\x30\x01\x00" for packet in state["packets"])
+
+
+@pytest.mark.parametrize("physical", [("H6093", (1, 1)), ("H6093", (1, 2)), ("H6093", (2, 1))], indirect=True)
+async def test_public_native_scene_off_restores_complete_projector_optics(physical):
+    coordinator, state = physical
+    prior = state["projector"]
+    await apply_appearance(coordinator, prior)
+    light = GoveeBLELight(coordinator)
+    light.async_write_ha_state = MagicMock()
+    await light.async_turn_on(effect="Forest")
+    assert state["projector"] != prior
+    assert coordinator._pre_mode_snapshot is not None
+    assert coordinator._pre_mode_snapshot.projector_appearance == prior
+    await light.async_turn_on(effect="off")
+    assert state["projector"] == prior
+    assert coordinator.projector_appearance == prior
+
+
+@pytest.mark.parametrize("physical", ["H6093"], indirect=True)
+async def test_rejected_native_appearance_does_not_activate_or_retain_unconfirmed_state(physical):
+    coordinator, state = physical
+    await apply_appearance(coordinator, state["projector"])
+    state["packets"].clear()
+    state["fault"] = "upload_ack"
+    with pytest.raises(RuntimeError, match="rejected"):
+        await apply_appearance(coordinator, replace(state["projector"], brightness=18))
+    assert not any(packet[:3] == b"\x33\x05\x0c" for packet in state["packets"])
+    assert coordinator.projector_appearance is None
+
+
+@pytest.mark.parametrize("physical", ["H6093"], indirect=True)
+async def test_scalar_colour_observations_cannot_verify_native_projector_appearance(physical):
+    coordinator, state = physical
+    await apply_appearance(coordinator, state["projector"])
+    coordinator._notify_callback(None, reply(5, [0x0C]))
+    coordinator.rgb_color_source = "observed"
+    coordinator._field_received_at["rgb_color"] = time.monotonic()
+    prior = coordinator.capture_effect_control_state()
+    assert prior.projector_appearance is not None
+    assert not prior.static_colour_observed and not prior.static_rgb_known
+    assert PriorControlState.from_dict(prior.to_dict()).projector_appearance == prior.projector_appearance
+
+
+@pytest.mark.parametrize("physical", [("H6093", (1, 1))], indirect=True)
+async def test_native_appearance_read_is_completed_when_its_profile_authority_changes(physical):
+    coordinator, state = physical
+    state["fault"] = "projector_read"
+    transmit = coordinator._client.write_gatt_char.side_effect
+
+    async def changing_profile(uuid, packet, **kwargs):
+        await transmit(uuid, packet, **kwargs)
+        if packet[:4] == b"\xac\x03\x05\x0c":
+            coordinator._advance_profile_generation()
+
+    coordinator._client.write_gatt_char.side_effect = changing_profile
+    with pytest.raises(ValueError, match="authority changed"):
+        await read_appearance(coordinator)
+    assert coordinator._projector_reply is None and coordinator._projector_collector is None
+    assert coordinator._bulk_query_incomplete
+
+
+@pytest.mark.parametrize("physical", ["H6093"], indirect=True)
+@pytest.mark.parametrize("mode", ["static", "scene"])
+async def test_planned_release_requalifies_delivered_native_appearance_before_effect_selection(physical, mode):
+    coordinator, state = physical
+    coordinator._connection_pacts.clear()
+    coordinator._h607c_marker_pact = (2, 1)
+    coordinator._resolve_h607c_pact(preserve_state=True)
+    prior = state["projector"]
+    await apply_appearance(coordinator, prior)
+    light = GoveeBLELight(coordinator)
+    light.async_write_ha_state = MagicMock()
+    if mode == "scene":
+        await light.async_turn_on(effect="Forest")
+    client = coordinator._client
+    coordinator._clear_client_state(client, preserve_static_baseline=True)
+    assert coordinator._projector_token is None
+    if mode == "static":
+        assert coordinator.projector_appearance == prior
+    else:
+        assert coordinator._pre_mode_snapshot is not None
+        assert coordinator._pre_mode_snapshot.projector_appearance == prior
+    coordinator._client = client
+    coordinator._notification_token = object()
+    coordinator._notify_started_monotonic = time.monotonic() - 1
+    state["packets"].clear()
+    await light.async_turn_on(effect="Forest" if mode == "static" else "off")
+    assert any(packet[:2] == b"\xaa\xef" for packet in state["packets"])
+    if mode == "static":
+        assert coordinator._pre_mode_snapshot is not None
+        assert coordinator._pre_mode_snapshot.projector_appearance == prior
+    else:
+        assert coordinator.projector_appearance == prior
+
+
+@pytest.mark.parametrize("physical", ["H6093"], indirect=True)
+async def test_cached_pact_does_not_authorise_native_writes_but_keeps_bootstrap_power_available(physical):
+    coordinator, state = physical
+    coordinator._connection_pacts.clear()
+    coordinator._confirmed_identity_fields.clear()
+    coordinator._h607c_marker_pact = None
+    coordinator._subscription_advertised_pact = None
+    coordinator._h607c_advertisement_observations = {"cached": (coordinator._notify_started_monotonic - 1, {(2, 1)})}
+    coordinator._h607c_advertised_pacts = {(2, 1)}
+    with pytest.raises(HomeAssistantError):
+        qualified_profile(coordinator)
+    assert coordinator.profile.projector_control_revision == 1
+    await coordinator.send_command(build_power(True, "H6093"))
+    assert state["on"] and state["speaker"]
+    assert not coordinator.identity_fields_confirmed(frozenset({"pact"}))
+
+
+@pytest.mark.parametrize("physical", ["H6093"], indirect=True)
+async def test_individual_projector_pattern_enable_keeps_its_effectively_off_sibling_off(physical):
+    coordinator, state = physical
+    await initialise(coordinator)
+    await source_request(coordinator, "aurora", False)
+    await source_request(coordinator, "coarse_aurora", True)
+    value = state["projector"]
+    assert value.enabled and value.coarse_enabled
+    assert not value.fine_enabled and value.fine is not None
 
 
 @pytest.mark.parametrize("physical", ["H617A", "H1771"], indirect=True)

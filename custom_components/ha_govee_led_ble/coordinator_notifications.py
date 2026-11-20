@@ -110,6 +110,14 @@ class _NotificationMixin(_CoordinatorBase):
         self._field_received_at: dict[str, float] = {}
         self._domain_received_at: dict[StatusDomain, float] = {}
         self._revision_event = asyncio.Event()
+        self.projector_appearance = None
+        self.projector_appearance_observed = False
+        self.projector_mode_active = False
+        self._projector_token = None
+        self._projector_generation = -1
+        self._projector_profile = None
+        self._projector_reply = None
+        self._projector_collector = None
 
     def _arm_expected(self, packet: bytes, *, expectations: dict[str, Any] | None = None) -> None:
         expectations = (
@@ -126,6 +134,9 @@ class _NotificationMixin(_CoordinatorBase):
             if self.profile.setting_grammar == "H607C":
                 self._field_received_at.pop("diy_companion", None)
             if expectations["color_mode"][0] is not ParsedMode.COLOUR:
+                self.projector_appearance = None
+                self.projector_appearance_observed = False
+                self.projector_mode_active = False
                 self._static_colour_known = False
                 self.segment_kelvin = [None] * self.profile.segment_count
                 self.segment_brightness_known = [False] * self.profile.segment_count
@@ -194,7 +205,7 @@ class _NotificationMixin(_CoordinatorBase):
         if parsed.mode is ParsedMode.DIY:
             mode_detail = parsed.diy_code
         elif parsed.mode is ParsedMode.COLOUR and self.profile.static_readback_echoes_color:
-            mode_detail = parsed.raw_mode
+            mode_detail = None if parsed.native_projector else parsed.raw_mode
         else:
             mode_detail = None
         observed_color_mode = parsed.mode, mode_detail
@@ -203,6 +214,11 @@ class _NotificationMixin(_CoordinatorBase):
             mode_values["diy_companion"] = parsed.diy_companion
         if not self._accept_expected_values(mode_values):
             return ()
+        if self.profile.projector_grammar is not None:
+            self.projector_mode_active = parsed.native_projector and parsed.mode is ParsedMode.COLOUR
+            if not self.projector_mode_active:
+                self.projector_appearance = None
+                self.projector_appearance_observed = False
         transition = self._mode_transition
         if transition is not None and transition.static_restore_started and parsed.mode is not ParsedMode.COLOUR:
             transition.superseded = True
@@ -865,7 +881,9 @@ class _NotificationMixin(_CoordinatorBase):
                 return
             frame = decoded_frame
         self._last_rx_monotonic = time.monotonic()
-        if self._handle_bulk_notification(frame):
+        from .projector_runtime import handle_reply
+
+        if handle_reply(self._as_coordinator, frame) or self._handle_bulk_notification(frame):
             return
         if self._handle_low_blue_light_notification(frame) or self._handle_zone_notification(frame):
             return

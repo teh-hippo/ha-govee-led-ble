@@ -3,6 +3,8 @@ import { property, state } from "lit/decorators.js";
 import { paintNativeLayerPoint } from "./effect-editor-model";
 import { renderH1771SectionEditor, renderNativeZoneEditor } from "./native-zone-editor";
 import { renderH60B0Editor } from "./h60b0-native-editor";
+import { renderProjectorEditor } from "./projector-editor";
+import { renderNativeLayerControls } from "./native-layer-controls";
 
 import type { LivePreviewInteraction } from "./live-preview-controller";
 import "./palette-editor";
@@ -186,6 +188,10 @@ export class GoveeCustomEffectEditor extends LitElement {
 
   protected render() {
     if (this.nativeContent && this.catalogue) {
+      if (this.nativeContent.projector_layers) {
+        return renderProjectorEditor(this.nativeContent, this.disabled,
+          (content, interaction) => this.nativeChanged(content, interaction));
+      }
       if (this.nativeContent.model === "H60B0") {
         return renderH60B0Editor(this.nativeContent, this.catalogue, this.disabled,
           (content, interaction) => this.nativeChanged(content, interaction));
@@ -290,32 +296,10 @@ export class GoveeCustomEffectEditor extends LitElement {
             ${content.layers.map((item, layerIndex) => html`
               <option value=${layerIndex} ?selected=${layerIndex === index}>Layer ${layerIndex + 1} (${item.type})</option>`)}
           </select></label>
-          <div>
-            ${layer.type !== "opaque" ? html`
-              <button type="button" ?disabled=${this.disabled || content.layers.length === 255} @click=${() => {
-                const copied = structuredClone(layer);
-                if (copied.type === "paint") copied.groups = [];
-                const layers = [...content.layers, copied];
-                this.nativeLayerIndex = layers.length - 1;
-                this.nativeChanged({ ...content, layers, speed_index: null });
-              }}>${layer.type === "paint" ? "Add empty paint layer" : "Duplicate layer"}</button>
-              <button type="button" ?disabled=${this.disabled || content.layers.length === 1} @click=${() => {
-                const layers = content.layers.filter((_, layerIndex) => layerIndex !== index);
-                this.nativeLayerIndex = Math.min(index, layers.length - 1);
-                this.nativeChanged({ ...content, layers, speed_index: null });
-              }}>${layer.type === "paint" ? "Remove paint layer" : "Remove layer"}</button>
-            ` : nothing}
-            <button type="button" ?disabled=${this.disabled || index === 0} @click=${() => {
-              const layers = [...content.layers];
-              [layers[index - 1], layers[index]] = [layers[index], layers[index - 1]];
-              this.nativeLayerIndex = index - 1; this.nativeChanged({ ...content, layers, speed_index: null });
-            }}>Move earlier</button>
-            <button type="button" ?disabled=${this.disabled || index === content.layers.length - 1} @click=${() => {
-              const layers = [...content.layers];
-              [layers[index + 1], layers[index]] = [layers[index], layers[index + 1]];
-              this.nativeLayerIndex = index + 1; this.nativeChanged({ ...content, layers, speed_index: null });
-            }}>Move later</button>
-          </div>
+          ${renderNativeLayerControls(content.layers, index, this.disabled, (layers, selected) => {
+            this.nativeLayerIndex = selected;
+            this.nativeChanged({ ...content, layers, speed_index: null });
+          })}
           ${layer.type === "opaque" ? html`<p>Unknown layer ${layer.kind} is retained unchanged.</p>` : html`
             ${this.nativeSlider("Speed", layer.speed, (speed, interaction) => this.nativeLayerChanged({ speed }, interaction))}
             ${layer.type === "diy" ? html`

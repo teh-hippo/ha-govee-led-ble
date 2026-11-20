@@ -2,7 +2,7 @@
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 from .const import KELVIN_RANGE_1000_10000, KELVIN_STEP, WHOLE_BULB_GRAMMARS, ModelProfile, get_profile
 from .generated_protocol_adapter import (
@@ -233,6 +233,7 @@ class ParsedStaticWrite:
     kelvin: int | None = None
     kelvin_companion_rgb: tuple[int, int, int] | None = None
     brightness_pct: int | None = None
+    kind: Literal["colour", "projector"] = "colour"
 
     @property
     def whole_strip(self) -> bool:
@@ -248,6 +249,11 @@ def parse_static_write(
 
 
 def static_write_from_command(generated: Any, profile: ModelProfile) -> ParsedStaticWrite | None:
+    if profile.projector_grammar == "H6093":
+        from .protocol_core import H6093Projector
+
+        if isinstance(generated, H6093Projector.Activation):
+            return ParsedStaticWrite(operation=int(generated.body.sub_mode), segment_mask=None, kind="projector")
     if profile.command_grammar == "H6179":
         command = h6179_command_from_generated(generated)
         if command is None or command.operation != "mode" or command.values.get("mode") != "static":

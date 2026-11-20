@@ -127,8 +127,9 @@ def prepare_source_colour(
     writes = []
     for key in keys:
         source = _source(profile, key)
-        if source is None or source.control not in profile.boolean_controls:
+        if not profile.source_control_supported(source):
             raise ValueError("This source is unavailable")
+        assert source is not None
         if mode not in source_color_modes(source, profile):
             continue
         if source.native_control:
@@ -273,6 +274,8 @@ def has_segmented_sources(profile: ModelProfile) -> bool:
 
 
 def native_source_fields(profile: ModelProfile) -> dict[str, tuple[str, str]]:
+    if profile.projector_grammar is not None:
+        return {}
     fields = {
         f"{source.key}_{attribute}": (source.key, attribute)
         for source in profile.light_sources
@@ -296,8 +299,9 @@ def source_kelvin_hint_fields(profile: ModelProfile) -> frozenset[str]:
 
 
 def source_color_modes(source: LightSource | None, profile: ModelProfile) -> frozenset[str]:
-    if source is None or source.control not in profile.boolean_controls:
+    if not profile.source_control_supported(source):
         return frozenset({"onoff"})
+    assert source is not None
     if source.color_modes is not None:
         return source.color_modes
     modes: set[str] = set()
@@ -317,6 +321,10 @@ def source_color_modes(source: LightSource | None, profile: ModelProfile) -> fro
 
 
 def source_power_state(coordinator: GoveeBLECoordinator, key: str) -> bool | None:
+    if coordinator.profile.projector_grammar is not None:
+        from .projector_runtime import source_state
+
+        return source_state(coordinator, key)[0]
     source = _source(coordinator.profile, key)
     if (
         source is None
@@ -359,10 +367,16 @@ def source_field_fresh(coordinator: GoveeBLECoordinator, field: str) -> bool:
 
 
 async def async_set_source_enabled(coordinator: GoveeBLECoordinator, key: str, enabled: bool) -> None:
+    if coordinator.profile.projector_grammar is not None:
+        from .projector_runtime import source_request
+
+        await source_request(coordinator, key, enabled)
+        return
     profile = coordinator.native_presentation_profile
     source = _source(profile, key)
-    if source is None or source.control not in profile.boolean_controls:
+    if not profile.source_control_supported(source):
         raise HomeAssistantError(translation_domain=DOMAIN, translation_key="device_command_failed")
+    assert source is not None
     try:
         await coordinator.async_set_boolean_control(source.control, enabled)
         coordinator.async_set_updated_data(coordinator.data or {})
@@ -382,8 +396,9 @@ class SourceTurnOnTransaction:
         coordinator = self._coordinator
         profile = coordinator.profile
         source = _source(profile, self._key)
-        if source is None or source.control not in profile.boolean_controls:
+        if not profile.source_control_supported(source):
             raise ValueError("This source is unavailable")
+        assert source is not None
         modes = source_color_modes(source, profile)
         values = self._request
         segments = list(source.segments)

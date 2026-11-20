@@ -9,6 +9,36 @@ test.beforeEach(async ({ page }) => {
   await page.goto("/tests/browser/fixtures/palette-editor.html");
 });
 
+test("projector advanced layers can be created, reordered and removed through shared native controls", async ({ page }) => {
+  await page.evaluate(async () => {
+    const modulePath = "/src/custom-effect-editor.ts";
+    const { GoveeCustomEffectEditor } = await import(modulePath);
+    const contracts = await fetch("/tests/fixtures/backend-contracts.json").then(response => response.json());
+    const catalogue = contracts.responses.custom_catalogue.models.H6093;
+    const content = structuredClone(catalogue.templates.find((item: { id: string }) =>
+      item.id === "template:projector:advanced").content);
+    content.projector_layers[0].movement_speed = 11;
+    const editor = new GoveeCustomEffectEditor() as GoveeCustomEffectEditor;
+    editor.catalogue = catalogue;
+    editor.nativeContent = content;
+    editor.addEventListener("native-content-changed", ((event: CustomEvent<{ content: NativeEffectContent }>) => {
+      editor.nativeContent = event.detail.content;
+      editor.dataset.content = JSON.stringify(event.detail.content);
+    }) as EventListener);
+    document.body.replaceChildren(editor);
+  });
+  const editor = page.locator("govee-custom-effect-editor");
+  await editor.getByRole("button", { name: "Duplicate layer", exact: true }).click();
+  await expect(editor.getByRole("heading", { name: "Projector layer 2", exact: true })).toBeVisible();
+  await editor.getByRole("slider", { name: "Aurora movement", exact: true }).nth(1).press("ArrowRight");
+  await editor.getByRole("button", { name: "Move earlier", exact: true }).nth(1).click();
+  await expect.poll(async () => editor.evaluate(element =>
+    JSON.parse(element.dataset.content!).projector_layers.map((layer: { movement_speed: number }) => layer.movement_speed)
+  )).toEqual([12, 11]);
+  await editor.getByRole("button", { name: "Remove layer", exact: true }).first().click();
+  await expect(editor.getByRole("heading", { name: "Projector layer 2", exact: true })).toHaveCount(0);
+});
+
 async function mountFeedbackPanel(page: Page, model = "H7025", showFeedback = true): Promise<void> {
   await page.evaluate(async ({ model, showFeedback }) => {
     const modulePath = "/src/panel.ts";

@@ -5,6 +5,8 @@ speculative/h1ab2_music_write
 speculative/h1ab2_music_parameters
 speculative/h1ab2_paint_body
 speculative/h1ab2_diy_body
+speculative/h6093_projector
+speculative/h6093_status_reply
 speculative/h6182_command_write
 speculative/h6182_status_reply
 speculative/h6182_modern_status_reply

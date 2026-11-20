@@ -162,6 +162,7 @@ class ParsedColorModeResponse:
     right_bar_kelvin: int | None = None
     raw_mode: int | None = None
     source_values: dict[str, int] | None = None
+    native_projector: bool = False
     gradient: int | None = None
 
 
@@ -174,6 +175,19 @@ def _readback_kelvin(reported: int) -> int:
 
 def parse_color_mode(generated: Any, model: str, *, profile: ModelProfile | None = None) -> ParsedColorModeResponse:
     profile = profile or get_profile(model)
+    if profile.projector_grammar == "H6093":
+        from .protocol_core import H6093Projector
+
+        if (
+            getattr(getattr(generated, "domain", None), "name", None) == "colour_mode"
+            and getattr(generated.body, "mode", None) == H6093Projector.UploadKind.appearance
+        ):
+            return ParsedColorModeResponse(
+                mode=ParsedMode.COLOUR,
+                raw_mode=int(H6093Projector.UploadKind.appearance),
+                static_fields=frozenset(),
+                native_projector=True,
+            )
     if profile.status_grammar == "H6179":
         if not isinstance(generated, ParsedH6179Status) or generated.domain != "mode":
             return ParsedColorModeResponse()
@@ -362,7 +376,7 @@ def _parse_static_mode(detail: Any, profile: ModelProfile) -> ParsedColorModeRes
         rgb_color=_rgb_values(rgb)
         if rgb is not None
         and not (
-            profile.status_grammar in WHOLE_BULB_GRAMMARS | {"H6159", "H6181-modern", "H6182-modern", "H60B0"}
+            profile.status_grammar in WHOLE_BULB_GRAMMARS | {"H6093", "H6159", "H6181-modern", "H6182-modern", "H60B0"}
             and kelvin is not None
         )
         else None,

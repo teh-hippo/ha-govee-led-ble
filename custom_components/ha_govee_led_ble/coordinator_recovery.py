@@ -6,7 +6,7 @@ import time
 from collections.abc import AsyncIterator, Callable, Iterator, Mapping
 from contextlib import asynccontextmanager, nullcontext
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 from bleak.exc import BleakError
 from homeassistant.exceptions import HomeAssistantError
@@ -72,7 +72,7 @@ from .video_applicability import (
 )
 
 if TYPE_CHECKING:
-    from .coordinator import GoveeBLECoordinator
+    pass
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -122,11 +122,6 @@ class PreparedStaticRecovery:
 
 
 class _RecoveryMixin(_CoordinatorBase):
-    @property
-    def _as_coordinator(self) -> GoveeBLECoordinator:
-        # The native-control helpers are typed on the concrete coordinator this mixin is part of.
-        return cast("GoveeBLECoordinator", self)
-
     def require_static_baseline(self) -> PriorControlState:
         if self._pre_mode_snapshot is None:
             raise HomeAssistantError(translation_domain=DOMAIN, translation_key="recovery_not_ready")
@@ -199,7 +194,9 @@ class _RecoveryMixin(_CoordinatorBase):
             self._discard_static_baseline()
             return False
         if (
-            not self.identity_fields_confirmed(
+            profile.projector_grammar is not None
+            and not self.identity_fields_confirmed(frozenset({"pact"}))
+            or not self.identity_fields_confirmed(
                 profile.profile_identity_fields | frozenset(video_identity_fields(profile))
             )
             or profile.segment_count_ic_divisor is not None
@@ -219,7 +216,10 @@ class _RecoveryMixin(_CoordinatorBase):
         subscription = self._notification_token
         observations = {field: self._field_revisions.get(field, 0) for field in ("color_mode", "segment_colors")}
         async with self._lock:
-            await self._ensure_connected()
+            client = await self._ensure_connected()
+            profile = self._pre_mode_profile
+            if self._pre_mode_needs_qualification and profile is not None and profile.projector_grammar is not None:
+                await self._as_coordinator._async_require_identity(client, frozenset({"pact"}))
         if foreground != self._control_arbiter.foreground_generation:
             raise ValueError("Static restoration ownership changed; refresh and retry")
         if subscription is not None and subscription is not self._notification_token:
@@ -328,6 +328,14 @@ class _RecoveryMixin(_CoordinatorBase):
                 raise HomeAssistantError(translation_domain=DOMAIN, translation_key="recovery_read_failed")
         if not same_control_profile(profile, self.profile):
             raise HomeAssistantError(translation_domain=DOMAIN, translation_key="recovery_not_ready")
+        if self.color_mode is ParsedMode.COLOUR and profile.projector_grammar is not None:
+            from .projector_runtime import prepare_baseline
+
+            await prepare_baseline(self._as_coordinator)
+            projector_baseline = self.capture_effect_control_state()
+            if projector_baseline.projector_appearance is None:
+                raise HomeAssistantError(translation_domain=DOMAIN, translation_key="recovery_not_ready")
+            return self._qualify_static_baseline(projector_baseline)
         if self.color_mode is not ParsedMode.COLOUR:
             baseline = self._pre_mode_snapshot
         else:
@@ -389,6 +397,10 @@ class _RecoveryMixin(_CoordinatorBase):
                     and (not self._static_colour_known or scalar_field is not None and not fresh(scalar_field))
                 ):
                     baseline = None
+        return self._qualify_static_baseline(baseline)
+
+    def _qualify_static_baseline(self, baseline: PriorControlState | None) -> PriorControlState:
+        profile, transition = self.profile, self._mode_transition
         if baseline is None or self._prepare_static_colour(baseline) is None:
             _LOGGER.debug(
                 "Static effect admission rejected model=%s mode=%s baseline_mode=%s power_known=%s "
@@ -423,6 +435,14 @@ class _RecoveryMixin(_CoordinatorBase):
 
     def _same_static_appearance(self, target: PriorControlState, current: PriorControlState) -> bool:
         profile = self.profile
+        if profile.projector_grammar is not None:
+            return (
+                current.mode == target.mode == "colour"
+                and current.is_on == target.is_on
+                and current.brightness_pct == target.brightness_pct
+                and target.projector_appearance is not None
+                and target.projector_appearance == current.projector_appearance
+            )
         fields = (
             "is_on",
             "brightness_pct",
@@ -530,18 +550,30 @@ class _RecoveryMixin(_CoordinatorBase):
             is_on=self.is_on,
             brightness_pct=self.brightness_pct,
             rgb_color=self.rgb_color,
+            projector_appearance=(
+                self.projector_appearance
+                if self.projector_mode_active
+                and self._projector_token is self._notification_token
+                and self._notification_token is not None
+                and self._projector_generation == self._profile_generation
+                else None
+            ),
             color_temp_kelvin=self.color_temp_kelvin,
             static_rgb_known=self._static_rgb_known
             and (self.segment_state_source == "observed" or delivered_segments)
             or not self.profile.supports_segments
+            and not self.projector_mode_active
             and self._static_colour_known
             and self.color_temp_kelvin is None,
             static_gradual=self.static_gradual if self.color_mode is ParsedMode.COLOUR and gradual_observed else None,
             static_colour_observed=self.color_mode is ParsedMode.COLOUR
             and (
-                observed_segments
+                self.projector_appearance_observed
+                and self.source_field_fresh("projector_appearance")
+                or observed_segments
                 and self.profile.can_read(ReadDomain.SEGMENTS)
                 or not self.profile.supports_segments
+                and not self.projector_mode_active
                 and self._static_colour_known
                 and self.source_field_fresh("color_mode")
                 and self.source_field_fresh("color_temp_kelvin" if self.color_temp_kelvin is not None else "rgb_color")
@@ -1300,6 +1332,21 @@ class _RecoveryMixin(_CoordinatorBase):
     def _prepare_static_colour(self, state: PriorControlState) -> PreparedStaticRecovery | None:
         if state.mode != "colour":
             return None
+        if self.profile.projector_grammar is not None:
+            if state.projector_appearance is None:
+                return None
+            from .projector_protocol import build_appearance
+
+            packets = (
+                build_power(True, self.model),
+                build_brightness(state.brightness_pct, self.model),
+                *build_appearance(state.projector_appearance, self.profile),
+            )
+            for packet in packets:
+                require_profile_packet(packet, self.profile)
+            return PreparedStaticRecovery(
+                state, packets, False, self.profile, self._profile_generation, self._notification_token
+            )
         zones = self.profile.boolean_controls.intersection(NATIVE_ZONE_CONTROLS)
         flags = {name: getattr(state, name) for name in zones}
         if any(value is None for value in flags.values()):
@@ -1583,6 +1630,8 @@ class _RecoveryMixin(_CoordinatorBase):
                 write_guard=guard,
                 retry_allowed=lambda: self.control_write_attempts == attempts,
                 packet_on_write=attempted,
+                require_upload_ack=prepared.state.projector_appearance is not None,
+                upload_ack_index=len(prepared.packets) - 2 if prepared.state.projector_appearance is not None else None,
             )
         except asyncio.CancelledError:
             request.mark_interrupted()
@@ -1597,6 +1646,10 @@ class _RecoveryMixin(_CoordinatorBase):
                 _LOGGER.debug("Static restoration reconciliation failed", exc_info=True)
             raise
         request.complete(colour_requested=True)
+        if prepared.state.projector_appearance is not None:
+            from .projector_runtime import install_appearance
+
+            install_appearance(self._as_coordinator, prepared.state.projector_appearance, observed=False)
         return token
 
     async def _restore_static_colour(
@@ -1606,6 +1659,21 @@ class _RecoveryMixin(_CoordinatorBase):
         if prepared is None:
             return False
         subscription = await self._write_static_restore(prepared)
+        if state.projector_appearance is not None:
+            from .projector_runtime import current_appearance, prepare_baseline
+
+            await prepare_baseline(self._as_coordinator)
+            return complete and self._retain_recovery_appearance(
+                {
+                    "is_on": True,
+                    "brightness_pct": state.brightness_pct,
+                    "color_mode": ParsedMode.COLOUR,
+                    "projector_appearance": state.projector_appearance,
+                },
+                prepared.generation,
+                subscription,
+                lambda: current_appearance(self._as_coordinator) == state.projector_appearance,
+            )
         request = RefreshRequest(
             on=True if self.profile.can_read(ReadDomain.POWER) else None,
             brightness=state.brightness_pct if self.profile.can_read(ReadDomain.BRIGHTNESS) else None,

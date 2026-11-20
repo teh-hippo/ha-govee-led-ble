@@ -1221,17 +1221,53 @@ export function decodeEffectContent(value: unknown): EffectContent {
   }
 }
 
+function projectorLayer(value: unknown): NonNullable<NativeEffectContent["projector_layers"]>[number] {
+  const layer = objectValue(value, "projector layer");
+  const source = (value: unknown) => {
+    const source = objectValue(value, "projector source");
+    const enabled = booleanValue(source.enabled, "projector source enabled");
+    const palette = arrayValue(source.palette, "projector palette", 8).map(value => rgbValue(value, "projector colour"));
+    if (enabled && !palette.length) invalid("enabled projector sources require a palette");
+    return {
+      enabled, palette,
+      brightness: integerValue(source.brightness, "projector brightness", 0, 100),
+      pattern: integerValue(source.pattern, "projector pattern", 0, 4),
+      speed: integerValue(source.speed, "projector speed", 0, 100),
+    };
+  };
+  const stars = objectValue(layer.stars, "projector stars");
+  const enabled = booleanValue(stars.enabled, "stars enabled");
+  const flicker_enabled = booleanValue(stars.flicker_enabled, "star flicker");
+  const movement_enabled = booleanValue(stars.movement_enabled, "star movement");
+  return {
+    movement_speed: integerValue(layer.movement_speed, "projector movement", 0, 100),
+    direction: integerValue(layer.direction, "projector direction", 0, 1),
+    coarse: source(layer.coarse), fine: layer.fine === null ? null : source(layer.fine),
+    stars: {
+      enabled, flicker_enabled, movement_enabled,
+      brightness: integerValue(stars.brightness, "star brightness", 0, enabled ? 100 : 255),
+      flicker_speed: integerValue(stars.flicker_speed, "star flicker speed", 0, flicker_enabled ? 100 : 255),
+      movement_speed: integerValue(stars.movement_speed, "star movement speed", 0, movement_enabled ? 100 : 255),
+    },
+    duration: integerValue(layer.duration, "projector duration", 0, 65535),
+    opaque: hexString(layer.opaque, "projector opaque"),
+  };
+}
+
 function nativeEffectContent(content: Record<string, unknown>): NativeEffectContent {
-  const model = enumString(content.model, ["H60A6", "H607C", "H1771", "H60B0", "H60B2", "H1AB2"], "native model");
+  const model = enumString(content.model, ["H60A6", "H607C", "H1771", "H60B0", "H60B2", "H1AB2", "H6093"], "native model");
   const zoned = model !== "H60A6";
   const family = integerValue(content.family, "native family", 0, 65535);
   const revision = model === "H60B0" ? integerValue(content.revision, "native revision", 0, 3) : undefined;
   const combined = model === "H60B0" && family === 81;
   if ((model === "H60A6" && family !== 797 && family !== 798) ||
       (model === "H607C" && family > 255) || (model === "H1771" && family !== 957) ||
-      (model === "H60B2" && family !== 803) || (model === "H1AB2" && family !== 948)) invalid("unsupported native family");
+      (model === "H60B2" && family !== 803) || (model === "H1AB2" && family !== 948) ||
+      (model === "H6093" && family !== 712)) invalid("unsupported native family");
   const layerValues = arrayValue(content.layers, "native layers", 255);
-  if (!layerValues.length && !combined) invalid("native effects require at least one layer");
+  if (!layerValues.length && !combined && model !== "H6093") invalid("native effects require at least one layer");
+  if (model === "H6093" && layerValues.length) invalid("projector content cannot contain other layer kinds");
+  if (model !== "H6093" && content.projector_layers !== undefined) invalid("projector layers require their native model");
   if (zoned && layerValues.length > (model === "H60B0" ? 3 : 2)) invalid("native zoned effects cannot add layers");
   if (model === "H60B0" && (
     combined ? revision !== 0 || layerValues.length !== 0
@@ -1244,6 +1280,13 @@ function nativeEffectContent(content: Record<string, unknown>): NativeEffectCont
     kind: "native_effect",
     model,
     family,
+    ...(model === "H6093" ? {
+      projector_layers: (() => {
+        const layers = arrayValue(content.projector_layers, "projector layers", 255).map(projectorLayer);
+        if (!layers.length) invalid("projector effects require at least one layer");
+        return layers;
+      })(),
+    } : {}),
     layers: layerValues.map(value => {
       const layer = objectValue(value, "native layer");
       const type = enumString(layer.type, ["diy", "paint", "opaque"], "native layer type");
