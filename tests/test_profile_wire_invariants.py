@@ -107,6 +107,8 @@ def _consume_status(coordinator: GoveeBLECoordinator, frame: bytes) -> None:
 
 # Runtime qualification contexts that produce distinct effective profiles through device_profile().
 _QUALIFIED_CONTEXTS: tuple[tuple[str, str, int | None, int | None, str | None, str | None], ...] = (
+    ("H6093-original", "H6093", 1, 1, "1.00.16", "3.03.02"),
+    ("H6093-expanded-pact1", "H6093", 1, 2, "1.00.16", "3.03.02"),
     ("H619A-bootstrap", "H619A", None, None, None, None),
     ("H60B0-bootstrap", "H60B0", None, None, None, None),
     ("H60B0-pact1", "H60B0", 1, 1, "1.00.12", "3.05.01"),
@@ -310,6 +312,8 @@ def _status_root_type(profile: ModelProfile):
 
 
 def _status_color_mode_enum(profile: ModelProfile):
+    if profile.status_grammar == "H6093":
+        return protocol_core.H600aStatusReply.ColorMode
     if profile.status_grammar == "H6046":
         return protocol_core.H6046CommandWrite.ModeSel
     if profile.bulk_status_grammar == "H1771":
@@ -397,6 +401,8 @@ def _status_frames_for_domain(domain: ReadDomain, model: str, profile: ModelProf
             _xor(bytes.fromhex("acff") + record[12:].ljust(17, b"\x00")),
         )
     if domain is ReadDomain.POWER:
+        if profile.status_grammar == "H6093":
+            return (_status(0x34, b"\x40\x32\x00\x00\x32"),)
         return (_status(0x01, b"\x01"),)
     if domain is ReadDomain.BRIGHTNESS:
         return (_status(0x04, b"\x32"),)
@@ -1154,6 +1160,7 @@ def test_static_colour_and_kelvin_status_readback(hass, model: str, profile: Mod
     color_mode_enum = _status_color_mode_enum(profile)
     static_byte = int(getattr(color_mode_enum, "static", getattr(color_mode_enum, "static_colour", None)))
     if profile.status_grammar in WHOLE_BULB_GRAMMARS | {
+        "H6093",
         "H6179",
         "H60B0",
         "H6159",
@@ -1182,7 +1189,7 @@ def test_static_colour_and_kelvin_status_readback(hass, model: str, profile: Mod
             body = (
                 bytes([static_byte, 255, 255, 255]) + kelvin_bytes
                 if profile.status_grammar
-                in WHOLE_BULB_GRAMMARS | {"H6179", "H60B0", "H6159", "H6181-modern", "H6182-modern"}
+                in WHOLE_BULB_GRAMMARS | {"H6093", "H6179", "H60B0", "H6159", "H6181-modern", "H6182-modern"}
                 else bytes([static_byte, 1]) + kelvin_bytes
             )
             if profile.status_grammar == "H6046":
@@ -1204,7 +1211,7 @@ def test_static_colour_and_kelvin_status_readback(hass, model: str, profile: Mod
             bad_body = (
                 bytes([static_byte, 255, 255, 255]) + bad_bytes
                 if profile.status_grammar
-                in WHOLE_BULB_GRAMMARS | {"H6179", "H60B0", "H6159", "H6181-modern", "H6182-modern"}
+                in WHOLE_BULB_GRAMMARS | {"H6093", "H6179", "H60B0", "H6159", "H6181-modern", "H6182-modern"}
                 else bytes([static_byte, 1]) + bad_bytes
             )
             if profile.status_grammar == "H6046":

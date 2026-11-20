@@ -117,7 +117,7 @@ def test_native_summaries_classify_every_model_and_scene():
                 summary = item_summary(item)
                 assert summary["native_workflow"] == item.content.workflow
                 assert summary["model"] == item.content.model
-    for model in ("H1771", "H60A6"):
+    for model in ("H1771", "H60A6", "H6093"):
         scene = next(entry for entry in MODEL_SCENES[model].values() if entry.scene_type == 5 and entry.param)
         content = _scene_content(scene, CatalogueRef(model, scene.scene_id, scene.effect_id), None, None)
         summary = item_summary(LibraryItem.new("Scene", content))
@@ -205,6 +205,7 @@ def test_model_aware_catalogue_includes_supported_models_and_legacy_h617a_view()
         "H6072",
         "H6076",
         "H607C",
+        "H6093",
         "H6097",
         "H6099",
         "H60A1",

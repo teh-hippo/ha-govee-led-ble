@@ -31,6 +31,7 @@ from .protocol_core import (
     H607cEffectUpload,
     H1771Bulk,
     H1771EffectUpload,
+    H6093Projector,
     H6181DiyBody,
     _parse_xor_frame,
 )
@@ -55,6 +56,37 @@ def _check_low_blue_light_packet(frame: bytes, profile: ModelProfile) -> bool:
         if not any(parse_setting(frame, profile, kind).parsed is not None for kind in ("write", "query")):
             raise ValueError("Invalid low-blue-light setting packet")
         return True
+    return False
+
+
+def _check_projector_packet(frame: bytes, profile: ModelProfile) -> bool:
+    if profile.projector_grammar != "H6093":
+        return False
+    power = _parse_xor_frame(
+        frame, "power", {"power": ("h6093_projector.setting_write", H6093Projector.SettingWrite)}
+    ).parsed
+    if power is not None:
+        if power.body.selector != H6093Projector.Setting.projection_power or "power" not in (
+            profile.command_operations or ()
+        ):
+            raise ValueError("Projection power is outside the profile")
+        return True
+    query = _parse_xor_frame(
+        frame, "query", {"query": ("h6093_projector.power_query", H6093Projector.PowerQuery)}
+    ).parsed
+    if query is not None:
+        if not profile.can_read(ReadDomain.POWER):
+            raise ValueError("Projection power readback is outside the profile")
+        return True
+    for kind, allowed, root in (
+        ("activation", profile.projector_control_revision is not None, H6093Projector.Activation),
+        ("query", profile.projector_control_revision == 0, H6093Projector.ReadQuery),
+    ):
+        parsed = _parse_xor_frame(frame, kind, {kind: (f"h6093_projector.{kind}", root)}).parsed
+        if parsed is not None:
+            if not allowed or "projector" not in (profile.command_operations or ()):
+                raise ValueError("Projector operation requires the qualified revision")
+            return True
     return False
 
 
@@ -456,6 +488,17 @@ def _check_upload_packet(frame: bytes, profile: ModelProfile) -> bool:
     ):
         return True
     if profile.command_operations is not None and "effect_upload" in profile.command_operations:
+        if upload is not None and profile.effect_grammar == "H6093":
+            if upload.index == 0:
+                kinds = H6093Projector.UploadKind
+                allowed = {
+                    int(kinds.scene): profile.supports_scenes,
+                    int(kinds.diy): profile.supports_custom_effects,
+                    int(kinds.appearance): profile.projector_control_revision is not None,
+                }
+                if not allowed.get(upload.body.subtype, False):
+                    raise ValueError("Projector upload command is outside profile capabilities")
+            return True
         if upload is not None and profile.effect_grammar == "H60B0":
             if upload.index == 0:
                 kinds = H60b0CommandAck.UploadKind
@@ -543,6 +586,7 @@ def require_profile_packet(frame: bytes, profile: ModelProfile) -> None:
     apply to this profile.
     """
     for check in (
+        _check_projector_packet,
         _check_low_blue_light_packet,
         _check_ordinary_setting_packet,
         _check_native_setting_packet,

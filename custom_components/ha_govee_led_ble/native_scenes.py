@@ -21,6 +21,7 @@ from .protocol_core import (
     H607cSceneBody,
     H1771DiyBody,
     H1771EffectUpload,
+    H6093Projector,
     serialize_native_body,
 )
 from .scenes import SceneEntry, SceneSpeed, scene_for_profile, scene_selector_code
@@ -29,6 +30,10 @@ from .transport import fragment_a3, fragment_a4
 
 def apply_scene_speed(payload: bytes, speed: SceneSpeed, index: int, *, scene_type: int = 2) -> bytes:
     """Apply one speed option through the generated layered-scene fields."""
+    if speed.projector_speeds:
+        from .projector_protocol import apply_projector_speed
+
+        return apply_projector_speed(payload, speed, index)
     if payload[:1] == b"\x51" and scene_type == 6:
         from .h60b0_effects import apply_combined_speed
 
@@ -79,6 +84,13 @@ def _speed_value(options: tuple[int, ...], index: int) -> int:
 
 
 def _parse_native_scene_body(payload: bytes, family: int) -> Any:
+    if family == H6093Projector.CatalogueFamily.projector:
+        from .projector_protocol import decode_projector
+
+        decode_projector(payload)
+        root = H6093Projector.from_bytes(payload)
+        root._read()
+        return root
     if family == int(H1771DiyBody.CatalogueFamily.native_scene):
         try:
             root = H1771DiyBody.Scene(KaitaiStream(io.BytesIO(payload)), _root=H1771DiyBody())
@@ -107,6 +119,10 @@ def native_scene_upload_route(scene: SceneEntry, profile: ModelProfile) -> tuple
         return None
     if profile.command_grammar == "H6179" or profile.selector_only_scene_bits is not None:
         return None
+    if profile.effect_grammar == "H6093" and scene.scene_type == 5:
+        if scene.diy_effect_codes == (int(H6093Projector.CatalogueFamily.projector),):
+            return "a3", int(H6093Projector.UploadKind.scene)
+        raise ValueError("Native scene has no documented projector family")
     if profile.effect_grammar == "H1771" and scene.scene_type == 5:
         if scene.diy_effect_codes == (int(H1771DiyBody.CatalogueFamily.native_scene),):
             return "a3", int(H1771EffectUpload.UploadKind.native_diy)
@@ -175,6 +191,8 @@ def build_native_scene_packets(
         native = _parse_native_scene_body(payload, scene.diy_effect_codes[0])
         if profile.effect_grammar == "H1771":
             payload = serialize_native_body(native.body)
+        elif profile.effect_grammar == "H6093":
+            payload = payload[len(native.marker) :]
     if payload and scene.scene_type == int(H607cSceneBody.CatalogueType.layered_scene):
         if profile.effect_grammar == "H60B0":
             from .h60b0_effects import combined_upload_body

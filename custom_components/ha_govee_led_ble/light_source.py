@@ -43,7 +43,7 @@ class GoveeBLESourceLight(GoveeBLEEntity, LightEntity):
     def available(self) -> bool:
         profile = self.coordinator.native_presentation_profile
         source = self._source(profile)
-        return source is not None and source.control in profile.boolean_controls and super().available
+        return profile.source_control_supported(source) and super().available
 
     @property
     def is_on(self) -> bool | None:
@@ -51,6 +51,8 @@ class GoveeBLESourceLight(GoveeBLEEntity, LightEntity):
 
     @property
     def assumed_state(self) -> bool:
+        if self.coordinator.profile.projector_grammar is not None:
+            return not self.coordinator.projector_appearance_observed
         source = self._source(self.coordinator.profile)
         if source is not None and source.native_control:
             return not all(
@@ -88,6 +90,11 @@ class GoveeBLESourceLight(GoveeBLEEntity, LightEntity):
 
     @property
     def brightness(self) -> int | None:
+        if self.coordinator.profile.projector_grammar is not None:
+            from .projector_runtime import source_state
+
+            value = source_state(self.coordinator, self._key)[1]
+            return round(value * 255 / 100) if value is not None else None
         source = self._source(self.coordinator.profile)
         if source is not None and source.native_control:
             value = getattr(self.coordinator, f"{source.key}_brightness", None)
@@ -112,6 +119,8 @@ class GoveeBLESourceLight(GoveeBLEEntity, LightEntity):
     @property
     def color_mode(self) -> ColorMode | None:
         modes = self.supported_color_modes
+        if self.coordinator.profile.projector_grammar is not None:
+            return ColorMode.RGB if ColorMode.RGB in modes else next(iter(modes))
         source = self._source(self.coordinator.profile)
         if f"source_colour_{self._key}" in self.coordinator._h607c_uncertain_state_fields:
             return ColorMode.UNKNOWN
@@ -140,6 +149,10 @@ class GoveeBLESourceLight(GoveeBLEEntity, LightEntity):
 
     @property
     def rgb_color(self) -> tuple[int, int, int] | None:
+        if self.coordinator.profile.projector_grammar is not None:
+            from .projector_runtime import source_state
+
+            return source_state(self.coordinator, self._key)[2]
         if self.color_mode is not ColorMode.RGB or self.coordinator.segment_state_source == "initial":
             return None
         values = self._values(self.coordinator.segment_colors)

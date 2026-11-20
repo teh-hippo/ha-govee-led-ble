@@ -13,7 +13,7 @@ import { decodeLibrarySnapshot } from "../../src/validation";
 
 test("native saved items retain workflow through listing, selection and summary adoption", () => {
   const catalogues = decodeCustomCataloguePayload(backendContracts.responses.custom_catalogue, decodeEffectContent).models;
-  for (const model of ["H1AB2", "H607C", "H60B0", "H1771", "H60A6"] as const) {
+  for (const model of ["H1AB2", "H607C", "H60B0", "H1771", "H60A6", "H6093"] as const) {
     const catalogue = catalogues[model];
     for (const template of catalogue.templates ?? []) {
       if (template.content.kind !== "native_effect") continue;
@@ -37,6 +37,26 @@ test("native saved items retain workflow through listing, selection and summary 
         .some(entry => entry.key === `saved:${saved.id}`)).toBe(false);
     }
   }
+});
+
+test("projector content retains independent optics and validates their native fields", () => {
+  const catalogue = decodeCustomCataloguePayload(backendContracts.responses.custom_catalogue, decodeEffectContent).models.H6093;
+  for (const template of catalogue.templates ?? []) {
+    const content = template.content as NativeEffectContent;
+    expect(decodeEffectContent(content)).toEqual(content);
+    expect(nativeEffectWorkflow(content)).toBe(content.preset_id === null ? "advanced" : "single");
+    expect(effectContentEligible(content, catalogue, "H6093", 0)).toBe(true);
+    expect(effectContentEligible(content, catalogue, "H600A", 0)).toBe(false);
+  }
+  const content = structuredClone(catalogue.templates![0].content) as NativeEffectContent;
+  content.projector_layers![0].coarse.palette = [[8, 9, 10], [11, 12, 13]];
+  content.projector_layers![0].fine = { ...content.projector_layers![0].coarse, palette: [[1, 2, 3]] };
+  content.projector_layers![0].stars.brightness = 40;
+  expect(decodeEffectContent(content)).toEqual(content);
+  const invalid = structuredClone(content);
+  invalid.projector_layers![0].coarse.palette = [];
+  expect(() => decodeEffectContent(invalid)).toThrow("palette");
+  expect(() => decodeEffectContent({ ...content, model: "H600A" })).toThrow();
 });
 
 test("single-section native palettes use catalogue templates and the single workflow", () => {

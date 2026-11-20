@@ -157,6 +157,12 @@ NATIVE_ZONE_CONTROLS = (
     "side_enabled",
     "bottom_enabled",
 )
+PROJECTOR_SOURCE_CONTROLS = (
+    "aurora_enabled",
+    "coarse_aurora_enabled",
+    "fine_aurora_enabled",
+    "stars_enabled",
+)
 H607C_NATIVE_ZONES = (("pole", 8, 144), ("base", 5, 30))
 
 
@@ -219,6 +225,8 @@ class ModelProfile:
     # Effect semantics require evidence independent of basic command compatibility.
     effect_grammar: str | None = None
     native_effect_revision: int = 0
+    projector_grammar: str | None = None
+    projector_control_revision: int | None = None
     # None permits the exact-SKU workflow ceiling; a set narrows it for this device.
     effect_workflows: frozenset[str] | None = None
     video_grammar: str | None = None
@@ -364,6 +372,18 @@ class ModelProfile:
             and self.command_operations <= {"power", "brightness"}
         )
 
+    def source_control_supported(self, source: LightSource | None) -> bool:
+        return (
+            source is not None
+            and source in self.light_sources
+            and (
+                source.control in self.boolean_controls
+                or self.projector_grammar is not None
+                and "projector" in (self.command_operations or ())
+                and source.control in PROJECTOR_SOURCE_CONTROLS
+            )
+        )
+
     @property
     def whole_device_mask(self) -> int:
         return self.whole_device_mask_override or (1 << self.segment_count) - 1
@@ -394,7 +414,7 @@ class ModelProfile:
             or sum(bool(source.master_brightness) for source in self.light_sources) > 1
             or any(
                 not source.key
-                or source.control not in NATIVE_ZONE_CONTROLS
+                or source.control not in (*NATIVE_ZONE_CONTROLS, *PROJECTOR_SOURCE_CONTROLS)
                 or type(source.master_brightness) is not bool
                 or type(source.native_control) is not bool
                 or type(source.palette_restore) is not bool
@@ -940,7 +960,65 @@ def _h6181_legacy_colour_wire(packet: bytes) -> bytes:
     return h6181_outbound_transform(packet, colour_effect=True)
 
 
+def _projection_power_wire(packet: bytes) -> bytes:
+    from .projector_protocol import projection_power_wire
+
+    return projection_power_wire(packet)
+
+
 MODEL_PROFILES: dict[str, ModelProfile] = {
+    "H6093": ModelProfile(
+        "H6093 Star Light Projector (Aurora)",
+        confirmation_issue=623,
+        reconciles_marker_pact=True,
+        profile_pact_dependent=True,
+        projector_grammar="H6093",
+        light_sources=(
+            LightSource("aurora", "aurora_enabled", (), color_modes=frozenset({"rgb"}), native_control=True),
+            LightSource(
+                "coarse_aurora", "coarse_aurora_enabled", (), color_modes=frozenset({"onoff"}), native_control=True
+            ),
+            LightSource(
+                "fine_aurora", "fine_aurora_enabled", (), color_modes=frozenset({"onoff"}), native_control=True
+            ),
+            LightSource("stars", "stars_enabled", (), color_modes=frozenset({"brightness"}), native_control=True),
+        ),
+        command_grammar="H600A",
+        command_ack_grammar="H600A",
+        status_grammar="H6093",
+        outbound_transform=_projection_power_wire,
+        effect_grammar="H6093",
+        command_operations=frozenset({"power", "brightness", "static", "scene", "diy", "effect_upload", "projector"}),
+        colour_mode_query_selector=1,
+        read_domains=frozenset(
+            {
+                ReadDomain.POWER,
+                ReadDomain.BRIGHTNESS,
+                ReadDomain.COLOUR_MODE,
+                ReadDomain.FIRMWARE,
+                ReadDomain.HARDWARE,
+                ReadDomain.PACT,
+            }
+        ),
+        setup_required_read_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS}),
+        supports_rgb=True,
+        supports_color_temperature=True,
+        color_temp_range=KELVIN_RANGE_2000_9000,
+        static_readback_echoes_color=True,
+        static_readback_kelvin=True,
+        static_readback_zero_kelvin_is_rgb=True,
+        supports_custom_effects=True,
+        supports_scenes=True,
+        supports_advanced_effects=True,
+        supports_multi_layered_effects=True,
+        diy_requires_upload_ack=True,
+        effect_readback="diy_code_only",
+        whole_device_mask_override=1,
+        connection_idle_timeout=IDLE_TIMEOUT_BULB,
+        scene_catalogue_sku="H6093",
+        music_modes=(),
+        effect_retry_after_upload=False,
+    ),
     "H600A": ModelProfile(
         "H600A Smart LED Bulb",
         support_quality=SupportQuality.SUPPORTED,
@@ -3027,6 +3105,7 @@ PERCENT_BRIGHTNESS_STATUS_GRAMMARS = frozenset(
         "H1771",
         "H60B0",
         "H600A",
+        "H6093",
         "H6046",
         "H6097",
         "H6099",
@@ -3563,6 +3642,13 @@ def device_profile(
     hardware: str | None = None,
 ) -> ModelProfile:
     """Resolve exact-product capabilities from evidenced revision context."""
+    if model == "H6093":
+        revision = 0 if (pact_type, pact_code) == (1, 1) else 1 if (pact_type, pact_code) in {(1, 2), (2, 1)} else None
+        profile = get_profile(model)
+        sources = tuple(
+            source for source in profile.light_sources if revision != 0 or source.key in {"aurora", "stars"}
+        )
+        return replace(profile, projector_control_revision=revision, light_sources=sources)
     if model == "H6159":
         from .protocol_transforms import whole_rgb_outbound_transform
 

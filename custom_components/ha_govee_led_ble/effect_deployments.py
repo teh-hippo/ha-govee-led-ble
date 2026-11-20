@@ -49,6 +49,7 @@ from .effect_persistence_validation import validate_persisted_rgb as _validate_r
 from .effect_schema_migration import LegacyEffectMigrationError, migrate_effect_content_v1
 from .effect_store import HomeAssistantVersionedDocumentStore, VersionedDocumentStore
 from .music_semantics import music_params_for_mode
+from .projector import ProjectorAppearance
 
 DEPLOYMENT_STORE_VERSION: Final = 2
 DEPLOYMENT_STORE_MINOR_VERSION: Final = 0
@@ -116,6 +117,7 @@ class PriorControlState:
     is_on: bool
     brightness_pct: int
     rgb_color: tuple[int, int, int]
+    projector_appearance: ProjectorAppearance | None = None
     color_temp_kelvin: int | None = None
     static_rgb_known: bool = False
     static_gradual: bool | None = None
@@ -195,6 +197,8 @@ class PriorControlState:
     static_colour_observed: bool = False
 
     def __post_init__(self) -> None:
+        if self.projector_appearance is not None and not isinstance(self.projector_appearance, ProjectorAppearance):
+            raise EffectStorageError("invalid prior projector appearance")
         self._validate_flags_and_bars()
         self._validate_video_parameters()
         self._validate_music_body()
@@ -566,6 +570,11 @@ class PriorControlState:
         return {
             "mode": self.mode,
             **(
+                {"projector_appearance": self.projector_appearance.to_dict()}
+                if self.projector_appearance is not None
+                else {}
+            ),
+            **(
                 {"video_restore_controls": list(self.video_restore_controls)}
                 if self.video_restore_controls is not None
                 else {}
@@ -677,6 +686,12 @@ class PriorControlState:
 
     @classmethod
     def from_dict(cls, raw: Mapping[str, Any]) -> PriorControlState:
+        try:
+            projector_appearance = (
+                ProjectorAppearance.from_dict(raw["projector_appearance"]) if "projector_appearance" in raw else None
+            )
+        except (ValueError, TypeError, KeyError, AttributeError) as error:
+            raise EffectStorageError("invalid prior projector appearance") from error
         music_body = raw.get("music_body")
         if music_body is not None:
             if not isinstance(music_body, str) or not 0 < len(music_body) <= 2 * (255 * 17 - 3):
@@ -726,6 +741,7 @@ class PriorControlState:
             raise EffectStorageError("invalid prior segment Kelvin")
         return cls(
             mode=_required_str(raw, "mode"),
+            projector_appearance=projector_appearance,
             video_restore_controls=tuple(raw["video_restore_controls"]) if "video_restore_controls" in raw else None,
             is_on=_required_bool(raw, "is_on"),
             brightness_pct=_required_int(raw, "brightness_pct"),

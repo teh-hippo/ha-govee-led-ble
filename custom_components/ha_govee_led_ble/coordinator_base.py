@@ -3,7 +3,7 @@
 import asyncio
 from collections.abc import Awaitable, Callable, Generator, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager, contextmanager
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from bleak import BleakClient
 from homeassistant.exceptions import HomeAssistantError
@@ -16,6 +16,7 @@ from .coordinator_status import ParsedMode, StatusDomain
 from .coordinator_upload import PendingUploadAck
 
 if TYPE_CHECKING:
+    from .coordinator import GoveeBLECoordinator
     from .coordinator_modes import ModeTransitionPurpose, _ModeTransition
     from .coordinator_recovery import PreparedStaticRecovery
     from .coordinator_refresh import RefreshRequest
@@ -26,6 +27,7 @@ if TYPE_CHECKING:
     from .low_blue_light import LowBlueLightState
     from .music_commands import MusicWriteSequence
     from .native_profile_controls import ProfileWriter
+    from .projector import ProjectorAppearance
     from .reply_pacing import ReplyGate
 
 
@@ -35,6 +37,10 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     Declares the fields and methods that ``GoveeBLECoordinator`` populates so the timer
     mixin type-checks without importing the concrete coordinator. No ``__init__`` here.
     """
+
+    @property
+    def _as_coordinator(self) -> GoveeBLECoordinator:
+        return cast("GoveeBLECoordinator", self)
 
     brightness_pct: int
     bottom_brightness: int | None
@@ -126,6 +132,14 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     _brightness_pct_known: bool
     _power_known: bool
     _static_colour_known: bool
+    projector_appearance: ProjectorAppearance | None
+    projector_appearance_observed: bool
+    projector_mode_active: bool
+    _projector_token: object | None
+    _projector_generation: int
+    _projector_profile: ModelProfile | None
+    _projector_reply: asyncio.Future[ProjectorAppearance] | None
+    _projector_collector: BulkStatusCollector | None
 
     _profile_generation: int
     _authorization_generation: int

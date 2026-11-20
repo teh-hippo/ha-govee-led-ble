@@ -7,6 +7,11 @@ from kaitaistruct import KaitaiStructError
 
 from custom_components.ha_govee_led_ble.const import get_profile
 from custom_components.ha_govee_led_ble.effect_compiler import require_native_scenes
+from custom_components.ha_govee_led_ble.effect_domain import (
+    NativeEffect,
+    effect_content_from_dict,
+    effect_content_to_dict,
+)
 from custom_components.ha_govee_led_ble.generated_protocol.scene_body import SceneBody
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_h617a_scene,
@@ -16,6 +21,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     require_profile_packet,
     serialize_scene_type1_body_param,
 )
+from custom_components.ha_govee_led_ble.h60a6_effects import decode_native_scene, encode_native_body
 from custom_components.ha_govee_led_ble.layered_scene import CatalogueRef
 from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_layered_scene
 from custom_components.ha_govee_led_ble.native_scenes import (
@@ -40,6 +46,27 @@ from custom_components.ha_govee_led_ble.transport import fragment_a3, reassemble
 
 def _decode_layered(payload: bytes):
     return decode_layered_scene(CatalogueRef("H617A", 0, 0), payload)
+
+
+def test_projector_catalogue_round_trips_native_optics_and_uses_its_own_scene_selectors():
+    profile = get_profile("H6093")
+    for scene in SCENE_ENTRIES["H6093"]:
+        if scene.param:
+            raw = base64.b64decode(scene.param, validate=True)
+            content = decode_native_scene(
+                CatalogueRef("H6093", scene.scene_id, scene.effect_id), raw, family=scene.diy_effect_codes[0]
+            )
+            decoded = effect_content_from_dict(effect_content_to_dict(content))
+            assert isinstance(decoded, NativeEffect)
+            assert encode_native_body(decoded) == raw
+        packets = build_native_scene_packets("H6093", scene)
+        for packet in packets:
+            require_profile_packet(packet, profile)
+        assert packets[-1][:5] == b"\x33\x05\x04" + scene.code.to_bytes(2, "little")
+        if scene.param:
+            assert reassemble_a3(packets[:-1])[2] == 5
+    assert MODEL_SCENES["H6093"]["forest"].code != MODEL_SCENES["H600A"]["forest"].code
+    assert MODEL_SCENES["H6093"]["rainbow"].code != MODEL_SCENES["H600A"]["rainbow"].code
 
 
 def test_catalogue_valid():

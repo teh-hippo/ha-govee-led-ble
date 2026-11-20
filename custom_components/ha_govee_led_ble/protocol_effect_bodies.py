@@ -232,8 +232,13 @@ def parse_a3_effect_envelope(envelope: bytes, model: str, *, profile: ModelProfi
     if envelope[1] != len(envelope) // A3_CHUNK_SIZE:
         raise ValueError("A3 effect envelope does not match its chunk count")
 
-    grammar = (profile or get_profile(model)).effect_grammar
-    if grammar == "H6179":
+    effective_profile = profile or get_profile(model)
+    grammar = effective_profile.effect_grammar
+    if grammar == "H6093":
+        from .protocol_core import H6093Projector
+
+        root_type = H6093Projector.Upload
+    elif grammar == "H6179":
         if envelope[2] != 0x04:
             raise ValueError("H6179 A3 uploads require a type-04 DIY body")
         root_type = DiyType04
@@ -274,6 +279,23 @@ def parse_a3_effect_envelope(envelope: bytes, model: str, *, profile: ModelProfi
     try:
         parsed = root_type(KaitaiStream(io.BytesIO(envelope)))
         parsed._read()
+        if grammar == "H6093" and parsed.kind not in (
+            H6093Projector.UploadKind.scene,
+            H6093Projector.UploadKind.diy,
+            H6093Projector.UploadKind.appearance,
+        ):
+            raise ValueError("Unknown projector upload command")
+        if grammar == "H6093" and parsed.kind == H6093Projector.UploadKind.appearance:
+            from .projector_protocol import decode_appearance
+
+            if effective_profile.projector_control_revision is None:
+                raise ValueError("Projector appearance requires its qualified revision")
+            appearance = H6093Projector.Appearance(
+                effective_profile.projector_control_revision == 1,
+                KaitaiStream(io.BytesIO(parsed.body)),
+            )
+            appearance._read()
+            decode_appearance(appearance)
         if grammar == "H60B0" and getattr(parsed.kind, "name", None) is None:
             raise ValueError("Unknown native upload command")
         if grammar == "H6099" and int(parsed.kind) in (3, 4):

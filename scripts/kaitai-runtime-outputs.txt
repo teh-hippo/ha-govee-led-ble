@@ -6,6 +6,8 @@ h1ab2_music_write.py
 h1ab2_music_parameters.py
 h1ab2_paint_body.py
 h1ab2_diy_body.py
+h6093_projector.py
+h6093_status_reply.py
 h6182_command_write.py
 h6182_status_reply.py
 h6182_modern_status_reply.py

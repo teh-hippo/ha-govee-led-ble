@@ -43,6 +43,7 @@ _SPEED_METADATA_SKUS = frozenset(
         "H605C",
         "H6072",
         "H607C",
+        "H6093",
         "H6097",
         "H60A1",
         "H60A6",
@@ -180,6 +181,28 @@ def _snapshot_speed(
     if not effect.get("speedInfo", {}).get("supSpeed"):
         return None
     config = _speed_config(effect)
+    if model == "H6093":
+        from custom_components.ha_govee_led_ble.projector_protocol import decode_projector
+        from custom_components.ha_govee_led_ble.scenes import ProjectorSpeed, SceneSpeed
+
+        if not isinstance(config, dict) or not config.get("speeds") or config.get("defSpeedIndex", -1) < 0:
+            return None
+        rows = config["speeds"]
+        body = decode_projector(base64.b64decode(effect["scenceParam"], validate=True))
+        options = tuple(
+            tuple(ProjectorSpeed(tuple(layer["auroraSpeeds"]), tuple(layer["laserSpeeds"])) for layer in row)
+            for row in rows
+        )
+        speed = SceneSpeed(int(config["defSpeedIndex"]), projector_speeds=options)
+        _ = speed.option_count
+        if any(len(row) > len(body.projector_layers) for row in options):
+            raise ValueError(f"{label}: projector Speed addresses an absent scene layer")
+        return {
+            "default_index": speed.default_index,
+            "projector_speeds": [
+                [{"aurora": list(layer.aurora), "stars": list(layer.stars)} for layer in row] for row in options
+            ],
+        }
     if int(effect.get("sceneType", 2)) == 5:
         if not isinstance(config, dict):
             raise ValueError(f"{label}: native DIY Speed config must be a per-layer object")

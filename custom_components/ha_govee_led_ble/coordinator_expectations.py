@@ -55,6 +55,8 @@ def expectations_from_packet(
     generated = parsed.command
     if generated is None:
         return {}
+    if parsed.static is not None and parsed.static.kind == "projector":
+        return {"color_mode": (ParsedMode.COLOUR, None)}
     if hasattr(generated, "selector"):
         detail = generated.selector
         music_mode = music_slug_for(model, int(detail.mode_id), profile=profile)

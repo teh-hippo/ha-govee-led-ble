@@ -105,6 +105,7 @@ test("canonical backend responses decode through the production validators", () 
     "H7025",
     "H600A",
     "H601C",
+    "H6093",
   ]);
   expect(responses.scene_catalogues).toHaveProperty("H601C");
   expect(responses.scene_catalogues).toHaveProperty("H7025");

@@ -80,6 +80,7 @@ from .effect_catalogue_templates import (
 from .effect_domain import NativeEffect, PaintedEffect
 from .music_semantics import H60B0_ZONE_MUSIC_MODES
 from .native_effect import NativeDiyLayer
+from .projector_templates import projector_templates
 from .protocol_core import H1ab2DiyBody, H607cDiyBody, H607cPaintBody
 
 MODEL_EFFECT_CATALOGUES: Final = {
@@ -793,5 +794,15 @@ MODEL_EFFECT_CATALOGUES: Final = {
         templates=tuple(_single_template("H601C", family) for family in H601C_DIY_FAMILIES),
         workshop_templates=(),
         advanced_create=False,
+    ),
+    "H6093": ModelEffectCatalogue(
+        sku="H6093",
+        painted_effects=(),
+        effects=(),
+        music_modes=(),
+        video_modes=(),
+        templates=projector_templates(),
+        workshop_templates=(),
+        temporary_diy_selector=254,
     ),
 }

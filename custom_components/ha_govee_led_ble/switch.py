@@ -13,6 +13,10 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from . import GoveeBLEConfigEntry
 from .const import DOMAIN, NATIVE_ZONE_CONTROLS
 from .entity import GoveeBLEEntity
+from .projector import ProjectorControl
+from .projector_runtime import control_value, set_control
+
+_PROJECTOR_SWITCHES = (ProjectorControl.STAR_FLICKER, ProjectorControl.STAR_MOVEMENT)
 
 PARALLEL_UPDATES = 0
 
@@ -29,6 +33,8 @@ async def async_setup_entry(
         controls = (
             profile.boolean_controls | ({"low_blue_light"} if profile.supports_low_blue_light else set())
         ) - added
+        if profile.projector_grammar is not None:
+            controls |= set(_PROJECTOR_SWITCHES) - added
         if controls:
             added.update(controls)
             async_add_entities([GoveeBLEControlSwitch(entry, control) for control in sorted(controls)])
@@ -52,6 +58,8 @@ class GoveeBLEControlSwitch(GoveeBLEEntity, SwitchEntity):
 
     @property
     def available(self) -> bool:
+        if self._control in _PROJECTOR_SWITCHES:
+            return self.coordinator.profile.projector_grammar is not None and super().available
         supported = (
             self.coordinator.profile.supports_low_blue_light
             if self._control == "low_blue_light"
@@ -61,6 +69,9 @@ class GoveeBLEControlSwitch(GoveeBLEEntity, SwitchEntity):
 
     @property
     def is_on(self) -> bool | None:
+        if self._control in _PROJECTOR_SWITCHES:
+            value = control_value(self.coordinator, ProjectorControl(self._control))
+            return value if type(value) is bool else None
         if self._control == "low_blue_light":
             state = self.coordinator.low_blue_light
             return state.enabled if state is not None else None
@@ -74,7 +85,11 @@ class GoveeBLEControlSwitch(GoveeBLEEntity, SwitchEntity):
 
     async def _set(self, enabled: bool) -> None:
         try:
-            if self._control == "low_blue_light":
+            if self._control in _PROJECTOR_SWITCHES:
+                await self._async_latest(
+                    partial(set_control, self.coordinator, ProjectorControl(self._control), enabled)
+                )
+            elif self._control == "low_blue_light":
                 await self._async_latest(partial(self.coordinator.async_set_low_blue_light, enabled=enabled))
             else:
                 await self._async_latest(partial(self.coordinator.async_set_boolean_control, self._control, enabled))

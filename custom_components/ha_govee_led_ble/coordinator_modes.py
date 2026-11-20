@@ -285,6 +285,7 @@ class _ActiveModeMixin(_CoordinatorBase):
                         self._selector_revision,
                         self.is_on,
                         self.brightness_pct,
+                        *((self.projector_appearance,) if self.profile.projector_grammar is not None else ()),
                         *(self.boolean_control_state.get(zone) for zone in zones),
                         *(getattr(self, name) for name in source_fields),
                     )
@@ -335,7 +336,11 @@ class _ActiveModeMixin(_CoordinatorBase):
         snapshot = await self.async_prepare_static_baseline()
         if (
             preview
-            and (has_segmented_sources(self.profile) or self.profile.configured_string_counts)
+            and (
+                has_segmented_sources(self.profile)
+                or self.profile.configured_string_counts
+                or self.profile.projector_grammar
+            )
             and not snapshot.static_colour_observed
         ):
             raise HomeAssistantError(translation_domain=DOMAIN, translation_key="live_recovery_not_observed")

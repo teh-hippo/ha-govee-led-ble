@@ -337,6 +337,11 @@ class GoveeBLECoordinator(
         return coordinator_sources.source_power_state(self, key)
 
     async def async_turn_on_source(self, key: str, request: coordinator_sources.SourceTurnOnRequest) -> None:
+        if self.profile.projector_grammar is not None:
+            from .projector_runtime import source_request
+
+            await source_request(self, key, True, request)
+            return
         await coordinator_sources.SourceTurnOnTransaction(self, key, request).run()
 
     async def async_set_source_enabled(self, key: str, enabled: bool) -> None:
@@ -621,7 +626,7 @@ class GoveeBLECoordinator(
         if qualified_subscription and len(pacts) == 1 and pacts == advertised_pacts:
             self._subscription_advertised_pact = next(iter(pacts))
         pact: tuple[int | None, int | None] = next(iter(pacts)) if len(pacts) == 1 else (None, None)
-        if strict and not pacts:
+        if (strict or self.profile.projector_grammar is not None) and not pacts:
             pact = self.pact_type, self.pact_code
         if pact != (self.pact_type, self.pact_code) or conflict != self._h607c_pact_conflict:
             self.pact_type, self.pact_code = pact
@@ -629,10 +634,11 @@ class GoveeBLECoordinator(
             self._authorization_generation += 1
             self._resolve_device_profile(preserve_state=preserve_state)
             self.async_update_listeners()
-        if strict:
+        if fresh:
             confirmed = (
                 self._client is not None
                 and self._client.is_connected
+                and self._notification_token is not None
                 and subscription is not None
                 and bool(pacts)
                 and not conflict
@@ -1217,11 +1223,15 @@ class GoveeBLECoordinator(
     def _clear_client_state(self, client: BleakClient | None, *, preserve_static_baseline: bool = False) -> None:
         if self._client is not client:
             return
+        from .projector_runtime import invalidate_appearance
+
+        invalidate_appearance(self, retain=preserve_static_baseline)
         self._invalidate_upload_ack(BleakError("Device disconnected during effect upload"))
         self._client = None
         if preserve_static_baseline:
-            self._pre_mode_profile = self._pre_mode_profile or self.profile
-            self._pre_mode_needs_qualification = True
+            history = self._pre_mode_snapshot is not None or self._incomplete_static_exit is not None
+            self._pre_mode_profile = (self._pre_mode_profile or self.profile) if history else None
+            self._pre_mode_needs_qualification = history
         else:
             self._discard_static_baseline()
         self._power_known = self._static_colour_known = False
@@ -1462,6 +1472,11 @@ class GoveeBLECoordinator(
                 self._enter_static_mode()
             return _StaticWriteIntent()
         self._static_write_attempts += 1
+        if self.profile.projector_grammar is not None:
+            self.projector_appearance = None
+            self.projector_appearance_observed = False
+            self.projector_mode_active = static.kind == "projector"
+            self._static_colour_known = False
         if static.rgb is not None or static.kelvin is not None:
             self._static_colour_known = False
         mask = static.segment_mask if static.segment_mask is not None else self.profile.whole_device_mask
@@ -2375,7 +2390,11 @@ class GoveeBLECoordinator(
         if not fields or self.identity_fields_confirmed(fields):
             return
         token = self._notification_token
-        await self._async_read_identity(fields)
+        if "pact" in fields:
+            await self._async_confirm_pact(client)
+        remaining = fields - {"pact"}
+        if remaining and not self.identity_fields_confirmed(remaining):
+            await self._async_read_identity(remaining)
         if self._client is not client or not client.is_connected or self._notification_token is not token:
             raise GoveeTransportError("identity_subscription_changed")
         if not self.identity_fields_confirmed(fields):
@@ -2388,6 +2407,8 @@ class GoveeBLECoordinator(
         validator: Callable[[bytes, ModelProfile], None] = require_profile_packet,
     ) -> None:
         fields = self.profile.profile_identity_fields
+        if self.profile.projector_grammar is not None:
+            fields |= {"pact"}
         if not fields or self.identity_fields_confirmed(fields):
             return
         required = frozenset[str]()
@@ -2486,6 +2507,16 @@ class GoveeBLECoordinator(
         """Read the last reconciled capabilities without changing coordinator state."""
         if get_profile(self.model).reconciles_marker_pact and self._h607c_pact_conflict:
             return replace(self.profile, command_operations=frozenset())
+        if self.profile.projector_grammar is not None and not self.identity_fields_confirmed(frozenset({"pact"})):
+            return replace(
+                self.profile,
+                projector_control_revision=None,
+                command_operations=(
+                    self.profile.command_operations - {"projector"}
+                    if self.profile.command_operations is not None
+                    else None
+                ),
+            )
         if get_profile(self.model).requires_pact_confirmation and not self.identity_fields_confirmed(
             frozenset({"pact"})
         ):
@@ -3632,6 +3663,9 @@ class GoveeBLECoordinator(
                 pending.invalidate(err)
 
     def _advance_profile_generation(self, *, preserve_static_baseline: bool = False) -> None:
+        from .projector_runtime import invalidate_appearance
+
+        invalidate_appearance(self, retain=preserve_static_baseline)
         self._profile_generation += 1
         if not preserve_static_baseline:
             self._discard_static_baseline()

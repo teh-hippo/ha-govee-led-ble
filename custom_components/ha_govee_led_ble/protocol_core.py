@@ -22,6 +22,8 @@ H1ab2Settings = load_generated_class("h1ab2_settings", "H1ab2Settings")
 H1ab2MusicWrite = load_generated_class("h1ab2_music_write", "H1ab2MusicWrite")
 H1ab2PaintBody = load_generated_class("h1ab2_paint_body", "H1ab2PaintBody")
 H1ab2DiyBody = load_generated_class("h1ab2_diy_body", "H1ab2DiyBody")
+H6093Projector = load_generated_class("h6093_projector", "H6093Projector")
+H6093StatusReply = load_generated_class("h6093_status_reply", "H6093StatusReply")
 
 H705aCommandWrite = load_generated_class("h705a_command_write", "H705aCommandWrite")
 H705aStatusQuery = load_generated_class("h705a_status_query", "H705aStatusQuery")
@@ -448,6 +450,7 @@ H619aStatusReply = load_generated_class("h619a_status_reply", "H619aStatusReply"
 
 
 _STATUS_ROOTS = {
+    "H6093": ("h6093_status_reply", H6093StatusReply),
     "H705A": ("h705a_status_reply", H705aStatusReply),
     "H6181": ("h6181_status_reply", H6181StatusReply),
     "H6181-modern": ("h6181_modern_status_reply", H6181ModernStatusReply),

@@ -325,7 +325,12 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
 
     @property
     def assumed_state(self) -> bool:
-        return self.coordinator.control_state_uncertain() or not self.coordinator.profile.can_read(ReadDomain.POWER)
+        return (
+            self.coordinator.control_state_uncertain()
+            or not self.coordinator.profile.can_read(ReadDomain.POWER)
+            or self.coordinator.projector_mode_active
+            and not self.coordinator.projector_appearance_observed
+        )
 
     @property
     def brightness(self) -> int | None:
@@ -344,6 +349,8 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             return ColorMode.ONOFF
         if self.supported_color_modes == {ColorMode.BRIGHTNESS}:
             return ColorMode.BRIGHTNESS
+        if coordinator.profile.projector_grammar is not None and coordinator.projector_mode_active:
+            return ColorMode.RGB
         if coordinator.static_color_unknown():
             return ColorMode.UNKNOWN
         # Colour attributes are hidden while an effect runs; the remembered colour returns when it clears.
@@ -369,6 +376,10 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
 
     @property
     def rgb_color(self) -> tuple[int, int, int] | None:
+        if self.coordinator.profile.projector_grammar is not None and self.coordinator.projector_mode_active:
+            from .projector_runtime import source_state
+
+            return source_state(self.coordinator, "aurora")[2]
         if self.coordinator.profile.main_colour_sources:
             value = main_source_colour(self.coordinator)
             return value if isinstance(value, tuple) and self.color_mode == ColorMode.RGB else None
@@ -384,6 +395,8 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
 
     @property
     def color_temp_kelvin(self) -> int | None:
+        if self.coordinator.profile.projector_grammar is not None and self.coordinator.projector_mode_active:
+            return None
         if self.coordinator.profile.main_colour_sources:
             value = main_source_colour(self.coordinator)
             return value if type(value) is int and self.color_mode == ColorMode.COLOR_TEMP else None

@@ -230,6 +230,33 @@ export interface NativeOpaqueLayer {
   data: string;
 }
 
+export interface ProjectorSource {
+  enabled: boolean;
+  brightness: number;
+  pattern: number;
+  speed: number;
+  palette: RGB[];
+}
+
+export interface ProjectorStars {
+  enabled: boolean;
+  brightness: number;
+  flicker_enabled: boolean;
+  flicker_speed: number;
+  movement_enabled: boolean;
+  movement_speed: number;
+}
+
+export interface ProjectorLayer {
+  movement_speed: number;
+  direction: number;
+  coarse: ProjectorSource;
+  fine: ProjectorSource | null;
+  stars: ProjectorStars;
+  duration: number;
+  opaque: string;
+}
+
 export interface NativeEffectContent {
   kind: "native_effect";
   model: ModelSku;
@@ -247,6 +274,7 @@ export interface NativeEffectContent {
   speed_index: number | null;
   revision?: number;
   combined?: Omit<LayeredSceneContent, "kind">;
+  projector_layers?: ProjectorLayer[];
 }
 
 export type NativeSceneContent = NativeEffectContent & { template: CatalogueRef };
