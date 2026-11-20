@@ -494,6 +494,7 @@ async def ws_scene_apply(
             user_id=connection.user.id,
             scene_defaults=backend.scene_defaults,
             before_apply=partial(backend.preview.async_supersede_device, entry.entry_id, reason="committed_apply"),
+            profile=profile,
         )
     except (GoveeCryptoError, ModeTransitionSupersededError) as exc:
         _send_error(hass, connection, msg, "apply_failed", exc)
@@ -1681,6 +1682,13 @@ def _send_preview_error(
         message = "The preview effect is invalid."
     elif isinstance(error, PreviewError):
         code = "invalid_format"
+        message = str(error)
+    elif (
+        isinstance(error, HomeAssistantError)
+        and error.translation_domain == DOMAIN
+        and error.translation_key == "identity_not_ready"
+    ):
+        code = "preview_failed"
         message = str(error)
     else:
         code = "preview_failed"

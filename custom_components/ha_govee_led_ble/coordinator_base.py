@@ -14,6 +14,7 @@ from .control_arbiter import BLEControlArbiter, ControlIntent, async_control_int
 from .coordinator_control import ControlStateCheckpoint
 from .coordinator_status import ParsedMode, StatusDomain
 from .coordinator_upload import PendingUploadAck
+from .scenes import SceneEntry, resolve_scene_target, scene_command_identity_fields
 
 if TYPE_CHECKING:
     from .coordinator import GoveeBLECoordinator
@@ -431,6 +432,12 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
         def scene_name_set(self) -> frozenset[str]: ...
 
 
+def require_scene_command_identity(coordinator: _CoordinatorBase, scene: SceneEntry) -> None:
+    fields = scene_command_identity_fields(coordinator.model, scene)
+    if fields and not coordinator.identity_fields_confirmed(fields):
+        raise HomeAssistantError(translation_domain=DOMAIN, translation_key="identity_not_ready")
+
+
 async def async_prepare_effect_profile(
     coordinator: _CoordinatorBase, *, intent: ControlIntent, content: EffectContent | None = None
 ) -> ModelProfile:
@@ -442,15 +449,14 @@ async def async_prepare_effect_profile(
         StaticRgbComposition,
         WorkshopEffect,
     )
-    from .scenes import resolve_scene_target
 
+    scene = None
     scene_required = content is None or isinstance(content, LayeredEffect | WorkshopEffect)
     if isinstance(content, BuiltinScene | LayeredScene | PaletteScene):
-        reference = content.template
-        resolved = resolve_scene_target(coordinator.model, reference)
-        scene_required = resolved is not None and (
-            resolved[1].command_version != 0
-            or (resolved[1].scene_type == 2 and coordinator.profile.rgbic_scene_v0 is not None)
+        if resolved := resolve_scene_target(coordinator.model, content.template):
+            _, scene = resolved
+        scene_required = scene is not None and (
+            scene.command_version != 0 or (scene.scene_type == 2 and coordinator.profile.rgbic_scene_v0 is not None)
         )
 
     if (
@@ -497,4 +503,6 @@ async def async_prepare_effect_profile(
             coordinator.profile.profile_identity_fields
         ):
             raise HomeAssistantError(translation_domain=DOMAIN, translation_key="identity_not_ready")
+        if scene is not None and scene_required:
+            require_scene_command_identity(coordinator, scene)
         return coordinator.effect_authorization_profile

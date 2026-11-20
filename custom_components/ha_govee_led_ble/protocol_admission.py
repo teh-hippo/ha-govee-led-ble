@@ -366,7 +366,7 @@ def _check_command_packet(frame: bytes, profile: ModelProfile) -> bool:
                     raise ValueError("This music mode requires a fixed colour")
         control = boolean_control_name(operation)
         if control is not None:
-            if boolean_control_is_authorized(control, profile):
+            if control in profile.boolean_controls:
                 if profile.command_grammar == "H1771" and command.body.flag not in (0, 1):
                     raise ValueError("Invalid boolean control value")
                 return True

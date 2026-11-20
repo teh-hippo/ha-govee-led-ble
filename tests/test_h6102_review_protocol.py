@@ -130,9 +130,17 @@ def test_removed_booleans_cannot_bypass_current_authorization(operations) -> Non
                 require_profile_packet(packet, narrowed)
         decoded = decode_status_frame(frame(f"aa{opcode}01"), profile=original)
         assert decoded is not None and not status_is_authorized(decoded, narrowed)
-    # Existing raw H617A register and H6199's distinct native gradient remain valid.
-    require_profile_packet(frame("33a300"), get_profile("H617A"))
     require_profile_packet(build_h6199_control("gradient", 1), get_profile("H6199"))
+
+
+@pytest.mark.parametrize("model", ["H617A", "H617E", "H617F"])
+def test_undeclared_gradual_register_is_read_only(model):
+    profile = get_profile(model)
+    with pytest.raises(ValueError, match="boolean control gradual"):
+        require_profile_packet(frame("33a301"), profile)
+    require_profile_packet(frame("aaa3"), profile)
+    decoded = decode_status_frame(frame("aaa301"), profile=profile)
+    assert decoded is not None and status_is_authorized(decoded, profile)
 
 
 @pytest.mark.parametrize("value", ["3.02.02", "3.2.2", "1.3", "03.02.02", "3.002.02", None, True])

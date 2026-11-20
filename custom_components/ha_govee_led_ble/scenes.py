@@ -8,7 +8,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, cast
 
-from .const import MODEL_PROFILES, ModelProfile
+from .const import MODEL_PROFILES, ModelProfile, get_profile
 from .layered_scene import CatalogueRef
 
 CATALOGUE_DIR = Path(__file__).with_name("scene_catalogues")
@@ -285,6 +285,13 @@ def scene_supported(scene: SceneEntry, profile: ModelProfile) -> bool:
     if profile.scene_codes is None:
         return not scene.local_only
     return scene.code in profile.scene_codes
+
+
+def scene_command_identity_fields(model: str, scene: SceneEntry) -> frozenset[str]:
+    profile = get_profile(model)
+    if scene.command_version and profile.scene_command_versions is not None and scene_supported(scene, profile):
+        return profile.scene_identity_fields
+    return frozenset()
 
 
 def scene_for_profile(scene: SceneEntry, profile: ModelProfile) -> SceneEntry:

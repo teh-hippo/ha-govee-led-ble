@@ -119,7 +119,7 @@ def boolean_control_name(operation: str) -> str | None:
 
 
 def boolean_control_is_authorized(control: str, profile: ModelProfile) -> bool:
-    """Retain the shipped H617A raw gradual register alongside explicit controls."""
+    """Authorise register reads, including the legacy H617A Gradual observation."""
     return control in profile.boolean_controls or (
         control == "gradual" and profile.status_grammar == "H617A" and profile.command_operations is None
     )
