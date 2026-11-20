@@ -46,7 +46,7 @@ Every plan's task list includes:
 3. Validate through existing shared suites, preserving evidenced device behaviour without preserving integration bugs.
    Add coverage only for distinct contracts or safety invariants, not a separate suite for each device or report.
 4. A code review in a fresh context, however the harness provides one: challenge both remaining special treatment and unnecessary abstraction, check affected callers and deletion of superseded code, and fix supported findings.
-5. Commits, a passing `make check`, and a PR that follows `.github/PULL_REQUEST_TEMPLATE.md`, labelled with the SKU of every model whose behaviour changes.
+5. Commits, a passing `make check`, and a PR that follows `.github/PULL_REQUEST_TEMPLATE.md`, identifying affected models in its description rather than labels.
 
 Keep implementation and review scoped by root cause.
 Do not turn every audit observation into its own issue, test module or permanent instruction.
