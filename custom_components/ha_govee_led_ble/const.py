@@ -2041,7 +2041,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     ),
     "H1AB2": ModelProfile(
         "H1AB2 COB Strip Light 2",
-        support_quality=SupportQuality.EXPERIMENTAL,
+        support_quality=SupportQuality.SUPPORTED,
         confirmation_issue=621,
         command_grammar="H617A",
         status_grammar="H1AB2",
