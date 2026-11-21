@@ -65,6 +65,7 @@ from .coordinator_refresh import (
     BLANK_SCREEN_POLICY_FIELDS,
     DEFAULT_REFRESH_REQUEST,
     STATE_QUERY_TIMEOUT,
+    STATIC_RECOVERY_SETTINGS,
     RefreshRequest,
 )
 from .coordinator_segments import _SEGMENT_READ_TIMEOUT, _SegmentMixin
@@ -1893,13 +1894,15 @@ class GoveeBLECoordinator(
         controls = profile.boolean_controls if scope is True else profile.boolean_controls & (scope or frozenset())
         power_on = profile.supports_power_on_behaviour and scope is True
         queries: dict[bytes, tuple[str, ...]] = {}
-        if profile.bulk_status_grammar == "H1771":
+        if profile.bulk_status_grammar in {"H1771", "H60A"}:
             fields = tuple(f"boolean_{control}" for control in sorted(controls))
             if power_on:
                 fields += ("power_on_behaviour",)
             if fields:
                 if scope is True:
-                    return [(build_bulk_status_query(profile), fields)]
+                    return (
+                        [(build_bulk_status_query(profile), fields)] if profile.bulk_status_grammar == "H1771" else []
+                    )
                 return [
                     (build_bulk_status_query(profile, domains=(domain,)), selected)
                     for domain, names in (("zone_enable", NATIVE_ZONE_CONTROLS), ("gradual", {"gradual"}))
@@ -2103,7 +2106,7 @@ class GoveeBLECoordinator(
                     (build_h6199_control_query(control), ReadDomain.OTHER, (control,))
                     for control in H6199_NATIVE_CONTROLS
                 )
-        if full_query and query_native_settings:
+        if query_native_settings and (full_query or isinstance(query_native_settings, frozenset)):
             queries.extend(
                 (query, ReadDomain.OTHER, fields)
                 for query, fields in self._setting_queries(profile, query_native_settings)
@@ -2237,7 +2240,7 @@ class GoveeBLECoordinator(
                     domain is ReadDomain.COLOUR_MODE
                     and profile.bulk_status_grammar == "H60A"
                     or domain is ReadDomain.OTHER
-                    and profile.bulk_status_grammar == "H1771"
+                    and profile.bulk_status_grammar in {"H1771", "H60A"}
                     and is_bulk_status_frame(query, profile)
                 ):
                     isolated_gradual = isinstance(query_native_settings, frozenset) and fields == ("boolean_gradual",)
@@ -3028,7 +3031,7 @@ class GoveeBLECoordinator(
         if self.profile.setting_grammar == "H6046":
             if type(value) is not bool:
                 raise ValueError("Boolean setting requires a boolean")
-            await self._async_set_bar_control(control, value)
+            await self._async_set_bar_control(control, value, write_guard=write_guard)
             return
         if audio:
             if type(value) is not int:
@@ -3245,7 +3248,9 @@ class GoveeBLECoordinator(
                 except TimeoutError:
                     _LOGGER.debug("Timed out disconnecting an abandoned native setting query")
 
-    async def _async_set_bar_control(self, control: str, enabled: bool) -> None:
+    async def _async_set_bar_control(
+        self, control: str, enabled: bool, *, write_guard: Callable[[], None] | None = None
+    ) -> None:
         from .generated_protocol_adapter import build_boolean_control, build_boolean_control_query
 
         sibling = "right_bar_enabled" if control == "left_bar_enabled" else "left_bar_enabled"
@@ -3256,6 +3261,8 @@ class GoveeBLECoordinator(
                 profile, generation, token = self.profile, self._profile_generation, self._notification_token
 
                 def guard() -> None:
+                    if write_guard is not None:
+                        write_guard()
                     if (
                         not same_control_profile(self.profile, profile)
                         or self._profile_generation != generation
@@ -3498,6 +3505,14 @@ class GoveeBLECoordinator(
         ):
             return None
         query_relative_brightness = expected.expects_relative_brightness or request.refresh_relative_brightness
+        native_settings = isinstance(request.query_native_settings, frozenset) and bool(request.query_native_settings)
+        if native_settings:
+            native_domains = request.required_domains or frozenset()
+            query_power |= ReadDomain.POWER in native_domains
+            query_brightness |= ReadDomain.BRIGHTNESS in native_domains
+            query_color |= self.profile.supports_color_mode_readback and bool(
+                native_domains & {ReadDomain.COLOUR_MODE, ReadDomain.MODE}
+            )
         if request.refresh_all:
             query_power = query_brightness = True
             query_color = self.profile.supports_color_mode_readback
@@ -3510,6 +3525,7 @@ class GoveeBLECoordinator(
                 query_blank_screen,
                 query_black_border,
                 query_relative_brightness,
+                native_settings,
             )
         ):
             query_power = True
@@ -3601,6 +3617,13 @@ class GoveeBLECoordinator(
                     display_settings=display_settings,
                     refresh_relative_brightness=request.refresh_relative_brightness,
                 )
+                if isinstance(request.query_native_settings, frozenset):
+                    field_baselines.update(
+                        (field, self._field_revisions.get(field, 0))
+                        for _, fields in self._setting_queries(profile, request.query_native_settings)
+                        for field in fields
+                        if request.query_native_settings != STATIC_RECOVERY_SETTINGS or field != "boolean_gradual"
+                    )
                 domain_baselines = {domain: self._domain_revisions.get(domain, 0) for domain in awaited_domains}
                 async with self._lock:
                     if self._client is not client:
@@ -3644,6 +3667,7 @@ class GoveeBLECoordinator(
                                 and authorization_generation == self._authorization_generation
                                 and self._client is client
                                 and client.is_connected
+                                and self._notification_token is subscription
                             )
                             else None
                         )

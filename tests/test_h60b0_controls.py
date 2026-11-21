@@ -13,6 +13,7 @@ from custom_components.ha_govee_led_ble.const import ReadDomain, device_profile
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
+from custom_components.ha_govee_led_ble.coordinator_segments import SegmentPaintRequest
 from custom_components.ha_govee_led_ble.coordinator_sources import SourceTurnOnRequest
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
@@ -215,7 +216,7 @@ async def test_complete_source_rgb_layout_survives_scene_after_reload(
     assert await coordinator.refresh_state(RefreshRequest(refresh_all=True, query_segments=True))
     if paint_segment:
         await GoveeBLESourceLight(coordinator, "side").async_turn_on(rgb_color=(0, 0, 255))
-        await coordinator.async_paint_segments([([1], (0, 255, 0))])
+        await coordinator.async_paint_segments(SegmentPaintRequest([([1], (0, 255, 0))]))
     if powered_off:
         await coordinator.send_command(build_power(False, "H60B0"))
         assert await coordinator.refresh_state(RefreshRequest(refresh_all=True, query_segments=True))
@@ -617,6 +618,39 @@ def source_wire(native_sources):
     return coordinator, state
 
 
+@pytest.mark.parametrize(("powered", "pact_code"), [(False, 2), (True, 2), (False, 1)])
+async def test_zero_scale_restores_raw_source_selection_without_exceeding_limit(source_wire, powered, pact_code):
+    coordinator, physical = source_wire
+    coordinator.profile = device_profile("H60B0", 1, pact_code)
+    coordinator._authorization_profile.return_value = coordinator.profile
+    original_flags = 0x30 | (0x80 if powered else 0)
+    physical.update(apply=True, flags=original_flags)
+    assert await coordinator.refresh_state(RefreshRequest(refresh_all=True, query_segments=True))
+    palette = list(physical["colours"])
+    packets = build_segment_paint([([1], (0, 0, 0))], coordinator.model, profile=coordinator.profile)
+    client = coordinator._client
+    original_write = client.write_gatt_char.side_effect
+
+    async def write(uuid, packet, **options):
+        await original_write(uuid, packet, **options)
+        if packet in packets:
+            physical["flags"] = 0xE0
+
+    client.write_gatt_char.side_effect = write
+    client.write_gatt_char.reset_mock()
+    await GoveeBLELight(coordinator).async_paint_segments([{"segments": [1], "rgb_color": [20, 10, 5]}], rgb_scale=0)
+    assert physical["flags"] == original_flags
+    assert physical["colours"] == [(0, 0, 0)] + palette[1:]
+    assert coordinator.is_on is powered
+    source_writes = [
+        call.args[1] for call in client.write_gatt_char.await_args_list if call.args[1][:2] == bytes.fromhex("3330")
+    ]
+    assert source_writes == [
+        build_boolean_control("top_enabled", False, coordinator.model, profile=coordinator.profile),
+        build_boolean_control("bottom_enabled", True, coordinator.model, profile=coordinator.profile),
+    ]
+
+
 @pytest.mark.parametrize("layout", ["mixed", "white", "external"])
 async def test_public_scene_stop_preserves_complete_pre_effect_layout(hass, source_wire, virtual_clock, layout):
     coordinator, physical = source_wire
@@ -643,7 +677,9 @@ async def test_public_scene_stop_preserves_complete_pre_effect_layout(hass, sour
     await control(side, **({"color_temp_kelvin": 6500} if layout == "white" else {"rgb_color": [0, 255, 0]}))
     if layout == "mixed":
         await coordinator.async_paint_segments(
-            [([1, 2], (255, 0, 0)), ([3, 4], (0, 255, 0)), ([5, 6], (0, 0, 255)), ([7, 8], (128, 0, 128))]
+            SegmentPaintRequest(
+                [([1, 2], (255, 0, 0)), ([3, 4], (0, 255, 0)), ([5, 6], (0, 0, 255)), ([7, 8], (128, 0, 128))]
+            )
         )
     if layout == "external":
         from custom_components.ha_govee_led_ble.coordinator_notifications import EXPECTED_STATE_TTL
@@ -901,7 +937,7 @@ async def test_unconfirmed_source_write_reconciles_real_area_state(source_wire, 
             build_segment_color_temp([9], 5000, "H60B0", profile=PROFILE), requested_kelvin=5000
         )
     else:
-        request = coordinator.async_paint_segments([(list(range(1, 9)), (255, 0, 0))])
+        request = coordinator.async_paint_segments(SegmentPaintRequest([(list(range(1, 9)), (255, 0, 0))]))
     with pytest.raises((TimeoutError, RuntimeError)):
         await request
     top, side = GoveeBLESourceLight(coordinator, "top"), GoveeBLESourceLight(coordinator, "side")
@@ -1106,7 +1142,7 @@ async def test_partial_source_paint_preserves_success_and_untouched_bottom(sourc
 
     coordinator._client.write_gatt_char.side_effect = fail_side
     with pytest.raises(RuntimeError, match="side write failed"):
-        await coordinator.async_paint_segments([(list(range(1, 10)), (255, 0, 0))])
+        await coordinator.async_paint_segments(SegmentPaintRequest([(list(range(1, 10)), (255, 0, 0))]))
     assert attempted_masks == [0x100, 0xFF]
     assert GoveeBLESourceLight(coordinator, "top").rgb_color == (255, 0, 0)
     assert GoveeBLESourceLight(coordinator, "side").rgb_color == (0, 0, 255)

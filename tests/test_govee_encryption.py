@@ -101,9 +101,8 @@ async def test_h607c_marker_qualifies_rgb_only_for_current_connection(hass, monk
     )
     assert coordinator.segment_state_source == "optimistic"
     await light.async_set_segment_color([13], (90, 120, 200))
-    assert device.write_gatt_char.await_args.args[1] == build_segment_color(
-        [13], 90, 120, 200, "H607C", profile=coordinator.profile
-    )
+    lighting = [call.args[1] for call in device.write_gatt_char.await_args_list if call.args[1][0] == 0x33]
+    assert lighting[-1] == build_segment_color([13], 90, 120, 200, "H607C", profile=coordinator.profile)
     coordinator._clear_client_state(device)
     assert coordinator.pact_type is None and not coordinator.profile.supports_rgb
     assert coordinator.h607c_pact_readiness == "stale"

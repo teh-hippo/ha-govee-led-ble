@@ -30,6 +30,7 @@ from custom_components.ha_govee_led_ble.const import (
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_expectations import expectations_from_packet
 from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
+from custom_components.ha_govee_led_ble.coordinator_segments import SegmentPaintRequest
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode, parse_color_mode
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import table_kelvin_rgb
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
@@ -1555,7 +1556,7 @@ async def test_failed_segment_write_preserves_fresh_static_provenance(static_coo
     coord.send_command = AsyncMock(side_effect=send)
     coord.async_refresh_segments = AsyncMock(return_value=False)
     with pytest.raises(RuntimeError, match="segment write failed"):
-        await coord.async_paint_segments([([1], (4, 5, 6))])
+        await coord.async_paint_segments(SegmentPaintRequest([([1], (4, 5, 6))]))
     assert coord.rgb_color_source == "observed"
     if kelvin is not None:
         assert coord.color_temp_kelvin_source == "observed"
@@ -2180,7 +2181,10 @@ async def test_four_slot_profile_observes_every_declared_domain(
     assert await coordinator.async_refresh_segments(timeout=0.05)
     assert coordinator._field_revisions["segment_colors"] == 3
     assert set(coordinator._domain_revisions) == profile.read_domains
-    assert client.write_gatt_char.await_args_list == [call(WRITE_UUID, query, response=False) for query in replies]
+    queries = (
+        [generated_protocol_adapter.build_power_query("H617A")] if profile.can_read(ReadDomain.POWER) else []
+    ) + list(replies)
+    assert client.write_gatt_char.await_args_list == [call(WRITE_UUID, query, response=False) for query in queries]
 
 
 @pytest.mark.parametrize(

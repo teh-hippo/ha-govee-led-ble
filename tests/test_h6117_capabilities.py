@@ -12,6 +12,7 @@ from homeassistant.exceptions import HomeAssistantError
 from custom_components.ha_govee_led_ble.const import DOMAIN, ReadDomain, device_profile
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator_segments import SegmentPaintRequest
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.effect_catalogue import H617A_TYPE04_APPLY_CODE, H6117_NATIVE_DIY_TEMPLATES
 from custom_components.ha_govee_led_ble.effect_compiler import compile_application
@@ -595,7 +596,7 @@ async def test_write_only_segment_paint_preserves_siblings_without_querying(hass
     monkeypatch.setattr(coordinator, "async_refresh_segments", refresh)
     before = list(coordinator.segment_colors)
     try:
-        await coordinator.async_paint_segments([([1, 15], (12, 34, 56))])
+        await coordinator.async_paint_segments(SegmentPaintRequest([([1, 15], (12, 34, 56))]))
         assert coordinator.segment_colors[0] == coordinator.segment_colors[14] == (12, 34, 56)
         assert coordinator.segment_colors[1:14] == before[1:14]
         assert coordinator.segment_state_source == "optimistic"

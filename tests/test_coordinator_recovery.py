@@ -15,6 +15,7 @@ from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, MUSIC_MODE_
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent, async_control_intent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_refresh import DEFAULT_REFRESH_REQUEST, RefreshRequest
+from custom_components.ha_govee_led_ble.coordinator_segments import SegmentPaintRequest
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode, StatusDomain
 from custom_components.ha_govee_led_ble.effect_commands import build_h617a_diy_activation
 from custom_components.ha_govee_led_ble.effect_contracts import CapabilityState
@@ -527,10 +528,12 @@ async def test_source_scene_stop_preserves_authored_layout_over_actual_read_doma
     authored = [(index + 1, 20, 40) for index in range(len(colours))]
     if fail_colour:
         with pytest.raises(RuntimeError, match="Injected delivery failure"):
-            await coord.async_paint_segments([([index], rgb) for index, rgb in enumerate(authored, 1)])
+            await coord.async_paint_segments(
+                SegmentPaintRequest([([index], rgb) for index, rgb in enumerate(authored, 1)])
+            )
         assert coord.capture_effect_control_state().segment_colors is None
         physical["fail_colour"] = False
-    await coord.async_paint_segments([([index], rgb) for index, rgb in enumerate(authored, 1)])
+    await coord.async_paint_segments(SegmentPaintRequest([([index], rgb) for index, rgb in enumerate(authored, 1)]))
     if not coord.profile.can_read(ReadDomain.SEGMENTS):
         assert await coord.refresh_state(RefreshRequest(refresh_all=True, query_segments=False))
         incomplete = coord.capture_effect_control_state()

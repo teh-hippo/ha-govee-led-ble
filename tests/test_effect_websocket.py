@@ -22,6 +22,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry, async_
 from custom_components.ha_govee_led_ble.const import CONF_SHOW_EXPERIMENTAL_FEEDBACK, DOMAIN, get_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_modes import ModeTransitionSupersededError
+from custom_components.ha_govee_led_ble.coordinator_segments import SegmentPaintRequest
 from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
 from custom_components.ha_govee_led_ble.effect_catalogue import resolve_catalogue_template
 from custom_components.ha_govee_led_ble.effect_contracts import EDITOR_API_VERSION
@@ -683,7 +684,9 @@ async def test_saved_apply_live_marker_enforces_source_observation_policy(hass, 
     await coordinator.send_command(build_brightness(40, coordinator.model, profile=coordinator.profile))
     count = coordinator.profile.segment_count
     authored = [(index + 1, 20, 40) for index in range(count)]
-    await coordinator.async_paint_segments([([index], rgb) for index, rgb in enumerate(authored, 1)])
+    await coordinator.async_paint_segments(
+        SegmentPaintRequest([([index], rgb) for index, rgb in enumerate(authored, 1)])
+    )
     await coordinator.async_set_segment_brightness(list(range(1, count + 1)), 60)
     assert await coordinator.refresh_state(RefreshRequest(refresh_all=True, query_segments=False))
     before = coordinator.capture_effect_control_state()

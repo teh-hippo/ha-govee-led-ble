@@ -9,6 +9,7 @@ from homeassistant.core import ServiceCall
 from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.ha_govee_led_ble.const import DOMAIN, MODEL_PROFILES, LightSource, ReadDomain, device_profile
+from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
@@ -425,6 +426,74 @@ async def test_h6046_source_turn_on_keeps_sibling_off_over_real_protocol(hass, m
     await GoveeBLESourceLight(coordinator, "left_bar").async_turn_on()
     assert state == {"power": True, "mask": 0x01}
     assert GoveeBLESourceLight(coordinator, "right_bar").is_on is False
+
+
+@pytest.mark.parametrize("model", ["H6046", "H6053"])
+@pytest.mark.parametrize("boundary", ["flags", "write"])
+async def test_bar_setting_rejects_newer_foreground_before_physical_write(hass, monkeypatch, model, boundary):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", model, configuration_url=None)
+    coordinator.pact_type, coordinator.pact_code = 1, 1
+    if model == "H6053":
+        coordinator.hw_version, coordinator.fw_version = "1.00.01", "1.08.01"
+    coordinator._resolve_device_profile()
+    coordinator._notification_token = object()
+    coordinator._notify_started_monotonic = time.monotonic()
+    coordinator._client = client = MagicMock(is_connected=True)
+    coordinator._confirmed_identity_fields.update(coordinator.profile.profile_identity_fields)
+    if coordinator.profile.requires_pact_confirmation:
+        coordinator._observe_pact(coordinator.pact_type, coordinator.pact_code)
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
+    paused, admitted = asyncio.Event(), asyncio.Event()
+    waits = 0
+
+    async def wait():
+        nonlocal waits
+        waits += 1
+        if boundary == "write" and waits == 2:
+            paused.set()
+            await admitted.wait()
+
+    monkeypatch.setattr(coordinator._reply_gate, "wait", wait)
+
+    async def write(_uuid, packet, **_kwargs):
+        assert packet == frame("aa33")
+        if boundary == "flags":
+            paused.set()
+            await admitted.wait()
+        coordinator._notify_callback(None, bytearray(frame("aa3390")))
+
+    client.write_gatt_char = AsyncMock(side_effect=write)
+
+    async def old_setting():
+        async with coordinator._control_arbiter.hold(ControlIntent.USER):
+            generation = coordinator._control_arbiter.foreground_generation
+
+            def guard():
+                if coordinator._control_arbiter.foreground_generation != generation:
+                    raise ValueError("Newer foreground request")
+
+            await coordinator._async_set_verified_setting("left_bar_enabled", True, write_guard=guard)
+
+    async def newer_foreground():
+        await paused.wait()
+        async with coordinator._control_arbiter.hold(ControlIntent.USER, wait=False) as acquired:
+            assert not acquired
+            admitted.set()
+
+    old = asyncio.create_task(old_setting())
+    newer = asyncio.create_task(newer_foreground())
+    try:
+        with pytest.raises(ValueError, match="Newer foreground request"):
+            await old
+        await newer
+        assert coordinator.boolean_control_state == {"left_bar_enabled": False, "right_bar_enabled": True}
+        assert coordinator.bar_enable_mask == 0x90
+        assert coordinator.control_write_attempts == 0
+    finally:
+        for task in (old, newer):
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(old, newer, return_exceptions=True)
 
 
 async def test_stale_master_state_is_refreshed_before_preserving_siblings(source_coordinator):

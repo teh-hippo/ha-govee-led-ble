@@ -8,11 +8,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from bleak import BleakError
+from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ReadDomain, device_profile
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
+from custom_components.ha_govee_led_ble.coordinator_segments import SegmentPaintRequest
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.effect_compiler import compile_application, validate_compiled_geometry
 from custom_components.ha_govee_led_ble.effect_deployments import (
@@ -25,6 +27,8 @@ from custom_components.ha_govee_led_ble.effect_identity import EffectDeviceCache
 from custom_components.ha_govee_led_ble.effect_preview import PreviewPhase
 from custom_components.ha_govee_led_ble.effect_runtime import EffectDeploymentEngine
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
+    build_power,
+    build_power_query,
     build_segment_query,
     parse_status,
     table_kelvin_rgb,
@@ -191,6 +195,7 @@ async def test_native_write_only_controls_do_not_require_unavailable_segment_rep
     c._refresh_h607c_advertisements = MagicMock()
     c._renew_foreground_lease = MagicMock()
     c.async_refresh_segments = AsyncMock(return_value=False)
+    c.refresh_state = AsyncMock(return_value=True)
     if operation == "whole-kelvin":
         light = GoveeBLELight(c)
         light.hass = hass
@@ -200,7 +205,7 @@ async def test_native_write_only_controls_do_not_require_unavailable_segment_rep
     elif operation == "rgb":
         groups = [([13], (1, 2, 3))]
         expected = build_segment_paint(groups, "H607C", profile=c.profile)[0]
-        await c.async_paint_segments(groups)
+        await c.async_paint_segments(SegmentPaintRequest(groups))
     else:
         expected = build_segment_brightness([13], 31, "H607C", profile=c.profile)
         await c.async_set_segment_brightness([13], 31)
@@ -412,12 +417,178 @@ async def test_async_paint_segments_updates_slots_and_sends(coord, segment_clien
         patch.object(coord, "async_refresh_segments", new_callable=AsyncMock, return_value=True) as refresh,
         patch.object(coord, "async_set_updated_data") as pushed,
     ):
-        await coord.async_paint_segments((iter(segments), rgb) for segments, rgb in groups)
+        await coord.async_paint_segments(SegmentPaintRequest((iter(segments), rgb) for segments, rgb in groups))
     assert [call.args[1] for call in segment_client.write_gatt_char.await_args_list] == build_segment_paint(groups)
     assert coord.segment_colors[:4] == [(255, 0, 0), (0, 0, 255), (0, 0, 255), (255, 255, 255)]
     assert coord.segment_state_source == "optimistic"
     refresh.assert_awaited_once_with()
     pushed.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    ("powered", "scale", "readable"),
+    [(False, 0, True), (True, 0, True), (False, 1, True), (False, 0, False)],
+)
+async def test_paint_scale_preserves_power_intent_not_black_packet_values(
+    coord, segment_client, powered, scale, readable
+):
+    if not readable:
+        coord.profile = replace(
+            coord.profile,
+            read_domains=coord.profile.read_domains - {ReadDomain.POWER},
+            setup_required_read_domains=coord.profile.setup_required_read_domains - {ReadDomain.POWER},
+        )
+    coord.is_on = powered
+    physical_power = powered
+    physical_palette = list(coord.segment_colors)
+    before = list(physical_palette)
+    colour = (0, 0, 0)
+    colour_packets = build_segment_paint([([1], colour)], coord.model, profile=coord.profile)
+
+    async def write(_uuid, packet, **_kwargs):
+        nonlocal physical_power
+        if packet in colour_packets:
+            physical_palette[0] = colour
+            physical_power = True
+        elif packet == build_power(False):
+            physical_power = False
+        elif packet == build_power(True):
+            physical_power = True
+
+    async def refresh(_request):
+        assert readable
+        coord.is_on = physical_power
+        coord._power_known = True
+        return True
+
+    async def segments():
+        coord.segment_colors = list(physical_palette)
+        coord.segment_state_source = "observed"
+        if readable:
+            coord.is_on = physical_power
+            coord._field_revisions["is_on"] = coord._field_revisions.get("is_on", 0) + 1
+        return True
+
+    segment_client.write_gatt_char.side_effect = write
+    with (
+        patch.object(coord, "refresh_state", side_effect=refresh),
+        patch.object(coord, "async_refresh_segments", side_effect=segments),
+    ):
+        light = GoveeBLELight(coord)
+        if readable:
+            await light.async_paint_segments([{"segments": [1], "rgb_color": [1, 0, 0]}], rgb_scale=scale)
+        else:
+            with pytest.raises(HomeAssistantError):
+                await light.async_paint_segments([{"segments": [1], "rgb_color": [1, 0, 0]}], rgb_scale=scale)
+            segment_client.write_gatt_char.assert_not_awaited()
+            assert physical_palette == before
+            assert physical_power is powered
+            return
+    assert physical_palette == [colour] + before[1:]
+    assert physical_power is (powered if scale == 0 else True)
+    if readable:
+        assert coord.is_on is physical_power
+
+
+async def test_zero_scale_requires_current_power_not_cached_off(coord, segment_client):
+    coord.is_on = False
+    with (
+        patch.object(coord, "refresh_state", AsyncMock(return_value=False)),
+        pytest.raises(HomeAssistantError),
+    ):
+        await GoveeBLELight(coord).async_paint_segments([{"segments": [1], "rgb_color": [255, 0, 0]}], rgb_scale=0)
+    segment_client.write_gatt_char.assert_not_awaited()
+    assert not coord._control_arbiter.locked()
+    assert not coord._lock.locked()
+
+
+@pytest.mark.parametrize(
+    ("segments_readable", "power_readback", "retired"),
+    [(False, True, False), (False, False, False), (True, False, False), (False, False, True)],
+)
+async def test_ordinary_paint_observes_power_without_requiring_segment_readback(
+    coord, segment_client, segments_readable, power_readback, retired
+):
+    if not segments_readable:
+        coord.profile = replace(
+            coord.profile,
+            read_domains=coord.profile.read_domains - {ReadDomain.SEGMENTS},
+            setup_required_read_domains=coord.profile.setup_required_read_domains - {ReadDomain.SEGMENTS},
+        )
+    coord.is_on = False
+
+    async def refresh(_request):
+        if power_readback:
+            coord.is_on = True
+            coord._power_known = True
+        elif retired:
+            coord._client = coord._notification_token = None
+            coord._power_known = False
+        return power_readback
+
+    with (
+        patch.object(coord, "refresh_state", side_effect=refresh),
+        patch.object(coord, "async_refresh_segments", AsyncMock(return_value=True)) as segments,
+    ):
+        await GoveeBLELight(coord).async_paint_segments([{"segments": [1], "rgb_color": [20, 10, 5]}])
+    segment_client.write_gatt_char.assert_awaited_once()
+    assert GoveeBLELight(coord).is_on is (True if power_readback else None)
+    assert coord.segment_colors[0] == (20, 10, 5)
+    if not segments_readable:
+        segments.assert_not_awaited()
+        assert coord.segment_state_source == "optimistic"
+    if retired:
+        assert coord._client is None
+
+
+@pytest.mark.parametrize("error", [TimeoutError("delivery failed"), asyncio.CancelledError()])
+async def test_failed_zero_scale_keeps_original_error_when_power_read_fails(coord, segment_client, error):
+    coord.is_on = False
+    original_send = coord.send_command
+
+    async def send(packet, **options):
+        await original_send(packet, **options)
+        raise error
+
+    with (
+        patch.object(coord, "refresh_state", AsyncMock(side_effect=[True, False])),
+        patch.object(coord, "send_command", side_effect=send),
+        pytest.raises(type(error)) as caught,
+    ):
+        await coord.async_paint_segments(SegmentPaintRequest([([1], (0, 0, 0))], preserve_power=True))
+    assert caught.value is error
+    segment_client.write_gatt_char.assert_awaited_once()
+    assert GoveeBLELight(coord).is_on is None
+    assert not coord._control_arbiter.locked()
+    assert not coord._lock.locked()
+
+
+@pytest.mark.parametrize("changed", ["subscription", "foreground"])
+async def test_zero_scale_does_not_restore_over_newer_ownership(coord, segment_client, changed):
+    coord.is_on = False
+    coord._power_known = True
+    replacement_token = object()
+
+    async def write(_uuid, _packet, **_options):
+        coord.is_on = True
+        if changed == "subscription":
+            coord._notification_token = replacement_token
+        else:
+            coord._control_arbiter._foreground_generation += 1
+
+    segment_client.write_gatt_char.side_effect = write
+    with (
+        patch.object(coord, "refresh_state", AsyncMock(return_value=True)),
+        patch.object(coord, "async_refresh_segments", AsyncMock(return_value=True)),
+        pytest.raises(RuntimeError, match="ownership changed"),
+    ):
+        await coord.async_paint_segments(SegmentPaintRequest([([1], (0, 0, 0))], preserve_power=True))
+    segment_client.write_gatt_char.assert_awaited_once()
+    assert coord.is_on is True
+    assert coord._power_known is True
+    assert "is_on" not in coord._h607c_uncertain_state_fields
+    assert not coord._control_arbiter.locked()
+    assert not coord._lock.locked()
 
 
 async def test_async_paint_segments_preserves_state_without_write_attempt(coord):
@@ -426,7 +597,7 @@ async def test_async_paint_segments_preserves_state_without_write_attempt(coord)
         patch.object(coord, "send_command", new=AsyncMock(side_effect=BleakError("boom"))),
         pytest.raises(BleakError),
     ):
-        await coord.async_paint_segments([([1, 2], (255, 0, 0))])
+        await coord.async_paint_segments(SegmentPaintRequest([([1, 2], (255, 0, 0))]))
     assert coord.segment_colors == before
     assert coord.segment_state_source == "initial"
 
@@ -456,7 +627,7 @@ async def test_async_paint_segments_rejects_unsupported(coord):
         patch.object(coord, "send_command", new_callable=AsyncMock) as sc,
         pytest.raises(ValueError),
     ):
-        await coord.async_paint_segments([([1], (1, 2, 3))])
+        await coord.async_paint_segments(SegmentPaintRequest([([1], (1, 2, 3))]))
     sc.assert_not_awaited()
 
 
@@ -467,7 +638,7 @@ async def test_async_paint_segments_rejects_invalid_segments(coord, bad):
         patch.object(coord, "send_command", new_callable=AsyncMock) as sc,
         pytest.raises(ValueError),
     ):
-        await coord.async_paint_segments([(bad, (1, 2, 3))])
+        await coord.async_paint_segments(SegmentPaintRequest([(bad, (1, 2, 3))]))
     sc.assert_not_awaited()
     assert coord.segment_colors == before
 
@@ -480,13 +651,13 @@ async def test_segment_writes_use_effective_profile(coord, segment_client, count
     with (
         patch.object(coord, "async_refresh_segments", new_callable=AsyncMock),
     ):
-        await coord.async_paint_segments([([count], (1, 2, 3))])
+        await coord.async_paint_segments(SegmentPaintRequest([([count], (1, 2, 3))]))
         await coord.async_set_segment_brightness([count], 50)
         assert segment_client.write_gatt_char.await_count == 2
         segment_client.write_gatt_char.reset_mock()
         with patch.object(coord, "mark_segment_state_optimistic") as optimistic:
             with pytest.raises(ValueError):
-                await coord.async_paint_segments([([1], (4, 5, 6)), ([count + 1], (1, 2, 3))])
+                await coord.async_paint_segments(SegmentPaintRequest([([1], (4, 5, 6)), ([count + 1], (1, 2, 3))]))
             with pytest.raises(ValueError):
                 await coord.async_set_segment_brightness([count + 1], 50)
         optimistic.assert_not_called()
@@ -506,7 +677,7 @@ async def test_paint_serialization_failure_precedes_optimistic_state(coord):
         patch.object(coord, "send_command", new_callable=AsyncMock) as send,
         pytest.raises(ValueError, match="serialization failed"),
     ):
-        await coord.async_paint_segments([([1], (1, 2, 3)), ([2], (4, 5, 6))])
+        await coord.async_paint_segments(SegmentPaintRequest([([1], (1, 2, 3)), ([2], (4, 5, 6))]))
     assert serialize.call_count == 2
     optimistic.assert_not_called()
     send.assert_not_awaited()
@@ -544,7 +715,7 @@ async def test_segment_write_failure_reconciles_without_masking_error(coord, seg
     with patch.object(coord, "async_refresh_segments", AsyncMock(side_effect=refresh)) as refresh_mock:
         with pytest.raises(BleakError) as raised:
             if operation == "paint":
-                await coord.async_paint_segments([([1], (255, 0, 0)), ([2], (0, 0, 255))])
+                await coord.async_paint_segments(SegmentPaintRequest([([1], (255, 0, 0)), ([2], (0, 0, 255))]))
             else:
                 await coord.async_set_segment_brightness([1], 60)
     assert raised.value is error
@@ -569,7 +740,7 @@ async def test_segment_false_confirmation_surfaces_without_resending(coord, segm
     with patch.object(coord, "async_refresh_segments", AsyncMock(return_value=False)) as refresh:
         with pytest.raises(RuntimeError, match="confirm segment"):
             if operation == "paint":
-                await coord.async_paint_segments([([1], (255, 0, 0))])
+                await coord.async_paint_segments(SegmentPaintRequest([([1], (255, 0, 0))]))
             else:
                 await coord.async_set_segment_brightness([1], 60)
     assert segment_client.write_gatt_char.await_count == 1
@@ -596,7 +767,7 @@ async def test_segment_no_write_preserves_observation_and_buffers(coord, segment
         with pytest.raises((ValueError, TimeoutError)):
             selected = [16] if failure == "validation" else [1]
             if operation == "paint":
-                await coord.async_paint_segments([([1], (255, 0, 0)), (selected, (0, 0, 255))])
+                await coord.async_paint_segments(SegmentPaintRequest([([1], (255, 0, 0)), (selected, (0, 0, 255))]))
             else:
                 await coord.async_set_segment_brightness(selected, 60)
     segment_client.write_gatt_char.assert_not_awaited()
@@ -632,7 +803,7 @@ async def test_segment_new_observations_survive_write_completion(coord, segment_
 
         async def apply():
             if operation == "paint":
-                await coord.async_paint_segments([([1], (255, 0, 0))])
+                await coord.async_paint_segments(SegmentPaintRequest([([1], (255, 0, 0))]))
             else:
                 await coord.async_set_segment_brightness([1], 60)
 
@@ -660,7 +831,7 @@ async def test_cancelled_segment_write_leaves_uncertainty_without_recovery_task(
     with patch.object(coord, "async_refresh_segments", AsyncMock()) as refresh:
         with pytest.raises(asyncio.CancelledError):
             if operation == "paint":
-                await coord.async_paint_segments([([1], (255, 0, 0))])
+                await coord.async_paint_segments(SegmentPaintRequest([([1], (255, 0, 0))]))
             else:
                 await coord.async_set_segment_brightness([1], 60)
     refresh.assert_not_awaited()
@@ -708,12 +879,12 @@ async def test_segment_failure_reconciles_real_complete_query_pages(request, mod
         pytest.raises(TimeoutError) as raised,
     ):
         if operation == "paint":
-            await coord.async_paint_segments([([1], (255, 0, 0)), ([2], (0, 0, 255))])
+            await coord.async_paint_segments(SegmentPaintRequest([([1], (255, 0, 0)), ([2], (0, 0, 255))]))
         else:
             await coord.async_set_segment_brightness([1], 60)
     assert raised.value is error
     sent = [call.args[1] for call in client.write_gatt_char.await_args_list]
-    assert sent == packets + list(replies)
+    assert sent == packets + [build_power_query(coord.model, profile=coord.profile)] + list(replies)
     assert coord.segment_colors == [(9, 8, 7)] * 15
     assert coord.segment_brightness == [40] * 15
     assert coord.segment_state_source == "observed"
@@ -730,7 +901,7 @@ async def test_paint_later_transform_failure_keeps_latest_observations(coord, se
     )
     with patch.object(coord, "async_refresh_segments", AsyncMock(return_value=False)) as refresh:
         with pytest.raises(ValueError) as raised:
-            await coord.async_paint_segments([([1], (255, 0, 0)), ([2], (0, 0, 255))])
+            await coord.async_paint_segments(SegmentPaintRequest([([1], (255, 0, 0)), ([2], (0, 0, 255))]))
     assert raised.value is error
     assert segment_client.write_gatt_char.await_count == 1
     refresh.assert_awaited_once_with()
@@ -781,7 +952,7 @@ async def test_multipart_segment_recovery_tracks_physical_attempts(hass, operati
     ):
         with pytest.raises(type(error)) as raised:
             if operation == "paint":
-                await coord.async_paint_segments(groups)
+                await coord.async_paint_segments(SegmentPaintRequest(groups))
             else:
                 await coord.async_set_segment_brightness([1, 9], 40)
     assert raised.value is error
@@ -809,7 +980,7 @@ async def test_segment_recovery_cancellation_releases_operation(coord, segment_c
 
     with patch.object(coord, "async_refresh_segments", AsyncMock(side_effect=refresh)):
         task = asyncio.create_task(
-            coord.async_paint_segments([([1], (255, 0, 0))])
+            coord.async_paint_segments(SegmentPaintRequest([([1], (255, 0, 0))]))
             if operation == "paint"
             else coord.async_set_segment_brightness([1], 60)
         )
@@ -873,7 +1044,7 @@ async def test_segment_confirmation_compares_complete_pages(request, model_fixtu
 
         async def apply():
             if operation == "paint":
-                await coord.async_paint_segments(groups)
+                await coord.async_paint_segments(SegmentPaintRequest(groups))
             else:
                 await coord.async_set_segment_brightness([1, 2], 60)
 
@@ -887,7 +1058,7 @@ async def test_segment_confirmation_compares_complete_pages(request, model_fixtu
     assert coord.segment_state_source == "observed"
     assert coord.segment_state_observed_at is not None
     assert coord._field_revisions["segment_colors"] == revision + 1
-    assert client.write_gatt_char.await_count == len(replies) + (2 if operation == "paint" else 1)
+    assert client.write_gatt_char.await_count == len(replies) + (2 if operation == "paint" else 1) + 1
     assert not coord._control_arbiter.locked()
     assert not coord._lock.locked()
 
@@ -909,7 +1080,7 @@ async def test_segment_verification_error_preserves_state(coord, segment_client,
     with patch.object(coord, "async_refresh_segments", AsyncMock(side_effect=refresh)) as verify:
         with pytest.raises(type(error)) as raised:
             if operation == "paint":
-                await coord.async_paint_segments([([1], (255, 0, 0))])
+                await coord.async_paint_segments(SegmentPaintRequest([([1], (255, 0, 0))]))
             else:
                 await coord.async_set_segment_brightness([1], 60)
     assert raised.value is error
@@ -966,7 +1137,7 @@ async def test_segment_preservation_baseline_is_first_write_boundary(
 
         async def apply():
             if operation == "paint":
-                await coord.async_paint_segments([([1], (255, 0, 0)), ([2], (0, 0, 255))])
+                await coord.async_paint_segments(SegmentPaintRequest([([1], (255, 0, 0)), ([2], (0, 0, 255))]))
             else:
                 await coord.async_set_segment_brightness([1], 60)
 

@@ -15,7 +15,9 @@ from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshReques
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_blank_screen_query,
+    build_boolean_control_query,
     build_brightness_query,
+    build_bulk_status_query,
     build_colour_mode_query,
     build_firmware_query,
     build_hardware_query,
@@ -28,7 +30,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES
 from custom_components.ha_govee_led_ble.transport import ENCRYPTION_UUID, LIGHT_SERVICE_UUID, WRITE_UUID, xor_checksum
 from custom_components.ha_govee_led_ble.video_applicability import video_identity_fields
-from tests.coordinator_test_support import _CONFIGURATION_URL, _c, _packet
+from tests.coordinator_test_support import _CONFIGURATION_URL, _c, _packet, frame
 
 M = "custom_components.ha_govee_led_ble.coordinator"
 
@@ -331,6 +333,169 @@ async def test_send_state_queries_selective(coord):
     assert await coord._send_state_queries(query_power=True, query_brightness=False, query_color_mode=True) is True
     calls = [args.args[1] for args in c.write_gatt_char.await_args_list]
     assert calls == [build_power_query(), build_colour_mode_query()]
+
+
+@pytest.mark.parametrize(
+    ("model", "response", "source_values"),
+    [
+        ("H6046", "aa3391", {"left_bar_enabled": True, "right_bar_enabled": True}),
+        ("H6053", "aa3391", {"left_bar_enabled": True, "right_bar_enabled": True}),
+        ("H607C", "aa07082507", {"pole_enabled": True, "base_enabled": True}),
+        ("H60B0", "aa42e00fa0320fa028", {"top_enabled": True, "side_enabled": True, "bottom_enabled": False}),
+        ("H60B2", "aa36010001", {"bottom_enabled": True, "middle_enabled": False, "top_enabled": True}),
+        ("H60A6", "ac00010004030030020100", {"panel_enabled": True, "ring_enabled": False}),
+        ("H1771", "ac000100030300360107", {"source_0_enabled": True, "source_1_enabled": True}),
+    ],
+)
+async def test_explicit_native_refresh_qualifies_sources_without_full_or_segment_reads(
+    hass, monkeypatch, virtual_clock, model, response, source_values
+):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url=None)
+    coordinator.pact_type, coordinator.pact_code = 1, 2 if model in {"H60A6", "H60B0"} else 1
+    if model == "H60A6":
+        coordinator.hw_version, coordinator.fw_version = "1.04.03", "1.00.41"
+    elif model == "H6053":
+        coordinator.hw_version, coordinator.fw_version = "1.00.01", "1.08.01"
+    coordinator._resolve_device_profile()
+    client = _c()
+    coordinator._client = client
+    coordinator._notification_token = object()
+    coordinator._notify_started_monotonic = virtual_clock.virtual_time()
+    coordinator._confirmed_identity_fields.update(coordinator.profile.profile_identity_fields)
+    if coordinator.profile.requires_pact_confirmation:
+        coordinator._observe_pact(coordinator.pact_type, coordinator.pact_code)
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
+    scope = frozenset(source_values)
+    query = (
+        build_bulk_status_query(coordinator.profile, domains=("zone_enable",))
+        if coordinator.profile.bulk_status_grammar is not None
+        else build_boolean_control_query(next(iter(scope)), model, profile=coordinator.profile)
+    )
+    power_query = build_power_query(model, profile=coordinator.profile)
+    coordinator.boolean_control_state.update({control: not value for control, value in source_values.items()})
+    fields = tuple(f"boolean_{control}" for control in scope)
+    coordinator._mark_received(ReadDomain.OTHER, *fields)
+    baselines = {field: coordinator._field_revisions[field] for field in fields}
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet == power_query:
+            coordinator._notify_callback(None, bytearray(frame("aa0100")))
+        elif packet == query:
+            coordinator._notify_callback(None, bytearray(frame(response)))
+        else:
+            raise AssertionError(f"Unrelated read or write: {packet.hex()}")
+
+    client.write_gatt_char = AsyncMock(side_effect=write)
+    assert await coordinator.refresh_state(
+        RefreshRequest(
+            required_domains=frozenset({ReadDomain.POWER}),
+            query_native_settings=scope,
+            query_segments=False,
+            timeout=0.1,
+        )
+    )
+    assert coordinator._fresh_source_power() == source_values
+    assert all(coordinator._field_revisions[field] > baseline for field, baseline in baselines.items())
+    assert coordinator.control_write_attempts == 0
+    if model == "H607C":
+        assert not coordinator.profile.can_read(ReadDomain.SEGMENTS)
+
+
+@pytest.mark.parametrize("model", ["H60A6", "H1771"])
+async def test_explicit_native_refresh_rejects_cached_or_incomplete_bulk_fields(
+    hass, monkeypatch, virtual_clock, model
+):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url=None)
+    if model == "H60A6":
+        coordinator.hw_version, coordinator.fw_version = "1.04.03", "1.00.41"
+        coordinator._resolve_device_profile()
+    coordinator._confirmed_identity_fields.update(coordinator.profile.profile_identity_fields)
+    coordinator._notification_token = object()
+    coordinator._notify_started_monotonic = virtual_clock.virtual_time()
+    coordinator._client = client = _c()
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
+    scope = coordinator.profile.boolean_controls
+    coordinator.boolean_control_state.update({control: True for control in scope})
+    fields = tuple(f"boolean_{control}" for control in scope)
+    coordinator._mark_received(ReadDomain.OTHER, *fields)
+    baselines = {field: coordinator._field_revisions[field] for field in fields}
+    zone_query = build_bulk_status_query(coordinator.profile, domains=("zone_enable",))
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet == build_power_query(model, profile=coordinator.profile):
+            coordinator._notify_callback(None, bytearray(frame("aa0100")))
+        elif packet == build_brightness_query(model, profile=coordinator.profile) or (
+            model == "H1771" and packet == build_colour_mode_query(model, profile=coordinator.profile)
+        ):
+            return
+        elif model == "H1771" and packet == zone_query:
+            coordinator._notify_callback(None, bytearray(frame("ac000100030300360107")))
+        else:
+            coordinator._notify_callback(None, bytearray(frame("ac000100030300010100")))
+
+    client.write_gatt_char = AsyncMock(side_effect=write)
+    assert (
+        await coordinator.refresh_state(
+            RefreshRequest(
+                refresh_all=True,
+                required_domains=frozenset({ReadDomain.POWER}),
+                query_native_settings=scope,
+                query_segments=False,
+                timeout=0.1,
+            )
+        )
+        is None
+    )
+    assert coordinator._field_revisions["bulk_status"] > 0
+    missing = "boolean_panel_enabled" if model == "H60A6" else "boolean_gradual"
+    assert coordinator._field_revisions[missing] == baselines[missing]
+    assert coordinator.control_write_attempts == 0
+
+
+async def test_explicit_native_refresh_rejects_cached_h607c_flags(h607c_subscription, virtual_clock):
+    coordinator, client = h607c_subscription
+    await coordinator._ensure_connected()
+    receive = client.start_notify.await_args.args[1]
+    receive(None, bytearray(_packet(0xAA, 7, [8, 37, 7])))
+    fields = ("boolean_pole_enabled", "boolean_base_enabled")
+    baselines = {field: coordinator._field_revisions[field] for field in fields}
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet == build_power_query(coordinator.model, profile=coordinator.profile):
+            receive(None, bytearray(_packet(0xAA, 1, [1])))
+
+    client.write_gatt_char = AsyncMock(side_effect=write)
+    assert (
+        await coordinator.refresh_state(
+            RefreshRequest(
+                required_domains=frozenset({ReadDomain.POWER}),
+                query_native_settings=frozenset({"pole_enabled", "base_enabled"}),
+                query_segments=False,
+                timeout=0.1,
+            )
+        )
+        is None
+    )
+    receive(None, bytearray(_packet(0xAA, 7, [8, 37, 7])))
+    assert all(coordinator._field_revisions[field] == baseline for field, baseline in baselines.items())
+    assert coordinator._fresh_source_power() is None
+    assert coordinator.control_write_attempts == 0
+
+
+@pytest.mark.parametrize("policy", [True, False])
+async def test_boolean_native_query_policy_preserves_basic_polling(hass, monkeypatch, policy):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H1771", configuration_url=None)
+    coordinator._client = client = _c()
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
+
+    async def write(_uuid, packet, **_kwargs):
+        assert packet == build_power_query("H1771", profile=coordinator.profile)
+        coordinator._notify_callback(None, bytearray(frame("aa0100")))
+
+    client.write_gatt_char = AsyncMock(side_effect=write)
+    assert await coordinator.refresh_state(RefreshRequest(on=False, query_native_settings=policy))
+    assert not coordinator.boolean_control_state
+    assert coordinator._field_revisions["is_on"] > 0
 
 
 async def test_send_state_queries_include_h6199_display_state(h6199, virtual_clock):

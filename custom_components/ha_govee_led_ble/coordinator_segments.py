@@ -3,16 +3,18 @@
 import asyncio
 import logging
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from .const import ReadDomain, get_profile, same_control_profile
+from .const import ModelProfile, ReadDomain, get_profile, same_control_profile
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator_base import _CoordinatorBase
 from .coordinator_refresh import RefreshRequest
-from .coordinator_sources import segment_colour_matches
+from .coordinator_sources import async_restore_source_flags, segment_colour_matches
 from .coordinator_status import ParsedMode
+from .generated_protocol_adapter import build_power
 from .light_commands import (
     SegmentColorGroup,
     build_segment_brightness_packets,
@@ -25,6 +27,20 @@ from .native_profile_controls import ProfileWriter
 _LOGGER = logging.getLogger(__name__)
 
 _SEGMENT_READ_TIMEOUT = 2.0
+
+
+@dataclass(frozen=True, slots=True)
+class SegmentPaintRequest:
+    groups: Iterable[SegmentColorGroup]
+    preserve_power: bool = False
+    write_guard: Callable[[], None] | None = None
+    writer: ProfileWriter | None = None
+    intent: ControlIntent = ControlIntent.USER
+    on_write: Callable[[], None] | None = None
+
+    def validate(self, profile: ModelProfile) -> None:
+        if self.preserve_power and not profile.can_read(ReadDomain.POWER):
+            raise RuntimeError("Power-preserving painting requires readable power")
 
 
 class _SegmentMixin(_CoordinatorBase):
@@ -270,10 +286,11 @@ class _SegmentMixin(_CoordinatorBase):
                 client = await self._ensure_connected()
                 baseline = self._field_revisions.get("segment_colors", 0)
                 ok = await self._send_state_queries(
-                    query_power=False,
+                    query_power=True,
                     query_brightness=False,
                     query_color_mode=False,
                     query_segments=True,
+                    required_domains=frozenset({ReadDomain.SEGMENTS}),
                     deadline=time.monotonic() + timeout,
                 )
             return (
@@ -467,26 +484,20 @@ class _SegmentMixin(_CoordinatorBase):
                         outcome,
                     )
 
-    async def async_paint_segments(
-        self,
-        groups: list[SegmentColorGroup],
-        *,
-        write_guard: Callable[[], None] | None = None,
-        writer: ProfileWriter | None = None,
-        intent: ControlIntent = ControlIntent.USER,
-        on_write: Callable[[], None] | None = None,
-    ) -> None:
+    async def async_paint_segments(self, request: SegmentPaintRequest) -> None:
+        request.validate(self.profile)
         async with self.async_mask_transaction():
-            resolved: list[SegmentColorGroup] = [(list(segments), rgb) for segments, rgb in groups]
+            resolved: list[SegmentColorGroup] = [(list(segments), rgb) for segments, rgb in request.groups]
             await self._async_write_segment_batch(
                 build_segment_paint(resolved, self.model, profile=self.profile),
                 {segment - 1: rgb for segments, rgb in resolved for segment in segments},
                 {},
                 "paint",
-                write_guard=write_guard,
-                writer=writer,
-                intent=intent,
-                on_write=on_write,
+                write_guard=request.write_guard,
+                writer=request.writer,
+                intent=request.intent,
+                on_write=request.on_write,
+                preserve_power=request.preserve_power,
             )
 
     async def async_set_segment_brightness(
@@ -514,6 +525,7 @@ class _SegmentMixin(_CoordinatorBase):
         writer: ProfileWriter | None = None,
         intent: ControlIntent = ControlIntent.USER,
         on_write: Callable[[], None] | None = None,
+        preserve_power: bool = False,
     ) -> None:
         expected_sizes: tuple[int, int] | None = None
         attempted = False
@@ -521,11 +533,47 @@ class _SegmentMixin(_CoordinatorBase):
         profile = self.profile
         generation = self._profile_generation
         write_generation = self._mode_write_generation
+        power: bool | None = None
+        source_power: dict[str, bool] = {}
+        power_request: RefreshRequest | None = None
+        power_client = None
+        power_token = None
+        failed = False
 
-        def before_write() -> None:
-            nonlocal attempted, expected_colors, expected_brightness, expected_sizes
+        def power_owned(*, allow_retired: bool = False) -> bool:
+            return (
+                same_control_profile(self.profile, profile)
+                and self._profile_generation == generation
+                and self._control_arbiter.foreground_generation == foreground_generation
+                and (
+                    self._client is power_client
+                    and self._notification_token is power_token
+                    or allow_retired
+                    and self._client is None
+                    and self._notification_token is None
+                )
+            )
+
+        def power_guard() -> None:
             if write_guard is not None:
                 write_guard()
+            if power is not None and not power_owned():
+                raise RuntimeError("Power preservation ownership changed")
+
+        def uncertain_power() -> None:
+            if power_owned(allow_retired=True):
+                self._h607c_uncertain_state_fields.add("is_on")
+                self._power_known = False
+
+        def before_write() -> None:
+            nonlocal attempted, expected_colors, expected_brightness, expected_sizes, power_client, power_token
+            power_guard()
+            if power is None:
+                power_client = self._client
+                power_token = self._notification_token
+            if power is not None and not attempted:
+                if self.is_on is not power or source_power and self._fresh_source_power() != source_power:
+                    raise RuntimeError("Power changed before segment painting")
             # Only a new complete observation can establish preserved values.
             if (
                 not attempted
@@ -538,6 +586,32 @@ class _SegmentMixin(_CoordinatorBase):
             attempted = True
 
         async with async_control_intent(self, intent):
+            foreground_generation = self._control_arbiter.foreground_generation
+            if preserve_power:
+                controls = frozenset(
+                    source.control
+                    for source in self.profile.light_sources
+                    if source.control in self.profile.boolean_controls
+                )
+                power_request = RefreshRequest(
+                    required_domains=frozenset({ReadDomain.POWER}),
+                    query_native_settings=controls,
+                    query_segments=False,
+                )
+                if not await self.refresh_state(power_request):
+                    raise RuntimeError("Cannot observe power before segment painting")
+                if type(self.is_on) is not bool:
+                    raise RuntimeError("Cannot preserve unknown power during segment painting")
+                power = self.is_on
+                if controls:
+                    flags = self._fresh_source_power()
+                    if flags is None:
+                        raise RuntimeError("Cannot preserve unknown source power during segment painting")
+                    source_power = flags
+                profile = self.profile
+                generation = self._profile_generation
+                power_client = self._client
+                power_token = self._notification_token
             segment_revision = self._field_revisions.get("segment_colors", 0)
             batch_start = self._static_write_attempts
             try:
@@ -563,23 +637,43 @@ class _SegmentMixin(_CoordinatorBase):
                         if self._static_write_attempts != packet_start:
                             attempted_packets.append(packet)
                             write_generation = self._mode_write_generation
-                if self.profile.can_read(ReadDomain.SEGMENTS) and (
-                    not await self.async_refresh_segments()
-                    or (
-                        expected_sizes is not None
-                        and expected_sizes != (len(self.segment_colors), len(self.segment_brightness))
-                    )
-                    or any(
-                        index >= len(self.segment_colors) or self.segment_colors[index] != rgb
-                        for index, rgb in expected_colors.items()
-                    )
-                    or any(
-                        index >= len(self.segment_brightness) or self.segment_brightness[index] != value
-                        for index, value in expected_brightness.items()
-                    )
-                ):
-                    raise RuntimeError(f"Failed to confirm segment {operation}")
+                if self.profile.can_read(ReadDomain.SEGMENTS):
+                    power_revision = self._field_revisions.get("is_on", 0)
+                    confirmed = await self.async_refresh_segments()
+                    if (
+                        not preserve_power
+                        and attempted
+                        and self.profile.can_read(ReadDomain.POWER)
+                        and self._field_revisions.get("is_on", 0) <= power_revision
+                    ):
+                        uncertain_power()
+                    if (
+                        not confirmed
+                        or (
+                            expected_sizes is not None
+                            and expected_sizes != (len(self.segment_colors), len(self.segment_brightness))
+                        )
+                        or any(
+                            index >= len(self.segment_colors) or self.segment_colors[index] != rgb
+                            for index, rgb in expected_colors.items()
+                        )
+                        or any(
+                            index >= len(self.segment_brightness) or self.segment_brightness[index] != value
+                            for index, value in expected_brightness.items()
+                        )
+                    ):
+                        raise RuntimeError(f"Failed to confirm segment {operation}")
+                elif not preserve_power and attempted and self.profile.can_read(ReadDomain.POWER):
+                    if not await self.refresh_state(
+                        RefreshRequest(
+                            required_domains=frozenset({ReadDomain.POWER}),
+                            query_native_settings=False,
+                            query_segments=False,
+                        )
+                    ):
+                        uncertain_power()
             except BaseException as error:
+                failed = True
                 if (
                     attempted_packets
                     and same_control_profile(self.profile, profile)
@@ -601,5 +695,41 @@ class _SegmentMixin(_CoordinatorBase):
                             _LOGGER.debug("Unconfirmed source colour reconciliation failed", exc_info=True)
                 raise
             finally:
-                if attempted:
-                    self.async_set_updated_data(self.data or {})
+                try:
+                    if power is not None and self._static_write_attempts > batch_start:
+                        try:
+                            power_guard()
+                            if power_request is not None and not await self.refresh_state(power_request):
+                                raise RuntimeError("Cannot observe power after segment painting")
+                            power_guard()
+                            if source_power and not await async_restore_source_flags(
+                                self._as_coordinator, source_power, write_guard=power_guard
+                            ):
+                                raise RuntimeError("Failed to restore source power after segment painting")
+                            if self.is_on is not power:
+                                await self.send_command(build_power(power), write_guard=power_guard)
+                                if not await self.refresh_state(
+                                    RefreshRequest(
+                                        on=power,
+                                        required_domains=frozenset({ReadDomain.POWER}),
+                                        query_native_settings=frozenset(source_power),
+                                        query_segments=False,
+                                    )
+                                ):
+                                    raise RuntimeError("Failed to restore power after segment painting")
+                            power_guard()
+                            if source_power and self._fresh_source_power() != source_power:
+                                raise RuntimeError("Failed to restore source power after segment painting")
+                        except BaseException as error:
+                            uncertain_power()
+                            if not failed:
+                                raise
+                            _LOGGER.debug(
+                                "Power restoration failed after segment %s for Govee %s (%s)",
+                                operation,
+                                self.model,
+                                type(error).__name__,
+                            )
+                finally:
+                    if attempted:
+                        self.async_set_updated_data(self.data or {})

@@ -2308,7 +2308,9 @@ async def test_segment_colour_services_normalise_groups(
         kwargs["segments"] = iter(kwargs["segments"])
     await getattr(light, method)(**kwargs)
 
-    mock_coordinator.async_paint_segments.assert_awaited_once_with(expected, write_guard=None)
+    from custom_components.ha_govee_led_ble.coordinator_segments import SegmentPaintRequest
+
+    mock_coordinator.async_paint_segments.assert_awaited_once_with(SegmentPaintRequest(tuple(expected)))
 
 
 @pytest.mark.parametrize("error", [TypeError("bad segment"), ValueError("bad colour")])

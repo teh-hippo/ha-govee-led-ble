@@ -77,7 +77,8 @@ async def test_segment_collection_keeps_non_scene_observations_during_scene_iden
     client.write_gatt_char = AsyncMock(side_effect=write)
     assert await c.async_refresh_segments()
     assert [call.args[1] for call in client.write_gatt_char.call_args_list] == [
-        build_segment_query(group) for group in range(1, 6)
+        build_power_query(),
+        *(build_segment_query(group) for group in range(1, 6)),
     ]
     assert c.segment_brightness == [50] * 15 and c.segment_state_source == "observed"
     assert c.is_on is True and c.brightness_pct == 23 and c._music_calm is True
@@ -953,6 +954,9 @@ async def test_query_transform_rejection_only_latches_after_physical_attempt(dev
         return packet
 
     async def write(_uuid, packet, **kwargs):
+        if packet == build_power_query():
+            receive(None, bytearray(_packet(0xAA, 1, [1])))
+            return
         assert c._segment_query_incomplete  # installed before even synchronous RX
         receive(None, bytearray(replies[packet[2] - 1]))
 
@@ -960,7 +964,7 @@ async def test_query_transform_rejection_only_latches_after_physical_attempt(dev
     client.write_gatt_char = AsyncMock(side_effect=write)
     with pytest.raises(ValueError, match="rejected query transform"):
         await c.async_refresh_segments()
-    assert client.write_gatt_char.await_count == page - 1
+    assert client.write_gatt_char.await_count == page
     assert c._segment_query_incomplete is (page > 1)
     client.disconnect.assert_not_awaited()
     if page == 1:
