@@ -204,7 +204,7 @@ Keep mutable test storage local to each test and browser servers owned by the ga
 The full gate owns its browser test server; do not qualify an exact build through an unrelated or reused preview server.
 Use `PYTEST_WORKERS=1` only to diagnose collisions; fix resource ownership rather than making serial execution the normal gate.
 Keep virtual event-loop clocks out of real HTTP/WebSocket tests; use them only around simulated transport work.
-Invalidate the editor asset generation when its imported module contract changes, not just the backend compiler version.
+Invalidate the editor asset generation in both `effect_contracts.py` and `frontend/src/contracts.ts` when its imported module contract changes, not just the backend compiler version.
 Log handled backend failures with their operation, model and failure classification without changing browser feedback.
 Keep request bodies, unique identifiers and arbitrary exception text out of diagnostic logs; use trusted reasons or exception types and source locations instead.
 
