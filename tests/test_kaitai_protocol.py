@@ -1548,7 +1548,7 @@ async def test_failed_segment_write_preserves_fresh_static_provenance(static_coo
     coord = static_coordinator
     coord.install_static_color(rgb=(9, 8, 7))
 
-    async def send(_packet, *, write_guard):
+    async def send(_packet, *, write_guard, on_write=None):
         write_guard()
         coord._notify_callback(None, _static_reply(rgb=(1, 2, 3), kelvin=kelvin))
         raise RuntimeError("segment write failed after notification")

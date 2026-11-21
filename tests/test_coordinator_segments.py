@@ -490,6 +490,43 @@ async def test_paint_scale_preserves_power_intent_not_black_packet_values(
         assert coord.is_on is physical_power
 
 
+@pytest.mark.parametrize("scale", [0, 1])
+async def test_paint_accepts_native_power_change_after_confirmed_off(coord, segment_client, scale):
+    physical_power = False
+    colour_packets = build_segment_paint([([1], (0, 0, 0))], coord.model, profile=coord.profile)
+    coord.is_on = False
+    coord._arm_expected(build_power(False))
+    coord._notify_callback(None, bytearray(_packet(0xAA, 0x01, [0])))
+
+    async def write(_uuid, packet, **_kwargs):
+        nonlocal physical_power
+        if packet in colour_packets:
+            physical_power = True
+        elif packet == build_power(False):
+            physical_power = False
+
+    async def refresh(_request):
+        coord._notify_callback(None, bytearray(_packet(0xAA, 0x01, [int(physical_power)])))
+        return coord._power_known and coord.is_on is physical_power
+
+    async def segments():
+        await refresh(None)
+        coord.segment_colors[0] = (0, 0, 0)
+        coord.segment_state_source = "observed"
+        return True
+
+    segment_client.write_gatt_char.side_effect = write
+    with (
+        patch.object(coord, "refresh_state", side_effect=refresh),
+        patch.object(coord, "async_refresh_segments", side_effect=segments),
+    ):
+        light = GoveeBLELight(coord)
+        await light.async_paint_segments([{"segments": [1], "rgb_color": [1, 0, 0]}], rgb_scale=scale)
+
+    assert physical_power is (scale != 0)
+    assert light.is_on is physical_power
+
+
 async def test_zero_scale_requires_current_power_not_cached_off(coord, segment_client):
     coord.is_on = False
     with (
@@ -519,8 +556,7 @@ async def test_ordinary_paint_observes_power_without_requiring_segment_readback(
 
     async def refresh(_request):
         if power_readback:
-            coord.is_on = True
-            coord._power_known = True
+            coord._notify_callback(None, bytearray(_packet(0xAA, 0x01, [1])))
         elif retired:
             coord._client = coord._notification_token = None
             coord._power_known = False
@@ -569,12 +605,12 @@ async def test_zero_scale_does_not_restore_over_newer_ownership(coord, segment_c
     coord._power_known = True
     replacement_token = object()
 
-    async def write(_uuid, _packet, **_options):
-        coord.is_on = True
+    async def write(_uuid, _wire_packet, **_options):
         if changed == "subscription":
             coord._notification_token = replacement_token
         else:
             coord._control_arbiter._foreground_generation += 1
+        coord._notify_callback(None, bytearray(_packet(0xAA, 0x01, [1])))
 
     segment_client.write_gatt_char.side_effect = write
     with (
@@ -591,13 +627,23 @@ async def test_zero_scale_does_not_restore_over_newer_ownership(coord, segment_c
     assert not coord._lock.locked()
 
 
-async def test_async_paint_segments_preserves_state_without_write_attempt(coord):
+async def test_async_paint_segments_preserves_state_without_write_attempt(coord, segment_client):
     before = list(coord.segment_colors)
+    coord._arm_expected(build_power(False))
+    coord._notify_callback(None, bytearray(_packet(0xAA, 0x01, [0])))
+
+    async def send(_packet, *, write_guard, on_write=None):
+        write_guard()
+        raise BleakError("boom")
+
     with (
-        patch.object(coord, "send_command", new=AsyncMock(side_effect=BleakError("boom"))),
+        patch.object(coord, "send_command", side_effect=send),
         pytest.raises(BleakError),
     ):
         await coord.async_paint_segments(SegmentPaintRequest([([1, 2], (255, 0, 0))]))
+    segment_client.write_gatt_char.assert_not_awaited()
+    coord._notify_callback(None, bytearray(_packet(0xAA, 0x01, [1])))
+    assert GoveeBLELight(coord).is_on is False
     assert coord.segment_colors == before
     assert coord.segment_state_source == "initial"
 
@@ -932,14 +978,14 @@ async def test_multipart_segment_recovery_tracks_physical_attempts(hass, operati
     original_send = coord.send_command
     error = asyncio.CancelledError() if failure == "cancelled" else ValueError("pre-write rejection")
 
-    async def send(packet, *, write_guard):
+    async def send(packet, *, write_guard, on_write=None):
         assert coord._control_arbiter.current_task_intent is ControlIntent.USER
         if failure == "zero":
             write_guard()
             raise error
         if packet == packets[1]:
             raise error
-        await original_send(packet, write_guard=write_guard)
+        await original_send(packet, write_guard=write_guard, on_write=on_write)
 
     refresh = AsyncMock(side_effect=RuntimeError("refresh failed")) if failure == "recovery" else AsyncMock()
     source_refresh = (

@@ -539,6 +539,7 @@ class _SegmentMixin(_CoordinatorBase):
         power_client = None
         power_token = None
         failed = False
+        colour_batch = bool(expected_colors)
 
         def power_owned(*, allow_retired: bool = False) -> bool:
             return (
@@ -564,6 +565,14 @@ class _SegmentMixin(_CoordinatorBase):
             if power_owned(allow_retired=True):
                 self._h607c_uncertain_state_fields.add("is_on")
                 self._power_known = False
+
+        def on_batch_write() -> None:
+            if on_write is not None:
+                on_write()
+            if colour_batch and self.profile.can_read(ReadDomain.POWER) and power_owned():
+                # Native painting can change power without an explicit power command.
+                self._expected_state.pop("is_on", None)
+                uncertain_power()
 
         def before_write() -> None:
             nonlocal attempted, expected_colors, expected_brightness, expected_sizes, power_client, power_token
@@ -618,7 +627,8 @@ class _SegmentMixin(_CoordinatorBase):
                 for packet in packets:
                     packet_start = self._static_write_attempts
                     try:
-                        options: dict[str, Any] = {"on_write": on_write} if on_write is not None else {}
+                        callback = on_batch_write if colour_batch else on_write
+                        options: dict[str, Any] = {"on_write": callback} if callback is not None else {}
                         if writer is None:
                             await self.send_command(packet, write_guard=before_write, **options)
                         else:

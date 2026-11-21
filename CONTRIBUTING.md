@@ -97,6 +97,7 @@ Keep real product differences without turning each product into a separate imple
   Requalify dependent mode and layout through independent readback without discarding retained colour intent.
   Bind rollback to its starting observations, including source settings it may restore, before persisting recovery progress.
   Matching readback preserves verification; a contradiction revokes it, and a complete response without the required field cannot establish it.
+  Retire earlier field expectations when a newer owned physical operation can change that field, including native side effects; never retire them during admission or preparation.
   Keep historical deployment confirmation separate from current active attribution; recheck the observation and reconcile active identity before notifying entities after persistence.
   A static mode report after a partial exit is not proof of restoration; retain the incomplete target across planned release independently of the original effect baseline, and verify without repainting before clearing it on completion.
   An unavailable restoration target rejects before lighting writes; never substitute aggregate colour or an invented default.
