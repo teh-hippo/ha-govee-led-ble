@@ -21,6 +21,7 @@ from .coordinator import GoveeBLECoordinator
 from .coordinator_base import async_prepare_effect_profile
 from .coordinator_modes import ModeTransitionPurpose
 from .coordinator_refresh import STATIC_RECOVERY_SETTINGS, RefreshRequest
+from .coordinator_segments import SegmentPaintRequest
 from .coordinator_status import ParsedMode
 from .effect_active_workspace import (
     ActiveEffectWorkspace,
@@ -159,11 +160,13 @@ async def async_apply_compiled_profile(
         if coordinator.model != compiled.model:
             raise ValueError("Static RGB target does not match coordinator")
         await coordinator.async_paint_segments(
-            list(compiled.groups),
-            writer=writer,
-            intent=ControlIntent.APPLY,
-            write_guard=lambda: validate_compiled_geometry(compiled, coordinator.effect_authorization_profile),
-            on_write=on_write,
+            SegmentPaintRequest(
+                compiled.groups,
+                writer=writer,
+                intent=ControlIntent.APPLY,
+                write_guard=lambda: validate_compiled_geometry(compiled, coordinator.effect_authorization_profile),
+                on_write=on_write,
+            )
         )
         if progress is not None:
             await progress(1)

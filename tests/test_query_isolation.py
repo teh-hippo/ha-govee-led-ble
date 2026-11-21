@@ -11,6 +11,7 @@ from homeassistant.helpers.update_coordinator import UpdateFailed
 from custom_components.ha_govee_led_ble.const import ReadDomain
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_refresh import DEFAULT_REFRESH_REQUEST, RefreshRequest
+from custom_components.ha_govee_led_ble.coordinator_segments import SegmentPaintRequest
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_blank_screen_query,
     build_brightness_query,
@@ -283,7 +284,7 @@ async def test_segment_siblings_need_transaction_observation(hass, monkeypatch, 
     monkeypatch.setattr(c, "_ensure_connected", connect)
     monkeypatch.setattr(c, "_renew_foreground_lease", lambda: None)
     apply = (
-        c.async_paint_segments([([1], (255, 0, 0))])
+        c.async_paint_segments(SegmentPaintRequest([([1], (255, 0, 0))]))
         if operation == "paint"
         else c.async_set_segment_brightness([1], 60)
     )

@@ -228,6 +228,10 @@ async def test_masked_kelvin_requires_fresh_rgb_and_preserves_siblings(hass, mon
             elif failure == "applied_then_error":
                 raise BleakError("applied before radio failure")
             return
+        if packet[:2] == b"\xaa\x01":
+            response = bytes.fromhex("aa0101").ljust(19, b"\x00")
+            coordinator._notify_callback(None, bytearray(response + bytes([xor_checksum(response)])))
+            return
         assert packet[:2] == b"\xaa\xa5"
         if failure == "preflight_error":
             raise BleakError("cannot read baseline")
@@ -311,6 +315,10 @@ async def test_h66a0_segment_kelvin_confirms_device_rendered_rgb_and_mode_kelvin
                 colors[2] = (99, 99, 99)
             elif failure in {"wrong_kelvin", "missing_kelvin"}:
                 colors[:] = [(255, 157, 51)] * 14
+            return
+        if packet[:2] == b"\xaa\x01":
+            response = bytes.fromhex("aa0101").ljust(19, b"\x00")
+            coordinator._notify_callback(None, bytearray(response + bytes([xor_checksum(response)])))
             return
         if packet[:2] == b"\xaa\x05":
             kelvin_hex = "0fa0" if failure == "wrong_kelvin" else "0000"

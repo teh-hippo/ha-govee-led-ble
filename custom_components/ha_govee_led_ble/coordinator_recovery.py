@@ -18,6 +18,7 @@ from .coordinator_modes import ModeTransitionPurpose
 from .coordinator_refresh import STATIC_RECOVERY_SETTINGS, RefreshRequest
 from .coordinator_sources import (
     PreparedSourceValue,
+    async_restore_source_flags,
     has_segmented_sources,
     native_source_fields,
     segment_colour_matches,
@@ -813,28 +814,8 @@ class _RecoveryMixin(_CoordinatorBase):
                     client, deadline=time.monotonic() + 4.0, domains=("zone_enable",)
                 ) or any(self._field_revisions.get(field, 0) <= revision for field, revision in revisions.items()):
                     return False
-        if self.profile.minimum_enabled_sources:
-            for _ in range(len(expected) * 2):
-                remove = [
-                    name for name, value in expected.items() if not value and self.boolean_control_state.get(name)
-                ]
-                add = [name for name, value in expected.items() if value and not self.boolean_control_state.get(name)]
-                if not remove and not add:
-                    break
-                if (
-                    remove
-                    and sum(self.boolean_control_state.get(name, False) for name in expected)
-                    > self.profile.minimum_enabled_sources
-                ):
-                    await self.async_set_boolean_control(remove[0], False)
-                elif add:
-                    await self.async_set_boolean_control(add[0], True)
-                else:
-                    return False
-        else:
-            for name, value in expected.items():
-                if self.boolean_control_state.get(name) != value:
-                    await self.async_set_boolean_control(name, value)
+        if not await async_restore_source_flags(self._as_coordinator, expected):
+            return False
         return (
             restored
             and set(expected) == native_zones

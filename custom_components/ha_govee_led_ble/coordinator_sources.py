@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Generator
+from collections.abc import Callable, Generator, Mapping
 from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
@@ -403,6 +403,45 @@ async def async_set_source_enabled(coordinator: GoveeBLECoordinator, key: str, e
         raise
     except Exception as error:
         raise HomeAssistantError(translation_domain=DOMAIN, translation_key="device_command_failed") from error
+
+
+async def async_restore_source_flags(
+    coordinator: GoveeBLECoordinator,
+    expected: Mapping[str, bool],
+    *,
+    write_guard: Callable[[], None] | None = None,
+) -> bool:
+    for _ in range(len(expected) * 2):
+        remove = [name for name, value in expected.items() if not value and coordinator.boolean_control_state.get(name)]
+        add = [name for name, value in expected.items() if value and not coordinator.boolean_control_state.get(name)]
+        if not remove and not add:
+            return True
+        count = sum(coordinator.boolean_control_state.get(name, False) for name in expected)
+        if remove and count > coordinator.profile.minimum_enabled_sources:
+            control, enabled = remove[0], False
+        elif add:
+            control, enabled = add[0], True
+        else:
+            return False
+        if write_guard is None:
+            await coordinator.async_set_boolean_control(control, enabled)
+        else:
+            guard = write_guard
+            guard()
+            identity_guard = None
+            if coordinator.identity_gated_controls:
+                identity_guard = await coordinator.async_prepare_identity_gated_control()
+
+            def qualified(
+                guard: Callable[[], None] = guard,
+                identity_guard: Callable[[], None] | None = identity_guard,
+            ) -> None:
+                guard()
+                if identity_guard is not None:
+                    identity_guard()
+
+            await coordinator._async_set_verified_setting(control, enabled, write_guard=qualified)
+    return all(coordinator.boolean_control_state.get(name) is value for name, value in expected.items())
 
 
 class SourceTurnOnTransaction:

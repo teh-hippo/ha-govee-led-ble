@@ -14,6 +14,7 @@ from homeassistant.helpers.typing import VolDictType
 from .const import DOMAIN
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator import GoveeBLECoordinator
+from .coordinator_segments import SegmentPaintRequest
 from .dreamview_services import async_register_dreamview_services
 from .generated_protocol_adapter import StripCalibrationRequest
 from .govee_encryption import GoveeCryptoError
@@ -229,12 +230,14 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
             build_segment_paint(resolved, self.coordinator.model, profile=self.coordinator.profile)
             if guard is not None:
                 guard()
+            request = SegmentPaintRequest(tuple(resolved), preserve_power=rgb_scale == 0, write_guard=guard)
+            request.validate(self.coordinator.profile)
             async with self.coordinator.async_mask_transaction():
                 await self._async_supersede_preview()
                 if guard is not None:
                     guard()
                 async with async_control_intent(self.coordinator, ControlIntent.USER):
-                    await self.coordinator.async_paint_segments(resolved, write_guard=guard)
+                    await self.coordinator.async_paint_segments(request)
         except GoveeCryptoError as err:
             raise HomeAssistantError(translation_domain=DOMAIN, translation_key="device_command_failed") from err
         except (KeyError, TypeError, ValueError) as err:
