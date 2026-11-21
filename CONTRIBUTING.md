@@ -164,6 +164,7 @@ Keep real product differences without turning each product into a separate imple
   Rollback preserves fresh observations and newer ownership, retains the original error and handles cancellation without leaking reservations or tasks.
 - Preserve transport-failure classification through wrappers without converting protocol rejection, ownership failures or programming errors into retries.
   An absent upload verdict is an unconfirmed transfer, not a failed connection; it must not spend a connection retry.
+  Losing a subscription while a completed upload awaits its verdict must not replay the transfer or replace the original failure.
   Background availability handling must not silently enable foreground retransmission.
 - Initialise owners before registering lifecycle callbacks.
   Track and drain tasks, acknowledgements and retired native clients through cancellation and teardown, even when the link already reports disconnected.

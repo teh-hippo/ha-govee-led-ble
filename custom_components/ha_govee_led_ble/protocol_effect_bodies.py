@@ -46,6 +46,7 @@ from .protocol_core import (
     H6099EffectUpload,
     H6127WireWrite,
     H6181DiyBody,
+    H6199CommandAck,
     H6199EffectUpload,
     SceneBody,
     SceneParameterTooLargeError,
@@ -133,9 +134,11 @@ def _complete_a3_upload(
     packets: Sequence[bytes], index: int, model: str, profile: ModelProfile | None
 ) -> tuple[int, bytes]:
     active_profile = profile or get_profile(model)
+    ack_grammar = active_profile.command_ack_grammar or active_profile.command_grammar
     if (
         active_profile.command_grammar not in {"H600A", "H6046", "H607C", "H60B0", "H617A", "H6181", "H7020"}
         and active_profile.command_ack_grammar != "H617A"
+        and not (ack_grammar == "H6199" and active_profile.effect_grammar == "H6199")
     ):
         raise ValueError("Upload ACK semantics are not qualified for this command grammar")
     roots = {"H617A": ("command_write.upload_frame", CommandWrite.UploadFrame)}
@@ -144,7 +147,12 @@ def _complete_a3_upload(
         if frame is None or (start == index and not frame.is_final):
             break
         if frame.index == 0:
-            return int(frame.body.subtype), reassemble_a3(packets[start : index + 1])
+            envelope = reassemble_a3(packets[start : index + 1])
+            if ack_grammar == "H6199":
+                upload = parse_a3_effect_envelope(envelope, model, profile=active_profile)
+                if upload.kind != H6199EffectUpload.BodyKind.diy or upload.chunk_count != upload.diy_chunk_count:
+                    raise ValueError("Upload ACK is qualified only for the H6199 palette DIY body")
+            return int(frame.body.subtype), envelope
     raise ValueError("Upload ACK index must end a complete A3 upload")
 
 
@@ -207,6 +215,11 @@ def upload_ack_success(
     parsed: Any, subtype: int, mode: int | None = None, *, protocol: int | None = None
 ) -> bool | None:
     """Return a matching upload result, never treating an ordinary ACK as upload acceptance."""
+    if isinstance(parsed, H6199CommandAck):
+        upload = getattr(parsed, "upload", None)
+        if upload is None or upload.opcode != subtype or (protocol is not None and parsed.header != protocol):
+            return None
+        return bool(upload.is_success)
     if protocol is not None and getattr(parsed, "protocol_id", None) != protocol:
         return None
     if (

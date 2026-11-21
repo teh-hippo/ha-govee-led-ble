@@ -25,6 +25,7 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     BuiltinScene,
     LibraryItem,
     MusicProfile,
+    PaletteDiyEffect,
     RetainedSceneEffect,
     SingleEffect,
 )
@@ -45,7 +46,7 @@ from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_work
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.music_commands import prepare_music_request
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
-from custom_components.ha_govee_led_ble.transport import fragment_a3
+from custom_components.ha_govee_led_ble.transport import fragment_a3, fragment_a3_envelope, reassemble_a3
 from tests.coordinator_test_support import frame
 from tests.storage_test_double import InMemoryVersionedDocumentStore
 from tests.test_effect_preview import _manager, _open
@@ -75,6 +76,10 @@ async def connected(hass, monkeypatch, request):
         c._observe_pact(pact, 1)
         c._observe_identity_field("fw_version", "1.08.05")
         c._observe_identity_field("hw_version", "1.00.00")
+    if c.model == "H6199":
+        c._observe_pact(2, 1)
+        c._observe_identity_field("fw_version", "1.10.04")
+        c._observe_identity_field("hw_version", "3.02.01")
     monkeypatch.setattr(c, "_ensure_connected", AsyncMock(return_value=client))
     monkeypatch.setattr(c, "_renew_foreground_lease", MagicMock())
     monkeypatch.setattr(coordinator_module, "UPLOAD_ACK_TIMEOUT", 0.02)
@@ -1082,6 +1087,168 @@ async def test_saved_native_diy_apply_uses_ack_gate(selection_ready, monkeypatch
     sent = [call.args[1] for call in client.write_gatt_char.call_args_list]
     assert sent == list(compiled.packets if positive else compiled.upload_packets)
     assert c._upload_ack is None
+
+
+@pytest.mark.parametrize("connected", ["H6199"], indirect=True)
+@pytest.mark.parametrize("path", ["saved", "snapshot", "preview"])
+@pytest.mark.parametrize("power", [False, True])
+@pytest.mark.parametrize("verdict", ["accepted", "rejected", "missing", "disconnect", "subscription"])
+async def test_palette_public_paths_wait_for_upload_verdict(selection_ready, hass, monkeypatch, path, power, verdict):
+    c, client = selection_ready
+    c.is_on = power
+    item = LibraryItem.new("Fade", PaletteDiyEffect(c.model, 0, 0, 20, ((30, 0, 0), (0, 30, 0))))
+    compiled = compile_effect(item, c.model, profile=c.profile)
+    uploaded = asyncio.Event()
+    monkeypatch.setattr(c, "async_preview_preflight", AsyncMock())
+    monkeypatch.setattr(c, "async_observe_effect", AsyncMock(return_value=None))
+    monkeypatch.setattr(coordinator_module, "UPLOAD_ACK_TIMEOUT", 1)
+    monkeypatch.setattr(coordinator_module, "EFFECT_SEQUENCE_ATTEMPTS", 3)
+
+    async def reconnect():
+        if c._client is not client:
+            c._client = client
+            await c._start_notify()
+            c._observe_pact(2, 1)
+            c._observe_identity_field("fw_version", "1.10.04")
+            c._observe_identity_field("hw_version", "3.02.01")
+        return client
+
+    c._ensure_connected.side_effect = reconnect
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet == compiled.upload_packets[-1]:
+            uploaded.set()
+
+    client.write_gatt_char.side_effect = write
+    manager = None
+    if path == "preview":
+        manager, _ = await _manager(hass, monkeypatch, c)
+        events = []
+        owner = object()
+        session = _open(manager, owner, events)
+        await manager.async_queue_snapshot(
+            session_id=session,
+            owner=owner,
+            config_entry_id="entry-a",
+            sequence=1,
+            updated_at="2026-09-16T00:00:00Z",
+            item=item,
+        )
+        task = asyncio.create_task(manager.async_wait_idle("entry-a"))
+    else:
+        repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
+        await repository.async_load()
+        engine = EffectDeploymentEngine(repository)
+        monkeypatch.setattr(engine, "_async_prepare_prior_state", AsyncMock(return_value=False))
+        monkeypatch.setattr(c, "async_restore_effect_control_state", AsyncMock(return_value=False))
+        monkeypatch.setattr(c, "refresh_state", AsyncMock(return_value=False))
+        apply = engine.async_apply_saved if path == "saved" else engine.async_apply_snapshot
+        task = asyncio.create_task(apply(c, item, config_entry_id="entry-a", updated_at="2026-09-16T00:00:00Z"))
+    try:
+        await asyncio.wait_for(uploaded.wait(), 1)
+        expected = [*([] if power else [build_power(True, c.model)]), *compiled.upload_packets]
+        assert [call.args[1] for call in client.write_gatt_char.call_args_list] == expected
+        assert c._upload_ack is not None and not c._upload_ack.future.done()
+        assert not task.done()
+        connections = c._ensure_connected.await_count
+        for unrelated in (frame("330500"), DIY_OK, frame("a30400")[:-1] + b"\xff"):
+            receive(client, unrelated)
+            assert not c._upload_ack.future.done()
+        if verdict == "disconnect":
+            c._clear_client_state(client)
+        elif verdict == "subscription":
+            await c._start_notify()
+        elif verdict != "missing":
+            receive(client, frame("a30400" if verdict == "accepted" else "a30401"))
+        if verdict == "accepted" or path == "preview":
+            result = await asyncio.wait_for(task, 2)
+            if path == "preview":
+                assert events[-1].phase is (PreviewPhase.WRITTEN if verdict == "accepted" else PreviewPhase.FAILED)
+            else:
+                assert result.phase is DeploymentPhase.APPLIED
+                assert result.verification_confidence.value == "write_completed"
+        else:
+            error = (
+                BleakError
+                if verdict in {"disconnect", "subscription"}
+                else TimeoutError
+                if verdict == "missing"
+                else RuntimeError
+            )
+            with pytest.raises(error):
+                await asyncio.wait_for(task, 2)
+        if verdict == "accepted":
+            expected.append(compiled.activation_packet)
+        else:
+            c.async_observe_effect.assert_not_awaited()
+        assert [call.args[1] for call in client.write_gatt_char.call_args_list] == expected
+        assert c._upload_ack is None
+        assert c._field_revisions == {}
+        assert c._ensure_connected.await_count == connections
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        if manager is not None:
+            await manager.async_shutdown()
+
+
+@pytest.mark.parametrize("fault", [None, "kind", "palette_length", "chunk_count", "incomplete"])
+def test_palette_ack_boundary_requires_complete_generated_diy(fault):
+    item = LibraryItem.new("Fade", PaletteDiyEffect("H6199", 0, 0, 20, ((30, 0, 0), (0, 30, 0))))
+    compiled = compile_effect(item, "H6199")
+    envelope = bytearray(reassemble_a3(compiled.upload_packets))
+    if fault == "kind":
+        envelope[2] = 1
+    elif fault == "palette_length":
+        envelope[6] = 5
+    elif fault == "chunk_count":
+        envelope[1] = 3
+        envelope.extend(bytes(17))
+    packets = fragment_a3_envelope(bytes(envelope))
+    index = 0 if fault == "incomplete" else len(packets) - 1
+    if fault is None:
+        assert upload_ack_subtype(packets, index, "H6199") == compiled.upload_subtype
+    else:
+        with pytest.raises(ValueError):
+            upload_ack_subtype(packets, index, "H6199")
+
+
+@pytest.mark.parametrize("connected", ["H617F"], indirect=True)
+@pytest.mark.parametrize("fault", ["disconnect", "subscription"])
+async def test_completed_upload_with_lost_verdict_does_not_replay(connected, monkeypatch, fault):
+    c, client = connected
+    packets, index = sequence()
+    uploaded = asyncio.Event()
+    monkeypatch.setattr(coordinator_module, "UPLOAD_ACK_TIMEOUT", 1)
+    monkeypatch.setattr(coordinator_module, "EFFECT_SEQUENCE_ATTEMPTS", 3)
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet == packets[index]:
+            uploaded.set()
+
+    async def reconnect():
+        c._client = client
+        await c._start_notify()
+        return client
+
+    c._ensure_connected.side_effect = reconnect
+    client.write_gatt_char.side_effect = write
+    task = asyncio.create_task(write_sequence(c, packets, index))
+    try:
+        await asyncio.wait_for(uploaded.wait(), 1)
+        assert c._upload_ack is not None and not c._upload_ack.future.done()
+        if fault == "disconnect":
+            c._clear_client_state(client)
+        else:
+            await c._start_notify()
+        with pytest.raises(BleakError):
+            await asyncio.wait_for(task, 2)
+        assert c._ensure_connected.await_count == 1
+        assert [call.args[1] for call in client.write_gatt_char.call_args_list] == packets[: index + 1]
+        assert c._upload_ack is None
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
 
 
 @pytest.mark.parametrize("path", ["saved", "preview"])

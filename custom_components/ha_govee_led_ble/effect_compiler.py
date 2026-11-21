@@ -1331,7 +1331,7 @@ def compile_h6199(
         upload_packets=tuple(upload),
         activation_packet=activation,
         artifact_sha256=digest,
-        evidence_codes=("effect_content_readback_unavailable",),
+        evidence_codes=(DIY_ACK_EVIDENCE, "effect_content_readback_unavailable"),
         upload_subtype=int(H6199EffectUpload.BodyKind.diy),
     )
 
