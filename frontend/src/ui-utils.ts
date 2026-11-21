@@ -7,6 +7,8 @@ import type {
 
 export type NativeLightState = "on" | "off" | "unavailable";
 
+const labelCollator = new Intl.Collator("en-AU", { sensitivity: "base" });
+
 export function clamp(
   value: number,
   minimum: number,
@@ -54,7 +56,7 @@ export function hexToRgb(value: string): RGB {
 }
 
 export function compareLabels(left: string, right: string): number {
-  return left.localeCompare(right, "en-AU", { sensitivity: "base" });
+  return labelCollator.compare(left, right);
 }
 
 export function showHomeAssistantHeader(
