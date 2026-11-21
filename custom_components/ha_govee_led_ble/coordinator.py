@@ -3887,6 +3887,7 @@ class GoveeBLECoordinator(
                 for attempt in range(1, attempts + 1):
                     sequence.reset()
                     pending_ack: PendingUploadAck | None = None
+                    awaiting_upload_ack = False
                     try:
                         if writer is None:
                             async with asyncio.timeout(CONNECTION_SETUP_TIMEOUT):
@@ -4006,7 +4007,9 @@ class GoveeBLECoordinator(
                                 )
                             self._renew_foreground_lease()
                             if require_upload_ack and index - 1 == upload_ack_index:
+                                awaiting_upload_ack = True
                                 await self._await_upload_ack(pending_ack, check_connection)
+                                awaiting_upload_ack = False
                             if progress is not None:
                                 await progress(index)
                         break
@@ -4025,6 +4028,7 @@ class GoveeBLECoordinator(
                             raise RuntimeError("Home Assistant is stopping") from err
                         if (
                             attempt == attempts
+                            or awaiting_upload_ack
                             or isinstance(err, UploadAckTimeoutError)
                             or (upload_attempted and not self.profile.effect_retry_after_upload)
                             or (retry_allowed is not None and not retry_allowed())

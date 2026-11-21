@@ -1772,6 +1772,10 @@ def test_h6199_diy_upload_notification_is_not_state(hass, status: int, tail: byt
     assert parsed.upload.opcode == 4 and parsed.upload.status == status
     assert parsed.upload.is_success is (status == 0)
     assert parsed.upload.unknown_tail == tail
+    result = generated_protocol_adapter.parse_command_ack_result(bytes(frame), "H6199")
+    assert generated_protocol_adapter.upload_ack_success(result.parsed, 4, protocol=0xA3) is (status == 0)
+    assert generated_protocol_adapter.upload_ack_success(result.parsed, 2, protocol=0xA3) is None
+    assert generated_protocol_adapter.upload_ack_success(result.parsed, 4, protocol=0x33) is None
     parsed._fetch_instances()
     parsed._check()
     output = KaitaiStream(io.BytesIO(bytes(20)))

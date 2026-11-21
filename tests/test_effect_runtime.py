@@ -2505,7 +2505,7 @@ async def test_h6199_slot_readback_confirms_selection_without_claiming_content_r
     assert result.phase is DeploymentPhase.CONFIRMED
     assert result.error_code is None
     assert result.verification_confidence is ObservationConfidence.ACTIVATION_MATCH
-    assert result.evidence_codes == ("effect_content_readback_unavailable",)
+    assert result.evidence_codes == ("native_diy_positive_ack_required", "effect_content_readback_unavailable")
     assert cache.get("entry-a") is not None
     assert cache.get("entry-a").mode == "custom"
     assert cache.get("entry-a").diy_code == H6199_PALETTE_DIY_APPLY_CODE
