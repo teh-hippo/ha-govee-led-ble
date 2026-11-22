@@ -13,8 +13,10 @@ doc: |
   The sensitivity-only editor reuses the resident body without uploading it.
   AA05 status replies parse the same selector fields.
   The reported 33 05 00 shortcut is not emitted.
-  Unresolved: reporter hardware/firmware versions, response availability,
-  unused bytes, and successful BLE application on the reporter's device.
+  Firmware 1.03.13 visibly accepted six-colour Hopping over an authenticated
+  BLE V1 session, returning A3 41 48 before the selector acknowledgement.
+  Unresolved: other revisions, the leading brightness/power packet, unused
+  bytes, and visible application of the remaining modes.
 seq:
   - id: header
     contents: [0x33]

@@ -480,7 +480,7 @@ H7020_DIY_FAMILIES: Final = (
     ),
 )
 
-H7025_DIY_FAMILIES: Final = tuple(
+_H7025_GENERIC_DIY_FAMILIES: Final = tuple(
     replace(
         family,
         multi_rate_min=0,
@@ -488,6 +488,83 @@ H7025_DIY_FAMILIES: Final = tuple(
     )
     for family in H7020_DIY_FAMILIES[:6]
 )
+
+H7025_NATIVE_DIY_FAMILIES: Final = (
+    DiyEffectFamily(
+        "retrace",
+        "Retrace",
+        12,
+        (DiyEffectVariation("16", "Retrace", 16),),
+        False,
+        category="native",
+        palette_max=8,
+        source_reference="H7025 native Retrace template",
+    ),
+    DiyEffectFamily(
+        "spray",
+        "Spray",
+        13,
+        (
+            DiyEffectVariation("17", "Spray 1", 17),
+            DiyEffectVariation("18", "Spray 2", 18),
+        ),
+        False,
+        category="native",
+        palette_max=8,
+        source_reference="H7025 native Spray templates",
+    ),
+    DiyEffectFamily(
+        "streamer",
+        "Streamer",
+        14,
+        (
+            DiyEffectVariation("19", "Streamer 1", 19),
+            DiyEffectVariation("20", "Streamer 2", 20),
+        ),
+        False,
+        category="native",
+        palette_max=8,
+        source_reference="H7025 native Streamer templates",
+    ),
+    DiyEffectFamily(
+        "glimmer",
+        "Glimmer",
+        15,
+        (DiyEffectVariation("21", "Glimmer", 21),),
+        False,
+        category="native",
+        palette_max=8,
+        source_reference="H7025 native Glimmer template",
+    ),
+    DiyEffectFamily(
+        "star_flash",
+        "Star Flash",
+        16,
+        (DiyEffectVariation("22", "Star Flash", 22),),
+        False,
+        category="native",
+        palette_max=8,
+        secondary_palette_min=1,
+        secondary_palette_max=1,
+        palette_labels=("Adorn", "Background"),
+        source_reference="H7025 native Star Flash template",
+    ),
+    DiyEffectFamily(
+        "pile_up",
+        "Pile-up",
+        17,
+        (
+            DiyEffectVariation("23", "Pile-up 1", 23),
+            DiyEffectVariation("24", "Pile-up 2", 24),
+        ),
+        False,
+        category="native",
+        palette_max=8,
+        source_reference="H7025 native Pile-up templates",
+    ),
+)
+
+H7025_DIY_FAMILIES: Final = (*_H7025_GENERIC_DIY_FAMILIES, *H7025_NATIVE_DIY_FAMILIES)
 
 H705A_DIY_FAMILIES: Final = tuple(
     replace(family, rate_min=0, multi_rate_min=0, source_reference="H705A basic and mixed DIY contract")

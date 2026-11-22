@@ -2111,6 +2111,8 @@ def _validate_diy_slot_approval(
         or not requires_approved_diy_slot(compiled.model)
     ):
         return
+    if compiled.content_kind == "native_effect" and compiled.diy_code == coordinator.profile.native_diy_selector:
+        return
     if coordinator.diy_code != compiled.diy_code:
         raise ValueError("approved disposable DIY code is no longer selected")
 

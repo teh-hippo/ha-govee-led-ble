@@ -568,6 +568,9 @@ def _validate_native_effect(item: LibraryItem, model: str, profile: ModelProfile
     if profile.effect_grammar in {"H1AB2", "H60B0", "H60B2", "H607C", "H6093"}:
         require_effect_route(model, _effect_workflow(content), (profile.effect_grammar,), profile=profile)
         validate_effect_eligibility(content, model, profile=profile)
+    elif model == "H7025":
+        require_effect_route(model, _effect_workflow(content), ("H617A",), profile=profile)
+        validate_effect_eligibility(content, model, profile=profile)
     elif profile.effect_grammar == "H1771":
         require_effect_route(model, _effect_workflow(content), ("H1771",), profile=profile)
         validate_effect_eligibility(content, model, profile=profile)
@@ -714,8 +717,11 @@ def resolve_diy_code(
             return int(H60b0SceneBody.ActivationSelector.temporary)
         from .effect_catalogue import MODEL_EFFECT_CATALOGUES
 
+        effective_profile = get_profile(model) if profile is None else profile
         catalogue = MODEL_EFFECT_CATALOGUES.get(model)
-        selector = None if catalogue is None else catalogue.temporary_diy_selector
+        selector = effective_profile.native_diy_selector
+        if selector is None:
+            selector = None if catalogue is None else catalogue.temporary_diy_selector
         if selector is None or requested is not None and requested != selector:
             raise ValueError("native DIY requires its exact temporary selector")
         return selector
@@ -1068,7 +1074,9 @@ def compile_native_effect(
     body = _prepare_native_effect(item, model, profile)
     route = "a4" if content.family == 798 and profile.effect_grammar == "H60A6" else "a3"
     subtype = (
-        int(H6093Projector.UploadKind.diy)
+        profile.native_diy_upload_subtype
+        if profile.native_diy_upload_subtype is not None
+        else int(H6093Projector.UploadKind.diy)
         if profile.effect_grammar == "H6093"
         else int(H60b0SceneBody.UploadSubtype.combined)
         if profile.effect_grammar == "H60B0" and content.family == 81

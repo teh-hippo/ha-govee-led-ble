@@ -379,6 +379,8 @@ class ModelProfile:
     diy_family_variants: tuple[tuple[int, tuple[int, ...]], ...] | None = None
     diy_palette_max: int | None = None
     diy_upload_transport: str | None = None
+    native_diy_upload_subtype: int | None = None
+    native_diy_selector: int | None = None
     diy_requires_upload_ack: bool = False
     effect_retry_after_upload: bool = True
     packet_write_delay: float = 0.0
@@ -492,6 +494,14 @@ class ModelProfile:
             raise ValueError("source power constraints require declared sources and valid limits")
         if self.diy_upload_transport not in {None, "a1_02", "a3", "single"}:
             raise ValueError("unknown DIY upload transport")
+        if self.native_diy_upload_subtype is not None and (
+            type(self.native_diy_upload_subtype) is not int or not 0 <= self.native_diy_upload_subtype <= 255
+        ):
+            raise ValueError("Native DIY upload subtype must be an unsigned byte")
+        if self.native_diy_selector is not None and (
+            type(self.native_diy_selector) is not int or not 0 <= self.native_diy_selector <= 65535
+        ):
+            raise ValueError("Native DIY selector must be an unsigned 16-bit value")
         if self.a1_diy_prefix is not None and (
             type(self.a1_diy_prefix) is not int
             or not 0 <= self.a1_diy_prefix <= 255
@@ -3478,6 +3488,8 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_multi_layered_effects=True,
         scene_catalogue_sku="H7025",
         diy_requires_upload_ack=True,
+        native_diy_upload_subtype=0x58,
+        native_diy_selector=254,
         effect_readback="diy_code_only",
         connection_idle_timeout=IDLE_TIMEOUT_STANDARD,
         music_modes=(

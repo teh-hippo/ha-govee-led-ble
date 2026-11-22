@@ -36,6 +36,7 @@ from .protocol_core import (
     H6046EffectUpload,
     H6053EffectUpload,
     H6199EffectUpload,
+    H7025DiyBody,
     SceneBody,
     SceneType1Body,
     serialize_native_body,
@@ -118,6 +119,10 @@ def decode_a3_effect(tree: Any, model: str) -> EffectContent:
         if isinstance(content, SingleEffect):
             return H6179SingleDiyEffect(model, content.family, content.variant, content.speed, content.palette)
         return H6179MixedDiyEffect(model, content.effects, content.speed, content.palette)
+    if model == "H7025" and isinstance(tree, H7025DiyBody):
+        from .h7025_effects import decode_h7025_diy
+
+        return decode_h7025_diy(serialize_native_body(tree.body))
     if grammar in {"H6046", "H6053"}:
         if tree.kind == H6046EffectUpload.BodyKind.scene:
             return _decode_layered_tree(tree, model)

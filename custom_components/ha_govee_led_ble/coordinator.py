@@ -2494,6 +2494,7 @@ class GoveeBLECoordinator(
 
     async def _async_read_identity(self, required_fields: frozenset[str] | None = None) -> None:
         """Refresh missing identity without making basic setup depend on its replies."""
+        query_all_missing = required_fields is None
         if required_fields is None:
             required_fields = self._control_identity_fields()
         identity_baselines = {
@@ -2508,7 +2509,10 @@ class GoveeBLECoordinator(
             )
             if field in required_fields and self.profile.can_read(domain) and self._identity_field_incomplete(field)
         }
-        await self._send_identity_queries()
+        await self._send_identity_queries(
+            None if query_all_missing else required_fields,
+            include_physical_ic=query_all_missing,
+        )
         self._require_not_shutdown()
         self._require_not_dreamview_claimed()
         await self._wait_for_revisions({}, identity_baselines, time.monotonic() + IDENTITY_QUERY_TIMEOUT)
@@ -2562,7 +2566,12 @@ class GoveeBLECoordinator(
         for packet in packets:
             validator(packet, self.profile)
 
-    async def _send_identity_queries(self) -> None:
+    async def _send_identity_queries(
+        self,
+        required_fields: frozenset[str] | None = None,
+        *,
+        include_physical_ic: bool = True,
+    ) -> None:
         """Query missing identity and invalid condition-bearing versions.
 
         Replies can be missed right after connect while notifications are starting, so the
@@ -2580,7 +2589,10 @@ class GoveeBLECoordinator(
                     (ReadDomain.WIRELESS_HARDWARE, "wireless_hardware_version"),
                 )
                 if any(
-                    self.profile.can_read(domain) and self._identity_field_incomplete(field) for domain, field in fields
+                    self.profile.can_read(domain)
+                    and (required_fields is None or field in required_fields)
+                    and self._identity_field_incomplete(field)
+                    for domain, field in fields
                 ):
                     await self._async_read_bulk_status(
                         client, deadline=time.monotonic() + STATE_QUERY_TIMEOUT, domains=()
@@ -2597,8 +2609,16 @@ class GoveeBLECoordinator(
                     candidates.append((build_subordinate_query(0x20, self.model), "subordinate_20_version"))
                 if self.profile.can_read(ReadDomain.SUBORDINATE_21):
                     candidates.append((build_subordinate_query(0x21, self.model), "subordinate_21_version"))
-                queries = [q for q, field in candidates if self._identity_field_incomplete(field)]
-                if self.profile.can_read(ReadDomain.PHYSICAL_IC_COUNT) and not self._physical_ic_count_confirmed:
+                queries = [
+                    query
+                    for query, field in candidates
+                    if (required_fields is None or field in required_fields) and self._identity_field_incomplete(field)
+                ]
+                if (
+                    include_physical_ic
+                    and self.profile.can_read(ReadDomain.PHYSICAL_IC_COUNT)
+                    and not self._physical_ic_count_confirmed
+                ):
                     queries.append(build_physical_ic_count_query(self.model, profile=self.profile))
                 for query in queries:
                     if generation != self._profile_generation:
@@ -3547,6 +3567,25 @@ class GoveeBLECoordinator(
             )
             if self.profile.can_read(domain)
         )
+
+    def _identity_retry_scope(self) -> tuple[frozenset[str], bool]:
+        if not self._identity_incomplete():
+            return frozenset(), False
+        required = self._authorization_identity_fields()
+        fields = frozenset(
+            field
+            for domain, field in (
+                (ReadDomain.FIRMWARE, "fw_version"),
+                (ReadDomain.HARDWARE, "hw_version"),
+                (ReadDomain.SUBORDINATE_20, "subordinate_20_version"),
+                (ReadDomain.SUBORDINATE_21, "subordinate_21_version"),
+                (ReadDomain.WIRELESS_FIRMWARE, "wireless_firmware_version"),
+                (ReadDomain.WIRELESS_HARDWARE, "wireless_hardware_version"),
+            )
+            if field in required and self.profile.can_read(domain) and self._identity_field_incomplete(field)
+        )
+        physical = self.profile.can_read(ReadDomain.PHYSICAL_IC_COUNT) and not self._physical_ic_count_confirmed
+        return fields, physical
 
     async def _wait_for_revisions(
         self,
@@ -4568,11 +4607,15 @@ class GoveeBLECoordinator(
                 async with async_control_intent(self, ControlIntent.BACKGROUND, wait=False) as acquired:
                     if not acquired:
                         continue
-                    if self._identity_incomplete() and self._identity_retries < IDENTITY_RETRY_TICKS:
+                    identity_fields, identity_physical = self._identity_retry_scope()
+                    if (identity_fields or identity_physical) and self._identity_retries < IDENTITY_RETRY_TICKS:
                         self._identity_retries += 1
                         async with self._lock:
                             try:
-                                await self._send_identity_queries()
+                                await self._send_identity_queries(
+                                    identity_fields,
+                                    include_physical_ic=identity_physical,
+                                )
                             except BleakError:
                                 client = self._client
                                 if client is not None:

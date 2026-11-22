@@ -24,8 +24,12 @@ doc: |
   Common payload imports do not inherit H6102's product capabilities.
   Unknown modes, suffixes, and other domains stay opaque.  No full palette
   readback is claimed by this candidate.
-  Unresolved: reporter hardware/firmware revisions, identity response encoding,
-  response presence, RGB/Kelvin rendering, and physical BLE qualification.
+  Firmware 1.03.13 returned AA01, AA04, AA05 and ASCII AA06 over a V1
+  encrypted session.  AA07 was silent on that revision, so hardware identity
+  remains optional evidence.  The device reported power off immediately
+  before a visible music activation, confirming that resident music and
+  physical power state must remain independently owned.  Unresolved: other
+  revisions, RGB/Kelvin rendering and ordinary segment readback qualification.
 seq:
   - id: header
     contents: [0xaa]

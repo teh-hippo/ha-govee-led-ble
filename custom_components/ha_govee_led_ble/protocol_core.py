@@ -253,6 +253,9 @@ H7025MusicBody = load_generated_class("h7025_music_body", "H7025MusicBody")
 H7025MusicWrite = load_generated_class("h7025_music_write", "H7025MusicWrite")
 
 
+H7025DiyBody = load_generated_class("h7025_diy_body", "H7025DiyBody")
+
+
 H66a0MusicWrite = load_generated_class("h66a0_music_write", "H66a0MusicWrite")
 
 

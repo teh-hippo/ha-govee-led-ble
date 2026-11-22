@@ -121,6 +121,11 @@ def validate_effect_eligibility(
     if catalogue is None:
         raise ValueError(f"{model} has no custom-effect catalogue")
     if isinstance(content, NativeEffect):
+        if model == "H7025" and content.model == model and profile.native_diy_upload_subtype is not None:
+            from .h7025_effects import validate_h7025_diy
+
+            validate_h7025_diy(content)
+            return
         if model == "H6093" and content.model == model and profile.effect_grammar == "H6093":
             content.__post_init__()
             if not any(
