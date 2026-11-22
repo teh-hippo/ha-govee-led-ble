@@ -42,16 +42,20 @@ The branch requires an open same-repository PR targeting `master`.
 | --- | --- |
 | `publish` | Required: `true` publishes the tag/prerelease; `false` uploads package, checksum and metadata as a run artefact. |
 | `target_sha` | Defaults to branch head; must belong to the selected branch. |
-| `version` | Defaults to the next manifest patch with `-pr-<PR number>.<candidate number>`; explicit values must identify that PR as a prerelease. |
+| `version` | Defaults to the current manifest prerelease's base version, or the next patch after a stable manifest, with `-pr-<PR number>.<candidate number>`; explicit values must identify that PR as a prerelease. |
 | `release_notes` | Defaults to a generic candidate note. |
 | `cache_dependencies` | Defaults to `true`; an approved controlled cold-build comparison may select `false`. |
 
-Example tag: `v7.40.1-pr-145.1`.
+For example, manifest `8.0.0-rc.30` keeps the PR base at `8.0.0`, while stable `7.40.0` advances it to `7.40.1`.
+Example tag: `v8.0.0-pr-145.1`.
 Numbers advance from existing PR tags; retrying the latest candidate's exact commit reuses its version.
 Build-only runs leave numbers available.
 PR preview numbering is independent of stable version calculation.
 Compare cold/warm builds at the same SHA and version using archive bytes, checksums and compilation logs.
 Download build-only artefacts with `gh run download <run id>`.
+
+Existing published tags remain unchanged.
+Marketplace includes both master and PR candidates when prerelease updates are enabled; this numbering rule does not provide separate update channels.
 
 The pinned [shared prerelease workflow](https://github.com/teh-hippo/common-repo-configs) verifies branch membership and stamps the packaged manifest.
 Use the public tag for installation and metadata's source SHA and packaging version for runtime verification.
