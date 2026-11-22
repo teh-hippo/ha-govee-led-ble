@@ -118,6 +118,21 @@ def test_h617c_is_an_exact_isolated_profile_with_its_own_status_grammar_and_30_i
     assert len(profile.music_modes) == 11 and profile.music_variants
 
 
+def test_h6022_is_an_exact_experimental_profile_with_its_own_catalogue_and_effect_grammar():
+    profile = MODEL_PROFILES["H6022"]
+
+    assert profile.support_quality is SupportQuality.EXPERIMENTAL
+    assert profile.confirmation_issue == 622
+    assert profile.color_temp_range == (2700, 6500)
+    assert (profile.command_grammar, profile.status_grammar, profile.effect_grammar) == ("H617A", "H6022", "H6022")
+    assert (profile.segment_count, profile.segment_group_size, profile.physical_ic_count) == (15, 3, 210)
+    assert profile.scene_catalogue_sku == "H6022" and profile.scene_command_versions == frozenset({0})
+    assert profile.supports_rgb and profile.supports_color_temperature
+    assert profile.supports_segment_writes and profile.supports_segment_brightness
+    assert profile.supports_scenes and profile.supports_custom_effects and profile.supports_music_mode
+    assert len(profile.music_modes) == 11 and profile.music_variants
+
+
 def test_h617f_uses_exact_scene_catalogue_with_h617a_wire_grammars():
     profile = MODEL_PROFILES["H617F"]
 
@@ -192,6 +207,7 @@ def test_support_quality_has_only_supported_and_experimental_states():
         model for model, profile in MODEL_PROFILES.items() if profile.support_quality is SupportQuality.EXPERIMENTAL
     } == {
         "H6053",
+        "H6022",
         "H6093",
         "H6117",
         "H612A",

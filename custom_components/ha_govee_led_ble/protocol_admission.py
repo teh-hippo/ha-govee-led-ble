@@ -656,7 +656,15 @@ def _check_upload_packet(frame: bytes, profile: ModelProfile) -> bool:
             if upload.index == 0 and upload.body.subtype != H60a6EffectFrame.Subtype.native_effect:
                 raise ValueError("Native effect subtype is outside profile capabilities")
             return True
-        if upload is not None and profile.effect_grammar in {"H6046", "H6053", "H617A", "H1AB2", "H6181", "H60B2"}:
+        if upload is not None and profile.effect_grammar in {
+            "H6022",
+            "H6046",
+            "H6053",
+            "H617A",
+            "H1AB2",
+            "H6181",
+            "H60B2",
+        }:
             if upload.index == 0:
                 from .scenes import SCENE_ENTRIES, scene_supported
 
@@ -697,6 +705,7 @@ def _check_upload_packet(frame: bytes, profile: ModelProfile) -> bool:
                     and "painted" in profile.effect_workflows,
                     4: profile.supports_custom_effects
                     and (profile.effect_grammar != "H6181" or profile.diy_upload_transport == "a3"),
+                    0x58: profile.effect_grammar == "H6022" and profile.supports_scenes,
                 }
                 if not allowed.get(upload.body.subtype, False):
                     raise ValueError("effect upload subtype is outside profile capabilities")

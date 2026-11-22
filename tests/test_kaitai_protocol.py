@@ -2198,6 +2198,7 @@ async def test_four_slot_profile_observes_every_declared_domain(
 @pytest.mark.parametrize(
     ("model", "group", "count", "module", "name"),
     [
+        ("H6022", 5, 3, "h6022_status_reply", "H6022StatusReply"),
         ("H617C", 5, 3, "h617c_status_reply", "H617cStatusReply"),
         ("H619A", 4, 1, "h619a_status_reply", "H619aStatusReply"),
     ],
@@ -2226,13 +2227,15 @@ def test_rgbic_status_root_preserves_opaque_tails_and_nonzero_segment_slots(mode
             is not None
         )
     assert generated_protocol_adapter.build_colour_mode_query(model) == _frame("aa0501")
-    for prefix, field, expected in (
+    ordinary_replies = [
         ("aa0101dead", "is_on", 1),
         ("aa044bdead", "brightness_pct", 75),
-        ("aaa301dead", "flag", 1),
         ("aa06332e30322e303200dead", "text", "3.02.02"),
         ("aa0703332e30312e303100dead", "text", "3.01.01"),
-    ):
+    ]
+    if model != "H6022":
+        ordinary_replies.append(("aaa301dead", "flag", 1))
+    for prefix, field, expected in ordinary_replies:
         parsed = generated_protocol_adapter.parse_status_result(_frame(prefix), model).parsed
         assert parsed is not None
         assert getattr(parsed.body, field) == expected

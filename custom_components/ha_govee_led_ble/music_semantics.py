@@ -1179,6 +1179,7 @@ def _dreamcolor_music_variants(model: str) -> tuple[MusicVariant, ...]:
 
 
 H617C_MUSIC_VARIANTS = _dreamcolor_music_variants("H617C")
+H6022_MUSIC_VARIANTS = _dreamcolor_music_variants("H6022")
 H618A_MUSIC_VARIANTS = tuple(
     replace(
         variant,

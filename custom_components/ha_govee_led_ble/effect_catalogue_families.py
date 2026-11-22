@@ -873,6 +873,82 @@ H617C_DIY_FAMILIES: Final = tuple(
     replace(family, source_reference="H617C DreamColor basic and mixed DIY") for family in H6125_DIY_FAMILIES
 )
 H617C_NATIVE_MUSIC_MODES: Final = _native_music_modes("H617C")
+H6022_DIY_FAMILIES: Final = (
+    DiyEffectFamily(
+        "gradual",
+        "Gradual",
+        0,
+        (DiyEffectVariation("default", "Default", 0),),
+        False,
+        palette_min=2,
+        palette_max=8,
+        source_reference="H6022 ordinary DIY roster",
+    ),
+    DiyEffectFamily(
+        "breath",
+        "Breath",
+        5,
+        (DiyEffectVariation("default", "Default", 0),),
+        False,
+        palette_max=8,
+        source_reference="H6022 ordinary DIY roster",
+    ),
+    DiyEffectFamily(
+        "rainbow",
+        "Rainbow",
+        9,
+        (DiyEffectVariation("default", "Default", 0),),
+        False,
+        palette_min=2,
+        palette_max=8,
+        source_reference="H6022 ordinary DIY roster",
+    ),
+    DiyEffectFamily(
+        "dream_colour",
+        "Dream Colour",
+        14,
+        (
+            DiyEffectVariation("up", "Up", 13),
+            DiyEffectVariation("down", "Down", 14),
+        ),
+        False,
+        palette_max=8,
+        source_reference="H6022 ordinary DIY roster",
+    ),
+    DiyEffectFamily(
+        "fire",
+        "Fire",
+        15,
+        (DiyEffectVariation("default", "Default", 0),),
+        False,
+        palette_max=8,
+        source_reference="H6022 ordinary DIY roster",
+    ),
+    DiyEffectFamily(
+        "colour_wall",
+        "Colour Wall",
+        82,
+        (
+            DiyEffectVariation("up", "Up", 13),
+            DiyEffectVariation("down", "Down", 14),
+            DiyEffectVariation("two_way", "Two-way", 57),
+            DiyEffectVariation("random", "Random", 58),
+        ),
+        False,
+        palette_max=8,
+        source_reference="H6022 ordinary DIY roster",
+    ),
+    DiyEffectFamily(
+        "shimmer",
+        "Shimmer",
+        83,
+        (DiyEffectVariation("default", "Default", 0),),
+        False,
+        palette_max=8,
+        source_reference="H6022 ordinary DIY roster",
+    ),
+)
+H6022_NATIVE_MUSIC_MODES: Final = _native_music_modes("H6022")
 H618A_DIY_FAMILIES: Final = tuple(
     replace(family, source_reference="H618A RGBIC basic and mixed DIY") for family in H6125_DIY_FAMILIES
 )

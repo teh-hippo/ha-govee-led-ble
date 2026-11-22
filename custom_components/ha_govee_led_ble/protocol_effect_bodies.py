@@ -33,6 +33,7 @@ from .protocol_core import (
     H607cSceneBody,
     H1771CommandWrite,
     H1771EffectUpload,
+    H6022EffectUpload,
     H6046CommandAck,
     H6046EffectUpload,
     H6046MusicBody,
@@ -254,7 +255,9 @@ def parse_a3_effect_envelope(envelope: bytes, model: str, *, profile: ModelProfi
 
     effective_profile = profile or get_profile(model)
     grammar = effective_profile.effect_grammar
-    if grammar == "H6093":
+    if grammar == "H6022":
+        root_type = H6022EffectUpload
+    elif grammar == "H6093":
         from .protocol_core import H6093Projector
 
         root_type = H6093Projector.Upload

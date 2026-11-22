@@ -133,6 +133,32 @@ def test_snapshot_resolves_the_requested_sku_override():
     assert build_snapshot(raw, "H617A")["effects"][0]["command_version"] == 1
 
 
+def test_snapshot_treats_null_command_version_as_unversioned():
+    effect = _effect(30, 1)
+    effect["cmdVersion"] = None
+    raw = {
+        "status": 200,
+        "data": {
+            "categories": [
+                {
+                    "categoryId": 10,
+                    "categoryName": "Natural",
+                    "scenes": [
+                        {
+                            "sceneId": 20,
+                            "sceneName": "Forest",
+                            "sceneType": 0,
+                            "lightEffects": [effect],
+                        }
+                    ],
+                }
+            ]
+        },
+    }
+
+    assert "command_version" not in build_snapshot(raw, "H6022")["effects"][0]
+
+
 def test_snapshot_rejects_duplicate_vendor_identity():
     effect = _effect(30, 1)
     raw = {

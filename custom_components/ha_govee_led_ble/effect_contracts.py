@@ -164,6 +164,22 @@ _W, _R, _S, _V = (
 _RELEASE_CAPABILITY_BASE: Final = (
     *(
         _capability(
+            "H6022",
+            workflow,
+            label,
+            kind,
+            route,
+            strategy,
+            _V.SELECTION_ONLY,
+        )
+        for workflow, label, kind, route, strategy in (
+            (_W.NATIVE_SCENES, "Scenes", "scene_builtin", _R.STUDIO_SCENE_APPLY, _S.NATIVE_EFFECT_SELECTION),
+            (_W.SINGLE, "Single DIY", "h617a_single", _R.HOME_ASSISTANT_CONTROL, _S.H617A_CUSTOM_ENGINE),
+            (_W.NATIVE_MUSIC, "Music", "music_profile", _R.HOME_ASSISTANT_CONTROL, _S.COORDINATOR_WRITER),
+        )
+    ),
+    *(
+        _capability(
             "H6046",
             workflow,
             label,
@@ -477,7 +493,7 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
             (_W.NATIVE_MUSIC, "Music", "music_profile", _R.STUDIO_CUSTOM_APPLY, _S.COORDINATOR_WRITER),
         )
     ),
-    *(capability for capability in _RELEASE_CAPABILITY_BASE if capability.model in {"H6046", "H6053"}),
+    *(capability for capability in _RELEASE_CAPABILITY_BASE if capability.model in {"H6022", "H6046", "H6053"}),
     *(
         _capability(
             model,
@@ -949,6 +965,7 @@ def require_effect_route(
     model: str,
     workflow: CapabilityWorkflow,
     grammars: tuple[str, ...] = (
+        "H6022",
         "H6046",
         "H6053",
         "H617A",

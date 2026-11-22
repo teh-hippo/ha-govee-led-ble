@@ -179,6 +179,9 @@ H6102StatusReply = load_generated_class("h6102_status_reply", "H6102StatusReply"
 
 
 H617cStatusReply = load_generated_class("h617c_status_reply", "H617cStatusReply")
+H6022StatusReply = load_generated_class("h6022_status_reply", "H6022StatusReply")
+H6022SceneBody = load_generated_class("h6022_scene_body", "H6022SceneBody")
+H6022EffectUpload = load_generated_class("h6022_effect_upload", "H6022EffectUpload")
 
 
 H600aCommandWrite = load_generated_class("h600a_command_write", "H600aCommandWrite")
@@ -517,6 +520,7 @@ _STATUS_ROOTS = {
     "H61F5": ("h61f5_status_reply", H61f5StatusReply),
     "H617A": ("status_reply", StatusReply),
     "H617C": ("h617c_status_reply", H617cStatusReply),
+    "H6022": ("h6022_status_reply", H6022StatusReply),
     "H7025": ("h7025_status_reply", H7025StatusReply),
     "H6179": ("h6179_status_reply", H6179StatusReply),
     "H6199": ("h6199_status_reply", H6199StatusReply),

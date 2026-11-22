@@ -488,6 +488,7 @@ _EM += [
     ("H619A", None),
     ("ihoment_H617C_ABCD", "H617C"),
     ("Govee_H617C_ABCD", "H617C"),
+    ("Govee_H6022_ABCD", "H6022"),
     ("GBK_H617C_ABCD", "H617C"),
     ("GVH_H617C_ABCD", "H617C"),
     ("ihoment_H617E_ABCD", "H617E"),
