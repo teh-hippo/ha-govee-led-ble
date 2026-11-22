@@ -222,6 +222,20 @@ class _NotificationMixin(_CoordinatorBase):
         transition = self._mode_transition
         if transition is not None and transition.static_restore_started and parsed.mode is not ParsedMode.COLOUR:
             transition.superseded = True
+        if (
+            parsed.mode is ParsedMode.DIY
+            and self._pre_mode_snapshot is None
+            and self._incomplete_static_exit is None
+            and transition is None
+            and self.static_mode_confirmed()
+            and self._power_known
+            and (not self._recovery_brightness_supported() or self._brightness_pct_known)
+        ):
+            snapshot = self.capture_effect_control_state()
+            if snapshot.static_colour_observed and self._prepare_static_colour(snapshot) is not None:
+                self._pre_mode_snapshot = snapshot
+                self._pre_mode_profile = self.profile
+                self._pre_mode_needs_qualification = True
         self._observed_color_mode = parsed.mode
         self._observed_mode_write_generation = self._mode_write_generation
         self._observed_mode_profile_generation = self._profile_generation
