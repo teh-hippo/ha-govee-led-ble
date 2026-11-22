@@ -4,11 +4,13 @@ about: Request support for a Govee model
 labels: []
 ---
 
-Include the exact SKU (for example `H617A`) in the issue title and details.  Do not post the Bluetooth address, serial number or account details.
+Include the exact SKU (for example `H617A`) in the title and details.
+Keep Bluetooth addresses, serial numbers and account details private.
 
 ## Device details
 
-The device label and Govee app's device settings provide most of these details.  Enter `unknown` for anything you cannot reasonably obtain, and identify the source of version numbers.
+Use the device label and Govee app settings for these details.
+Enter `unknown` for unavailable values and identify each version number's source.
 
 - SKU printed on the device:
 - Product name and public product/manual link:
@@ -30,13 +32,13 @@ The device label and Govee app's device settings provide most of these details. 
 - Sanitised integration diagnostics or debug logs:
 
 In Home Assistant, download diagnostics from the integration entry under **Settings > Devices & services**.
-After a failure, download them promptly and review them before attaching; diagnostics are not guaranteed anonymous.
-Remove unique identifiers from screenshots and logs too.
+After a failure, download them promptly.
+Review diagnostics, screenshots and logs before attaching, removing unique identifiers.
 
 ## Testing and follow-up
 
-Please expect to try a candidate release and report what works or fails on your device.  Real-device verification is needed before support can be marked Supported.
-Implementation can merge and ship as Experimental first; this request stays open for feedback until confirmed support ships.
+Test a candidate release and report what works or fails on your device.
+Support ships as Experimental first; this request stays open until owner-confirmed Supported shipment.
 
-When testing, comment here with the candidate version, hardware/firmware versions, controls tested, visible results, and anything not tested.
-Include state/readback, reconnect or restoration problems where relevant; an accepted write or optimistic UI alone is not hardware confirmation.
+Report the candidate and hardware/firmware versions, controls tested, visible results and untested areas here.
+Include relevant state/readback, reconnect and restoration results.

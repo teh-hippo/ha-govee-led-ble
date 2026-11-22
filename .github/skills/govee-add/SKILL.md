@@ -9,48 +9,48 @@ license: MIT
 
 # govee-add
 
-Argument: a SKU, optionally the support-request issue.  Read `.github/skills/govee-shared.md` first.
+Argument: a SKU, optionally its support-request issue.
+Read `.github/skills/govee-shared.md` first.
 
 Goal: complete Experimental support, merged and available in a master release candidate.
 
 Task list:
 
-1. Build the device brief.
-2. Use the original exact-SKU support request for implementation and owner verification.
-   If there is no request, create one using `.github/ISSUE_TEMPLATE/model-support.md`, with the SKU in its title and description.
-   Do not create a follow-on confirmation issue, attach it to a parent tracker, or create or apply a model label.
-   Its number goes in the profile's `confirmation_issue` and README Experimental link.
-   For existing paired issues, follow `CONTRIBUTING.md` consolidation policy rather than abandoning active owner discussion.
-3. Map the device brief onto existing capability declarations, codecs and shared operations before implementing.
-   Follow the shared design workflow; cover every row of the checklist below or say why a row does not apply.
-   Complete support should normally add product declarations and evidenced codecs, not another entity, coordinator, editor or recovery path.
-   Where existing machinery cannot express a capability, correct or extend that machinery for all affected callers; keep an override only for evidenced semantic differences.
-4. Run `govee-audit` on both completeness and special treatment in the result.
-   Fix every supported coupled root cause, remove superseded code and re-review invalidated acceptance following `CONTRIBUTING.md`.
-5. Complete independent acceptance review through that audit or fresh-context code review, commit, `make check`, PR (references the request without automatic issue-closing keywords).
-6. When the PR is green, merge it to `master`.
-7. Follow `CONTRIBUTING.md` release policy: wait for the automatic master candidate containing the merge and verify its workflow and assets.  Do not dispatch another master RC or publish stable.
-8. Show the requester reply draft to the operator; after approval, post it on the request and leave it open:
-   > Experimental support for `<SKU>` is available in `<master RC tag>`. @`<requester>`, install it through HACS, restart Home Assistant and report results here, including hardware/firmware versions, controls tested and visible behaviour.
-   Hardware confirmation and Supported shipment are handled by `govee-resolve`; lack of a reply does not close the request or promote support.
+1. Use the exact-SKU request for implementation and owner verification.
+   Create a missing request with `.github/ISSUE_TEMPLATE/model-support.md`; consolidate existing threads under `CONTRIBUTING.md`.
+   Set `confirmation_issue` and the README Experimental link to that request.
+2. Build the complete revision-aware device brief and map it onto existing declarations, codecs and shared operations.
+   Cover each checklist row or explain its applicability.
+   Extend shared machinery where evidence demonstrates a gap.
+3. Run `govee-audit` for completeness, special treatment and implementation correctness.
+   Close coupled findings under canonical acceptance policy.
+   Its fresh-context correctness review can satisfy independent acceptance review.
+4. Reconcile upstream at readiness, commit, pass `make check` and open the PR referencing the request.
+   Keep the request open for hardware confirmation.
+5. Merge the green PR to `master`, then verify the automatic master candidate's workflow and assets.
+6. Show the requester reply draft to the operator and post after approval:
+   > Experimental support for `<SKU>` is available in `<master RC tag>`.
+   > @`<requester>`, install it through HACS, restart Home Assistant and report hardware/firmware versions, controls tested and visible results here.
+   `govee-resolve` handles confirmed support and eventual closure.
 
 ## New-model integration checklist
 
-These are integration points, not a requirement to add a new handler or test file for each device.
-Follow existing shared contracts rather than copying the nearest model's implementation.
+Use existing shared contracts at these integration points.
 
-| File | What it needs |
-| --- | --- |
-| `custom_components/ha_govee_led_ble/manifest.json` | `bluetooth` `local_name` matchers for every name prefix the device uses (e.g. `ihoment_`, `Govee_`, `Minger_`, `GBK_`, `GVH_`, `GVH<n>`, `GV<n>`, `<SKU>_`).  Without them Home Assistant never discovers it. |
-| `custom_components/ha_govee_led_ble/const.py` | `ModelProfile`, including `confirmation_issue`. |
-| `custom_components/ha_govee_led_ble/effect_catalogue.py` | `ModelEffectCatalogue` entry. |
-| `custom_components/ha_govee_led_ble/scene_catalogues/<SKU>.json` | `uv run python tools/ble/refresh_scene_catalogues.py <SKU>`, before registering the profile. |
-| `tools/ble/kaitai/speculative/<sku>_*.ksy` | Exact-model schemas (outside `speculative/` only with recorded device traffic). |
-| `scripts/kaitai-runtime-roots.txt`, `scripts/kaitai-runtime-outputs.txt` | Each new `.ksy` root and its generated module. |
-| `README.md` | Device-support row: `[🚧 Experimental](<confirmation issue URL>)`. |
-| Existing discovery, profile, catalogue, protocol and frontend contract suites | Register new declarations and cover each distinct effective capability contract, discovery prefix and wire shape through shared parametrisation. |
+Under `custom_components/ha_govee_led_ble/`:
 
-Runtime changes are justified by missing shared behaviour or a new evidenced wire shape, not by adding a SKU alone.
-Extend existing protocol adapters, semantic handlers and shared tests only where the device brief demonstrates a gap.
-Update `CONTRIBUTING.md` only for a new contributor-wide invariant, not a recipe for this device.
-`generated_protocol/` and `frontend/tests/fixtures/backend-contracts.json` are gitignored build outputs; never edit or commit them.
+- `manifest.json`: `bluetooth` `local_name` matchers for every evidenced name prefix.
+  Examples: `ihoment_`, `Govee_`, `Minger_`, `GBK_`, `GVH_`, `GVH<n>`, `GV<n>`, `<SKU>_`.
+- `const.py`: complete `ModelProfile` with `confirmation_issue`.
+- `effect_catalogue.py`: `ModelEffectCatalogue`.
+- `scene_catalogues/<SKU>.json`: run `uv run python tools/ble/refresh_scene_catalogues.py <SKU>` before profile registration.
+
+Repository files:
+
+- `tools/ble/kaitai/speculative/<sku>_*.ksy`: exact-model schemas; recorded traffic qualifies schemas outside `speculative/`.
+- `scripts/kaitai-runtime-roots.txt` and `scripts/kaitai-runtime-outputs.txt`: new roots and generated modules.
+- `README.md`: `[🚧 Experimental](<confirmation issue URL>)` device row.
+- Existing discovery, profile, catalogue, protocol and frontend suites: shared parametrisation for distinct capabilities, prefixes and wire shapes.
+
+Update `CONTRIBUTING.md` for contributor-wide invariants.
+Build `generated_protocol/` and `frontend/tests/fixtures/backend-contracts.json` locally; both remain gitignored.

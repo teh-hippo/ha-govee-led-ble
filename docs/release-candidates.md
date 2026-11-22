@@ -1,94 +1,84 @@
 # Release candidates
 
-A release candidate (RC) is a prerelease package for live testing on hardware.
-The [release policy](../CONTRIBUTING.md#releases) defines automatic master candidates, optional PR candidates and manually authorised stable releases.
-RCs never move GitHub's latest stable release.
-Use an RC, not SSH deployment or copying files.
+A release candidate (RC) is a prerelease for hardware testing.
+Follow the [release policy](../CONTRIBUTING.md#releases) and install published candidates through Marketplace.
+Stable releases retain GitHub's latest-stable designation.
 
 ## Selecting a candidate in Marketplace
 
 Open **Settings > Marketplace**.
-Candidates are available in the integration's download/redownload dialog's version selector.
-Select the exact published tag; there is no need to enable prerelease updates just to install one candidate.
-With prerelease updates disabled, normal update prompts remain stable-only.
-Enabling prerelease updates instead opts into the shared feed of master and PR candidates.
-Publishing a prerelease neither changes that user preference nor installs an update automatically.
+Select the exact published tag in the integration's download/redownload version selector.
+Keep prerelease updates disabled for stable-only prompts, or enable them for both master and PR candidates.
+Exact-version installation works with either preference.
 
 ## Master candidates
 
-Merging release-bearing changes to `master` automatically publishes a candidate after current-master validation succeeds.
-Python Semantic Release calculates the upcoming version and successive `v<version>-rc.<number>` tags, updating source versions and the lockfile through its normal release commit.
-Maintenance-only changes do not force a new candidate.
-Use the published master candidate containing the change; do not dispatch a second workflow just to recreate it.
-If automatic publication did not run, request the same validated-master candidate path with `gh workflow run release.yml --ref master -f release_type=rc`.
-The default manual channel is stable; explicitly select `rc` and use the normal Semantic Release version calculation without forcing a maintenance-only version.
-If publication already created a tag or draft before failing, use the same-tag recovery below instead of creating another version.
-Wait for the complete `Release` workflow and verify its ZIP and checksum before sharing the tag.
-Stable publication is a separate operator decision, not a prerequisite for hardware testing.
+Use the automatic candidate containing the release-bearing merge.
+Python Semantic Release calculates `v<version>-rc.<number>` and updates source versions and the lockfile.
+Maintenance-only changes leave the version unchanged.
+If automatic publication did not run, request the validated-master path with `gh workflow run release.yml --ref master -f release_type=rc`.
+Manual dispatch defaults to stable; select `rc` explicitly.
+Recover an existing failed tag or draft with the same-tag procedure below.
+Wait for `Release` completion and verify the ZIP and checksum before sharing.
 
 ### Intentionally starting a major version
 
-Select `force_major=true` only when the operator explicitly wants the next major version.
+Select `force_major=true` for an operator-requested major version.
 For example, `gh workflow run release.yml --ref master -f release_type=rc -f force_major=true` uses Python Semantic Release's standard `--major` option.
-That run excludes earlier candidate refs locally, so its generated notes cover everything since the last stable release.
-Normal automatic candidates then continue the new major's RC numbering; do not keep forcing major versions.
-No synthetic breaking-change commit or hand-edited version is needed.
+Notes cover all changes since the last stable.
+Subsequent automatic candidates continue normal RC numbering.
 
 When that candidate is ready for stable, select `release_type=stable` and `force_major=true` again.
-An intentional major override is not a breaking-change commit, so normal stable calculation alone may select a lower version.
-The workflow rejects a version below current master instead of publishing it, and refuses to recreate an existing forced version.
-Stable notes still cover all changes since the previous stable release.
-Keep existing tags immutable and use same-tag recovery after a failed publication.
+Repeat the override because ordinary stable calculation can select a lower version.
+The workflow rejects downgrades and existing forced versions.
+Recover failed publication at its existing immutable tag.
 
 ## Building an optional PR candidate
 
-Run the **Prerelease Package** workflow (`workflow_dispatch`) on the branch, after the final `make check` and with the reviewed commit pushed.
-Obtain operator approval for a manual build/publication and its public notes.
-Only `publish` is required.
-The selected branch must have an open, same-repository PR targeting `master`.
-Left blank, `target_sha` is the branch head, `version` is the next patch from the selected commit's manifest with `-pr-<PR number>.<candidate number>`, and `release_notes` is a generic candidate note.
-For example, the first preview for PR #145 might be `v7.40.1-pr-145.1`, followed by `v7.40.1-pr-145.2`.
-Candidate numbers advance from existing tags for that PR, without a separate stored counter.
-Retrying the latest candidate's exact commit reuses its version; an explicit version must identify the selected PR.
-This preview identifier is not a prediction of the eventual stable version.
-An explicit `version` cannot be a stable version.
-Set `publish=true` to create the `v<version>` tag and prerelease, which is what Marketplace installs.
-Set `publish=false` for a build-only run: it uploads the package, checksum and metadata as a run artefact (`gh run download <run id>`) without releasing.
-Leave `cache_dependencies=true` for compatible wheel reuse; set it to `false` only for an approved controlled cold-build comparison.
-Compare the same exact SHA and version, archive bytes and checksums, and actual dependency compilation logs rather than cache-hit messages alone.
-Publish another RC for later fixes rather than reusing a tag or hotpatching an installation.
-The workflow delegates packaging to a pinned [shared prerelease workflow](https://github.com/teh-hippo/common-repo-configs), which checks that the exact SHA belongs to the branch and stamps only the build's manifest.
-That shared interface accepts RC versions, so `7.40.1-pr-145.2` uses the internal packaging input `7.40.1-rc.2.pr-145`, producing manifest version `7.40.1rc2`.
-The build metadata records that packaging input and the exact source SHA; the public tag identifies the PR and candidate.
-It does not commit preview versions to the feature branch.
-The master release checkout removes PR preview tags locally before running Semantic Release, preserving normal master numbering and release notes without changing remote tags.
-For stable publication or an explicitly forced major, that checkout also removes master-candidate tag refs locally so generated notes include the changes delivered through RCs.
-Automatic master candidates retain their RC refs for native numbering.
-The build checks package integrity; it does not replace the required prior review and `make check`.
+Push the reviewed commit after `make check`, obtain approval for publication and public notes, then dispatch **Prerelease Package** on the branch.
+The branch requires an open same-repository PR targeting `master`.
+
+| Input | Meaning |
+| --- | --- |
+| `publish` | Required: `true` publishes the tag/prerelease; `false` uploads package, checksum and metadata as a run artefact. |
+| `target_sha` | Defaults to branch head; must belong to the selected branch. |
+| `version` | Defaults to the next manifest patch with `-pr-<PR number>.<candidate number>`; explicit values must identify that PR as a prerelease. |
+| `release_notes` | Defaults to a generic candidate note. |
+| `cache_dependencies` | Defaults to `true`; an approved controlled cold-build comparison may select `false`. |
+
+Example tag: `v7.40.1-pr-145.1`.
+Numbers advance from existing PR tags; retrying the latest candidate's exact commit reuses its version.
+Build-only runs leave numbers available.
+PR preview numbering is independent of stable version calculation.
+Compare cold/warm builds at the same SHA and version using archive bytes, checksums and compilation logs.
+Download build-only artefacts with `gh run download <run id>`.
+
+The pinned [shared prerelease workflow](https://github.com/teh-hippo/common-repo-configs) verifies branch membership and stamps the packaged manifest.
+Use the public tag for installation and metadata's source SHA and packaging version for runtime verification.
+Source versions remain unchanged.
+Publish a new candidate for later fixes.
 
 ## Recovering a failed publication
 
-Version/tag creation and publication are separate operations.
-The workflows verify packages before passing assets to `gh release create`, which uploads through a draft and publishes afterwards.
-An upload failure is not an invitation to bump again, move a tag or overwrite a public release.
-GitHub CLI normally cleans up its temporary draft on a handled failure; an interruption or failed cleanup can leave a draft.
+Recover publication using the existing version, exact commit and original notes.
+Packages are verified before `gh release create` uploads through a draft and publishes.
+An interrupted upload or cleanup can leave a draft.
+Published releases and tags remain immutable.
 
 For a PR candidate, retry the same exact SHA and version.
-The publisher accepts an existing tag only after resolving it to that exact commit, including annotated tags.
-It does not replace a published release.
-Build-only runs do not reserve candidate numbers.
+The publisher resolves existing tags, including annotated tags, to that exact commit.
 
 For a failed master publication:
 
 1. Stop other publication attempts for that tag and inspect the failed run.
    Confirm its versioning step completed and the remote tag exists.
-   Check for newer published versions before recovering an older tag; do not make a superseded stable release the latest.
+   Check newer published versions; GitHub's latest stable must remain the newest stable release.
    Download its `release-<tag>` artefact, which preserves the release commit, tag, prerelease flag and original Semantic Release notes.
-   If that metadata is missing, stop and investigate rather than inventing another version or replacement notes.
+   Recovery requires that original metadata; investigate if it is missing.
 2. Inspect `gh release view <tag> --json tagName,isDraft`.
-   If already published, stop; do not overwrite its assets.
+   An already published release completes recovery.
    If an incomplete draft remains, confirm it is still a draft and remove only that draft with `gh release delete <tag> --yes`.
-   Never use `--cleanup-tag`.
+   Preserve the tag when deleting a draft.
 3. Use a fresh worktree at the exact tag and download the metadata there.
    The following commands use an absolute path for the recovery worktree:
 
@@ -108,7 +98,7 @@ For a failed master publication:
    ```
 
 4. Verify the checksum, then invoke the same publisher with the saved identity and notes.
-   It checks the remote tag again and refuses to retarget it.
+   The publisher rechecks the immutable remote tag.
    Run this only after the package verification above succeeds:
 
    ```bash
@@ -121,7 +111,7 @@ For a failed master publication:
    ```
 
 Use the configured Node/Kaitai tools and authenticated GitHub CLI for recovery.
-Do not rerun Semantic Release versioning or remove a published release to repair a failed upload.
+Recovery resumes asset publication with the saved versioning result.
 
 ## Qualifying on hardware
 
