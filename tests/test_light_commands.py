@@ -66,7 +66,7 @@ def test_h6199_blank_screen_builder_validates_durations() -> None:
 @pytest.mark.parametrize(("model", "maximum"), [("H617A", 5), ("H6199", 4)])
 def test_segment_query_groups_are_model_bounded(model: str, maximum: int) -> None:
     assert build_segment_query(maximum, model)[2] == maximum
-    with pytest.raises(ValueError, match="selected grammar"):
+    with pytest.raises(ValueError, match="selected geometry"):
         build_segment_query(maximum + 1, model)
 
 

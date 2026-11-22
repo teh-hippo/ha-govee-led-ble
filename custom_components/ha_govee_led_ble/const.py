@@ -19,6 +19,7 @@ from .music_semantics import (
     H617A_MUSIC_VARIANTS,
     H617C_MUSIC_VARIANTS,
     H617E_MUSIC_VARIANTS,
+    H618A_MUSIC_VARIANTS,
     H619A_MUSIC_VARIANTS,
     H705A_MUSIC_VARIANTS,
     H1771_MUSIC_VARIANTS,
@@ -2354,6 +2355,67 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         advanced_scene_carrier=(1013, 11836),
         effect_readback="diy_code_only",
     ),
+    "H618A": ModelProfile(
+        "H618A RGBIC Strip Lights",
+        confirmation_issue=690,
+        command_grammar="H617A",
+        command_ack_grammar="H617A",
+        status_grammar="H618A",
+        effect_grammar="H617A",
+        colour_mode_query_selector=1,
+        profile_identity_fields=frozenset({"fw_version", "hw_version"}),
+        scene_identity_fields=frozenset({"fw_version", "hw_version"}),
+        static_readback_kelvin=True,
+        static_readback_zero_kelvin_is_rgb=True,
+        read_domains=frozenset(
+            {
+                ReadDomain.POWER,
+                ReadDomain.BRIGHTNESS,
+                ReadDomain.COLOUR_MODE,
+                ReadDomain.FIRMWARE,
+                ReadDomain.HARDWARE,
+                ReadDomain.SEGMENTS,
+            }
+        ),
+        setup_required_read_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE}),
+        supports_rgb=True,
+        supports_color_temperature=True,
+        color_temp_range=KELVIN_RANGE_2000_9000,
+        supports_segment_writes=True,
+        supports_segment_brightness=True,
+        supports_segment_color_temperature=True,
+        physical_ic_count=15,
+        segment_count=15,
+        segment_group_size=3,
+        supports_scenes=True,
+        scene_catalogue_sku="H618A",
+        rgbic_scene_v0=False,
+        supports_custom_effects=True,
+        supports_advanced_effects=True,
+        supports_multi_layered_effects=True,
+        advanced_diy_selector=402,
+        diy_requires_upload_ack=True,
+        effect_readback="diy_code_only",
+        music_modes=(
+            "energetic",
+            "rhythm",
+            "spectrum",
+            "rolling",
+            "separation",
+            "hopping",
+            "piano_keys",
+            "fountain",
+            "day_and_night",
+            "bloom",
+            "shiny",
+        ),
+        music_variants=H618A_MUSIC_VARIANTS,
+        music_upload_before_selector=True,
+        music_requires_upload_ack=True,
+        music_params_require_activation=True,
+        supports_music_color=True,
+        connection_idle_timeout=IDLE_TIMEOUT_STANDARD,
+    ),
     "H6076": _H6076_MUSIC_PROFILE,
     "H6072": _H6072_PROFILE,
     "H607C": ModelProfile(
@@ -4233,6 +4295,23 @@ def device_profile(
         return replace(
             get_profile(model),
             rgbic_scene_v0=fw is None or hw is None or fw < FirmwareVersion((1, 6)) or hw < FirmwareVersion((1, 0, 2)),
+        )
+    if model == "H618A":
+        from .protocol_transforms import rgb_only_segment_query_transform
+
+        fw, hw = FirmwareVersion.parse(firmware), FirmwareVersion.parse(hardware)
+        modern = (
+            fw is not None and hw is not None and fw >= FirmwareVersion((1, 6)) and hw >= FirmwareVersion((1, 0, 2))
+        )
+        return replace(
+            get_profile(model),
+            status_grammar="H618A" if modern else "H618A-legacy",
+            segment_group_size=3 if modern else 4,
+            outbound_transform=None if modern else rgb_only_segment_query_transform,
+            rgbic_scene_v0=not modern,
+            read_domains=get_profile(model).read_domains
+            if fw is not None and hw is not None
+            else get_profile(model).read_domains - {ReadDomain.SEGMENTS},
         )
     if model == "H6199":
         profile = H6199_PACT1_PROFILE if (pact_type, pact_code) == (1, 1) else get_profile(model)

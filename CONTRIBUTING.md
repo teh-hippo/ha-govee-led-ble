@@ -134,6 +134,8 @@ Profiles own product facts, Kaitai owns wire structure, and shared runtime opera
   Retain colour semantics at write granularity alongside complete RGB and brightness palettes, including mixed layouts.
   Reconstruct unknown native intent through evidenced declared operations.
   Recovery may retain complete delivered write-only colours and levels; Preview requires independent observations.
+  Qualify each readable field independently of its write capability, and enforce dependent read authority at both physical query and subscription observation boundaries.
+  Dependent reads require explicit protocol admission even when writes are unrestricted.
 - Distinguish admission, preparation, physical attempt, completed delivery and independent confirmation.
   Track physical attempts explicitly and qualify observations independently of optimistic state and expired expectations.
   Write-only delivery completes after required acknowledgements.

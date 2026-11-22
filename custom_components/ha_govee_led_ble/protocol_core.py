@@ -458,6 +458,8 @@ H6072MusicBody = load_generated_class("h6072_music_body", "H6072MusicBody")
 H6072MusicAck = load_generated_class("h6072_music_ack", "H6072MusicAck")
 
 H619aStatusReply = load_generated_class("h619a_status_reply", "H619aStatusReply")
+H618aStatusReply = load_generated_class("h618a_status_reply", "H618aStatusReply")
+H618aLegacyStatusReply = load_generated_class("h618a_legacy_status_reply", "H618aLegacyStatusReply")
 
 
 _STATUS_ROOTS = {
@@ -469,6 +471,8 @@ _STATUS_ROOTS = {
     "H6182": ("h6182_status_reply", H6182StatusReply),
     "H6182-modern": ("h6182_modern_status_reply", H6182ModernStatusReply),
     "H619A": ("h619a_status_reply", H619aStatusReply),
+    "H618A": ("h618a_status_reply", H618aStatusReply),
+    "H618A-legacy": ("h618a_legacy_status_reply", H618aLegacyStatusReply),
     "H60B0": ("h60b0_status_reply", H60b0StatusReply),
     "H60B2": ("h60b2_status_reply", H60b2StatusReply),
     "H605C": ("h605c_status_reply", H605cStatusReply),

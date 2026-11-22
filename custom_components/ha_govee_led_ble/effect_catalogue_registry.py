@@ -23,6 +23,8 @@ from .effect_catalogue_families import (
     H617C_DIY_FAMILIES,
     H617C_NATIVE_MUSIC_MODES,
     H617E_NATIVE_MUSIC_MODES,
+    H618A_DIY_FAMILIES,
+    H618A_NATIVE_MUSIC_MODES,
     H619A_DIY_FAMILIES,
     H619A_NATIVE_MUSIC_MODES,
     H705A_DIY_FAMILIES,
@@ -681,6 +683,40 @@ MODEL_EFFECT_CATALOGUES: Final = {
         templates=H6179_CATALOGUE_TEMPLATES,
         workshop_templates=(),
         diy_slot_policy="approved_observed",
+    ),
+    "H618A": ModelEffectCatalogue(
+        sku="H618A",
+        native_diy_palette_groups=(
+            (501, (0,), 1, 1),
+            (501, (1, 2), 4, 8),
+            (502, (0, 1), 2, 8),
+            (504, (0, 1, 2), 3, 8),
+            (505, (1,), 1, 1),
+            (506, (0, 1), 2, 8),
+            (506, (2, 3), 2, 8),
+        ),
+        painted_addressing="physical_ic",
+        painted_effects=tuple(
+            {"id": name, "label": name.replace("_", " ").capitalize()}
+            for name in ("clockwise", "counter_clockwise", "cycle", "gradient", "twinkle", "breathe")
+        ),
+        effects=H618A_DIY_FAMILIES,
+        music_modes=H618A_NATIVE_MUSIC_MODES,
+        video_modes=(),
+        templates=(
+            CatalogueTemplate(
+                id="template:paint",
+                label="Paint",
+                category="single-layer",
+                content=PaintedEffect(
+                    effect="clockwise", speed=50, brightness=100, segments=(None,) * 15, addressing="physical_ic"
+                ),
+            ),
+            *(_single_template("H618A", family) for family in H618A_DIY_FAMILIES),
+            *(_music_template("H618A", mode) for mode in H618A_NATIVE_MUSIC_MODES),
+            *_rgbic_native_templates(15),
+        ),
+        workshop_templates=(),
     ),
     "H619A": ModelEffectCatalogue(
         sku="H619A",

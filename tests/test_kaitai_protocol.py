@@ -1851,11 +1851,15 @@ def test_missing_or_unknown_grammar_fails_closed_only_in_its_direction(monkeypat
             (generated_protocol_adapter.build_segment_query, (1,)),
             (generated_protocol_adapter.build_segment_colour, (1, 10, 20, 30)),
         ):
-            with pytest.raises(ValueError, match="grammar"):
+            with pytest.raises(
+                ValueError,
+                match="readback" if build is generated_protocol_adapter.build_segment_query else "grammar",
+            ):
                 build(*args)
     else:
         assert generated_protocol_adapter.build_power(True) == bytes.fromhex("3301010000000000000000000000000000000033")
-        assert generated_protocol_adapter.build_segment_query(5) == H617A_SEGMENT_QUERY
+        with pytest.raises(ValueError, match="readback"):
+            generated_protocol_adapter.build_segment_query(5)
 
 
 def test_h6199_pact1_wire_fields_are_meaningful() -> None:

@@ -1179,6 +1179,16 @@ def _dreamcolor_music_variants(model: str) -> tuple[MusicVariant, ...]:
 
 
 H617C_MUSIC_VARIANTS = _dreamcolor_music_variants("H617C")
+H618A_MUSIC_VARIANTS = tuple(
+    replace(
+        variant,
+        parameters=tuple(
+            replace(spec, default=10) if variant.mode_code == 0x37 and spec.profile_key == "speed" else spec
+            for spec in variant.parameters
+        ),
+    )
+    for variant in _dreamcolor_music_variants("H618A")
+)
 H619A_MUSIC_VARIANTS = tuple(
     replace(
         variant,

@@ -929,8 +929,16 @@ class _NotificationMixin(_CoordinatorBase):
                 "" if self._dreamview_private_write else frame.hex(),
             )
             return
-        result = decode_status_frame_result(frame, self.model, profile=self.profile)
+        profile = self.profile
+        result = decode_status_frame_result(frame, self.model, profile=profile)
         decoded = result.parsed
+        if decoded is not None and decoded.domain is ReadDomain.SEGMENTS:
+            profile = self._authorization_profile()
+            if profile.can_read(ReadDomain.SEGMENTS) and profile.status_grammar != self.profile.status_grammar:
+                result = decode_status_frame_result(frame, self.model, profile=profile)
+                decoded = result.parsed
+                if decoded is not None and decoded.domain is not ReadDomain.SEGMENTS:
+                    decoded = None
         if decoded is None:
             reason = result.rejection.value if result.rejection is not None else "schema_rejected"
             self._record_packet(
@@ -949,7 +957,7 @@ class _NotificationMixin(_CoordinatorBase):
                 "" if self._dreamview_private_write else frame.hex(),
             )
             return
-        if not status_is_authorized(decoded, self.profile):
+        if not status_is_authorized(decoded, profile):
             self._record_packet(
                 "rx",
                 frame,

@@ -40,6 +40,7 @@ Connect over Bluetooth or ESPHome Bluetooth proxies, and create custom effects w
 | **H617C** | ✅ Supported |
 | **H617E** | ✅ Supported |
 | **H617F** | ✅ Supported |
+| **H618A** | [🚧 Experimental](https://github.com/teh-hippo/ha-govee-led-ble/issues/690) |
 | **H6181** | ✅ Supported |
 | **H6182** | ✅ Supported |
 | **H619A** | [🚧 Experimental](https://github.com/teh-hippo/ha-govee-led-ble/issues/567) |

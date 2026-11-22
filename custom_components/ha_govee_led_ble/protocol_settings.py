@@ -981,6 +981,8 @@ def build_black_border_query(model: str, *, profile: ModelProfile | None = None)
 
 def build_segment_query(group: int, model: str = "H617A", *, profile: ModelProfile | None = None) -> bytes:
     profile = profile or get_profile(model)
+    if not profile.can_read(ReadDomain.SEGMENTS):
+        raise ValueError(f"{model} does not support qualified segment readback")
     if profile.status_grammar == "H6053-legacy":
         if type(group) is not int or group != 1:
             raise ValueError("Legacy source colours have exactly one complete observation")
@@ -992,7 +994,7 @@ def build_segment_query(group: int, model: str = "H617A", *, profile: ModelProfi
         raise ValueError(f"{model} has no generated segment-query grammar")
     if type(group) is not int:
         raise ValueError("segment query group must be an integer")
-    if resolved in {"H1771", "H60B0", "H705A"} and not 1 <= group <= profile.segment_group_count:
+    if not 1 <= group <= profile.segment_group_count:
         raise ValueError("segment query group is outside the selected geometry")
     try:
         domain = "legacy_segments" if profile.status_grammar == "H6199-Pact1" else "segments"

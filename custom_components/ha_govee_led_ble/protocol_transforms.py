@@ -394,6 +394,18 @@ def h60a6_legacy_outbound_transform(packet: bytes) -> bytes:
     return _serialize_xor(root)
 
 
+def rgb_only_segment_query_transform(packet: bytes) -> bytes:
+    query = _parse_xor_frame(packet, "H617A", _STATUS_QUERY_ROOTS).parsed
+    if query is None or getattr(query.domain, "name", None) != "segments":
+        return packet
+    root = H6125LegacySegmentQuery()
+    root.header = b"\xaa"
+    root.domain = H6125LegacySegmentQuery.QueryDomain.segments
+    root.group = query.body.group
+    root.padding = bytes(16)
+    return _serialize_xor(root)
+
+
 @cache
 def dreamcolor_outbound_transform(
     wire_range: tuple[int, int],
@@ -418,14 +430,9 @@ def dreamcolor_outbound_transform(
                 root.unknown_tail = bytes(17)
                 return _serialize_xor(root)
         if legacy_colour:
-            query = _parse_xor_frame(packet, "H617A", _STATUS_QUERY_ROOTS).parsed
-            if query is not None and getattr(query.domain, "name", None) == "segments":
-                root = H6125LegacySegmentQuery()
-                root.header = b"\xaa"
-                root.domain = H6125LegacySegmentQuery.QueryDomain.segments
-                root.group = query.body.group
-                root.padding = bytes(16)
-                return _serialize_xor(root)
+            transformed = rgb_only_segment_query_transform(packet)
+            if transformed != packet:
+                return transformed
         parsed = parse_command_result(packet, "H617A").parsed
         if parsed is None:
             return packet

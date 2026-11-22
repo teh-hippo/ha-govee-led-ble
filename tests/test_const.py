@@ -118,6 +118,32 @@ def test_h617f_uses_exact_scene_catalogue_with_h617a_wire_grammars():
     assert profile.command_grammar == profile.status_grammar == profile.effect_grammar == "H617A"
 
 
+@pytest.mark.parametrize("pact", [(2, 1), (3, 1)])
+@pytest.mark.parametrize(
+    ("firmware", "hardware", "modern"),
+    [
+        (None, None, False),
+        ("1.06.00", None, False),
+        (None, "1.00.02", False),
+        ("1.05.99", "1.00.02", False),
+        ("1.06.00", "1.00.01", False),
+        ("1.06.00", "1.00.02", True),
+        ("3.01.00", "3.01.01", True),
+    ],
+)
+def test_rgbic_readback_revision_keeps_independently_supported_writes(pact, firmware, hardware, modern):
+    profile = device_profile("H618A", *pact, firmware=firmware, hardware=hardware)
+    assert profile.status_grammar == ("H618A" if modern else "H618A-legacy")
+    assert profile.segment_group_size == (3 if modern else 4)
+    assert profile.rgbic_scene_v0 is not modern
+    assert profile.supports_rgb and profile.supports_color_temperature
+    assert profile.supports_segment_brightness and profile.supports_segment_color_temperature
+    assert profile.segment_count == profile.physical_ic_count == 15
+    assert profile.music_modes == MODEL_PROFILES["H618A"].music_modes
+    assert not profile.boolean_controls and not profile.light_sources
+    assert profile.can_read(ReadDomain.SEGMENTS) is (firmware is not None and hardware is not None)
+
+
 def test_support_quality_has_only_supported_and_experimental_states():
     assert set(SupportQuality) == {SupportQuality.EXPERIMENTAL, SupportQuality.SUPPORTED}
     assert const.H6199_PACT1_PROFILE.support_quality is SupportQuality.SUPPORTED
@@ -156,7 +182,7 @@ def test_support_quality_has_only_supported_and_experimental_states():
     }
     assert {
         model for model, profile in MODEL_PROFILES.items() if profile.support_quality is SupportQuality.EXPERIMENTAL
-    } == {"H6053", "H6093", "H6117", "H612A", "H6127", "H6159", "H6179", "H619A", "H7025", "H705A"}
+    } == {"H6053", "H6093", "H6117", "H612A", "H6127", "H6159", "H6179", "H618A", "H619A", "H7025", "H705A"}
 
 
 @pytest.mark.parametrize("pact", [(1, 1), (2, 1), (2, 2), (None, None), (3, 7)])

@@ -51,6 +51,7 @@ _SPEED_METADATA_SKUS = frozenset(
         "H60B2",
         "H6117",
         "H617A",
+        "H618A",
         "H619A",
         "H7020",
         "H7025",
@@ -65,7 +66,7 @@ _METADATA_DEFAULT_SPEED_SKUS = frozenset(
 )
 
 # Glacier's application path rewrites its stale stored movement fields.
-_VERIFIED_SPEED_DEFAULT_REWRITES = frozenset({("H617A", 1026, 1088)})
+_VERIFIED_SPEED_DEFAULT_REWRITES = frozenset({("H617A", 1026, 1088), ("H618A", 1026, 12758), ("H618A", 1071, 12787)})
 
 
 def fetch_library(sku: str) -> dict[str, Any]:

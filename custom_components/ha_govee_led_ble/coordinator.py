@@ -1494,7 +1494,7 @@ class GoveeBLECoordinator(
             self.segment_kelvin = [None] * self.profile.segment_count
         if len(self.segment_brightness_known) != self.profile.segment_count:
             self.segment_brightness_known = [False] * self.profile.segment_count
-        if static.brightness_pct is not None and not self.profile.can_read(ReadDomain.SEGMENTS):
+        if static.brightness_pct is not None:
             for index in range(self.profile.segment_count):
                 if mask & (1 << index):
                     self.segment_brightness_known[index] = False
