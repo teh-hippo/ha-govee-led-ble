@@ -28,6 +28,8 @@ from .effect_catalogue_families import (
     H619A_DIY_FAMILIES,
     H619A_NATIVE_MUSIC_MODES,
     H705A_DIY_FAMILIES,
+    H6022_DIY_FAMILIES,
+    H6022_NATIVE_MUSIC_MODES,
     H6046_DIY_FAMILIES,
     H6053_DIY_FAMILIES,
     H6072_DIY_FAMILIES,
@@ -564,6 +566,18 @@ MODEL_EFFECT_CATALOGUES: Final = {
         music_modes=H617A_NATIVE_MUSIC_MODES,
         video_modes=(),
         templates=H617A_CATALOGUE_TEMPLATES,
+        workshop_templates=(),
+    ),
+    "H6022": ModelEffectCatalogue(
+        sku="H6022",
+        painted_effects=(),
+        effects=H6022_DIY_FAMILIES,
+        music_modes=H6022_NATIVE_MUSIC_MODES,
+        video_modes=(),
+        templates=(
+            *(_single_template("H6022", family) for family in H6022_DIY_FAMILIES),
+            *(_music_template("H6022", mode) for mode in H6022_NATIVE_MUSIC_MODES),
+        ),
         workshop_templates=(),
     ),
     "H617C": ModelEffectCatalogue(

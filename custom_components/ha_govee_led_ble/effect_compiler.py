@@ -796,7 +796,7 @@ def resolve_diy_code(
         grammar = require_effect_route(
             "H617A" if model is None else model,
             workflow,
-            ("H6046", "H6053", "H617A", "H1AB2", "H6099", "H607C", "H6181"),
+            ("H6022", "H6046", "H6053", "H617A", "H1AB2", "H6099", "H607C", "H6181"),
             profile=profile,
         )
         if grammar == "H607C":

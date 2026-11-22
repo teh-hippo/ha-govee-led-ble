@@ -140,6 +140,9 @@ h6097_status_reply.py
 h617a_command_ack.py
 h617a_control_payload.py
 h617c_status_reply.py
+h6022_status_reply.py
+h6022_scene_body.py
+h6022_effect_upload.py
 h6179_command_write.py
 h6179_diy_body.py
 h6179_status_query.py

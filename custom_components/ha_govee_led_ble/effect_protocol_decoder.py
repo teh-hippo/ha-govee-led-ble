@@ -146,6 +146,8 @@ def decode_a3_effect(tree: Any, model: str) -> EffectContent:
         # The upload omits total IC count; retain the already validated source
         # rather than infer topology from the highest painted index.
         raise UnsupportedA3EffectError("H6099 upload requires source topology or catalogue identity")
+    if grammar == "H6022":
+        raise UnsupportedA3EffectError("H6022 effect bodies require authored content or catalogue identity")
     if grammar in {"H617A", "H6181", "H1AB2"}:
         if isinstance(tree, H1ab2DiyBody.Upload):
             from .h1ab2_effects import decode_accumulation

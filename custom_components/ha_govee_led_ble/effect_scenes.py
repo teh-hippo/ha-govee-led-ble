@@ -31,6 +31,7 @@ from .native_scenes import (
     apply_scene_speed,
     build_native_scene_packets,
     encode_authored_scene_body,
+    native_scene_body_is_opaque,
     resolve_native_scene_body,
 )
 from .palette_scene_decoder import decode_palette_scene
@@ -354,6 +355,8 @@ def _scene_content(
         return decode_palette_scene(template, body, speed_index=speed_index)
     if entry.scene_type in {2, int(H607cSceneBody.CatalogueType.layered_scene)} and body:
         return decode_layered_scene(template, body, speed_index=speed_index, scene_type=entry.scene_type)
+    if native_scene_body_is_opaque(entry, template.sku) and body:
+        return BuiltinScene(template, speed_index=speed_index)
     if entry.scene_type == 5 and body:
         body, resolved_speed = resolve_native_scene_body(entry, speed_index=speed_index, canonical_body=canonical_body)
         if len(entry.diy_effect_codes) != 1:
@@ -392,6 +395,8 @@ def _validate_scene_content_identity(
             int(H607cSceneBody.CatalogueType.layered_scene): LayeredScene,
         }.get(entry.scene_type)
     )
+    if native_scene_body_is_opaque(entry, model):
+        expected_type = BuiltinScene
     if expected_type is None or not isinstance(content, expected_type):
         raise EffectValidationError("scene default content does not match the catalogue scene structure")
 

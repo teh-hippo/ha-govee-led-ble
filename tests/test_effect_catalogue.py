@@ -196,6 +196,7 @@ def test_model_aware_catalogue_includes_supported_models_and_legacy_h617a_view()
     assert catalogue["sku"] == LEGACY_CATALOGUE_SKU
     assert set(catalogue["models"]) == {
         "H1771",
+        "H6022",
         "H600A",
         "H6046",
         "H6053",

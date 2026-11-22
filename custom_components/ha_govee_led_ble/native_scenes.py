@@ -21,11 +21,16 @@ from .protocol_core import (
     H607cSceneBody,
     H1771DiyBody,
     H1771EffectUpload,
+    H6022SceneBody,
     H6093Projector,
     serialize_native_body,
 )
 from .scenes import SceneEntry, SceneSpeed, scene_for_profile, scene_selector_code
 from .transport import fragment_a3, fragment_a4
+
+H6022_LEGACY_SCENE_FAMILIES = frozenset({1, 18, 33, 389, 390, 464})
+H6022_PROFESSIONAL_SCENE_FAMILIES = frozenset({693})
+H6022_SCENE_FAMILIES = H6022_LEGACY_SCENE_FAMILIES | H6022_PROFESSIONAL_SCENE_FAMILIES
 
 
 def apply_scene_speed(payload: bytes, speed: SceneSpeed, index: int, *, scene_type: int = 2) -> bytes:
@@ -84,6 +89,15 @@ def _speed_value(options: tuple[int, ...], index: int) -> int:
 
 
 def _parse_native_scene_body(payload: bytes, family: int) -> Any:
+    if family in H6022_SCENE_FAMILIES:
+        try:
+            root = H6022SceneBody.from_bytes(payload)
+            root._read()
+            if root.marker != (0x41 if family in H6022_PROFESSIONAL_SCENE_FAMILIES else 0):
+                raise ValueError("H6022 native scene marker does not match its body family")
+            return root
+        except (KaitaiStructError, EOFError) as error:
+            raise ValueError("Invalid H6022 native scene body") from error
     if family == H6093Projector.CatalogueFamily.projector:
         from .projector_protocol import decode_projector
 
@@ -127,6 +141,10 @@ def native_scene_upload_route(scene: SceneEntry, profile: ModelProfile) -> tuple
         if scene.diy_effect_codes == (int(H1771DiyBody.CatalogueFamily.native_scene),):
             return "a3", int(H1771EffectUpload.UploadKind.native_diy)
         raise ValueError("Native scene has no documented upload family")
+    if profile.effect_grammar == "H6022" and scene.scene_type == 5:
+        if len(scene.diy_effect_codes) != 1 or scene.diy_effect_codes[0] not in H6022_SCENE_FAMILIES:
+            raise ValueError("H6022 native scene has no documented upload family")
+        return "a3", 0x58 if scene.diy_effect_codes[0] in H6022_PROFESSIONAL_SCENE_FAMILIES else 0x04
     if profile.effect_grammar == "H60A6" and scene.scene_type == 5:
         if scene.diy_effect_codes == (797,):
             return "a3", int(H60a6EffectFrame.Subtype.native_effect)
@@ -146,6 +164,15 @@ def native_scene_upload_route(scene: SceneEntry, profile: ModelProfile) -> tuple
             raise ValueError("Device profile does not support this layered scene body")
         return "a3", int(H607cSceneBody.UploadSubtype.layered_scene)
     return "a3", scene.scene_type
+
+
+def native_scene_body_is_opaque(scene: SceneEntry, model: str) -> bool:
+    return (
+        model == "H6022"
+        and scene.scene_type == 5
+        and len(scene.diy_effect_codes) == 1
+        and scene.diy_effect_codes[0] in H6022_SCENE_FAMILIES
+    )
 
 
 def native_scene_prefers_selector(scene: SceneEntry, payload: bytes, profile: ModelProfile) -> bool:

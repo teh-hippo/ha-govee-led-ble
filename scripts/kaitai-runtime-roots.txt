@@ -140,6 +140,9 @@ speculative/h6097_status_reply
 speculative/h617a_command_ack
 speculative/h617a_control_payload
 speculative/h617c_status_reply
+speculative/h6022_status_reply
+speculative/h6022_scene_body
+speculative/h6022_effect_upload
 speculative/h6179_command_write
 speculative/h6179_diy_body
 speculative/h6179_status_query

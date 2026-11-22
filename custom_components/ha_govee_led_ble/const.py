@@ -24,6 +24,7 @@ from .music_semantics import (
     H619A_MUSIC_VARIANTS,
     H705A_MUSIC_VARIANTS,
     H1771_MUSIC_VARIANTS,
+    H6022_MUSIC_VARIANTS,
     H6046_MUSIC_VARIANTS,
     H6053_MUSIC_VARIANTS,
     H6072_LEGACY_MUSIC_VARIANTS,
@@ -1199,6 +1200,75 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         scene_catalogue_sku="H600A",
         music_modes=(),
         effect_retry_after_upload=False,
+    ),
+    "H6022": ModelProfile(
+        "H6022 RGBICWW Table Lamp 2",
+        confirmation_issue=622,
+        color_temp_range=KELVIN_RANGE_2700_6500,
+        command_grammar="H617A",
+        command_ack_grammar="H617A",
+        status_grammar="H6022",
+        effect_grammar="H6022",
+        colour_mode_query_selector=1,
+        static_readback_kelvin=True,
+        static_readback_zero_kelvin_is_rgb=True,
+        read_domains=frozenset(
+            {
+                ReadDomain.POWER,
+                ReadDomain.BRIGHTNESS,
+                ReadDomain.COLOUR_MODE,
+                ReadDomain.FIRMWARE,
+                ReadDomain.HARDWARE,
+                ReadDomain.SEGMENTS,
+            }
+        ),
+        setup_required_read_domains=frozenset(
+            {
+                ReadDomain.POWER,
+                ReadDomain.BRIGHTNESS,
+                ReadDomain.COLOUR_MODE,
+            }
+        ),
+        supports_rgb=True,
+        supports_color_temperature=True,
+        supports_custom_effects=True,
+        supports_scenes=True,
+        physical_ic_count=210,
+        segment_count=15,
+        segment_group_size=3,
+        supports_segment_writes=True,
+        supports_segment_brightness=True,
+        connection_idle_timeout=IDLE_TIMEOUT_STANDARD,
+        scene_catalogue_sku="H6022",
+        scene_command_versions=frozenset({0}),
+        diy_family_variants=(
+            (0, (0,)),
+            (5, (0,)),
+            (9, (0,)),
+            (14, (13, 14)),
+            (15, (0,)),
+            (82, (13, 14, 57, 58)),
+            (83, (0,)),
+        ),
+        music_modes=(
+            "energetic",
+            "rhythm",
+            "spectrum",
+            "rolling",
+            "separation",
+            "hopping",
+            "piano_keys",
+            "fountain",
+            "day_and_night",
+            "bloom",
+            "shiny",
+        ),
+        music_variants=H6022_MUSIC_VARIANTS,
+        music_upload_before_selector=True,
+        music_requires_upload_ack=True,
+        supports_music_color=True,
+        diy_requires_upload_ack=True,
+        effect_readback="diy_code_only",
     ),
     "H1771": ModelProfile(
         "H1771 Wallwash Table Lamp",
@@ -4646,7 +4716,7 @@ def model_from_ble_name(name: str) -> str | None:
 def protocol_model(model: str) -> str | None:
     """Resolve legacy runtime policy identity, not effect-grammar compatibility."""
     resolved = resolve_model(model)
-    return "H617A" if resolved in {"H617A", "H617C", "H617E", "H617F"} else resolved
+    return "H617A" if resolved in {"H6022", "H617A", "H617C", "H617E", "H617F"} else resolved
 
 
 def get_profile(model: str) -> ModelProfile:
