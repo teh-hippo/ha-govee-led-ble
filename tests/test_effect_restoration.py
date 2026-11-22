@@ -12,17 +12,20 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.setup import async_setup_component
 from kaitaistruct import KaitaiStream
 
+from custom_components.ha_govee_led_ble import coordinator as coordinator_module
 from custom_components.ha_govee_led_ble.const import device_profile, get_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_modes import ModeTransitionSupersededError
 from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
+from custom_components.ha_govee_led_ble.coordinator_upload import UploadAckTimeoutError
+from custom_components.ha_govee_led_ble.effect_catalogue import resolve_catalogue_template
 from custom_components.ha_govee_led_ble.effect_deployments import (
     DeploymentPhase,
     EffectDeploymentRepository,
     PriorControlState,
 )
-from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, SingleEffect
+from custom_components.ha_govee_led_ble.effect_domain import BuiltinScene, LibraryItem, SingleEffect
 from custom_components.ha_govee_led_ble.effect_runtime import (
     EffectDeploymentEngine,
     EffectRestorationError,
@@ -37,6 +40,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_scene_activation,
     require_profile_packet,
 )
+from custom_components.ha_govee_led_ble.layered_scene import CatalogueRef
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.light_commands import parse_static_write
 from custom_components.ha_govee_led_ble.light_source import GoveeBLESourceLight
@@ -53,6 +57,7 @@ from custom_components.ha_govee_led_ble.projector_runtime import (
     source_request,
 )
 from custom_components.ha_govee_led_ble.protocol_core import H6093Projector
+from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
 from custom_components.ha_govee_led_ble.transport import fragment_a3, reassemble_a3, xor_checksum
 from tests.coordinator_test_support import _packet, frame
 from tests.storage_test_double import InMemoryVersionedDocumentStore
@@ -251,7 +256,7 @@ def physical(hass, monkeypatch, request):
                     appearance._read()
                     state["projector"] = replace(decode_appearance(appearance), opaque=b"")
                 pending = coordinator._upload_ack
-                if pending is not None:
+                if pending is not None and fault != "missing_upload_ack":
                     coordinator._notify_callback(
                         None, frame(f"a3{pending.subtype:02x}{int(fault == 'upload_ack'):02x}")
                     )
@@ -285,6 +290,8 @@ def physical(hass, monkeypatch, request):
                 if fault != "setting":
                     state["speaker"] = bool(packet[2])
                     state["sound_code"] = 1 if fault == "sound_selection" else packet[3]
+                    if fault == "pause_disables" and not packet[2]:
+                        state["sound_enabled"] = False
             elif packet[1] == 0x32 and model == "H6093":
                 if fault != "setting":
                     state["volume"] = packet[2]
@@ -434,13 +441,29 @@ def physical(hass, monkeypatch, request):
             else:
                 coordinator._notify_callback(None, response)
 
-    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(side_effect=transmit), disconnect=AsyncMock())
+    client = MagicMock(
+        is_connected=True,
+        start_notify=AsyncMock(),
+        write_gatt_char=AsyncMock(side_effect=transmit),
+        disconnect=AsyncMock(),
+    )
+    client.disconnect.side_effect = lambda: setattr(client, "is_connected", False)
     coordinator._client = client
     coordinator._notification_token = object()
     coordinator._notify_started_monotonic = time.monotonic() - 1
     if model == "H6093":
         coordinator._observe_pact(*pact)
-    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
+
+    async def reconnect():
+        if coordinator._client is not client or not client.is_connected:
+            client.is_connected = True
+            coordinator._client = client
+            await coordinator._start_notify()
+            if model == "H6093":
+                coordinator._observe_pact(*pact)
+        return client
+
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(side_effect=reconnect))
     monkeypatch.setattr(coordinator, "_renew_foreground_lease", MagicMock())
     refresh = coordinator.refresh_state
     segments = coordinator.async_refresh_segments
@@ -478,6 +501,134 @@ async def test_public_native_scene_off_restores_complete_projector_optics(physic
     await light.async_turn_on(effect="off")
     assert state["projector"] == prior
     assert coordinator.projector_appearance == prior
+
+
+@pytest.mark.parametrize("physical", [("H6093", (1, 1)), ("H6093", (1, 2)), ("H6093", (2, 1))], indirect=True)
+@pytest.mark.parametrize("path", ["native", "saved_scene", "saved_diy"])
+@pytest.mark.parametrize("power", [False, True])
+async def test_missing_scene_verdict_preserves_projector_controls_without_initialisation(
+    physical, monkeypatch, path, power
+):
+    coordinator, state = physical
+    await initialise(coordinator)
+    prior = state["projector"]
+    token, client = coordinator._notification_token, coordinator._client
+    light = GoveeBLELight(coordinator)
+    light.async_write_ha_state = MagicMock()
+    if not power:
+        await light.async_turn_off()
+    state["packets"].clear()
+    state["fault"] = "missing_upload_ack"
+    monkeypatch.setattr(coordinator_module, "UPLOAD_ACK_TIMEOUT", 0.02)
+
+    if path == "native":
+        with pytest.raises(HomeAssistantError) as caught:
+            await light.async_turn_on(effect="Milky Way")
+        cause = caught.value
+        while isinstance(cause, HomeAssistantError):
+            cause = cause.__cause__
+        assert isinstance(cause, UploadAckTimeoutError)
+    else:
+        scene = next(scene for scene in SCENE_ENTRIES["H6093"] if "Milky" in scene.name)
+        content = (
+            BuiltinScene(CatalogueRef("H6093", scene.scene_id, scene.effect_id))
+            if path == "saved_scene"
+            else resolve_catalogue_template("H6093", "template:projector:1").content
+        )
+        repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
+        await repository.async_load()
+        engine = EffectDeploymentEngine(repository)
+        with pytest.raises(UploadAckTimeoutError):
+            await engine.async_apply_saved(
+                coordinator,
+                LibraryItem.new("Saved", content),
+                config_entry_id="entry",
+                updated_at="2026-11-22T00:00:00Z",
+            )
+
+    client.disconnect.assert_awaited_once()
+    assert coordinator._notification_token is not token
+    assert coordinator.projector_appearance == state["projector"] == prior
+    assert state["scene"] is None
+    assert coordinator._upload_ack is None
+    assert not any(packet[:3] == b"\x33\x05\x04" for packet in state["packets"])
+    assert sum(packet[:2] == b"\xa3\x00" for packet in state["packets"]) == 1
+    if path != "native":
+        assert state["on"] is power
+
+    state["fault"] = None
+    await source_request(coordinator, "stars", False)
+    assert not state["projector"].stars.enabled
+    await light.async_turn_on(effect="Forest")
+    assert state["scene"] is not None
+
+
+@pytest.mark.parametrize("physical", ["H6093"], indirect=True)
+@pytest.mark.parametrize("fault", ["cancelled", "persistence", "new_owner"])
+async def test_upload_power_cleanup_is_independent_of_failure_persistence(physical, monkeypatch, fault):
+    coordinator, state = physical
+    await initialise(coordinator)
+    light = GoveeBLELight(coordinator)
+    light.async_write_ha_state = MagicMock()
+    await light.async_turn_off()
+    state["fault"] = "missing_upload_ack"
+    state["packets"].clear()
+    scene = next(scene for scene in SCENE_ENTRIES["H6093"] if "Milky" in scene.name)
+    item = LibraryItem.new("Scene", BuiltinScene(CatalogueRef("H6093", scene.scene_id, scene.effect_id)))
+    repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
+    await repository.async_load()
+    engine = EffectDeploymentEngine(repository)
+    monkeypatch.setattr(coordinator_module, "UPLOAD_ACK_TIMEOUT", 1 if fault == "cancelled" else 0.02)
+    if fault == "persistence":
+        put = repository.async_put
+
+        async def persist(record, **kwargs):
+            if record.error_code == "upload_unconfirmed":
+                raise OSError("Failure persistence is unavailable")
+            await put(record, **kwargs)
+
+        monkeypatch.setattr(repository, "async_put", persist)
+    if fault == "new_owner":
+        reconnect = coordinator._ensure_connected.side_effect
+        token = coordinator._notification_token
+        changed = False
+
+        async def newer_request():
+            coordinator._control_arbiter.invalidate_previews()
+
+        async def connect():
+            nonlocal changed
+            result = await reconnect()
+            if coordinator._notification_token is not token and not changed:
+                changed = True
+                await asyncio.create_task(newer_request())
+            return result
+
+        coordinator._ensure_connected.side_effect = connect
+    uploaded = asyncio.Event()
+    transmit = coordinator._client.write_gatt_char.side_effect
+
+    async def write(uuid, packet, **kwargs):
+        await transmit(uuid, packet, **kwargs)
+        if packet[:2] == b"\xa3\xff":
+            uploaded.set()
+
+    coordinator._client.write_gatt_char.side_effect = write
+    task = asyncio.create_task(
+        engine.async_apply_saved(coordinator, item, config_entry_id="entry", updated_at="2026-11-22T00:00:00Z")
+    )
+    try:
+        await asyncio.wait_for(uploaded.wait(), 1)
+        if fault == "cancelled":
+            task.cancel()
+        with pytest.raises(asyncio.CancelledError if fault == "cancelled" else UploadAckTimeoutError):
+            await task
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+    assert state["on"] is (fault == "new_owner")
+    assert sum(packet[:2] == b"\xa3\x00" for packet in state["packets"]) == 1
+    assert not any(packet[:3] == b"\x33\x05\x04" for packet in state["packets"])
 
 
 @pytest.mark.parametrize("physical", ["H6093"], indirect=True)
@@ -772,12 +923,19 @@ async def test_local_audio_and_settings_use_verified_controls_without_appearance
     from custom_components.ha_govee_led_ble.number import GoveeBLELocalVolume
     from custom_components.ha_govee_led_ble.select import GoveeBLELocalSoundSelect
     from custom_components.ha_govee_led_ble.switch import GoveeBLEControlSwitch
+    from custom_components.ha_govee_led_ble.switch import async_setup_entry as setup_switches
 
     coordinator, state = physical
     entry = MagicMock(runtime_data=coordinator)
     sound = GoveeBLELocalSoundSelect(entry)
     volume = GoveeBLELocalVolume(entry)
-    playback = GoveeBLEControlSwitch(entry, "local_sound_enabled")
+    add = MagicMock()
+    await setup_switches(coordinator.hass, entry, add)
+    switches = {entity.translation_key: entity for call in add.call_args_list for entity in call.args[0]}
+    entry.async_on_unload.call_args.args[0]()
+    playback, mode = switches["local_sound_playback"], switches["local_sound_enabled"]
+    assert playback.unique_id == "aabbccddeeff_local_sound_enabled"
+    assert mode.unique_id != playback.unique_id
     light_before = state["projector"]
     await sound.async_select_option("train")
     assert sound.current_option == "train" and state["sound_code"] == 18 and playback.is_on
@@ -788,8 +946,15 @@ async def test_local_audio_and_settings_use_verified_controls_without_appearance
     assert frame("333200") in state["packets"]
     await playback.async_turn_off()
     assert not playback.is_on and not state["speaker"]
+    assert mode.is_on
+    assert state["sound_enabled"] and state["sound_code"] == 18
+    assert frame("33310012") in state["packets"]
     await playback.async_turn_on()
     assert playback.is_on and state["speaker"] and state["sound_code"] == 18
+    await mode.async_turn_off()
+    assert not mode.is_on and not playback.is_on
+    await playback.async_turn_on()
+    assert mode.is_on and playback.is_on and state["sound_code"] == 18
     for setting in ("quiet_start", "pairing_prompt"):
         entity = GoveeBLEControlSwitch(entry, setting)
         await entity.async_turn_on()
@@ -829,6 +994,8 @@ async def test_local_sound_sequence_rejects_invalid_input_and_replacement_subscr
     for control, value in (("local_sound", 0), ("local_sound", 19), ("local_volume", 101), ("local_volume", True)):
         with pytest.raises(ValueError):
             await coordinator.async_set_local_audio(control, value)
+    with pytest.raises(ValueError, match="boolean"):
+        await coordinator.async_set_local_playback(1)
     assert state["packets"] == []
     transmit = coordinator._client.write_gatt_char.side_effect
 
@@ -852,9 +1019,86 @@ async def test_playback_start_rejects_a_different_reported_track_without_replay(
     state["fault"] = "sound_selection"
     state["packets"].clear()
     with pytest.raises(ValueError, match="selected local sound"):
-        await coordinator.async_set_boolean_control("local_sound_enabled", True)
+        await coordinator.async_set_local_playback(True)
     assert state["speaker"] and state["sound_code"] == 1
     assert state["packets"].count(frame("33310112")) == 1
+
+
+@pytest.mark.parametrize("physical", ["H6093"], indirect=True)
+@pytest.mark.parametrize("change", ["subscription", "track", "disabled"])
+async def test_pause_revalidates_qualified_track_before_mutation(physical, monkeypatch, change):
+    coordinator, state = physical
+    await coordinator.async_set_local_audio("local_sound", 18)
+    state["packets"].clear()
+    transmit = coordinator._client.write_gatt_char.side_effect
+    changed = asyncio.Event()
+    queried = False
+
+    def update():
+        if change == "subscription":
+            coordinator._notification_token = object()
+        else:
+            state["sound_code"] = 1 if change == "track" else 18
+            if change == "disabled":
+                state["sound_enabled"] = state["speaker"] = False
+            coordinator._notify_callback(
+                None,
+                reply(
+                    0x34,
+                    [
+                        0x40 | (4 if state["sound_enabled"] else 0),
+                        state["brightness"],
+                        128 if state["speaker"] else 0,
+                        state["sound_code"],
+                        state["volume"],
+                    ],
+                ),
+            )
+        changed.set()
+
+    async def write(uuid, packet, **kwargs):
+        nonlocal queried
+        await transmit(uuid, packet, **kwargs)
+        if packet[:2] == b"\xaa\x34" and not queried:
+            queried = True
+            asyncio.get_running_loop().call_soon(update)
+
+    async def wait():
+        if queried:
+            await changed.wait()
+
+    coordinator._client.write_gatt_char.side_effect = write
+    monkeypatch.setattr(coordinator._reply_gate, "wait", wait)
+    with pytest.raises(ValueError, match="changed"):
+        await coordinator.async_set_local_playback(False)
+    assert not any(packet[0] == 0x33 for packet in state["packets"])
+    assert state["sound_code"] == (1 if change == "track" else 18)
+
+
+@pytest.mark.parametrize("physical", ["H6093"], indirect=True)
+async def test_pause_rejects_global_disablement_without_replay(physical):
+    coordinator, state = physical
+    await coordinator.async_set_local_audio("local_sound", 18)
+    state["fault"] = "pause_disables"
+    state["packets"].clear()
+    with pytest.raises(ValueError, match="confirm local sound pause"):
+        await coordinator.async_set_local_playback(False)
+    assert not state["speaker"] and not state["sound_enabled"]
+    assert state["packets"].count(frame("33310012")) == 1
+
+
+@pytest.mark.parametrize("physical", ["H6093"], indirect=True)
+async def test_pause_does_not_invent_an_unknown_playing_track(physical, monkeypatch):
+    coordinator, state = physical
+    state.update(sound_enabled=True, speaker=True, sound_code=0)
+    supersede = AsyncMock()
+    monkeypatch.setattr(coordinator, "_async_supersede_effect_preview", supersede)
+    foreground = coordinator._control_arbiter.foreground_generation
+    with pytest.raises(ValueError, match="unknown local sound"):
+        await coordinator.async_set_local_playback(False)
+    assert not any(packet[0] == 0x33 for packet in state["packets"])
+    supersede.assert_not_awaited()
+    assert coordinator._control_arbiter.foreground_generation == foreground
 
 
 @pytest.mark.parametrize("physical", [("H6093", (1, 1)), ("H6093", (1, 2)), ("H6093", (2, 1))], indirect=True)

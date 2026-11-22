@@ -586,6 +586,7 @@ async def test_effect_sequence_does_not_reconnect_during_shutdown(coord):
         raise BleakError("connection dropped")
 
     client = _c(write_gatt_char=AsyncMock(side_effect=fail_during_shutdown))
+    coord._client = client
     with (
         patch.object(coord, "_ensure_connected", new=AsyncMock(return_value=client)) as ensure_connected,
         patch.object(coord, "_disconnect_locked", new_callable=AsyncMock) as disconnect,

@@ -394,8 +394,9 @@ async def test_interrupted_calibration_does_not_invalidate_a_replacement_subscri
 
     client.write_gatt_char = AsyncMock(side_effect=write)
     monkeypatch.setattr(c, "async_refresh_segments", AsyncMock(return_value=True))
-    with pytest.raises(TimeoutError):
+    with pytest.raises(ValueError) as caught:
         await c.async_calibrate_strip(request)
+    assert isinstance(caught.value.__cause__, TimeoutError)
     assert c._profile_generation == replacement_generation and c.profile == replacement_profile
     assert c.segment_state_source == "observed" and c.segment_state_observed_at == 2
     assert c._static_colour_known

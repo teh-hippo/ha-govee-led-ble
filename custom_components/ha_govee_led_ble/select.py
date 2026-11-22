@@ -65,6 +65,7 @@ async def async_setup_entry(
 
 class GoveeBLEProjectorPatternSelect(GoveeBLEEntity, SelectEntity):
     _attr_translation_key = "projector_aurora_pattern"
+    # Keep legacy option IDs stable for existing automations.
     _attr_options = ["fade", "breathe", "flash", "steady"]
 
     def __init__(self, entry: GoveeBLEConfigEntry) -> None:

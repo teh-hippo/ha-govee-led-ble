@@ -23,6 +23,7 @@ from .coordinator_modes import ModeTransitionPurpose
 from .coordinator_refresh import STATIC_RECOVERY_SETTINGS, RefreshRequest
 from .coordinator_segments import SegmentPaintRequest
 from .coordinator_status import ParsedMode
+from .coordinator_upload import UploadAckTimeoutError, UploadCancelledError, UploadOutcome
 from .effect_active_workspace import (
     ActiveEffectWorkspace,
     ActiveEffectWorkspaceRepository,
@@ -864,20 +865,26 @@ class EffectDeploymentEngine:
                         match_current=still_active,
                     )
                     return completed, still_active
-                except asyncio.CancelledError:
+                except asyncio.CancelledError as error:
                     await self._async_finish_failure_while_locked_best_effort(
                         coordinator,
                         transaction.current,
-                        error_code="operation_cancelled",
+                        error_code=(
+                            error.outcome if isinstance(error, UploadCancelledError) else "operation_cancelled"
+                        ),
                         writes_attempted=writes_attempted(),
                         prior_origin=prior_origin,
                     )
                     raise
-                except Exception:
+                except Exception as error:
                     await self._async_finish_failure_while_locked_best_effort(
                         coordinator,
                         transaction.current,
-                        error_code="deployment_failed",
+                        error_code=(
+                            error.outcome
+                            if isinstance(error, UploadAckTimeoutError) and error.before_activation
+                            else "deployment_failed"
+                        ),
                         writes_attempted=writes_attempted(),
                         prior_origin=prior_origin,
                     )
@@ -1035,7 +1042,7 @@ class EffectDeploymentEngine:
             failed = replace(
                 record,
                 phase=DeploymentPhase.FAILED,
-                error_code=error_code,
+                error_code=str(error_code),
                 verification_confidence=ObservationConfidence.UNKNOWN,
             )
             await self._deployments.async_put(
@@ -1045,6 +1052,8 @@ class EffectDeploymentEngine:
             )
             self._publish_coordinator_state(coordinator)
             return failed
+        if isinstance(error_code, UploadOutcome):
+            return await self._async_finish_upload_failure(coordinator, record, error_code)
 
         recovering = replace(
             record,
@@ -1116,6 +1125,61 @@ class EffectDeploymentEngine:
             matched_record=final if write_only_completed and record.source_kind == "saved_effect" else None,
         )
         self._publish_coordinator_state(coordinator)
+        return final
+
+    async def _async_finish_upload_failure(
+        self, coordinator: GoveeBLECoordinator, record: DeploymentRecord, outcome: UploadOutcome
+    ) -> DeploymentRecord:
+        prior = record.prior_state
+        previous = coordinator._mode_transition
+
+        def current() -> bool:
+            return (
+                previous is not None
+                and previous.owner is asyncio.current_task()
+                and previous.current()
+                and previous.foreground_generation == coordinator._control_arbiter.foreground_generation
+            )
+
+        try:
+            if prior is not None and not prior.is_on and current():
+                async with coordinator._lock:
+                    await coordinator._ensure_connected()
+                async with coordinator.async_mode_transition(purpose=ModeTransitionPurpose.RECOVERY) as transition:
+                    if current() and transition.current():
+
+                        def powering_off() -> None:
+                            transition.powering_off = True
+
+                        def guard() -> None:
+                            if not current():
+                                raise ValueError("Upload cleanup ownership changed")
+                            transition.require_current()
+
+                        await coordinator.send_command(
+                            build_power(False, coordinator.model),
+                            write_guard=guard,
+                            on_write=powering_off,
+                        )
+                        if coordinator.profile.can_read(ReadDomain.POWER):
+                            await coordinator.refresh_state(RefreshRequest(on=False))
+        finally:
+            final = replace(
+                record,
+                phase=DeploymentPhase.UNCERTAIN,
+                error_code=str(outcome),
+                verification_confidence=ObservationConfidence.UNKNOWN,
+            )
+            try:
+                await self._deployments.async_put(final, expected_version=None, expected_record=record)
+            finally:
+                self._reconcile_observation(
+                    coordinator,
+                    config_entry_id=record.config_entry_id,
+                    observed_at=record.updated_at,
+                    refreshed=False,
+                )
+                self._publish_coordinator_state(coordinator)
         return final
 
     @staticmethod

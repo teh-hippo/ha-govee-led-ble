@@ -35,6 +35,8 @@ async def async_setup_entry(
         ) - added
         if profile.projector_grammar is not None:
             controls |= set(_PROJECTOR_SWITCHES) - added
+        if profile.local_sound_options:
+            controls |= {"local_sound_playback"} - added
         if controls:
             added.update(controls)
             async_add_entities([GoveeBLEControlSwitch(entry, control) for control in sorted(controls)])
@@ -50,12 +52,16 @@ class GoveeBLEControlSwitch(GoveeBLEEntity, SwitchEntity):
         super().__init__(entry.runtime_data)
         self._control = control
         self._attr_translation_key = control
-        self._attr_unique_id = f"{self.coordinator.address.replace(':', '').lower()}_{control}"
+        # Preserve the existing playback ID while separating the mode switch.
+        suffix = {"local_sound_enabled": "local_sound_mode", "local_sound_playback": "local_sound_enabled"}.get(
+            control, control
+        )
+        self._attr_unique_id = f"{self.coordinator.address.replace(':', '').lower()}_{suffix}"
         self._attr_device_info = self.coordinator.device_info
         if control in NATIVE_ZONE_CONTROLS:
             self._attr_entity_category = None
             self._attr_entity_registry_visible_default = False
-        if control == "local_sound_enabled":
+        if control in {"local_sound_enabled", "local_sound_playback"}:
             self._attr_entity_category = None
 
     @property
@@ -65,6 +71,8 @@ class GoveeBLEControlSwitch(GoveeBLEEntity, SwitchEntity):
         supported = (
             self.coordinator.profile.supports_low_blue_light
             if self._control == "low_blue_light"
+            else bool(self.coordinator.native_presentation_profile.local_sound_options)
+            if self._control == "local_sound_playback"
             else self._control in self.coordinator.native_presentation_profile.boolean_controls
         )
         return supported and super().available
@@ -77,6 +85,8 @@ class GoveeBLEControlSwitch(GoveeBLEEntity, SwitchEntity):
         if self._control == "low_blue_light":
             state = self.coordinator.low_blue_light
             return state.enabled if state is not None else None
+        if self._control == "local_sound_playback":
+            return self.coordinator.local_sound_playback
         return self.coordinator.boolean_control_state.get(self._control)
 
     async def async_turn_on(self, **kwargs: Any) -> None:
@@ -93,6 +103,8 @@ class GoveeBLEControlSwitch(GoveeBLEEntity, SwitchEntity):
                 )
             elif self._control == "low_blue_light":
                 await self._async_latest(partial(self.coordinator.async_set_low_blue_light, enabled=enabled))
+            elif self._control == "local_sound_playback":
+                await self._async_latest(partial(self.coordinator.async_set_local_playback, enabled))
             else:
                 await self._async_latest(partial(self.coordinator.async_set_boolean_control, self._control, enabled))
         except (BleakError, ValueError, TimeoutError) as error:

@@ -1037,7 +1037,7 @@ class _NotificationMixin(_CoordinatorBase):
                     bounds = self.profile.local_volume_range
                     self.local_volume = volume if bounds is not None and bounds[0] <= volume <= bounds[1] else None
                     self.local_sound_playing = bool(generated.body.sound_playing)
-                    observed += ("local_sound", "local_volume")
+                    observed += ("local_sound", "local_volume", "local_sound_playing")
             elif domain is StatusDomain.BRIGHTNESS:
                 if not self.profile.can_read(ReadDomain.BRIGHTNESS):
                     self._record_parsed_status(frame, decoded, parser)

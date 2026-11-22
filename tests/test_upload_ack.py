@@ -13,6 +13,7 @@ from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ModelProfil
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_modes import ModeTransitionSupersededError
+from custom_components.ha_govee_led_ble.coordinator_upload import PendingUploadAck
 from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
 from custom_components.ha_govee_led_ble.effect_catalogue import WORKSHOP_PROTOCOL_FIXTURES, resolve_catalogue_template
 from custom_components.ha_govee_led_ble.effect_compiler import DIY_ACK_EVIDENCE, compile_application, compile_effect
@@ -45,6 +46,7 @@ from custom_components.ha_govee_led_ble.layered_scene import CatalogueRef
 from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_workshop_effect
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.music_commands import prepare_music_request
+from custom_components.ha_govee_led_ble.protocol_effect_bodies import A3Sequence
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
 from custom_components.ha_govee_led_ble.transport import fragment_a3, fragment_a3_envelope, reassemble_a3
 from tests.coordinator_test_support import frame
@@ -65,7 +67,7 @@ async def connected(hass, monkeypatch, request):
     if c.model in {"H6097", "H6046", "H6053"}:
         c.pact_type, c.pact_code = pact, 1
         c._resolve_device_profile()
-    client = MagicMock(is_connected=True, start_notify=AsyncMock(), write_gatt_char=AsyncMock())
+    client = MagicMock(is_connected=True, start_notify=AsyncMock(), write_gatt_char=AsyncMock(), disconnect=AsyncMock())
     c._client = client
     await c._start_notify()
     if c.model == "H617A":
@@ -87,19 +89,29 @@ async def connected(hass, monkeypatch, request):
         monkeypatch.setattr(coordinator_module, "EFFECT_SEQUENCE_ATTEMPTS", 1)
     monkeypatch.setattr(coordinator_module, "RETRY_BACKOFF_SECONDS", 0)
 
-    async def disconnect():
-        c._clear_client_state(c._client)
+    async def disconnect(*, planned_release=False):
+        client.is_connected = False
+        await client.disconnect()
+        c._clear_client_state(c._client, preserve_static_baseline=planned_release)
 
     monkeypatch.setattr(c, "_disconnect_locked", AsyncMock(side_effect=disconnect))
-    if c.model == "H600A":
 
-        async def reconnect():
-            if c._client is not client:
-                c._client = client
-                await c._start_notify()
-            return client
+    async def reconnect():
+        if c._client is not client or not client.is_connected:
+            firmware, hardware = c.fw_version, c.hw_version
+            pact_type, pact_code = c.pact_type, c.pact_code
+            client.is_connected = True
+            c._client = client
+            await c._start_notify()
+            if pact_type is not None and pact_code is not None:
+                c._observe_pact(pact_type, pact_code)
+            if firmware is not None:
+                c._observe_identity_field("fw_version", firmware)
+            if hardware is not None:
+                c._observe_identity_field("hw_version", hardware)
+        return client
 
-        c._ensure_connected.side_effect = reconnect
+    c._ensure_connected.side_effect = reconnect
     yield c, client
     if c._cancel_disconnect:
         c._cancel_disconnect()
@@ -493,12 +505,148 @@ async def test_scene_verification_does_not_repeat_accepted_upload(selection_read
 async def test_missing_upload_ack_cannot_spend_transport_retries(connected, monkeypatch):
     c, client = connected
     packets, index = sequence()
+    token, generation = c._notification_token, c._profile_generation
     monkeypatch.setattr(coordinator_module, "EFFECT_SEQUENCE_ATTEMPTS", 2)
     with pytest.raises(TimeoutError, match="did not acknowledge"):
         await write_sequence(c, packets, index)
     assert c._ensure_connected.await_count == 1
     assert [call.args[1] for call in client.write_gatt_char.await_args_list] == packets[: index + 1]
     assert c._upload_ack is None
+    c._disconnect_locked.assert_awaited_once_with(planned_release=True)
+    assert c._client is None
+    assert c._notification_token is None
+    assert token is not None
+    assert c._profile_generation == generation
+
+
+@pytest.mark.parametrize("preview", [False, True])
+async def test_late_ack_from_retired_channel_cannot_authorise_next_upload(connected, monkeypatch, preview):
+    c, client = connected
+    packets, index = sequence()
+    old_callback = client.start_notify.call_args.args[1]
+    old_token = c._notification_token
+    options = {"writer": lambda *args, **kwargs: preview_writer(c, *args, **kwargs)} if preview else {}
+    with pytest.raises(TimeoutError):
+        await write_sequence(c, packets, index, **options)
+    await c._ensure_connected()
+    assert c._notification_token is not old_token
+    uploaded = asyncio.Event()
+    monkeypatch.setattr(coordinator_module, "UPLOAD_ACK_TIMEOUT", 1)
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet == packets[index]:
+            old_callback(None, bytearray(MUSIC_OK))
+            uploaded.set()
+
+    client.write_gatt_char.side_effect = write
+    task = asyncio.create_task(write_sequence(c, packets, index, **options))
+    try:
+        await asyncio.wait_for(uploaded.wait(), 1)
+        assert c._upload_ack is not None and not c._upload_ack.future.done()
+        assert not task.done()
+        receive(client, MUSIC_OK)
+        await task
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+    assert [call.args[1] for call in client.write_gatt_char.call_args_list] == [*packets[: index + 1], *packets]
+
+
+@pytest.mark.parametrize("connected", ["H617C"], indirect=True)
+@pytest.mark.parametrize("preview", [False, True])
+async def test_retired_write_failure_preserves_replacement_resources(connected, monkeypatch, preview):
+    c, client = connected
+    packets, index = sequence()
+    replacement = MagicMock(
+        is_connected=True, start_notify=AsyncMock(), write_gatt_char=AsyncMock(), disconnect=AsyncMock()
+    )
+    future = asyncio.get_running_loop().create_future()
+    pending = owned = None
+    monkeypatch.setattr(coordinator_module, "EFFECT_SEQUENCE_ATTEMPTS", 3)
+
+    async def write(_uuid, _packet, **_kwargs):
+        nonlocal pending, owned
+        c._client = replacement
+        await c._start_notify()
+        pending = PendingUploadAck(
+            replacement,
+            c._notification_token,
+            c._profile_generation,
+            0x41,
+            None,
+            0xA3,
+            future,
+            lambda: None,
+        )
+        c._upload_ack = pending
+        owned = (asyncio.current_task(), A3Sequence(packets))
+        c._a3_sequence = owned
+        raise BleakError("attribute not found on retired client")
+
+    client.write_gatt_char.side_effect = write
+    options = {"writer": lambda *args, **kwargs: preview_writer(c, *args, **kwargs)} if preview else {}
+    try:
+        with pytest.raises(ModeTransitionSupersededError):
+            await write_sequence(c, packets, index, **options)
+        assert c._client is replacement and c._upload_ack is pending and c._a3_sequence is owned
+        assert not future.done() and not c.fresh_services_required
+        replacement.write_gatt_char.assert_not_awaited()
+        replacement.disconnect.assert_not_awaited()
+        c._disconnect_locked.assert_not_awaited()
+        assert client.write_gatt_char.await_count == 1
+    finally:
+        future.cancel()
+        c._upload_ack = c._a3_sequence = None
+
+
+@pytest.mark.parametrize("activated", [False, True])
+async def test_upload_outcome_records_actual_selector_attempt(connected, activated):
+    c, _ = connected
+    packets, index = sequence()
+    if activated:
+        packets = [packets[-1], *packets[:-1]]
+        index = len(packets) - 1
+    with pytest.raises(coordinator_module.UploadAckTimeoutError) as caught:
+        await write_sequence(c, packets, index)
+    assert caught.value.before_activation is not activated
+
+
+@pytest.mark.parametrize("outcome", ["missing", "cancelled"])
+async def test_music_upload_without_verdict_does_not_restore_a_selector(selection_ready, monkeypatch, outcome):
+    c, client = selection_ready
+    c.is_on = True
+    item = LibraryItem.new("Music", MusicProfile(c.model, "bloom", 42))
+    repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
+    await repository.async_load()
+    engine = EffectDeploymentEngine(repository)
+    monkeypatch.setattr(engine, "_async_prepare_prior_state", AsyncMock(return_value=False))
+    monkeypatch.setattr(c, "async_restore_effect_control_state", AsyncMock(return_value=False))
+    uploaded = asyncio.Event()
+
+    async def write(_uuid, _packet, **_kwargs):
+        if c._upload_ack is not None:
+            uploaded.set()
+
+    client.write_gatt_char.side_effect = write
+    if outcome == "cancelled":
+        monkeypatch.setattr(coordinator_module, "UPLOAD_ACK_TIMEOUT", 1)
+    task = asyncio.create_task(
+        engine.async_apply_saved(c, item, config_entry_id="entry-a", updated_at="2026-11-22T00:00:00Z")
+    )
+    try:
+        await asyncio.wait_for(uploaded.wait(), 1)
+        if outcome == "cancelled":
+            task.cancel()
+        with pytest.raises(asyncio.CancelledError if outcome == "cancelled" else TimeoutError):
+            await task
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+    c.async_restore_effect_control_state.assert_not_awaited()
+    assert c._mode_write_generation == 0
+    (record,) = repository.snapshot().records
+    assert record.phase is DeploymentPhase.UNCERTAIN
+    assert record.error_code == ("operation_cancelled" if outcome == "cancelled" else "upload_unconfirmed")
 
 
 async def test_native_scene_revalidates_command_version_after_subscription_replacement(selection_ready):
@@ -625,6 +773,7 @@ async def test_h7025_connection_failure_before_upload_can_retry(connected):
     async def reconnect():
         if c._ensure_connected.await_count == 1:
             raise BleakError("connection failed before upload")
+        client.is_connected = True
         c._client = client
         await c._start_notify()
         return client
@@ -856,7 +1005,10 @@ async def test_no_negative_unrelated_or_corrupt_ack_never_activates(connected, r
     assert c._upload_ack is None
     if preview:
         c._ensure_connected.assert_not_awaited()
-        c._disconnect_locked.assert_not_awaited()
+        if response == MUSIC_NO:
+            c._disconnect_locked.assert_not_awaited()
+        else:
+            c._disconnect_locked.assert_awaited_once_with(planned_release=True)
 
 
 @pytest.mark.parametrize("preview", [False, True])
@@ -1150,7 +1302,6 @@ async def test_palette_public_paths_wait_for_upload_verdict(selection_ready, has
         assert [call.args[1] for call in client.write_gatt_char.call_args_list] == expected
         assert c._upload_ack is not None and not c._upload_ack.future.done()
         assert not task.done()
-        connections = c._ensure_connected.await_count
         for unrelated in (frame("330500"), DIY_OK, frame("a30400")[:-1] + b"\xff"):
             receive(client, unrelated)
             assert not c._upload_ack.future.done()
@@ -1169,8 +1320,10 @@ async def test_palette_public_paths_wait_for_upload_verdict(selection_ready, has
                 assert result.verification_confidence.value == "write_completed"
         else:
             error = (
-                BleakError
-                if verdict in {"disconnect", "subscription"}
+                ModeTransitionSupersededError
+                if verdict == "subscription"
+                else BleakError
+                if verdict == "disconnect"
                 else TimeoutError
                 if verdict == "missing"
                 else RuntimeError
@@ -1181,10 +1334,15 @@ async def test_palette_public_paths_wait_for_upload_verdict(selection_ready, has
             expected.append(compiled.activation_packet)
         else:
             c.async_observe_effect.assert_not_awaited()
+            if verdict == "missing" and path != "preview":
+                c.async_restore_effect_control_state.assert_not_awaited()
+                if not power:
+                    expected.append(build_power(False, c.model))
         assert [call.args[1] for call in client.write_gatt_char.call_args_list] == expected
         assert c._upload_ack is None
         assert c._field_revisions == {}
-        assert c._ensure_connected.await_count == connections
+        if verdict == "missing":
+            c._disconnect_locked.assert_awaited_once_with(planned_release=True)
     finally:
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
@@ -1241,7 +1399,7 @@ async def test_completed_upload_with_lost_verdict_does_not_replay(connected, mon
             c._clear_client_state(client)
         else:
             await c._start_notify()
-        with pytest.raises(BleakError):
+        with pytest.raises(ModeTransitionSupersededError if fault == "subscription" else BleakError):
             await asyncio.wait_for(task, 2)
         assert c._ensure_connected.await_count == 1
         assert [call.args[1] for call in client.write_gatt_char.call_args_list] == packets[: index + 1]
@@ -1357,18 +1515,27 @@ async def test_preview_failure_cleans_pending_without_reconnect(connected, monke
         if fault != "cancel_wait":
             assert pending.done()
         error = (
-            asyncio.CancelledError if fault == "cancel_wait" else ValueError if fault == "profile_wait" else BleakError
+            asyncio.CancelledError
+            if fault == "cancel_wait"
+            else ModeTransitionSupersededError
+            if fault == "subscription_wait"
+            else ValueError
+            if fault == "profile_wait"
+            else BleakError
         )
         with pytest.raises(error):
             await asyncio.wait_for(task, 1)
         if fault == "cancel_wait":
             assert pending.cancelled()
         else:
-            assert isinstance(pending.exception(), error)
+            assert isinstance(pending.exception(), BleakError if fault == "subscription_wait" else error)
     else:
         with pytest.raises(BleakError if fault == "write_error" else ValueError):
             await task
     assert client.write_gatt_char.call_count == index + (fault != "guard_error")
     assert c._upload_ack is None
     c._ensure_connected.assert_not_awaited()
-    c._disconnect_locked.assert_not_awaited()
+    if fault == "cancel_wait":
+        c._disconnect_locked.assert_awaited_once_with(planned_release=True)
+    else:
+        c._disconnect_locked.assert_not_awaited()
