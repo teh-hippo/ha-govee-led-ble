@@ -114,11 +114,27 @@ def test_schema_and_effective_profile_validation():
     assert (parsed.segment_mask, parsed.kelvin, parsed.kelvin_companion_rgb) == (17, 3000, (255, 185, 105))
 
 
-@pytest.mark.parametrize("model,count", [("H1A42", 3), ("H61F5", 16), ("H61F5", 17), ("H61F5", 20)])
+def test_h612a_static_contract_uses_four_byte_masks():
+    profile = get_profile("H612A")
+
+    assert build_segment_colour(0x201, 1, 2, 3, "H612A", profile=profile).hex() == (
+        "3305150101020300000000000102000000000021"
+    )
+    assert build_colour_temperature(2700, profile.whole_device_mask, "H612A", profile=profile).hex() == (
+        "33051501ffffff0a8cffae54ff030000000000a2"
+    )
+    assert build_segment_brightness(0x201, 37, "H612A", profile=profile).hex() == (
+        "3305150225010200000000000000000000000007"
+    )
+
+
+@pytest.mark.parametrize("model,count", [("H1A42", 3), ("H612A", 10), ("H61F5", 16), ("H61F5", 17), ("H61F5", 20)])
 @pytest.mark.parametrize("operation", ["rgb", "kelvin", "brightness"])
 def test_static_commands_address_the_effective_reported_layout(model, count, operation):
     profile = replace(get_profile(model), segment_count=count)
     mask = 1 | (1 << (count - 1))
+    if operation == "kelvin" and not profile.supports_segment_color_temperature:
+        mask = profile.whole_device_mask
     builder = {
         "rgb": lambda bits: build_segment_colour(bits, 1, 2, 3, model, profile=profile),
         "kelvin": lambda bits: build_colour_temperature(3000, bits, model, profile=profile),
@@ -128,8 +144,9 @@ def test_static_commands_address_the_effective_reported_layout(model, count, ope
     require_profile_packet(packet, profile)
     static = parse_static_write(packet, model, profile=profile)
     assert static is not None and static.segment_mask == mask
-    if model == "H61F5" and count > 16:
-        assert parse_command_result(packet, model, profile=profile).parser == "h61f5_extended_static_write"
+    if model == "H612A" or model == "H61F5" and count > 16:
+        parser = "h612a_extended_static_write" if model == "H612A" else "h61f5_extended_static_write"
+        assert parse_command_result(packet, model, profile=profile).parser == parser
         low_only = parse_static_write(builder(1), model, profile=profile)
         assert low_only is not None and low_only.segment_mask == 1
     if count != 16:
@@ -137,7 +154,7 @@ def test_static_commands_address_the_effective_reported_layout(model, count, ope
             require_profile_packet(builder(1 << count), profile)
 
 
-@pytest.mark.parametrize("model,count", [("H617A", 15), ("H61F5", 20)])
+@pytest.mark.parametrize("model,count", [("H612A", 10), ("H617A", 15), ("H61F5", 20)])
 def test_static_mask_roots_preserve_nonzero_opaque_suffixes(model, count):
     profile = replace(get_profile(model), segment_count=count)
     packet = bytearray(build_segment_colour(1, 1, 2, 3, model, profile=profile))

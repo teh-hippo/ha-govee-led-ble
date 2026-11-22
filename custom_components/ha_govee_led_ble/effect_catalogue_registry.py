@@ -460,6 +460,43 @@ MODEL_EFFECT_CATALOGUES: Final = {
         ),
         workshop_templates=(),
     ),
+    "H612A": ModelEffectCatalogue(
+        sku="H612A",
+        native_diy_palette_groups=(
+            (501, (0,), 1, 1),
+            (501, (1, 2), 4, 8),
+            (502, (0, 1), 2, 8),
+            (504, (0, 1, 2), 3, 8),
+            (505, (1,), 1, 1),
+            (506, (0, 1), 2, 8),
+            (506, (2, 3), 2, 8),
+        ),
+        painted_addressing="physical_ic",
+        painted_effects=H617A_PAINTED_EFFECTS,
+        effects=tuple(
+            replace(family, source_reference="H612A RGBIC basic and mixed DIY") for family in H6125_DIY_FAMILIES
+        ),
+        music_modes=_native_music_modes("H612A"),
+        video_modes=(),
+        templates=(
+            CatalogueTemplate(
+                id="template:paint",
+                label="Paint",
+                category="single-layer",
+                content=PaintedEffect(
+                    effect="clockwise",
+                    speed=50,
+                    brightness=100,
+                    segments=(None,),
+                    addressing="physical_ic",
+                ),
+            ),
+            *(_single_template("H612A", family) for family in H6125_DIY_FAMILIES),
+            *(_music_template("H612A", mode) for mode in _native_music_modes("H612A")),
+            *_rgbic_native_templates(20),
+        ),
+        workshop_templates=(),
+    ),
     "H6125": ModelEffectCatalogue(
         sku="H6125",
         native_diy_palette_groups=(

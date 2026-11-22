@@ -12,7 +12,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.ha_govee_led_ble import coordinator as coordinator_module
 from custom_components.ha_govee_led_ble import select, switch
-from custom_components.ha_govee_led_ble.const import DOMAIN, ReadDomain
+from custom_components.ha_govee_led_ble.const import DOMAIN, ReadDomain, device_profile
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
@@ -21,6 +21,8 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_brightness_query,
     build_colour_mode_query,
     build_configured_strings_query,
+    build_power_on_behaviour,
+    build_power_on_behaviour_query,
     build_power_query,
     build_segment_query,
     build_strip_calibration,
@@ -318,6 +320,32 @@ async def test_strip_calibration_uses_complete_wire_sequence_then_observed_geome
     assert c._physical_ic_count_confirmed and c.profile.physical_ic_count == expected_count
     assert c.profile.segment_count == min(expected_count, 10)
     c.async_refresh_segments.assert_awaited_once()
+
+
+@pytest.mark.parametrize("final_ic", [None, 9, 20])
+def test_h612a_strip_calibration_uses_shared_geometry_contract(final_ic):
+    profile = device_profile("H612A", 1, 1)
+    request = StripCalibrationRequest(5, final_ic)
+    expected_count = 20 if final_ic is None else final_ic
+    packets = build_strip_calibration(request, profile)
+
+    assert packets == (
+        _packet(0x33, 0x46, [0, 0, 0, 0]),
+        _packet(0x33, 0x46, [1, 0, 0, expected_count]),
+        _packet(0x33, 0x46, [4, 0, 0, 0]),
+    )
+    for packet in packets:
+        require_profile_packet(packet, profile)
+    assert build_strip_calibration_cancel(profile) == _packet(0x33, 0x46, [2, 0, 0, 0])
+
+
+def test_h612a_power_on_behaviour_uses_exact_setting_frames():
+    profile = device_profile("H612A", 1, 1)
+
+    assert build_power_on_behaviour("previous", profile).hex() == "3341020000000000000000000000000000000070"
+    assert build_power_on_behaviour("on", profile).hex() == "3341020100000000000000000000000000000071"
+    assert build_power_on_behaviour("off", profile).hex() == "3341020200000000000000000000000000000072"
+    assert build_power_on_behaviour_query(profile).hex() == "aa410000000000000000000000000000000000eb"
 
 
 @pytest.mark.parametrize("device", ["H1AB2"], indirect=True)

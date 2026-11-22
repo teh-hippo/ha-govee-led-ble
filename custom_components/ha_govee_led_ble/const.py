@@ -2547,6 +2547,89 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         connection_idle_timeout=IDLE_TIMEOUT_STANDARD,
         scene_catalogue_sku="H6117",
     ),
+    "H612A": ModelProfile(
+        "H612A RGBIC+W Strip Light",
+        support_quality=SupportQuality.EXPERIMENTAL,
+        confirmation_issue=687,
+        command_grammar="H617A",
+        command_ack_grammar="H617A",
+        extended_static_grammar="H612A",
+        status_grammar="H612A",
+        setting_grammar="H612A",
+        effect_grammar="H617A",
+        music_grammar="H617A",
+        profile_pact_dependent=True,
+        requires_qualified_identity=True,
+        requires_pact_confirmation=True,
+        colour_mode_query_selector=1,
+        read_domains=frozenset(
+            {
+                ReadDomain.POWER,
+                ReadDomain.BRIGHTNESS,
+                ReadDomain.COLOUR_MODE,
+                ReadDomain.FIRMWARE,
+                ReadDomain.HARDWARE,
+                ReadDomain.PACT,
+                ReadDomain.PHYSICAL_IC_COUNT,
+                ReadDomain.SEGMENTS,
+            }
+        ),
+        setup_required_read_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE}),
+        supports_rgb=True,
+        supports_color_temperature=True,
+        color_temp_range=KELVIN_RANGE_2700_6500,
+        kelvin_verification_reads_colour_mode=True,
+        static_readback_gradual=True,
+        static_readback_kelvin=True,
+        static_readback_zero_kelvin_is_rgb=True,
+        segment_colour_mode_ambiguous=True,
+        kelvin_renders_device_white=True,
+        physical_ic_count=20,
+        physical_ic_capacity=20,
+        segment_count=10,
+        segment_group_size=4,
+        segment_count_capacity=10,
+        segment_count_ic_divisor=2,
+        segment_count_ic_round_up=True,
+        supports_segment_writes=True,
+        supports_segment_brightness=True,
+        supports_scenes=True,
+        supports_custom_effects=True,
+        supports_advanced_effects=True,
+        supports_multi_layered_effects=True,
+        scene_catalogue_sku="H612A",
+        scene_command_versions=frozenset({0, 1}),
+        advanced_scene_carrier=(29884, 41599),
+        advanced_diy_selector=402,
+        rgbic_scene_v0=False,
+        diy_requires_upload_ack=True,
+        effect_retry_after_upload=False,
+        music_modes=(
+            "energetic",
+            "rhythm",
+            "spectrum",
+            "rolling",
+            "separation",
+            "hopping",
+            "piano_keys",
+            "fountain",
+            "day_and_night",
+            "bloom",
+            "shiny",
+        ),
+        music_variants=H617A_MUSIC_VARIANTS,
+        music_upload_before_selector=True,
+        music_requires_upload_ack=True,
+        music_retry_after_upload=False,
+        music_params_require_activation=True,
+        supports_music_color=True,
+        supports_power_on_behaviour=True,
+        boolean_controls=frozenset({"gradual"}),
+        strip_length_metres=(5,),
+        strip_ics_per_metre=4,
+        connection_idle_timeout=IDLE_TIMEOUT_STANDARD,
+        effect_readback="diy_code_only",
+    ),
     "H6125": ModelProfile(
         "H6125 LED Strip",
         color_temp_range=KELVIN_RANGE_2000_9000,
@@ -3718,6 +3801,7 @@ def _h6072_profile(
 
 
 _STANDARD_PACTS = frozenset({(1, 1), (2, 1)})
+_H612A_PACTS = frozenset({(1, 1), (1, 2), (2, 1)})
 _H60A6_NATIVE_CONTROL_PACTS = frozenset({(1, 1), (1, 2), (1, 3)})
 _H6199_DREAMVIEW_PACTS = frozenset({(1, 1), (2, 1), (3, 1), (4, 1)})
 _H60A_SEGMENTED_HARDWARE = "1.04.03"
@@ -3819,6 +3903,9 @@ def device_profile(
     hardware: str | None = None,
 ) -> ModelProfile:
     """Resolve exact-product capabilities from evidenced revision context."""
+    if model == "H612A":
+        profile = get_profile(model)
+        return profile if (pact_type, pact_code) in _H612A_PACTS else _basic_revision_profile(profile)
     if model == "H6053":
         from .protocol_transforms import h6053_outbound_transform
 

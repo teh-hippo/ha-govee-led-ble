@@ -45,6 +45,9 @@ H60b0StatusQuery = load_generated_class("h60b0_status_query", "H60b0StatusQuery"
 H60b0StatusReply = load_generated_class("h60b0_status_reply", "H60b0StatusReply")
 
 H61f5ExtendedStaticWrite = load_generated_class("h61f5_extended_static_write", "H61f5ExtendedStaticWrite")
+H612aExtendedStaticWrite = load_generated_class("h612a_extended_static_write", "H612aExtendedStaticWrite")
+H612aSettings = load_generated_class("h612a_settings", "H612aSettings")
+H612aStatusReply = load_generated_class("h612a_status_reply", "H612aStatusReply")
 
 H1771CommandWrite = load_generated_class("h1771_command_write", "H1771CommandWrite")
 H1771Bulk = load_generated_class("h1771_bulk", "H1771Bulk")
@@ -483,6 +486,7 @@ _STATUS_ROOTS = {
     "H6102": ("h6102_status_reply", H6102StatusReply),
     "H6117": ("h6117_status_reply", H6117StatusReply),
     "H6117-legacy": ("h6117_legacy_status_reply", H6117LegacyStatusReply),
+    "H612A": ("h612a_status_reply", H612aStatusReply),
     "H6125": ("h6125_status_reply", H6125StatusReply),
     "H6127-legacy": ("h6127_legacy_status_reply", H6127LegacyStatusReply),
     "H6127": ("h6127_status_reply", H6127StatusReply),
@@ -526,6 +530,7 @@ _COMMAND_ROOTS = {
 
 
 _EXTENDED_STATIC_ROOTS = {
+    "H612A": ("h612a_extended_static_write", H612aExtendedStaticWrite),
     "H61F5": ("h61f5_extended_static_write", H61f5ExtendedStaticWrite),
 }
 
@@ -592,6 +597,8 @@ def _has_unknown_discriminator(parsed: Any, parser: str) -> bool:
     if getattr(parsed.opcode, "name", None) is None:
         return True
     if parser == "h61f5_extended_static_write":
+        return not parsed.is_static
+    if parser == "h612a_extended_static_write":
         return not parsed.is_static
     if parser in {
         "command_write",
