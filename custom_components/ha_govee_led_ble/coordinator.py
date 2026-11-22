@@ -834,9 +834,13 @@ class GoveeBLECoordinator(
                 self.power_on_behaviour = self.power_on_open_flag = None
         if not profile.supports_low_blue_light:
             self.low_blue_light = None
-        self._advance_profile_generation(
-            preserve_static_baseline=self._pre_mode_needs_qualification and not context_changed
+        has_static_history = self._pre_mode_snapshot is not None or self._incomplete_static_exit is not None
+        if has_static_history:
+            self._static_history_profile_current()
+        preserve_static_baseline = not context_changed and (
+            self._pre_mode_snapshot is not None or self._incomplete_static_exit is not None
         )
+        self._advance_profile_generation(preserve_static_baseline=preserve_static_baseline)
         if self._pre_mode_needs_qualification:
             self._static_history_profile_current()
         self._expected_state.clear()
@@ -2542,10 +2546,14 @@ class GoveeBLECoordinator(
         packets: Sequence[bytes],
         validator: Callable[[bytes, ModelProfile], None] = require_profile_packet,
     ) -> None:
+        declared = get_profile(self.model)
         fields = self.profile.profile_identity_fields
         if self.profile.projector_grammar is not None:
             fields |= {"pact"}
-        if not fields or self.identity_fields_confirmed(fields):
+        pact_required = declared.requires_pact_confirmation and not declared.can_read(ReadDomain.PACT)
+        if (not fields or self.identity_fields_confirmed(fields)) and (
+            not pact_required or self.identity_fields_confirmed(frozenset({"pact"}))
+        ):
             return
         required = frozenset[str]()
         authorization_profile = self._authorization_profile()
@@ -2567,6 +2575,8 @@ class GoveeBLECoordinator(
                 validator(packet, authorization_profile)
             except ValueError:
                 required |= fields
+                if pact_required:
+                    required |= {"pact"}
         await self._async_require_identity(client, required)
         for packet in packets:
             validator(packet, self.profile)
@@ -2681,7 +2691,15 @@ class GoveeBLECoordinator(
         if get_profile(self.model).requires_pact_confirmation and not self.identity_fields_confirmed(
             frozenset({"pact"})
         ):
-            return qualify_geometry(device_profile(self.model, None, None))
+            return qualify_geometry(
+                device_profile(
+                    self.model,
+                    None,
+                    None,
+                    firmware=self.fw_version if self.identity_fields_confirmed(frozenset({"fw_version"})) else None,
+                    hardware=self.hw_version if self.identity_fields_confirmed(frozenset({"hw_version"})) else None,
+                )
+            )
         fields = self.profile.profile_identity_fields | self.profile.scene_identity_fields
         if not fields or self.identity_fields_confirmed(fields):
             return qualify_geometry(self.profile)

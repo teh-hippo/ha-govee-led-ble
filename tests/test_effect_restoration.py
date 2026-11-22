@@ -68,6 +68,165 @@ def reply(domain, body):
     return bytearray(payload + bytes([xor_checksum(payload)]))
 
 
+@pytest.mark.parametrize(
+    ("initial_pact", "confirmed_pact"),
+    [
+        (None, (1, 1)),
+        (None, (2, 1)),
+        ((1, 1), (1, 1)),
+        ((2, 1), (2, 1)),
+        ((1, 1), (2, 1)),
+        ((2, 1), (1, 1)),
+    ],
+)
+async def test_h6053_native_scene_without_pact_uses_version_qualified_baseline(
+    hass, monkeypatch, initial_pact, confirmed_pact
+):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6053", configuration_url=None)
+    if initial_pact is not None:
+        coordinator.pact_type, coordinator.pact_code = initial_pact
+    scene_selected = False
+
+    async def transmit(_uuid, packet, **_kwargs):
+        nonlocal scene_selected
+        if packet[:3] == b"\x33\x05\x04":
+            scene_selected = True
+        elif packet[:3] in {b"\x33\x05\x0d", b"\x33\x05\x15"}:
+            scene_selected = False
+        elif packet[:2] == b"\xaa\x33":
+            coordinator._notify_callback(None, bytearray(frame("aa3311")))
+
+    client = MagicMock(
+        is_connected=True,
+        write_gatt_char=AsyncMock(side_effect=transmit),
+        disconnect=AsyncMock(),
+    )
+    client.disconnect.side_effect = lambda: setattr(client, "is_connected", False)
+    coordinator._client = client
+    coordinator._notification_token = object()
+    coordinator._notify_started_monotonic = time.monotonic() - 1
+    coordinator._observe_identity_field("fw_version", "1.08.05")
+    coordinator._observe_identity_field("hw_version", "1.00.00")
+
+    def observe_static():
+        coordinator._notify_callback(None, bytearray(frame("aa0101")))
+        coordinator._notify_callback(None, bytearray(frame("aa3311")))
+        coordinator._notify_callback(None, bytearray(frame("aa05150000000000")))
+        for group in range(1, 4):
+            coordinator._notify_callback(None, bytearray(frame(f"aaa5{group:02x}" + "32112233" * 4)))
+
+    async def refresh(*_args, **_kwargs):
+        coordinator._notify_callback(None, bytearray(frame("aa0101")))
+        if coordinator.identity_fields_confirmed(frozenset({"pact"})):
+            coordinator._notify_callback(None, bytearray(frame("aa0425")))
+        coordinator._notify_callback(None, bytearray(frame("aa3311")))
+        if scene_selected:
+            coordinator._notify_callback(None, bytearray(frame("aa05041800")))
+        else:
+            coordinator._notify_callback(None, bytearray(frame("aa05150000000000")))
+        await refresh_segments()
+        return True
+
+    async def refresh_segments(*_args, **_kwargs):
+        for group in range(1, 4):
+            coordinator._notify_callback(None, bytearray(frame(f"aaa5{group:02x}" + "32112233" * 4)))
+        return True
+
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
+    monkeypatch.setattr(coordinator, "_renew_foreground_lease", MagicMock())
+    monkeypatch.setattr(coordinator, "_refresh_h607c_advertisements", MagicMock())
+    monkeypatch.setattr(coordinator, "refresh_state", AsyncMock(side_effect=refresh))
+    monkeypatch.setattr(coordinator, "async_refresh_segments", AsyncMock(side_effect=refresh_segments))
+    observe_static()
+
+    light = GoveeBLELight(coordinator)
+    light.hass = hass
+    light.async_write_ha_state = MagicMock()
+    await light.async_turn_on(effect="Aurora")
+
+    client.write_gatt_char.assert_awaited_once()
+    assert client.write_gatt_char.await_args.args[1] == build_scene_activation("H6053", 24, profile=coordinator.profile)
+    assert not coordinator.identity_fields_confirmed(frozenset({"pact"}))
+    assert not coordinator._brightness_pct_known
+    baseline = coordinator._pre_mode_snapshot
+    assert baseline is not None and baseline.brightness_pct_known is False
+
+    client.write_gatt_char.reset_mock()
+    with pytest.raises(HomeAssistantError):
+        await light.async_turn_on(effect="off", brightness=128)
+    assert client.write_gatt_char.await_count == 0
+
+    if initial_pact is None:
+        coordinator._observe_pact(*confirmed_pact)
+        assert coordinator._pre_mode_snapshot is baseline
+        await light.async_turn_on(effect="off")
+        packets = [call.args[1] for call in client.write_gatt_char.await_args_list]
+        assert packets and all(packet[:2] != b"\x33\x04" for packet in packets)
+        return
+
+    if initial_pact is not None:
+        await coordinator._disconnect_locked(planned_release=True)
+        assert coordinator._pre_mode_snapshot is baseline
+        client.is_connected = True
+        coordinator._client = client
+        coordinator._notification_token = object()
+        coordinator._notify_started_monotonic = time.monotonic() - 1
+        coordinator._observe_pact(*confirmed_pact)
+        coordinator._observe_identity_field("fw_version", "1.08.05")
+        coordinator._observe_identity_field("hw_version", "1.00.00")
+        await refresh()
+        assert coordinator._pre_mode_snapshot is baseline
+        await light.async_turn_on(effect="off")
+        packets = [call.args[1] for call in client.write_gatt_char.await_args_list]
+        assert packets and all(packet[:2] != b"\x33\x04" for packet in packets)
+
+        await light.async_turn_on(effect="Aurora")
+        baseline = coordinator._pre_mode_snapshot
+        assert baseline is not None
+        client.write_gatt_char.reset_mock()
+    coordinator._observe_pact(*confirmed_pact)
+    assert coordinator._pre_mode_snapshot is baseline
+    await light.async_turn_on(effect="off", brightness=128)
+    packets = [call.args[1] for call in client.write_gatt_char.await_args_list]
+    brightness_packets = [packet for packet in packets if packet[:2] == b"\x33\x04"]
+    assert len(brightness_packets) == 1
+    expected_brightness = build_brightness(50, "H6053", profile=coordinator.profile)
+    if coordinator.profile.outbound_transform is not None:
+        expected_brightness = coordinator.profile.outbound_transform(expected_brightness)
+    assert brightness_packets[0] == expected_brightness
+
+
+async def test_h6053_scene_recovery_preserves_unauthorized_master_brightness(hass, monkeypatch):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6053", configuration_url=None)
+    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
+    coordinator._client = client
+    coordinator._notification_token = object()
+    coordinator._notify_started_monotonic = time.monotonic() - 1
+    coordinator._observe_identity_field("fw_version", "1.08.05")
+    coordinator._observe_identity_field("hw_version", "1.00.00")
+    coordinator._notify_callback(None, bytearray(frame("aa0101")))
+    coordinator._notify_callback(None, bytearray(frame("aa3311")))
+    coordinator._notify_callback(None, bytearray(frame("aa05041800")))
+
+    prior = coordinator.capture_effect_control_state()
+    assert prior.mode == "scene" and prior.scene_code == 24
+    coordinator._notify_callback(None, bytearray(frame("aa05040f00")))
+    client.write_gatt_char.reset_mock()
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
+    monkeypatch.setattr(coordinator, "_renew_foreground_lease", MagicMock())
+    monkeypatch.setattr(coordinator, "refresh_state", AsyncMock(return_value=True))
+    monkeypatch.setattr(coordinator, "_async_read_bar_flags", AsyncMock(return_value=True))
+
+    assert await coordinator.async_restore_effect_control_state(prior, overwritten_diy_code=None)
+
+    packets = [call.args[1] for call in client.write_gatt_char.await_args_list]
+    assert packets == [
+        build_power(True, coordinator.model),
+        build_scene_activation("H6053", 24, profile=coordinator.profile),
+    ]
+    assert not coordinator._brightness_pct_known
+
+
 def report_scene(coordinator, virtual_clock, code):
     for field in ("color_mode", "effect", "scene_code", "unknown_scene_code"):
         if field in coordinator._expected_state:
@@ -494,12 +653,17 @@ async def test_public_native_scene_off_restores_complete_projector_optics(physic
     await apply_appearance(coordinator, prior)
     light = GoveeBLELight(coordinator)
     light.async_write_ha_state = MagicMock()
-    await light.async_turn_on(effect="Forest")
+    await light.async_turn_on(brightness=80)
+    baseline_brightness = state["brightness"]
+    assert baseline_brightness == 31
+    await light.async_turn_on(effect="Forest", brightness=230)
     assert state["projector"] != prior
+    assert state["brightness"] != baseline_brightness
     assert coordinator._pre_mode_snapshot is not None
     assert coordinator._pre_mode_snapshot.projector_appearance == prior
     await light.async_turn_on(effect="off")
     assert state["projector"] == prior
+    assert state["brightness"] == baseline_brightness
     assert coordinator.projector_appearance == prior
 
 

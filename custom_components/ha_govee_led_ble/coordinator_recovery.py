@@ -135,6 +135,14 @@ class _RecoveryMixin(_CoordinatorBase):
             else "recovery_not_ready",
         )
 
+    def _recovery_brightness_supported(self) -> bool:
+        profile = self._authorization_profile() if get_profile(self.model).requires_pact_confirmation else self.profile
+        operations = profile.command_operations
+        return operations is None or "brightness" in operations
+
+    def _recovery_brightness_known(self, state: PriorControlState) -> bool:
+        return state.brightness_pct_known is not False and self._recovery_brightness_supported()
+
     def require_static_baseline(self) -> PriorControlState:
         if self._pre_mode_snapshot is None:
             raise self._static_recovery_error()
@@ -201,24 +209,47 @@ class _RecoveryMixin(_CoordinatorBase):
         profile = self._pre_mode_profile
         if self._pre_mode_snapshot is None and self._incomplete_static_exit is None:
             return False
-        if not self._pre_mode_needs_qualification:
-            return True
         if profile is None:
             self._discard_static_baseline()
             return False
-        if (
-            profile.projector_grammar is not None
-            and not self.identity_fields_confirmed(frozenset({"pact"}))
-            or not self.identity_fields_confirmed(
-                profile.profile_identity_fields | frozenset(video_identity_fields(profile))
-            )
-            or profile.segment_count_ic_divisor is not None
-            and not self._physical_ic_count_confirmed
-            or profile.configured_string_counts
-            and not self._configured_strings_confirmed
-        ):
-            return False
-        if not same_control_profile(profile, self._as_coordinator._authorization_profile()):
+        if self._pre_mode_needs_qualification:
+            if (
+                profile.projector_grammar is not None
+                and not self.identity_fields_confirmed(frozenset({"pact"}))
+                or not self.identity_fields_confirmed(
+                    profile.profile_identity_fields | frozenset(video_identity_fields(profile))
+                )
+                or profile.segment_count_ic_divisor is not None
+                and not self._physical_ic_count_confirmed
+                or profile.configured_string_counts
+                and not self._configured_strings_confirmed
+            ):
+                return False
+        current = self._as_coordinator._authorization_profile()
+        version_qualified_static_wire = get_profile(self.model).requires_pact_confirmation and bool(
+            profile.static_identity_fields
+        )
+        static_continuity = (
+            profile.command_grammar == current.command_grammar
+            and profile.status_grammar == current.status_grammar
+            and (version_qualified_static_wire or profile.outbound_transform == current.outbound_transform)
+            and profile.segment_count == current.segment_count
+            and profile.segment_group_size == current.segment_group_size
+            and profile.physical_ic_count == current.physical_ic_count
+            and profile.configured_string_counts == current.configured_string_counts
+            and profile.light_sources == current.light_sources
+            and profile.native_zones == current.native_zones
+            and profile.static_readback_echoes_color == current.static_readback_echoes_color
+            and profile.static_readback_kelvin == current.static_readback_kelvin
+            and profile.static_readback_zero_kelvin_is_rgb == current.static_readback_zero_kelvin_is_rgb
+            and profile.static_palette_recovery == current.static_palette_recovery
+            and profile.supports_color_temperature == current.supports_color_temperature
+            and profile.supports_segments == current.supports_segments
+            and profile.supports_segment_writes == current.supports_segment_writes
+            and profile.supports_segment_brightness == current.supports_segment_brightness
+            and profile.supports_segment_color_temperature == current.supports_segment_color_temperature
+        )
+        if not static_continuity:
             self._discard_static_baseline()
             return False
         return True
@@ -291,7 +322,13 @@ class _RecoveryMixin(_CoordinatorBase):
                 return
         async with self._async_qualified_static_history():
             state = self.require_static_baseline()
-            target = replace(state, brightness_pct=brightness_pct) if brightness_pct is not None else state
+            if brightness_pct is not None and not self._recovery_brightness_supported():
+                raise HomeAssistantError(translation_domain=DOMAIN, translation_key="identity_not_ready")
+            target = (
+                replace(state, brightness_pct=brightness_pct, brightness_pct_known=True)
+                if brightness_pct is not None
+                else state
+            )
             prepared = self._prepare_static_colour(target)
             if prepared is None:
                 raise self._static_recovery_error()
@@ -354,7 +391,11 @@ class _RecoveryMixin(_CoordinatorBase):
         else:
             fields = {
                 *(("is_on",) if profile.can_read(ReadDomain.POWER) else ()),
-                *(("brightness_pct",) if profile.can_read(ReadDomain.BRIGHTNESS) else ()),
+                *(
+                    ("brightness_pct",)
+                    if profile.can_read(ReadDomain.BRIGHTNESS) and self._recovery_brightness_supported()
+                    else ()
+                ),
                 *(("color_mode",) if profile.supports_color_mode_readback else ()),
                 *(f"boolean_{name}" for name in profile.boolean_controls.intersection(NATIVE_ZONE_CONTROLS)),
                 *native_source_fields(profile),
@@ -410,7 +451,8 @@ class _RecoveryMixin(_CoordinatorBase):
                 )
                 if (
                     not self._power_known
-                    or not self._brightness_pct_known
+                    or self._recovery_brightness_supported()
+                    and not self._brightness_pct_known
                     or not profile.supports_segments
                     and (not self._static_colour_known or scalar_field is not None and not fresh(scalar_field))
                 ):
@@ -457,14 +499,14 @@ class _RecoveryMixin(_CoordinatorBase):
             return (
                 current.mode == target.mode == "colour"
                 and current.is_on == target.is_on
-                and current.brightness_pct == target.brightness_pct
+                and (not self._recovery_brightness_known(target) or current.brightness_pct == target.brightness_pct)
                 and target.projector_appearance is not None
                 and target.projector_appearance == current.projector_appearance
             )
         fields = (
             "is_on",
-            "brightness_pct",
             *profile.boolean_controls.intersection(NATIVE_ZONE_CONTROLS),
+            *(("brightness_pct",) if self._recovery_brightness_known(target) else ()),
             *native_source_fields(profile),
             *source_kelvin_hint_fields(profile),
             *(("left_bar_kelvin", "right_bar_kelvin") if profile.setting_grammar == "H6046" else ()),
@@ -525,7 +567,6 @@ class _RecoveryMixin(_CoordinatorBase):
             not guarded_colours
             and self.segment_state_source == "observed"
             and (not self.profile.supports_segments or current_source_layout)
-            and self._brightness_pct_known
         )
         delivered_segments = (
             self.profile.supports_segments
@@ -534,7 +575,6 @@ class _RecoveryMixin(_CoordinatorBase):
             and self.color_mode is ParsedMode.COLOUR
             and len(self.segment_kelvin) == self.profile.segment_count
             and all(value is not None for value in self.segment_kelvin)
-            and self._brightness_pct_known
         )
         known_segments = observed_segments or delivered_segments
         zone_flags = {
@@ -580,6 +620,7 @@ class _RecoveryMixin(_CoordinatorBase):
             mode=mode,
             is_on=self.is_on,
             brightness_pct=self.brightness_pct,
+            brightness_pct_known=False if not self._recovery_brightness_supported() else None,
             rgb_color=self.rgb_color,
             projector_appearance=(
                 self.projector_appearance
@@ -880,13 +921,25 @@ class _RecoveryMixin(_CoordinatorBase):
         if self._mode_transition is not None:
             # Intermediate controls can use a different mode from the final resident effect.
             self._mode_transition.verifying_resident_effect = state.mode != "colour"
+        authorization = self._authorization_profile()
+        strictly_authorized = get_profile(self.model).requires_pact_confirmation
         if state.mode == "custom":
+            if strictly_authorized and not authorization.supports_custom_effects:
+                return False
             return await self._restore_custom(state, overwritten_diy_code, complete)
-        if state.mode == "scene" and (state.effect is not None or state.scene_code is not None):
+        if (
+            state.mode == "scene"
+            and (not strictly_authorized or authorization.supports_scenes)
+            and (state.effect is not None or state.scene_code is not None)
+        ):
             return await self._restore_scene(state, overwritten_diy_code, complete)
-        if state.mode == "music" and state.music_mode in self.profile.music_modes:
+        if state.mode == "music" and (not strictly_authorized or state.music_mode in authorization.music_modes):
             return await self._restore_music(state, variant, music_writes, physical_ic_count, complete)
-        if state.mode == "video" and state.video_mode in {"movie", "game"} and self.profile.supports_video_mode:
+        if (
+            state.mode == "video"
+            and state.video_mode in {"movie", "game"}
+            and (not strictly_authorized or authorization.supports_video_mode)
+        ):
             return await self._restore_video_mode(state, permitted, complete)
         if state.mode != "colour":
             return False
@@ -1200,14 +1253,21 @@ class _RecoveryMixin(_CoordinatorBase):
             companion=state.diy_companion if self.profile.command_grammar == "H607C" else None,
         )
         await self.send_command(build_power(True, self.model))
-        await self.send_command(build_brightness(state.brightness_pct, self.model))
+        if self._recovery_brightness_known(state):
+            await self.send_command(build_brightness(state.brightness_pct, self.model))
         expected: dict[str, Any] = {"is_on": True, "diy_code": state.diy_code}
         if self.profile.command_grammar == "H607C":
             expected["diy_companion"] = state.diy_companion
         await self.send_command(activation, state_values={"diy_code": state.diy_code})
         return (
             await self.async_observe_effect(expected) is True
-            and await self.refresh_state(RefreshRequest(on=True, brightness=state.brightness_pct)) is True
+            and await self.refresh_state(
+                RefreshRequest(
+                    on=True,
+                    brightness=state.brightness_pct if self._recovery_brightness_known(state) else None,
+                )
+            )
+            is True
             and complete
         )
 
@@ -1234,10 +1294,15 @@ class _RecoveryMixin(_CoordinatorBase):
             if state.scene_code == overwritten_diy_code:
                 return False
             await self.send_command(build_power(True, self.model))
-            await self.send_command(build_brightness(state.brightness_pct, self.model))
+            if self._recovery_brightness_known(state):
+                await self.send_command(build_brightness(state.brightness_pct, self.model))
             await self.send_command(build_scene_activation(self.model, state.scene_code, profile=self.profile))
             await self.refresh_state(
-                RefreshRequest(on=True, brightness=state.brightness_pct, scene_code=state.scene_code)
+                RefreshRequest(
+                    on=True,
+                    brightness=state.brightness_pct if self._recovery_brightness_known(state) else None,
+                    scene_code=state.scene_code,
+                )
             )
             # Selection is restored, but no supported read proves resident body equality.
             return False
@@ -1265,11 +1330,18 @@ class _RecoveryMixin(_CoordinatorBase):
             return False
         selector = scene_selector_code(self.model, scene, profile=self.profile)
         await self.send_command(build_power(True, self.model))
-        await self.send_command(build_brightness(state.brightness_pct, self.model))
+        if self._recovery_brightness_known(state):
+            await self.send_command(build_brightness(state.brightness_pct, self.model))
         # A catalogue body/default speed is not the original authored resident body.
         await self.send_command(build_scene_activation(self.model, selector, scene.music_code))
         return (
-            await self.refresh_state(RefreshRequest(on=True, brightness=state.brightness_pct, scene_code=selector))
+            await self.refresh_state(
+                RefreshRequest(
+                    on=True,
+                    brightness=state.brightness_pct if self._recovery_brightness_known(state) else None,
+                    scene_code=selector,
+                )
+            )
             is True
             and not scene.param
             and complete
@@ -1307,7 +1379,10 @@ class _RecoveryMixin(_CoordinatorBase):
             ):
                 raise ValueError("Music variant changed before recovery; refresh and retry")
 
-        await self.send_command(build_brightness(state.brightness_pct, self.model), write_guard=guard_music_recovery)
+        if self._recovery_brightness_known(state):
+            await self.send_command(
+                build_brightness(state.brightness_pct, self.model), write_guard=guard_music_recovery
+            )
         await self.async_write_music_sequence(
             music_writes,
             mode_code=music_code_for(self.model, state.music_mode, profile=self.profile),
@@ -1319,7 +1394,7 @@ class _RecoveryMixin(_CoordinatorBase):
             and await self.refresh_state(
                 RefreshRequest(
                     on=True,
-                    brightness=state.brightness_pct,
+                    brightness=state.brightness_pct if self._recovery_brightness_known(state) else None,
                     music_mode=state.music_mode,
                     music_sensitivity=state.music_sensitivity,
                     music_color=state.music_color if observes_color else None,
@@ -1339,7 +1414,8 @@ class _RecoveryMixin(_CoordinatorBase):
 
     async def _restore_video_mode(self, state: PriorControlState, permitted: set[str], complete: bool) -> bool:
         await self.send_command(build_power(True, self.model))
-        await self.send_command(build_brightness(state.brightness_pct, self.model))
+        if self._recovery_brightness_known(state):
+            await self.send_command(build_brightness(state.brightness_pct, self.model))
         for _name, attr, control in _VIDEO_VALUE_FIELDS:
             if (
                 state.video_restore_controls is None or control in state.video_restore_controls
@@ -1353,7 +1429,13 @@ class _RecoveryMixin(_CoordinatorBase):
                 requested_values={name: getattr(state, attr) for name, attr in restored},
                 parameters=state.video_parameters,
             )
-            and await self.refresh_state(RefreshRequest(on=True, brightness=state.brightness_pct)) is True
+            and await self.refresh_state(
+                RefreshRequest(
+                    on=True,
+                    brightness=state.brightness_pct if self._recovery_brightness_known(state) else None,
+                )
+            )
+            is True
             and complete
         )
 
@@ -1395,7 +1477,11 @@ class _RecoveryMixin(_CoordinatorBase):
 
             packets = (
                 build_power(True, self.model),
-                build_brightness(state.brightness_pct, self.model),
+                *(
+                    (build_brightness(state.brightness_pct, self.model),)
+                    if self._recovery_brightness_known(state)
+                    else ()
+                ),
                 *build_appearance(state.projector_appearance, self.profile),
             )
             for packet in packets:
@@ -1436,7 +1522,11 @@ class _RecoveryMixin(_CoordinatorBase):
             if state.color_temp_kelvin is not None
             else build_color_rgb(*state.rgb_color, self.model, profile=self.profile)
         )
-        packets = (build_power(True, self.model), build_brightness(state.brightness_pct, self.model), packet)
+        packets = (
+            build_power(True, self.model),
+            *((build_brightness(state.brightness_pct, self.model),) if self._recovery_brightness_known(state) else ()),
+            packet,
+        )
         for packet in packets:
             require_profile_packet(packet, self.profile)
         return PreparedStaticRecovery(
@@ -1536,7 +1626,11 @@ class _RecoveryMixin(_CoordinatorBase):
             for brightness, segments in brightness_groups.items()
             for packet in build_segment_brightness_packets(segments, brightness, self.model, profile=self.profile)
         )
-        prepared_packets = (build_power(True, self.model), build_brightness(state.brightness_pct, self.model), *packets)
+        prepared_packets = (
+            build_power(True, self.model),
+            *((build_brightness(state.brightness_pct, self.model),) if self._recovery_brightness_known(state) else ()),
+            *packets,
+        )
         for packet in prepared_packets:
             require_profile_packet(packet, self.profile)
         return PreparedStaticRecovery(
@@ -1560,7 +1654,9 @@ class _RecoveryMixin(_CoordinatorBase):
         mode_revision = self._field_revisions.get("color_mode", 0)
         request = RefreshRequest(
             on=True,
-            brightness=state.brightness_pct if self.profile.can_read(ReadDomain.BRIGHTNESS) else None,
+            brightness=state.brightness_pct
+            if self.profile.can_read(ReadDomain.BRIGHTNESS) and self._recovery_brightness_known(state)
+            else None,
             refresh_all=True,
             query_native_settings=False,
             query_segments=False,
@@ -1584,7 +1680,7 @@ class _RecoveryMixin(_CoordinatorBase):
 
         def matches_layout() -> bool:
             return (
-                self.brightness_pct == state.brightness_pct
+                (not self._recovery_brightness_known(state) or self.brightness_pct == state.brightness_pct)
                 and len(self.segment_colors) == len(expected_colours)
                 and all(
                     segment_colour_matches(
@@ -1678,7 +1774,9 @@ class _RecoveryMixin(_CoordinatorBase):
 
         def attempted(index: int) -> None:
             nonlocal expected_segments
-            with request.track("is_on" if index == 0 else "brightness_pct" if index == 1 else "rgb_color"):
+            brightness_written = self._recovery_brightness_known(prepared.state)
+            field = "is_on" if index == 0 else "brightness_pct" if index == 1 and brightness_written else "rgb_color"
+            with request.track(field):
                 request.on_write()
             if transition is not None and self._static_write_attempts != static_attempts:
                 transition.static_restore_started = True
@@ -1727,9 +1825,9 @@ class _RecoveryMixin(_CoordinatorBase):
             return complete and self._retain_recovery_appearance(
                 {
                     "is_on": True,
-                    "brightness_pct": state.brightness_pct,
                     "color_mode": ParsedMode.COLOUR,
                     "projector_appearance": state.projector_appearance,
+                    **({"brightness_pct": state.brightness_pct} if self._recovery_brightness_known(state) else {}),
                 },
                 prepared.generation,
                 subscription,
@@ -1737,7 +1835,9 @@ class _RecoveryMixin(_CoordinatorBase):
             )
         request = RefreshRequest(
             on=True if self.profile.can_read(ReadDomain.POWER) else None,
-            brightness=state.brightness_pct if self.profile.can_read(ReadDomain.BRIGHTNESS) else None,
+            brightness=state.brightness_pct
+            if self.profile.can_read(ReadDomain.BRIGHTNESS) and self._recovery_brightness_known(state)
+            else None,
             color_temp_kelvin=normalize_kelvin(state.color_temp_kelvin, self.profile)
             if state.color_temp_kelvin is not None and self.profile.static_readback_kelvin
             else None,

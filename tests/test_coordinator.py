@@ -9,7 +9,7 @@ import pytest
 from bleak import BleakClient, BleakError
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP
-from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.update_coordinator import UpdateFailed
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -46,6 +46,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_music_mode,
     build_power,
     build_power_query,
+    build_scene_activation,
     build_segment_query,
 )
 from custom_components.ha_govee_led_ble.govee_encryption import GoveeCryptoError, GoveeTransportError
@@ -319,6 +320,32 @@ async def test_cached_effect_profile_without_geometry_conversion_requalifies_bef
     read.assert_awaited_once()
     assert profile == cached and coordinator.effect_authorization_profile == cached
     assert compile_application(LibraryItem.new("Fade", content), "H6053", diy_code=37, profile=profile).packets
+
+
+async def test_h6053_cached_pact_does_not_authorize_pact_dependent_transport_without_confirmation(hass):
+    coordinator = GoveeBLECoordinator(hass, "22:33:44:55:66:77", "H6053", configuration_url=None)
+    coordinator._client = client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
+    coordinator._notification_token = object()
+    coordinator.pact_type, coordinator.pact_code = 2, 1
+    coordinator._observe_identity_field("fw_version", "1.08.05")
+    coordinator._observe_identity_field("hw_version", "1.00.00")
+    assert coordinator.profile.command_operations and "brightness" in coordinator.profile.command_operations
+    assert not coordinator.identity_fields_confirmed(frozenset({"pact"}))
+
+    await coordinator.send_command(build_scene_activation("H6053", 1, profile=coordinator.profile))
+    client.write_gatt_char.assert_awaited_once()
+    for packet in (
+        build_brightness(50, "H6053", profile=coordinator.profile),
+        build_music_mode(5, 99, None, False, "H6053", profile=coordinator.profile),
+    ):
+        with pytest.raises(HomeAssistantError) as error:
+            await coordinator.send_command(packet)
+        assert error.value.translation_key == "identity_not_ready"
+    profile = await async_prepare_effect_profile(
+        coordinator, intent=ControlIntent.APPLY, content=SingleEffect(0, 0, 50, ((255, 0, 0),))
+    )
+    assert not profile.supports_custom_effects and profile.effect_workflows == frozenset({"native_scenes"})
+    client.write_gatt_char.assert_awaited_once()
 
 
 @pytest.fixture

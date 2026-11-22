@@ -207,6 +207,7 @@ class PriorControlState:
     segment_brightness: tuple[int, ...] | None = None
     music_body: bytes | None = None
     static_colour_observed: bool = False
+    brightness_pct_known: bool | None = None
 
     def __post_init__(self) -> None:
         if self.projector_appearance is not None and not isinstance(self.projector_appearance, ProjectorAppearance):
@@ -229,6 +230,8 @@ class PriorControlState:
             raise EffectStorageError("prior source colour cannot have two intent authorities")
         if type(self.static_rgb_known) is not bool:
             raise EffectStorageError("prior static RGB intent must be a boolean")
+        if self.brightness_pct_known is not None and type(self.brightness_pct_known) is not bool:
+            raise EffectStorageError("prior brightness knowledge must be a boolean or null")
         if type(self.static_colour_observed) is not bool:
             raise EffectStorageError("prior static colour observation must be a boolean")
         if self.static_gradual is not None and type(self.static_gradual) is not bool:
@@ -613,6 +616,7 @@ class PriorControlState:
             ),
             "is_on": self.is_on,
             "brightness_pct": self.brightness_pct,
+            **({"brightness_pct_known": self.brightness_pct_known} if self.brightness_pct_known is not None else {}),
             "rgb_color": list(self.rgb_color),
             **({"segment_kelvin": list(self.segment_kelvin)} if self.segment_kelvin is not None else {}),
             "color_temp_kelvin": self.color_temp_kelvin,
@@ -795,6 +799,7 @@ class PriorControlState:
             video_restore_controls=tuple(raw["video_restore_controls"]) if "video_restore_controls" in raw else None,
             is_on=_required_bool(raw, "is_on"),
             brightness_pct=_required_int(raw, "brightness_pct"),
+            brightness_pct_known=_optional_bool(raw, "brightness_pct_known"),
             rgb_color=_required_rgb(raw, "rgb_color"),
             color_temp_kelvin=_optional_int(raw, "color_temp_kelvin"),
             static_rgb_known=_optional_bool(raw, "static_rgb_known", default=False),
