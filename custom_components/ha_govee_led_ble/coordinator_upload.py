@@ -3,12 +3,27 @@
 import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass
+from enum import StrEnum
 
 from bleak import BleakClient
 
 
+class UploadOutcome(StrEnum):
+    UNCONFIRMED = "upload_unconfirmed"
+    CANCELLED = "operation_cancelled"
+
+
 class UploadAckTimeoutError(TimeoutError):
     """A physically sent upload has no verdict and must not be replayed."""
+
+    before_activation = False
+    outcome = UploadOutcome.UNCONFIRMED
+
+
+class UploadCancelledError(asyncio.CancelledError):
+    """Cancellation interrupted an upload before its selector."""
+
+    outcome = UploadOutcome.CANCELLED
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,6 +36,7 @@ class PendingUploadAck:
     protocol: int
     future: asyncio.Future[bool]
     profile_guard: Callable[[], None]
+    before_activation: bool = False
 
     def invalidate(self, error: Exception) -> None:
         if not self.future.done():

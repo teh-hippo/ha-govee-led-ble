@@ -46,7 +46,7 @@ export function renderProjectorEditor(
         <label>Pattern<select .value=${String(source.pattern)} ?disabled=${disabled} @change=${(event: Event) =>
           sourceChange({ pattern: Number((event.target as HTMLSelectElement).value) })}>
           ${![1, 2, 3, 4].includes(source.pattern) ? html`<option value=${source.pattern}>Unrecognised pattern</option>` : nothing}
-          ${["Fade", "Breathe", "Flash", "Steady"].map((label, value) =>
+          ${["Fade", "Breathe", "Flash", "Colour flow"].map((label, value) =>
             html`<option value=${value + 1} ?selected=${source.pattern === value + 1}>${label}</option>`)}
         </select></label>
         ${slider("Effect speed", source.speed, (speed, interaction) => sourceChange({ speed }, interaction))}

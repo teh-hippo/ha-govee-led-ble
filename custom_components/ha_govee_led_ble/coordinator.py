@@ -58,7 +58,7 @@ from .coordinator_control import ControlWriteRequest
 from .coordinator_dreamview import DreamviewClaimedError, _DreamviewMixin, is_dreamview_claimed
 from .coordinator_expectations import expectations_from_packet, parse_write_state
 from .coordinator_h6102 import H6102InitialIdentity, _H6102Mixin
-from .coordinator_modes import ModeTransitionPurpose, _ActiveModeMixin
+from .coordinator_modes import ModeTransitionPurpose, ModeTransitionSupersededError, _ActiveModeMixin
 from .coordinator_notifications import _OPTIONAL_CONTROL_DOMAINS, _NotificationMixin
 from .coordinator_recovery import _RecoveryMixin
 from .coordinator_refresh import (
@@ -73,7 +73,7 @@ from .coordinator_status import (
     ParsedMode,
     StatusDomain,
 )
-from .coordinator_upload import PendingUploadAck, UploadAckTimeoutError
+from .coordinator_upload import PendingUploadAck, UploadAckTimeoutError, UploadCancelledError
 from .effect_contracts import CapabilityState
 from .generated_protocol_adapter import (
     A3Sequence,
@@ -1800,7 +1800,7 @@ class GoveeBLECoordinator(
                 invalidate_failed_static()
             if self._notification_token is token:
                 self._reply_gate.abort()
-            if self._encryption is not None:
+            if self._encryption is not None and self._client is client and self._notification_token is token:
                 try:
                     # The expired query timeout cannot cancel its own cleanup again.
                     # Invalidation and final client clearing live in _disconnect_locked.
@@ -1818,6 +1818,14 @@ class GoveeBLECoordinator(
                 invalidate_failed_static()
             if self._notification_token is token:
                 self._reply_gate.abort()
+            if self._client is not None and (
+                self._client is not client
+                or self._notification_token is not None
+                and self._notification_token is not token
+            ):
+                if transition is not None:
+                    transition.superseded = True
+                raise ModeTransitionSupersededError("Device write belonged to a retired subscription") from err
             stale_gatt = self._record_ble_failure(err)
             encrypted = self._encryption is not None and self._encryption.version
             if stale_gatt or encrypted or self._shutdown_requested:
@@ -2833,6 +2841,16 @@ class GoveeBLECoordinator(
     async def async_set_local_audio(self, control: str, value: int) -> None:
         await self._async_set_verified_setting(control, value)
 
+    async def async_set_local_playback(self, playing: bool) -> None:
+        await self._async_set_verified_setting("local_sound_playback", playing)
+
+    @property
+    def local_sound_playback(self) -> bool | None:
+        enabled = self.boolean_control_state.get("local_sound_enabled")
+        if enabled is False or self.local_sound_playing is False:
+            return False
+        return True if enabled is True and self.local_sound_playing is True else None
+
     def _fresh_source_power(self) -> dict[str, bool] | None:
         controls = {source.control for source in self.profile.light_sources}
         if self._client is None or not self._client.is_connected or self._notify_started_monotonic is None:
@@ -3005,10 +3023,11 @@ class GoveeBLECoordinator(
             build_boolean_control_query,
             build_power_on_behaviour_query,
         )
-        from .protocol_settings import build_local_audio, build_local_audio_query
+        from .protocol_settings import LocalSoundPlayback, build_local_audio, build_local_audio_query
 
         source_power: dict[str, bool] | None = None
         audio = control in {"local_sound", "local_volume"}
+        playback = control == "local_sound_playback"
         expected_sound: int | None = value if control == "local_sound" and type(value) is int else None
 
         def qualified() -> None:
@@ -3020,7 +3039,7 @@ class GoveeBLECoordinator(
                 else self.profile.local_volume_range is not None
                 if control == "local_volume"
                 else bool(self.profile.local_sound_options)
-                if audio
+                if audio or playback
                 else control in self.profile.boolean_controls
             ):
                 raise ValueError("Device profile does not support this setting")
@@ -3033,7 +3052,11 @@ class GoveeBLECoordinator(
                 raise ValueError("Boolean setting requires a boolean")
             await self._async_set_bar_control(control, value, write_guard=write_guard)
             return
-        if audio:
+        if playback:
+            if type(value) is not bool:
+                raise ValueError("Local playback requires a boolean")
+            packet = None
+        elif audio:
             if type(value) is not int:
                 raise ValueError("Local audio requires an integer")
             packet = build_local_audio(control, value, self.profile)
@@ -3045,6 +3068,46 @@ class GoveeBLECoordinator(
             if type(value) is not bool:
                 raise ValueError("Boolean setting requires a boolean")
             packet = build_boolean_control(control, value, self.model, profile=self.profile)
+        playback_packets: tuple[bytes, ...] = ()
+        preserved_sound: int | None = None
+        preserved_enable: bool | None = None
+        sequence_profile, sequence_client, sequence_token = self.profile, self._client, self._notification_token
+        if playback:
+            async with async_control_intent(self, ControlIntent.BACKGROUND), self._lock:
+                read_client = await self._ensure_connected()
+                qualified()
+                if not await self._async_read_setting_fields(
+                    read_client,
+                    build_local_audio_query(self.profile),
+                    ("local_sound", "local_sound_playing", "boolean_local_sound_enabled"),
+                    deadline=time.monotonic() + 4.0,
+                    write_guard=qualified,
+                ):
+                    raise ValueError("Device did not provide local sound selection")
+                if value is False and self.local_sound_playback is False:
+                    return
+                preserved_sound = self.local_sound
+                preserved_enable = self.boolean_control_state.get("local_sound_enabled")
+                selected = self.local_sound
+                if selected is None:
+                    if value is False:
+                        raise ValueError("Cannot pause an unknown local sound selection")
+                    selected = 1
+                expected_sound = selected
+                playback_packet = build_local_audio(
+                    "local_sound", LocalSoundPlayback(selected, bool(value)), self.profile
+                )
+                playback_packets = (
+                    (
+                        build_boolean_control("local_sound_enabled", True, self.model, profile=self.profile),
+                        playback_packet,
+                    )
+                    if value is True and preserved_enable is False
+                    else (playback_packet,)
+                )
+                for prepared_packet in playback_packets:
+                    require_profile_packet(prepared_packet, self.profile)
+                sequence_profile, sequence_client, sequence_token = self.profile, self._client, self._notification_token
         async with async_control_intent(self, ControlIntent.USER):
             async with self._lock:
                 await self._ensure_connected()
@@ -3053,9 +3116,15 @@ class GoveeBLECoordinator(
                 source_power = await self.async_validate_source_power(control, value)
             await self._async_supersede_effect_preview()
             generation = self._profile_generation
-            field = control if control == "power_on_behaviour" or audio else f"boolean_{control}"
+            field = (
+                control
+                if control == "power_on_behaviour" or audio
+                else "local_sound_playing"
+                if playback
+                else f"boolean_{control}"
+            )
             baseline = {field: self._field_revisions.get(field, 0)}
-            if control in self.profile.restarting_boolean_controls:
+            if packet is not None and control in self.profile.restarting_boolean_controls:
                 async with self._lock:
                     write_client = await self._ensure_connected()
                     try:
@@ -3066,47 +3135,46 @@ class GoveeBLECoordinator(
                     baseline[field] = self._field_revisions.get(field, 0)
                     self.boolean_control_state.pop(control, None)
             else:
-                packets: tuple[bytes, ...] = (packet,)
+                packets: tuple[bytes, ...] = playback_packets if packet is None else (packet,)
                 if control == "local_sound":
+                    assert packet is not None
                     packets = (
                         build_boolean_control("local_sound_enabled", True, self.model, profile=self.profile),
                         packet,
                     )
-                elif control == "local_sound_enabled" and value is True:
-                    async with self._lock:
-                        read_client = await self._ensure_connected()
-                        if not await self._async_read_setting_fields(
-                            read_client,
-                            build_local_audio_query(self.profile),
-                            ("local_sound",),
-                            deadline=time.monotonic() + 4.0,
-                            write_guard=qualified,
-                        ):
-                            raise ValueError("Device did not provide local sound selection")
-                    selected = self.local_sound
-                    if selected is None:
-                        selected = 1
-                    expected_sound = selected
-                    packets = (packet, build_local_audio("local_sound", selected, self.profile))
                 for prepared_packet in packets:
                     require_profile_packet(prepared_packet, self.profile)
                 baseline[field] = self._field_revisions.get(field, 0)
                 if expected_sound is not None:
                     baseline["local_sound"] = self._field_revisions.get("local_sound", 0)
-                sequence_profile, sequence_client, sequence_token = self.profile, self._client, self._notification_token
+                if not playback:
+                    sequence_profile, sequence_client, sequence_token = (
+                        self.profile,
+                        self._client,
+                        self._notification_token,
+                    )
+                settings_attempted = False
 
                 def sequence_guard() -> None:
                     qualified()
-                    if len(packets) > 1 and (
+                    if (len(packets) > 1 or playback) and (
                         not same_control_profile(self.profile, sequence_profile)
                         or self._client is not sequence_client
                         or self._notification_token is not sequence_token
                     ):
                         raise ValueError("Setting sequence authority changed")
+                    if playback and not settings_attempted:
+                        if not self.source_field_fresh("local_sound") or self.local_sound != preserved_sound:
+                            raise ValueError("Local sound selection changed before playback write")
+                        if self.boolean_control_state.get("local_sound_enabled") != preserved_enable:
+                            raise ValueError("Local sound enablement changed before playback write")
+                        baseline["local_sound"] = self._field_revisions.get("local_sound", 0)
 
                 def expire() -> None:
+                    nonlocal settings_attempted
+                    settings_attempted = True
                     fields = {field} if type(value) is bool or audio else set()
-                    if control in {"local_sound", "local_sound_enabled"}:
+                    if control in {"local_sound", "local_sound_enabled"} or playback:
                         fields.update({"local_sound", "local_sound_playing", "boolean_local_sound_enabled"})
                     if source_power is not None:
                         fields.update(f"boolean_{name}" for name in source_power)
@@ -3158,7 +3226,7 @@ class GoveeBLECoordinator(
                         build_power_on_behaviour_query(self.profile)
                         if control == "power_on_behaviour"
                         else build_local_audio_query(self.profile)
-                        if audio
+                        if audio or playback
                         else build_boolean_control_query(control, self.model, profile=self.profile),
                     )
                 if (
@@ -3174,14 +3242,25 @@ class GoveeBLECoordinator(
                     if control == "power_on_behaviour"
                     else getattr(self, control)
                     if audio
+                    else self.local_sound_playback
+                    if playback
                     else self.boolean_control_state.get(control)
                 )
                 if actual != value:
                     raise ValueError("Device did not confirm the requested setting")
-                if (control == "local_sound" or control == "local_sound_enabled" and value is True) and not (
+                if (control == "local_sound" or playback and value is True) and not (
                     self.boolean_control_state.get("local_sound_enabled") and self.local_sound_playing
                 ):
                     raise ValueError("Device did not confirm local sound playback")
+                if (
+                    playback
+                    and value is False
+                    and not (
+                        self.boolean_control_state.get("local_sound_enabled") is True
+                        and self.local_sound_playing is False
+                    )
+                ):
+                    raise ValueError("Device did not confirm local sound pause")
                 if expected_sound is not None and self.local_sound != expected_sound:
                     raise ValueError("Device did not confirm the selected local sound")
 
@@ -3792,11 +3871,30 @@ class GoveeBLECoordinator(
             async with asyncio.timeout(UPLOAD_ACK_TIMEOUT):
                 accepted = await pending.future
         except TimeoutError as err:
-            raise UploadAckTimeoutError("Device did not acknowledge effect upload") from err
+            check_connection()
+            failure = UploadAckTimeoutError("Device did not acknowledge effect upload")
+            failure.before_activation = pending.before_activation
+            raise failure from err
         check_connection()
         if not accepted:
             raise RuntimeError(f"Device rejected {pending.protocol:02X} upload")
-        self._upload_ack = None
+        if self._upload_ack is pending:
+            self._upload_ack = None
+
+    async def _release_unconfirmed_upload(
+        self, client: BleakClient | None, token: object | None, writer: ProfileWriter | None
+    ) -> None:
+        try:
+            async with asyncio.timeout(VALIDATION_DISCONNECT_TIMEOUT):
+                async with self._lock if writer is not None else nullcontext():
+                    if client is None or self._client is not client or self._notification_token is not token:
+                        return
+                    await self._disconnect_locked(planned_release=client.is_connected)
+        except (Exception, asyncio.CancelledError) as error:
+            if client is not None and self._client is client and self._notification_token is token:
+                self._clear_client_state(client)
+                await asyncio.shield(self._release_retired_client(client))
+            _LOGGER.warning("Upload correlation release failed model=%s failure=%s", self.model, type(error).__name__)
 
     async def _write_effect_final_packet(
         self,
@@ -3830,11 +3928,13 @@ class GoveeBLECoordinator(
     async def _a3_upload_transaction(self, packets: Sequence[bytes]) -> AsyncIterator[A3Sequence]:
         previous = self._a3_sequence
         sequence = A3Sequence(packets)
-        self._a3_sequence = (asyncio.current_task(), sequence)
+        owned = (asyncio.current_task(), sequence)
+        self._a3_sequence = owned
         try:
             yield sequence
         finally:
-            self._a3_sequence = previous
+            if self._a3_sequence is owned:
+                self._a3_sequence = previous
 
     async def async_write_effect_sequence(
         self,
@@ -3863,6 +3963,7 @@ class GoveeBLECoordinator(
         ACKs correlate by subscription, profile generation and completed subtype.
         The wire has no transaction ID: a late same-subtype ACK arriving during a
         later final attempt cannot be distinguished from that attempt's response.
+        An unconfirmed channel is released before it can authorise another upload.
         """
         if self.hass.is_stopping:
             raise RuntimeError("Home Assistant is stopping")
@@ -3888,6 +3989,8 @@ class GoveeBLECoordinator(
                     sequence.reset()
                     pending_ack: PendingUploadAck | None = None
                     awaiting_upload_ack = False
+                    mode_write_baseline = self._mode_write_generation
+                    attempt_client, attempt_token = self._client, self._notification_token
                     try:
                         if writer is None:
                             async with asyncio.timeout(CONNECTION_SETUP_TIMEOUT):
@@ -3906,6 +4009,8 @@ class GoveeBLECoordinator(
                                     client, preparation_packets, packet_validator
                                 )
                         token, generation = self._notification_token, self._profile_generation
+                        attempt_client, attempt_token = client, token
+                        mode_write_baseline = self._mode_write_generation
                         prepared_profile = self.effect_authorization_profile
                         self._require_not_dreamview_claimed()
 
@@ -3951,6 +4056,7 @@ class GoveeBLECoordinator(
                                 client: BleakClient = client,
                                 token: object | None = token,
                                 generation: int = generation,
+                                mode_write_baseline: int = mode_write_baseline,
                             ) -> None:
                                 nonlocal pending_ack
                                 self._require_not_dreamview_claimed()
@@ -3972,6 +4078,7 @@ class GoveeBLECoordinator(
                                         protocol,
                                         asyncio.get_running_loop().create_future(),
                                         check_profile,
+                                        self._mode_write_generation == mode_write_baseline,
                                     )
                                     self._upload_ack = pending_ack
 
@@ -4013,15 +4120,38 @@ class GoveeBLECoordinator(
                             if progress is not None:
                                 await progress(index)
                         break
-                    except asyncio.CancelledError:
-                        if writer is None and self._encryption is not None:
+                    except asyncio.CancelledError as error:
+                        if self._client is not None and (
+                            self._client is not attempt_client
+                            or self._notification_token is not None
+                            and self._notification_token is not attempt_token
+                        ):
+                            transition.superseded = True
+                            raise
+                        if require_upload_ack and self._mode_write_generation == mode_write_baseline:
+                            if upload_attempted:
+                                await self._release_unconfirmed_upload(attempt_client, attempt_token, writer)
+                            raise UploadCancelledError() from error
+                        if writer is None and self._encryption is not None and self._client is attempt_client:
                             await self._disconnect_locked()
                         raise
+                    except UploadAckTimeoutError:
+                        await self._release_unconfirmed_upload(attempt_client, attempt_token, writer)
+                        raise
                     except (BleakError, TimeoutError) as err:
+                        if self._client is not None and (
+                            self._client is not attempt_client
+                            or self._notification_token is not None
+                            and self._notification_token is not attempt_token
+                        ):
+                            transition.superseded = True
+                            raise ModeTransitionSupersededError("Effect upload subscription changed") from err
                         if writer is not None:
                             raise
-                        self._upload_ack = None
-                        await self._disconnect_locked()
+                        if self._upload_ack is pending_ack:
+                            self._upload_ack = None
+                        if self._client is attempt_client:
+                            await self._disconnect_locked()
                         if isinstance(err, DreamviewClaimedError):
                             raise
                         if self.hass.is_stopping:
@@ -4029,7 +4159,6 @@ class GoveeBLECoordinator(
                         if (
                             attempt == attempts
                             or awaiting_upload_ack
-                            or isinstance(err, UploadAckTimeoutError)
                             or (upload_attempted and not self.profile.effect_retry_after_upload)
                             or (retry_allowed is not None and not retry_allowed())
                         ):
@@ -4037,7 +4166,8 @@ class GoveeBLECoordinator(
                         if needs_reconnect_backoff(err):
                             await asyncio.sleep(RETRY_BACKOFF_SECONDS * attempt)
                     finally:
-                        self._upload_ack = None
+                        if self._upload_ack is pending_ack:
+                            self._upload_ack = None
                         if pending_ack is not None:
                             pending_ack.close()
                 if final_packet is not None:

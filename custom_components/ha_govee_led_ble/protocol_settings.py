@@ -770,17 +770,32 @@ def parse_boolean_control(generated: Any, model: str, *, profile: ModelProfile |
     return {control: bool(flag)}
 
 
-def build_local_audio(control: str, value: int, profile: ModelProfile) -> bytes:
-    if profile.setting_grammar != "H6093" or type(value) is not int:
+@dataclass(frozen=True, slots=True)
+class LocalSoundPlayback:
+    code: int
+    playing: bool
+
+
+def build_local_audio(control: str, value: int | LocalSoundPlayback, profile: ModelProfile) -> bytes:
+    if profile.setting_grammar != "H6093" or not (type(value) is int or isinstance(value, LocalSoundPlayback)):
         raise ValueError("Unsupported local audio setting")
+    if control == "local_sound" and type(value) is int:
+        value = LocalSoundPlayback(value, True)
     root = H6093Projector.AudioWrite()
     root.header = b"\x33"
-    if control == "local_sound" and 1 <= value <= len(profile.local_sound_options):
+    if (
+        control == "local_sound"
+        and isinstance(value, LocalSoundPlayback)
+        and type(value.code) is int
+        and type(value.playing) is bool
+        and 1 <= value.code <= len(profile.local_sound_options)
+    ):
         root.opcode = H6093Projector.Command.local_sound
         root.body = _child(H6093Projector.SoundBody, root)
-        root.body.playing, root.body.code, root.body.opaque_tail = 1, value, bytes(15)
+        root.body.playing, root.body.code, root.body.opaque_tail = int(value.playing), value.code, bytes(15)
     elif (
         control == "local_volume"
+        and type(value) is int
         and profile.local_volume_range is not None
         and profile.local_volume_range[0] <= value <= profile.local_volume_range[1]
     ):

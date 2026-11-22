@@ -65,9 +65,13 @@ Disabling Live or closing the editor stops further Live changes without undoing 
 Restoring a previously off light may briefly illuminate it before turning it off again.
 
 H6093 uses its own projector controls, scenes and DIY formats.
-If a complete projector appearance is unavailable, **Initialise projector lighting** explicitly turns it on at full master brightness, sets both aurora patterns to steady blue and sets the stars to 50% without flicker or movement.
+If a complete projector appearance is unavailable, **Initialise projector lighting** explicitly turns it on at full master brightness, sets both aurora patterns to one blue colour and sets the stars to 50% without flicker or movement.
 This replaces the current lighting settings and establishes a complete recovery baseline.
 Later controller revisions retain completed native writes rather than claiming independent palette readback; Live preview requires observed appearance.
+Aurora movement controls physical motion separately from pattern speed.
+A single-colour palette does not demonstrate colour-flow speed; test Fade, Breathe or Flash, or use multiple colours in Effect Studio.
+Create and save projector DIY in Effect Studio; there is no separate DIY entity.
+Local sound playback pauses or resumes the selected sound; Local sound mode controls device-wide sound enablement.
 
 Choose **Canvas** to paint native logical segments and save complete colour compositions for recall.
 New canvases and **Clear all** set every segment Off (black), so you can paint only the segments you want lit and save the complete layout.

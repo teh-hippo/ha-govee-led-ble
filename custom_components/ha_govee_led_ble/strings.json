@@ -25,7 +25,8 @@
     "switch": {
       "pairing_prompt": {"name": "Speaker pairing prompt"},
       "quiet_start": {"name": "Quiet startup"},
-      "local_sound_enabled": {"name": "Local sound playback"},
+      "local_sound_enabled": {"name": "Local sound mode"},
+      "local_sound_playback": {"name": "Local sound playback"},
       "dreamview_laser": {"name": "Stars in DreamView"},
       "projector_star_flicker": {"name": "Star flicker"},
       "projector_star_movement": {"name": "Star movement"},
@@ -64,7 +65,7 @@
         "wind": "Wind", "calm": "Calm", "upbeat": "Upbeat", "night_music": "Night music",
         "clock": "Clock", "train": "Train"
       }},
-      "projector_aurora_pattern": {"name": "Aurora pattern", "state": {"fade": "Fade", "breathe": "Breathe", "flash": "Flash", "steady": "Steady"}},
+      "projector_aurora_pattern": {"name": "Aurora pattern", "state": {"fade": "Fade", "breathe": "Breathe", "flash": "Flash", "steady": "Colour flow"}},
       "strip_direction": {"name": "Strip direction", "state": {"clockwise": "Clockwise", "anticlockwise": "Anticlockwise"}},
       "camera_position": {"name": "Camera position", "state": {"top": "Top", "bottom": "Bottom"}},
       "gradient": {"name": "Gradient", "state": {"off": "Off", "on": "On"}},

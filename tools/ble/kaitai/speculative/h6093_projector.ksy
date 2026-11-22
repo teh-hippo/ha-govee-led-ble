@@ -13,6 +13,7 @@ doc: |
   palette-control selector and can address the coarse and fine patterns separately.
   Unknown trailing bytes are retained. Physical rendering and later-revision
   independent appearance readback remain unqualified.
+  Pattern 04 selects colour flow, independently of physical aurora movement.
 seq:
   - id: marker
     contents: [0x48]
@@ -52,7 +53,7 @@ enums:
     1: fade
     2: breathe
     3: flash
-    4: steady
+    4: colour_flow
 types:
   audio_write:
     seq:
