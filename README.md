@@ -5,7 +5,8 @@
 [![Validate][validate-badge]][validate-url]
 [![Home Assistant][ha-badge]][ha-url]
 
-**Govee LED BLE** is a fully local Home Assistant integration for complete control of supported Govee BLE lights—without the cloud.  It connects directly over Bluetooth or through ESPHome Bluetooth proxies, with **Effect Studio** for creating custom effects.
+**Govee LED BLE** provides fully local Home Assistant control of supported Govee BLE lights.
+Connect over Bluetooth or ESPHome Bluetooth proxies, and create custom effects with **Effect Studio**.
 
 ## Device support
 
@@ -53,30 +54,33 @@ To request another model or suggest a device-specific fix, see [CONTRIBUTING.md]
 
 ## Effect Studio
 
-Effect Studio is a Home Assistant sidebar panel that gives you full control of supported devices' effect capabilities.  Explore built-in scenes, create custom effects with colours and layers, tune music and camera/video settings, and preview changes live before saving.  The panel shows the controls available for your device.
+Effect Studio is a Home Assistant sidebar panel showing your device's available effect controls.
+Explore built-in scenes, create effects with colours and layers, tune music and camera/video settings, and preview changes live before saving.
 
 Effects require a recoverable static layout before starting.
 Normal release-mode idle disconnects retain that history, with identity and layout checked again before reuse.
 Effect off restores that original layout, including different area and segment colours, even after switching between effects.
 If recovery state is unavailable, including after restarting while an effect is running, establish a complete static colour and brightness layout through the integration first.
-Devices without full readback can use successfully delivered static controls.
+Write-only devices can use successfully delivered static controls.
 Live effect selections retain extra readback requirements for source layouts and configurable segments; Apply remains available for complete write-only layouts.
 Disabling Live or closing the editor stops further Live changes without undoing completed changes.
 Restoring a previously off light may briefly illuminate it before turning it off again.
 
 H6093 uses its own projector controls, scenes and DIY formats.
-If a complete projector appearance is unavailable, **Initialise projector lighting** explicitly turns it on at full master brightness, sets both aurora patterns to one blue colour and sets the stars to 50% without flicker or movement.
+**Initialise projector lighting** establishes a missing projector appearance.
+It turns the light on at full master brightness, sets both aurora patterns blue and sets the stars to 50% with flicker and movement off.
 This replaces the current lighting settings and establishes a complete recovery baseline.
-Later controller revisions retain completed native writes rather than claiming independent palette readback; Live preview requires observed appearance.
+Later controller revisions retain completed native writes as delivered state.
+Live preview requires observed appearance.
 Aurora movement controls physical motion separately from pattern speed.
 A single-colour palette does not demonstrate colour-flow speed; test Fade, Breathe or Flash, or use multiple colours in Effect Studio.
-Create and save projector DIY in Effect Studio; there is no separate DIY entity.
+Create and save projector DIY in Effect Studio.
 Local sound playback pauses or resumes the selected sound; Local sound mode controls device-wide sound enablement.
 
 Choose **Canvas** to paint native logical segments and save complete colour compositions for recall.
 New canvases and **Clear all** set every segment Off (black), so you can paint only the segments you want lit and save the complete layout.
-These compositions store RGB colours and their input scale, not power, main brightness, relative segment levels or native white settings.
-They use ordinary static controls, so they do not need an effect-recovery baseline or Paint at speed zero.
+Compositions store only RGB colours and their input scale.
+Apply them through ordinary static controls.
 
 ![Effect Studio custom effect editor](docs/images/effect-studio-effects.png)
 
