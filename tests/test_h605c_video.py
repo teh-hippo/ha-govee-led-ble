@@ -288,11 +288,13 @@ async def test_cold_static_omissions_fail_before_writes_but_typed_settings_work(
     assert device._client.write_gatt_char.await_count == 1
 
 
-def test_retention_rejects_new_observation_even_if_value_equal(device):
+def test_retention_accepts_repeated_edges_but_rejects_changed_edges(device):
     device._notify_callback(None, bytearray(frame("aaae01041b304550")))
     _, _, _, guard = prepare_video_mode(device, mode="movie", requested_values=SETTINGS)
     device._notify_callback(None, bytearray(frame("aaae01041b304550")))
-    with pytest.raises(ValueError, match="observations or connection"):
+    guard()
+    device._notify_callback(None, bytearray(frame("aaae01041b304551")))
+    with pytest.raises(ValueError, match="Retained video values"):
         guard()
 
 

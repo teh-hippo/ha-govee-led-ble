@@ -158,7 +158,7 @@ def test_effective_profile_and_reconnect_guard(device):
         guard()
 
 
-async def test_equal_fresh_observation_invalidates_prepared_retention_at_physical_boundary(device):
+async def test_equal_fresh_observation_preserves_prepared_retention_at_physical_boundary(device):
     device.is_on = True
 
     def observe_again(packet):
@@ -167,9 +167,8 @@ async def test_equal_fresh_observation_invalidates_prepared_retention_at_physica
         return packet
 
     device.profile = replace(device.profile, outbound_transform=observe_again)
-    with pytest.raises(ValueError, match="observations or connection"):
-        await apply_active_video_mode(device, mode="game", requested_values={}, verify=False)
-    device._client.write_gatt_char.assert_not_awaited()
+    await apply_active_video_mode(device, mode="game", requested_values={}, verify=False)
+    assert device._client.write_gatt_char.await_args.args[1] == frame("330500010b3e01a537")
     assert device._field_revisions["video_parameters"] == 2
 
 

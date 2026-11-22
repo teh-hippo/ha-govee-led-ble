@@ -122,9 +122,6 @@ def prepare_video_mode(
     resolved_parameters = retained_parameters | dict(parameters or {})
     client = getattr(coordinator, "_client", None)
     token = getattr(coordinator, "_notification_token", None)
-    retained_revisions = {f"video_{field}": coordinator._field_revisions.get(f"video_{field}", 0) for field in retained}
-    if retained_parameters.keys() - (parameters or {}).keys():
-        retained_revisions["video_parameters"] = coordinator._field_revisions.get("video_parameters", 0)
 
     def check_retained() -> None:
         require_video_mode(coordinator.profile, coordinator)
@@ -134,13 +131,8 @@ def prepare_video_mode(
         if (
             getattr(coordinator, "_client", None) is not client
             or getattr(coordinator, "_notification_token", None) is not token
-            or any(
-                coordinator._field_revisions.get(field, 0) != revision for field, revision in retained_revisions.items()
-            )
         ):
-            raise ValueError(
-                "Retained video settings changed: observations or connection changed before write; refresh and retry"
-            )
+            raise ValueError("Video connection changed before write; refresh and retry")
         coordinator.profile.validate_video_saturation(values["saturation"])
         if any(getattr(coordinator, f"video_{field}") != value for field, value in retained.items()):
             raise ValueError("Retained video settings changed before write; refresh and retry")
@@ -150,21 +142,8 @@ def prepare_video_mode(
             if current_observed is not None
             else (coordinator.profile.default_video_parameters if parameters is None else None) or {}
         )
-        if any(
-            current.get(field) != value
-            for field, value in retained_parameters.items()
-            if field not in (parameters or {})
-        ):
+        if current | dict(parameters or {}) != resolved_parameters:
             raise ValueError("Retained video values changed before write; refresh and retry")
-        if (
-            observed_parameters is not None
-            and (retained_parameters.keys() - (parameters or {}).keys())
-            and (
-                getattr(coordinator, "_client", None) is not client
-                or getattr(coordinator, "_notification_token", None) is not token
-            )
-        ):
-            raise ValueError("Video connection changed before write; refresh and retry")
 
     values = {
         field: requested_values.get(field, getattr(coordinator, f"video_{field}"))
