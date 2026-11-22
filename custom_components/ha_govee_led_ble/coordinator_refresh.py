@@ -40,6 +40,10 @@ class RefreshRequest:
     video_saturation: int | None = None
     video_sound_effects: bool | None = None
     video_sound_effects_softness: int | None = None
+    video_sensitivity: int | None = None
+    video_hdmi_input: int | None = None
+    hdmi_box_light: tuple[bool, int, bool, int] | None = None
+    video_color_calibration: tuple[int, ...] | None = None
     white_brightness: int | None = None
     white_balance: tuple[int, ...] | None = None
     white_balance_flag: int | None = None
@@ -100,6 +104,22 @@ class RefreshRequest:
         return self.black_border is not None
 
     @property
+    def expects_video_sensitivity(self) -> bool:
+        return self.video_sensitivity is not None
+
+    @property
+    def expects_hdmi_input(self) -> bool:
+        return self.video_hdmi_input is not None
+
+    @property
+    def expects_hdmi_box_light(self) -> bool:
+        return self.hdmi_box_light is not None
+
+    @property
+    def expects_video_color_calibration(self) -> bool:
+        return self.video_color_calibration is not None
+
+    @property
     def expects_relative_brightness(self) -> bool:
         return self.relative_brightness is not None
 
@@ -124,6 +144,9 @@ class RefreshRequest:
                 ("video_saturation", self.video_saturation),
                 ("video_sound_effects", self.video_sound_effects),
                 ("video_sound_effects_softness", self.video_sound_effects_softness),
+                ("video_sensitivity", self.video_sensitivity),
+                ("video_hdmi_input", self.video_hdmi_input),
+                ("video_color_calibration", self.video_color_calibration),
                 ("white_brightness", self.white_brightness),
             )
             if value is not None
@@ -143,6 +166,14 @@ class RefreshRequest:
             expectations.update(zip(fields, self.white_balance, strict=True))
         if self.white_balance_flag is not None:
             expectations["white_balance_flag"] = self.white_balance_flag
+        if self.hdmi_box_light is not None:
+            expectations.update(
+                zip(
+                    ("hdmi_box_light", "hdmi_box_brightness", "hdmi_box_automatic", "hdmi_box_effect"),
+                    self.hdmi_box_light,
+                    strict=True,
+                )
+            )
         if self.blank_screen is not None:
             expectations["blank_screen"] = self.blank_screen
         if self.blank_screen_policy is not None:

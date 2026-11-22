@@ -109,6 +109,15 @@ def status_is_authorized(decoded: ParsedStatusEnvelope, profile: ModelProfile) -
         return False
     if domain_name == "power_on_behaviour":
         return profile.supports_power_on_behaviour
+    if decoded.domain is ReadDomain.DISPLAY_SETTING and profile.status_grammar == "H8604":
+        setting = getattr(decoded.generated.body.setting, "name", None)
+        if setting == "sensitivity":
+            return profile.supports_video_sensitivity
+        if setting == "hdmi_input":
+            return profile.supports_hdmi_input
+        if setting == "colour_calibration":
+            return profile.supports_video_color_calibration
+        return setting in {"blank_screen", "black_border"}
     if decoded.domain is ReadDomain.LOW_BLUE_LIGHT:
         return profile.setting_grammar == "H6072" and profile.supports_low_blue_light
     control = boolean_control_name(domain_name)

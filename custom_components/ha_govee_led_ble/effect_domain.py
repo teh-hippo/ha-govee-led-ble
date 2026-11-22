@@ -334,6 +334,13 @@ class VideoProfile:
     blank_screen_low_brightness_duration_seconds: int | None = None
     blank_screen_same_tone_duration_seconds: int | None = None
     whole_relative_brightness: int | None = None
+    video_sensitivity: int | None = None
+    hdmi_input: int | None = None
+    hdmi_box_light: bool | None = None
+    hdmi_box_brightness: int | None = None
+    hdmi_box_automatic: bool | None = None
+    hdmi_box_effect: int | None = None
+    color_calibration: tuple[int, ...] | None = None
 
     def __post_init__(self) -> None:
         _validate_identifier(self.model, "model")
@@ -348,6 +355,13 @@ class VideoProfile:
             (self.saturation, "saturation", profile.supports_video_saturation),
             (self.sound_effects, "sound_effects", profile.supports_video_sound_effects),
             (self.sound_effects_softness, "sound_effects_softness", profile.supports_video_sound_effects),
+            (self.video_sensitivity, "video_sensitivity", profile.supports_video_sensitivity),
+            (self.hdmi_input, "hdmi_input", profile.supports_hdmi_input),
+            (self.hdmi_box_light, "hdmi_box_light", profile.supports_hdmi_box_light),
+            (self.hdmi_box_brightness, "hdmi_box_brightness", profile.supports_hdmi_box_light),
+            (self.hdmi_box_automatic, "hdmi_box_automatic", profile.supports_hdmi_box_light),
+            (self.hdmi_box_effect, "hdmi_box_effect", profile.supports_hdmi_box_light),
+            (self.color_calibration, "color_calibration", profile.supports_video_color_calibration),
             (self.white_balance_position, "white_balance_position", profile.supports_white_balance),
             (self.white_balance_value, "white_balance_value", profile.supports_white_balance),
             (
@@ -373,6 +387,51 @@ class VideoProfile:
                 minimum=profile.video_softness_min,
                 maximum=profile.video_softness_max,
             )
+        if self.video_sensitivity is not None:
+            _validate_range(
+                self.video_sensitivity,
+                "video_sensitivity",
+                minimum=profile.video_sensitivity_min,
+                maximum=profile.video_sensitivity_max,
+            )
+        if self.hdmi_input is not None:
+            _validate_range(
+                self.hdmi_input,
+                "hdmi_input",
+                minimum=0,
+                maximum=profile.hdmi_input_count - 1,
+            )
+        box_values = (
+            self.hdmi_box_light,
+            self.hdmi_box_brightness,
+            self.hdmi_box_automatic,
+            self.hdmi_box_effect,
+        )
+        if any(value is not None for value in box_values) and any(value is None for value in box_values):
+            raise EffectValidationError("HDMI box light requires enabled, brightness, automatic and effect")
+        if self.hdmi_box_light is not None:
+            assert self.hdmi_box_brightness is not None
+            assert self.hdmi_box_automatic is not None
+            assert self.hdmi_box_effect is not None
+            _validate_bool(self.hdmi_box_light, "hdmi_box_light")
+            _validate_range(self.hdmi_box_brightness, "hdmi_box_brightness", minimum=1, maximum=100)
+            _validate_bool(self.hdmi_box_automatic, "hdmi_box_automatic")
+            _validate_range(
+                self.hdmi_box_effect,
+                "hdmi_box_effect",
+                minimum=0,
+                maximum=profile.hdmi_box_effect_max,
+            )
+        if self.color_calibration is not None:
+            if not isinstance(self.color_calibration, tuple) or len(self.color_calibration) not in {3, 4}:
+                raise EffectValidationError("color_calibration must contain three or four channels")
+            for value in self.color_calibration:
+                _validate_range(
+                    value,
+                    "color-calibration channel",
+                    minimum=profile.video_color_calibration_min,
+                    maximum=profile.video_color_calibration_max,
+                )
         if self.whole_relative_brightness is not None:
             _validate_range(self.whole_relative_brightness, "whole_relative_brightness", minimum=0, maximum=100)
         if self.white_balance_position is not None:
@@ -986,6 +1045,13 @@ def _content_to_dict(content: EffectContent) -> dict[str, JsonValue]:
             "saturation": content.saturation,
             "sound_effects": content.sound_effects,
             "sound_effects_softness": content.sound_effects_softness,
+            **({"video_sensitivity": content.video_sensitivity} if content.video_sensitivity is not None else {}),
+            **({"hdmi_input": content.hdmi_input} if content.hdmi_input is not None else {}),
+            **({"hdmi_box_light": content.hdmi_box_light} if content.hdmi_box_light is not None else {}),
+            **({"hdmi_box_brightness": content.hdmi_box_brightness} if content.hdmi_box_brightness is not None else {}),
+            **({"hdmi_box_automatic": content.hdmi_box_automatic} if content.hdmi_box_automatic is not None else {}),
+            **({"hdmi_box_effect": content.hdmi_box_effect} if content.hdmi_box_effect is not None else {}),
+            **({"color_calibration": list(content.color_calibration)} if content.color_calibration is not None else {}),
             "white_balance_position": content.white_balance_position,
             **({"white_balance_value": content.white_balance_value} if content.white_balance_value is not None else {}),
             "relative_brightness": (
@@ -1147,6 +1213,19 @@ def _content_from_dict(raw: Mapping[str, Any]) -> EffectContent:
             saturation=_optional_int(raw, "saturation"),
             sound_effects=_optional_bool(raw, "sound_effects"),
             sound_effects_softness=_optional_int(raw, "sound_effects_softness"),
+            video_sensitivity=_optional_int(raw, "video_sensitivity"),
+            hdmi_input=_optional_int(raw, "hdmi_input"),
+            hdmi_box_light=_optional_bool(raw, "hdmi_box_light"),
+            hdmi_box_brightness=_optional_int(raw, "hdmi_box_brightness"),
+            hdmi_box_automatic=_optional_bool(raw, "hdmi_box_automatic"),
+            hdmi_box_effect=_optional_int(raw, "hdmi_box_effect"),
+            color_calibration=(
+                tuple(
+                    _required_int({"value": value}, "value") for value in _required_sequence(raw, "color_calibration")
+                )
+                if "color_calibration" in raw
+                else None
+            ),
             white_balance_position=_optional_int(raw, "white_balance_position"),
             white_balance_value=_optional_int(raw, "white_balance_value"),
             relative_brightness=_optional_relative_brightness(raw, "relative_brightness"),

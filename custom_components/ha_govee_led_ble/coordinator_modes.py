@@ -156,6 +156,14 @@ class _ActiveModeMixin(_CoordinatorBase):
         self.video_saturation = self.white_brightness = 100
         self.video_full_screen, self.video_sound_effects = True, False
         self.video_sound_effects_softness = 100
+        self.video_sensitivity: int | None = None
+        self.video_hdmi_input: int | None = None
+        self.video_hdmi_inputs_connected: tuple[bool, bool, bool, bool] | None = None
+        self.hdmi_box_light: bool | None = None
+        self.hdmi_box_brightness: int | None = None
+        self.hdmi_box_automatic: bool | None = None
+        self.hdmi_box_effect: int | None = None
+        self.video_color_calibration: tuple[int, ...] | None = None
         self.video_parameters: dict[str, Any] | None = None
         self.installation_direction: int | None = None
         self.camera_health = "unknown"

@@ -67,6 +67,25 @@ function decodeVideoControls(value: unknown): VideoControls {
     saturation_min: integerValue(controls.saturation_min, "video saturation minimum", 0, 100),
     ...(controls.softness_min === undefined ? {} : {softness_min: integerValue(controls.softness_min, "video softness minimum", 0, 100)}),
     ...(controls.softness_max === undefined ? {} : {softness_max: integerValue(controls.softness_max, "video softness maximum", 0, 100)}),
+    video_sensitivity: {
+      minimum: integerValue(objectValue(controls.video_sensitivity, "video sensitivity control").minimum, "video sensitivity minimum", 0, 255),
+      maximum: integerValue(objectValue(controls.video_sensitivity, "video sensitivity control").maximum, "video sensitivity maximum", 0, 255),
+      default: integerValue(objectValue(controls.video_sensitivity, "video sensitivity control").default, "video sensitivity default", 0, 255),
+    },
+    ...(controls.hdmi_input_count === undefined ? {} : {
+      hdmi_input_count: integerValue(controls.hdmi_input_count, "HDMI input count", 0, 16),
+    }),
+    ...(controls.hdmi_box_effect_max === undefined ? {} : {
+      hdmi_box_effect_max: integerValue(controls.hdmi_box_effect_max, "HDMI box effect maximum", 0, 255),
+    }),
+    color_calibration: {
+      minimum: integerValue(objectValue(controls.color_calibration, "colour calibration control").minimum, "colour calibration minimum", 0, 255),
+      maximum: integerValue(objectValue(controls.color_calibration, "colour calibration control").maximum, "colour calibration maximum", 0, 255),
+      default: arrayValue(objectValue(controls.color_calibration, "colour calibration control").default, "colour calibration default", 4)
+        .map(value => integerValue(value, "colour calibration default channel", 0, 255)),
+      channels: arrayValue(objectValue(controls.color_calibration, "colour calibration control").channels, "colour calibration channels", 4)
+        .map(value => integerValue(value, "colour calibration channel count", 1, 4)),
+    },
     white_balance: {
       representation: enumString(white.representation, ["position", "scalar"] as const, "white balance representation"),
       minimum: integerValue(white.minimum, "white balance minimum", 0, 255),
@@ -82,6 +101,10 @@ const VIDEO_PROFILE_SETTINGS = [
   "capture_region",
   "saturation",
   "sound_effects",
+  "video_sensitivity",
+  "hdmi_input",
+  "hdmi_box_light",
+  "color_calibration",
   "white_balance",
   "relative_brightness",
   "whole_relative_brightness",

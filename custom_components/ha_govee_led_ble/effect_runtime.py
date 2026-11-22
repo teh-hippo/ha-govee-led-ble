@@ -64,8 +64,12 @@ from .effect_protocol_decoder import decode_effect_frames
 from .generated_protocol_adapter import (
     build_black_border,
     build_blank_screen,
+    build_hdmi_box_light,
+    build_hdmi_input,
     build_power,
     build_relative_brightness,
+    build_video_color_calibration,
+    build_video_sensitivity,
     build_white_balance,
     build_whole_relative_brightness,
     upload_ack_mode,
@@ -81,7 +85,11 @@ from .native_profile_controls import (
     apply_active_video_mode,
     apply_black_border,
     apply_blank_screen,
+    apply_hdmi_box_light,
+    apply_hdmi_input,
     apply_relative_brightness,
+    apply_video_color_calibration,
+    apply_video_sensitivity,
     apply_white_balance,
     apply_whole_relative_brightness,
     async_prepare_video_mode,
@@ -282,6 +290,14 @@ async def async_apply_compiled_profile(
             compiled.white_balance_wire[1] if len(compiled.white_balance_wire) == 2 else None,
             coordinator.model,
         )
+    if compiled.video_sensitivity is not None:
+        build_video_sensitivity(compiled.video_sensitivity, coordinator.model, profile=profile)
+    if compiled.hdmi_input is not None:
+        build_hdmi_input(compiled.hdmi_input, coordinator.model, profile=profile)
+    if compiled.hdmi_box_light is not None:
+        build_hdmi_box_light(*compiled.hdmi_box_light, coordinator.model, profile=profile)
+    if compiled.color_calibration is not None:
+        build_video_color_calibration(compiled.color_calibration, coordinator.model, profile=profile)
     if compiled.relative_brightness is not None and not compiled.relative_brightness_inline:
         values = compiled.relative_brightness
         build_relative_brightness(
@@ -330,6 +346,30 @@ async def async_apply_compiled_profile(
 
         if compiled.white_balance_wire is not None:
             await apply_white_balance(coordinator, compiled.white_balance_wire, writer=writer, verify=verify)
+            completed += 1
+            if progress is not None:
+                await progress(completed)
+
+        if compiled.video_sensitivity is not None:
+            await apply_video_sensitivity(coordinator, compiled.video_sensitivity, writer=writer, verify=verify)
+            completed += 1
+            if progress is not None:
+                await progress(completed)
+
+        if compiled.hdmi_input is not None:
+            await apply_hdmi_input(coordinator, compiled.hdmi_input, writer=writer, verify=verify)
+            completed += 1
+            if progress is not None:
+                await progress(completed)
+
+        if compiled.hdmi_box_light is not None:
+            await apply_hdmi_box_light(coordinator, compiled.hdmi_box_light, writer=writer, verify=verify)
+            completed += 1
+            if progress is not None:
+                await progress(completed)
+
+        if compiled.color_calibration is not None:
+            await apply_video_color_calibration(coordinator, compiled.color_calibration, writer=writer, verify=verify)
             completed += 1
             if progress is not None:
                 await progress(completed)
@@ -1261,6 +1301,10 @@ class EffectDeploymentEngine:
             setting
             for setting, requested in (
                 ("white_balance", compiled.white_balance_wire is not None),
+                ("video_sensitivity", compiled.video_sensitivity is not None),
+                ("hdmi_input", compiled.hdmi_input is not None),
+                ("hdmi_box_light", compiled.hdmi_box_light is not None),
+                ("color_calibration", compiled.color_calibration is not None),
                 ("blank_screen", compiled.blank_screen is not None),
                 ("black_border", compiled.black_border is not None),
             )
@@ -1284,6 +1328,21 @@ class EffectDeploymentEngine:
         required: list[object | None] = []
         if compiled.black_border is not None:
             required.append(coordinator.black_border)
+        if compiled.video_sensitivity is not None:
+            required.append(coordinator.video_sensitivity)
+        if compiled.hdmi_input is not None:
+            required.append(coordinator.video_hdmi_input)
+        if compiled.hdmi_box_light is not None:
+            required.extend(
+                (
+                    coordinator.hdmi_box_light,
+                    coordinator.hdmi_box_brightness,
+                    coordinator.hdmi_box_automatic,
+                    coordinator.hdmi_box_effect,
+                )
+            )
+        if compiled.color_calibration is not None:
+            required.append(coordinator.video_color_calibration)
         if compiled.white_balance_wire is not None:
             required.extend(
                 (coordinator.white_balance_scalar,)
@@ -1382,6 +1441,13 @@ class EffectDeploymentEngine:
             video_saturation=getattr(coordinator, "video_saturation", 100),
             video_sound_effects=getattr(coordinator, "video_sound_effects", False),
             video_sound_effects_softness=getattr(coordinator, "video_sound_effects_softness", 100),
+            video_sensitivity=getattr(coordinator, "video_sensitivity", None),
+            video_hdmi_input=getattr(coordinator, "video_hdmi_input", None),
+            hdmi_box_light=getattr(coordinator, "hdmi_box_light", None),
+            hdmi_box_brightness=getattr(coordinator, "hdmi_box_brightness", None),
+            hdmi_box_automatic=getattr(coordinator, "hdmi_box_automatic", None),
+            hdmi_box_effect=getattr(coordinator, "hdmi_box_effect", None),
+            video_color_calibration=getattr(coordinator, "video_color_calibration", None),
             white_balance_red=getattr(coordinator, "white_balance_red", None),
             white_balance_blue=getattr(coordinator, "white_balance_blue", None),
             white_balance_flag=getattr(coordinator, "white_balance_flag", None),
@@ -1880,7 +1946,7 @@ def compiled_observation(
         # H617A settings are not confirmed by the shipped readback evidence.
         if profile.status_grammar == "H6097":
             expectations["music_sensitivity"] = compiled.sensitivity
-        elif profile.status_grammar in {"H605C", "H6099", "H6199", "H66A0"}:
+        elif profile.status_grammar in {"H605C", "H6099", "H6199", "H66A0", "H8604"}:
             expectations["music_sensitivity"] = compiled.sensitivity
             variant = music_variant(
                 profile,
@@ -1910,6 +1976,37 @@ def compiled_observation(
                 expectations.update(zip(fields, compiled.white_balance_wire, strict=True))
                 if profile.video_white_balance_representation == "position":
                     expectations["white_balance_flag"] = 1
+            else:
+                complete = False
+        if compiled.video_sensitivity is not None:
+            if profile.can_read(ReadDomain.DISPLAY_SETTING):
+                expectations["video_sensitivity"] = compiled.video_sensitivity
+            else:
+                complete = False
+        if compiled.hdmi_input is not None:
+            if profile.can_read(ReadDomain.DISPLAY_SETTING):
+                expectations["video_hdmi_input"] = compiled.hdmi_input
+            else:
+                complete = False
+        if compiled.hdmi_box_light is not None:
+            if profile.can_read(ReadDomain.HARDWARE):
+                expectations.update(
+                    zip(
+                        (
+                            "hdmi_box_light",
+                            "hdmi_box_brightness",
+                            "hdmi_box_automatic",
+                            "hdmi_box_effect",
+                        ),
+                        compiled.hdmi_box_light,
+                        strict=True,
+                    )
+                )
+            else:
+                complete = False
+        if compiled.color_calibration is not None:
+            if profile.can_read(ReadDomain.DISPLAY_SETTING):
+                expectations["video_color_calibration"] = compiled.color_calibration
             else:
                 complete = False
         if compiled.blank_screen is not None:

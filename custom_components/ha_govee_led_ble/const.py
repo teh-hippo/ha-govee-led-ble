@@ -173,6 +173,7 @@ class VideoFirmwareCondition:
     control: str
     identity_field: str
     minimum: str
+    maximum: str | None = None
 
     def __post_init__(self) -> None:
         if self.control not in {
@@ -180,6 +181,10 @@ class VideoFirmwareCondition:
             "saturation",
             "sound_effects",
             "white_balance",
+            "video_sensitivity",
+            "hdmi_input",
+            "color_calibration",
+            "color_calibration_red",
             "relative_brightness",
             "whole_relative_brightness",
             "blank_screen",
@@ -190,6 +195,11 @@ class VideoFirmwareCondition:
             raise ValueError("unknown firmware identity field")
         if re.fullmatch(r"[0-9]{1,3}\.[0-9]{2}\.[0-9]{2}", self.minimum) is None:
             raise ValueError("firmware minimum must use major.xx.xx notation")
+        if self.maximum is not None and (
+            re.fullmatch(r"[0-9]{1,3}\.[0-9]{2}\.[0-9]{2}", self.maximum) is None
+            or int(self.maximum.replace(".", "")) < int(self.minimum.replace(".", ""))
+        ):
+            raise ValueError("firmware maximum must be a bounded major.xx.xx version")
 
 
 @dataclass(frozen=True)
@@ -273,6 +283,16 @@ class ModelProfile:
     supports_video_sound_effects: bool = False
     video_softness_min: int = 1
     video_softness_max: int = 100
+    supports_video_sensitivity: bool = False
+    supports_hdmi_input: bool = False
+    hdmi_input_count: int = 0
+    supports_hdmi_box_light: bool = False
+    hdmi_box_effect_max: int = 10
+    video_sensitivity_min: int = 1
+    video_sensitivity_max: int = 100
+    supports_video_color_calibration: bool = False
+    video_color_calibration_min: int = 1
+    video_color_calibration_max: int = 100
     supports_advanced_effects: bool = False
     supports_multi_layered_effects: bool = False
     supports_white_balance: bool = False
@@ -563,6 +583,10 @@ class ModelProfile:
             raise ValueError("unknown video revision policy")
         if type(self.video_saturation_min) is not int or not 0 <= self.video_saturation_min <= 100:
             raise ValueError("video saturation minimum must be from 0 to 100")
+        if self.supports_hdmi_input and self.hdmi_input_count < 1:
+            raise ValueError("HDMI input support requires at least one input")
+        if self.supports_hdmi_box_light and self.hdmi_box_effect_max < 0:
+            raise ValueError("HDMI box light effect maximum must be non-negative")
         if not 0 <= self.video_softness_min <= self.video_softness_max <= 100:
             raise ValueError("invalid video softness range")
         if not self.setup_required_read_domains <= self.read_domains:
@@ -614,6 +638,10 @@ class ModelProfile:
             self.supports_video_capture_region
             or self.supports_video_saturation
             or self.supports_video_sound_effects
+            or self.supports_video_sensitivity
+            or self.supports_hdmi_input
+            or self.supports_hdmi_box_light
+            or self.supports_video_color_calibration
             or self.supports_white_balance
             or self.supports_relative_brightness
             or self.video_embeds_relative_brightness
@@ -1975,6 +2003,115 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         segment_colour_mode_ambiguous=True,
         scene_catalogue_sku="H66A0",
         supports_custom_effects=True,
+        default_effect_families_override=frozenset({EFFECT_FAMILY_VIDEO}),
+        effect_readback="diy_code_only",
+    ),
+    "H8604": ModelProfile(
+        "H8604 Smart AI Sync Box",
+        confirmation_issue=688,
+        command_grammar="H6099",
+        status_grammar="H8604",
+        setting_grammar="H8604",
+        effect_grammar="H6099",
+        music_grammar="H8604",
+        video_grammar="H6099",
+        dreamview_grammar="H6099",
+        dreamview_operations=frozenset(
+            {
+                "replace_group",
+                "delete_group",
+                "switch_group",
+                "member_brightness",
+                "same_brightness",
+                "member_connect",
+                "saturation",
+                "video_settings",
+                "sound",
+            }
+        ),
+        dreamview_reads=frozenset(
+            {
+                "switch_group",
+                "member_brightness",
+                "same_brightness",
+                "member_connect",
+                "saturation",
+                "video_settings",
+                "sound",
+            }
+        ),
+        dreamview_max_sub_devices=10,
+        profile_pact_dependent=True,
+        read_domains=frozenset(
+            {
+                ReadDomain.POWER,
+                ReadDomain.BRIGHTNESS,
+                ReadDomain.COLOUR_MODE,
+                ReadDomain.FIRMWARE,
+                ReadDomain.HARDWARE,
+                ReadDomain.DISPLAY_SETTING,
+                ReadDomain.SUBORDINATE_20,
+                ReadDomain.SUBORDINATE_21,
+                ReadDomain.RELATIVE_BRIGHTNESS,
+                ReadDomain.SEGMENTS,
+                ReadDomain.PHYSICAL_IC_COUNT,
+                ReadDomain.INSTALLATION_DIRECTION,
+            }
+        ),
+        setup_required_read_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE}),
+        supports_installation_direction=True,
+        supports_power_on_behaviour=True,
+        supports_rgb=True,
+        supports_color_temperature=True,
+        color_temp_range=KELVIN_RANGE_2000_9000,
+        static_readback_kelvin=True,
+        supports_scenes=True,
+        supports_custom_effects=True,
+        supports_multi_layered_effects=True,
+        supports_advanced_effects=True,
+        scene_catalogue_sku="H8604",
+        scene_command_versions=frozenset({0, 1}),
+        advanced_scene_carrier=(29884, 41599),
+        workshop_scene_selector=402,
+        workshop_brightness_algorithm=1,
+        diy_requires_upload_ack=True,
+        effect_retry_after_upload=False,
+        music_modes=("energetic", "rhythm", "spectrum", "rolling"),
+        music_variants=(
+            MusicVariant(0x05, "Energetic short selector", supports_fixed_colour=False),
+            MusicVariant(0x03, "Rhythm selector with style and colour", supports_style=True),
+            MusicVariant(0x04, "Spectrum selector with colour"),
+            MusicVariant(0x06, "Rolling selector with colour"),
+        ),
+        supports_music_color=True,
+        supports_video_mode=True,
+        video_modes=("movie",),
+        supports_video_capture_region=True,
+        supports_video_saturation=True,
+        video_saturation_min=1,
+        supports_video_sound_effects=True,
+        supports_video_sensitivity=True,
+        supports_hdmi_input=True,
+        hdmi_input_count=4,
+        supports_hdmi_box_light=True,
+        supports_video_color_calibration=True,
+        video_firmware_conditions=(
+            VideoFirmwareCondition("color_calibration_red", "subordinate_20_version", "2.02.11"),
+            VideoFirmwareCondition("color_calibration_red", "subordinate_21_version", "2.01.11", "2.01.11"),
+        ),
+        video_softness_min=0,
+        video_softness_max=99,
+        video_brightness_zones=("left", "top", "right", "bottom"),
+        supports_relative_brightness=True,
+        supports_blank_screen=True,
+        supports_black_border=True,
+        physical_ic_count=90,
+        segment_count=14,
+        segment_group_size=4,
+        supports_segment_writes=True,
+        supports_segment_brightness=True,
+        supports_segment_color_temperature=True,
+        boolean_controls=frozenset({"gradual", "left_bar_enabled", "middle_enabled", "right_bar_enabled"}),
         default_effect_families_override=frozenset({EFFECT_FAMILY_VIDEO}),
         effect_readback="diy_code_only",
     ),
@@ -3399,6 +3536,7 @@ PERCENT_BRIGHTNESS_STATUS_GRAMMARS = frozenset(
         "H6053-legacy",
         "H6097",
         "H6099",
+        "H8604",
         "H6159",
         "H6181",
         "H6181-modern",
@@ -4229,6 +4367,11 @@ def device_profile(
         if (pact_type, pact_code) != (1, 1):
             return replace(profile, dreamview_operations=frozenset(), dreamview_reads=frozenset())
         return profile
+    if model == "H8604":
+        profile = get_profile(model)
+        if (pact_type, pact_code) in {(1, 1), (2, 1), (3, 1)}:
+            return profile
+        return _basic_revision_profile(profile)
     if model in {"H6046", "H607C", "H6097", "H7020"}:
         profile = get_profile(model)
         if (pact_type, pact_code) in _STANDARD_PACTS or (model == "H607C" and (pact_type, pact_code) == (2, 2)):

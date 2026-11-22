@@ -35,6 +35,7 @@ from .protocol_core import (
     H6179CommandWrite,
     H6181CommandWrite,
     H7020CommandWrite,
+    H8604MusicWrite,
     _child,
     _parse_xor_frame,
     _rgb,
@@ -770,6 +771,22 @@ def build_music_mode(
             if colour is not None:
                 detail.fixed_colour = _rgb(detail, *colour)
         detail.padding = bytes(detail.write_tail_size)
+        return _serialize_xor(root)
+    if resolved == "H8604":
+        root = H8604MusicWrite()
+        root.header = b"\x33\x05\x13"
+        selector = _child(H8604MusicWrite.MusicSelector, root)
+        selector.mode_id = H8604MusicWrite.MusicMode(mode_id)
+        selector.sensitivity = sensitivity
+        if mode_id != int(H8604MusicWrite.MusicMode.energetic):
+            selector.is_calm = int(calm)
+            selector.reserved = b"\x00"
+            selector.has_fixed_colour = int(colour is not None)
+            selector.rgb = _rgb(selector, *(colour or (0, 0, 0)))
+            selector.unknown_tail = bytes(8)
+        else:
+            selector.unknown_tail = bytes(14)
+        root.selector = selector
         return _serialize_xor(root)
     if resolved in {"H1771", "H60B0"}:
         if colour is not None or selector_parameters:

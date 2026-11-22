@@ -65,6 +65,9 @@ from .protocol_settings import build_configured_strings as build_configured_stri
 from .protocol_settings import build_configured_strings_query as build_configured_strings_query
 from .protocol_settings import build_firmware_query as build_firmware_query
 from .protocol_settings import build_hardware_query as build_hardware_query
+from .protocol_settings import build_hdmi_box_light as build_hdmi_box_light
+from .protocol_settings import build_hdmi_box_light_query as build_hdmi_box_light_query
+from .protocol_settings import build_hdmi_input as build_hdmi_input
 from .protocol_settings import build_ic_refresh as build_ic_refresh
 from .protocol_settings import build_installation_direction as build_installation_direction
 from .protocol_settings import build_installation_direction_query as build_installation_direction_query
@@ -80,6 +83,8 @@ from .protocol_settings import build_strip_calibration as build_strip_calibratio
 from .protocol_settings import build_strip_calibration_cancel as build_strip_calibration_cancel
 from .protocol_settings import build_subordinate_query as build_subordinate_query
 from .protocol_settings import build_swap_bars as build_swap_bars
+from .protocol_settings import build_video_color_calibration as build_video_color_calibration
+from .protocol_settings import build_video_sensitivity as build_video_sensitivity
 from .protocol_settings import build_white_balance_query as build_white_balance_query
 from .protocol_settings import build_whole_relative_brightness as build_whole_relative_brightness
 from .protocol_settings import bulk_status_domains as bulk_status_domains

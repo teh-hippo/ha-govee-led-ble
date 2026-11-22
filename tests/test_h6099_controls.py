@@ -40,7 +40,7 @@ from tests.coordinator_test_support import frame
 
 @pytest.mark.parametrize("value,code", [("previous", 0), ("on", 1), ("off", 2)])
 @pytest.mark.parametrize("reply", ["match", "mismatch", "unavailable", "unknown", "missing"])
-@pytest.mark.parametrize("model,query_hex", [("H6097", "aa4102"), ("H1AB2", "aa4100")])
+@pytest.mark.parametrize("model,query_hex", [("H6097", "aa4102"), ("H1AB2", "aa4100"), ("H8604", "aa4102")])
 async def test_power_on_setting_requires_fresh_ordinary_readback(
     hass, monkeypatch, value, code, reply, model, query_hex
 ):

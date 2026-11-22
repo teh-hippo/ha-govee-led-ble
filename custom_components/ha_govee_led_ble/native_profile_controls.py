@@ -12,9 +12,13 @@ from .coordinator_refresh import RefreshRequest
 from .generated_protocol_adapter import (
     build_black_border,
     build_blank_screen,
+    build_hdmi_box_light,
+    build_hdmi_input,
     build_power,
     build_relative_brightness,
+    build_video_color_calibration,
     build_video_mode,
+    build_video_sensitivity,
     build_white_balance,
     build_whole_relative_brightness,
     video_parameter_read_domain,
@@ -342,6 +346,110 @@ async def apply_whole_relative_brightness(
     ):
         return True
     raise RuntimeError("Whole-video brightness was not confirmed by the device")
+
+
+async def apply_video_sensitivity(
+    coordinator: GoveeBLECoordinator,
+    value: int,
+    *,
+    writer: ProfileWriter | None = None,
+    verify: bool = True,
+) -> bool:
+    packet = build_video_sensitivity(value, coordinator.model, profile=coordinator.profile)
+    for _ in range(2 if verify else 1):
+        await _send_video_setting(
+            coordinator,
+            packet,
+            frozenset({"video_sensitivity"}),
+            writer=writer,
+            state_values={"video_sensitivity": value},
+            expected_values={"video_sensitivity": value} if verify else None,
+        )
+        if not verify:
+            return True
+        if await coordinator.refresh_state(RefreshRequest(video_sensitivity=value)) is not False:
+            return True
+    raise RuntimeError("Video sensitivity was not confirmed by the device")
+
+
+async def apply_hdmi_input(
+    coordinator: GoveeBLECoordinator,
+    value: int,
+    *,
+    writer: ProfileWriter | None = None,
+    verify: bool = True,
+) -> bool:
+    packet = build_hdmi_input(value, coordinator.model, profile=coordinator.profile)
+    for _ in range(2 if verify else 1):
+        await _send_video_setting(
+            coordinator,
+            packet,
+            frozenset({"hdmi_input"}),
+            writer=writer,
+            state_values={"video_hdmi_input": value},
+            expected_values={"video_hdmi_input": value} if verify else None,
+        )
+        if not verify:
+            return True
+        if await coordinator.refresh_state(RefreshRequest(video_hdmi_input=value)) is not False:
+            return True
+    raise RuntimeError("HDMI input was not confirmed by the device")
+
+
+async def apply_hdmi_box_light(
+    coordinator: GoveeBLECoordinator,
+    values: tuple[bool, int, bool, int],
+    *,
+    writer: ProfileWriter | None = None,
+    verify: bool = True,
+) -> bool:
+    packet = build_hdmi_box_light(*values, coordinator.model, profile=coordinator.profile)
+    fields = dict(
+        zip(
+            ("hdmi_box_light", "hdmi_box_brightness", "hdmi_box_automatic", "hdmi_box_effect"),
+            values,
+            strict=True,
+        )
+    )
+    for _ in range(2 if verify else 1):
+        await _send_video_setting(
+            coordinator,
+            packet,
+            frozenset({"hdmi_box_light"}),
+            writer=writer,
+            state_values=fields,
+            expected_values=fields if verify else None,
+        )
+        if not verify:
+            return True
+        if await coordinator.refresh_state(RefreshRequest(hdmi_box_light=values)) is not False:
+            return True
+    raise RuntimeError("HDMI box light setting was not confirmed by the device")
+
+
+async def apply_video_color_calibration(
+    coordinator: GoveeBLECoordinator,
+    values: tuple[int, ...],
+    *,
+    writer: ProfileWriter | None = None,
+    verify: bool = True,
+) -> bool:
+    packet = build_video_color_calibration(values, coordinator.model, profile=coordinator.profile)
+    controls = frozenset({"color_calibration", *(("color_calibration_red",) if len(values) == 4 else ())})
+    for _ in range(2 if verify else 1):
+        await _send_video_setting(
+            coordinator,
+            packet,
+            controls,
+            writer=writer,
+            state_values={"video_color_calibration": values},
+            expected_values={"video_color_calibration": values} if verify else None,
+        )
+        if not verify:
+            return True
+        if await coordinator.refresh_state(RefreshRequest(video_color_calibration=values)) is not False:
+            return True
+    raise RuntimeError("Video colour calibration was not confirmed by the device")
 
 
 async def _send_video_setting(

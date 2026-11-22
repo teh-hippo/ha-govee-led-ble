@@ -128,6 +128,13 @@ def _video_template(model: str, mode: NativeModeOption, *, saturation: int = 50)
             saturation=saturation if profile.supports_video_saturation else None,
             sound_effects=False if profile.supports_video_sound_effects else None,
             sound_effects_softness=50 if profile.supports_video_sound_effects else None,
+            video_sensitivity=50 if profile.supports_video_sensitivity else None,
+            hdmi_input=0 if profile.supports_hdmi_input else None,
+            hdmi_box_light=False if profile.supports_hdmi_box_light else None,
+            hdmi_box_brightness=1 if profile.supports_hdmi_box_light else None,
+            hdmi_box_automatic=False if profile.supports_hdmi_box_light else None,
+            hdmi_box_effect=0 if profile.supports_hdmi_box_light else None,
+            color_calibration=(50, 50, 50) if profile.supports_video_color_calibration else None,
             white_balance_position=(
                 profile.video_white_balance_default
                 if profile.supports_white_balance and profile.video_white_balance_representation == "position"
