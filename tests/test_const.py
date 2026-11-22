@@ -212,6 +212,7 @@ def test_support_quality_has_only_supported_and_experimental_states():
         "H6117",
         "H612A",
         "H6127",
+        "H6139",
         "H6159",
         "H6179",
         "H618A",

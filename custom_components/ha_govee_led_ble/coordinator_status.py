@@ -289,24 +289,27 @@ def _rgb_values(rgb: Any) -> tuple[int, int, int]:
 def _parse_music_mode(detail: Any, model: str, profile: ModelProfile) -> ParsedColorModeResponse:
     if detail is None:
         raise ValueError("Music status has no details")
+    reported_sensitivity = int(detail.sensitivity)
+    sensitivity = (
+        reported_sensitivity
+        if profile.music_sensitivity_min <= reported_sensitivity <= profile.music_sensitivity_max
+        else None
+    )
     if profile.status_grammar == "H60B0":
         from .music_protocol import music_slug_for
 
         mode = music_slug_for(model, int(detail.mode), profile=profile)
-        if mode not in profile.music_modes or not 0 <= detail.sensitivity <= 100:
+        if mode not in profile.music_modes:
             raise ValueError("Invalid native music status")
         return ParsedColorModeResponse(
-            mode=ParsedMode.MUSIC, music_mode=mode, music_sensitivity=int(detail.sensitivity), music_color_present=False
+            mode=ParsedMode.MUSIC, music_mode=mode, music_sensitivity=sensitivity, music_color_present=False
         )
     if profile.music_readback_ambiguous:
         selector = getattr(detail.observed_selector, "name", None)
-        sensitivity = int(detail.sensitivity)
         return ParsedColorModeResponse(
             mode=ParsedMode.MUSIC,
             music_mode=selector if selector in profile.music_modes else None,
-            music_sensitivity=sensitivity
-            if profile.music_sensitivity_min <= sensitivity <= profile.music_sensitivity_max
-            else None,
+            music_sensitivity=sensitivity,
             music_color_present=False,
         )
     mode_id = detail.mode if hasattr(detail, "mode") else getattr(detail, "mode_id", -1)
@@ -325,7 +328,7 @@ def _parse_music_mode(detail: Any, model: str, profile: ModelProfile) -> ParsedC
         return ParsedColorModeResponse(
             mode=ParsedMode.MUSIC,
             music_mode=music_mode,
-            music_sensitivity=int(detail.sensitivity),
+            music_sensitivity=sensitivity,
             music_calm=bool(detail.is_calm) if music_mode == "rhythm" else None,
             music_color_present=bool(detail.is_base),
             **music_values,
@@ -334,7 +337,7 @@ def _parse_music_mode(detail: Any, model: str, profile: ModelProfile) -> ParsedC
         return ParsedColorModeResponse(
             mode=ParsedMode.MUSIC,
             music_mode=music_mode,
-            music_sensitivity=int(detail.sensitivity),
+            music_sensitivity=sensitivity,
             music_color_present=False,
         )
     percent = profile.status_grammar in PERCENT_BRIGHTNESS_STATUS_GRAMMARS | {"H605C"}
@@ -345,7 +348,7 @@ def _parse_music_mode(detail: Any, model: str, profile: ModelProfile) -> ParsedC
     return ParsedColorModeResponse(
         mode=ParsedMode.MUSIC,
         music_mode=music_mode,
-        music_sensitivity=int(detail.sensitivity),
+        music_sensitivity=sensitivity,
         music_calm=bool(style) if music_mode == "rhythm" and style is not None else None,
         music_color=_rgb_values(colour) if colour is not None else None,
     )
@@ -405,7 +408,8 @@ def _parse_static_mode(detail: Any, profile: ModelProfile) -> ParsedColorModeRes
         rgb_color=_rgb_values(rgb)
         if rgb is not None
         and not (
-            profile.status_grammar in WHOLE_BULB_GRAMMARS | {"H6093", "H6159", "H6181-modern", "H6182-modern", "H60B0"}
+            profile.status_grammar
+            in WHOLE_BULB_GRAMMARS | {"H6093", "H6139", "H6159", "H6181-modern", "H6182-modern", "H60B0"}
             and kelvin is not None
         )
         else None,

@@ -213,12 +213,15 @@ class _RecoveryMixin(_CoordinatorBase):
             self._discard_static_baseline()
             return False
         if self._pre_mode_needs_qualification:
+            identity_fields = profile.static_identity_fields | (
+                profile.profile_identity_fields | frozenset(video_identity_fields(profile))
+                if profile.static_recovery_identity_fields is None
+                else profile.static_recovery_identity_fields
+            )
             if (
                 profile.projector_grammar is not None
                 and not self.identity_fields_confirmed(frozenset({"pact"}))
-                or not self.identity_fields_confirmed(
-                    profile.profile_identity_fields | frozenset(video_identity_fields(profile))
-                )
+                or not self.identity_fields_confirmed(identity_fields)
                 or profile.segment_count_ic_divisor is not None
                 and not self._physical_ic_count_confirmed
                 or profile.configured_string_counts
@@ -232,7 +235,11 @@ class _RecoveryMixin(_CoordinatorBase):
         static_continuity = (
             profile.command_grammar == current.command_grammar
             and profile.status_grammar == current.status_grammar
-            and (version_qualified_static_wire or profile.outbound_transform == current.outbound_transform)
+            and (
+                version_qualified_static_wire
+                or (profile.static_outbound_transform or profile.outbound_transform)
+                == (current.static_outbound_transform or current.outbound_transform)
+            )
             and profile.segment_count == current.segment_count
             and profile.segment_group_size == current.segment_group_size
             and profile.physical_ic_count == current.physical_ic_count

@@ -202,3 +202,5 @@ h6053_status_reply.py
 h6053_legacy_status_reply.py
 h6053_effect_upload.py
 h6053_command_ack.py
+h6139_wire_write.py
+h6139_status_reply.py

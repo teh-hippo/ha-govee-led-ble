@@ -37,6 +37,7 @@ from .music_semantics import (
     H6117_MUSIC_VARIANTS,
     H6125_MUSIC_VARIANTS,
     H6127_MUSIC_VARIANTS,
+    H6139_MUSIC_VARIANTS,
     H6159_MUSIC_VARIANTS,
     H6181_MUSIC_VARIANTS,
     H6182_MUSIC_VARIANTS,
@@ -259,6 +260,7 @@ class ModelProfile:
     bulk_status_grammar: str | None = None
     setting_grammar: str | None = None
     outbound_transform: Callable[[bytes], bytes] | None = None
+    static_outbound_transform: Callable[[bytes], bytes] | None = None
     # Device register range for the brightness byte; None means the wire carries percent.
     brightness_wire_range: tuple[int, int] | None = None
     # AA05 selector byte the device accepts for the active-mode query.
@@ -281,6 +283,8 @@ class ModelProfile:
     profile_identity_fields: frozenset[str] = frozenset()
     scene_identity_fields: frozenset[str] = frozenset()
     static_identity_fields: frozenset[str] = frozenset()
+    # None retains whole-profile prerequisites for suspended static history.
+    static_recovery_identity_fields: frozenset[str] | None = None
     resolve_profile_before_state_init: bool = False
     # Set when Pact alone changes capabilities, so the profile also resolves before hardware/firmware replies arrive.
     profile_pact_dependent: bool = False
@@ -3109,6 +3113,59 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         boolean_controls=frozenset({"gradual"}),
         connection_idle_timeout=IDLE_TIMEOUT_STANDARD,
     ),
+    "H6139": ModelProfile(
+        "H6139 RGB LED Strip",
+        confirmation_issue=705,
+        reconciles_marker_pact=True,
+        command_grammar="H6181",
+        command_ack_grammar="H6181",
+        command_operations=frozenset({"power", "brightness", "static", "scene", "diy", "music", "effect_upload"}),
+        status_grammar="H6139",
+        effect_grammar="H6181",
+        profile_identity_fields=frozenset({"fw_version", "hw_version"}),
+        static_recovery_identity_fields=frozenset({"pact"}),
+        profile_pact_dependent=True,
+        colour_mode_query_selector=1,
+        read_domains=frozenset(
+            {ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE, ReadDomain.FIRMWARE, ReadDomain.HARDWARE}
+        ),
+        setup_required_read_domains=frozenset({ReadDomain.POWER}),
+        supports_rgb=True,
+        supports_color_temperature=True,
+        color_temp_range=KELVIN_RANGE_2000_9000,
+        static_readback_echoes_color=True,
+        static_readback_kelvin=True,
+        static_readback_zero_kelvin_is_rgb=True,
+        supports_scenes=True,
+        scene_catalogue_sku="H6139",
+        scene_command_versions=frozenset({0}),
+        authored_palette_scene_selector=198,
+        local_scenes=(
+            (4, "Movie"),
+            (5, "Date"),
+            (7, "Romantic"),
+            (8, "Blink"),
+            (9, "Candle"),
+            (16, "Colour cycle"),
+            (10, "Breathe"),
+        ),
+        supports_custom_effects=True,
+        supports_multi_layered_effects=True,
+        effect_workflows=frozenset({"native_scenes", "edited_palette_scenes", "single", "multi", "native_music"}),
+        diy_upload_transport="a3",
+        diy_requires_upload_ack=True,
+        effect_retry_after_upload=False,
+        effect_readback="diy_code_only",
+        music_modes=("dynamic", "soft", "bloom", "radiant"),
+        music_variants=H6139_MUSIC_VARIANTS,
+        music_upload_before_selector=True,
+        music_requires_upload_ack=True,
+        music_retry_after_upload=False,
+        music_params_require_activation=True,
+        music_sensitivity_max=99,
+        supports_music_color=True,
+        connection_idle_timeout=IDLE_TIMEOUT_STANDARD,
+    ),
     "H6159": ModelProfile(
         "H6159 RGB LED Strip",
         confirmation_issue=636,
@@ -3687,6 +3744,7 @@ PERCENT_BRIGHTNESS_STATUS_GRAMMARS = frozenset(
         "H6097",
         "H6099",
         "H8604",
+        "H6139",
         "H6159",
         "H6181",
         "H6181-modern",
@@ -4223,8 +4281,10 @@ def _basic_revision_profile(profile: ModelProfile) -> ModelProfile:
         status_grammar=profile.status_grammar,
         setting_grammar=profile.setting_grammar,
         outbound_transform=profile.outbound_transform,
+        static_outbound_transform=profile.static_outbound_transform,
         brightness_wire_range=profile.brightness_wire_range,
         profile_identity_fields=profile.profile_identity_fields,
+        static_recovery_identity_fields=profile.static_recovery_identity_fields,
         scene_identity_fields=profile.scene_identity_fields,
         resolve_profile_before_state_init=profile.resolve_profile_before_state_init,
         profile_pact_dependent=profile.profile_pact_dependent,
@@ -4352,6 +4412,60 @@ def device_profile(
             else profile.boolean_controls - {"dreamview_laser"}
         )
         return replace(profile, projector_control_revision=revision, light_sources=sources, boolean_controls=controls)
+    if model == "H6139":
+        from .protocol_transforms import whole_rgb_outbound_transform
+
+        profile = get_profile(model)
+        fw, hw = FirmwareVersion.parse(firmware), FirmwareVersion.parse(hardware)
+        later = pact_type is not None and pact_code is not None and pact_type >= 10 and pact_code >= 1
+        later_music = (pact_type, pact_code) in {(10, 1), (10, 2)}
+        wire_range = None if later else (6, 254)
+        hardware_number = hw.identity_number() if hw is not None else 0
+        palette_hardware = 20100 <= hardware_number < 20200 or (
+            30000 <= hardware_number < 40000 and not 30400 <= hardware_number < 30500
+        )
+        palette_music = fw is not None and (
+            later_music and palette_hardware and fw >= FirmwareVersion((2, 4))
+            if later
+            else fw >= FirmwareVersion((1, 7))
+        )
+        music_version = 2 if palette_music else 1 if fw is not None and fw >= FirmwareVersion((1, 3)) else 0
+        modes = (
+            profile.music_modes
+            if palette_music
+            else ("dynamic", "soft")
+            if later_music or not later and music_version
+            else ("dynamic",)
+            if not later and fw is not None
+            else ()
+        )
+        authored_programmes = fw is not None and fw >= FirmwareVersion((1, 3))
+        uploaded_scenes = later or authored_programmes
+        assert profile.effect_workflows is not None
+        assert profile.command_operations is not None
+        return replace(
+            profile,
+            profile_identity_fields=frozenset({"fw_version", "hw_version"}) if later else frozenset({"fw_version"}),
+            brightness_wire_range=wire_range,
+            outbound_transform=whole_rgb_outbound_transform(
+                wire_range, legacy_colour=not later, music_version=None if later else music_version
+            ),
+            static_outbound_transform=whole_rgb_outbound_transform(
+                wire_range, legacy_colour=not later, music_version=None
+            ),
+            diy_upload_transport="a3" if later else "a1_02",
+            command_operations=profile.command_operations - (set() if modes else {"music"}),
+            effect_workflows=profile.effect_workflows
+            - (set() if authored_programmes else {"edited_palette_scenes"})
+            - (set() if modes else {"native_music"}),
+            selector_only_scene_bits=None if uploaded_scenes else 16,
+            authored_palette_scene_selector=198 if authored_programmes else None,
+            scene_codes=None if uploaded_scenes else frozenset({4, 5, 7, 8, 9, 16, 10}),
+            music_modes=modes,
+            music_variants=tuple(
+                variant for variant in profile.music_variants if palette_music or variant.mode_code < len(modes)
+            ),
+        )
     if model == "H6159":
         from .protocol_transforms import whole_rgb_outbound_transform
 
@@ -4366,6 +4480,9 @@ def device_profile(
                     brightness_wire_range=wire_range,
                     outbound_transform=whole_rgb_outbound_transform(
                         wire_range, legacy_colour=not later, music_version=None if later else 0
+                    ),
+                    static_outbound_transform=whole_rgb_outbound_transform(
+                        wire_range, legacy_colour=not later, music_version=None
                     ),
                 )
             )
@@ -4385,6 +4502,9 @@ def device_profile(
             brightness_wire_range=wire_range,
             outbound_transform=whole_rgb_outbound_transform(
                 wire_range, legacy_colour=not later, music_version=None if later else music_version
+            ),
+            static_outbound_transform=whole_rgb_outbound_transform(
+                wire_range, legacy_colour=not later, music_version=None
             ),
             diy_upload_transport="a3" if later or not telink else "a1_02",
             supports_multi_layered_effects=mixed,
@@ -4414,6 +4534,9 @@ def device_profile(
             brightness_wire_range=wire_range,
             outbound_transform=whole_rgb_outbound_transform(
                 wire_range, legacy_colour=not later, music_version=None if later else 0
+            ),
+            static_outbound_transform=whole_rgb_outbound_transform(
+                wire_range, legacy_colour=not later, music_version=None
             ),
         )
         if hw is None or later and fw is None:

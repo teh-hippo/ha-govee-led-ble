@@ -250,12 +250,14 @@ async def lifecycle(hass, monkeypatch, request):
 
     entry = MockConfigEntry(domain=DOMAIN)
     entry.add_to_hass(hass)
+    target = getattr(request, "param", "H6199")
+    model, pact = target if isinstance(target, tuple) else (target, 1 if target in {"H6139", "H6159", "H6182"} else 2)
     with current_entry.set(entry):
-        c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", getattr(request, "param", "H6199"), configuration_url="test")
+        c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", model, configuration_url="test")
     c._present = True
     c._note_advertisement(
         SimpleNamespace(
-            manufacturer_data={34818: bytes.fromhex("ec00010100" if c.model in {"H6159", "H6182"} else "ec00020100")},
+            manufacturer_data={34818: bytes([0xEC, 0, pact, 1, 0])},
             source="test",
             time=hass.loop.time(),
         )
@@ -280,13 +282,16 @@ async def lifecycle(hass, monkeypatch, request):
             for group in range(1, c.profile.segment_group_count + 1)
         }
     )
-    if c.model in {"H6159", "H6182"}:
+    if c.model in {"H6139", "H6159", "H6182"}:
+        later = c.model == "H6139" and pact == 10
         replies = {
-            build_hardware_query(c.model): frame("aa0703" + b"1.00.02".hex()),
-            build_firmware_query(c.model): frame("aa06" + b"1.07.02".hex()),
+            build_hardware_query(c.model): frame(
+                "aa0703" + (b"2.01.01" if later else b"1.00.01" if c.model == "H6139" else b"1.00.02").hex()
+            ),
+            build_firmware_query(c.model): frame("aa06" + (b"2.04.00" if later else b"1.07.02").hex()),
             build_power_query(c.model): frame("aa0101"),
-            build_brightness_query(c.model): frame("aa0480"),
-            build_colour_mode_query(c.model): frame("aa05020c223800000000"),
+            build_brightness_query(c.model): frame("aa0432" if later else "aa0480"),
+            build_colour_mode_query(c.model): frame("aa050d0c223800000000" if later else "aa05020c223800000000"),
         }
     clients, packets, timers = [], [], []
 
@@ -307,10 +312,10 @@ async def lifecycle(hass, monkeypatch, request):
                 replies[build_colour_mode_query(c.model)] = frame("aa" + packet[1:-1].hex())
             if c.model == "H6199" and c.pact_type == 1 and packet[:2] == b"\x33\x05":
                 replies[frame("aa0501")] = frame("aa050b00") if packet[2] == 0x0B else frame("aa" + packet[1:-1].hex())
-            if c.model == "H6182":
+            if c.model in {"H6139", "H6182"}:
                 if packet[:2] == b"\x33\x04":
                     replies[build_brightness_query(c.model)] = frame("aa04" + packet[2:3].hex())
-                elif packet[:2] == b"\x33\x05" and packet[2] != 0x0D:
+                elif packet[:2] == b"\x33\x05" and (c.model == "H6139" or packet[2] != 0x0D):
                     replies[build_colour_mode_query(c.model)] = frame("aa" + packet[1:-1].hex())
             if packet in replies:
                 # A GATT write completes before the separate BLE notification arrives.

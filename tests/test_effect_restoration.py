@@ -574,9 +574,12 @@ async def test_fixed_only_music_cannot_promote_a_retained_colour_into_a_recovery
 
 
 @pytest.mark.parametrize("condition", ["resident", "overwritten", "unsupported"])
-async def test_resident_palette_program_reselection_never_restores_an_overwritten_or_unsupported_body(hass, condition):
-    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6159", configuration_url=None)
-    coordinator.profile = device_profile("H6159", 1, 1, firmware="1.07.02", hardware="1.00.02")
+@pytest.mark.parametrize("model", ["H6139", "H6159"])
+async def test_resident_palette_program_reselection_never_restores_an_overwritten_or_unsupported_body(
+    hass, condition, model
+):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url=None)
+    coordinator.profile = device_profile(model, 1, 1, firmware="1.07.02", hardware="1.00.01")
     if condition == "unsupported":
         coordinator.profile = replace(coordinator.profile, effect_workflows=frozenset())
     state = replace(

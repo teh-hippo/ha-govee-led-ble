@@ -82,6 +82,10 @@ async def connected(hass, monkeypatch, request):
         c._observe_pact(2, 1)
         c._observe_identity_field("fw_version", "1.10.04")
         c._observe_identity_field("hw_version", "3.02.01")
+    if c.model in {"H6139", "H6159"}:
+        c._observe_pact(1, 1)
+        c._observe_identity_field("fw_version", "1.07.02")
+        c._observe_identity_field("hw_version", "1.00.01")
     monkeypatch.setattr(c, "_ensure_connected", AsyncMock(return_value=client))
     monkeypatch.setattr(c, "_renew_foreground_lease", MagicMock())
     monkeypatch.setattr(coordinator_module, "UPLOAD_ACK_TIMEOUT", 0.02)
@@ -307,7 +311,7 @@ async def test_h600a_scene_and_diy_ack_barrier(selection_ready, kind, response):
     assert c._ensure_connected.await_count == 1
 
 
-@pytest.mark.parametrize("connected", ["H6159", "H6181"], indirect=True)
+@pytest.mark.parametrize("connected", ["H6139", "H6159", "H6181"], indirect=True)
 @pytest.mark.parametrize("kind,pact", [("diy", (None, None)), ("diy", (10, 2)), ("scene", (10, 2))])
 @pytest.mark.parametrize("response", ["accepted", "rejected", "missing"])
 async def test_h6181_revision_uploads_require_matching_success_before_activation(connected, kind, pact, response):
@@ -322,7 +326,10 @@ async def test_h6181_revision_uploads_require_matching_success_before_activation
     else:
         content = SingleEffect(0, 0, 50, ((1, 2, 3),))
     compiled = compile_effect(
-        LibraryItem.new("Palette", content), c.model, diy_code=None if c.model == "H6159" else 42, profile=c.profile
+        LibraryItem.new("Palette", content),
+        c.model,
+        diy_code=None if c.model in {"H6139", "H6159"} else 42,
+        profile=c.profile,
     )
     last_upload = len(compiled.upload_packets) - 1
     subtype = upload_ack_subtype(compiled.upload_packets, last_upload, c.model, profile=c.profile)
@@ -711,12 +718,20 @@ async def test_h600a_connection_failure_before_upload_can_retry(connected):
     assert [call.args[1] for call in client.write_gatt_char.await_args_list] == list(compiled.packets)
 
 
-@pytest.mark.parametrize("connected", ["H6097", "H7025", "H6046", ("H6053", 1), "H6053"], indirect=True)
+@pytest.mark.parametrize(
+    "connected", ["H6139", "H6159", "H6097", "H7025", "H6046", ("H6053", 1), "H6053"], indirect=True
+)
 @pytest.mark.parametrize("accepted", [False, True])
 async def test_h7025_music_waits_for_positive_upload_result(selection_ready, accepted):
     c, client = selection_ready
     c.music_sensitivity = 42
-    mode, code = ("torch", "50") if c.model in {"H6046", "H6053"} else ("hopping", "48")
+    mode, code = (
+        ("bloom", "30")
+        if c.model in {"H6139", "H6159"}
+        else ("torch", "50")
+        if c.model in {"H6046", "H6053"}
+        else ("hopping", "48")
+    )
     expected = prepare_music_request(c.model, mode, 42, None, False, {}, profile=c.profile)
     selector = c.profile.outbound_transform(expected[-1]) if c.profile.outbound_transform else expected[-1]
 
@@ -734,6 +749,29 @@ async def test_h7025_music_waits_for_positive_upload_result(selection_ready, acc
         assert c.music_body is None
     sent = [call.args[1] for call in client.write_gatt_char.await_args_list]
     assert (selector in sent) is accepted
+
+
+@pytest.mark.parametrize("connected", ["H6139", "H6159"], indirect=True)
+@pytest.mark.parametrize("pact,firmware,hardware,mode", [(1, "1.07.02", "1.00.01", 14), (10, "2.04.00", "2.01.01", 19)])
+async def test_invalid_native_sensitivity_does_not_poison_observation_or_mode_selection(
+    selection_ready, pact, firmware, hardware, mode
+):
+    c, client = selection_ready
+    later_pact = 2 if c.model == "H6159" and pact == 10 else pact
+    c._connection_pacts.clear()
+    c._observe_pact(later_pact, 1)
+    c._observe_identity_field("fw_version", firmware)
+    c._observe_identity_field("hw_version", hardware)
+    receive(client, frame(bytes([0xAA, 5, mode, 48, 42]).hex()))
+    revision = c._field_revisions["music_sensitivity"]
+    receive(client, frame(bytes([0xAA, 5, mode, 48, 100]).hex()))
+    assert c.music_sensitivity == 42
+    assert c._field_revisions["music_sensitivity"] == revision
+    assert c.music_mode == "bloom"
+    expected = prepare_music_request(c.model, "dynamic", 42, None, False, {}, profile=c.profile)[-1]
+    selector = c.profile.outbound_transform(expected) if c.profile.outbound_transform else expected
+    await c.async_select_music_slug("dynamic")
+    assert selector in [call.args[1] for call in client.write_gatt_char.await_args_list]
 
 
 @pytest.mark.parametrize("connected", ["H6097", "H7025", "H6046", ("H6053", 1), "H6053"], indirect=True)
