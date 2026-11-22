@@ -99,7 +99,7 @@ async def test_setup_entry(hass: HomeAssistant):
         ),
         prefix_effect_names=False,
         always_include_custom_effects=True,
-        h6102_identity=None,
+        initial_identity=None,
     )
     build_url.assert_called_once_with(entry.entry_id)
     assert entry.runtime_data is cls.return_value
@@ -143,10 +143,11 @@ async def test_setup_entry_passes_configured_h6102_firmware_context(hass: HomeAs
 
         assert await async_setup_entry(hass, entry) is True
 
-    identity = cls.call_args.kwargs["h6102_identity"]
+    identity = cls.call_args.kwargs["initial_identity"]
     assert identity.firmware == "1.03.01"
     assert identity.firmware_source == "configured"
     assert identity.hardware == "1.00.03"
+    assert identity.hardware_source == "configured"
 
 
 async def test_setup_entry_ignores_stale_h6102_firmware_for_other_models(hass: HomeAssistant):
@@ -166,7 +167,7 @@ async def test_setup_entry_ignores_stale_h6102_firmware_for_other_models(hass: H
 
         assert await async_setup_entry(hass, entry) is True
 
-    assert cls.call_args.kwargs["h6102_identity"] is None
+    assert cls.call_args.kwargs["initial_identity"] is None
 
 
 async def test_setup_entry_reconciles_loaded_coordinator_with_effect_cache(hass: HomeAssistant):

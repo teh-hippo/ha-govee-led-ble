@@ -159,11 +159,11 @@ def test_legacy_short_config_is_unqualified_until_reentered_or_observed(hass) ->
         "11:22:33:44:55:66",
         "H6102",
         configuration_url=None,
-        h6102_identity=H6102InitialIdentity(firmware="3.2.2", firmware_source="configured", pact="10/1"),
+        initial_identity=H6102InitialIdentity(firmware="3.2.2", firmware_source="configured", pact="10/1"),
     )
     coordinator.hw_version = "3.01.01"
     coordinator._resolve_device_profile()
-    assert coordinator._configured_h6102_firmware == "3.2.2"
+    assert coordinator._configured_firmware == "3.2.2"
     assert "bloom" not in coordinator.profile.music_modes
     coordinator.fw_version = "3.2.2"
     assert coordinator._identity_field_incomplete("fw_version")

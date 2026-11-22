@@ -57,7 +57,8 @@ from .control_arbiter import BLEControlArbiter, ControlIntent, LatestRequests, P
 from .coordinator_control import ControlWriteRequest
 from .coordinator_dreamview import DreamviewClaimedError, _DreamviewMixin, is_dreamview_claimed
 from .coordinator_expectations import expectations_from_packet, parse_write_state
-from .coordinator_h6102 import H6102InitialIdentity, _H6102Mixin
+from .coordinator_h6102 import _H6102Mixin
+from .coordinator_identity import InitialDeviceIdentity
 from .coordinator_modes import ModeTransitionPurpose, ModeTransitionSupersededError, _ActiveModeMixin
 from .coordinator_notifications import _OPTIONAL_CONTROL_DOMAINS, _NotificationMixin
 from .coordinator_recovery import _RecoveryMixin
@@ -112,9 +113,6 @@ from .generated_protocol_adapter import (
 from .govee_encryption import GoveeCryptoError, GoveeTransportError
 from .govee_encryption.session import GoveeEncryptionSession
 from .h6099_controls import h6099_control_queries
-from .h6102_capabilities import (
-    resolve_h6102_capabilities,
-)
 from .light_commands import (
     ParsedStaticWrite,
 )
@@ -191,17 +189,22 @@ class GoveeBLECoordinator(
         prefix_effect_names: bool = False,
         always_include_custom_effects: bool = False,
         device_resolver: BLEDeviceResolver | None = None,
-        h6102_identity: H6102InitialIdentity | None = None,
+        initial_identity: InitialDeviceIdentity | None = None,
     ) -> None:
-        profile = get_profile(model)
-        if model == "H7020":
-            profile = device_profile(model, None, None)
-        identity = h6102_identity or H6102InitialIdentity()
-        resolution = (
-            resolve_h6102_capabilities(identity.firmware, identity.firmware_source) if model == "H6102" else None
+        identity = initial_identity or InitialDeviceIdentity()
+        declared_profile = get_profile(model)
+        profile = (
+            device_profile(
+                model,
+                identity.bootstrap_pact_type,
+                identity.bootstrap_pact_code,
+                firmware=identity.bootstrap_firmware,
+                firmware_source=identity.firmware_source,
+                hardware=identity.bootstrap_hardware,
+            )
+            if declared_profile.resolve_profile_before_state_init
+            else declared_profile
         )
-        if resolution is not None:
-            profile = resolution.profile
         super().__init__(
             hass,
             _LOGGER,
@@ -209,7 +212,6 @@ class GoveeBLECoordinator(
             update_interval=timedelta(seconds=30) if profile.state_readable else None,
         )
         self.address, self.model, self.profile = address, model, profile
-        self._init_h6102(resolution, identity)
         self._profile_generation = 0
         self._configuration_url = configuration_url
         self.effect_families = default_effect_families(model) if effect_families is None else effect_families
@@ -266,14 +268,16 @@ class GoveeBLECoordinator(
         self.rgb_color_source = self.color_temp_kelvin_source = "initial"
         self.color_temp_unknown = False
         # Device identity from the aa 06/aa 07 handshake replies; None until first read.
-        self.fw_version: str | None = None
-        self.hw_version: str | None = None
+        self.fw_version = identity.firmware if identity.firmware_source == "ble" else None
+        self.hw_version = identity.hardware if identity.hardware_source == "ble" else None
+        self._configured_firmware = identity.firmware if identity.firmware_source == "configured" else None
+        self._configured_hardware = identity.hardware if identity.hardware_source == "configured" else None
         self.subordinate_20_version: str | None = None
         self.subordinate_21_version: str | None = None
         self.wireless_firmware_version: str | None = None
         self.wireless_hardware_version: str | None = None
-        self.pact_type: int | None = None
-        self.pact_code: int | None = None
+        self.pact_type = identity.pact_type
+        self.pact_code = identity.pact_code
         self._h607c_advertised_pacts: set[tuple[int, int]] = set()
         self._h607c_advertisement_observations: dict[str, tuple[float, frozenset[tuple[int, int]]]] = {}
         self._h607c_marker_pact: tuple[int, int] | None = None
@@ -313,7 +317,6 @@ class GoveeBLECoordinator(
         self._model_reload_scheduled = False
         self._cancel_hass_stop: CALLBACK_TYPE | None = None
         self._init_dreamview()
-        self._apply_h6102_context(identity)
         self._resolve_device_profile()
         self._cancel_hass_stop = hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, self._handle_hass_stop)
 
@@ -380,14 +383,16 @@ class GoveeBLECoordinator(
         # Entities snapshot device_info at construction, before the first identity reply lands.
         authorization_fields = self._control_identity_fields()
         changed_fields: set[str] = set()
-        if fw_version is not None and identity_version(fw_version) is not None and fw_version != self.fw_version:
-            self.fw_version = fw_version
-            changed_fields.add("fw_version")
-            self._forget_configured_identity("fw_version")
-        if hw_version is not None and identity_version(hw_version) is not None and hw_version != self.hw_version:
-            self.hw_version = hw_version
-            changed_fields.add("hw_version")
-            self._forget_configured_identity("hw_version")
+        if fw_version is not None and identity_version(fw_version) is not None:
+            self._configured_firmware = None
+            if fw_version != self.fw_version:
+                self.fw_version = fw_version
+                changed_fields.add("fw_version")
+        if hw_version is not None and identity_version(hw_version) is not None:
+            self._configured_hardware = None
+            if hw_version != self.hw_version:
+                self.hw_version = hw_version
+                changed_fields.add("hw_version")
         if changed_fields:
             if changed_fields & authorization_fields:
                 self._authorization_generation += 1

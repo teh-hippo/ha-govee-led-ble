@@ -7,6 +7,7 @@ from enum import StrEnum
 from math import ceil
 from typing import Any
 
+from .coordinator_identity import DeviceIdentitySource
 from .firmware_version import FirmwareVersion
 from .h6199_calibration import WHITE_BALANCE_POSITIONS
 from .music_semantics import (
@@ -252,6 +253,7 @@ class ModelProfile:
     profile_identity_fields: frozenset[str] = frozenset()
     scene_identity_fields: frozenset[str] = frozenset()
     static_identity_fields: frozenset[str] = frozenset()
+    resolve_profile_before_state_init: bool = False
     # Set when Pact alone changes capabilities, so the profile also resolves before hardware/firmware replies arrive.
     profile_pact_dependent: bool = False
     # Colour and Kelvin controls are presented before identity resolves, but writes need fresh qualified Pact.
@@ -2636,6 +2638,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         "H6102 LED Strip",
         color_temp_range=KELVIN_RANGE_2000_9000,
         support_quality=SupportQuality.SUPPORTED,
+        resolve_profile_before_state_init=True,
         brightness_zero_turns_off=True,
         command_grammar="H617A",
         status_grammar="H6102",
@@ -3022,6 +3025,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     "H7020": ModelProfile(
         "H7020 Outdoor String Lights",
         support_quality=SupportQuality.SUPPORTED,
+        resolve_profile_before_state_init=True,
         command_grammar="H7020",
         status_grammar="H7020",
         colour_mode_query_selector=1,
@@ -4077,6 +4081,7 @@ def _basic_revision_profile(profile: ModelProfile) -> ModelProfile:
         brightness_wire_range=profile.brightness_wire_range,
         profile_identity_fields=profile.profile_identity_fields,
         scene_identity_fields=profile.scene_identity_fields,
+        resolve_profile_before_state_init=profile.resolve_profile_before_state_init,
         profile_pact_dependent=profile.profile_pact_dependent,
         requires_qualified_identity=profile.requires_qualified_identity,
         requires_pact_confirmation=profile.requires_pact_confirmation,
@@ -4101,6 +4106,7 @@ def device_profile(
     pact_code: int | None,
     *,
     firmware: str | None = None,
+    firmware_source: DeviceIdentitySource | None = None,
     hardware: str | None = None,
 ) -> ModelProfile:
     """Resolve exact-product capabilities from evidenced revision context."""
@@ -4511,7 +4517,7 @@ def device_profile(
 
         return resolve_h6102_capabilities(
             firmware,
-            "ble" if firmware is not None else None,
+            firmware_source if firmware_source is not None else "ble" if firmware is not None else None,
             hardware=hardware,
             pact_type=pact_type,
             pact_code=pact_code,
