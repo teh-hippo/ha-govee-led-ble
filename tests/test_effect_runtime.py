@@ -22,7 +22,11 @@ from custom_components.ha_govee_led_ble.effect_active_workspace import (
     ActiveEffectWorkspaceRepository,
 )
 from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
-from custom_components.ha_govee_led_ble.effect_catalogue import WORKSHOP_PROTOCOL_FIXTURES, resolve_catalogue_template
+from custom_components.ha_govee_led_ble.effect_catalogue import (
+    MODEL_EFFECT_CATALOGUES,
+    WORKSHOP_PROTOCOL_FIXTURES,
+    resolve_catalogue_template,
+)
 from custom_components.ha_govee_led_ble.effect_compiler import (
     CompiledEffect,
     compile_application,
@@ -44,6 +48,7 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     LibraryItem,
     MultiEffect,
     MusicProfile,
+    NativeEffect,
     Origin,
     PaintedEffect,
     PaletteDiyEffect,
@@ -928,6 +933,39 @@ async def test_h6199_palette_rejects_changed_approved_slot_after_compilation() -
             config_entry_id="entry-a",
             updated_at="2026-10-21T00:00:00Z",
             diy_code=73,
+            compiled=compiled,
+        )
+
+    coordinator.send_command.assert_not_awaited()
+
+
+async def test_native_effect_profile_narrowing_rejects_before_apply_power_or_upload() -> None:
+    coordinator = _coordinator()
+    coordinator.model = "H7025"
+    coordinator.profile = get_profile("H7025")
+    coordinator.is_on = False
+    template = next(
+        item
+        for item in MODEL_EFFECT_CATALOGUES["H7025"].templates
+        if isinstance(item.content, NativeEffect) and item.content.preset_id == 16
+    )
+    item = LibraryItem.new(template.label, template.content)
+    compiled = compile_application(item, "H7025")
+    assert isinstance(compiled, CompiledEffect)
+    narrowed = replace(
+        coordinator.profile,
+        command_operations=frozenset({"power", "brightness", "static", "scene", "effect_upload"}),
+    )
+    coordinator.profile = narrowed
+    repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
+    await repository.async_load()
+
+    with pytest.raises(ValueError, match="activation route"):
+        await EffectDeploymentEngine(repository).async_apply_saved(
+            coordinator,
+            item,
+            config_entry_id="entry-a",
+            updated_at="2026-10-21T00:00:00Z",
             compiled=compiled,
         )
 

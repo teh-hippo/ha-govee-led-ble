@@ -9,6 +9,7 @@ from kaitaistruct import KaitaiStructError
 from .const import WHOLE_BULB_GRAMMARS, ModelProfile, ReadDomain
 from .music_protocol import music_slug_for
 from .music_semantics import music_variant
+from .native_effect_codecs import native_a3_codec_for_route
 from .protocol_commands import (
     _TABLE_KELVIN_RGB,
     _extended_static_root,
@@ -603,7 +604,15 @@ def _check_upload_packet(frame: bytes, profile: ModelProfile) -> bool:
         )
     ):
         return True
-    if profile.command_operations is not None and "effect_upload" in profile.command_operations:
+    if upload is not None and upload.index == 0:
+        native_codec = native_a3_codec_for_route(profile.effect_grammar, int(upload.body.subtype))
+        if native_codec is not None:
+            if not profile.command_operation_supported("effect_upload") or not profile.supports_custom_effects:
+                raise ValueError("Native effect upload is outside profile capabilities")
+            if profile.native_diy_upload_subtype != native_codec.upload_subtype:
+                raise ValueError("Native effect upload is outside profile capabilities")
+            return True
+    if upload is not None and profile.command_operations is not None and "effect_upload" in profile.command_operations:
         if upload is not None and profile.effect_grammar == "H6093":
             if upload.index == 0:
                 kinds = H6093Projector.UploadKind
@@ -631,7 +640,7 @@ def _check_upload_packet(frame: bytes, profile: ModelProfile) -> bool:
                 allowed = {
                     int(kinds.rgb_scene): profile.supports_scenes,
                     int(kinds.layered_scene): profile.supports_scenes,
-                    int(kinds.music): "music" in profile.command_operations and bool(profile.music_variants),
+                    int(kinds.music): profile.command_operation_supported("music") and bool(profile.music_variants),
                     int(kinds.native_diy): profile.supports_custom_effects or profile.supports_scenes,
                 }
                 if not allowed.get(upload.body.subtype, False):

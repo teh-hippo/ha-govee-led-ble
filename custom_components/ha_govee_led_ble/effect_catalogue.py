@@ -102,6 +102,7 @@ from .effect_domain import (
     VideoProfile,
 )
 from .native_effect import NativeDiyLayer, NativeOpaqueLayer
+from .native_effect_codecs import native_a3_codec_for_profile
 
 EFFECT_STUDIO_CATALOGUE_SCHEMA_VERSION: Final = 12
 LEGACY_CATALOGUE_SKU: Final = "H617A"
@@ -121,10 +122,11 @@ def validate_effect_eligibility(
     if catalogue is None:
         raise ValueError(f"{model} has no custom-effect catalogue")
     if isinstance(content, NativeEffect):
-        if model == "H7025" and content.model == model and profile.native_diy_upload_subtype is not None:
-            from .h7025_effects import validate_h7025_diy
-
-            validate_h7025_diy(content)
+        native_codec = native_a3_codec_for_profile(profile)
+        if native_codec is not None:
+            if model != native_codec.canonical_model:
+                raise ValueError("native content target does not match the selected codec")
+            native_codec.validate(content)
             return
         if model == "H6093" and content.model == model and profile.effect_grammar == "H6093":
             content.__post_init__()
