@@ -585,6 +585,7 @@ def test_h8604_known_pact_profiles_full_experimental_contract(pact):
     assert profile.video_modes == ("movie",) and profile.dreamview_max_sub_devices == 10
     assert profile.supports_video_sensitivity and profile.hdmi_input_count == 4
     assert profile.supports_video_color_calibration
+    assert profile.static_readback_gradual
     assert profile.supports_hdmi_box_light
     assert profile.boolean_controls == {
         "gradual",

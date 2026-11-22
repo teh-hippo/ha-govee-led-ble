@@ -1002,6 +1002,12 @@ class _RecoveryMixin(_CoordinatorBase):
             if status is CapabilityState.SUPPORTED
             and (state.video_restore_controls is None or control in state.video_restore_controls)
         }
+        if (
+            state.video_color_calibration is not None
+            and len(state.video_color_calibration) == 4
+            and "color_calibration_red" not in permitted
+        ):
+            permitted.discard("color_calibration")
         needed = {
             control
             for control, fields in (

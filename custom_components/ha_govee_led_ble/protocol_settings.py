@@ -1075,7 +1075,7 @@ def build_hdmi_input(
         raise ValueError(f"{model} does not support HDMI input selection")
     if value is None:
         return _build_h8604_video_setting_query(H8604VideoSettings.Setting.hdmi_input)
-    if type(value) is not int or not 0 <= value < profile.hdmi_input_count:
+    if type(value) is not int or not 1 <= value <= profile.hdmi_input_count:
         raise ValueError("HDMI input is outside the model limits")
     return _build_h8604_video_setting(H8604VideoSettings.Setting.hdmi_input, (value,), model, profile=profile)
 

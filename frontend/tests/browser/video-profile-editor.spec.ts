@@ -1,9 +1,10 @@
+import type { GoveeVideoProfileEditor } from "../../src/video-profile-editor";
 import { expect, test } from "./test";
 
 test("calibration and zone sliders emit intermediate and committed edits", async ({ page }) => {
   await page.goto("/tests/browser/fixtures/video-profile-editor.html?alternate");
   await page.evaluate(() => {
-    const editor = document.querySelector("govee-video-profile-editor")!;
+    const editor = document.querySelector<GoveeVideoProfileEditor>("govee-video-profile-editor")!;
     (window as unknown as { interactions: string[] }).interactions = [];
     editor.addEventListener("content-changed", (event) => {
       (window as unknown as { interactions: string[] }).interactions.push(
@@ -56,6 +57,26 @@ test("firmware evidence gaps are explicit without stripping profile values", asy
   await page.getByLabel("Include white balance", {exact: true}).uncheck();
   await expect(page.getByLabel("White balance", {exact: true})).toHaveCount(0);
   await expect(page.getByLabel("Strip right", {exact: true})).toHaveValue("60");
+});
+
+test("qualified red calibration reports firmware evidence gaps", async ({ page }) => {
+  await page.goto("/tests/browser/fixtures/video-profile-editor.html?alternate");
+  await page.evaluate(() => {
+    const editor = document.querySelector<GoveeVideoProfileEditor>("govee-video-profile-editor")!;
+    editor.content = {
+      ...editor.content!,
+      color_calibration: [10, 20, 30, 40],
+    };
+    editor.settings = ["color_calibration"];
+    editor.applicability = {
+      color_calibration: "supported",
+      color_calibration_red: "evidence_gap",
+    };
+    editor.requestUpdate();
+  });
+
+  await expect(page.getByText(/red calibration: firmware identity unavailable/)).toBeVisible();
+  await expect(page.getByLabel("Red calibration", {exact: true})).toHaveValue("40");
 });
 
 test("H6099 border is optional and blank-screen policy editing is explicit", async ({ page }) => {

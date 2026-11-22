@@ -320,7 +320,7 @@ def _check_h8604_video_setting_packet(frame: bytes, profile: ModelProfile) -> bo
                 return True
             raise ValueError("Video sensitivity is outside profile capabilities")
         if name == "hdmi_input" and profile.supports_hdmi_input:
-            if 0 <= int(setting.body.payload.selected) < profile.hdmi_input_count:
+            if 1 <= int(setting.body.payload.selected) <= profile.hdmi_input_count:
                 return True
             raise ValueError("HDMI input is outside profile capabilities")
         if name == "colour_calibration" and profile.supports_video_color_calibration:

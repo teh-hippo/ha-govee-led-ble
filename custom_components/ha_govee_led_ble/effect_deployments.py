@@ -463,7 +463,7 @@ class PriorControlState:
             (self.white_balance_default_blue, "prior white-balance default blue", 0, 255),
             (self.white_balance_scalar, "prior scalar white balance", 0, 255),
             (self.video_sensitivity, "prior video sensitivity", 1, 100),
-            (self.video_hdmi_input, "prior HDMI input", 0, 15),
+            (self.video_hdmi_input, "prior HDMI input", 1, 15),
             (self.hdmi_box_brightness, "prior HDMI box brightness", 1, 100),
             (self.hdmi_box_effect, "prior HDMI box effect", 0, 10),
             (self.relative_brightness_strip_left, "prior strip-left brightness", 0, 100),

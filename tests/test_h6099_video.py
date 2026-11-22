@@ -231,7 +231,7 @@ async def test_policy_edit_toggle_retention_and_race() -> None:
 def test_h8604_video_registers_preserve_exact_wire_and_readback(hass) -> None:
     profile = device_profile("H8604", 2, 1)
     sensitivity = build_video_sensitivity(42, "H8604", profile=profile)
-    hdmi_input = build_hdmi_input(3, "H8604", profile=profile)
+    hdmi_input = build_hdmi_input(4, "H8604", profile=profile)
     box_light = build_hdmi_box_light(True, 10, True, 1, "H8604", profile=profile)
     calibration = build_video_color_calibration((10, 20, 30), "H8604", profile=profile)
     red_calibration = build_video_color_calibration((10, 20, 30, 40), "H8604", profile=profile)
@@ -241,7 +241,7 @@ def test_h8604_video_registers_preserve_exact_wire_and_readback(hass) -> None:
     calibration_query = build_video_color_calibration(None, "H8604", profile=profile)
 
     assert sensitivity == frame("33a901012a")
-    assert hdmi_input == frame("33a9030103")
+    assert hdmi_input == frame("33a9030104")
     assert box_light == frame("33b6010a0001")
     assert calibration == frame("33a905030a141e")
     assert red_calibration == frame("33a905040a141e28")
@@ -263,6 +263,10 @@ def test_h8604_video_registers_preserve_exact_wire_and_readback(hass) -> None:
         require_profile_packet(packet, profile)
     for packet in (sensitivity, hdmi_input, box_light, calibration, red_calibration):
         assert parse_command(packet, "H8604", profile=profile) is not None
+    for invalid in (0, 5):
+        with pytest.raises(ValueError, match="outside"):
+            build_hdmi_input(invalid, "H8604", profile=profile)
+    assert decode_status_frame(frame("aaa9030200f0"), "H8604", profile=profile) is None
 
     device = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H8604", configuration_url=None)
     device.pact_type, device.pact_code = 2, 1
@@ -289,6 +293,124 @@ def test_h8604_video_registers_preserve_exact_wire_and_readback(hass) -> None:
     assert device._field_revisions["video_sensitivity"] == 1
     assert device._field_revisions["video_hdmi_input"] == 1
     assert device._field_revisions["video_color_calibration"] == 1
+
+
+def test_h8604_video_template_uses_one_based_hdmi_inputs() -> None:
+    content = next(
+        template.content
+        for template in MODEL_EFFECT_CATALOGUES["H8604"].templates
+        if isinstance(template.content, VideoProfile)
+    )
+    assert content.hdmi_input == 1
+    assert replace(content, hdmi_input=4).hdmi_input == 4
+    with pytest.raises(EffectValidationError):
+        replace(content, hdmi_input=0)
+
+
+def test_h8604_video_softness_preserves_exact_declared_range() -> None:
+    profile = device_profile("H8604", 2, 1)
+    packet = build_video_mode(
+        "movie",
+        False,
+        50,
+        False,
+        0,
+        "H8604",
+        profile=profile,
+    )
+    assert packet == frame("330500000832000200")
+    decoded = decode_status_frame(frame("aa0500000832000200"), "H8604", profile=profile)
+    assert decoded is not None
+    assert (
+        parse_color_mode(
+            decoded.generated,
+            "H8604",
+            profile=profile,
+        ).video_sound_effects_softness
+        == 0
+    )
+
+    for invalid in (-1, 100):
+        with pytest.raises(ValueError, match="softness"):
+            build_video_mode(
+                "movie",
+                False,
+                50,
+                False,
+                invalid,
+                "H8604",
+                profile=profile,
+            )
+    invalid_status = decode_status_frame(frame("aa0500000832000264"), "H8604", profile=profile)
+    assert invalid_status is not None
+    with pytest.raises(ValueError, match="softness"):
+        parse_color_mode(
+            invalid_status.generated,
+            "H8604",
+            profile=profile,
+        )
+
+
+def test_h8604_static_reply_observes_gradual(hass) -> None:
+    device = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H8604", configuration_url=None)
+    device.profile = device_profile("H8604", 2, 1)
+
+    device._notify_callback(None, bytearray(frame("aa05150107d0")))
+
+    assert device.color_mode is ParsedMode.COLOUR
+    assert device.color_temp_kelvin == 2000
+    assert device.static_gradual is True
+
+
+def test_h8604_hdmi_reply_is_atomic_and_connectivity_expires(hass) -> None:
+    device = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H8604", configuration_url=None)
+    device.profile = device_profile("H8604", 2, 1)
+    device.video_hdmi_input = 2
+    device.video_hdmi_inputs_connected = (False, False, False, False)
+    device._expected_state["video_hdmi_input"] = (2, float("inf"))
+    reply = bytearray(frame("aaa9030203f0"))
+
+    device._notify_callback(None, reply)
+    assert device.video_hdmi_input == 2
+    assert device.video_hdmi_inputs_connected == (False, False, False, False)
+    assert "video_hdmi_inputs_connected" not in device._field_revisions
+
+    device._expected_state.clear()
+    device._notify_callback(None, reply)
+    assert device.video_hdmi_input == 3
+    assert device.video_hdmi_inputs_connected == (True, True, True, True)
+
+    client = MagicMock()
+    device._client = client
+    device._clear_client_state(client)
+    assert device.video_hdmi_inputs_connected is None
+
+
+async def test_h8604_red_calibration_recovery_fails_closed_without_qualified_identity(hass, monkeypatch) -> None:
+    device = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H8604", configuration_url=None)
+    device.profile = device_profile("H8604", 2, 1)
+    device.subordinate_20_version = "2.02.10"
+    device.subordinate_21_version = "2.01.11"
+    state = PriorControlState(
+        mode="video",
+        is_on=True,
+        brightness_pct=50,
+        rgb_color=(255, 255, 255),
+        video_color_calibration=(10, 20, 30, 40),
+        video_restore_controls=("color_calibration", "color_calibration_red"),
+    )
+    writer = AsyncMock()
+    monkeypatch.setattr(
+        "custom_components.ha_govee_led_ble.coordinator_recovery.apply_video_color_calibration",
+        writer,
+    )
+
+    permitted, complete = await device._restore_video_controls(state)
+
+    assert not complete
+    assert "color_calibration" not in permitted
+    assert "color_calibration_red" not in permitted
+    writer.assert_not_awaited()
 
 
 @pytest.mark.parametrize(
@@ -332,17 +454,17 @@ async def test_h8604_video_registers_use_shared_guarded_writer() -> None:
     )
 
     assert await apply_video_sensitivity(device, 42, writer=writer, verify=False)
-    assert await apply_hdmi_input(device, 3, writer=writer, verify=False)
+    assert await apply_hdmi_input(device, 4, writer=writer, verify=False)
     assert await apply_hdmi_box_light(device, (True, 10, True, 1), writer=writer, verify=False)
     assert await apply_video_color_calibration(device, (10, 20, 30, 40), writer=writer, verify=False)
     assert [call.args[0] for call in writer.await_args_list] == [
         frame("33a901012a"),
-        frame("33a9030103"),
+        frame("33a9030104"),
         frame("33b6010a0001"),
         frame("33a905040a141e28"),
     ]
     assert writer.await_args_list[0].kwargs["state_values"] == {"video_sensitivity": 42}
-    assert writer.await_args_list[1].kwargs["state_values"] == {"video_hdmi_input": 3}
+    assert writer.await_args_list[1].kwargs["state_values"] == {"video_hdmi_input": 4}
     assert writer.await_args_list[2].kwargs["state_values"] == {
         "hdmi_box_light": True,
         "hdmi_box_brightness": 10,

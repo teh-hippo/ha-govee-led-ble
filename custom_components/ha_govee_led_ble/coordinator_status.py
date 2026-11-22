@@ -432,6 +432,11 @@ def _parse_video_mode(detail: Any, profile: ModelProfile) -> ParsedColorModeResp
             return ParsedColorModeResponse()
         if profile.supports_video_capture_region:
             full_screen = region == "all"
+        if detail.sound_effects not in (0, 1) or (
+            profile.video_softness_min == 0
+            and not profile.video_softness_min <= detail.softness <= profile.video_softness_max
+        ):
+            raise ValueError("invalid video sound effects or softness")
     return ParsedColorModeResponse(
         mode=ParsedMode.VIDEO,
         video_mode=source,

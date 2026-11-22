@@ -5,9 +5,11 @@ meta:
   imports:
     - h60a_bulk
 doc: |
-  SPECULATIVE exact H8604 power-on-memory and gradual settings for all three
-  registered protocol revisions. Power-on state shares the common previous/on/
-  off codebook and is selected through register 0x41. Gradual uses 0xa3.
+  SPECULATIVE exact H8604 native settings for all three registered protocol
+  revisions. Power-on state uses register 0x41, output switches use 0x36,
+  gradual uses 0xa3 and sync-box lighting uses 0xb6. Device information
+  requested through 0xaa/0x07/0x08 includes the three output switches and
+  sync-box state.
 seq:
   - id: header
     contents: [0x33]
