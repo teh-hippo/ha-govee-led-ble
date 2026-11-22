@@ -620,7 +620,11 @@ class _RecoveryMixin(_CoordinatorBase):
             mode=mode,
             is_on=self.is_on,
             brightness_pct=self.brightness_pct,
-            brightness_pct_known=False if not self._recovery_brightness_supported() else None,
+            brightness_pct_known=(
+                False
+                if not self._recovery_brightness_supported() or not self._brightness_pct_evidence.baseline_qualified
+                else None
+            ),
             rgb_color=self.rgb_color,
             projector_appearance=(
                 self.projector_appearance

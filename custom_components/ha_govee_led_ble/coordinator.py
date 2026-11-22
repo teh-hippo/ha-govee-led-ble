@@ -41,6 +41,7 @@ from .const import (
     DOMAIN,
     NATIVE_ZONE_CONTROLS,
     REPLY_PACING_TIMEOUT,
+    BrightnessEvidence,
     ModelProfile,
     ReadDomain,
     SupportQuality,
@@ -81,6 +82,7 @@ from .generated_protocol_adapter import (
     StripCalibrationRequest,
     build_black_border_query,
     build_blank_screen_query,
+    build_brightness,
     build_brightness_query,
     build_colour_mode_query,
     build_configured_strings,
@@ -171,6 +173,42 @@ class _StaticWriteIntent:
     sources: frozenset[str] = frozenset()
 
 
+def _brightness_wire_signature(profile: ModelProfile) -> tuple[bytes, ...]:
+    packets = (build_brightness(percent, profile=profile) for percent in (1, 50, 100))
+    return tuple(
+        profile.outbound_transform(packet) if profile.outbound_transform is not None else packet for packet in packets
+    )
+
+
+def _brightness_value_survives_profile_transition(
+    previous: ModelProfile, target: ModelProfile, evidence: BrightnessEvidence
+) -> bool:
+    if evidence in {BrightnessEvidence.PENDING, BrightnessEvidence.UNKNOWN}:
+        return False
+    if (
+        not previous.command_operation_supported("brightness")
+        or not target.command_operation_supported("brightness")
+        or previous.command_grammar != target.command_grammar
+        or previous.brightness_wire_range != target.brightness_wire_range
+    ):
+        return False
+    if previous.outbound_transform is not target.outbound_transform and _brightness_wire_signature(
+        previous
+    ) != _brightness_wire_signature(target):
+        return False
+    return evidence is not BrightnessEvidence.OBSERVED or (
+        previous.can_read(ReadDomain.BRIGHTNESS)
+        and target.can_read(ReadDomain.BRIGHTNESS)
+        and previous.status_grammar == target.status_grammar
+    )
+
+
+def _equal_profile_requires_identity_reset(
+    profile: ModelProfile, *, identity_changed: bool, preserve_state: bool
+) -> bool:
+    return identity_changed and not preserve_state and profile.profile_pact_dependent and profile.basic_controls_only
+
+
 class GoveeBLECoordinator(
     _DreamviewMixin, _ActiveModeMixin, _NotificationMixin, _RecoveryMixin, _H6102Mixin, _SegmentMixin
 ):
@@ -254,6 +292,7 @@ class GoveeBLECoordinator(
         self._identity_retries = 0
         self.is_on = False
         self.brightness_pct = 100
+        self._brightness_pct_evidence = BrightnessEvidence.DEFAULT
         self.rgb_color: tuple[int, int, int] = (255, 255, 255)
         self.color_temp_kelvin: int | None = None
         self._pending_kelvin: int | None = None
@@ -397,7 +436,7 @@ class GoveeBLECoordinator(
             if changed_fields & authorization_fields:
                 self._authorization_generation += 1
             if self.profile.profile_identity_fields or self.profile.scene_identity_fields:
-                self._resolve_device_profile()
+                self._resolve_device_profile(identity_changed=True)
             if self.config_entry is not None:
                 registry = dr.async_get(self.hass)
                 device = registry.async_get_device_by_identifier((DOMAIN, self.address), self.config_entry.entry_id)
@@ -573,10 +612,11 @@ class GoveeBLECoordinator(
                         self._h607c_advertisement_observations[source] = (timestamp, previous[1] | advertisement.pacts)
                 elif advertisement.pacts:
                     pact = next(iter(advertisement.pacts)) if len(advertisement.pacts) == 1 else (None, None)
-                    if pact != (self.pact_type, self.pact_code):
+                    identity_changed = pact != (self.pact_type, self.pact_code)
+                    if identity_changed:
                         self.pact_type, self.pact_code = pact
                         self._authorization_generation += 1
-                    self._resolve_device_profile()
+                    self._resolve_device_profile(identity_changed=identity_changed)
                 if advertisement.supports_encryption:
                     self._advertised_encryption = True
                     if self._encryption is not None and self._encryption.version == 0:
@@ -645,7 +685,7 @@ class GoveeBLECoordinator(
             self.pact_type, self.pact_code = pact
             self._h607c_pact_conflict = conflict
             self._authorization_generation += 1
-            self._resolve_device_profile(preserve_state=preserve_state)
+            self._resolve_device_profile(preserve_state=preserve_state, identity_changed=True)
             self.async_update_listeners()
         if fresh:
             confirmed = (
@@ -763,7 +803,31 @@ class GoveeBLECoordinator(
 
         return guard
 
-    def _resolve_device_profile(self, *, preserve_state: bool = False) -> None:
+    def _set_brightness_evidence(self, evidence: BrightnessEvidence) -> None:
+        self._brightness_pct_evidence = evidence
+        self._brightness_pct_known = evidence.recovery_qualified
+
+    def _install_restored_brightness(self, value: int) -> None:
+        self.brightness_pct = value
+        self._set_brightness_evidence(BrightnessEvidence.RESTORED)
+
+    def _retire_brightness_authority(self) -> None:
+        if self._brightness_pct_evidence.recovery_qualified:
+            self._brightness_pct_evidence = BrightnessEvidence.RETAINED
+        elif self._brightness_pct_evidence is BrightnessEvidence.PENDING:
+            self._brightness_pct_evidence = BrightnessEvidence.UNKNOWN
+        self._brightness_pct_known = False
+
+    def _apply_brightness_profile_transition(self, previous: ModelProfile, target: ModelProfile) -> None:
+        evidence = self._brightness_pct_evidence
+        if _brightness_value_survives_profile_transition(previous, target, evidence):
+            self._brightness_pct_evidence = BrightnessEvidence.RETAINED if evidence.recovery_qualified else evidence
+            self._retire_brightness_authority()
+            return
+        self.brightness_pct = 100
+        self._set_brightness_evidence(BrightnessEvidence.DEFAULT)
+
+    def _resolve_device_profile(self, *, preserve_state: bool = False, identity_changed: bool = False) -> None:
         declared = get_profile(self.model)
         if (
             not declared.profile_identity_fields
@@ -797,25 +861,23 @@ class GoveeBLECoordinator(
             if profile.configured_string_counts and self.configured_strings in profile.configured_string_counts:
                 bulbs = self.configured_strings * profile.bulbs_per_string
                 profile = replace(profile, segment_count=bulbs)
-        if profile == self.profile and not (self.model == "H607C" and not preserve_state and not profile.supports_rgb):
+        reset_equal_identity = _equal_profile_requires_identity_reset(
+            profile, identity_changed=identity_changed, preserve_state=preserve_state
+        )
+        if profile == self.profile and not reset_equal_identity:
             if context_changed:
                 self._advance_profile_generation()
                 self._expected_state.clear()
                 self.segment_kelvin = [None] * self.profile.segment_count
                 self.segment_brightness_known = [False] * self.profile.segment_count
-                self._brightness_pct_known = False
+                self._apply_brightness_profile_transition(self.profile, profile)
             return
-        preserve_brightness = (
-            self.model == "H607C"
-            and self.profile.status_grammar == profile.status_grammar
-            and self.profile.brightness_wire_range == profile.brightness_wire_range
-            and self.profile.can_read(ReadDomain.BRIGHTNESS)
-            and profile.can_read(ReadDomain.BRIGHTNESS)
-            and self._field_revisions.get("brightness_pct", 0) > 0
-            and "brightness_pct" not in self._expected_state
-        )
+        previous_profile = self.profile
         scene_only_change = bool(
-            profile.scene_identity_fields and not context_changed and same_control_profile(profile, self.profile)
+            profile.scene_identity_fields
+            and not context_changed
+            and not reset_equal_identity
+            and same_control_profile(profile, self.profile)
         )
         self.profile = profile
         if scene_only_change:
@@ -846,12 +908,10 @@ class GoveeBLECoordinator(
         self._expected_state.clear()
         self.segment_kelvin = [None] * self.profile.segment_count
         self.segment_brightness_known = [False] * self.profile.segment_count
-        self._brightness_pct_known = False
+        self._apply_brightness_profile_transition(previous_profile, profile)
         self._sync_device_configuration_url()
         if preserve_state:
             return
-        if self.model not in {"H60A1", "H60A6"} and not preserve_brightness:
-            self.brightness_pct = 100
         self.color_mode = None
         self.effect = self.diy_code = self._scene_code = None
         self.music_mode = self.video_mode = "off"
@@ -1290,7 +1350,7 @@ class GoveeBLECoordinator(
         self._expected_state.clear()
         self.segment_kelvin = [None] * self.profile.segment_count
         self.segment_brightness_known = [False] * self.profile.segment_count
-        self._brightness_pct_known = False
+        self._retire_brightness_authority()
         self._segment_query_incomplete = False
         self._bulk_query_incomplete = False
         self._bulk_collector = None
@@ -1368,7 +1428,7 @@ class GoveeBLECoordinator(
                 self._observed_power_write_generation = self._power_write_generation
                 self._observed_power_profile_generation = self._profile_generation
             elif field == "brightness_pct":
-                self._brightness_pct_known = True
+                self._set_brightness_evidence(BrightnessEvidence.OBSERVED)
             elif field.startswith("boolean_"):
                 self._source_power_observation_generation[field] = (
                     self._power_write_generation,
@@ -1762,7 +1822,7 @@ class GoveeBLECoordinator(
                 if field in requested:
                     setattr(self, field, requested[field])
             if "brightness_pct" in requested:
-                self._brightness_pct_known = False
+                self._set_brightness_evidence(BrightnessEvidence.PENDING)
         if state_values is not None:
             for field, value in state_values.items():
                 setattr(self, field, value)
@@ -1813,6 +1873,9 @@ class GoveeBLECoordinator(
             await client.write_gatt_char(WRITE_UUID, wire_packet, response=False)
             self._require_not_shutdown()
         except asyncio.CancelledError:
+            if arm_expected and "brightness_pct" in requested:
+                if self._brightness_pct_evidence is BrightnessEvidence.PENDING:
+                    self._set_brightness_evidence(BrightnessEvidence.UNKNOWN)
             if static is not None:
                 invalidate_failed_static()
             if self._notification_token is token:
@@ -1831,6 +1894,9 @@ class GoveeBLECoordinator(
                     pass
             raise
         except Exception as err:
+            if arm_expected and "brightness_pct" in requested:
+                if self._brightness_pct_evidence is BrightnessEvidence.PENDING:
+                    self._set_brightness_evidence(BrightnessEvidence.UNKNOWN)
             if static is not None:
                 invalidate_failed_static()
             if self._notification_token is token:
@@ -1858,11 +1924,19 @@ class GoveeBLECoordinator(
         packet_entry = self._record_packet("tx", wire_packet, outcome="sent", reason="write_succeeded")
         _LOGGER.debug("tx %s raw=%s", self.model, packet_entry["raw"])
         if arm_expected and generation != self._profile_generation:
+            if "brightness_pct" in requested and self._brightness_pct_evidence is BrightnessEvidence.PENDING:
+                self._set_brightness_evidence(BrightnessEvidence.UNKNOWN)
             raise ValueError("Device profile changed during control write; refresh and retry")
         if arm_expected and authorization_generation != self._authorization_generation:
+            if "brightness_pct" in requested and self._brightness_pct_evidence is BrightnessEvidence.PENDING:
+                self._set_brightness_evidence(BrightnessEvidence.UNKNOWN)
             raise ValueError("Device identity changed during control write; refresh and retry")
-        if arm_expected and "brightness_pct" in requested:
-            self._brightness_pct_known = True
+        if (
+            arm_expected
+            and "brightness_pct" in requested
+            and self._brightness_pct_evidence is BrightnessEvidence.PENDING
+        ):
+            self._set_brightness_evidence(BrightnessEvidence.DELIVERED)
         if arm_expected and "is_on" in requested:
             self._power_known = True
         if (

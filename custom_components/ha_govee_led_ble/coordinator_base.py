@@ -9,7 +9,7 @@ from bleak import BleakClient
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-from .const import DOMAIN, ModelProfile, ReadDomain
+from .const import DOMAIN, BrightnessEvidence, ModelProfile, ReadDomain
 from .control_arbiter import BLEControlArbiter, ControlIntent, async_control_intent
 from .coordinator_control import ControlStateCheckpoint
 from .coordinator_status import ParsedMode, StatusDomain
@@ -143,6 +143,7 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     _static_write_attempts: int
     segment_kelvin: list[int | None]
     segment_brightness_known: list[bool]
+    _brightness_pct_evidence: BrightnessEvidence
     _brightness_pct_known: bool
     _power_known: bool
     _static_colour_known: bool

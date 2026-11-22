@@ -11,7 +11,13 @@ import pytest
 from bleak import BleakError
 from homeassistant.core import CoreState
 
-from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ModelProfile, device_profile, get_profile
+from custom_components.ha_govee_led_ble.const import (
+    MODEL_PROFILES,
+    BrightnessEvidence,
+    ModelProfile,
+    device_profile,
+    get_profile,
+)
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_expectations import expectations_from_packet
@@ -795,7 +801,13 @@ async def test_music_recovery_cancellation_respects_physical_boundary(hass, phas
         coordinator.refresh_state.assert_not_awaited()
     # Recovery restores master brightness before its power/music sequence.
     expected = before
-    assert coordinator.capture_effect_control_state() == expected
+    current = coordinator.capture_effect_control_state()
+    if phase == "write":
+        assert replace(current, brightness_pct_known=expected.brightness_pct_known) == expected
+        assert coordinator._brightness_pct_evidence is BrightnessEvidence.UNKNOWN
+        assert current.brightness_pct_known is False
+    else:
+        assert current == expected
     assert coordinator.control_write_attempts == (phase == "write")
     assert coordinator._field_revisions == coordinator._domain_revisions == {}
     assert not coordinator._lock.locked() and not coordinator._control_arbiter.locked()

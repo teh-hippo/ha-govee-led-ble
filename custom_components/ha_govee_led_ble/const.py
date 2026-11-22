@@ -97,6 +97,28 @@ class SupportQuality(StrEnum):
     SUPPORTED = "supported"
 
 
+class BrightnessEvidence(StrEnum):
+    DEFAULT = "default"
+    RESTORED = "restored"
+    RETAINED = "retained"
+    OBSERVED = "observed"
+    DELIVERED = "delivered"
+    PENDING = "pending"
+    UNKNOWN = "unknown"
+
+    @property
+    def recovery_qualified(self) -> bool:
+        return self in {BrightnessEvidence.OBSERVED, BrightnessEvidence.DELIVERED}
+
+    @property
+    def baseline_qualified(self) -> bool:
+        return self in {
+            BrightnessEvidence.DEFAULT,
+            BrightnessEvidence.OBSERVED,
+            BrightnessEvidence.DELIVERED,
+        }
+
+
 class ReadDomain(StrEnum):
     POWER = "power"
     BRIGHTNESS = "brightness"
