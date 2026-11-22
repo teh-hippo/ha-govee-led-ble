@@ -850,12 +850,24 @@ class EffectDeploymentEngine:
                             validate_compiled_geometry(compiled, coordinator.effect_authorization_profile)
                             _validate_diy_slot_approval(coordinator, compiled)
 
+                        def upload_started(index: int) -> None:
+                            if index != 0 or not compiled.upload_packets:
+                                return
+                            if self._active_workspaces is not None:
+                                workspace = self._active_workspaces.get(record.config_entry_id)
+                                if (
+                                    workspace is not None
+                                    and workspace.observable_signature == record.observable_signature
+                                ):
+                                    self.clear_active_origin(record.config_entry_id)
+
                         await coordinator.async_write_effect_sequence(
                             compiled.upload_packets if a1_activation is not None else compiled.packets,
                             intent=ControlIntent.APPLY,
                             attempt_started=transaction.attempt_started,
                             progress=transaction.sequence_progress,
                             write_guard=validate_effect_write,
+                            packet_on_write=upload_started,
                             **ack_options,
                         )
                         if compiled_observation(compiled, profile=coordinator.profile)[0] is None:
@@ -893,6 +905,22 @@ class EffectDeploymentEngine:
                                 prior_origin=prior_origin,
                             )
                             return final, False
+                        if confirmed is None:
+                            uncertain = replace(
+                                transaction.current,
+                                phase=DeploymentPhase.UNCERTAIN,
+                                error_code="device_state_unconfirmed",
+                                verification_confidence=ObservationConfidence.UNKNOWN,
+                            )
+                            await transaction.store(uncertain)
+                            self._reconcile_observation(
+                                coordinator,
+                                config_entry_id=record.config_entry_id,
+                                observed_at=record.updated_at,
+                                refreshed=False,
+                            )
+                            self._publish_coordinator_state(coordinator)
+                            return uncertain, False
                     completed = replace(
                         transaction.current,
                         phase=DeploymentPhase.CONFIRMED if confirmed else DeploymentPhase.APPLIED,

@@ -1316,8 +1316,10 @@ async def test_palette_public_paths_wait_for_upload_verdict(selection_ready, has
             if path == "preview":
                 assert events[-1].phase is (PreviewPhase.WRITTEN if verdict == "accepted" else PreviewPhase.FAILED)
             else:
-                assert result.phase is DeploymentPhase.APPLIED
-                assert result.verification_confidence.value == "write_completed"
+                assert result.phase is DeploymentPhase.UNCERTAIN
+                assert result.error_code == "device_state_unconfirmed"
+                assert result.verification_confidence.value == "unknown"
+                c.async_restore_effect_control_state.assert_not_awaited()
         else:
             error = (
                 ModeTransitionSupersededError
