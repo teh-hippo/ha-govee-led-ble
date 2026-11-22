@@ -11,9 +11,15 @@ from uuid import UUID
 
 from homeassistant.core import HomeAssistant
 
-from .const import DOMAIN
+from .const import DOMAIN, LegacyEffectSelectorDomain, ModelProfile, get_profile
 from .effect_deployments import DeploymentRecord, ObservationConfidence
-from .effect_domain import LibraryItem
+from .effect_domain import (
+    EffectContent,
+    LibraryItem,
+    PaletteDiyEffect,
+    RetainedSceneEffect,
+    effect_content_to_dict,
+)
 from .effect_limits import (
     MAX_DEVICE_CACHE_ENTRIES,
     MAX_DEVICE_CACHE_STORE_BYTES,
@@ -38,6 +44,55 @@ DEVICE_CACHE_STORE_MINOR_VERSION: Final = 1
 DEVICE_CACHE_STORE_KEY: Final = f"{DOMAIN}.effect_device_cache"
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def legacy_effect_selector_domain(
+    profile: ModelProfile,
+    content_route: str,
+) -> LegacyEffectSelectorDomain | None:
+    return next(
+        (domain for route, domain in profile.legacy_effect_selector_domains if route == content_route),
+        None,
+    )
+
+
+def legacy_effect_content_route(content: EffectContent) -> str | None:
+    if isinstance(content, RetainedSceneEffect):
+        return content.application
+    kind = effect_content_to_dict(content).get("kind")
+    return kind if isinstance(kind, str) else None
+
+
+def legacy_deployment_effect_signature(
+    profile: ModelProfile,
+    content_route: str,
+    selector: int | None,
+) -> str | None:
+    if selector is None:
+        return None
+    domain = legacy_effect_selector_domain(profile, content_route)
+    if domain is LegacyEffectSelectorDomain.DIY:
+        return f"custom:{selector}"
+    if domain is LegacyEffectSelectorDomain.SCENE:
+        return f"scene-code:{selector}"
+    return None
+
+
+def migrate_legacy_workspace_effect_signature(
+    model: str,
+    content: EffectContent,
+    signature: str,
+) -> str:
+    if not isinstance(content, RetainedSceneEffect | PaletteDiyEffect) or content.model != model:
+        return signature
+    route = legacy_effect_content_route(content)
+    if (
+        signature.startswith("custom:")
+        and route is not None
+        and legacy_effect_selector_domain(get_profile(model), route) is LegacyEffectSelectorDomain.SCENE
+    ):
+        return signature.replace("custom:", "scene-code:", 1)
+    return signature
 
 
 @dataclass(frozen=True, slots=True)

@@ -17,6 +17,7 @@ from custom_components.ha_govee_led_ble.const import (
     KELVIN_RANGE_2000_9000,
     MODEL_PROFILES,
     UNSUPPORTED_PROFILE,
+    LegacyEffectSelectorDomain,
     ModelProfile,
     ReadDomain,
     SupportQuality,
@@ -55,6 +56,12 @@ def test_supports_segments_defaults_false():
     assert not ModelProfile("x").supports_segments
     assert ModelProfile("x").command_grammar is None
     assert ModelProfile("x").status_grammar is None
+
+
+def test_legacy_effect_selector_routes_are_unambiguous():
+    route = ("route", LegacyEffectSelectorDomain.DIY)
+    with pytest.raises(ValueError, match="must be unique"):
+        ModelProfile("x", legacy_effect_selector_domains=(route, route))
 
 
 @pytest.mark.parametrize(

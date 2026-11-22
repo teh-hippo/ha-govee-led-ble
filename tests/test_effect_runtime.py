@@ -44,7 +44,9 @@ from custom_components.ha_govee_led_ble.effect_deployments import (
 from custom_components.ha_govee_led_ble.effect_domain import (
     BuiltinScene,
     CatalogueRef,
+    EffectPair,
     LibraryItem,
+    MultiEffect,
     MusicProfile,
     Origin,
     PaintedEffect,
@@ -54,10 +56,15 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     SourceKind,
     VideoProfile,
 )
-from custom_components.ha_govee_led_ble.effect_identity import EffectDeviceCache, ObservedDeviceState
+from custom_components.ha_govee_led_ble.effect_identity import (
+    EffectDeviceCache,
+    ObservedDeviceState,
+    legacy_effect_selector_domain,
+)
 from custom_components.ha_govee_led_ble.effect_runtime import (
     EffectDeploymentEngine,
     _activation_matches,
+    _record_signature,
     async_prepare_effect_control_state,
     compiled_observation,
     observable_signature_for_compiled,
@@ -157,6 +164,59 @@ def _confirmed_saved_record(item: LibraryItem, *, diy_code: int = 24) -> Deploym
         item_version=item.version,
         verification_confidence=ObservationConfidence.ACTIVATION_MATCH,
     )
+
+
+@pytest.mark.parametrize(
+    ("model", "changes", "expected"),
+    [
+        ("H617A", {"content_kind": "h617a_single"}, "custom:24"),
+        ("H617E", {"content_kind": "h617a_painted"}, "custom:24"),
+        ("H6199", {"content_kind": "palette_diy"}, "scene-code:24"),
+        ("H6053", {"content_kind": "workshop"}, "scene-code:24"),
+        ("H6053", {"content_kind": "shared_scene"}, "scene-code:24"),
+        ("H617A", {"content_kind": "unknown"}, None),
+        (
+            "H617A",
+            {"target_mode": "scene", "target_effect": "Aurora", "diy_code": None},
+            "scene:Aurora",
+        ),
+        (
+            "H617A",
+            {"target_mode": "scene", "target_effect": "Aurora", "diy_code": 401},
+            "scene-code:401",
+        ),
+        (
+            "H617A",
+            {"target_model": "H617E", "observable_signature": "custom:24"},
+            None,
+        ),
+        (
+            "H617A",
+            {"target_model": "H617A", "observable_signature": "custom:24"},
+            "custom:24",
+        ),
+    ],
+)
+def test_legacy_record_selector_acceptance_matrix(model, changes, expected) -> None:
+    record = replace(_confirmed_saved_record(_type04_item()), target_model=None, observable_signature=None)
+    assert _record_signature(replace(record, **changes), model) == expected
+
+
+@pytest.mark.parametrize("model", ["H617A", "H617E"])
+@pytest.mark.parametrize(
+    "content",
+    [
+        PaintedEffect("clockwise", 50, 100, (None,) * 15),
+        SingleEffect(0, 0, 50, ((255, 0, 0),)),
+        MultiEffect((EffectPair(0, 0),), 50, ((255, 0, 0),)),
+    ],
+)
+def test_legacy_diy_selector_policy_matches_current_compiler(model, content) -> None:
+    compiled = compile_effect(LibraryItem.new("Legacy route", content), model, diy_code=321)
+
+    domain = legacy_effect_selector_domain(get_profile(model), compiled.content_kind)
+    assert domain is not None
+    assert domain.value == compiled.selector_kind
 
 
 def _h6199_item(*, family: int = 8, variant: int = 9) -> LibraryItem:
@@ -1211,6 +1271,40 @@ async def test_mid_upload_failure_recovers_prior_state_and_fails_cleanly(
     assert failed.phase is DeploymentPhase.FAILED
     coordinator.async_restore_effect_control_state.assert_awaited_once()
     assert coordinator.async_restore_effect_control_state.await_args.kwargs == {"overwritten_diy_code": 800}
+
+
+@pytest.mark.parametrize(("content_kind", "overwritten_diy_code"), [("h617a_single", 800), ("unknown", -1)])
+async def test_legacy_record_signature_controls_failure_recovery(
+    hass: HomeAssistant,
+    content_kind: str,
+    overwritten_diy_code: int,
+) -> None:
+    repository, cache = await _repositories(hass)
+    coordinator = _coordinator()
+    coordinator.async_restore_effect_control_state = AsyncMock(return_value=True)
+    record = replace(
+        _confirmed_saved_record(_type04_item(), diy_code=800),
+        content_kind=content_kind,
+        target_model=None,
+        observable_signature=None,
+        phase=DeploymentPhase.UPLOADING,
+        progress_current=1,
+        progress_total=3,
+        prior_state=PriorControlState("custom", True, 50, (0, 0, 0)),
+    )
+    await repository.async_put(record, expected_version=None)
+
+    failed = await EffectDeploymentEngine(repository, cache)._async_finish_failure(
+        coordinator,
+        record,
+        error_code="write_failed",
+    )
+
+    assert failed.phase is DeploymentPhase.FAILED
+    coordinator.async_restore_effect_control_state.assert_awaited_once_with(
+        record.prior_state,
+        overwritten_diy_code=overwritten_diy_code,
+    )
 
 
 @pytest.mark.parametrize("live", [False, True])
@@ -2610,6 +2704,9 @@ async def test_workshop_uses_evidenced_model_application(
         else LibraryItem.new("Workshop", WORKSHOP_PROTOCOL_FIXTURES[0].content(model))
     )
     compiled = compile_effect(item, model, diy_code=resolve_diy_code(item, model=model))
+    domain = legacy_effect_selector_domain(get_profile(model), compiled.content_kind)
+    assert domain is not None
+    assert domain.value == compiled.selector_kind
     workshop_code = compiled.diy_code
     if kind == "basic":
         _confirm_on_call(coordinator, 2, workshop_code)
