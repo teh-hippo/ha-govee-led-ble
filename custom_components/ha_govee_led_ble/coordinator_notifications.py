@@ -722,20 +722,22 @@ class _NotificationMixin(_CoordinatorBase):
                 observed = ("video_sensitivity",)
         if getattr(generated.body.setting, "name", None) == "hdmi_input" and self.profile.supports_hdmi_input:
             value = int(generated.body.payload.selected)
-            if not 0 <= value < self.profile.hdmi_input_count:
+            if not 1 <= value <= self.profile.hdmi_input_count:
                 raise ValueError("HDMI input is outside profile limits")
-            if self._accept_expected("video_hdmi_input", value):
-                self.video_hdmi_input = value
-                observed = ("video_hdmi_input",)
+            hdmi_values: dict[str, Any] = {"video_hdmi_input": value}
             if generated.body.length == 2:
                 mask = int(generated.body.payload.connected_mask)
-                self.video_hdmi_inputs_connected = (
+                hdmi_values["video_hdmi_inputs_connected"] = (
                     bool(mask & (1 << 7)),
                     bool(mask & (1 << 6)),
                     bool(mask & (1 << 5)),
                     bool(mask & (1 << 4)),
                 )
-                observed += ("video_hdmi_inputs_connected",)
+            if self._accept_expected_values(hdmi_values):
+                self.video_hdmi_input = value
+                if "video_hdmi_inputs_connected" in hdmi_values:
+                    self.video_hdmi_inputs_connected = hdmi_values["video_hdmi_inputs_connected"]
+                observed = tuple(hdmi_values)
         if (
             getattr(generated.body.setting, "name", None) == "colour_calibration"
             and self.profile.supports_video_color_calibration
@@ -1035,12 +1037,24 @@ class _NotificationMixin(_CoordinatorBase):
         try:
             observed: tuple[str, ...] = ()
             domain_name = getattr(generated.domain, "name", None)
-            if self.profile.boolean_controls and domain_name != "source_info":
+            h8604_device_info = (
+                self.profile.status_grammar == "H8604"
+                and domain is StatusDomain.HARDWARE
+                and (
+                    getattr(generated.body.selector, "name", None) == "device_info" or int(generated.body.selector) == 8
+                )
+            )
+            if self.profile.boolean_controls and domain_name != "source_info" and not h8604_device_info:
                 boolean_values = parse_boolean_control(generated, self.model, profile=self.profile)
+                boolean_expectations = {f"boolean_{key}": value for key, value in boolean_values.items()}
+                if not self._accept_expected_values(boolean_expectations):
+                    self._reply_gate.observe(frame)
+                    self._record_parsed_status(frame, decoded, parser)
+                    return
                 if self.profile.setting_grammar == "H6046" and boolean_values:
                     self.bar_enable_mask = int(generated.body.mask)
                 self.boolean_control_state.update(boolean_values)
-                observed = tuple(f"boolean_{key}" for key in boolean_values)
+                observed = tuple(boolean_expectations)
             if self.profile.status_grammar == "H6199" and domain is not StatusDomain.COLOUR_MODE:
                 values = parse_h6199_control(generated)
                 if "gradient" in values:
@@ -1163,15 +1177,7 @@ class _NotificationMixin(_CoordinatorBase):
                 if version is not None and self._observe_identity_field("hw_version", version):
                     observed = observed + ("hw_version",)
                 detail = getattr(getattr(generated, "body", None), "detail", None)
-                if (
-                    self.profile.supports_hdmi_box_light
-                    and getattr(generated.body, "selector", None)
-                    and (
-                        getattr(generated.body.selector, "name", None) == "device_info"
-                        or int(generated.body.selector) == 8
-                    )
-                    and detail is not None
-                ):
+                if h8604_device_info and self.profile.supports_hdmi_box_light and detail is not None:
                     box_values = {
                         "hdmi_box_light": bool(detail.box_light_enabled),
                         "hdmi_box_brightness": max(1, int(detail.box_brightness)),
@@ -1183,10 +1189,19 @@ class _NotificationMixin(_CoordinatorBase):
                         or not 0 <= box_values["hdmi_box_effect"] <= self.profile.hdmi_box_effect_max
                     ):
                         raise ValueError("HDMI box light state is outside profile limits")
-                    if self._accept_expected_values(box_values):
-                        for field, value in box_values.items():
-                            setattr(self, field, value)
-                        observed += tuple(box_values)
+                    boolean_values = parse_boolean_control(generated, self.model, profile=self.profile)
+                    values = {
+                        **box_values,
+                        **{f"boolean_{control}": enabled for control, enabled in boolean_values.items()},
+                    }
+                    if not self._accept_expected_values(values):
+                        self._reply_gate.observe(frame)
+                        self._record_parsed_status(frame, decoded, parser)
+                        return
+                    self.boolean_control_state.update(boolean_values)
+                    for field, value in box_values.items():
+                        setattr(self, field, value)
+                    observed += tuple(values)
             elif domain is StatusDomain.SUBORDINATE_20:
                 if self._observe_identity_field("subordinate_20_version", generated.body.text or None):
                     observed = ("subordinate_20_version",)

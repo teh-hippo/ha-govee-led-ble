@@ -7,6 +7,7 @@ from importlib import import_module
 import pytest
 
 from custom_components.ha_govee_led_ble.const import device_profile, get_profile
+from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.dreamview import (
     build_dreamview_command,
     build_dreamview_query,
@@ -82,6 +83,57 @@ def test_h8604_native_light_sources_share_the_zone_contract(control, selector, e
     require_profile_packet(packet, profile)
     with pytest.raises(ValueError):
         require_profile_packet(packet, replace(profile, boolean_controls=profile.boolean_controls - {control}))
+
+
+def test_h8604_stale_native_mask_cannot_replace_complete_source_state(hass):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H8604", configuration_url=None)
+    coordinator.profile = device_profile("H8604", 2, 1)
+    coordinator.boolean_control_state.update(
+        {"left_bar_enabled": False, "middle_enabled": False, "right_bar_enabled": False}
+    )
+    coordinator._expected_state["boolean_left_bar_enabled"] = (False, float("inf"))
+    reply = bytearray(frame("aa0708000e010a0001000001020300"))
+
+    coordinator._notify_callback(None, reply)
+    assert coordinator.boolean_control_state == {
+        "left_bar_enabled": False,
+        "middle_enabled": False,
+        "right_bar_enabled": False,
+    }
+    assert not any(field.startswith("boolean_") for field in coordinator._field_revisions)
+
+    coordinator._expected_state.clear()
+    coordinator._notify_callback(None, reply)
+    assert coordinator.boolean_control_state == {
+        "left_bar_enabled": True,
+        "middle_enabled": True,
+        "right_bar_enabled": True,
+    }
+    assert all(
+        coordinator._field_revisions[f"boolean_{control}"] > 0
+        for control in ("left_bar_enabled", "middle_enabled", "right_bar_enabled")
+    )
+
+
+def test_h8604_stale_box_light_reply_cannot_replace_source_state(hass):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H8604", configuration_url=None)
+    coordinator.profile = device_profile("H8604", 2, 1)
+    coordinator.boolean_control_state.update(
+        {"left_bar_enabled": False, "middle_enabled": False, "right_bar_enabled": False}
+    )
+    coordinator.hdmi_box_light = False
+    coordinator._expected_state["hdmi_box_light"] = (False, float("inf"))
+
+    coordinator._notify_callback(None, bytearray(frame("aa0708000e010a0001000001020300")))
+
+    assert coordinator.boolean_control_state == {
+        "left_bar_enabled": False,
+        "middle_enabled": False,
+        "right_bar_enabled": False,
+    }
+    assert coordinator.hdmi_box_light is False
+    assert not any(field.startswith("boolean_") for field in coordinator._field_revisions)
+    assert "hdmi_box_light" not in coordinator._field_revisions
 
 
 @pytest.mark.parametrize(

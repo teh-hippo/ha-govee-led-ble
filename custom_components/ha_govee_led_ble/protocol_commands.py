@@ -504,6 +504,14 @@ def build_video_mode(
         return _serialize_xor(root)
     if grammar not in {"H6099", "H6199"}:
         raise ValueError(f"{model} has no generated video-mode grammar")
+    if (
+        type(full_screen) is not bool
+        or type(sound_effects) is not bool
+        or type(softness) is not int
+        or profile.video_softness_min == 0
+        and not profile.video_softness_min <= softness <= profile.video_softness_max
+    ):
+        raise ValueError("video region, sound effects and softness are outside model limits")
     if video_mode not in {"movie", "game"}:
         raise ValueError(f"{model} video mode {video_mode} is not supported by the H6199 grammar")
     root_type = _COMMAND_ROOTS[grammar][1]
@@ -517,7 +525,7 @@ def build_video_mode(
     detail.source = root_type.VideoSource.game if video_mode == "game" else root_type.VideoSource.movie
     detail.saturation = saturation
     detail.sound_effects = int(sound_effects)
-    detail.softness = max(1, min(100, softness))
+    detail.softness = softness if profile.video_softness_min == 0 else max(1, min(100, softness))
     if grammar == "H6099":
         detail.sound_type = b"\x02"
     else:

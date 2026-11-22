@@ -398,8 +398,8 @@ class VideoProfile:
             _validate_range(
                 self.hdmi_input,
                 "hdmi_input",
-                minimum=0,
-                maximum=profile.hdmi_input_count - 1,
+                minimum=1,
+                maximum=profile.hdmi_input_count,
             )
         box_values = (
             self.hdmi_box_light,

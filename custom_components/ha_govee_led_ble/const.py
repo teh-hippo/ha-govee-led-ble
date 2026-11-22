@@ -2065,6 +2065,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_color_temperature=True,
         color_temp_range=KELVIN_RANGE_2000_9000,
         static_readback_kelvin=True,
+        static_readback_gradual=True,
         supports_scenes=True,
         supports_custom_effects=True,
         supports_multi_layered_effects=True,

@@ -4,7 +4,8 @@ meta:
   endian: le
 doc: |
   SPECULATIVE exact H8604 video-setting writes and queries. Register A9/01
-  controls video sensitivity. Register A9/03 selects one of four HDMI inputs.
+  controls video sensitivity. Register A9/03 selects one of four HDMI inputs
+  using the one-based wire values 1 through 4.
   Register A9/05 controls yellow, blue and
   purple calibration; qualified HDR revisions append red calibration.
   Register A9/0e mirrors saturation. The same typed bodies describe status
@@ -50,6 +51,9 @@ types:
     seq:
       - id: selected
         type: u1
+        valid:
+          min: 1
+          max: 4
       - id: connected_mask
         type: u1
         if: _parent.length == 2

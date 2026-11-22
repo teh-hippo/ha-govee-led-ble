@@ -1255,6 +1255,7 @@ class GoveeBLECoordinator(
         for field in ("left_bar_kelvin", "right_bar_kelvin", "boolean_left_bar_enabled", "boolean_right_bar_enabled"):
             self._field_received_at.pop(field, None)
         self.video_parameters = None
+        self.video_hdmi_inputs_connected = None
         self._confirmed_identity_fields.clear()
         self._connection_pacts.clear()
         self._authorization_generation += 1

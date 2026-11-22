@@ -1119,7 +1119,7 @@ export function decodeEffectContent(value: unknown): EffectContent {
           video_sensitivity: integerValue(content.video_sensitivity, "video sensitivity", 0, 100),
         }),
         ...(content.hdmi_input === undefined ? {} : {
-          hdmi_input: integerValue(content.hdmi_input, "HDMI input", 0, 15),
+          hdmi_input: integerValue(content.hdmi_input, "HDMI input", 1, 15),
         }),
         ...(content.hdmi_box_light === undefined ? {} : {
           hdmi_box_light: booleanValue(content.hdmi_box_light, "HDMI box light"),

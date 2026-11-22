@@ -151,8 +151,12 @@ export class GoveeVideoProfileEditor extends LitElement {
     return html`
       <div class="editor-grid">
         ${Object.entries(this.applicability ?? {}).filter(([control, state]) =>
-          this.settings.includes(control as VideoProfileSetting) && state !== "supported").map(([control, state]) => html`
-          <p role="status">${control.replaceAll("_", " ")}: ${state === "evidence_gap" ? "firmware identity unavailable" : "unavailable on this device"}.
+          (
+            this.settings.includes(control as VideoProfileSetting)
+            || control === "color_calibration_red"
+              && this.content?.color_calibration?.length === 4
+          ) && state !== "supported").map(([control, state]) => html`
+          <p role="status">${control === "color_calibration_red" ? "red calibration" : control.replaceAll("_", " ")}: ${state === "evidence_gap" ? "firmware identity unavailable" : "unavailable on this device"}.
             A profile requesting this setting cannot be applied.</p>`)}
         <section class="card">
           <h3 class="section-title">Included settings</h3>
@@ -212,7 +216,7 @@ export class GoveeVideoProfileEditor extends LitElement {
                   else delete content.video_sensitivity;
                   break;
                 case "hdmi_input":
-                  if (checked) content.hdmi_input = 0;
+                  if (checked) content.hdmi_input = 1;
                   else delete content.hdmi_input;
                   break;
                 case "hdmi_box_light":
@@ -406,7 +410,7 @@ export class GoveeVideoProfileEditor extends LitElement {
                     })}
                   >
                     ${Array.from({length: this.controls?.hdmi_input_count ?? 4}, (_, index) => html`
-                      <option value=${index} .selected=${this.content?.hdmi_input === index}>HDMI ${index + 1}</option>
+                      <option value=${index + 1} .selected=${this.content?.hdmi_input === index + 1}>HDMI ${index + 1}</option>
                     `)}
                   </select>
                 </label>
