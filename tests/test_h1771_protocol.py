@@ -7,12 +7,22 @@ from uuid import UUID
 
 import pytest
 
-from custom_components.ha_govee_led_ble.const import KELVIN_RANGE_1000_10000, ModelProfile, ReadDomain
+from custom_components.ha_govee_led_ble.const import (
+    KELVIN_RANGE_1000_10000,
+    MODEL_PROFILES,
+    ModelProfile,
+    ReadDomain,
+)
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode, decode_status_frame, parse_color_mode
 from custom_components.ha_govee_led_ble.effect_catalogue import MODEL_EFFECT_CATALOGUES
-from custom_components.ha_govee_led_ble.effect_compiler import DIY_ACK_EVIDENCE, compile_effect
+from custom_components.ha_govee_led_ble.effect_compiler import (
+    DIY_ACK_EVIDENCE,
+    CompatibilityState,
+    compatibility,
+    compile_effect,
+)
 from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, Origin, SourceKind
 from custom_components.ha_govee_led_ble.effect_protocol_decoder import UnsupportedA3EffectError, decode_effect_frames
 from custom_components.ha_govee_led_ble.effect_runtime import _active_workspace_content
@@ -467,6 +477,23 @@ def test_candidate_unmodified_native_scene_does_not_require_upload_ack():
     assert not compiled.upload_packets and compiled.upload_subtype is None
     assert DIY_ACK_EVIDENCE not in compiled.evidence_codes
     assert compiled.activation_packet is not None
+
+
+def test_unmodified_native_scene_remains_selector_only_without_upload_permission() -> None:
+    entry = next(scene for scene in MODEL_SCENES["H1771"].values() if scene.display_name == "Dreamland")
+    content = _scene_content(entry, CatalogueRef("H1771", entry.scene_id, entry.effect_id), None, None)
+    profile = replace(
+        MODEL_PROFILES["H1771"],
+        command_operations=frozenset(MODEL_PROFILES["H1771"].command_operations or ()) - {"effect_upload"},
+    )
+
+    result = compatibility(LibraryItem.new("Scene", content), "H1771", profile=profile)
+    assert result.state is CompatibilityState.COMPATIBLE
+    compiled = compile_effect(LibraryItem.new("Scene", content), "H1771", profile=profile)
+
+    assert compiled.upload_packets == ()
+    assert compiled.activation_packet is not None
+    require_profile_packet(compiled.activation_packet, profile)
 
 
 @pytest.mark.parametrize(("name", "scene_type"), [("Forest", 2), ("Dreamland", 5)])

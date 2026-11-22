@@ -500,7 +500,11 @@ class EffectDeploymentEngine:
                     config_entry_id=config_entry_id,
                     model=coordinator.model,
                     selector_label=item.name,
-                    content=_active_workspace_content(item.content, compiled),
+                    content=_active_workspace_content(
+                        item.content,
+                        compiled,
+                        profile=coordinator.effect_authorization_profile,
+                    ),
                     origin=item.origin,
                     observable_signature=signature,
                     updated_at=updated_at,
@@ -1718,13 +1722,20 @@ def observable_signature_for_state(
 def _active_workspace_content(
     source: EffectContent,
     compiled: CompiledApplication | None,
+    *,
+    profile: ModelProfile | None = None,
 ) -> EffectContent:
     if not isinstance(compiled, CompiledEffect) or not compiled.upload_packets:
         return source
     if isinstance(source, LayeredEffect) and compiled.rgbic_scene_v0 is not None:
         return source
     try:
-        decoded = decode_effect_frames(compiled.upload_packets, compiled.model, compiled.upload_transport)
+        decoded = decode_effect_frames(
+            compiled.upload_packets,
+            compiled.model,
+            compiled.upload_transport,
+            profile=profile,
+        )
     except ValueError:
         return source
     if isinstance(source, LayeredEffect) and isinstance(decoded, LayeredEffect):

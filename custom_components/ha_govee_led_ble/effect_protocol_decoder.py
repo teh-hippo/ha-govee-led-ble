@@ -6,7 +6,7 @@ from typing import Any
 
 from kaitaistruct import KaitaiStructError
 
-from .const import get_profile
+from .const import ModelProfile, get_profile
 from .effect_domain import (
     H617A_SEGMENT_COUNT,
     EffectContent,
@@ -24,6 +24,7 @@ from .h607c_effects import decode_zoned_diy
 from .h1771_effects import decode_h1771_diy
 from .h6179_effect_codec import decode_h6179_effect
 from .layered_scene_decoder import decode_workshop_effect
+from .native_effect_codecs import native_a3_codec_for_profile, native_a3_codec_for_tree
 from .protocol_core import (
     DiyType03,
     DiyType04,
@@ -36,7 +37,6 @@ from .protocol_core import (
     H6046EffectUpload,
     H6053EffectUpload,
     H6199EffectUpload,
-    H7025DiyBody,
     SceneBody,
     SceneType1Body,
     serialize_native_body,
@@ -58,48 +58,59 @@ class UnsupportedA3EffectError(ValueError):
 def decode_a3_effect_frames(
     frames: tuple[bytes, ...],
     model: str,
+    *,
+    profile: ModelProfile | None = None,
 ) -> EffectContent:
     """Reassemble and decode locally generated A3 frames through Kaitai."""
     envelope = reassemble_a3(frames)
-    return decode_a3_effect(parse_a3_effect_envelope(envelope, model), model)
+    return decode_a3_effect(parse_a3_effect_envelope(envelope, model, profile=profile), model, profile=profile)
 
 
 def decode_effect_frames(
     frames: tuple[bytes, ...],
     model: str,
     transport: str,
+    *,
+    profile: ModelProfile | None = None,
 ) -> EffectContent:
     """Decode locally generated upload frames using their explicit transport."""
     if transport == "a3":
-        return decode_a3_effect_frames(frames, model)
+        return decode_a3_effect_frames(frames, model, profile=profile)
+    effective_profile = profile or get_profile(model)
     if transport == "a1_02":
-        if get_profile(model).effect_grammar == "H6053":
+        if effective_profile.effect_grammar == "H6053":
             try:
                 root = H6053EffectUpload.A1DiyBody.from_bytes(reassemble_a1_02(frames))
                 root._read()
             except (KaitaiStructError, EOFError) as error:
                 raise ValueError("Invalid A1 DIY body") from error
             return _decode_flat_diy(root.body)
-        if get_profile(model).effect_grammar == "H6181":
+        if effective_profile.effect_grammar == "H6181":
             from .h6181_effects import decode_diy
 
             return decode_diy(reassemble_a1_02(frames))
-        if get_profile(model).effect_grammar != "H6179":
+        if effective_profile.effect_grammar != "H6179":
             raise ValueError(f"{model} cannot decode A1 02 effect frames")
         return decode_h6179_effect(reassemble_a1_02(frames))
     if transport == "a4":
         from .transport import reassemble_a4
 
         subtype, body = reassemble_a4(frames)
-        if get_profile(model).effect_grammar != "H60A6" or subtype != int(H60a6EffectFrame.Subtype.native_effect):
+        if effective_profile.effect_grammar != "H60A6" or subtype != int(H60a6EffectFrame.Subtype.native_effect):
             raise ValueError("unsupported native paint transport or subtype")
         return decode_native_body(body, family=798)
     raise ValueError(f"unsupported effect upload transport {transport!r}")
 
 
-def decode_a3_effect(tree: Any, model: str) -> EffectContent:
+def decode_a3_effect(tree: Any, model: str, *, profile: ModelProfile | None = None) -> EffectContent:
     """Decode a parsed generated A3 tree without assigning unevidenced semantics."""
-    grammar = get_profile(model).effect_grammar
+    effective_profile = profile or get_profile(model)
+    grammar = effective_profile.effect_grammar
+    wire_codec = native_a3_codec_for_tree(tree)
+    if wire_codec is not None:
+        if native_a3_codec_for_profile(effective_profile) is not wire_codec or model != wire_codec.canonical_model:
+            raise UnsupportedA3EffectError("Native upload is not canonical for this effective profile and target")
+        return wire_codec.decode(serialize_native_body(tree.body))
     if grammar == "H60B0":
         raise UnsupportedA3EffectError("Native uploads require their qualified revision and retained source definition")
     if grammar == "H1771":
@@ -119,10 +130,6 @@ def decode_a3_effect(tree: Any, model: str) -> EffectContent:
         if isinstance(content, SingleEffect):
             return H6179SingleDiyEffect(model, content.family, content.variant, content.speed, content.palette)
         return H6179MixedDiyEffect(model, content.effects, content.speed, content.palette)
-    if model == "H7025" and isinstance(tree, H7025DiyBody):
-        from .h7025_effects import decode_h7025_diy
-
-        return decode_h7025_diy(serialize_native_body(tree.body))
     if grammar in {"H6046", "H6053"}:
         if tree.kind == H6046EffectUpload.BodyKind.scene:
             return _decode_layered_tree(tree, model)

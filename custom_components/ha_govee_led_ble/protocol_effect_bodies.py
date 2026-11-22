@@ -10,6 +10,7 @@ from typing import Any
 from kaitaistruct import KaitaiStream, KaitaiStructError
 
 from .const import WHOLE_BULB_GRAMMARS, ModelProfile, get_profile
+from .native_effect_codecs import native_a3_codec_for_profile
 from .protocol_core import (
     _COMMAND_ACK_ROOTS,
     _COMMAND_ROOTS,
@@ -50,7 +51,6 @@ from .protocol_core import (
     H6199CommandAck,
     H6199DiySelector,
     H6199EffectUpload,
-    H7025DiyBody,
     SceneBody,
     SceneParameterTooLargeError,
     SceneType1Body,
@@ -255,6 +255,7 @@ def parse_a3_effect_envelope(envelope: bytes, model: str, *, profile: ModelProfi
 
     effective_profile = profile or get_profile(model)
     grammar = effective_profile.effect_grammar
+    native_codec = native_a3_codec_for_profile(effective_profile)
     if grammar == "H6022":
         root_type = H6022EffectUpload
     elif grammar == "H6093":
@@ -273,7 +274,7 @@ def parse_a3_effect_envelope(envelope: bytes, model: str, *, profile: ModelProfi
             0x04: DiyType04,
             **({int(H60b2DiyBody.UploadSubtype.native_diy): H60b2EffectUpload} if grammar == "H60B2" else {}),
             **({int(H1ab2DiyBody.UploadSubtype.native_diy): H1ab2DiyBody.Upload} if grammar == "H1AB2" else {}),
-            **({0x58: H7025DiyBody} if model == "H7025" else {}),
+            **({native_codec.upload_subtype: native_codec.root_type} if native_codec is not None else {}),
         }.get(envelope[2])
         if root_type is None:
             raise ValueError(f"H617A A3 body type 0x{envelope[2]:02x} is not supported")
@@ -339,7 +340,9 @@ def parse_a3_effect_envelope(envelope: bytes, model: str, *, profile: ModelProfi
         raise ValueError(f"invalid {model} A3 effect envelope") from error
     if not parsed._io.is_eof():
         raise ValueError(f"{model} A3 effect grammar did not consume the envelope")
-    if (grammar == "H60A6" or isinstance(parsed, H7025DiyBody)) and any(parsed.padding):
+    if (grammar == "H60A6" or native_codec is not None and isinstance(parsed, native_codec.root_type)) and any(
+        parsed.padding
+    ):
         raise ValueError("Native A3 effect envelope contains non-zero transport fill")
     return parsed
 

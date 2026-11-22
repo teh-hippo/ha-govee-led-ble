@@ -969,7 +969,11 @@ class EffectPreviewManager:
                         config_entry_id=request.config_entry_id,
                         model=coordinator.model,
                         selector_label=request.item.name,
-                        content=_active_workspace_content(request.item.content, compiled),
+                        content=_active_workspace_content(
+                            request.item.content,
+                            compiled,
+                            profile=coordinator.effect_authorization_profile,
+                        ),
                         origin=request.item.origin,
                         observable_signature=signature,
                         updated_at=request.updated_at,

@@ -69,6 +69,7 @@ from .music_commands import build_zoned_music_body, resolve_music_profile
 from .music_protocol import music_code_for
 from .music_semantics import music_parameters_depend_on_ic, music_variant
 from .native_effect import NativeDiyLayer
+from .native_effect_codecs import native_a3_codec_for_profile
 from .native_scenes import (
     apply_scene_speed,
     build_native_scene_packets,
@@ -247,6 +248,21 @@ def validate_compiled_geometry(compiled: CompiledApplication, profile: ModelProf
         return
     profiled_layers = False
     if isinstance(compiled, CompiledEffect):
+        if compiled.selector_kind not in profile.effect_activation_operations:
+            raise ValueError("Device no longer supports the compiled activation route")
+        if compiled.upload_packets and not profile.command_operation_supported("effect_upload"):
+            raise ValueError("Device no longer supports compiled effect uploads")
+        declared_native_subtype = get_profile(compiled.model).native_diy_upload_subtype
+        if (
+            compiled.content_kind == "native_effect"
+            and declared_native_subtype is not None
+            and (
+                compiled.upload_subtype != declared_native_subtype
+                or native_a3_codec_for_profile(profile) is None
+                or profile.native_diy_upload_subtype != compiled.upload_subtype
+            )
+        ):
+            raise ValueError("Device native effect upload subtype changed since compilation")
         profiled_layers = (compiled.rgbic_scene_v0 is not None or profile.rgbic_scene_v0 is not None) and (
             compiled.content_kind in {"advanced", "workshop", "shared_scene", "scene_layered"}
             or (compiled.scene_entry is not None and compiled.scene_entry.scene_type == 2)
@@ -569,11 +585,14 @@ def _validate_native_effect(item: LibraryItem, model: str, profile: ModelProfile
     content = item.content
     if not isinstance(content, NativeEffect):
         raise ValueError("native compiler requires native content")
-    if profile.effect_grammar in {"H1AB2", "H60B0", "H60B2", "H607C", "H6093"}:
-        require_effect_route(model, _effect_workflow(content), (profile.effect_grammar,), profile=profile)
+    native_codec = native_a3_codec_for_profile(profile)
+    if native_codec is not None:
+        if not profile.command_operation_supported("effect_upload"):
+            raise ValueError(f"{model} effective profile does not support effect uploads")
+        require_effect_route(model, _effect_workflow(content), (native_codec.effect_grammar,), profile=profile)
         validate_effect_eligibility(content, model, profile=profile)
-    elif model == "H7025":
-        require_effect_route(model, _effect_workflow(content), ("H617A",), profile=profile)
+    elif profile.effect_grammar in {"H1AB2", "H60B0", "H60B2", "H607C", "H6093"}:
+        require_effect_route(model, _effect_workflow(content), (profile.effect_grammar,), profile=profile)
         validate_effect_eligibility(content, model, profile=profile)
     elif profile.effect_grammar == "H1771":
         require_effect_route(model, _effect_workflow(content), ("H1771",), profile=profile)
@@ -605,6 +624,8 @@ def _prepare_native_effect(item: LibraryItem, model: str, profile: ModelProfile)
     _validate_native_effect(item, model, profile)
     content = item.content
     assert isinstance(content, NativeEffect)
+    if native_a3_codec_for_profile(profile) is not None:
+        return encode_native_body(content, profile=profile)
     return encode_native_body(content)
 
 
@@ -1149,6 +1170,8 @@ def compile_native_effect(
         parsed = _parse_native_scene_body(body, content.family)
         body = body[len(parsed.marker) :]
     upload = tuple((fragment_a4 if route == "a4" else fragment_a3)(subtype, body)) if body else ()
+    if upload and not profile.command_operation_supported("effect_upload"):
+        raise ValueError(f"{model} effective profile does not support effect uploads")
     return CompiledEffect(
         item_id=str(item.id),
         item_version=item.version,

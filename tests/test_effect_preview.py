@@ -25,6 +25,7 @@ from custom_components.ha_govee_led_ble.effect_active_workspace import (
     ActiveEffectWorkspaceRepository,
 )
 from custom_components.ha_govee_led_ble.effect_catalogue import (
+    MODEL_EFFECT_CATALOGUES,
     WORKSHOP_PROTOCOL_FIXTURES,
     resolve_catalogue_template,
 )
@@ -45,6 +46,7 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     H6179SingleDiyEffect,
     LibraryItem,
     MusicProfile,
+    NativeEffect,
     Origin,
     PaletteDiyEffect,
     RelativeBrightness,
@@ -2534,6 +2536,53 @@ async def test_h6179_preview_revalidates_fresh_mode_before_zero_effect_writes(
     )
     await manager.async_wait_idle("entry-a")
 
+    assert coordinator.writes == []
+    coordinator.async_preview_write.assert_not_awaited()
+    assert events[-1].phase is PreviewPhase.FAILED
+    assert events[-1].write_disposition is PreviewWriteDisposition.NOT_STARTED
+    await manager.async_shutdown()
+
+
+async def test_native_effect_preview_profile_narrowing_rejects_before_power_or_upload(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    coordinator = _coordinator(model="H7025", readable=True)
+    template = next(
+        item
+        for item in MODEL_EFFECT_CATALOGUES["H7025"].templates
+        if isinstance(item.content, NativeEffect) and item.content.preset_id == 16
+    )
+    original_profile = coordinator.profile
+    narrowed_seen = False
+
+    async def narrow_profile(*, timeout: float) -> None:
+        nonlocal narrowed_seen
+        del timeout
+        coordinator.profile = replace(
+            original_profile,
+            command_operations=frozenset({"power", "brightness", "static", "scene", "effect_upload"}),
+        )
+        narrowed_seen = True
+
+    coordinator.async_preview_preflight.side_effect = narrow_profile
+    coordinator.refresh_state = AsyncMock(return_value=True)
+    manager, _cache = await _manager(hass, monkeypatch, coordinator)
+    owner = object()
+    events: list[PreviewStatus] = []
+    session_id = _open(manager, owner, events)
+
+    await manager.async_queue_snapshot(
+        session_id=session_id,
+        owner=owner,
+        config_entry_id="entry-a",
+        sequence=1,
+        updated_at="2026-10-21T00:00:00Z",
+        item=LibraryItem.new(template.label, template.content),
+    )
+    await manager.async_wait_idle("entry-a")
+
+    assert narrowed_seen
     assert coordinator.writes == []
     coordinator.async_preview_write.assert_not_awaited()
     assert events[-1].phase is PreviewPhase.FAILED

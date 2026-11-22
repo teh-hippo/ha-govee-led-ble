@@ -8,6 +8,7 @@ from typing import Any
 
 from kaitaistruct import KaitaiStream, KaitaiStructError
 
+from .const import ModelProfile, get_profile
 from .layered_scene import CatalogueRef
 from .native_effect import (
     NativeDiyLayer,
@@ -17,6 +18,7 @@ from .native_effect import (
     NativePaintGroup,
     NativePaintLayer,
 )
+from .native_effect_codecs import native_a3_codec_for_profile
 from .protocol_core import GoveeShared, H60a6DiyBody, H60a6PaintBody
 
 
@@ -134,11 +136,13 @@ def _serialise(value: Any) -> bytes:
         raise ValueError(f"invalid native effect structure: {error}") from error
 
 
-def encode_native_body(content: NativeEffect) -> bytes:
-    if content.model == "H7025":
-        from .h7025_effects import encode_h7025_diy
-
-        return encode_h7025_diy(content)
+def encode_native_body(content: NativeEffect, *, profile: ModelProfile | None = None) -> bytes:
+    effective_profile = profile or get_profile(content.model)
+    codec = native_a3_codec_for_profile(effective_profile)
+    if codec is not None:
+        if content.model != codec.canonical_model:
+            raise ValueError("native content does not match the selected codec")
+        return codec.encode(content)
     if content.model == "H1AB2":
         from .h1ab2_effects import encode_accumulation
 
