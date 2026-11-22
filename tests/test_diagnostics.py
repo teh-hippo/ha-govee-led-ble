@@ -238,7 +238,7 @@ async def test_h6102_diagnostics_expose_resolved_capabilities_without_implying_i
         "44:55:66:77:88:99",
         "H6102",
         configuration_url=None,
-        h6102_identity=H6102InitialIdentity(
+        initial_identity=H6102InitialIdentity(
             firmware=firmware, firmware_source="configured" if firmware is not None else None
         ),
     )
@@ -311,7 +311,7 @@ async def test_h6102_diagnostics_keep_configured_and_observed_firmware_distinct(
         "44:55:66:77:88:99",
         "H6102",
         configuration_url=None,
-        h6102_identity=H6102InitialIdentity(firmware="1.03.01", firmware_source="ble"),
+        initial_identity=H6102InitialIdentity(firmware="1.03.01", firmware_source="ble"),
     )
     coordinator.fw_version = "1.03.01"
     coordinator.hw_version = "1.00.03"

@@ -45,7 +45,7 @@ async def radio(hass, monkeypatch):
             "11:22:33:44:55:66",
             "H6102",
             configuration_url="studio",
-            h6102_identity=H6102InitialIdentity(pact="10/1"),
+            initial_identity=H6102InitialIdentity(pact="10/1"),
         )
     state = {
         "fw": "3.02.02",
@@ -362,7 +362,7 @@ async def test_issue310_setup_control_and_reconnect_use_brightness_register(
 
     c, state, packets, clients = radio
     if identity in {"configured", "configured_fw", "configured_hw"}:
-        c._configured_h6102_firmware, c._configured_h6102_hardware = "1.08.08", "1.00.03"
+        c._configured_firmware, c._configured_hardware = "1.08.08", "1.00.03"
     c._note_advertisement(SimpleNamespace(manufacturer_data={34817: bytes.fromhex("ec000101")}))
     state.update(
         fw="1.08.08" if identity in {"ble", "configured_hw"} else None,
@@ -402,11 +402,11 @@ async def test_issue310_setup_control_and_reconnect_use_brightness_register(
 async def test_issue310_cached_identity_does_not_authorize_colour_after_reconnect(radio, missing):
     c, state, packets, _ = radio
     c.pact_type, c.pact_code = 1, 1
-    c._configured_h6102_firmware, c._configured_h6102_hardware = "1.08.08", "1.00.03"
+    c._configured_firmware, c._configured_hardware = "1.08.08", "1.00.03"
     c._resolve_device_profile()
     state.update(fw="1.08.08", hw="1.00.03", register_brightness=True)
     assert await c.refresh_state(RefreshRequest(refresh_all=True))
-    assert c._configured_h6102_firmware is c._configured_h6102_hardware is None
+    assert c._configured_firmware is c._configured_hardware is None
     await c.disconnect()
     assert c.profile.supports_rgb and c.fw_version == "1.08.08" and c.hw_version == "1.00.03"
     state[missing] = None
@@ -499,7 +499,7 @@ async def test_external_retained_body_change_stops_edit_and_preserves_external_v
     from tests.test_music_commands import _music_transport
 
     c = GoveeBLECoordinator(
-        hass, "11:22:33:44:55:66", "H6102", configuration_url=None, h6102_identity=H6102InitialIdentity(pact="10/1")
+        hass, "11:22:33:44:55:66", "H6102", configuration_url=None, initial_identity=H6102InitialIdentity(pact="10/1")
     )
     c.fw_version, c.hw_version = "3.02.02", "3.02.01"
     c._resolve_device_profile()

@@ -65,6 +65,8 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     wireless_firmware_version: str | None
     wireless_hardware_version: str | None
     hw_version: str | None
+    _configured_firmware: str | None
+    _configured_hardware: str | None
     rgb_color: tuple[int, int, int]
     color_temp_kelvin: int | None
     rgb_color_source: str

@@ -111,7 +111,7 @@ def test_h6102_configured_firmware_does_not_invent_pact(hass):
         "44:55:66:77:88:99",
         "H6102",
         configuration_url=_CONFIGURATION_URL,
-        h6102_identity=H6102InitialIdentity(firmware="1.03.01", firmware_source="configured"),
+        initial_identity=H6102InitialIdentity(firmware="1.03.01", firmware_source="configured"),
     )
 
     assert not coordinator.profile.supports_rgb

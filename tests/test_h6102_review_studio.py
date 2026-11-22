@@ -31,7 +31,7 @@ def _coordinator(hass, *, resolved=True):
         "AA:BB:CC:DD:EE:FF",
         "H6102",
         configuration_url=None,
-        h6102_identity=H6102InitialIdentity(pact="10/1" if resolved else None),
+        initial_identity=H6102InitialIdentity(pact="10/1" if resolved else None),
     )
     coordinator.fw_version, coordinator.hw_version = "3.02.02", "3.02.01"
     coordinator._resolve_device_profile()
