@@ -14,24 +14,33 @@ from kaitaistruct import KaitaiStream
 
 from custom_components.ha_govee_led_ble import coordinator as coordinator_module
 from custom_components.ha_govee_led_ble.const import device_profile, get_profile
+from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent, async_control_intent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_modes import ModeTransitionSupersededError
 from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.coordinator_upload import UploadAckTimeoutError
+from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
 from custom_components.ha_govee_led_ble.effect_catalogue import resolve_catalogue_template
 from custom_components.ha_govee_led_ble.effect_deployments import (
     DeploymentPhase,
     EffectDeploymentRepository,
     PriorControlState,
 )
-from custom_components.ha_govee_led_ble.effect_domain import BuiltinScene, LibraryItem, SingleEffect
+from custom_components.ha_govee_led_ble.effect_domain import (
+    BuiltinScene,
+    LibraryItem,
+    RelativeBrightness,
+    SingleEffect,
+    VideoProfile,
+)
 from custom_components.ha_govee_led_ble.effect_runtime import (
     EffectDeploymentEngine,
     EffectRestorationError,
     EffectStateReadError,
     async_prepare_effect_control_state,
 )
+from custom_components.ha_govee_led_ble.effect_template_defaults import CatalogueTemplateDefault
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_brightness,
     build_colour_mode_query,
@@ -66,6 +75,245 @@ from tests.storage_test_double import InMemoryVersionedDocumentStore
 def reply(domain, body):
     payload = bytes([0xAA, domain, *body]).ljust(19, b"\0")
     return bytearray(payload + bytes([xor_checksum(payload)]))
+
+
+@pytest.fixture
+def resident_video(hass, monkeypatch, request):
+    model = getattr(request, "param", "H6199")
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", model, configuration_url=None)
+    state = {
+        "on": False,
+        "brightness": 20,
+        "mode": "game",
+        "saturation": 42,
+        "writes": [],
+        "fault": None,
+        "boundary": None,
+    }
+
+    def observe_mode():
+        if state["fault"] in {"missing", "optimistic", "stale"}:
+            return
+        selector = 1 if state["mode"] == "game" else 0 if state["mode"] == "movie" else 255
+        body = (
+            [0, 1, 8 if selector == 1 else 0 if selector == 0 else 255, state["saturation"], 1, 2, 55]
+            if model == "H6099"
+            else [0, 0, selector, state["saturation"], 1, 55]
+        )
+        coordinator._notify_callback(None, reply(5, body))
+
+    async def transmit(_characteristic, packet, **_kwargs):
+        if packet[0] == 0x33:
+            state["writes"].append(packet)
+            if packet[1] == 1:
+                state["on"] = bool(packet[2])
+            elif packet[1] == 4:
+                state["brightness"] = packet[2]
+        elif packet[:2] == b"\xaa\x01":
+            coordinator._notify_callback(None, reply(1, [int(state["on"])]))
+        elif packet[:2] == b"\xaa\x04":
+            coordinator._notify_callback(None, reply(4, [state["brightness"]]))
+        elif packet[:2] == b"\xaa\x05":
+            observe_mode()
+
+    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(side_effect=transmit))
+    coordinator._client = client
+    coordinator._notification_token = object()
+    coordinator._notify_started_monotonic = time.monotonic() - 1
+    if model == "H6199":
+        coordinator._observe_pact(2, 1)
+        for field, value in (
+            ("fw_version", "1.10.04"),
+            ("hw_version", "3.02.01"),
+            ("subordinate_20_version", "1.03.00"),
+            ("subordinate_21_version", "1.00.33"),
+        ):
+            coordinator._observe_identity_field(field, value)
+
+    async def connected():
+        if state["boundary"] is not None:
+            boundary, state["boundary"] = state["boundary"], None
+            boundary()
+        return client
+
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(side_effect=connected))
+    monkeypatch.setattr(coordinator, "_renew_foreground_lease", MagicMock())
+    refresh = coordinator.refresh_state
+
+    async def bounded_refresh(request=None):
+        return await refresh(replace(request or RefreshRequest(), timeout=0.01))
+
+    monkeypatch.setattr(coordinator, "refresh_state", bounded_refresh)
+    return coordinator, state
+
+
+@pytest.mark.parametrize("resident_video", ["H6199", "H6099"], indirect=True)
+async def test_public_cold_resident_video_resume_reads_native_state_without_claiming_recovery(resident_video):
+    coordinator, state = resident_video
+    light = GoveeBLELight(coordinator)
+    light.async_write_ha_state = MagicMock()
+    await light.async_turn_on(effect="Video: Game", brightness=51)
+    assert state["writes"] == [build_power(True, coordinator.model), build_brightness(20, coordinator.model)]
+    assert state["on"] and state["brightness"] == 20
+    assert coordinator.video_saturation == 42
+    assert coordinator.video_mode == "game"
+    assert coordinator._pre_mode_snapshot is None and coordinator._incomplete_static_exit is None
+    state["writes"].clear()
+    for effect in ("Video: Movie", "off"):
+        with pytest.raises(HomeAssistantError):
+            await light.async_turn_on(effect=effect, brightness=102)
+        assert state["writes"] == []
+
+
+@pytest.mark.parametrize("fault", ["missing", "optimistic", "stale", "unknown"])
+async def test_public_cold_video_resume_requires_independent_complete_current_readback(resident_video, fault):
+    coordinator, state = resident_video
+    if fault in {"optimistic", "stale"}:
+        coordinator._notify_callback(None, reply(5, [0, 0, 1, 42, 1, 55]))
+    if fault == "optimistic":
+        coordinator._mode_write_generation += 1
+    if fault == "stale":
+        coordinator._notify_started_monotonic = time.monotonic() + 1
+    if fault == "unknown":
+        state["mode"] = "unknown"
+    state["fault"] = fault
+    light = GoveeBLELight(coordinator)
+    light.async_write_ha_state = MagicMock()
+    with pytest.raises(HomeAssistantError):
+        await light.async_turn_on(effect="Video: Game", brightness=51)
+    assert state["writes"] == []
+    assert coordinator._pre_mode_snapshot is None
+
+
+@pytest.mark.parametrize("change", ["none", "settings", "supplementary"])
+async def test_public_cold_video_resume_respects_compiled_template_defaults(hass, resident_video, change):
+    coordinator, state = resident_video
+    backend = await EffectBackend.async_create(hass)
+    content = VideoProfile(
+        coordinator.model,
+        "game",
+        False,
+        42 if change != "settings" else 43,
+        True,
+        55,
+        None,
+        RelativeBrightness(100, 100, 100, 100) if change == "supplementary" else None,
+        None,
+    )
+    await backend.template_defaults.async_set(
+        CatalogueTemplateDefault(
+            config_entry_id="entry-a",
+            model=coordinator.model,
+            template_id="template:video:game",
+            content=content,
+            updated_at="2026-11-22T00:00:00Z",
+        )
+    )
+    light = GoveeBLELight(coordinator, config_entry_id="entry-a", effect_backend=backend)
+    light.async_write_ha_state = MagicMock()
+    if change == "none":
+        await light.async_turn_on(effect="Video: Game", brightness=51)
+        assert state["writes"] == [build_power(True, coordinator.model), build_brightness(20, coordinator.model)]
+    else:
+        with pytest.raises(HomeAssistantError):
+            await light.async_turn_on(effect="Video: Game", brightness=51)
+        assert state["writes"] == []
+    assert coordinator._pre_mode_snapshot is None
+
+
+@pytest.mark.parametrize("boundary", ["subscription", "profile", "selector", "settings", "identity"])
+@pytest.mark.parametrize("after_power", [False, True])
+async def test_public_cold_video_resume_rechecks_every_physical_boundary(
+    resident_video, monkeypatch, boundary, after_power
+):
+    coordinator, state = resident_video
+    refresh = coordinator.refresh_state
+
+    def change():
+        if boundary == "subscription":
+            coordinator._notification_token = object()
+        elif boundary == "profile":
+            coordinator._profile_generation += 1
+        elif boundary == "identity":
+            coordinator._confirmed_identity_fields.clear()
+        elif boundary == "selector":
+            coordinator._notify_callback(None, reply(5, [0, 0, 0, 42, 1, 55]))
+        else:
+            coordinator._notify_callback(None, reply(5, [0, 0, 1, 43, 1, 55]))
+
+    async def arm(request=None):
+        result = await refresh(request)
+        if request is not None and (request.on is True if after_power else request.refresh_all):
+            state["boundary"] = change
+        return result
+
+    monkeypatch.setattr(coordinator, "refresh_state", arm)
+    light = GoveeBLELight(coordinator)
+    light.async_write_ha_state = MagicMock()
+    with pytest.raises((ValueError, HomeAssistantError)):
+        await light.async_turn_on(effect="Video: Game", brightness=51)
+    assert state["writes"] == ([build_power(True, coordinator.model)] if after_power else [])
+    assert coordinator._pre_mode_snapshot is None
+
+
+async def test_public_cold_video_resume_stops_for_newer_foreground_work(resident_video, monkeypatch):
+    coordinator, state = resident_video
+    requested = asyncio.Event()
+    power_confirmed = asyncio.Event()
+    refresh = coordinator.refresh_state
+
+    async def newer_work():
+        await power_confirmed.wait()
+        requested.set()
+        async with async_control_intent(coordinator, ControlIntent.USER):
+            pass
+
+    async def interleave(request=None):
+        result = await refresh(request)
+        if request is not None and request.on is True:
+            power_confirmed.set()
+            await requested.wait()
+        return result
+
+    monkeypatch.setattr(coordinator, "refresh_state", interleave)
+    newer = asyncio.create_task(newer_work())
+    light = GoveeBLELight(coordinator)
+    light.async_write_ha_state = MagicMock()
+    try:
+        with pytest.raises(HomeAssistantError):
+            await light.async_turn_on(effect="Video: Game", brightness=51)
+    finally:
+        newer.cancel()
+        await asyncio.gather(newer, return_exceptions=True)
+    assert state["writes"] == [build_power(True, coordinator.model)]
+    assert state["on"] and coordinator._pre_mode_snapshot is None
+
+
+async def test_public_cold_video_resume_validates_basic_inputs_before_reading(resident_video, monkeypatch):
+    coordinator, state = resident_video
+    read = AsyncMock(side_effect=AssertionError("Invalid inputs must not query the device"))
+    monkeypatch.setattr(coordinator, "refresh_state", read)
+    light = GoveeBLELight(coordinator)
+    with pytest.raises(HomeAssistantError):
+        await light.async_turn_on(effect="Video: Game", brightness="invalid")
+    read.assert_not_awaited()
+    assert state["writes"] == []
+
+
+@pytest.mark.parametrize("history", ["original", "incomplete"])
+async def test_public_cold_video_resume_never_downgrades_existing_recovery(resident_video, history):
+    coordinator, state = resident_video
+    target = PriorControlState(mode="colour", is_on=True, brightness_pct=50, rgb_color=(1, 2, 3))
+    field = "_pre_mode_snapshot" if history == "original" else "_incomplete_static_exit"
+    setattr(coordinator, field, target)
+    coordinator._pre_mode_profile = coordinator.profile
+    coordinator._notify_callback(None, reply(5, [0, 0, 1, 42, 1, 55]))
+    light = GoveeBLELight(coordinator)
+    light.async_write_ha_state = MagicMock()
+    with pytest.raises(HomeAssistantError):
+        await light.async_turn_on(effect="Video: Game", brightness=51)
+    assert state["writes"] == []
+    assert getattr(coordinator, field) is target
 
 
 @pytest.mark.parametrize(

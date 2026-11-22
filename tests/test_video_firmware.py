@@ -955,7 +955,7 @@ async def test_supported_omitted_setting_never_overwrites_new_notification(hass,
     coordinator.is_on = True
     coordinator.video_full_screen = True
 
-    async def fresh(**kwargs):
+    async def fresh(request=None, **kwargs):
         coordinator._field_revisions["video_full_screen"] = coordinator._field_revisions.get("video_full_screen", 0) + 1
         return True
 

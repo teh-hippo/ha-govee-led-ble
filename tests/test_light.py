@@ -1802,14 +1802,15 @@ async def test_turn_on_video_effect_is_first_class(h6199_light, mock_h6199_coord
     co.video_saturation = 63
     co.video_sound_effects = True
     co.video_sound_effects_softness = 27
-    co.refresh_state = AsyncMock(side_effect=[False, True])
+    co.refresh_state = AsyncMock(side_effect=[True, False, True])
     await h6199_light.async_turn_on(effect=effect)
     packet = build_video_mode(mode, False, 63, True, 27, "H6199")
     assert [call.args[0] for call in co.send_command.call_args_list] == [
         packet,
         packet,
     ]
-    for call in co.refresh_state.await_args_list:
+    assert co.refresh_state.await_args_list[0].args[0].refresh_all
+    for call in co.refresh_state.await_args_list[1:]:
         assert call.args[0].video_mode == mode
         assert call.args[0].video_full_screen is False
         assert call.args[0].video_saturation == 63
