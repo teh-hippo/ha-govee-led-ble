@@ -1068,6 +1068,14 @@ export function decodeEffectContent(value: unknown): EffectContent {
         }),
       } satisfies MusicProfileContent;
     case "video_profile":
+      if (
+        [content.hdmi_box_light, content.hdmi_box_brightness, content.hdmi_box_automatic, content.hdmi_box_effect]
+          .some(value => value !== undefined) &&
+        [content.hdmi_box_light, content.hdmi_box_brightness, content.hdmi_box_automatic, content.hdmi_box_effect]
+          .some(value => value === undefined)
+      ) {
+        throw new Error("HDMI box light requires enabled, brightness, automatic and effect");
+      }
       if ([content.blank_screen_detection, content.blank_screen_low_brightness_duration_seconds,
         content.blank_screen_same_tone_duration_seconds].some(value => value !== undefined) &&
         (content.blank_screen == null || [content.blank_screen_detection,
@@ -1107,6 +1115,22 @@ export function decodeEffectContent(value: unknown): EffectContent {
           0,
           100,
         ),
+        ...(content.video_sensitivity === undefined ? {} : {
+          video_sensitivity: integerValue(content.video_sensitivity, "video sensitivity", 0, 100),
+        }),
+        ...(content.hdmi_input === undefined ? {} : {
+          hdmi_input: integerValue(content.hdmi_input, "HDMI input", 0, 15),
+        }),
+        ...(content.hdmi_box_light === undefined ? {} : {
+          hdmi_box_light: booleanValue(content.hdmi_box_light, "HDMI box light"),
+          hdmi_box_brightness: integerValue(content.hdmi_box_brightness, "HDMI box brightness", 1, 100),
+          hdmi_box_automatic: booleanValue(content.hdmi_box_automatic, "HDMI box automatic mode"),
+          hdmi_box_effect: integerValue(content.hdmi_box_effect, "HDMI box effect", 0, 255),
+        }),
+        ...(content.color_calibration === undefined ? {} : {
+          color_calibration: arrayValue(content.color_calibration, "video colour calibration", 4).map(value =>
+            integerValue(value, "video colour calibration channel", 1, 100)),
+        }),
         white_balance_position: nullableInteger(
           content.white_balance_position,
           "video profile white-balance position",

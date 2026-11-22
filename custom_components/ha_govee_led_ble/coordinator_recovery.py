@@ -6,7 +6,7 @@ import time
 from collections.abc import AsyncIterator, Callable, Iterator, Mapping
 from contextlib import asynccontextmanager, nullcontext
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from bleak.exc import BleakError
 from homeassistant.exceptions import HomeAssistantError
@@ -56,7 +56,11 @@ from .native_profile_controls import (
     apply_active_video_mode,
     apply_black_border,
     apply_blank_screen,
+    apply_hdmi_box_light,
+    apply_hdmi_input,
     apply_relative_brightness,
+    apply_video_color_calibration,
+    apply_video_sensitivity,
     apply_white_balance,
     apply_whole_relative_brightness,
 )
@@ -672,6 +676,13 @@ class _RecoveryMixin(_CoordinatorBase):
             video_saturation=self.video_saturation,
             video_sound_effects=self.video_sound_effects,
             video_sound_effects_softness=self.video_sound_effects_softness,
+            video_sensitivity=self.video_sensitivity,
+            video_hdmi_input=self.video_hdmi_input,
+            hdmi_box_light=self.hdmi_box_light,
+            hdmi_box_brightness=self.hdmi_box_brightness,
+            hdmi_box_automatic=self.hdmi_box_automatic,
+            hdmi_box_effect=self.hdmi_box_effect,
+            video_color_calibration=self.video_color_calibration,
             white_balance_red=self.white_balance_red,
             white_balance_blue=self.white_balance_blue,
             white_balance_flag=self.white_balance_flag,
@@ -801,7 +812,7 @@ class _RecoveryMixin(_CoordinatorBase):
                     deadline=time.monotonic() + 4.0,
                 ):
                     return False
-            elif self.profile.setting_grammar in {"H607C", "H60B0", "H60B2"}:
+            elif self.profile.setting_grammar in {"H607C", "H60B0", "H60B2", "H8604"}:
                 from .generated_protocol_adapter import build_boolean_control_query
 
                 if not await self._as_coordinator._async_read_setting_fields(
@@ -1018,8 +1029,22 @@ class _RecoveryMixin(_CoordinatorBase):
                 ),
                 ("black_border", ("black_border",)),
                 ("whole_relative_brightness", ("whole_relative_brightness",)),
+                ("video_sensitivity", ("video_sensitivity",)),
+                ("hdmi_input", ("video_hdmi_input",)),
+                (
+                    "hdmi_box_light",
+                    ("hdmi_box_light", "hdmi_box_brightness", "hdmi_box_automatic", "hdmi_box_effect"),
+                ),
+                ("color_calibration", ("video_color_calibration",)),
+                (
+                    "color_calibration_red",
+                    ("video_color_calibration",)
+                    if state.video_color_calibration is not None and len(state.video_color_calibration) == 4
+                    else (),
+                ),
             )
             if (control != "inline_relative_brightness" or self.profile.video_embeds_relative_brightness)
+            and fields
             and (state.video_restore_controls is None or control in state.video_restore_controls)
             and any(
                 getattr(state, field) is not None and getattr(self, field) != getattr(state, field) for field in fields
@@ -1111,6 +1136,24 @@ class _RecoveryMixin(_CoordinatorBase):
                 await apply_relative_brightness(self._as_coordinator, values)
         if "whole_relative_brightness" in permitted & needed and state.whole_relative_brightness is not None:
             await apply_whole_relative_brightness(self._as_coordinator, state.whole_relative_brightness)
+        if "video_sensitivity" in permitted & needed and state.video_sensitivity is not None:
+            await apply_video_sensitivity(self._as_coordinator, state.video_sensitivity)
+        if "hdmi_input" in permitted & needed and state.video_hdmi_input is not None:
+            await apply_hdmi_input(self._as_coordinator, state.video_hdmi_input)
+        if "hdmi_box_light" in permitted & needed:
+            values = (
+                state.hdmi_box_light,
+                state.hdmi_box_brightness,
+                state.hdmi_box_automatic,
+                state.hdmi_box_effect,
+            )
+            if any(value is None for value in values):
+                complete = False
+                permitted.discard("hdmi_box_light")
+            else:
+                await apply_hdmi_box_light(self._as_coordinator, cast(tuple[bool, int, bool, int], values))
+        if "color_calibration" in permitted & needed and state.video_color_calibration is not None:
+            await apply_video_color_calibration(self._as_coordinator, state.video_color_calibration)
         if "blank_screen" in permitted & needed and state.blank_screen is not None:
             if not restore_policy:
                 await apply_blank_screen(self._as_coordinator, state.blank_screen)

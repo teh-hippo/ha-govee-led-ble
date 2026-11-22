@@ -66,6 +66,10 @@ H6099StatusQuery = load_generated_class("h6099_status_query", "H6099StatusQuery"
 
 
 H6099StatusReply = load_generated_class("h6099_status_reply", "H6099StatusReply")
+H8604MusicWrite = load_generated_class("h8604_music_write", "H8604MusicWrite")
+H8604StatusReply = load_generated_class("h8604_status_reply", "H8604StatusReply")
+H8604Settings = load_generated_class("h8604_settings", "H8604Settings")
+H8604VideoSettings = load_generated_class("h8604_video_settings", "H8604VideoSettings")
 H605cStatusReply = load_generated_class("h605c_status_reply", "H605cStatusReply")
 H605cVideoCommand = load_generated_class("h605c_video_command", "H605cVideoCommand")
 H605cVideoSettings = load_generated_class("h605c_video_settings", "H605cVideoSettings")
@@ -499,6 +503,7 @@ _STATUS_ROOTS = {
     "H6125-legacy": ("h6125_legacy_status_reply", H6125LegacyStatusReply),
     "H6125-intermediate": ("h6125_intermediate_status_reply", H6125IntermediateStatusReply),
     "H6099": ("h6099_status_reply", H6099StatusReply),
+    "H8604": ("h8604_status_reply", H8604StatusReply),
     "H6097": ("h6097_status_reply", H6097StatusReply),
     "H66A0": ("h66a0_status_reply", H66a0StatusReply),
     "H1A42": ("h1a42_status_reply", H1a42StatusReply),
@@ -566,6 +571,7 @@ _H6076_ACK_ROOTS = {
 
 
 _MUSIC_WRITE_ROOTS = {
+    "H8604": ("h8604_music_write", H8604MusicWrite),
     "H705A": ("h705a_music_write", H705aMusicWrite),
     "H60B2": ("h60b2_music_write", H60b2MusicWrite),
     "H6072": ("h6072_music_write", H6072MusicWrite),
@@ -577,6 +583,10 @@ _MUSIC_WRITE_ROOTS = {
     "H1AB2": ("h1ab2_music_write", H1ab2MusicWrite),
     "H61F5": ("h61f5_music_write", H61f5MusicWrite),
     "H7025": ("h7025_music_write", H7025MusicWrite),
+}
+
+_H8604_VIDEO_ROOTS = {
+    "H8604-video": ("h8604_video_settings", H8604VideoSettings),
 }
 
 

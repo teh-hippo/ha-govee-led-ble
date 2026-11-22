@@ -127,6 +127,10 @@ speculative/h6099_effect_upload
 speculative/h6099_music_parameters
 speculative/h6099_status_query
 speculative/h6099_status_reply
+speculative/h8604_music_write
+speculative/h8604_status_reply
+speculative/h8604_settings
+speculative/h8604_video_settings
 speculative/h6097_control
 speculative/h6072_low_blue_light
 speculative/h6097_music_write

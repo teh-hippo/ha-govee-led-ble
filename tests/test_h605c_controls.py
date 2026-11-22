@@ -54,17 +54,34 @@ def test_static_writes_select_native_geometry_and_keep_kelvin_separate():
         build_segment_color((15,), 1, 2, 3, "H605C")
 
 
+@pytest.mark.parametrize("model", ["H605C", "H8604"])
 @pytest.mark.parametrize("enabled", [False, True])
-def test_gradual_uses_shared_register_without_granting_native_zones(enabled):
-    profile = get_profile("H605C")
-    packet = build_boolean_control("gradual", enabled, "H605C")
+def test_gradual_uses_shared_register_without_granting_native_zones(model, enabled):
+    profile = get_profile(model)
+    packet = build_boolean_control("gradual", enabled, model)
     assert packet == frame(f"33a3{int(enabled):02x}")
-    assert build_boolean_control_query("gradual", "H605C") == frame("aaa3")
+    assert build_boolean_control_query("gradual", model) == frame("aaa3")
     require_profile_packet(packet, profile)
     with pytest.raises(ValueError):
         require_profile_packet(packet, replace(profile, boolean_controls=frozenset()))
     with pytest.raises(ValueError):
-        build_boolean_control("pole_enabled", enabled, "H605C")
+        build_boolean_control("pole_enabled", enabled, model)
+
+
+@pytest.mark.parametrize(
+    ("control", "selector"),
+    [("left_bar_enabled", 0), ("right_bar_enabled", 1), ("middle_enabled", 2)],
+)
+@pytest.mark.parametrize("enabled", [False, True])
+def test_h8604_native_light_sources_share_the_zone_contract(control, selector, enabled):
+    profile = get_profile("H8604")
+    packet = build_boolean_control(control, enabled, "H8604", profile=profile)
+
+    assert packet == frame(f"3336{selector:02x}{int(enabled):02x}")
+    assert build_boolean_control_query(control, "H8604", profile=profile) == frame("aa0708")
+    require_profile_packet(packet, profile)
+    with pytest.raises(ValueError):
+        require_profile_packet(packet, replace(profile, boolean_controls=profile.boolean_controls - {control}))
 
 
 @pytest.mark.parametrize(

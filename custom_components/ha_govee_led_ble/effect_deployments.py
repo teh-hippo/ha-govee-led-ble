@@ -62,6 +62,11 @@ _VIDEO_RESTORE_CONTROLS: Final = frozenset(
         "capture_region",
         "saturation",
         "sound_effects",
+        "video_sensitivity",
+        "hdmi_input",
+        "hdmi_box_light",
+        "color_calibration",
+        "color_calibration_red",
         "white_balance",
         "relative_brightness",
         "inline_relative_brightness",
@@ -168,6 +173,13 @@ class PriorControlState:
     video_saturation: int = 100
     video_sound_effects: bool = False
     video_sound_effects_softness: int = 100
+    video_sensitivity: int | None = None
+    video_hdmi_input: int | None = None
+    hdmi_box_light: bool | None = None
+    hdmi_box_brightness: int | None = None
+    hdmi_box_automatic: bool | None = None
+    hdmi_box_effect: int | None = None
+    video_color_calibration: tuple[int, ...] | None = None
     white_balance_red: int | None = None
     white_balance_blue: int | None = None
     # Absent in legacy snapshots: the original auto/manual mode cannot be reconstructed.
@@ -430,6 +442,18 @@ class PriorControlState:
             raise EffectStorageError("prior fountain direction is invalid")
 
     def _validate_optional_readbacks(self) -> None:
+        for value, name in (
+            (self.hdmi_box_light, "prior HDMI box light"),
+            (self.hdmi_box_automatic, "prior HDMI box automatic mode"),
+        ):
+            if value is not None and type(value) is not bool:
+                raise EffectStorageError(f"{name} must be a boolean or null")
+        if self.video_color_calibration is not None and (
+            not isinstance(self.video_color_calibration, tuple)
+            or len(self.video_color_calibration) not in {3, 4}
+            or any(type(value) is not int or not 1 <= value <= 100 for value in self.video_color_calibration)
+        ):
+            raise EffectStorageError("prior video colour calibration must contain three or four bounded channels")
         optional_numeric_values: tuple[tuple[int | None, str, int, int], ...] = (
             (self.white_balance_red, "prior white-balance red", 0, 255),
             (self.white_balance_blue, "prior white-balance blue", 0, 255),
@@ -438,6 +462,10 @@ class PriorControlState:
             (self.white_balance_default_red, "prior white-balance default red", 0, 255),
             (self.white_balance_default_blue, "prior white-balance default blue", 0, 255),
             (self.white_balance_scalar, "prior scalar white balance", 0, 255),
+            (self.video_sensitivity, "prior video sensitivity", 1, 100),
+            (self.video_hdmi_input, "prior HDMI input", 0, 15),
+            (self.hdmi_box_brightness, "prior HDMI box brightness", 1, 100),
+            (self.hdmi_box_effect, "prior HDMI box effect", 0, 10),
             (self.relative_brightness_strip_left, "prior strip-left brightness", 0, 100),
             (self.relative_brightness_strip_right, "prior strip-right brightness", 0, 100),
             (self.relative_brightness, "prior relative brightness", 0, 100),
@@ -656,6 +684,17 @@ class PriorControlState:
             "video_saturation": self.video_saturation,
             "video_sound_effects": self.video_sound_effects,
             "video_sound_effects_softness": self.video_sound_effects_softness,
+            **({"video_sensitivity": self.video_sensitivity} if self.video_sensitivity is not None else {}),
+            **({"video_hdmi_input": self.video_hdmi_input} if self.video_hdmi_input is not None else {}),
+            **({"hdmi_box_light": self.hdmi_box_light} if self.hdmi_box_light is not None else {}),
+            **({"hdmi_box_brightness": self.hdmi_box_brightness} if self.hdmi_box_brightness is not None else {}),
+            **({"hdmi_box_automatic": self.hdmi_box_automatic} if self.hdmi_box_automatic is not None else {}),
+            **({"hdmi_box_effect": self.hdmi_box_effect} if self.hdmi_box_effect is not None else {}),
+            **(
+                {"video_color_calibration": list(self.video_color_calibration)}
+                if self.video_color_calibration is not None
+                else {}
+            ),
             "white_balance_red": self.white_balance_red,
             "white_balance_blue": self.white_balance_blue,
             "white_balance_flag": self.white_balance_flag,
@@ -743,6 +782,13 @@ class PriorControlState:
             raise EffectStorageError("invalid prior source colour intent")
         if raw.get("segment_kelvin") is not None and not isinstance(raw["segment_kelvin"], list):
             raise EffectStorageError("invalid prior segment Kelvin")
+        calibration = raw.get("video_color_calibration")
+        if calibration is not None and (
+            not isinstance(calibration, list)
+            or len(calibration) not in {3, 4}
+            or any(type(value) is not int for value in calibration)
+        ):
+            raise EffectStorageError("invalid prior video colour calibration")
         return cls(
             mode=_required_str(raw, "mode"),
             projector_appearance=projector_appearance,
@@ -809,6 +855,13 @@ class PriorControlState:
             video_saturation=_optional_int(raw, "video_saturation", default=100),
             video_sound_effects=_optional_bool(raw, "video_sound_effects", default=False),
             video_sound_effects_softness=_optional_int(raw, "video_sound_effects_softness", default=100),
+            video_sensitivity=_optional_int(raw, "video_sensitivity"),
+            video_hdmi_input=_optional_int(raw, "video_hdmi_input"),
+            hdmi_box_light=_optional_bool(raw, "hdmi_box_light"),
+            hdmi_box_brightness=_optional_int(raw, "hdmi_box_brightness"),
+            hdmi_box_automatic=_optional_bool(raw, "hdmi_box_automatic"),
+            hdmi_box_effect=_optional_int(raw, "hdmi_box_effect"),
+            video_color_calibration=tuple(calibration) if calibration is not None else None,
             white_balance_red=_optional_int(raw, "white_balance_red"),
             white_balance_blue=_optional_int(raw, "white_balance_blue"),
             white_balance_flag=_optional_int(raw, "white_balance_flag"),

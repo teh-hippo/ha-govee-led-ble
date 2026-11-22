@@ -335,6 +335,30 @@ MODEL_EFFECT_CATALOGUES: Final = {
         ),
         workshop_templates=(),
     ),
+    "H8604": ModelEffectCatalogue(
+        sku="H8604",
+        painted_addressing="physical_ic",
+        painted_background=(255, 255, 255),
+        painted_effects=tuple(
+            {"id": name, "label": name.replace("_", " ").capitalize()}
+            for name in ("clockwise", "counter_clockwise", "cycle", "gradient", "twinkle", "breathe")
+        ),
+        effects=H6099_DIY_FAMILIES,
+        music_modes=_native_music_modes("H8604"),
+        video_modes=_native_video_modes("H8604"),
+        templates=(
+            CatalogueTemplate(
+                "template:paint",
+                "Graffiti",
+                "single-layer",
+                PaintedEffect("clockwise", 50, 100, (None,), background=(255, 255, 255), addressing="physical_ic"),
+            ),
+            *(_single_template("H8604", family) for family in H6099_DIY_FAMILIES),
+            *(_music_template("H8604", mode) for mode in _native_music_modes("H8604")),
+            *(_video_template("H8604", mode, saturation=100) for mode in _native_video_modes("H8604")),
+        ),
+        workshop_templates=(),
+    ),
     "H1A42": ModelEffectCatalogue(
         sku="H1A42",
         painted_addressing="physical_ic",

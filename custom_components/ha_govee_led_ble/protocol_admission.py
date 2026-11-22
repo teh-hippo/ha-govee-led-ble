@@ -17,6 +17,7 @@ from .protocol_commands import (
 )
 from .protocol_core import (
     _COMMAND_ROOTS,
+    _H8604_VIDEO_ROOTS,
     _MUSIC_WRITE_ROOTS,
     _STATUS_QUERY_ROOTS,
     CommandWrite,
@@ -170,14 +171,20 @@ def _check_native_setting_packet(frame: bytes, profile: ModelProfile) -> bool:
                 and getattr(setting.body.state, "name", None) is not None
                 or operation == "gradual"
                 and "gradual" in profile.boolean_controls
+                or operation == "box_light"
+                and profile.supports_hdmi_box_light
             ):
                 return True
             raise ValueError("Native setting is outside profile capabilities")
-        for query_type, query_allowed in (
-            (root_type.DeviceInfoQuery, bool(profile.boolean_controls & root_type.Zone.__members__.keys())),
-            (H607cControl.PowerOnQuery, profile.supports_power_on_behaviour),
-            (H607cControl.GradualQuery, "gradual" in profile.boolean_controls),
-        ):
+        query_checks = [
+            (getattr(root_type, "PowerOnQuery", H607cControl.PowerOnQuery), profile.supports_power_on_behaviour),
+            (getattr(root_type, "GradualQuery", H607cControl.GradualQuery), "gradual" in profile.boolean_controls),
+        ]
+        if hasattr(root_type, "DeviceInfoQuery") and hasattr(root_type, "Zone"):
+            query_checks.append(
+                (root_type.DeviceInfoQuery, bool(profile.boolean_controls & root_type.Zone.__members__.keys()))
+            )
+        for query_type, query_allowed in query_checks:
             query = _parse_xor_frame(frame, "native", {"native": ("native_setting.query", query_type)}).parsed
             if query is not None:
                 if query_allowed:
@@ -295,6 +302,56 @@ def _check_video_write_packet(frame: bytes, profile: ModelProfile) -> bool:
             ):
                 raise ValueError("invalid video sound effects or softness")
             return True
+    return False
+
+
+def _check_h8604_video_setting_packet(frame: bytes, profile: ModelProfile) -> bool:
+    if profile.setting_grammar != "H8604":
+        return False
+    root = _H8604_VIDEO_ROOTS["H8604-video"][1]
+    if frame[:1] == b"\x33":
+        setting = _parse_xor_frame(frame, "H8604-video", _H8604_VIDEO_ROOTS).parsed
+        if setting is None:
+            return False
+        name = getattr(setting.body.setting, "name", None)
+        if name == "sensitivity" and profile.supports_video_sensitivity:
+            value = int(setting.body.payload.value)
+            if profile.video_sensitivity_min <= value <= profile.video_sensitivity_max:
+                return True
+            raise ValueError("Video sensitivity is outside profile capabilities")
+        if name == "hdmi_input" and profile.supports_hdmi_input:
+            if 0 <= int(setting.body.payload.selected) < profile.hdmi_input_count:
+                return True
+            raise ValueError("HDMI input is outside profile capabilities")
+        if name == "colour_calibration" and profile.supports_video_color_calibration:
+            values = [
+                int(setting.body.payload.yellow),
+                int(setting.body.payload.blue),
+                int(setting.body.payload.purple),
+            ]
+            if setting.body.length == 4:
+                values.append(int(setting.body.payload.red))
+            if all(
+                profile.video_color_calibration_min <= value <= profile.video_color_calibration_max for value in values
+            ):
+                return True
+            raise ValueError("Video colour calibration is outside profile capabilities")
+        raise ValueError("H8604 video register is outside profile capabilities")
+    query = _parse_xor_frame(
+        frame, "H8604-video.query", {"H8604-video.query": ("h8604_video_settings.query", root.Query)}
+    ).parsed
+    if query is None:
+        return False
+    name = getattr(query.setting, "name", None)
+    if (
+        name == "sensitivity"
+        and profile.supports_video_sensitivity
+        or name == "hdmi_input"
+        and profile.supports_hdmi_input
+        or name == "colour_calibration"
+        and profile.supports_video_color_calibration
+    ):
+        return True
     return False
 
 
@@ -654,6 +711,7 @@ def require_profile_packet(frame: bytes, profile: ModelProfile) -> None:
         _check_h60a6_effect_frame,
         _check_music_write_packet,
         _check_video_write_packet,
+        _check_h8604_video_setting_packet,
         _check_command_packet,
         _check_status_query_packet,
         _check_upload_packet,

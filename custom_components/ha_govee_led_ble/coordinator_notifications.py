@@ -713,6 +713,45 @@ class _NotificationMixin(_CoordinatorBase):
 
     def _apply_display_setting(self, generated: Any, observed: tuple[str, ...]) -> tuple[str, ...]:
         """Apply a display-setting reply; ``observed`` is returned unchanged when it sets nothing."""
+        if getattr(generated.body.setting, "name", None) == "sensitivity" and self.profile.supports_video_sensitivity:
+            value = int(generated.body.payload.value)
+            if not self.profile.video_sensitivity_min <= value <= self.profile.video_sensitivity_max:
+                raise ValueError("video sensitivity is outside profile limits")
+            if self._accept_expected("video_sensitivity", value):
+                self.video_sensitivity = value
+                observed = ("video_sensitivity",)
+        if getattr(generated.body.setting, "name", None) == "hdmi_input" and self.profile.supports_hdmi_input:
+            value = int(generated.body.payload.selected)
+            if not 0 <= value < self.profile.hdmi_input_count:
+                raise ValueError("HDMI input is outside profile limits")
+            if self._accept_expected("video_hdmi_input", value):
+                self.video_hdmi_input = value
+                observed = ("video_hdmi_input",)
+            if generated.body.length == 2:
+                mask = int(generated.body.payload.connected_mask)
+                self.video_hdmi_inputs_connected = (
+                    bool(mask & (1 << 7)),
+                    bool(mask & (1 << 6)),
+                    bool(mask & (1 << 5)),
+                    bool(mask & (1 << 4)),
+                )
+                observed += ("video_hdmi_inputs_connected",)
+        if (
+            getattr(generated.body.setting, "name", None) == "colour_calibration"
+            and self.profile.supports_video_color_calibration
+        ):
+            payload = generated.body.payload
+            calibration_values: tuple[int, ...] = (int(payload.yellow), int(payload.blue), int(payload.purple))
+            if generated.body.length == 4:
+                calibration_values += (int(payload.red),)
+            if any(
+                not self.profile.video_color_calibration_min <= value <= self.profile.video_color_calibration_max
+                for value in calibration_values
+            ):
+                raise ValueError("video colour calibration is outside profile limits")
+            if self._accept_expected("video_color_calibration", calibration_values):
+                self.video_color_calibration = calibration_values
+                observed = ("video_color_calibration",)
         if (
             getattr(generated.body.setting, "name", None) == "whole_relative_brightness"
             and self.profile.supports_whole_relative_brightness
@@ -769,7 +808,13 @@ class _NotificationMixin(_CoordinatorBase):
                         setattr(self, field, setting_value)
                     observed = tuple(values)
         if getattr(generated.body.setting, "name", None) == "black_border" and self.profile.supports_black_border:
-            border = bool(generated.body.payload.is_enabled)
+            border = bool(
+                getattr(
+                    generated.body.payload,
+                    "is_enabled",
+                    getattr(generated.body.payload, "value", 0),
+                )
+            )
             if self._accept_expected("black_border", border):
                 self.black_border = border
                 observed = ("black_border",)
@@ -1108,11 +1153,40 @@ class _NotificationMixin(_CoordinatorBase):
                     return
                 observed = ("pact",)
             elif domain is StatusDomain.HARDWARE:
+                if self.profile.status_grammar == "H8604" and int(generated.body.selector) not in {3, 8}:
+                    raise ValueError("H8604 hardware selector is unsupported")
                 version = (
-                    generated.values["version"] if isinstance(generated, ParsedH6179Status) else generated.body.text
+                    generated.values["version"]
+                    if isinstance(generated, ParsedH6179Status)
+                    else getattr(getattr(generated.body, "detail", None), "text", getattr(generated.body, "text", None))
                 )
-                if self._observe_identity_field("hw_version", version):
-                    observed = ("hw_version",)
+                if version is not None and self._observe_identity_field("hw_version", version):
+                    observed = observed + ("hw_version",)
+                detail = getattr(getattr(generated, "body", None), "detail", None)
+                if (
+                    self.profile.supports_hdmi_box_light
+                    and getattr(generated.body, "selector", None)
+                    and (
+                        getattr(generated.body.selector, "name", None) == "device_info"
+                        or int(generated.body.selector) == 8
+                    )
+                    and detail is not None
+                ):
+                    box_values = {
+                        "hdmi_box_light": bool(detail.box_light_enabled),
+                        "hdmi_box_brightness": max(1, int(detail.box_brightness)),
+                        "hdmi_box_automatic": not bool(detail.box_auto),
+                        "hdmi_box_effect": int(detail.box_effect),
+                    }
+                    if (
+                        not 0 <= detail.box_brightness <= 100
+                        or not 0 <= box_values["hdmi_box_effect"] <= self.profile.hdmi_box_effect_max
+                    ):
+                        raise ValueError("HDMI box light state is outside profile limits")
+                    if self._accept_expected_values(box_values):
+                        for field, value in box_values.items():
+                            setattr(self, field, value)
+                        observed += tuple(box_values)
             elif domain is StatusDomain.SUBORDINATE_20:
                 if self._observe_identity_field("subordinate_20_version", generated.body.text or None):
                     observed = ("subordinate_20_version",)

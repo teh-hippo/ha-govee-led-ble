@@ -90,6 +90,14 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     video_parameters: dict[str, Any] | None
     video_full_screen: bool
     video_saturation: int
+    video_sensitivity: int | None
+    video_hdmi_input: int | None
+    video_hdmi_inputs_connected: tuple[bool, bool, bool, bool] | None
+    hdmi_box_light: bool | None
+    hdmi_box_brightness: int | None
+    hdmi_box_automatic: bool | None
+    hdmi_box_effect: int | None
+    video_color_calibration: tuple[int, ...] | None
     video_sound_effects: bool
     video_sound_effects_softness: int
     white_balance_red: int | None

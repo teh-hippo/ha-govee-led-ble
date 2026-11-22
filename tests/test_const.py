@@ -14,6 +14,7 @@ from custom_components.ha_govee_led_ble.const import (
     CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS,
     CONF_EFFECT_FAMILIES,
     CONF_PREFIX_EFFECT_NAMES,
+    KELVIN_RANGE_2000_9000,
     MODEL_PROFILES,
     UNSUPPORTED_PROFILE,
     ModelProfile,
@@ -182,7 +183,20 @@ def test_support_quality_has_only_supported_and_experimental_states():
     }
     assert {
         model for model, profile in MODEL_PROFILES.items() if profile.support_quality is SupportQuality.EXPERIMENTAL
-    } == {"H6053", "H6093", "H6117", "H612A", "H6127", "H6159", "H6179", "H618A", "H619A", "H7025", "H705A"}
+    } == {
+        "H6053",
+        "H6093",
+        "H6117",
+        "H612A",
+        "H6127",
+        "H6159",
+        "H6179",
+        "H618A",
+        "H619A",
+        "H7025",
+        "H705A",
+        "H8604",
+    }
 
 
 @pytest.mark.parametrize("pact", [(1, 1), (2, 1), (2, 2), (None, None), (3, 7)])
@@ -556,6 +570,37 @@ def test_h6102_static_candidate_is_exact_and_discoverable():
     assert profile.supports_rgb
     assert BLE_DISCOVERABLE_MODELS == frozenset(MODEL_PROFILES)
     assert model_from_ble_name("Govee_H6102_ABCD") == "H6102"
+
+
+@pytest.mark.parametrize("pact", [(1, 1), (2, 1), (3, 1)])
+def test_h8604_known_pact_profiles_full_experimental_contract(pact):
+    profile = device_profile("H8604", *pact)
+
+    assert profile.support_quality is SupportQuality.EXPERIMENTAL
+    assert profile.confirmation_issue == 688
+    assert profile.supports_rgb and profile.supports_color_temperature
+    assert (profile.physical_ic_count, profile.segment_count) == (90, 14)
+    assert profile.color_temp_range == KELVIN_RANGE_2000_9000
+    assert profile.music_grammar == "H8604" and profile.music_modes == ("energetic", "rhythm", "spectrum", "rolling")
+    assert profile.video_modes == ("movie",) and profile.dreamview_max_sub_devices == 10
+    assert profile.supports_video_sensitivity and profile.hdmi_input_count == 4
+    assert profile.supports_video_color_calibration
+    assert profile.supports_hdmi_box_light
+    assert profile.boolean_controls == {
+        "gradual",
+        "left_bar_enabled",
+        "middle_enabled",
+        "right_bar_enabled",
+    }
+    assert profile.scene_catalogue_sku == "H8604"
+    assert profile.supports_power_on_behaviour and "gradual" in profile.boolean_controls
+
+
+def test_h8604_unknown_pact_fails_closed_to_basic_controls():
+    profile = device_profile("H8604", 4, 1)
+
+    assert profile.basic_controls_only
+    assert not profile.supports_rgb and not profile.supports_video_mode and not profile.dreamview_operations
 
 
 def test_h6179_profile_uses_exact_experimental_capabilities():

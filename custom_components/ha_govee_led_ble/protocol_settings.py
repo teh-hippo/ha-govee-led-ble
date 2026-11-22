@@ -33,6 +33,8 @@ from .protocol_core import (
     H6099CommandWrite,
     H6179CommandWrite,
     H7020CommandWrite,
+    H8604Settings,
+    H8604VideoSettings,
     ProtocolParseRejection,
     ProtocolParseResult,
     StatusQuery,
@@ -42,7 +44,11 @@ from .protocol_core import (
 )
 from .protocol_h6199 import INSTALLATION_DIRECTIONS
 
-_NATIVE_SETTING_ROOTS = {"H607C": ("h607c_control", H607cControl), "H60B2": ("h60b2_control", H60b2Control)}
+_NATIVE_SETTING_ROOTS = {
+    "H607C": ("h607c_control", H607cControl),
+    "H60B2": ("h60b2_control", H60b2Control),
+    "H8604": ("h8604_settings", H8604Settings),
+}
 _ORDINARY_SETTING_ROOTS = {
     "H6097": ("h6097_control", H6097Control),
     "H1AB2": ("h1ab2_settings", H1ab2Settings),
@@ -336,9 +342,10 @@ def build_boolean_control(
         return _serialize_xor(root)
     if profile.setting_grammar in _NATIVE_SETTING_ROOTS:
         root_type = _NATIVE_SETTING_ROOTS[profile.setting_grammar][1]
+        zone_controls = root_type.Zone.__members__ if hasattr(root_type, "Zone") else {}
         if (
             control not in profile.boolean_controls
-            or control not in {*root_type.Zone.__members__, "gradual"}
+            or control not in {*zone_controls, "gradual"}
             or type(enabled) is not bool
         ):
             raise ValueError("Unsupported native zone control")
@@ -346,7 +353,7 @@ def build_boolean_control(
         root.header = b"\x33"
         if control == "gradual":
             root.opcode = root_type.Command.gradual
-            root.body = _child(H607cControl.GradualState, root)
+            root.body = _child(root_type.GradualState, root)
             root.body.flag = int(enabled)
             root.body.unknown_tail = bytes(16)
         else:
@@ -450,11 +457,15 @@ def build_boolean_control_query(control: str, model: str, *, profile: ModelProfi
     if profile.setting_grammar in _NATIVE_SETTING_ROOTS:
         root_type = _NATIVE_SETTING_ROOTS[profile.setting_grammar][1]
         if control == "gradual" and control in profile.boolean_controls:
-            root = H607cControl.GradualQuery()
+            root = root_type.GradualQuery()
             root.header = b"\xaa\xa3"
             root.unknown_tail = bytes(17)
             return _serialize_xor(root)
-        if control not in profile.boolean_controls or control not in root_type.Zone.__members__:
+        if (
+            control not in profile.boolean_controls
+            or not hasattr(root_type, "Zone")
+            or control not in root_type.Zone.__members__
+        ):
             raise ValueError("Unsupported native zone control")
         root = root_type.DeviceInfoQuery()
         root.header = b"\xaa\x36" if root_type is H60b2Control else b"\xaa\x07\x08"
@@ -632,8 +643,9 @@ def build_power_on_behaviour_query(profile: ModelProfile) -> bytes:
     if profile.setting_grammar in {"H1771", "H60A6"}:
         return build_bulk_status_query(profile, domains=("power_on_behaviour",))
     if profile.setting_grammar in _NATIVE_SETTING_ROOTS:
-        root = H607cControl.PowerOnQuery()
-        root.header = b"\xaa\x41\x00"
+        root_type = _NATIVE_SETTING_ROOTS[profile.setting_grammar][1]
+        root = getattr(root_type, "PowerOnQuery", H607cControl.PowerOnQuery)()
+        root.header = b"\xaa\x41\x02" if profile.setting_grammar == "H8604" else b"\xaa\x41\x00"
         root.unknown_tail = bytes(16)
         return _serialize_xor(root)
     raise ValueError("Unsupported power-on setting grammar")
@@ -766,6 +778,21 @@ def parse_boolean_control(generated: Any, model: str, *, profile: ModelProfile |
 
         source_readback(generated.body.operation)
         return {name: bool(getattr(generated.body, name)) for name in profile.boolean_controls}
+    if (
+        profile.setting_grammar == "H8604"
+        and domain == "hardware"
+        and (getattr(generated.body.selector, "name", None) == "device_info" or int(generated.body.selector) == 8)
+    ):
+        mask = int(generated.body.detail.source_mask)
+        return {
+            name: bool(mask & bit)
+            for name, bit in (
+                ("left_bar_enabled", 1 << 1),
+                ("middle_enabled", 1 << 3),
+                ("right_bar_enabled", 1 << 2),
+            )
+            if name in profile.boolean_controls
+        }
     if profile.setting_grammar == "H607C" and domain in {"zone_enable", "hw_version"}:
         flags = (
             generated.body.flags
@@ -977,6 +1004,148 @@ def build_black_border_query(model: str, *, profile: ModelProfile | None = None)
     return _build_status_query(
         "display_setting", _video_command_grammar(model, profile), display_setting="black_border"
     )
+
+
+def _build_h8604_video_setting_query(setting: H8604VideoSettings.Setting) -> bytes:
+    root = H8604VideoSettings.Query()
+    root.header = b"\xaa\xa9"
+    root.setting = setting
+    root.unknown_tail = bytes(16)
+    return _serialize_xor(root)
+
+
+def _build_h8604_video_setting(
+    setting: H8604VideoSettings.Setting,
+    payload: tuple[int, ...],
+    model: str,
+    *,
+    profile: ModelProfile,
+) -> bytes:
+    if profile.setting_grammar != "H8604" or profile.status_grammar != "H8604":
+        raise ValueError(f"{model} does not use the H8604 video register grammar")
+    root = H8604VideoSettings()
+    root.header = b"\x33\xa9"
+    body = _child(H8604VideoSettings.SettingBody, root)
+    body.setting = setting
+    body.length = len(payload)
+    if setting is H8604VideoSettings.Setting.colour_calibration:
+        detail = _child(H8604VideoSettings.ColourCalibrationPayload, body)
+        detail.yellow, detail.blue, detail.purple = payload[:3]
+        if len(payload) == 4:
+            detail.red = payload[3]
+        detail.unknown_tail = b""
+    elif setting is H8604VideoSettings.Setting.hdmi_input:
+        detail = _child(H8604VideoSettings.HdmiInputPayload, body)
+        detail.selected = payload[0]
+        detail.unknown_tail = b""
+    else:
+        detail = _child(H8604VideoSettings.ScalarPayload, body)
+        detail.value = payload[0]
+        detail.unknown_tail = b""
+    body.payload = detail
+    body.unknown_tail = bytes(15 - body.length)
+    root.body = body
+    return _serialize_xor(root)
+
+
+def build_video_sensitivity(
+    value: int | None,
+    model: str,
+    *,
+    profile: ModelProfile | None = None,
+) -> bytes:
+    profile = profile or get_profile(model)
+    if not profile.supports_video_sensitivity:
+        raise ValueError(f"{model} does not support video sensitivity")
+    if value is None:
+        return _build_h8604_video_setting_query(H8604VideoSettings.Setting.sensitivity)
+    if type(value) is not int or not profile.video_sensitivity_min <= value <= profile.video_sensitivity_max:
+        raise ValueError("Video sensitivity is outside the model limits")
+    return _build_h8604_video_setting(H8604VideoSettings.Setting.sensitivity, (value,), model, profile=profile)
+
+
+def build_hdmi_input(
+    value: int | None,
+    model: str,
+    *,
+    profile: ModelProfile | None = None,
+) -> bytes:
+    profile = profile or get_profile(model)
+    if not profile.supports_hdmi_input:
+        raise ValueError(f"{model} does not support HDMI input selection")
+    if value is None:
+        return _build_h8604_video_setting_query(H8604VideoSettings.Setting.hdmi_input)
+    if type(value) is not int or not 0 <= value < profile.hdmi_input_count:
+        raise ValueError("HDMI input is outside the model limits")
+    return _build_h8604_video_setting(H8604VideoSettings.Setting.hdmi_input, (value,), model, profile=profile)
+
+
+def build_hdmi_box_light(
+    enabled: bool,
+    brightness: int,
+    automatic: bool,
+    effect: int,
+    model: str,
+    *,
+    profile: ModelProfile | None = None,
+) -> bytes:
+    profile = profile or get_profile(model)
+    if not profile.supports_hdmi_box_light:
+        raise ValueError(f"{model} does not support HDMI box light effects")
+    if (
+        type(enabled) is not bool
+        or type(brightness) is not int
+        or not 1 <= brightness <= 100
+        or type(automatic) is not bool
+        or type(effect) is not int
+        or not 0 <= effect <= profile.hdmi_box_effect_max
+    ):
+        raise ValueError("HDMI box light requires a complete bounded setting")
+    root = H8604Settings()
+    root.header = b"\x33"
+    root.opcode = H8604Settings.Command.box_light
+    body = _child(H8604Settings.BoxLight, root)
+    body.enabled = int(enabled)
+    body.brightness = brightness
+    body.automatic = int(not automatic)
+    body.effect = effect
+    body.unknown_tail = bytes(13)
+    root.body = body
+    return _serialize_xor(root)
+
+
+def build_hdmi_box_light_query(model: str, *, profile: ModelProfile | None = None) -> bytes:
+    profile = profile or get_profile(model)
+    if not profile.supports_hdmi_box_light:
+        raise ValueError(f"{model} does not support HDMI box light readback")
+    root = H8604Settings.DeviceInfoQuery()
+    root.header = b"\xaa\x07\x08"
+    root.unknown_tail = bytes(16)
+    return _serialize_xor(root)
+
+
+def build_video_color_calibration(
+    values: tuple[int, ...] | None,
+    model: str,
+    *,
+    profile: ModelProfile | None = None,
+) -> bytes:
+    profile = profile or get_profile(model)
+    if not profile.supports_video_color_calibration:
+        raise ValueError(f"{model} does not support video colour calibration")
+    if values is None:
+        return _build_h8604_video_setting_query(H8604VideoSettings.Setting.colour_calibration)
+    if (
+        not isinstance(values, tuple)
+        or len(values) not in {3, 4}
+        or any(
+            type(value) is not int
+            or not profile.video_color_calibration_min <= value <= profile.video_color_calibration_max
+            for value in values
+        )
+    ):
+        raise ValueError("Video colour calibration requires three or four bounded channels")
+    return _build_h8604_video_setting(H8604VideoSettings.Setting.colour_calibration, values, model, profile=profile)
 
 
 def build_segment_query(group: int, model: str = "H617A", *, profile: ModelProfile | None = None) -> bytes:

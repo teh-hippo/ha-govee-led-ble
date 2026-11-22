@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from bleak.exc import BleakError
 
-from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ReadDomain, get_profile
+from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ReadDomain, device_profile, get_profile
 from custom_components.ha_govee_led_ble.control_arbiter import BLEControlArbiter
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
@@ -28,15 +28,25 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_black_border,
     build_black_border_query,
     build_blank_screen,
+    build_hdmi_box_light,
+    build_hdmi_box_light_query,
+    build_hdmi_input,
     build_subordinate_query,
+    build_video_color_calibration,
     build_video_mode,
+    build_video_sensitivity,
     parse_command,
+    require_profile_packet,
 )
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.native_profile_controls import (
     apply_active_video_mode,
     apply_black_border,
     apply_blank_screen,
+    apply_hdmi_box_light,
+    apply_hdmi_input,
+    apply_video_color_calibration,
+    apply_video_sensitivity,
 )
 from custom_components.ha_govee_led_ble.protocol_core import _STATUS_ROOTS, H6099StatusReply
 from custom_components.ha_govee_led_ble.video_applicability import (
@@ -218,6 +228,130 @@ async def test_policy_edit_toggle_retention_and_race() -> None:
         await apply_blank_screen(device, True, writer=writer)
 
 
+def test_h8604_video_registers_preserve_exact_wire_and_readback(hass) -> None:
+    profile = device_profile("H8604", 2, 1)
+    sensitivity = build_video_sensitivity(42, "H8604", profile=profile)
+    hdmi_input = build_hdmi_input(3, "H8604", profile=profile)
+    box_light = build_hdmi_box_light(True, 10, True, 1, "H8604", profile=profile)
+    calibration = build_video_color_calibration((10, 20, 30), "H8604", profile=profile)
+    red_calibration = build_video_color_calibration((10, 20, 30, 40), "H8604", profile=profile)
+    sensitivity_query = build_video_sensitivity(None, "H8604", profile=profile)
+    hdmi_query = build_hdmi_input(None, "H8604", profile=profile)
+    box_light_query = build_hdmi_box_light_query("H8604", profile=profile)
+    calibration_query = build_video_color_calibration(None, "H8604", profile=profile)
+
+    assert sensitivity == frame("33a901012a")
+    assert hdmi_input == frame("33a9030103")
+    assert box_light == frame("33b6010a0001")
+    assert calibration == frame("33a905030a141e")
+    assert red_calibration == frame("33a905040a141e28")
+    assert sensitivity_query == frame("aaa901")
+    assert hdmi_query == frame("aaa903")
+    assert box_light_query == frame("aa0708")
+    assert calibration_query == frame("aaa905")
+    for packet in (
+        sensitivity,
+        hdmi_input,
+        box_light,
+        calibration,
+        red_calibration,
+        sensitivity_query,
+        hdmi_query,
+        box_light_query,
+        calibration_query,
+    ):
+        require_profile_packet(packet, profile)
+    for packet in (sensitivity, hdmi_input, box_light, calibration, red_calibration):
+        assert parse_command(packet, "H8604", profile=profile) is not None
+
+    device = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H8604", configuration_url=None)
+    device.pact_type, device.pact_code = 2, 1
+    device._resolve_device_profile()
+    device._notify_callback(None, bytearray(frame("aaa901012a")))
+    device._notify_callback(None, bytearray(frame("aaa9030203f0")))
+    device._notify_callback(None, bytearray(frame("aaa905040a141e28")))
+    device._notify_callback(None, bytearray(frame("aa0708000e010a0001000001020300")))
+    assert device.video_sensitivity == 42
+    assert device.video_hdmi_input == 3
+    assert device.video_hdmi_inputs_connected == (True, True, True, True)
+    assert device.boolean_control_state == {
+        "left_bar_enabled": True,
+        "middle_enabled": True,
+        "right_bar_enabled": True,
+    }
+    assert (
+        device.hdmi_box_light,
+        device.hdmi_box_brightness,
+        device.hdmi_box_automatic,
+        device.hdmi_box_effect,
+    ) == (True, 10, True, 1)
+    assert device.video_color_calibration == (10, 20, 30, 40)
+    assert device._field_revisions["video_sensitivity"] == 1
+    assert device._field_revisions["video_hdmi_input"] == 1
+    assert device._field_revisions["video_color_calibration"] == 1
+
+
+@pytest.mark.parametrize(
+    ("subordinate_20", "subordinate_21", "red_state"),
+    [
+        (None, None, "evidence_gap"),
+        ("2.02.10", "2.01.11", "unsupported"),
+        ("2.02.11", "2.01.10", "unsupported"),
+        ("2.02.11", "2.01.11", "supported"),
+    ],
+)
+def test_h8604_colour_calibration_red_is_revision_qualified(subordinate_20, subordinate_21, red_state) -> None:
+    identity = SimpleNamespace(
+        subordinate_20_version=subordinate_20,
+        subordinate_21_version=subordinate_21,
+    )
+    states = video_control_states(get_profile("H8604"), identity)
+    assert states["color_calibration"] == "supported"
+    assert states["color_calibration_red"] == red_state
+    assert states["video_sensitivity"] == "supported"
+    assert states["hdmi_input"] == "supported"
+    assert states["hdmi_box_light"] == "supported"
+
+
+async def test_h8604_video_registers_use_shared_guarded_writer() -> None:
+    confirmed = {"subordinate_20_version", "subordinate_21_version"}
+    writer = AsyncMock()
+    device = SimpleNamespace(
+        _control_arbiter=BLEControlArbiter(),
+        _confirmed_identity_fields=confirmed,
+        identity_fields_confirmed=lambda fields: fields <= confirmed,
+        _ensure_connected=AsyncMock(),
+        model="H8604",
+        profile=device_profile("H8604", 2, 1),
+        subordinate_20_version="2.02.11",
+        subordinate_21_version="2.01.11",
+        _lock=asyncio.Lock(),
+        _client=MagicMock(is_connected=True),
+        _notification_token=object(),
+        _authorization_generation=0,
+    )
+
+    assert await apply_video_sensitivity(device, 42, writer=writer, verify=False)
+    assert await apply_hdmi_input(device, 3, writer=writer, verify=False)
+    assert await apply_hdmi_box_light(device, (True, 10, True, 1), writer=writer, verify=False)
+    assert await apply_video_color_calibration(device, (10, 20, 30, 40), writer=writer, verify=False)
+    assert [call.args[0] for call in writer.await_args_list] == [
+        frame("33a901012a"),
+        frame("33a9030103"),
+        frame("33b6010a0001"),
+        frame("33a905040a141e28"),
+    ]
+    assert writer.await_args_list[0].kwargs["state_values"] == {"video_sensitivity": 42}
+    assert writer.await_args_list[1].kwargs["state_values"] == {"video_hdmi_input": 3}
+    assert writer.await_args_list[2].kwargs["state_values"] == {
+        "hdmi_box_light": True,
+        "hdmi_box_brightness": 10,
+        "hdmi_box_automatic": True,
+        "hdmi_box_effect": 1,
+    }
+    assert writer.await_args_list[3].kwargs["state_values"] == {"video_color_calibration": (10, 20, 30, 40)}
+
+
 def test_optional_fields_hash_observation_and_recovery() -> None:
     legacy = content()
     assert "black_border" not in effect_content_to_dict(legacy)
@@ -309,7 +443,7 @@ async def test_h6099_condition_identity_is_connection_scoped(hass, monkeypatch) 
     validate_video_request(device, content())
 
 
-@pytest.mark.parametrize("model,minimum", [("H6099", 1), ("H6199", 0)])
+@pytest.mark.parametrize("model,minimum", [("H6099", 1), ("H6199", 0), ("H8604", 1)])
 async def test_saturation_range_at_every_write_entry(hass, monkeypatch, model, minimum) -> None:
     profile = get_profile(model)
     assert profile.video_saturation_min == minimum
@@ -319,6 +453,9 @@ async def test_saturation_range_at_every_write_entry(hass, monkeypatch, model, m
         from tests.test_h6199_capabilities import set_qualified_identity
 
         set_qualified_identity(device)
+    elif model == "H8604":
+        device.pact_type, device.pact_code = 2, 1
+        device._resolve_device_profile()
     device.is_on = False
     writer = AsyncMock()
     monkeypatch.setattr(device, "async_write_effect_sequence", writer)

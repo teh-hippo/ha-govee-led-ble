@@ -20,6 +20,7 @@ import type {
   RelativeBrightness,
   VideoProfileContent,
   VideoProfileSetting,
+  VideoControlName,
   VideoControls,
   CapabilityState,
 } from "./types";
@@ -84,7 +85,7 @@ export class GoveeVideoProfileEditor extends LitElement {
   public controls?: VideoControls;
 
   @property({ attribute: false })
-  public applicability?: Partial<Record<VideoProfileSetting, CapabilityState>>;
+  public applicability?: Partial<Record<VideoControlName, CapabilityState>>;
 
   @property({ type: Boolean })
   public disabled = false;
@@ -116,6 +117,18 @@ export class GoveeVideoProfileEditor extends LitElement {
     const whiteBalance =
       this.settings.includes("white_balance") &&
       (this.content.white_balance_position !== null || this.content.white_balance_value !== undefined);
+    const videoSensitivity =
+      this.settings.includes("video_sensitivity") &&
+      this.content.video_sensitivity !== undefined;
+    const hdmiInput =
+      this.settings.includes("hdmi_input") &&
+      this.content.hdmi_input !== undefined;
+    const hdmiBoxLight =
+      this.settings.includes("hdmi_box_light") &&
+      this.content.hdmi_box_light !== undefined;
+    const colorCalibration =
+      this.settings.includes("color_calibration") &&
+      this.content.color_calibration !== undefined;
     const blankScreen =
       this.settings.includes("blank_screen") &&
       this.content.blank_screen !== null;
@@ -150,6 +163,10 @@ export class GoveeVideoProfileEditor extends LitElement {
               : setting === "blank_screen" ? blankScreen : setting === "capture_region" ? captureRegion
               : setting === "black_border" ? blackBorder
               : setting === "whole_relative_brightness" ? wholeBrightness
+              : setting === "video_sensitivity" ? videoSensitivity
+              : setting === "hdmi_input" ? hdmiInput
+              : setting === "hdmi_box_light" ? hdmiBoxLight
+              : setting === "color_calibration" ? colorCalibration
               : setting === "saturation" ? saturation : soundEffects,
             checked => this.updateContent(content => {
               switch (setting) {
@@ -189,6 +206,34 @@ export class GoveeVideoProfileEditor extends LitElement {
                 case "whole_relative_brightness":
                   if (checked) content.whole_relative_brightness = 50;
                   else delete content.whole_relative_brightness;
+                  break;
+                case "video_sensitivity":
+                  if (checked) content.video_sensitivity = this.controls?.video_sensitivity?.default ?? 50;
+                  else delete content.video_sensitivity;
+                  break;
+                case "hdmi_input":
+                  if (checked) content.hdmi_input = 0;
+                  else delete content.hdmi_input;
+                  break;
+                case "hdmi_box_light":
+                  if (checked) {
+                    content.hdmi_box_light = false;
+                    content.hdmi_box_brightness = 1;
+                    content.hdmi_box_automatic = false;
+                    content.hdmi_box_effect = 0;
+                  } else {
+                    delete content.hdmi_box_light;
+                    delete content.hdmi_box_brightness;
+                    delete content.hdmi_box_automatic;
+                    delete content.hdmi_box_effect;
+                  }
+                  break;
+                case "color_calibration":
+                  if (checked) {
+                    const redSupported = this.applicability?.color_calibration_red === "supported";
+                    const defaults = this.controls?.color_calibration?.default ?? [50, 50, 50];
+                    content.color_calibration = [...defaults, ...(redSupported ? [50] : [])].slice(0, redSupported ? 4 : 3);
+                  } else delete content.color_calibration;
               }
             }),
           ))}
@@ -314,7 +359,7 @@ export class GoveeVideoProfileEditor extends LitElement {
           </div>
         </section>
 
-        <section class="card" ?hidden=${!saturation && !whiteBalance}>
+        <section class="card" ?hidden=${!saturation && !whiteBalance && !videoSensitivity && !hdmiInput && !hdmiBoxLight && !colorCalibration}>
           <h3 class="section-title">Image</h3>
           <div class="parameter-stack">
             ${saturation
@@ -333,6 +378,84 @@ export class GoveeVideoProfileEditor extends LitElement {
               ? this.renderWhiteBalanceField(
                   this.content.white_balance_value ?? this.content.white_balance_position ?? this.controls?.white_balance.default ?? 17,
                 )
+              : nothing}
+            ${videoSensitivity
+              ? this.renderRangeField(
+                  "Video sensitivity",
+                  this.content.video_sensitivity ?? 50,
+                  this.controls?.video_sensitivity?.minimum ?? 1,
+                  this.controls?.video_sensitivity?.maximum ?? 100,
+                  value => this.updateContent(content => {
+                    content.video_sensitivity = clampInteger(
+                      value,
+                      this.controls?.video_sensitivity?.minimum ?? 1,
+                      this.controls?.video_sensitivity?.maximum ?? 100,
+                    );
+                  }),
+                )
+              : nothing}
+            ${hdmiInput
+              ? html`
+                <label class="field">
+                  <span>HDMI input</span>
+                  <select
+                    aria-label="HDMI input"
+                    ?disabled=${this.disabled}
+                    @change=${(event: Event) => this.updateContent(content => {
+                      content.hdmi_input = Number((event.target as HTMLSelectElement).value);
+                    })}
+                  >
+                    ${Array.from({length: this.controls?.hdmi_input_count ?? 4}, (_, index) => html`
+                      <option value=${index} .selected=${this.content?.hdmi_input === index}>HDMI ${index + 1}</option>
+                    `)}
+                  </select>
+                </label>
+              `
+              : nothing}
+            ${hdmiBoxLight ? html`
+              ${this.renderCheckboxField(
+                "Sync box light",
+                this.content.hdmi_box_light ?? false,
+                checked => this.updateContent(content => { content.hdmi_box_light = checked; }),
+              )}
+              ${this.renderRangeField(
+                "Sync box light brightness",
+                this.content.hdmi_box_brightness ?? 100,
+                1,
+                100,
+                value => this.updateContent(content => { content.hdmi_box_brightness = clampInteger(value, 1, 100); }),
+              )}
+              ${this.renderCheckboxField(
+                "Automatic sync-box effect",
+                this.content.hdmi_box_automatic ?? false,
+                checked => this.updateContent(content => { content.hdmi_box_automatic = checked; }),
+              )}
+              ${this.content.hdmi_box_automatic ? nothing : this.renderRangeField(
+                "Sync-box effect",
+                this.content.hdmi_box_effect ?? 0,
+                0,
+                this.controls?.hdmi_box_effect_max ?? 10,
+                value => this.updateContent(content => {
+                  content.hdmi_box_effect = clampInteger(value, 0, this.controls?.hdmi_box_effect_max ?? 10);
+                }),
+              )}
+            ` : nothing}
+            ${colorCalibration
+              ? (["Yellow", "Blue", "Purple", "Red"] as const).slice(0, this.content.color_calibration?.length ?? 3)
+                  .map((label, index) => this.renderRangeField(
+                    `${label} calibration`,
+                    this.content?.color_calibration?.[index] ?? 50,
+                    this.controls?.color_calibration?.minimum ?? 1,
+                    this.controls?.color_calibration?.maximum ?? 100,
+                    value => this.updateContent(content => {
+                      if (content.color_calibration === undefined) return;
+                      content.color_calibration[index] = clampInteger(
+                        value,
+                        this.controls?.color_calibration?.minimum ?? 1,
+                        this.controls?.color_calibration?.maximum ?? 100,
+                      );
+                    }),
+                  ))
               : nothing}
           </div>
         </section>

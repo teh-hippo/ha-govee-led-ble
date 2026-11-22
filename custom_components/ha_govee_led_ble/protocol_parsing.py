@@ -11,6 +11,7 @@ from .protocol_core import (
     _COMMAND_ROOTS,
     _EXTENDED_STATIC_ROOTS,
     _H6076_ACK_ROOTS,
+    _H8604_VIDEO_ROOTS,
     _MUSIC_WRITE_ROOTS,
     _STATUS_ROOTS,
     H66a0VideoCommand,
@@ -74,18 +75,25 @@ def parse_command_result(
         if activation.parsed is not None:
             return activation
     if effective_profile.setting_grammar in _NATIVE_SETTING_ROOTS:
-        root_type = _NATIVE_SETTING_ROOTS[effective_profile.setting_grammar][1]
         setting = _parse_xor_frame(frame, effective_profile.setting_grammar, _NATIVE_SETTING_ROOTS)
         if setting.parsed is not None and getattr(setting.parsed.opcode, "name", None) is not None:
-            if (
-                setting.parsed.opcode == root_type.Command.zone_enable
-                and getattr(setting.parsed.body.zone, "name", None) is None
-            ) or (
-                setting.parsed.opcode == root_type.Command.power_on_behaviour
-                and getattr(setting.parsed.body.state, "name", None) is None
+            operation = setting.parsed.opcode.name
+            if (operation == "zone_enable" and getattr(setting.parsed.body.zone, "name", None) is None) or (
+                operation == "power_on_behaviour" and getattr(setting.parsed.body.state, "name", None) is None
             ):
                 return ProtocolParseResult(None, setting.parser, ProtocolParseRejection.SEMANTIC_REJECTED)
             return setting
+    if effective_profile.setting_grammar == "H8604" and frame[:2] == b"\x33\xa9":
+        setting = _parse_xor_frame(frame, "H8604-video", _H8604_VIDEO_ROOTS)
+        if setting.parsed is not None:
+            operation = getattr(setting.parsed.body.setting, "name", None)
+            if operation == "sensitivity" and effective_profile.supports_video_sensitivity:
+                return setting
+            if operation == "hdmi_input" and effective_profile.supports_hdmi_input:
+                return setting
+            if operation == "colour_calibration" and effective_profile.supports_video_color_calibration:
+                return setting
+            return ProtocolParseResult(None, setting.parser, ProtocolParseRejection.SEMANTIC_REJECTED)
     if (
         effective_profile.video_grammar in {"H66A0-video", "H605C-video"}
         and effective_profile.supports_video_mode

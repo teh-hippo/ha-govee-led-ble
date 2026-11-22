@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from hashlib import sha256
 from types import MappingProxyType
-from typing import Any, Literal, assert_never
+from typing import Any, Literal, assert_never, cast
 
 from .const import ModelProfile, get_profile, supported_effect_categories
 from .effect_catalogue import (
@@ -192,6 +192,10 @@ class CompiledVideoProfile:
     black_border: bool | None = None
     blank_screen_policy: tuple[int, int, int] | None = None
     whole_relative_brightness: int | None = None
+    video_sensitivity: int | None = None
+    hdmi_input: int | None = None
+    hdmi_box_light: tuple[bool, int, bool, int] | None = None
+    color_calibration: tuple[int, ...] | None = None
     relative_brightness_inline: bool = False
     compiler_version: int = EFFECT_COMPILER_VERSION
     content_kind: str = "video_profile"
@@ -204,6 +208,10 @@ class CompiledVideoProfile:
                 self.white_balance_wire is not None,
                 self.relative_brightness is not None and not self.relative_brightness_inline,
                 self.whole_relative_brightness is not None,
+                self.video_sensitivity is not None,
+                self.hdmi_input is not None,
+                self.hdmi_box_light is not None,
+                self.color_calibration is not None,
                 self.blank_screen is not None,
                 self.black_border is not None,
             )
@@ -1499,6 +1507,16 @@ def compile_video_profile(
     white_balance_wire = (
         None if value is None else profile.video_white_balance_calibration[value - profile.video_white_balance_min]
     )
+    hdmi_box_light = (
+        None
+        if content.hdmi_box_light is None
+        else (
+            content.hdmi_box_light,
+            cast(int, content.hdmi_box_brightness),
+            cast(bool, content.hdmi_box_automatic),
+            cast(int, content.hdmi_box_effect),
+        )
+    )
     payload = {
         "kind": "video_profile",
         "model": model,
@@ -1507,6 +1525,10 @@ def compile_video_profile(
         "saturation": content.saturation,
         "sound_effects": content.sound_effects,
         "sound_effects_softness": content.sound_effects_softness,
+        **({"video_sensitivity": content.video_sensitivity} if content.video_sensitivity is not None else {}),
+        **({"hdmi_input": content.hdmi_input} if content.hdmi_input is not None else {}),
+        **({"hdmi_box_light": hdmi_box_light} if hdmi_box_light is not None else {}),
+        **({"color_calibration": content.color_calibration} if content.color_calibration is not None else {}),
         "white_balance_position": content.white_balance_position,
         "white_balance_wire": white_balance_wire,
         **({"white_balance_value": content.white_balance_value} if content.white_balance_value is not None else {}),
@@ -1546,6 +1568,10 @@ def compile_video_profile(
         relative_brightness=relative_brightness,
         relative_brightness_inline=profile.video_embeds_relative_brightness,
         whole_relative_brightness=content.whole_relative_brightness,
+        video_sensitivity=content.video_sensitivity,
+        hdmi_input=content.hdmi_input,
+        hdmi_box_light=hdmi_box_light,
+        color_calibration=content.color_calibration,
         blank_screen=content.blank_screen,
         black_border=content.black_border,
         blank_screen_policy=policy,

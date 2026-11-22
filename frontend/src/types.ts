@@ -79,7 +79,7 @@ export interface DeviceCapabilities {
     music: CapabilityState;
     video: CapabilityState;
   };
-  video_control_states?: Partial<Record<VideoProfileSetting, CapabilityState>>;
+  video_control_states?: Partial<Record<VideoControlName, CapabilityState>>;
   readback: string;
   effect_categories: string[];
   preview_health: PreviewHealthStatus;
@@ -315,6 +315,19 @@ export interface VideoControls {
   saturation_min: number;
   softness_min?: number;
   softness_max?: number;
+  video_sensitivity?: {
+    minimum: number;
+    maximum: number;
+    default: number;
+  };
+  hdmi_input_count?: number;
+  hdmi_box_effect_max?: number;
+  color_calibration?: {
+    minimum: number;
+    maximum: number;
+    default: number[];
+    channels: number[];
+  };
   white_balance: {
     representation: "position" | "scalar";
     minimum: number;
@@ -332,6 +345,13 @@ export interface VideoProfileContent {
   saturation: number | null;
   sound_effects: boolean | null;
   sound_effects_softness: number | null;
+  video_sensitivity?: number;
+  hdmi_input?: number;
+  hdmi_box_light?: boolean;
+  hdmi_box_brightness?: number;
+  hdmi_box_automatic?: boolean;
+  hdmi_box_effect?: number;
+  color_calibration?: number[];
   white_balance_position: number | null;
   white_balance_value?: number;
   relative_brightness: RelativeBrightness | null;
@@ -347,11 +367,17 @@ export type VideoProfileSetting =
   | "capture_region"
   | "saturation"
   | "sound_effects"
+  | "video_sensitivity"
+  | "hdmi_input"
+  | "hdmi_box_light"
+  | "color_calibration"
   | "white_balance"
   | "relative_brightness"
   | "whole_relative_brightness"
   | "blank_screen"
   | "black_border";
+
+export type VideoControlName = VideoProfileSetting | "color_calibration_red";
 
 export type BrightnessOrder = 0 | 1 | 2 | 3;
 

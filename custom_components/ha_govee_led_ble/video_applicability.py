@@ -108,6 +108,16 @@ def video_control_states(profile: ModelProfile, identity: object) -> dict[str, C
         )
         if control != "inline_relative_brightness" or profile.video_embeds_relative_brightness
     }
+    if profile.supports_video_sensitivity:
+        states["video_sensitivity"] = CapabilityState.SUPPORTED
+    if profile.supports_hdmi_input:
+        states["hdmi_input"] = CapabilityState.SUPPORTED
+    if profile.supports_hdmi_box_light:
+        states["hdmi_box_light"] = CapabilityState.SUPPORTED
+    if profile.supports_video_color_calibration:
+        states["color_calibration"] = CapabilityState.SUPPORTED
+        if any(condition.control == "color_calibration_red" for condition in profile.video_firmware_conditions):
+            states["color_calibration_red"] = CapabilityState.SUPPORTED
     return _apply_video_conditions(profile, identity, states)
 
 
@@ -140,6 +150,8 @@ def _apply_video_conditions(
                 if version is None
                 else CapabilityState.UNSUPPORTED
                 if version < int(condition.minimum.replace(".", ""))
+                or condition.maximum is not None
+                and version > int(condition.maximum.replace(".", ""))
                 else CapabilityState.SUPPORTED
             )
         states[control] = (
@@ -178,6 +190,11 @@ def requested_video_controls(content: Any) -> frozenset[str]:
             ("capture_region", content.full_screen is not None),
             ("saturation", content.saturation is not None),
             ("sound_effects", content.sound_effects is not None or content.sound_effects_softness is not None),
+            ("video_sensitivity", content.video_sensitivity is not None),
+            ("hdmi_input", content.hdmi_input is not None),
+            ("hdmi_box_light", content.hdmi_box_light is not None),
+            ("color_calibration", content.color_calibration is not None),
+            ("color_calibration_red", content.color_calibration is not None and len(content.color_calibration) == 4),
             (
                 "white_balance",
                 (content.white_balance_position is not None or content.white_balance_value is not None)
@@ -203,6 +220,10 @@ def video_mode_controls(profile: ModelProfile) -> frozenset[str]:
             ("capture_region", profile.supports_video_capture_region),
             ("saturation", profile.supports_video_saturation),
             ("sound_effects", profile.supports_video_sound_effects),
+            ("video_sensitivity", profile.supports_video_sensitivity),
+            ("hdmi_input", profile.supports_hdmi_input),
+            ("hdmi_box_light", profile.supports_hdmi_box_light),
+            ("color_calibration", profile.supports_video_color_calibration),
         )
         if supported
     )

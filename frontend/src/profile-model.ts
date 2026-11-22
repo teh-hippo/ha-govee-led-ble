@@ -35,6 +35,10 @@ export function cloneVideoProfileContent(
 ): VideoProfileContent {
   return {
     ...content,
+    color_calibration:
+      content.color_calibration === undefined
+        ? undefined
+        : [...content.color_calibration],
     relative_brightness:
       content.relative_brightness === null
         ? null

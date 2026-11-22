@@ -162,6 +162,7 @@ async def test_bluetooth_discovery_unsupported_aborts(hass: HomeAssistant):
         ("Govee_H6102_ABCD", "H6102"),
         ("ihoment_H6117_ABCD", "H6117"),
         ("Govee_H7025_ABCD", "H7025"),
+        ("Govee_H8604_ABCD", "H8604"),
     ],
 )
 async def test_bluetooth_discovery_newly_discoverable_models(

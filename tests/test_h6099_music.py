@@ -17,6 +17,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_brightness,
     build_music_mode,
     build_physical_ic_count_query,
+    parse_command,
     parse_physical_ic_count,
     parse_status_result,
     require_profile_packet,
@@ -62,6 +63,23 @@ def test_h6097_energetic_upload_and_physical_geometry_are_independently_declared
     tail = parse_music_parameters(piano, writes.body[1]).tail
     assert (tail.key_count, tail.speed, tail.off_minimum, tail.off_maximum) == (18, 10, 6, 9)
     assert music_params_for_mode(0x37, profile) == ()
+
+
+def test_h8604_music_selector_and_readback_preserve_v4_reserved_byte():
+    packet = build_music_mode(3, 42, (1, 2, 3), True, "H8604")
+    assert packet == frame("330513032a010001010203")
+    parsed = parse_command(packet, "H8604")
+    assert parsed is not None
+    assert parsed.selector.mode_id.name == "rhythm"
+    assert parsed.selector.is_calm == 1 and parsed.selector.reserved == b"\x00"
+    assert parsed.selector.has_fixed_colour == 1
+
+    generated = parse_status_result(frame("aa0513032a010001010203"), "H8604").parsed
+    state = parse_color_mode(generated, "H8604")
+    assert state.mode is ParsedMode.MUSIC
+    assert state.music_mode == "rhythm" and state.music_sensitivity == 42
+    assert state.music_calm and state.music_color == (1, 2, 3)
+    assert build_music_mode(5, 42, None, False, "H8604") == frame("330513052a")
 
 
 @pytest.mark.parametrize("mode", [3, 4, 5, 6, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x37])

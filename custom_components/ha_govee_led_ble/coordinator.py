@@ -86,6 +86,8 @@ from .generated_protocol_adapter import (
     build_configured_strings_query,
     build_firmware_query,
     build_hardware_query,
+    build_hdmi_box_light_query,
+    build_hdmi_input,
     build_ic_refresh,
     build_pact_query,
     build_physical_ic_count_query,
@@ -96,6 +98,8 @@ from .generated_protocol_adapter import (
     build_strip_calibration,
     build_strip_calibration_cancel,
     build_subordinate_query,
+    build_video_color_calibration,
+    build_video_sensitivity,
     build_white_balance_query,
     build_whole_relative_brightness,
     is_bulk_status_frame,
@@ -848,6 +852,9 @@ class GoveeBLECoordinator(
         self._music_calm = None
         self.video_saturation = self.video_sound_effects_softness = 100
         self.video_full_screen, self.video_sound_effects = True, False
+        self.video_sensitivity = self.video_hdmi_input = self.video_color_calibration = None
+        self.video_hdmi_inputs_connected = None
+        self.hdmi_box_light = self.hdmi_box_brightness = self.hdmi_box_automatic = self.hdmi_box_effect = None
         self.video_parameters = None
         self.rgb_color_source = self.color_temp_kelvin_source = "initial"
         self.color_temp_unknown = False
@@ -1949,7 +1956,14 @@ class GoveeBLECoordinator(
                 fields: tuple[str, ...]
                 if not self.profile.can_read(
                     ReadDomain.DISPLAY_SETTING
-                    if control == "whole_relative_brightness"
+                    if control
+                    in {
+                        "whole_relative_brightness",
+                        "video_sensitivity",
+                        "hdmi_input",
+                        "hdmi_box_light",
+                        "color_calibration",
+                    }
                     else ReadDomain.RELATIVE_BRIGHTNESS
                 ):
                     return False
@@ -1963,6 +1977,15 @@ class GoveeBLECoordinator(
                         if control == "video_parameters"
                         else tuple(f"relative_brightness_{zone}" for zone in self.profile.video_brightness_zones)
                     )
+                elif control == "video_sensitivity":
+                    query = build_video_sensitivity(None, self.model, profile=self.profile)
+                    fields = ("video_sensitivity",)
+                elif control == "hdmi_input":
+                    query = build_hdmi_input(None, self.model, profile=self.profile)
+                    fields = ("video_hdmi_input",)
+                elif control == "color_calibration":
+                    query = build_video_color_calibration(None, self.model, profile=self.profile)
+                    fields = ("video_color_calibration",)
                 else:
                     raise ValueError("unknown independent video setting")
                 client = self._client
@@ -1987,6 +2010,10 @@ class GoveeBLECoordinator(
         query_white_balance: bool | None,
         query_blank_screen: bool | None,
         query_black_border: bool | None,
+        query_video_sensitivity: bool | None,
+        query_hdmi_input: bool | None,
+        query_hdmi_box_light: bool | None,
+        query_video_color_calibration: bool | None,
         query_relative_brightness: bool | None,
         query_segments: bool | None,
         query_native_settings: bool | frozenset[str],
@@ -2056,6 +2083,63 @@ class GoveeBLECoordinator(
                 )
             )
         if (
+            "video_sensitivity" in confirmed_controls
+            and profile.can_read(ReadDomain.DISPLAY_SETTING)
+            and states["video_sensitivity"] is CapabilityState.SUPPORTED
+            and (query_video_sensitivity if query_video_sensitivity is not None else full_query)
+        ):
+            queries.append(
+                (
+                    build_video_sensitivity(None, self.model, profile=profile),
+                    ReadDomain.DISPLAY_SETTING,
+                    ("video_sensitivity",),
+                )
+            )
+        if (
+            "hdmi_input" in confirmed_controls
+            and profile.can_read(ReadDomain.DISPLAY_SETTING)
+            and states["hdmi_input"] is CapabilityState.SUPPORTED
+            and (query_hdmi_input if query_hdmi_input is not None else full_query)
+        ):
+            queries.append(
+                (
+                    build_hdmi_input(None, self.model, profile=profile),
+                    ReadDomain.DISPLAY_SETTING,
+                    ("video_hdmi_input",),
+                )
+            )
+        if (
+            "hdmi_box_light" in confirmed_controls
+            and profile.can_read(ReadDomain.HARDWARE)
+            and states["hdmi_box_light"] is CapabilityState.SUPPORTED
+            and (query_hdmi_box_light if query_hdmi_box_light is not None else full_query)
+        ):
+            queries.append(
+                (
+                    build_hdmi_box_light_query(self.model, profile=profile),
+                    ReadDomain.HARDWARE,
+                    (
+                        "hdmi_box_light",
+                        "hdmi_box_brightness",
+                        "hdmi_box_automatic",
+                        "hdmi_box_effect",
+                    ),
+                )
+            )
+        if (
+            "color_calibration" in confirmed_controls
+            and profile.can_read(ReadDomain.DISPLAY_SETTING)
+            and states["color_calibration"] is CapabilityState.SUPPORTED
+            and (query_video_color_calibration if query_video_color_calibration is not None else full_query)
+        ):
+            queries.append(
+                (
+                    build_video_color_calibration(None, self.model, profile=profile),
+                    ReadDomain.DISPLAY_SETTING,
+                    ("video_color_calibration",),
+                )
+            )
+        if (
             "relative_brightness" in confirmed_controls
             and profile.can_read(ReadDomain.RELATIVE_BRIGHTNESS)
             and states["relative_brightness"] is CapabilityState.SUPPORTED
@@ -2115,10 +2199,17 @@ class GoveeBLECoordinator(
                     for control in H6199_NATIVE_CONTROLS
                 )
         if query_native_settings and (full_query or isinstance(query_native_settings, frozenset)):
-            queries.extend(
-                (query, ReadDomain.OTHER, fields)
-                for query, fields in self._setting_queries(profile, query_native_settings)
-            )
+            for query, fields in self._setting_queries(profile, query_native_settings):
+                for index, (existing_query, domain, existing_fields) in enumerate(queries):
+                    if existing_query == query:
+                        queries[index] = (
+                            existing_query,
+                            domain,
+                            tuple(dict.fromkeys((*existing_fields, *fields))),
+                        )
+                        break
+                else:
+                    queries.append((query, ReadDomain.OTHER, fields))
         return queries
 
     async def _async_read_optional_h607c_settings(self, client: BleakClient) -> None:
@@ -2149,6 +2240,10 @@ class GoveeBLECoordinator(
         query_white_balance: bool | None = None,
         query_blank_screen: bool | None = None,
         query_black_border: bool | None = None,
+        query_video_sensitivity: bool | None = None,
+        query_hdmi_input: bool | None = None,
+        query_hdmi_box_light: bool | None = None,
+        query_video_color_calibration: bool | None = None,
         query_relative_brightness: bool | None = None,
         query_whole_relative_brightness: bool | None = None,
         query_segments: bool | None = None,
@@ -2185,6 +2280,10 @@ class GoveeBLECoordinator(
                 query_white_balance=query_white_balance,
                 query_blank_screen=query_blank_screen,
                 query_black_border=query_black_border,
+                query_video_sensitivity=query_video_sensitivity,
+                query_hdmi_input=query_hdmi_input,
+                query_hdmi_box_light=query_hdmi_box_light,
+                query_video_color_calibration=query_video_color_calibration,
                 query_relative_brightness=query_relative_brightness,
                 query_whole_relative_brightness=query_whole_relative_brightness,
                 query_segments=query_segments,
@@ -3500,6 +3599,10 @@ class GoveeBLECoordinator(
         required_domains: frozenset[ReadDomain] | None,
         query_black_border: bool,
         query_white_balance: bool,
+        query_video_sensitivity: bool,
+        query_hdmi_input: bool,
+        query_hdmi_box_light: bool,
+        query_video_color_calibration: bool,
         display_settings: AbstractSet[str],
         refresh_relative_brightness: bool,
     ) -> dict[str, int]:
@@ -3517,6 +3620,21 @@ class GoveeBLECoordinator(
                     if self.profile.video_white_balance_representation == "scalar"
                     else _WHITE_BALANCE_GAIN_FIELDS
                 )
+            if query_video_sensitivity and "video_sensitivity" in display_settings:
+                display_fields.append("video_sensitivity")
+            if query_hdmi_input and "hdmi_input" in display_settings:
+                display_fields.append("video_hdmi_input")
+            if query_hdmi_box_light and "hdmi_box_light" in display_settings:
+                display_fields.extend(
+                    (
+                        "hdmi_box_light",
+                        "hdmi_box_brightness",
+                        "hdmi_box_automatic",
+                        "hdmi_box_effect",
+                    )
+                )
+            if query_video_color_calibration and "color_calibration" in display_settings:
+                display_fields.append("video_color_calibration")
             if self.profile.supports_blank_screen and "blank_screen" in display_settings:
                 display_fields.extend(("blank_screen", *BLANK_SCREEN_POLICY_FIELDS))
             field_baselines.update((field, self._field_revisions.get(field, 0)) for field in display_fields)
@@ -3536,6 +3654,7 @@ class GoveeBLECoordinator(
         query_color: bool,
         query_display: bool,
         query_relative_brightness: bool,
+        query_hdmi_box_light: bool,
         required_domains: frozenset[ReadDomain] | None,
     ) -> set[ReadDomain]:
         """The read domains a refresh must see answered, given which queries it sends."""
@@ -3550,6 +3669,7 @@ class GoveeBLECoordinator(
                 ),
                 (ReadDomain.DISPLAY_SETTING, query_display),
                 (ReadDomain.RELATIVE_BRIGHTNESS, query_relative_brightness),
+                (ReadDomain.HARDWARE, query_hdmi_box_light),
             )
             if enabled and profile.can_read(domain)
         }
@@ -3573,11 +3693,24 @@ class GoveeBLECoordinator(
         query_brightness = expected.brightness is not None
         query_color = self.profile.supports_color_mode_readback and expected.expects_color_readback
         display_settings = request.display_settings
-        if not display_settings <= {"white_balance", "blank_screen", "black_border"}:
+        if not display_settings <= {
+            "white_balance",
+            "blank_screen",
+            "black_border",
+            "video_sensitivity",
+            "hdmi_input",
+            "color_calibration",
+        }:
             raise ValueError("unknown display setting requested for refresh")
         query_white_balance = expected.expects_white_balance or "white_balance" in display_settings
         query_blank_screen = expected.expects_blank_screen or "blank_screen" in display_settings
         query_black_border = expected.expects_black_border or "black_border" in display_settings
+        query_video_sensitivity = expected.expects_video_sensitivity or "video_sensitivity" in display_settings
+        query_hdmi_input = expected.expects_hdmi_input or "hdmi_input" in display_settings
+        query_hdmi_box_light = expected.expects_hdmi_box_light or "hdmi_box_light" in display_settings
+        query_video_color_calibration = (
+            expected.expects_video_color_calibration or "color_calibration" in display_settings
+        )
         if (
             query_black_border
             and video_control_states(self.profile, self)["black_border"] is not CapabilityState.SUPPORTED
@@ -3603,6 +3736,10 @@ class GoveeBLECoordinator(
                 query_white_balance,
                 query_blank_screen,
                 query_black_border,
+                query_video_sensitivity,
+                query_hdmi_input,
+                query_hdmi_box_light,
+                query_video_color_calibration,
                 query_relative_brightness,
                 native_settings,
             )
@@ -3632,6 +3769,10 @@ class GoveeBLECoordinator(
                     ("white_balance", expected.expects_white_balance),
                     ("blank_screen", expected.expects_blank_screen),
                     ("black_border", expected.expects_black_border),
+                    ("video_sensitivity", expected.expects_video_sensitivity),
+                    ("hdmi_input", expected.expects_hdmi_input),
+                    ("hdmi_box_light", expected.expects_hdmi_box_light),
+                    ("color_calibration", expected.expects_video_color_calibration),
                     ("relative_brightness", query_relative_brightness),
                 )
                 if requested
@@ -3650,6 +3791,20 @@ class GoveeBLECoordinator(
                 query_black_border = (
                     "black_border" in confirmed_controls and states["black_border"] is CapabilityState.SUPPORTED
                 )
+                query_video_sensitivity = (
+                    "video_sensitivity" in confirmed_controls
+                    and states["video_sensitivity"] is CapabilityState.SUPPORTED
+                )
+                query_hdmi_input = (
+                    "hdmi_input" in confirmed_controls and states["hdmi_input"] is CapabilityState.SUPPORTED
+                )
+                query_hdmi_box_light = (
+                    "hdmi_box_light" in confirmed_controls and states["hdmi_box_light"] is CapabilityState.SUPPORTED
+                )
+                query_video_color_calibration = (
+                    "color_calibration" in confirmed_controls
+                    and states["color_calibration"] is CapabilityState.SUPPORTED
+                )
                 query_relative_brightness = (
                     "relative_brightness" in confirmed_controls
                     and states["relative_brightness"] is CapabilityState.SUPPORTED
@@ -3662,8 +3817,16 @@ class GoveeBLECoordinator(
                 query_power=query_power,
                 query_brightness=query_brightness,
                 query_color=query_color,
-                query_display=query_white_balance or query_blank_screen or query_black_border,
+                query_display=(
+                    query_white_balance
+                    or query_blank_screen
+                    or query_black_border
+                    or query_video_sensitivity
+                    or query_hdmi_input
+                    or query_video_color_calibration
+                ),
                 query_relative_brightness=query_relative_brightness,
+                query_hdmi_box_light=query_hdmi_box_light,
                 required_domains=request.required_domains,
             )
             deadline = time.monotonic() + request.timeout
@@ -3673,15 +3836,34 @@ class GoveeBLECoordinator(
                 frozenset(awaited_domains)
                 | (
                     {ReadDomain.DISPLAY_SETTING}
-                    if requested_registers & {"white_balance", "blank_screen", "black_border"}
+                    if requested_registers
+                    & {
+                        "white_balance",
+                        "blank_screen",
+                        "black_border",
+                        "video_sensitivity",
+                        "hdmi_input",
+                        "hdmi_box_light",
+                        "color_calibration",
+                    }
                     else set()
                 )
                 | ({ReadDomain.RELATIVE_BRIGHTNESS} if "relative_brightness" in requested_registers else set())
+                | ({ReadDomain.HARDWARE} if "hdmi_box_light" in requested_registers else set())
                 if domain_scoped
                 else None
             )
             explicit_settings = any(
-                (query_white_balance, query_blank_screen, query_black_border, query_relative_brightness)
+                (
+                    query_white_balance,
+                    query_blank_screen,
+                    query_black_border,
+                    query_video_sensitivity,
+                    query_hdmi_input,
+                    query_hdmi_box_light,
+                    query_video_color_calibration,
+                    query_relative_brightness,
+                )
             )
             contradicted = False
             for attempt in range(2):
@@ -3692,6 +3874,10 @@ class GoveeBLECoordinator(
                     refresh_all=request.refresh_all,
                     required_domains=request.required_domains,
                     query_black_border=query_black_border,
+                    query_video_sensitivity=query_video_sensitivity,
+                    query_hdmi_input=query_hdmi_input,
+                    query_hdmi_box_light=query_hdmi_box_light,
+                    query_video_color_calibration=query_video_color_calibration,
                     query_white_balance=query_white_balance,
                     display_settings=display_settings,
                     refresh_relative_brightness=request.refresh_relative_brightness,
@@ -3714,6 +3900,22 @@ class GoveeBLECoordinator(
                         query_white_balance=query_white_balance if explicit_settings else None,
                         query_blank_screen=query_blank_screen if explicit_settings else None,
                         query_black_border=query_black_border if explicit_settings else None,
+                        **(
+                            {"query_video_sensitivity": query_video_sensitivity}
+                            if explicit_settings and query_video_sensitivity
+                            else {}
+                        ),
+                        **({"query_hdmi_input": query_hdmi_input} if explicit_settings and query_hdmi_input else {}),
+                        **(
+                            {"query_hdmi_box_light": query_hdmi_box_light}
+                            if explicit_settings and query_hdmi_box_light
+                            else {}
+                        ),
+                        **(
+                            {"query_video_color_calibration": query_video_color_calibration}
+                            if explicit_settings and query_video_color_calibration
+                            else {}
+                        ),
                         query_relative_brightness=query_relative_brightness if explicit_settings else None,
                         deadline=deadline,
                         required_domains=required_domains,

@@ -1473,6 +1473,28 @@ def test_declared_boolean_controls_round_trip(hass, model: str, profile: ModelPr
                 assert coordinator.hw_version is None
                 assert all(coordinator._field_revisions[f"boolean_{name}"] > 0 for name in expected)
                 continue
+            if profile.setting_grammar == "H8604" and control != "gradual":
+                expected = {
+                    name: enabled if name == control else True
+                    for name in ("left_bar_enabled", "middle_enabled", "right_bar_enabled")
+                }
+                mask = sum(
+                    bit
+                    for name, bit in (
+                        ("left_bar_enabled", 1 << 1),
+                        ("middle_enabled", 1 << 3),
+                        ("right_bar_enabled", 1 << 2),
+                    )
+                    if expected[name]
+                )
+                reply = _status(domain_byte, bytes((8, 0, mask)))
+                decoded = decode_status_frame(reply, model, profile=profile)
+                assert decoded is not None and status_is_authorized(decoded, profile)
+                assert a.parse_boolean_control(decoded.generated, model, profile=profile) == expected
+                _consume_status(coordinator, reply)
+                assert {name: coordinator.boolean_control_state[name] for name in expected} == expected
+                assert all(coordinator._field_revisions[f"boolean_{name}"] > 0 for name in expected)
+                continue
             reply = _status(domain_byte, bytes([int(enabled)]))
             decoded = decode_status_frame(reply, model, profile=profile)
             assert decoded is not None and status_is_authorized(decoded, profile)
