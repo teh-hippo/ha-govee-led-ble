@@ -202,7 +202,13 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
     async def async_swap_light_bars(self) -> None:
         from .generated_protocol_adapter import build_swap_bars
 
-        self._require_support("swap_light_bars", supported=self.coordinator.profile.setting_grammar == "H6046")
+        self._require_support(
+            "swap_light_bars",
+            supported=(
+                self.coordinator.profile.setting_grammar == "H6046"
+                and self.coordinator.profile.command_operation_supported("swap_bars")
+            ),
+        )
         try:
             build_swap_bars(self.coordinator.profile)
             await self._async_supersede_preview()

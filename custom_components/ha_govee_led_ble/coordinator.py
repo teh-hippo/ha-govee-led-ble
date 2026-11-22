@@ -2992,6 +2992,20 @@ class GoveeBLECoordinator(
             if not await self.async_refresh_segments():
                 raise ValueError("Installation changed but segment state could not be read")
 
+    def _preflight_bar_control(self, control: str, enabled: bool) -> None:
+        if self.profile.setting_grammar != "H6046":
+            return
+        from .generated_protocol_adapter import build_boolean_control
+
+        build_boolean_control(
+            control,
+            enabled,
+            self.model,
+            profile=self.profile,
+            sibling_enabled=True,
+            native_mask=0,
+        )
+
     async def async_set_boolean_control(self, control: str, enabled: bool) -> None:
         if type(enabled) is not bool:
             raise ValueError("Boolean setting requires a boolean")
@@ -3210,6 +3224,10 @@ class GoveeBLECoordinator(
                 else control in self.profile.boolean_controls
             ):
                 raise ValueError("Device profile does not support this setting")
+            if not audio and not playback and control != "power_on_behaviour":
+                if type(value) is not bool:
+                    raise ValueError("Boolean setting requires a boolean")
+                self._preflight_bar_control(control, value)
             if source_power is not None and self._fresh_source_power() != source_power:
                 raise ValueError("Source selection changed before the write")
 
@@ -3555,15 +3573,16 @@ class GoveeBLECoordinator(
         from .generated_protocol_adapter import build_swap_bars
 
         packet = build_swap_bars(self.profile)
+
+        def invalidate_appearance() -> None:
+            self._static_rgb_known = False
+            self.left_bar_kelvin = self.right_bar_kelvin = None
+            self.segment_state_source = "initial"
+
         async with async_control_intent(self, ControlIntent.USER):
             async with self._lock:
                 client = await self._ensure_connected()
-                try:
-                    await self._async_write_packet(client, packet, arm_expected=True)
-                finally:
-                    self._static_rgb_known = False
-                    self.left_bar_kelvin = self.right_bar_kelvin = None
-                    self.segment_state_source = "initial"
+                await self._async_write_packet(client, packet, arm_expected=True, on_write=invalidate_appearance)
             await self.refresh_state(RefreshRequest(refresh_all=True))
 
     @property

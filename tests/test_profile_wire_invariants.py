@@ -20,6 +20,7 @@ from custom_components.ha_govee_led_ble.const import (
     KELVIN_RANGE_1000_10000,
     MODEL_PROFILES,
     WHOLE_BULB_GRAMMARS,
+    LightSource,
     ModelProfile,
     ReadDomain,
     device_profile,
@@ -112,6 +113,37 @@ def _qualified_coordinator(hass, model: str, profile: ModelProfile) -> GoveeBLEC
     if MODEL_PROFILES[model].requires_pact_confirmation:
         coordinator._confirmed_identity_fields.add("pact")
     return coordinator
+
+
+def _bar_profile(command_operations: frozenset[str] | None) -> ModelProfile:
+    return ModelProfile(
+        "Synthetic bar profile",
+        command_grammar="H6046",
+        command_ack_grammar="H6046",
+        command_operations=command_operations,
+        status_grammar="H6046",
+        setting_grammar="H6046",
+        boolean_controls=frozenset({"left_bar_enabled", "right_bar_enabled"}),
+        light_sources=(
+            LightSource("left_bar", "left_bar_enabled", (1,)),
+            LightSource("right_bar", "right_bar_enabled", (2,)),
+        ),
+        segment_count=2,
+    )
+
+
+def _bar_packet(profile: ModelProfile, operation: str) -> bytes:
+    if operation == "bar_enable":
+        return a.build_boolean_control(
+            "left_bar_enabled",
+            True,
+            "synthetic",
+            profile=profile,
+            sibling_enabled=False,
+            native_mask=0x80,
+        )
+    assert operation == "swap_bars"
+    return a.build_swap_bars(profile)
 
 
 # Runtime qualification contexts that produce distinct effective profiles through device_profile().
@@ -1357,6 +1389,77 @@ def test_partial_notifications_do_not_grant_unknown_or_malformed_state(hass, mod
     if model == "H600A":
         _consume_status(coordinator, valid)
         assert not coordinator._field_revisions
+
+
+@pytest.mark.parametrize(
+    ("operations", "allowed"),
+    [
+        (None, frozenset({"bar_enable", "swap_bars"})),
+        (frozenset(), frozenset()),
+        (frozenset({"power"}), frozenset()),
+        (frozenset({"bar_enable"}), frozenset({"bar_enable"})),
+        (frozenset({"swap_bars"}), frozenset({"swap_bars"})),
+        (frozenset({"bar_enable", "swap_bars"}), frozenset({"bar_enable", "swap_bars"})),
+    ],
+)
+def test_bar_operation_authority_is_independent_of_shared_codec(
+    operations: frozenset[str] | None, allowed: frozenset[str]
+) -> None:
+    profile = _bar_profile(operations)
+    authoritative = _bar_profile(frozenset({"bar_enable", "swap_bars"}))
+    for operation in ("bar_enable", "swap_bars"):
+        expected_packet = _bar_packet(authoritative, operation)
+        assert len(expected_packet) == 20 and xor_checksum(expected_packet) == 0
+        if operation in allowed:
+            packet = _bar_packet(profile, operation)
+            assert len(packet) == 20 and xor_checksum(packet) == 0
+            a.require_profile_packet(packet, profile)
+            continue
+        with pytest.raises(ValueError):
+            _bar_packet(profile, operation)
+        with pytest.raises(ValueError):
+            a.require_profile_packet(expected_packet, profile)
+
+
+@pytest.mark.parametrize("operations", [frozenset(), frozenset({"power"})])
+def test_bar_readback_remains_available_without_write_authority(hass, operations: frozenset[str]) -> None:
+    profile = _bar_profile(operations)
+    query = a.build_boolean_control_query("left_bar_enabled", "synthetic", profile=profile)
+    a.require_profile_packet(query, profile)
+    reply = _status(0x33, b"\x01")
+    decoded = decode_status_frame(reply, "synthetic", profile=profile)
+    assert decoded is not None and status_is_authorized(decoded, profile)
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6046", configuration_url=None)
+    coordinator.profile = profile
+    _consume_status(coordinator, reply)
+    assert coordinator.boolean_control_state == {"left_bar_enabled": True, "right_bar_enabled": False}
+    assert coordinator._field_revisions["boolean_left_bar_enabled"] > 0
+    assert coordinator._field_revisions["boolean_right_bar_enabled"] > 0
+
+
+@pytest.mark.parametrize(
+    ("model", "pact", "firmware", "hardware"),
+    [
+        ("H6046", (1, 1), None, None),
+        ("H6046", (None, None), None, None),
+        ("H6053", (1, 1), "1.00.11", "1.00.00"),
+        ("H6053", (2, 1), "1.01.00", "1.00.00"),
+        ("H6053", (None, None), None, None),
+    ],
+)
+def test_h6046_grammar_profiles_preserve_declared_bar_operations(
+    model: str, pact: tuple[int | None, int | None], firmware: str | None, hardware: str | None
+) -> None:
+    profile = device_profile(model, *pact, firmware=firmware, hardware=hardware)
+    operations = profile.command_operations
+    for operation in ("bar_enable", "swap_bars"):
+        allowed = operations is None or operation in operations
+        if allowed:
+            packet = _bar_packet(profile, operation)
+            a.require_profile_packet(packet, profile)
+        else:
+            with pytest.raises(ValueError):
+                _bar_packet(profile, operation)
 
 
 @pytest.mark.parametrize(("model", "profile"), _BOOLEAN_CONTROL_PROFILES)

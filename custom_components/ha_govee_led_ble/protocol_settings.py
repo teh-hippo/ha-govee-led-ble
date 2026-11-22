@@ -364,7 +364,13 @@ def build_boolean_control(
             root.body.unknown_tail = bytes(15)
         return _serialize_xor(root)
     if profile.setting_grammar == "H6046":
-        if control not in profile.boolean_controls or type(enabled) is not bool or type(sibling_enabled) is not bool:
+        if (
+            not profile.command_operation_supported("bar_enable")
+            or profile.boolean_controls != {"left_bar_enabled", "right_bar_enabled"}
+            or control not in profile.boolean_controls
+            or type(enabled) is not bool
+            or type(sibling_enabled) is not bool
+        ):
             raise ValueError("Bar control requires both native bar states")
         flags = H6046CommandWrite.BarFlag
         left, right = (enabled, sibling_enabled) if control == "left_bar_enabled" else (sibling_enabled, enabled)
@@ -524,7 +530,11 @@ def build_source_value(source: str, attribute: str, value: int, profile: ModelPr
 
 
 def build_swap_bars(profile: ModelProfile) -> bytes:
-    if profile.setting_grammar != "H6046" or not profile.boolean_controls:
+    if (
+        profile.setting_grammar != "H6046"
+        or not profile.command_operation_supported("swap_bars")
+        or profile.boolean_controls != {"left_bar_enabled", "right_bar_enabled"}
+    ):
         raise ValueError("Device profile does not support swapping light bars")
     root = H6046CommandWrite()
     root.header = b"\x33"
