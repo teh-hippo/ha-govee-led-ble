@@ -12,6 +12,7 @@ from custom_components.ha_govee_led_ble.const import DOMAIN, MODEL_PROFILES, Lig
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
+from custom_components.ha_govee_led_ble.coordinator_sources import SourceTurnOnRequest
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_brightness,
@@ -162,6 +163,49 @@ async def test_source_switch_without_values_does_not_require_segment_geometry(so
     )
     await GoveeBLESourceLight(source_coordinator, "left_bar").async_turn_on()
     source_coordinator.async_set_boolean_control.assert_awaited_once_with("left_bar_enabled", True)
+
+
+async def test_h6053_source_colour_uses_version_identity_without_pact(hass, monkeypatch):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6053", configuration_url=None)
+    coordinator._client = client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
+    coordinator._notification_token = object()
+    coordinator._notify_started_monotonic = time.monotonic() - 1
+    coordinator._observe_identity_field("fw_version", "1.08.05")
+    coordinator._observe_identity_field("hw_version", "1.00.00")
+    coordinator.is_on = True
+    coordinator.boolean_control_state.update({"left_bar_enabled": True, "right_bar_enabled": True})
+    coordinator._field_revisions["is_on"] = 1
+    coordinator._observed_power_write_generation = coordinator._power_write_generation
+    coordinator._observed_power_profile_generation = coordinator._profile_generation
+    for field in ("is_on", "boolean_left_bar_enabled", "boolean_right_bar_enabled"):
+        coordinator._field_received_at[field] = coordinator._notify_started_monotonic + 0.1
+        if field.startswith("boolean_"):
+            coordinator._source_power_observation_generation[field] = (
+                coordinator._power_write_generation,
+                coordinator._profile_generation,
+            )
+    monkeypatch.setattr(coordinator, "_refresh_h607c_advertisements", MagicMock())
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
+    monkeypatch.setattr(coordinator, "_renew_foreground_lease", MagicMock())
+    monkeypatch.setattr(coordinator, "_async_supersede_effect_preview", AsyncMock())
+
+    async def refresh_segments():
+        coordinator.segment_colors = [(12, 34, 56)] * 6 + [(0, 0, 0)] * 6
+        coordinator.segment_brightness = [100] * 12
+        coordinator.segment_state_source = "observed"
+        return True
+
+    monkeypatch.setattr(coordinator, "async_refresh_segments", AsyncMock(side_effect=refresh_segments))
+
+    await coordinator.async_turn_on_source("left_bar", SourceTurnOnRequest(rgb_color=(12, 34, 56)))
+
+    assert coordinator.profile.supports_rgb
+    assert "static" in coordinator.profile.command_operations
+    assert "brightness" not in coordinator.profile.command_operations
+    assert not coordinator.identity_fields_confirmed(frozenset({"pact"}))
+    client.write_gatt_char.assert_awaited_once()
+    parsed = parse_static_write(client.write_gatt_char.await_args.args[1], "H6053", profile=coordinator.profile)
+    assert parsed is not None and parsed.segment_mask == 0x003F
 
 
 async def test_setup_adds_sources_without_changing_main_light_identity(source_coordinator):
@@ -684,6 +728,7 @@ async def test_native_kelvin_survives_non_table_palette_and_recovery_projection(
     coordinator._observe_pact(2 if modern else 1, 1)
     coordinator._observe_identity_field("fw_version", coordinator.fw_version)
     coordinator._observe_identity_field("hw_version", coordinator.hw_version)
+    monkeypatch.setattr(coordinator, "_refresh_h607c_advertisements", MagicMock())
     monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
     monkeypatch.setattr(coordinator, "_renew_foreground_lease", MagicMock())
 

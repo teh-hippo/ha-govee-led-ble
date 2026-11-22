@@ -1299,6 +1299,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         ),
         music_grammar="H6046",
         profile_identity_fields=frozenset({"fw_version", "hw_version"}),
+        static_identity_fields=frozenset({"fw_version", "hw_version"}),
         profile_pact_dependent=True,
         requires_qualified_identity=True,
         requires_pact_confirmation=True,
@@ -4143,7 +4144,7 @@ def device_profile(
                 wire_range, legacy_colour=not modern_static, legacy_music=legacy_pact
             ),
         )
-        if not known_pact or fw is None or hw is None:
+        if fw is None or hw is None:
             basic = _basic_revision_profile(profile)
             return (
                 replace(
@@ -4159,7 +4160,7 @@ def device_profile(
         expanded_music = fw >= FirmwareVersion((1, 8))
         workshop = uploaded_scenes and hw.identity_number() > 0
         assert profile.effect_workflows is not None
-        return replace(
+        profile = replace(
             profile,
             status_grammar="H6053" if modern_static else "H6053-legacy",
             supports_segment_brightness=modern_static,
@@ -4182,6 +4183,30 @@ def device_profile(
             a1_diy_prefix=254 if legacy_pact else None,
             music_modes=profile.music_modes if expanded_music else profile.music_modes[:4],
             music_variants=profile.music_variants if expanded_music else profile.music_variants[:4],
+        )
+        if known_pact:
+            return profile
+        assert profile.command_operations is not None
+        return replace(
+            profile,
+            command_operations=profile.command_operations & {"power", "static", "scene", "bar_enable", "swap_bars"},
+            effect_workflows=frozenset({"native_scenes"}),
+            music_modes=(),
+            music_variants=(),
+            supports_music_color=False,
+            music_upload_before_selector=False,
+            music_requires_upload_ack=False,
+            supports_custom_effects=False,
+            supports_multi_layered_effects=False,
+            supports_advanced_effects=False,
+            advanced_diy_selector=None,
+            workshop_scene_selector=None,
+            workshop_carriers=(),
+            shared_scene_carriers=(),
+            diy_upload_transport=None,
+            a1_diy_prefix=None,
+            read_domains=profile.read_domains - {ReadDomain.BRIGHTNESS},
+            setup_required_read_domains=profile.setup_required_read_domains - {ReadDomain.BRIGHTNESS},
         )
     if model == "H6093":
         revision = 0 if (pact_type, pact_code) == (1, 1) else 1 if (pact_type, pact_code) in {(1, 2), (2, 1)} else None
