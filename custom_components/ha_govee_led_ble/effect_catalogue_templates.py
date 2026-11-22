@@ -46,6 +46,7 @@ from .effect_domain import (
     VideoProfile,
 )
 from .h60a6_effects import native_diy_preset
+from .h7025_effects import H7025_NATIVE_DIY_FAMILY
 from .layered_scene_decoder import decode_workshop_effect
 from .music_commands import default_music_zones
 from .music_protocol import music_code_for
@@ -385,8 +386,42 @@ H7020_CATALOGUE_TEMPLATES: Final = (
 )
 
 H7025_CATALOGUE_TEMPLATES: Final = (
-    *(_single_template("H7025", family) for family in H7025_DIY_FAMILIES),
+    *(_single_template("H7025", family) for family in H7025_DIY_FAMILIES if family.category == "single_layer"),
     *(_music_template("H7025", mode) for mode in _native_music_modes("H7025")),
+    *(
+        CatalogueTemplate(
+            id=f"template:h7025:{preset_id}",
+            label=label,
+            category="single-layer",
+            content=NativeEffect(
+                family=H7025_NATIVE_DIY_FAMILY,
+                layers=(
+                    NativeDiyLayer(
+                        kind=kind,
+                        speed=50,
+                        palette=DEFAULT_PALETTE,
+                        parameter=parameter,
+                        flag=flag,
+                        points=points,
+                        secondary_palette=secondary_palette,
+                    ),
+                ),
+                preset_id=preset_id,
+                model="H7025",
+            ),
+        )
+        for preset_id, label, kind, parameter, flag, points, secondary_palette in (
+            (16, "Retrace", 12, 5, 0, (), ()),
+            (17, "Spray 1", 13, 1, 0, (3, 3), ()),
+            (18, "Spray 2", 13, 2, 0, (3, 3), ()),
+            (19, "Streamer 1", 14, 1, 0, (), ()),
+            (20, "Streamer 2", 14, 1, 1, (), ()),
+            (21, "Glimmer", 15, 1, 0, (), ()),
+            (22, "Star Flash", 16, 3, 0, (), ((0, 0, 255),)),
+            (23, "Pile-up 1", 17, 1, 0, (), ()),
+            (24, "Pile-up 2", 17, 1, 1, (), ()),
+        )
+    ),
 )
 
 WORKSHOP_PROTOCOL_FIXTURES: Final = (

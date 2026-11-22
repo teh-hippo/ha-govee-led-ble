@@ -105,6 +105,7 @@ h607c_dreamview_group.py
 h7025_music_write.py
 h7025_music_body.py
 h7025_status_reply.py
+h7025_diy_body.py
 h600a_command_write.py
 h600a_status_reply.py
 h600a_command_ack.py

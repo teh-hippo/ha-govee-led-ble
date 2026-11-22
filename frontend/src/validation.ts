@@ -1319,7 +1319,11 @@ function projectorLayer(value: unknown): NonNullable<NativeEffectContent["projec
 }
 
 function nativeEffectContent(content: Record<string, unknown>): NativeEffectContent {
-  const model = enumString(content.model, ["H60A6", "H607C", "H1771", "H60B0", "H60B2", "H1AB2", "H6093"], "native model");
+  const model = enumString(
+    content.model,
+    ["H60A6", "H607C", "H1771", "H60B0", "H60B2", "H1AB2", "H6093", "H7025"],
+    "native model",
+  );
   const zoned = model !== "H60A6";
   const family = integerValue(content.family, "native family", 0, 65535);
   const revision = model === "H60B0" ? integerValue(content.revision, "native revision", 0, 3) : undefined;
@@ -1327,10 +1331,11 @@ function nativeEffectContent(content: Record<string, unknown>): NativeEffectCont
   if ((model === "H60A6" && family !== 797 && family !== 798) ||
       (model === "H607C" && family > 255) || (model === "H1771" && family !== 957) ||
       (model === "H60B2" && family !== 803) || (model === "H1AB2" && family !== 948) ||
-      (model === "H6093" && family !== 712)) invalid("unsupported native family");
+      (model === "H6093" && family !== 712) || (model === "H7025" && family !== 767)) invalid("unsupported native family");
   const layerValues = arrayValue(content.layers, "native layers", 255);
   if (!layerValues.length && !combined && model !== "H6093") invalid("native effects require at least one layer");
   if (model === "H6093" && layerValues.length) invalid("projector content cannot contain other layer kinds");
+  if (model === "H7025" && layerValues.length !== 1) invalid("H7025 native DIY requires one layer");
   if (model !== "H6093" && content.projector_layers !== undefined) invalid("projector layers require their native model");
   if (zoned && layerValues.length > (model === "H60B0" ? 3 : 2)) invalid("native zoned effects cannot add layers");
   if (model === "H60B0" && (

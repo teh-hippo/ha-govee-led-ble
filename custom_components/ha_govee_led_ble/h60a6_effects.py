@@ -135,6 +135,10 @@ def _serialise(value: Any) -> bytes:
 
 
 def encode_native_body(content: NativeEffect) -> bytes:
+    if content.model == "H7025":
+        from .h7025_effects import encode_h7025_diy
+
+        return encode_h7025_diy(content)
     if content.model == "H1AB2":
         from .h1ab2_effects import encode_accumulation
 

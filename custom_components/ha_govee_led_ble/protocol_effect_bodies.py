@@ -48,6 +48,7 @@ from .protocol_core import (
     H6181DiyBody,
     H6199CommandAck,
     H6199EffectUpload,
+    H7025DiyBody,
     SceneBody,
     SceneParameterTooLargeError,
     SceneType1Body,
@@ -268,6 +269,7 @@ def parse_a3_effect_envelope(envelope: bytes, model: str, *, profile: ModelProfi
             0x04: DiyType04,
             **({int(H60b2DiyBody.UploadSubtype.native_diy): H60b2EffectUpload} if grammar == "H60B2" else {}),
             **({int(H1ab2DiyBody.UploadSubtype.native_diy): H1ab2DiyBody.Upload} if grammar == "H1AB2" else {}),
+            **({0x58: H7025DiyBody} if model == "H7025" else {}),
         }.get(envelope[2])
         if root_type is None:
             raise ValueError(f"H617A A3 body type 0x{envelope[2]:02x} is not supported")
@@ -333,7 +335,7 @@ def parse_a3_effect_envelope(envelope: bytes, model: str, *, profile: ModelProfi
         raise ValueError(f"invalid {model} A3 effect envelope") from error
     if not parsed._io.is_eof():
         raise ValueError(f"{model} A3 effect grammar did not consume the envelope")
-    if grammar == "H60A6" and any(parsed.padding):
+    if (grammar == "H60A6" or isinstance(parsed, H7025DiyBody)) and any(parsed.padding):
         raise ValueError("Native A3 effect envelope contains non-zero transport fill")
     return parsed
 

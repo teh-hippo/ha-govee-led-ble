@@ -1,6 +1,7 @@
 import { LitElement, css, html, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
 import { paintNativeLayerPoint } from "./effect-editor-model";
+import { renderH7025Editor } from "./h7025-native-editor";
 import { renderH1771SectionEditor, renderNativeZoneEditor } from "./native-zone-editor";
 import { renderH60B0Editor } from "./h60b0-native-editor";
 import { renderProjectorEditor } from "./projector-editor";
@@ -55,7 +56,6 @@ function isSinglePaletteContent(
     content?.kind === "palette_diy"
   );
 }
-
 function isMixedPaletteContent(
   content: PaletteContent | undefined,
 ): content is MixedPaletteContent {
@@ -194,6 +194,10 @@ export class GoveeCustomEffectEditor extends LitElement {
       }
       if (this.nativeContent.model === "H60B0") {
         return renderH60B0Editor(this.nativeContent, this.catalogue, this.disabled,
+          (content, interaction) => this.nativeChanged(content, interaction));
+      }
+      if (this.nativeContent.model === "H7025") {
+        return renderH7025Editor(this.nativeContent, this.disabled,
           (content, interaction) => this.nativeChanged(content, interaction));
       }
       if (this.catalogue.native_zones?.length || this.nativeContent.model === "H1771") {

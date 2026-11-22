@@ -104,6 +104,7 @@ speculative/h607c_dreamview_group
 speculative/h7025_music_write
 speculative/h7025_music_body
 speculative/h7025_status_reply
+speculative/h7025_diy_body
 speculative/h600a_command_write
 speculative/h600a_status_reply
 speculative/h600a_command_ack

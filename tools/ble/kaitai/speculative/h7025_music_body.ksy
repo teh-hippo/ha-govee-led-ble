@@ -20,11 +20,12 @@ doc: |
   that byte is unconfirmed.  Piano and Day/Night reuse the named shared tails
   with exact-H7025 defaults and editor permissions.  Palette counts do not
   establish physical IC count.
-  The multi-packet upload emits 15 initial stream bytes and up to 17
-  final bytes.  The reporter's eight-byte final threshold remains a separate,
-  unresolved snapshot/firmware observation; it does not change shared framing.
-  Unresolved: revision differences, raw snapshot sequences, all field bounds
-  on hardware, rendering, and the necessity of body zeros versus frame padding.
+  The multi-packet upload emits 15 initial stream bytes and accepts a ten-byte
+  final remainder in the shared two-fragment framing.  Firmware 1.03.13
+  replayed six-colour Hopping visibly in that form after an authenticated BLE
+  session; the earlier eight-byte final threshold came from the observed
+  producer, not the device.  Unresolved: other revisions, all field bounds on
+  hardware, rendering, and the necessity of body zeros versus frame padding.
 seq:
   - id: header
     type: govee_common::a3_header

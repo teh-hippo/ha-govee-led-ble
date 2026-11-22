@@ -664,6 +664,11 @@ def _check_upload_packet(frame: bytes, profile: ModelProfile) -> bool:
                 }
                 allowed = {
                     **(
+                        {profile.native_diy_upload_subtype: profile.supports_custom_effects}
+                        if profile.native_diy_upload_subtype is not None
+                        else {}
+                    ),
+                    **(
                         {int(H1ab2DiyBody.UploadSubtype.native_diy): profile.supports_custom_effects}
                         if profile.effect_grammar == "H1AB2"
                         else {}

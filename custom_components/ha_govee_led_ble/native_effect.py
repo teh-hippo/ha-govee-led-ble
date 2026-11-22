@@ -265,6 +265,22 @@ class NativeEffect:
                 or self.opaque
             ):
                 raise LayeredSceneValidationError("invalid single native palette structure")
+        elif self.model == "H7025":
+            if (
+                self.family != 767
+                or len(self.layers) != 1
+                or not isinstance(self.layers[0], NativeDiyLayer)
+                or self.preset_id not in range(16, 25)
+                or self.backgrounds
+                or self.background_flag
+                or self.background != (0, 0, 0)
+                or self.background_brightness != 100
+                or self.show_type != 1
+                or self.template is not None
+                or self.speed_index is not None
+                or self.opaque
+            ):
+                raise LayeredSceneValidationError("invalid H7025 native DIY structure")
         elif self.model == "H1771":
             if (
                 self.family != 957
@@ -300,7 +316,7 @@ class NativeEffect:
             raise LayeredSceneValidationError("native effect exceeds its layer or background count field")
         expected = (
             NativeDiyLayer
-            if self.family == 797 or self.model in {"H1AB2", "H607C", "H1771", "H60B0", "H60B2"}
+            if self.family == 797 or self.model in {"H1AB2", "H607C", "H1771", "H60B0", "H60B2", "H7025"}
             else NativePaintLayer
         )
         if any(not isinstance(layer, expected | NativeOpaqueLayer) for layer in self.layers):

@@ -1695,6 +1695,7 @@ async def test_entry_shutdown_during_stale_disconnect_does_not_start_a_connectio
 
 async def test_keep_alive_retries_identity_until_bounded(coord):
     """Connect-time identity replies can be missed, so retries remain bounded."""
+    coord.profile = replace(coord.profile, profile_identity_fields=frozenset({"fw_version", "hw_version"}))
     coord._client = client = _c(write_gatt_char=AsyncMock(), disconnect=AsyncMock())
     coord.fw_version = coord.hw_version = None
     calls = {"n": 0}
@@ -1715,6 +1716,7 @@ async def test_keep_alive_retries_identity_until_bounded(coord):
 
 
 async def test_keep_alive_retries_missing_hw_when_fw_known(coord):
+    coord.profile = replace(coord.profile, profile_identity_fields=frozenset({"fw_version", "hw_version"}))
     coord._client = client = _c(write_gatt_char=AsyncMock(), disconnect=AsyncMock())
     coord.fw_version, coord.hw_version = "3.02.24", None
     with (
@@ -1723,9 +1725,33 @@ async def test_keep_alive_retries_missing_hw_when_fw_known(coord):
         patch(f"{M}.asyncio.sleep", new_callable=AsyncMock),
     ):
         await coord._keep_alive_loop()
-    ident.assert_awaited_once_with()
+    ident.assert_awaited_once_with(
+        frozenset({"fw_version", "hw_version"}),
+        include_physical_ic=False,
+    )
     client.disconnect.assert_awaited_once()
     assert coord._client is None
+
+
+async def test_keep_alive_does_not_retry_optional_silent_h7025_hardware(hass):
+    coordinator = GoveeBLECoordinator(
+        hass,
+        "AA:BB:CC:DD:EE:FF",
+        "H7025",
+        configuration_url=None,
+    )
+    coordinator.fw_version = "1.03.13"
+    coordinator.hw_version = None
+    coordinator._client = client = _c(write_gatt_char=AsyncMock(), disconnect=AsyncMock())
+    with (
+        patch.object(coordinator, "_send_identity_queries", new_callable=AsyncMock) as identity_queries,
+        patch.object(coordinator, "_send_state_queries", new_callable=AsyncMock, return_value=False),
+        patch(f"{M}.asyncio.sleep", new_callable=AsyncMock),
+    ):
+        await coordinator._keep_alive_loop()
+    identity_queries.assert_not_awaited()
+    client.disconnect.assert_awaited_once()
+    assert coordinator._client is None
 
 
 async def test_keep_alive_skips_identity_when_versions_confirmed(coord):
