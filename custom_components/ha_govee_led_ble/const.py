@@ -409,6 +409,9 @@ class ModelProfile:
             and self.command_operations <= {"power", "brightness"}
         )
 
+    def command_operation_supported(self, operation: str) -> bool:
+        return self.command_operations is None or operation in self.command_operations
+
     def source_control_supported(self, source: LightSource | None) -> bool:
         return (
             source is not None

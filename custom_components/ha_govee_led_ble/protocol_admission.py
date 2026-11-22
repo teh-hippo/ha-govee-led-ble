@@ -396,10 +396,15 @@ def _check_command_packet(frame: bytes, profile: ModelProfile) -> bool:
                 return True
             raise ValueError("Power-on behaviour is outside profile capabilities")
         if operation in {"bar_enable", "swap_bars"}:
-            if profile.setting_grammar == "H6046" and profile.boolean_controls == {
-                "left_bar_enabled",
-                "right_bar_enabled",
-            }:
+            if (
+                profile.setting_grammar == "H6046"
+                and profile.command_operation_supported(operation)
+                and profile.boolean_controls
+                == {
+                    "left_bar_enabled",
+                    "right_bar_enabled",
+                }
+            ):
                 return True
             raise ValueError("Bar control is outside profile capabilities")
         if operation in {"multi", "mode"}:

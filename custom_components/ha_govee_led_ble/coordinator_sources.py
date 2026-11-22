@@ -14,6 +14,7 @@ from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator_refresh import RefreshRequest
 from .coordinator_status import ParsedMode
 from .generated_protocol_adapter import (
+    build_boolean_control,
     build_brightness,
     build_power,
     build_source_value,
@@ -397,6 +398,15 @@ async def async_set_source_enabled(coordinator: GoveeBLECoordinator, key: str, e
         raise HomeAssistantError(translation_domain=DOMAIN, translation_key="device_command_failed")
     assert source is not None
     try:
+        packet = build_boolean_control(
+            source.control,
+            enabled,
+            coordinator.model,
+            profile=profile,
+            sibling_enabled=True,
+            native_mask=0,
+        )
+        require_profile_packet(packet, profile)
         await coordinator.async_set_boolean_control(source.control, enabled)
         coordinator.async_set_updated_data(coordinator.data or {})
     except HomeAssistantError:
@@ -457,6 +467,15 @@ class SourceTurnOnTransaction:
         if not profile.source_control_supported(source):
             raise ValueError("This source is unavailable")
         assert source is not None
+        control_packet = build_boolean_control(
+            source.control,
+            True,
+            coordinator.model,
+            profile=profile,
+            sibling_enabled=True,
+            native_mask=0,
+        )
+        require_profile_packet(control_packet, profile)
         modes = source_color_modes(source, profile)
         values = self._request
         segments = list(source.segments)

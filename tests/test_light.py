@@ -2537,6 +2537,40 @@ async def test_segment_services_reject_unsupported(mock_coordinator):
     mock_coordinator.send_command.assert_not_called()
 
 
+@pytest.mark.parametrize("allowed", [False, True])
+async def test_swap_light_bars_service_follows_semantic_capability(mock_coordinator, monkeypatch, allowed: bool):
+    mock_coordinator.profile = ModelProfile(
+        "Synthetic bar profile",
+        command_grammar="H6046",
+        command_ack_grammar="H6046",
+        command_operations=frozenset({"swap_bars"} if allowed else {"power"}),
+        status_grammar="H6046",
+        setting_grammar="H6046",
+        boolean_controls=frozenset({"left_bar_enabled", "right_bar_enabled"}),
+    )
+    entity = GoveeBLELight(mock_coordinator)
+    write_state = MagicMock()
+    supersede = AsyncMock()
+    swap = AsyncMock()
+    monkeypatch.setattr(entity, "async_write_ha_state", write_state)
+    monkeypatch.setattr(entity, "_async_supersede_preview", supersede)
+    monkeypatch.setattr(mock_coordinator, "async_swap_bars", swap)
+
+    if not allowed:
+        with pytest.raises(ServiceValidationError) as raised:
+            await entity.async_swap_light_bars()
+        assert raised.value.translation_key == "unsupported_model"
+        supersede.assert_not_awaited()
+        swap.assert_not_awaited()
+        write_state.assert_not_called()
+        return
+
+    await entity.async_swap_light_bars()
+    supersede.assert_awaited_once_with()
+    swap.assert_awaited_once_with()
+    write_state.assert_called_once()
+
+
 def test_segment_colors_attribute_present(light, mock_coordinator):
     mock_coordinator.segment_colors = [(10, 20, 30)] * 15
     assert light.extra_state_attributes == {

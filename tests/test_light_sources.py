@@ -165,6 +165,62 @@ async def test_source_switch_without_values_does_not_require_segment_geometry(so
     source_coordinator.async_set_boolean_control.assert_awaited_once_with("left_bar_enabled", True)
 
 
+async def test_source_enable_rejects_removed_bar_operation_before_writes(source_coordinator):
+    source_coordinator.profile = replace(
+        source_coordinator.profile,
+        command_operations=source_coordinator.profile.command_operations - {"bar_enable"},
+    )
+
+    with pytest.raises(HomeAssistantError) as raised:
+        await GoveeBLESourceLight(source_coordinator, "left_bar")._set_source(False)
+
+    assert raised.value.translation_key == "device_command_failed"
+    source_coordinator.async_set_boolean_control.assert_not_awaited()
+    source_coordinator.send_command.assert_not_awaited()
+    source_coordinator._async_supersede_effect_preview.assert_not_awaited()
+
+
+async def test_cold_h6053_source_off_qualifies_before_bar_preflight(hass, monkeypatch):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6053", configuration_url=None)
+    qualified = device_profile("H6053", 1, 1, firmware="1.00.12", hardware="1.00.00")
+    initial_operations = coordinator.profile.command_operations
+    qualified_operations = qualified.command_operations
+    assert initial_operations is not None and "bar_enable" not in initial_operations
+    assert qualified_operations is not None and "bar_enable" in qualified_operations
+
+    async def prepare():
+        coordinator.profile = qualified
+        return None
+
+    prepared = AsyncMock(side_effect=prepare)
+    verified = AsyncMock()
+    monkeypatch.setattr(coordinator, "async_prepare_identity_gated_control", prepared)
+    monkeypatch.setattr(coordinator, "_async_set_verified_setting", verified)
+
+    await GoveeBLESourceLight(coordinator, "left_bar")._set_source(False)
+
+    prepared.assert_awaited_once_with()
+    verified.assert_awaited_once_with("left_bar_enabled", False, write_guard=None)
+
+
+async def test_source_turn_on_rejects_removed_bar_operation_before_lighting_writes(source_coordinator):
+    source_coordinator.profile = replace(
+        source_coordinator.profile,
+        command_operations=source_coordinator.profile.command_operations - {"bar_enable"},
+    )
+    source_coordinator.is_on = False
+    source_coordinator.boolean_control_state["left_bar_enabled"] = False
+
+    with pytest.raises(HomeAssistantError) as raised:
+        await GoveeBLESourceLight(source_coordinator, "left_bar").async_turn_on(brightness=50)
+
+    assert raised.value.translation_key == "device_command_failed"
+    source_coordinator.async_set_boolean_control.assert_not_awaited()
+    source_coordinator.send_command.assert_not_awaited()
+    source_coordinator.async_set_segment_brightness.assert_not_awaited()
+    source_coordinator._async_supersede_effect_preview.assert_not_awaited()
+
+
 async def test_h6053_source_colour_uses_version_identity_without_pact(hass, monkeypatch):
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6053", configuration_url=None)
     coordinator._client = client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())

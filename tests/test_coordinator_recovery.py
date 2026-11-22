@@ -22,9 +22,11 @@ from custom_components.ha_govee_led_ble.effect_contracts import CapabilityState
 from custom_components.ha_govee_led_ble.effect_deployments import PriorControlState
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_blank_screen,
+    build_boolean_control,
     build_brightness,
     build_power,
     build_scene_activation,
+    build_swap_bars,
     table_kelvin_rgb,
 )
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
@@ -1056,6 +1058,63 @@ async def test_h6046_swap_is_not_replayed_after_ambiguous_write(hass, monkeypatc
     assert client.write_gatt_char.call_args.args[1] == _packet(0x33, 0x34, [])
     assert not coord._static_rgb_known and coord.left_bar_kelvin is None
     coord._clear_client_state(client)
+
+
+@pytest.mark.parametrize("operation", ["bar_enable", "swap_bars"])
+@pytest.mark.parametrize("narrowing", ["effective", "authorization"])
+async def test_bar_command_revalidates_authority_at_physical_write(hass, monkeypatch, operation: str, narrowing: str):
+    coord = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6046", configuration_url=_CONFIGURATION_URL)
+    allowed = replace(
+        device_profile("H6046", 1, 1),
+        command_operations=frozenset({"bar_enable", "swap_bars"}),
+    )
+    coord.profile = allowed
+    packet = (
+        build_boolean_control(
+            "left_bar_enabled",
+            True,
+            "H6046",
+            profile=allowed,
+            sibling_enabled=False,
+            native_mask=0x80,
+        )
+        if operation == "bar_enable"
+        else build_swap_bars(allowed)
+    )
+    denied = replace(allowed, command_operations=frozenset())
+    if narrowing == "effective":
+        coord.profile = denied
+    else:
+        monkeypatch.setattr(coord, "_authorization_profile", lambda: denied)
+    client = _c(write_gatt_char=AsyncMock())
+    attempts = coord.control_write_attempts
+
+    expected = ValueError if narrowing == "effective" else HomeAssistantError
+    with pytest.raises(expected):
+        await coord._async_write_packet(client, packet, arm_expected=True)
+
+    client.write_gatt_char.assert_not_awaited()
+    assert coord.control_write_attempts == attempts
+
+
+async def test_denied_swap_preserves_appearance_before_physical_attempt(hass, monkeypatch):
+    coord = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6046", configuration_url=_CONFIGURATION_URL)
+    coord.profile = replace(coord.profile, command_operations=coord.profile.command_operations - {"swap_bars"})
+    coord._static_rgb_known = True
+    coord.left_bar_kelvin = 2700
+    coord.right_bar_kelvin = 6500
+    coord.segment_state_source = "observed"
+    client = _c(write_gatt_char=AsyncMock())
+    coord._client = client
+    monkeypatch.setattr(coord, "_ensure_connected", AsyncMock(return_value=client))
+
+    with pytest.raises(ValueError):
+        await coord.async_swap_bars()
+
+    client.write_gatt_char.assert_not_awaited()
+    assert coord._static_rgb_known
+    assert (coord.left_bar_kelvin, coord.right_bar_kelvin) == (2700, 6500)
+    assert coord.segment_state_source == "observed"
 
 
 def test_capture_effect_control_state(coord):
