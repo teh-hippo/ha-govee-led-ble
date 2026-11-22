@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Iterable, Mapping
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
 
 from .const import ReadDomain
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator_control import async_send_guarded_command
 from .coordinator_refresh import RefreshRequest
+from .coordinator_status import ParsedMode
 from .generated_protocol_adapter import (
     build_black_border,
     build_blank_screen,
@@ -48,6 +50,95 @@ class ProfileWriter(Protocol):
         expected_values: Mapping[str, Any] | None = None,
         on_write: Callable[[], None] | None = None,
     ) -> Awaitable[None]: ...
+
+
+@dataclass(frozen=True, slots=True)
+class ResidentVideoSelection:
+    """A selector-only request that may resume independently observed native video."""
+
+    mode: str
+    requested_values: Mapping[str, Any]
+
+    async def async_resume_guard(self, coordinator: GoveeBLECoordinator) -> Callable[[], None] | None:
+        if coordinator._control_arbiter.current_task_intent is not ControlIntent.USER:
+            raise RuntimeError("Resident video qualification requires owned user control")
+        profile = coordinator.profile
+        if (
+            coordinator._pre_mode_snapshot is not None
+            or coordinator._incomplete_static_exit is not None
+            or not profile.supports_color_mode_readback
+            or profile.video_embeds_relative_brightness
+            or profile.default_video_parameters
+            or coordinator.video_parameters is not None
+        ):
+            return None
+        controls = video_mode_controls(profile)
+        require_video_controls(profile, coordinator, controls)
+        client, token = coordinator._client, coordinator._notification_token
+        generation = coordinator._profile_generation
+        foreground = coordinator._control_arbiter.foreground_generation
+        fields = (
+            "color_mode",
+            "video_mode",
+            *(
+                f"video_{field}"
+                for field, supported in (
+                    ("full_screen", profile.supports_video_capture_region),
+                    ("saturation", profile.supports_video_saturation),
+                    ("sound_effects", profile.supports_video_sound_effects),
+                    ("sound_effects_softness", profile.supports_video_sound_effects),
+                )
+                if supported
+            ),
+        )
+        baselines = {field: coordinator._field_revisions.get(field, 0) for field in fields}
+        if await coordinator.refresh_state(
+            RefreshRequest(
+                refresh_all=True,
+                query_native_settings=False,
+                query_segments=False,
+                required_domains=profile.read_domains & {ReadDomain.COLOUR_MODE, ReadDomain.MODE},
+            )
+        ) is not True or any(
+            coordinator._field_revisions.get(field, 0) <= revision for field, revision in baselines.items()
+        ):
+            return None
+        _, values, controls, retained_guard = prepare_video_mode(
+            coordinator, mode=self.mode, requested_values=self.requested_values
+        )
+        expected = {
+            "color_mode": ParsedMode.VIDEO,
+            "video_mode": self.mode,
+            **{f"video_{field}": value for field, value in values.items() if f"video_{field}" in fields},
+        }
+        selector_revision = coordinator._selector_revision
+        mode_generation = coordinator._mode_write_generation
+
+        def check() -> None:
+            retained_guard()
+            if (
+                token is None
+                or coordinator._notification_token is not token
+                or coordinator._client is not client
+                or coordinator._profile_generation != generation
+                or coordinator.profile != profile
+                or coordinator._control_arbiter.foreground_generation != foreground
+                or coordinator._selector_revision != selector_revision
+                or coordinator._mode_write_generation != mode_generation
+                or coordinator._observed_color_mode is not ParsedMode.VIDEO
+                or coordinator._pre_mode_snapshot is not None
+                or coordinator._incomplete_static_exit is not None
+                or coordinator.video_parameters is not None
+                or any(not coordinator.source_field_fresh(field) for field in fields)
+                or any(getattr(coordinator, field) != value for field, value in expected.items())
+            ):
+                raise ValueError("Resident video evidence changed; refresh and retry")
+
+        try:
+            check()
+        except ValueError:
+            return None
+        return check
 
 
 async def async_require_video_controls(

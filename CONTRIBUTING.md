@@ -98,6 +98,10 @@ Profiles own product facts, Kaitai owns wire structure, and shared runtime opera
 - Ordinary effects require a complete executable static baseline before leading writes.
   Validate content, acquire readable fields under ownership and reuse that operation's observations.
   Capture intent before the first attempt; publish it at the physical mode transition.
+- Without recovery history, an exact already-resident native video selector may resume with power and brightness only.
+  Require fresh independent current-subscription mode and complete applicable settings, including requested template defaults; conservatively exclude unqualified supplementary parameters.
+  Recheck evidence and ownership at every physical boundary, never rewrite the mode or invent a restoration target.
+  Actual selection changes and exits still require the original static baseline.
 - Preserve complete appearance, including segment colours, native colour semantics and relative brightness, across effect changes and every exit path.
   Keep original appearance current until the first attempt, then recovery appearance or selector through dependent completion.
   Accepted selectors remain authoritative through activation, retry and rollback; uploads authorise payloads only.

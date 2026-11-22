@@ -106,8 +106,8 @@ from .light_source import GoveeBLESourceLight
 from .music_commands import prepare_music_request
 from .music_protocol import music_code_for
 from .music_semantics import music_variant
+from .native_profile_controls import ResidentVideoSelection, async_prepare_video_mode, async_require_video_controls
 from .native_profile_controls import apply_active_video_mode as apply_active_video_mode
-from .native_profile_controls import async_prepare_video_mode, async_require_video_controls
 from .native_scenes import build_native_scene_packets
 from .scenes import (
     MODEL_SCENE_ALIASES,
@@ -887,7 +887,11 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         return compiled
 
     async def _prepare_effect(
-        self, effect_name: str, *, effect_guards: list[Callable[[], None]] | None = None
+        self,
+        effect_name: str,
+        *,
+        effect_guards: list[Callable[[], None]] | None = None,
+        resident_video: list[ResidentVideoSelection] | None = None,
     ) -> Callable[[], Awaitable[None]]:
         key = normalise_effect_name(effect_name)
         coordinator = self.coordinator
@@ -960,14 +964,22 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             if compiled is not None:
                 if isinstance(compiled, CompiledVideoProfile):
                     controls = requested_video_controls(compiled)
+                    requested_values = {
+                        field: getattr(compiled, field)
+                        for field in ("full_screen", "saturation", "sound_effects", "sound_effects_softness")
+                        if getattr(compiled, field) is not None
+                    }
+                    if (
+                        resident_video is not None
+                        and compiled.progress_total == 1
+                        and compiled.relative_brightness is None
+                        and compiled.blank_screen_policy is None
+                    ):
+                        resident_video.append(ResidentVideoSelection(compiled.mode, requested_values))
                     _, _, _, retained_guard = await async_prepare_video_mode(
                         coordinator,
                         mode=compiled.mode,
-                        requested_values={
-                            field: getattr(compiled, field)
-                            for field in ("full_screen", "saturation", "sound_effects", "sound_effects_softness")
-                            if getattr(compiled, field) is not None
-                        },
+                        requested_values=requested_values,
                         relative_brightness=compiled.relative_brightness,
                     )
 
@@ -986,6 +998,8 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             _, _, _, check_retained = await async_prepare_video_mode(
                 coordinator, mode=selected.value, requested_values={}
             )
+            if resident_video is not None:
+                resident_video.append(ResidentVideoSelection(selected.value, {}))
             if effect_guards is not None:
                 effect_guards.append(check_retained)
 
@@ -1156,8 +1170,13 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             )
             return
         effect_guards: list[Callable[[], None]] = []
+        resident_video: list[ResidentVideoSelection] = []
         prepared_effect = (
-            await self._prepare_effect(str(kwargs[ATTR_EFFECT]), effect_guards=effect_guards)
+            await self._prepare_effect(
+                str(kwargs[ATTR_EFFECT]),
+                effect_guards=effect_guards,
+                resident_video=resident_video if kwargs.keys() <= {ATTR_EFFECT, ATTR_BRIGHTNESS} else None,
+            )
             if ATTR_EFFECT in kwargs
             else None
         )
@@ -1166,23 +1185,27 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         await self._async_supersede_preview()
         if native_write_guard is not None:
             native_write_guard()
-        async with (
-            async_control_intent(
-                self.coordinator,
-                ControlIntent.USER,
-            ),
-            self.coordinator.async_mode_transition(purpose=ModeTransitionPurpose.SELECTION)
-            if prepared_effect is not None
-            else nullcontext(),
-        ):
-            await self._async_turn_on(
-                clear_workspace_on_success=clear_workspace,
-                prepared_effect=prepared_effect,
-                effect_write_guard=effect_guards[0] if effect_guards else None,
-                native_write_guard=native_write_guard,
-                source_colour=source_colour,
-                **kwargs,
-            )
+        async with async_control_intent(self.coordinator, ControlIntent.USER):
+            if resident_video and (guard := await resident_video[0].async_resume_guard(self.coordinator)) is not None:
+                await self._async_turn_on(
+                    effect_write_guard=guard,
+                    native_write_guard=native_write_guard,
+                    **{key: value for key, value in kwargs.items() if key != ATTR_EFFECT},
+                )
+                return
+            async with (
+                self.coordinator.async_mode_transition(purpose=ModeTransitionPurpose.SELECTION)
+                if prepared_effect is not None
+                else nullcontext()
+            ):
+                await self._async_turn_on(
+                    clear_workspace_on_success=clear_workspace,
+                    prepared_effect=prepared_effect,
+                    effect_write_guard=effect_guards[0] if effect_guards else None,
+                    native_write_guard=native_write_guard,
+                    source_colour=source_colour,
+                    **kwargs,
+                )
 
     async def _async_clear_effect(
         self, kwargs: Mapping[str, Any], *, clear_workspace: bool, native_write_guard: Callable[[], None] | None
