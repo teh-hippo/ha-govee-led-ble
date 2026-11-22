@@ -307,10 +307,11 @@ async def test_cached_effect_profile_without_geometry_conversion_requalifies_bef
         coordinator._confirmed_identity_fields.add("pact")
         return client
 
-    async def read_identity(fields):
+    async def read_identity(fields, *, ready):
         assert fields == frozenset({"fw_version", "hw_version"})
         coordinator._notify_callback(None, bytearray(_packet(0xAA, 0x06, list(b"1.08.05\0"))))
         coordinator._notify_callback(None, bytearray(_packet(0xAA, 0x07, [3, *b"1.00.00\0"])))
+        assert ready()
 
     monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(side_effect=connect))
     read = AsyncMock(side_effect=read_identity)

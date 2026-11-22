@@ -1,4 +1,6 @@
 command_write
+speculative/h6139_wire_write
+speculative/h6139_status_reply
 speculative/h1ab2_status_reply
 speculative/h1ab2_settings
 speculative/h1ab2_music_write

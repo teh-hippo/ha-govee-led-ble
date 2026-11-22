@@ -22,6 +22,7 @@ Profiles own product facts, Kaitai owns wire structure, and shared runtime opera
 ### Shared behaviour and product differences
 
 - Trace declarations, public controls, preparation, transport, observations and recovery across equivalent entry points and capability combinations.
+- Follow active caller selection and precedence before comparing codecs; an available builder is not proof that a device uses it.
 - Classify differences as product facts, wire formats, distinct semantics or shared defects.
   Use existing seams first; justify new ones with evidence.
 - Fix shared causes at their owning layer, migrate callers and remove duplicate paths and state.
@@ -72,6 +73,7 @@ Profiles own product facts, Kaitai owns wire structure, and shared runtime opera
   Re-query missing control identity before client reuse and qualify bootstrap profiles before effect compilation.
 - Prepare optional scene identity during scene admission.
   Scene-policy changes preserve unrelated state and revalidate dependent transfers and acknowledgements against their preparation and current authority.
+- Complete preparation when the requested workflow, selector and scene are qualified, without waiting for unrelated optional identity.
 
 ### State, ownership and execution
 
@@ -112,6 +114,7 @@ Profiles own product facts, Kaitai owns wire structure, and shared runtime opera
   Require a usable restoration target before any exit operation's lighting writes.
 - Planned idle and polling releases may suspend historical recovery intent.
   Reuse after qualifying connection, control profile, geometry and mode.
+  Compare static encoding independently of optional-effect encoding and retain its actual identity prerequisites.
   Current observations and prepared writes retain their own lifetimes.
   Unexpected loss, failed release and explicit invalidation discard recovery history.
 - Preserve fully delivered write-only appearances and evidence quality, including before the first effect.

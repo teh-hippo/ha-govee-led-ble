@@ -1659,7 +1659,8 @@ class GoveeBLECoordinator(
         static_identity_fields = self.profile.static_identity_fields if parsed.static is not None else frozenset()
         subscription = self._notification_token
         wire_packet = packet
-        if (transform := self.profile.outbound_transform) is not None:
+        transform = self.profile.static_outbound_transform if parsed.static is not None else None
+        if (transform := transform or self.profile.outbound_transform) is not None:
             wire_packet = transform(packet)
             if not isinstance(wire_packet, bytes) or not wire_packet:
                 raise ValueError("Outbound transform must return non-empty bytes")
@@ -2575,7 +2576,9 @@ class GoveeBLECoordinator(
                 if not fresh or getattr(self, observation, None) != value:
                     raise ValueError("Device did not confirm the requested H6199 control")
 
-    async def _async_read_identity(self, required_fields: frozenset[str] | None = None) -> None:
+    async def _async_read_identity(
+        self, required_fields: frozenset[str] | None = None, *, ready: Callable[[], bool] | None = None
+    ) -> None:
         """Refresh missing identity without making basic setup depend on its replies."""
         query_all_missing = required_fields is None
         if required_fields is None:
@@ -2598,20 +2601,25 @@ class GoveeBLECoordinator(
         )
         self._require_not_shutdown()
         self._require_not_dreamview_claimed()
-        await self._wait_for_revisions({}, identity_baselines, time.monotonic() + IDENTITY_QUERY_TIMEOUT)
+        await self._wait_for_revisions({}, identity_baselines, time.monotonic() + IDENTITY_QUERY_TIMEOUT, stop=ready)
 
-    async def _async_require_identity(self, client: BleakClient, fields: frozenset[str]) -> None:
-        if not fields or self.identity_fields_confirmed(fields):
+    async def _async_require_identity(
+        self, client: BleakClient, fields: frozenset[str], *, ready: Callable[[], bool] | None = None
+    ) -> None:
+        if not fields or self.identity_fields_confirmed(fields) or ready is not None and ready():
             return
         token = self._notification_token
         if "pact" in fields:
             await self._async_confirm_pact(client)
         remaining = fields - {"pact"}
         if remaining and not self.identity_fields_confirmed(remaining):
-            await self._async_read_identity(remaining)
+            if ready is None:
+                await self._async_read_identity(remaining)
+            else:
+                await self._async_read_identity(remaining, ready=ready)
         if self._client is not client or not client.is_connected or self._notification_token is not token:
             raise GoveeTransportError("identity_subscription_changed")
-        if not self.identity_fields_confirmed(fields):
+        if not self.identity_fields_confirmed(fields) and not (ready is not None and ready()):
             raise HomeAssistantError(translation_domain=DOMAIN, translation_key="identity_not_ready")
 
     async def _async_prepare_control_identity(

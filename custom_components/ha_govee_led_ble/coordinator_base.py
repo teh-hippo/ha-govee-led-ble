@@ -274,7 +274,9 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
 
         def identity_fields_confirmed(self, fields: frozenset[str] | None = None) -> bool: ...
 
-        async def _async_require_identity(self, client: BleakClient, fields: frozenset[str]) -> None: ...
+        async def _async_require_identity(
+            self, client: BleakClient, fields: frozenset[str], *, ready: Callable[[], bool] | None = None
+        ) -> None: ...
 
         def _record_packet(
             self,
@@ -369,7 +371,9 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
 
         async def _ensure_connected(self) -> BleakClient: ...
 
-        async def _async_read_identity(self, required_fields: frozenset[str] | None = None) -> None: ...
+        async def _async_read_identity(
+            self, required_fields: frozenset[str] | None = None, *, ready: Callable[[], bool] | None = None
+        ) -> None: ...
 
         async def _async_read_bulk_status(
             self,
@@ -464,14 +468,18 @@ def require_scene_command_identity(coordinator: _CoordinatorBase, scene: SceneEn
 async def async_prepare_effect_profile(
     coordinator: _CoordinatorBase, *, intent: ControlIntent, content: EffectContent | None = None
 ) -> ModelProfile:
+    from .effect_contracts import CapabilityWorkflow, profile_supports_workflow
     from .effect_domain import (
         BuiltinScene,
         LayeredEffect,
         LayeredScene,
+        MusicProfile,
         PaletteScene,
         RetainedSceneEffect,
         StaticRgbComposition,
+        effect_content_workflow,
     )
+    from .scenes import scene_supported
 
     scene = None
     scene_required = content is None or isinstance(content, LayeredEffect | RetainedSceneEffect)
@@ -482,10 +490,25 @@ async def async_prepare_effect_profile(
             scene.command_version != 0 or (scene.scene_type == 2 and coordinator.profile.rgbic_scene_v0 is not None)
         )
 
+    workflow = effect_content_workflow(content) if content is not None else None
+
+    def effect_identity_ready() -> bool:
+        authorized = coordinator.effect_authorization_profile
+        return (
+            (
+                workflow is None
+                or profile_supports_workflow(authorized, CapabilityWorkflow(workflow), model=coordinator.model)
+            )
+            and (not isinstance(content, MusicProfile) or content.mode in authorized.music_modes)
+            and (scene is None or scene_supported(scene, authorized))
+        )
+
+    effect_identity_pending = bool(coordinator.profile.profile_identity_fields) and not effect_identity_ready()
     if (
         content is not None
         and coordinator.profile.supports_rgb
         and not coordinator._authorization_profile().basic_controls_only
+        and not effect_identity_pending
         and not scene_required
         and not isinstance(content, StaticRgbComposition)
     ):
@@ -501,13 +524,18 @@ async def async_prepare_effect_profile(
         and (
             not coordinator.profile.profile_identity_fields
             or not coordinator._authorization_profile().basic_controls_only
+            and not effect_identity_pending
         )
     ):
         return coordinator.effect_authorization_profile
     async with async_control_intent(coordinator, intent):
         async with coordinator._lock:
             client = await coordinator._ensure_connected()
-            if coordinator._authorization_profile().basic_controls_only:
+            if effect_identity_pending:
+                await coordinator._async_require_identity(
+                    client, coordinator.profile.profile_identity_fields, ready=effect_identity_ready
+                )
+            elif coordinator._authorization_profile().basic_controls_only:
                 await coordinator._async_require_identity(client, coordinator.profile.profile_identity_fields)
             if (
                 scene_required

@@ -132,6 +132,31 @@ H705A_MUSIC_VARIANTS = (
     ),
 )
 
+H6139_MUSIC_VARIANTS = (
+    MusicVariant(0, "H6139 revision-qualified dynamic selector"),
+    MusicVariant(1, "H6139 revision-qualified soft selector"),
+    MusicVariant(
+        48,
+        "H6139 onboard Bloom palette",
+        "h6181_music_body",
+        bytes.fromhex("3001ff00000a50"),
+        supports_style=True,
+        style_companions=(80, 20),
+        palette_bounds=(1, 8),
+        supports_fixed_colour=False,
+    ),
+    MusicVariant(
+        49,
+        "H6139 onboard Radiant palette",
+        "h6181_music_body",
+        bytes.fromhex("3101ff000005640a"),
+        supports_style=True,
+        style_companions=(0x0564, 0x1446),
+        palette_bounds=(1, 8),
+        supports_fixed_colour=False,
+    ),
+)
+
 H6159_MUSIC_VARIANTS = (
     MusicVariant(0, "H6159 revision-qualified dynamic selector"),
     MusicVariant(1, "H6159 revision-qualified soft selector"),
