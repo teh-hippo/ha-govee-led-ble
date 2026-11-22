@@ -12,6 +12,7 @@ from homeassistant.components.light import ColorMode
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, MUSIC_MODE_SLUGS
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_expectations import expectations_from_packet
+from custom_components.ha_govee_led_ble.coordinator_modes import ModeTransitionPurpose, _ModeTransition
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.effect_deployments import PriorControlState
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
@@ -645,6 +646,96 @@ def test_scene_expectation_rejects_delayed_same_mode_reply(h6199):
 
     assert h6199.effect == "sunrise"
     assert h6199.color_mode is ParsedMode.SCENE
+
+
+def test_external_diy_transition_preserves_observed_static_recovery(h6199):
+    h6199._client = Mock(is_connected=True)
+    h6199._notification_token = object()
+    h6199._notify_started_monotonic = 0
+    _packet_callback = h6199._notify_callback
+
+    _packet_callback(None, bytearray(_packet(0xAA, 0x01, [0x01])))
+    _packet_callback(None, bytearray(_packet(0xAA, 0x04, [20])))
+    for group in range(1, 5):
+        count = min(4, 15 - (group - 1) * 4)
+        _packet_callback(None, bytearray(_packet(0xAA, 0xA5, [group, *([100, 255, 255, 255] * count)])))
+    _packet_callback(None, bytearray(_packet(0xAA, 0x05, [0x15, 0x01, 255, 255, 255])))
+    assert h6199.static_mode_confirmed()
+    baseline = h6199.capture_effect_control_state()
+    assert baseline.static_colour_observed and baseline.mode == "colour"
+
+    _packet_callback(None, bytearray(_packet(0xAA, 0x05, [0x0A, 0x7C, 0x00])))
+
+    assert h6199.color_mode is ParsedMode.DIY
+    assert h6199.diy_code == 124
+    assert h6199._pre_mode_snapshot == baseline
+
+
+def test_external_diy_transition_does_not_capture_unqualified_static_values(h6199):
+    h6199._client = Mock(is_connected=True)
+    h6199._notification_token = object()
+    h6199._notify_started_monotonic = 0
+    _packet_callback = h6199._notify_callback
+
+    for group in range(1, 5):
+        count = min(4, 15 - (group - 1) * 4)
+        _packet_callback(None, bytearray(_packet(0xAA, 0xA5, [group, *([100, 255, 255, 255] * count)])))
+    _packet_callback(None, bytearray(_packet(0xAA, 0x05, [0x15, 0x01, 255, 255, 255])))
+    assert h6199.static_mode_confirmed()
+
+    _packet_callback(None, bytearray(_packet(0xAA, 0x05, [0x0A, 0x7C, 0x00])))
+
+    assert h6199._pre_mode_snapshot is None
+
+
+def test_external_diy_transition_preserves_incomplete_recovery_target(h6199):
+    incomplete = PriorControlState(mode="colour", is_on=True, brightness_pct=20, rgb_color=(1, 2, 3))
+    h6199._client = Mock(is_connected=True)
+    h6199._notification_token = object()
+    h6199._notify_started_monotonic = 0
+    h6199._incomplete_static_exit = incomplete
+    h6199.is_on = True
+    h6199._power_known = True
+    h6199.brightness_pct = 20
+    h6199._brightness_pct_known = True
+    h6199._notify_callback(None, bytearray(_packet(0xAA, 0x05, [0x15, 0x01, 255, 255, 255])))
+
+    h6199._notify_callback(None, bytearray(_packet(0xAA, 0x05, [0x0A, 0x7C, 0x00])))
+
+    assert h6199._pre_mode_snapshot is None
+    assert h6199._incomplete_static_exit is incomplete
+
+
+def test_external_diy_transition_does_not_replace_active_recovery_history(h6199):
+    baseline = PriorControlState(
+        mode="colour",
+        is_on=True,
+        brightness_pct=20,
+        rgb_color=(1, 2, 3),
+        segment_colors=((1, 2, 3),) * 15,
+        segment_brightness=(50,) * 15,
+        segment_kelvin=(0,) * 15,
+        static_colour_observed=True,
+    )
+    h6199._client = Mock(is_connected=True)
+    h6199._notification_token = object()
+    h6199._notify_started_monotonic = 0
+    h6199.is_on = True
+    h6199._power_known = True
+    h6199.brightness_pct = 20
+    h6199._brightness_pct_known = True
+    h6199._mode_transition = _ModeTransition(
+        owner=None,
+        purpose=ModeTransitionPurpose.RECOVERY,
+        static_restore_started=True,
+        snapshot=baseline,
+        captured=True,
+    )
+    h6199._notify_callback(None, bytearray(_packet(0xAA, 0x05, [0x15, 0x01, 255, 255, 255])))
+
+    h6199._notify_callback(None, bytearray(_packet(0xAA, 0x05, [0x0A, 0x7C, 0x00])))
+
+    assert h6199._pre_mode_snapshot is None
 
 
 def test_unknown_mode_clears_restored_metadata(h6199):
