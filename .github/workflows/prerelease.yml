@@ -9,7 +9,7 @@ on:
         default: ""
         type: string
       version:
-        description: PR version, for example 7.40.1-pr-145.1 (default - next patch, PR number, next candidate)
+        description: PR version, for example 8.0.0-pr-145.1 (default - current RC base or next stable patch, PR number, next candidate)
         required: false
         default: ""
         type: string
@@ -79,7 +79,9 @@ jobs:
           if not version:
               current = json.load(open("custom_components/ha_govee_led_ble/manifest.json"))["version"]
               major, minor, patch = (int(part) for part in re.match(r"(\d+)\.(\d+)\.(\d+)", current).groups())
-              base = f"{major}.{minor}.{patch + 1}"
+              base = f"{major}.{minor}.{patch}"
+              if current == base:
+                  base = f"{major}.{minor}.{patch + 1}"
               tags = subprocess.check_output(["git", "tag", "--list"], text=True).splitlines()
               candidates = [(int(match[2]), tag) for tag in tags if (match := re.fullmatch("v" + pattern, tag))]
               revision, previous = max(candidates, default=(0, ""))

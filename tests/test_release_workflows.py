@@ -100,7 +100,13 @@ def test_pr_candidate_cannot_publish_stable(tmp_path: Path, version: str, accept
 
 
 @pytest.mark.parametrize("new_commit", [False, True])
-def test_pr_candidate_revision_reuses_exact_sha_or_advances(tmp_path: Path, new_commit: bool) -> None:
+@pytest.mark.parametrize(
+    ("current_version", "previous_base"),
+    [("1.2.2", "1.2.3"), ("1.2.3-rc.30", "1.2.3"), ("1.2.3-rc.30", "1.2.4")],
+)
+def test_pr_candidate_revision_reuses_exact_sha_or_advances(
+    tmp_path: Path, new_commit: bool, current_version: str, previous_base: str
+) -> None:
     (tmp_path / "selected-pr.json").write_text(
         json.dumps(
             {
@@ -115,12 +121,12 @@ def test_pr_candidate_revision_reuses_exact_sha_or_advances(tmp_path: Path, new_
     (tmp_path / "hacs.json").write_text('{"zip_release": true, "filename": "ha_govee_led_ble.zip"}')
     manifest = tmp_path / "custom_components/ha_govee_led_ble/manifest.json"
     manifest.parent.mkdir(parents=True)
-    manifest.write_text('{"version": "1.2.2"}')
+    manifest.write_text(json.dumps({"version": current_version}))
     setup = _run(
         "git init -b feature; git config user.name Fixture; git config user.email fixture@example.invalid; "
         "git config tag.gpgsign false; git config core.hooksPath /dev/null; "
         "git -c commit.gpgsign=false commit --allow-empty -m 'fix: preview'; "
-        "git tag v1.2.3-pr-145.1; git tag v1.2.3-pr-146.99",
+        f"git tag v{previous_base}-pr-145.1; git tag v1.2.3-pr-146.99",
         tmp_path,
         dict(os.environ),
     )
@@ -143,7 +149,9 @@ def test_pr_candidate_revision_reuses_exact_sha_or_advances(tmp_path: Path, new_
     result = _run(_step_script("prerelease.yml", "defaults"), tmp_path, env)
 
     assert result.returncode == 0, result.stderr
-    assert f"version=1.2.3-pr-145.{2 if new_commit else 1}\n" in output.read_text()
+    revision = 2 if new_commit or previous_base != "1.2.3" else 1
+    assert f"version=1.2.3-pr-145.{revision}\n" in output.read_text()
+    assert f"package_version=1.2.3-rc.{revision}.pr-145\n" in output.read_text()
 
 
 @pytest.mark.parametrize(
