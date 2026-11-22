@@ -26,6 +26,8 @@ h60b2_music_write.py
 h60b2_diy_body.py
 h60b2_effect_upload.py
 h619a_status_reply.py
+h618a_status_reply.py
+h618a_legacy_status_reply.py
 h60b0_command_write.py
 h60b0_command_ack.py
 h60b0_effect_upload.py

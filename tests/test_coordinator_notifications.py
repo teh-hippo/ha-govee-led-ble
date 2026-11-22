@@ -416,14 +416,10 @@ def test_mixed_grammars_route_command_expectations_and_status_semantics(
         "music_color": (10, 20, 30),
     }
 
-    # Group 5 distinguishes outbound query grammars even with the opposite reply layout.
     assert build_brightness_query(model) == build_brightness_query(command_grammar)
-    if command_grammar == "H617A":
-        assert build_segment_query(5, model) == build_segment_query(5, "H617A")
-    else:
-        assert build_segment_query(4, model) == build_segment_query(4, "H6199")
-        with pytest.raises(ValueError, match="selected grammar"):
-            build_segment_query(5, model)
+    assert build_segment_query(4, model) == build_segment_query(4, command_grammar)
+    with pytest.raises(ValueError, match="selected (geometry|grammar)"):
+        build_segment_query(5, model)
 
     coordinator._notify_callback(None, bytearray(_packet(0xAA, 0x04, [37])))
     assert coordinator.brightness_pct == 37

@@ -58,6 +58,27 @@ enums:
   display_setting:
     0x06: scalar_white_balance
 types:
+  segment_envelope:
+    doc: |
+      Classifies dependent segment queries before validating model-specific
+      geometry or a canonical query body. Malformed groups must not become
+      unrecognised unrestricted operations. Retain truncated request data too;
+      this classifier does not grant validity. A2 remains a distinct wire shape.
+    seq:
+      - id: header
+        contents: [0xaa]
+      - id: domain
+        type: u1
+        valid:
+          any-of: [0xa2, 0xa5]
+      - id: group
+        type: u1
+        if: has_group
+      - id: request_tail
+        size-eos: true
+    instances:
+      has_group:
+        value: _io.size >= 3
   colour_mode_query_body:
     seq:
       - id: selector

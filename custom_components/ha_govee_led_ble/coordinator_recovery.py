@@ -359,7 +359,7 @@ class _RecoveryMixin(_CoordinatorBase):
             segment_fields = (
                 {"segment_colors"} if profile.can_read(ReadDomain.SEGMENTS) and profile.supports_segments else set()
             )
-            if segment_fields and profile.supports_segment_brightness:
+            if segment_fields and profile.supports_segment_brightness and self.segment_brightness_readable:
                 segment_fields.add("segment_brightness")
             fields |= segment_fields
             missing = {field for field in fields if not fresh(field)}
@@ -386,6 +386,11 @@ class _RecoveryMixin(_CoordinatorBase):
                 refreshed = True
             if not same_control_profile(profile, self.profile):
                 raise self._static_recovery_error()
+            if "segment_colors" in segment_fields and profile.supports_segment_brightness:
+                if self.segment_brightness_readable:
+                    fields.add("segment_brightness")
+                else:
+                    fields.discard("segment_brightness")
             if refreshed is not True or any(not fresh(field) for field in fields):
                 raise HomeAssistantError(translation_domain=DOMAIN, translation_key="recovery_read_failed")
             baseline = self._pre_mode_snapshot

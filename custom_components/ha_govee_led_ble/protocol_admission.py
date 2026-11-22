@@ -33,6 +33,7 @@ from .protocol_core import (
     H1771EffectUpload,
     H6093Projector,
     H6181DiyBody,
+    StatusQuery,
     _parse_xor_frame,
 )
 from .protocol_parsing import parse_command_result
@@ -455,6 +456,16 @@ def _check_command_packet(frame: bytes, profile: ModelProfile) -> bool:
 
 def _check_status_query_packet(frame: bytes, profile: ModelProfile) -> bool:
     """Status queries."""
+    try:
+        segment_query = StatusQuery.SegmentEnvelope.from_bytes(frame)
+        segment_query._read()
+    except EOFError, KaitaiStructError:
+        segment_query = None
+    if segment_query is not None:
+        if not profile.can_read(ReadDomain.SEGMENTS):
+            raise ValueError("Segment query requires qualified readback")
+        if not segment_query.has_group or not 1 <= segment_query.group <= profile.segment_group_count:
+            raise ValueError("segment query group is outside the selected geometry")
     query = _parse_xor_frame(
         frame,
         profile.command_grammar,
@@ -465,11 +476,16 @@ def _check_status_query_packet(frame: bytes, profile: ModelProfile) -> bool:
         if domain == "colour_mode" and profile.command_grammar in {"H6046", "H6199", "H1771", "H60B0"}:
             if query.body.selector != profile.colour_mode_query_selector:
                 raise ValueError("colour mode query selector is outside the profile")
-        if profile.command_grammar == "H6199":
-            if domain in {"segments", "legacy_segments"}:
-                if (domain == "legacy_segments") != (profile.status_grammar == "H6199-Pact1"):
-                    raise ValueError("segment query format is outside the profile")
-                return profile.can_read(ReadDomain.SEGMENTS) and 1 <= query.body.group <= profile.segment_group_count
+        if domain in {"segments", "legacy_segments"}:
+            if not profile.can_read(ReadDomain.SEGMENTS):
+                raise ValueError("Segment query requires qualified readback")
+            if not 1 <= query.body.group <= profile.segment_group_count:
+                raise ValueError("segment query group is outside the selected geometry")
+            if profile.command_grammar == "H6199" and (
+                (domain == "legacy_segments") != (profile.status_grammar == "H6199-Pact1")
+            ):
+                raise ValueError("segment query format is outside the profile")
+            return True
         if profile.command_grammar == "H60B0" and domain in {"source_info", "power_on_behaviour"}:
             if (
                 domain == "source_info"
@@ -479,9 +495,6 @@ def _check_status_query_packet(frame: bytes, profile: ModelProfile) -> bool:
             ):
                 return True
             raise ValueError("Source setting query is outside the profile")
-        if profile.command_grammar in {"H1771", "H60B0"}:
-            if domain == "segments" and not 1 <= query.body.group <= profile.segment_group_count:
-                raise ValueError("segment query group is outside the selected geometry")
         if domain == "bar_enable":
             if profile.setting_grammar == "H6046" and profile.boolean_controls:
                 return True
@@ -495,8 +508,10 @@ def _check_status_query_packet(frame: bytes, profile: ModelProfile) -> bool:
             if profile.can_read(ReadDomain(domain)):
                 return True
             raise ValueError(f"{profile.name} does not support {domain} readback")
-        if profile.command_operations is None or domain in profile.read_domains:
+        if segment_query is None and (profile.command_operations is None or domain in profile.read_domains):
             return True
+    if segment_query is not None:
+        raise ValueError("Segment query is outside the declared command grammar")
     return False
 
 

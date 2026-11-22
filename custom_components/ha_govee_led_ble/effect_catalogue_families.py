@@ -796,6 +796,10 @@ H617C_DIY_FAMILIES: Final = tuple(
     replace(family, source_reference="H617C DreamColor basic and mixed DIY") for family in H6125_DIY_FAMILIES
 )
 H617C_NATIVE_MUSIC_MODES: Final = _native_music_modes("H617C")
+H618A_DIY_FAMILIES: Final = tuple(
+    replace(family, source_reference="H618A RGBIC basic and mixed DIY") for family in H6125_DIY_FAMILIES
+)
+H618A_NATIVE_MUSIC_MODES: Final = _native_music_modes("H618A")
 H619A_DIY_FAMILIES: Final = tuple(
     replace(family, source_reference="H619A RGBIC basic and mixed DIY") for family in H6125_DIY_FAMILIES
 )

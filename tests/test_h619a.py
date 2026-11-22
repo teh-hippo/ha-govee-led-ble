@@ -1,7 +1,8 @@
-"""Reconstructed H619A contracts, not hardware confirmation."""
+"""Reconstructed RGBIC strip contracts, not hardware confirmation."""
 
 from contextlib import asynccontextmanager
 from dataclasses import replace
+from math import ceil
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -47,35 +48,47 @@ def static_baseline():
     )
 
 
-def test_static_writes_select_ten_logical_segments_not_twenty_physical_ics():
-    assert build_color_rgb(17, 34, 51, "H619A") == _frame("330515011122330000000000ff03")
-    assert build_color_temp(4000, "H619A") == _frame("33051501ffffff0fa0ffd5a1ff03")
-    assert build_segment_color_temp([10], 4000, "H619A") == _frame("33051501ffffff0fa0ffd5a10002")
-    assert build_segment_brightness([10], 37, "H619A") == _frame("33051502250002")
+@pytest.mark.parametrize(
+    ("model", "count", "whole_mask", "last_mask"),
+    [("H619A", 10, "ff03", "0002"), ("H618A", 15, "ff7f", "0040")],
+)
+def test_static_writes_select_logical_segments_not_physical_ics(model, count, whole_mask, last_mask):
+    assert build_color_rgb(17, 34, 51, model) == _frame(f"330515011122330000000000{whole_mask}")
+    assert build_color_temp(4000, model) == _frame(f"33051501ffffff0fa0ffd5a1{whole_mask}")
+    assert build_segment_color_temp([count], 4000, model) == _frame(f"33051501ffffff0fa0ffd5a1{last_mask}")
+    assert build_segment_brightness([count], 37, model) == _frame(f"3305150225{last_mask}")
     with pytest.raises(ValueError):
-        build_segment_color_temp([11], 4000, "H619A")
+        build_segment_color_temp([count + 1], 4000, model)
 
 
 @pytest.mark.parametrize(
-    ("mode", "code", "tail"),
+    ("mode", "code", "h619a_tail", "h618a_tail"),
     [
-        ("bloom", 48, "0a50"),
-        ("shiny", 49, "05640a"),
-        ("separation", 50, "030061"),
-        ("hopping", 51, "010101196201030308"),
-        ("piano_keys", 52, "000f0a0507"),
-        ("fountain", 53, "01010550"),
-        ("day_and_night", 55, "0a0a00"),
+        ("bloom", 48, "0a50", "0a50"),
+        ("shiny", 49, "05640a", "05640a"),
+        ("separation", 50, "030061", "030061"),
+        ("hopping", 51, "010101196201030308", "010101196201030206"),
+        ("piano_keys", 52, "000f0a0507", "000b0a0405"),
+        ("fountain", 53, "01010550", "01010350"),
+        ("day_and_night", 55, "0a0a00", "070a00"),
     ],
 )
-def test_music_uses_twenty_ic_defaults_and_uploads_before_selector(mode, code, tail):
-    writes = prepare_music_request("H619A", mode, 42, None, False, {})
+@pytest.mark.parametrize("model", ["H618A", "H619A"])
+def test_music_uses_physical_ic_defaults_and_complete_uploads_before_selector(
+    model, mode, code, h619a_tail, h618a_tail
+):
+    writes = prepare_music_request(model, mode, 42, None, False, {})
     assert writes[0] == _frame("330101")
     assert writes[-1] == _frame(f"330513{code:02x}2a")
-    envelope = reassemble_a3(writes[1:-1])
-    expected = bytes((0x41, code, 7)) + bytes.fromhex("ff0000ff7f00ffff0000ff000000ff00ffff8b00ff" + tail)
-    assert envelope[2 : 2 + len(expected)] == expected
-    assert not any(envelope[2 + len(expected) :])
+    tail = h618a_tail if model == "H618A" else h619a_tail
+    body = bytes((0x41, code, 7)) + bytes.fromhex("ff0000ff7f00ffff0000ff000000ff00ffff8b00ff" + tail)
+    count = max(2, ceil((2 + len(body)) / 17))
+    envelope = bytes((1, count)) + body
+    expected = tuple(
+        _frame((bytes((0xA3, 0xFF if index == count - 1 else index)) + envelope[index * 17 : (index + 1) * 17]).hex())
+        for index in range(count)
+    )
+    assert tuple(writes[1:-1]) == expected
 
 
 @pytest.mark.parametrize(
@@ -113,23 +126,24 @@ def test_scene_revision_conversion_preserves_source_and_uses_physical_geometry(f
     assert packets[-1] == _frame(f"330504{entry.code.to_bytes(2, 'little').hex()}")
 
 
-def test_every_h619a_template_and_scene_compiles_for_each_scene_revision():
+@pytest.mark.parametrize("model", ["H618A", "H619A"])
+def test_every_rgbic_template_and_scene_compiles_for_each_scene_revision(model):
     for firmware, hardware in ((None, None), ("1.06.00", "1.00.02")):
-        profile = device_profile("H619A", 2, 1, firmware=firmware, hardware=hardware)
-        for template in MODEL_EFFECT_CATALOGUES["H619A"].templates:
+        profile = device_profile(model, 2, 1, firmware=firmware, hardware=hardware)
+        for template in MODEL_EFFECT_CATALOGUES[model].templates:
             compiled = compile_application(
                 LibraryItem.new(template.label, template.content),
-                "H619A",
+                model,
                 diy_code=getattr(template.content, "native_diy", None) or 24,
                 profile=profile,
             )
             assert compiled.packets
-        for entry in SCENE_ENTRIES["H619A"]:
-            packets = build_native_scene_packets("H619A", entry, profile=profile)
+        for entry in SCENE_ENTRIES[model]:
+            packets = build_native_scene_packets(model, entry, profile=profile)
             assert packets[-1] == _frame(f"330504{entry.code.to_bytes(2, 'little').hex()}")
             if entry.speed is not None:
                 bodies = {
-                    b"".join(build_native_scene_packets("H619A", entry, speed_index=index, profile=profile))
+                    b"".join(build_native_scene_packets(model, entry, speed_index=index, profile=profile))
                     for index in range(entry.speed.option_count)
                 }
                 assert len(bodies) == entry.speed.option_count

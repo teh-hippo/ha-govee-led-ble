@@ -105,8 +105,19 @@ def _consume_status(coordinator: GoveeBLECoordinator, frame: bytes) -> None:
     coordinator._notify_callback(None, bytearray(frame))
 
 
+def _qualified_coordinator(hass, model: str, profile: ModelProfile) -> GoveeBLECoordinator:
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url="http://x")
+    coordinator.profile = profile
+    coordinator._confirmed_identity_fields.update(profile.profile_identity_fields | profile.scene_identity_fields)
+    if MODEL_PROFILES[model].requires_pact_confirmation:
+        coordinator._confirmed_identity_fields.add("pact")
+    return coordinator
+
+
 # Runtime qualification contexts that produce distinct effective profiles through device_profile().
 _QUALIFIED_CONTEXTS: tuple[tuple[str, str, int | None, int | None, str | None, str | None], ...] = (
+    ("H618A-bootstrap", "H618A", None, None, None, None),
+    ("H618A-legacy", "H618A", 2, 1, "1.05.99", "1.00.02"),
     ("H6093-original", "H6093", 1, 1, "1.00.16", "3.03.02"),
     ("H6093-expanded-pact1", "H6093", 1, 2, "1.00.16", "3.03.02"),
     ("H619A-bootstrap", "H619A", None, None, None, None),
@@ -580,8 +591,7 @@ def test_declared_segment_paging_matches_the_grammar_it_reads_through(model: str
 def test_segment_pages_reach_observed_state(hass, model: str, profile: ModelProfile) -> None:
     """The same pages, end to end through the notification path across every segment-capable
     effective profile, including runtime-qualified ceiling and strip profiles."""
-    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url="http://x")
-    coordinator.profile = profile
+    coordinator = _qualified_coordinator(hass, model, profile)
     if profile.configured_string_counts:
         coordinator._configured_strings_confirmed = True
         coordinator._segment_query_generation = coordinator._profile_generation
@@ -712,9 +722,8 @@ def test_every_claimed_read_domain_is_consumed(hass, model: str, profile: ModelP
     """Every claimed read domain must reach a handler in `coordinator._notify_callback` and
     advance both domain and field observation revisions."""
     for domain in sorted(profile.read_domains, key=lambda d: d.value):
-        coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url="http://x")
+        coordinator = _qualified_coordinator(hass, model, profile)
         coordinator._client = MagicMock(is_connected=True)
-        coordinator.profile = replace(profile, profile_identity_fields=frozenset())
         if domain is ReadDomain.PACT:
             coordinator._notification_token = object()
             coordinator._notify_started_monotonic = 0.0
@@ -844,8 +853,7 @@ def test_every_declared_video_mode_can_be_built(hass, model: str, profile: Model
             assert decoded is not None
             parsed_reply = parse_color_mode(decoded.generated, model, profile=profile)
             assert parsed_reply.mode is ParsedMode.VIDEO and parsed_reply.video_mode == mode
-            coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url="http://x")
-            coordinator.profile = replace(profile, profile_identity_fields=frozenset())
+            coordinator = _qualified_coordinator(hass, model, profile)
             coordinator._notify_callback(None, bytearray(reply))
             assert coordinator.color_mode is ParsedMode.VIDEO and coordinator.video_mode == mode
 
@@ -944,8 +952,7 @@ def test_every_advertised_music_mode_resolves_from_status_reply(hass, model: str
     color_mode_enum = _status_color_mode_enum(profile)
     status_music_enum = _status_music_enum(profile)
     music_byte = int(color_mode_enum.music)
-    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url="http://x")
-    coordinator.profile = replace(profile, profile_identity_fields=frozenset())
+    coordinator = _qualified_coordinator(hass, model, profile)
     readable_modes = profile.readback_music_modes or profile.music_modes
 
     for slug in readable_modes:
@@ -1034,8 +1041,7 @@ def test_every_supported_scene_round_trips_between_command_and_status(hass, mode
             assert decoded is not None
             parsed = parse_color_mode(decoded.generated, model, profile=profile)
             assert parsed.mode is ParsedMode.SCENE and parsed.effect == key and parsed.scene_code == selector
-            coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url="http://x")
-            coordinator.profile = replace(profile, profile_identity_fields=frozenset())
+            coordinator = _qualified_coordinator(hass, model, profile)
             _consume_status(coordinator, reply)
             assert coordinator.color_mode is ParsedMode.SCENE
             assert coordinator.effect == key
@@ -1052,8 +1058,7 @@ def test_every_supported_scene_round_trips_between_command_and_status(hass, mode
         unknown_code = 0xFE if one_byte_scene else 0x7FFE
         unknown_bytes = bytes([unknown_code]) if one_byte_scene else unknown_code.to_bytes(2, "little")
         unknown_reply = _status(0x05, bytes([int(color_mode_enum.scene)]) + unknown_bytes, profile=profile)
-        coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url="http://x")
-        coordinator.profile = replace(profile, profile_identity_fields=frozenset())
+        coordinator = _qualified_coordinator(hass, model, profile)
         _consume_status(coordinator, unknown_reply)
         assert coordinator.color_mode is ParsedMode.SCENE
         assert coordinator.effect is None
@@ -1078,8 +1083,7 @@ def test_diy_commands_and_status_readback(hass, model: str, profile: ModelProfil
         assert decoded is not None
         parsed = parse_color_mode(decoded.generated, model, profile=profile)
         assert parsed.mode is ParsedMode.DIY and parsed.diy_code == diy_code
-        coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url="http://x")
-        coordinator.profile = replace(profile, profile_identity_fields=frozenset())
+        coordinator = _qualified_coordinator(hass, model, profile)
         _consume_status(coordinator, reply)
         assert coordinator.color_mode is ParsedMode.DIY and coordinator.diy_code == diy_code
 
@@ -1110,6 +1114,22 @@ def test_legacy_strip_register_and_rgb_commands_follow_exact_product_policy(hard
     assert profile.outbound_transform(gradual) == _xor(bytes.fromhex("331401").ljust(19, b"\0"))
     with pytest.raises(ValueError, match="colour temperature"):
         build_color_temp(4000, "H6127", profile=profile)
+
+
+@pytest.mark.parametrize(
+    ("model", "firmware", "hardware"),
+    [
+        ("H618A", "1.05.99", "1.00.02"),
+        ("H618A", "1.06.00", "1.00.02"),
+        ("H619A", "1.06.00", "1.00.02"),
+        ("H6127", "1.05.01", "1.00.01"),
+    ],
+)
+def test_segment_queries_reject_groups_outside_effective_geometry(model, firmware, hardware):
+    profile = device_profile(model, 2 if model != "H6127" else 1, 1, firmware=firmware, hardware=hardware)
+    for group in (0, profile.segment_group_count + 1):
+        with pytest.raises(ValueError, match="selected geometry"):
+            a.build_segment_query(group, model, profile=profile)
 
 
 @pytest.mark.parametrize("pact", [1, 2])
@@ -1241,8 +1261,7 @@ def test_static_colour_and_kelvin_status_readback(hass, model: str, profile: Mod
         assert parsed_rgb.rgb_color == (10, 20, 30)
 
     if profile.static_readback_kelvin:
-        coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url="http://x")
-        coordinator.profile = replace(profile, profile_identity_fields=frozenset())
+        coordinator = _qualified_coordinator(hass, model, profile)
         min_kelvin = profile.min_color_temp_kelvin
         for kelvin in (min_kelvin, profile.max_color_temp_kelvin):
             kelvin_bytes = kelvin.to_bytes(2, "big")
@@ -1344,8 +1363,7 @@ def test_partial_notifications_do_not_grant_unknown_or_malformed_state(hass, mod
 def test_declared_boolean_controls_round_trip(hass, model: str, profile: ModelProfile) -> None:
     """Every declared boolean control must build valid write and query frames and decode
     authorised status register replies while rejecting invalid flag values."""
-    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url="http://x")
-    coordinator.profile = replace(profile, profile_identity_fields=frozenset())
+    coordinator = _qualified_coordinator(hass, model, profile)
     for control in sorted(profile.boolean_controls):
         query = a.build_boolean_control_query(control, model, profile=profile)
         assert len(query) == 20 and xor_checksum(query) == 0

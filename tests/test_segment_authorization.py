@@ -4,9 +4,9 @@ from dataclasses import replace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from homeassistant.exceptions import ServiceValidationError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 
-from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ModelProfile, ReadDomain
+from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ModelProfile, ReadDomain, device_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_brightness,
@@ -28,6 +28,57 @@ from custom_components.ha_govee_led_ble.light_commands import (
     parse_static_write,
 )
 from custom_components.ha_govee_led_ble.transport import xor_checksum
+from tests.coordinator_test_support import frame
+
+
+@pytest.mark.parametrize("cached_modern", [False, True])
+async def test_segment_read_authority_is_required_for_queries_and_subscription_observations(
+    hass, monkeypatch, cached_modern
+):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H618A", configuration_url=None)
+    if cached_modern:
+        coordinator.fw_version, coordinator.hw_version = "1.06.00", "1.00.02"
+        coordinator._resolve_device_profile()
+    client = MagicMock(is_connected=True, start_notify=AsyncMock(), write_gatt_char=AsyncMock())
+    coordinator._client = client
+    monkeypatch.setattr("custom_components.ha_govee_led_ble.coordinator.REPLY_PACING_TIMEOUT", 0)
+    await coordinator._start_notify()
+    receive = client.start_notify.await_args.args[1]
+    width, domain = (3, 0xA5) if cached_modern else (4, 0xA2)
+    pages = [
+        frame(
+            (
+                bytes((0xAA, domain, group))
+                + bytes((37, 1, 2, 3) if cached_modern else (1, 2, 3)) * min(width, 15 - (group - 1) * width)
+            ).hex()
+        )
+        for group in range(1, 6 if cached_modern else 5)
+    ]
+    for page in pages:
+        receive(None, bytearray(page))
+    assert coordinator._field_revisions.get("segment_colors", 0) == 0
+    assert coordinator._field_revisions.get("segment_brightness", 0) == 0
+    assert not coordinator.segment_brightness_readable
+    qualified = device_profile("H618A", 2, 1, firmware="1.06.00", hardware="1.00.02")
+    query = build_segment_query(1, "H618A", profile=qualified)
+    malformed = (frame("aaa500"), frame("aaa506"), bytes.fromhex("aaa5"), query[:-1], query + b"\x00")
+    for candidate in (query, frame("aaa201"), *malformed):
+        with pytest.raises((ValueError, HomeAssistantError)):
+            await coordinator._async_write_packet(client, candidate)
+    client.write_gatt_char.assert_not_awaited()
+
+    receive(None, bytearray(frame("aa06" + ("1.06.00" if cached_modern else "1.05.99").encode().hex())))
+    receive(None, bytearray(frame("aa0703" + b"1.00.02".hex())))
+    for page in pages:
+        receive(None, bytearray(page))
+    assert coordinator.segment_colors == [(1, 2, 3)] * 15
+    assert coordinator.segment_brightness_readable is cached_modern
+    for candidate in (frame("aaa201"), *malformed):
+        with pytest.raises(ValueError):
+            await coordinator._async_write_packet(client, candidate)
+    with pytest.raises((ValueError, HomeAssistantError)):
+        await coordinator._async_write_packet(client, query, before_write=coordinator._confirmed_identity_fields.clear)
+    client.write_gatt_char.assert_not_awaited()
 
 
 @pytest.fixture(params=["H617A", "H6099", "H6199"])

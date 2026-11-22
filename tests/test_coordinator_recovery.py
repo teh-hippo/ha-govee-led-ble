@@ -33,9 +33,81 @@ from custom_components.ha_govee_led_ble.light_source import GoveeBLESourceLight
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES, scene_selector_code
 from custom_components.ha_govee_led_ble.transport import WRITE_UUID
 from custom_components.ha_govee_led_ble.video_applicability import video_identity_fields
-from tests.coordinator_test_support import _CONFIGURATION_URL, _c, _packet
+from tests.coordinator_test_support import _CONFIGURATION_URL, _c, _packet, frame
 
 M = "custom_components.ha_govee_led_ble.coordinator"
+
+
+@pytest.mark.parametrize(
+    ("modern", "establish_levels", "stale_readable"),
+    [(False, True, False), (False, True, True), (False, False, False), (True, False, False)],
+)
+async def test_effect_admission_and_off_preserve_readable_colours_and_delivered_relative_levels(
+    hass, monkeypatch, modern, establish_levels, stale_readable
+):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H618A", configuration_url=None)
+    client = _c(write_gatt_char=AsyncMock())
+    coordinator._client = client
+    coordinator._notification_token = object()
+    coordinator._notify_started_monotonic = time.monotonic()
+    coordinator._observe_identity_field("fw_version", "1.06.00" if modern else "1.05.99")
+    coordinator._observe_identity_field("hw_version", "1.00.02")
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
+    monkeypatch.setattr(coordinator, "_renew_foreground_lease", lambda: None)
+    monkeypatch.setattr(f"{M}.REPLY_PACING_TIMEOUT", 0)
+    colours = [(index + 1, 20, 40) for index in range(15)]
+    levels = [30] * 14 + [70] if modern else [100] * 15
+    mode = bytes.fromhex("15000000")
+
+    async def radio(_uuid, packet, **_kwargs):
+        nonlocal mode
+        if packet[0] == 0xAA:
+            response = {1: b"\x01", 4: b"\x25", 5: mode}.get(packet[1])
+            if packet[1] in (0xA2, 0xA5):
+                width = 4 if packet[1] == 0xA2 else 3
+                start = (packet[2] - 1) * width
+                response = bytes((packet[2],)) + b"".join(
+                    (bytes((levels[index],)) if packet[1] == 0xA5 else b"") + bytes(colours[index])
+                    for index in range(start, min(start + width, 15))
+                )
+            if response is not None:
+                coordinator._notify_callback(None, bytearray(frame((packet[:2] + response).hex())))
+        elif packet[0] == 0xA3 and packet[1] == 0xFF:
+            coordinator._notify_callback(None, bytearray(frame("a3413300")))
+        elif packet[:2] == bytes.fromhex("3305"):
+            static = parse_static_write(packet, "H618A", profile=coordinator.profile)
+            mode = bytes.fromhex("15000000") if static is not None else packet[2:5]
+            if static is not None:
+                for index in range(15):
+                    if static.segment_mask is None or static.segment_mask & (1 << index):
+                        if static.rgb is not None:
+                            colours[index] = static.rgb
+                        if static.brightness_pct is not None:
+                            levels[index] = static.brightness_pct
+
+    client.write_gatt_char.side_effect = radio
+    if establish_levels:
+        assert await coordinator.refresh_state(
+            RefreshRequest(refresh_all=True, query_segments=True, query_native_settings=False)
+        )
+        await coordinator.async_set_segment_brightness(list(range(1, 15)), 30)
+        await coordinator.async_set_segment_brightness([15], 70)
+        assert all(coordinator.segment_brightness_known)
+    original_colours, original_levels = tuple(colours), tuple(levels)
+    coordinator.segment_brightness_readable = stale_readable
+    client.write_gatt_char.reset_mock()
+    if not modern and not establish_levels:
+        with pytest.raises(HomeAssistantError):
+            await coordinator.async_select_music_slug("hopping")
+        assert all(call.args[1][0] == 0xAA for call in client.write_gatt_char.await_args_list)
+        return
+    await coordinator.async_select_music_slug("hopping")
+    assert coordinator._pre_mode_snapshot.segment_colors == original_colours
+    assert coordinator._pre_mode_snapshot.segment_brightness == original_levels
+    await coordinator.async_apply_music_params(51, parameters={"relative_brightness": 2})
+    await coordinator.async_restore_pre_mode()
+    assert tuple(colours) == original_colours
+    assert tuple(levels) == original_levels
 
 
 async def test_late_layout_qualification_permanently_discards_incompatible_history(hass, monkeypatch):
@@ -917,6 +989,8 @@ async def test_native_source_recovery_normalises_its_write_target_not_the_captur
 async def test_source_colour_recovery_normalises_intents_without_mutating_the_capture(hass, monkeypatch):
     coord = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H60B0", configuration_url=_CONFIGURATION_URL)
     coord.profile = device_profile("H60B0", 1, 1)
+    coord._confirmed_identity_fields.update(coord.profile.profile_identity_fields | coord.profile.scene_identity_fields)
+    coord._confirmed_identity_fields.add("pact")
     coord._client = _c()
     coord._notify_started_monotonic = time.monotonic() - 1
     intents = {"top": 3123, "side": (1, 2, 3)}
