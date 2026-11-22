@@ -592,6 +592,8 @@ export interface ModelEffectCatalogue {
   workflows: ReleaseWorkflowCapability[];
   native_diy_templates?: NativeDiyTemplateContract[];
   diy_slot_policy?: "fixed" | "approved_observed";
+  diy_slot_min?: number;
+  diy_slot_max?: number;
   advanced_create?: boolean;
   supports: {
     multi: CapabilityState;

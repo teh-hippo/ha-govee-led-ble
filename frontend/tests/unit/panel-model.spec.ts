@@ -203,6 +203,27 @@ test("portable H6179 content requires the recipient's observed-slot approval", (
   expect(model.h6179DiyCode).toBe(model.h6179ObservedDiyCode);
 });
 
+test("H6199 DIY approval rejects observed item codes outside the app range", () => {
+  const model = new PanelModel(() => undefined);
+  installH6199Catalogue(model);
+  const target = flowWorkspaceDevice("target");
+  model.devices = [target];
+  model.selectedDeviceId = target.config_entry_id;
+  model.content = {
+    kind: "palette_diy",
+    model: "H6199",
+    family: 1,
+    variant: 0,
+    speed: 50,
+    palette: [[255, 0, 0]],
+  };
+
+  expect(model.h6179DiyCodeRequired).toBe(true);
+  expect(model.h6179ObservedDiyCode).toBe(73);
+  target.active_state!.diy_code = 241;
+  expect(model.h6179ObservedDiyCode).toBeUndefined();
+});
+
 test("unknown border firmware blocks only profiles requesting border removal", () => {
   const model = new PanelModel(() => undefined);
   const target = device("video", "H6099");

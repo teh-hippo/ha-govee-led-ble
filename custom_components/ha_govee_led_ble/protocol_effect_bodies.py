@@ -47,6 +47,7 @@ from .protocol_core import (
     H6127WireWrite,
     H6181DiyBody,
     H6199CommandAck,
+    H6199DiySelector,
     H6199EffectUpload,
     H7025DiyBody,
     SceneBody,
@@ -674,6 +675,19 @@ def build_diy_activation(
         return _serialize_xor(root)
     if grammar in {"H6072", "H6072-legacy", "H617A", "H7020", "H705A"}:
         return build_h617a_diy_activation(diy_code, root_type=_COMMAND_ROOTS[grammar][1])
+    if grammar == "H6199":
+        root_type = _COMMAND_ROOTS[grammar][1]
+        root = root_type()
+        root.header = b"\x33"
+        root.opcode = root_type.CommandOp.mode
+        mode = _child(root_type.ModeBody, root)
+        mode.sub_mode = root_type.ModeSel.diy
+        detail = _child(H6199DiySelector.DiySelector, mode)
+        detail.code = diy_code
+        detail.unknown_tail = bytes(14)
+        mode.detail = detail
+        root.body = mode
+        return _serialize_xor(root)
     if grammar in WHOLE_BULB_GRAMMARS | {"H6046"}:
         root_type = _COMMAND_ROOTS[grammar][1]
         root = root_type()

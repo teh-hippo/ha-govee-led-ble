@@ -22,11 +22,7 @@ from custom_components.ha_govee_led_ble.effect_active_workspace import (
     ActiveEffectWorkspaceRepository,
 )
 from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
-from custom_components.ha_govee_led_ble.effect_catalogue import (
-    H6199_PALETTE_DIY_APPLY_CODE,
-    WORKSHOP_PROTOCOL_FIXTURES,
-    resolve_catalogue_template,
-)
+from custom_components.ha_govee_led_ble.effect_catalogue import WORKSHOP_PROTOCOL_FIXTURES, resolve_catalogue_template
 from custom_components.ha_govee_led_ble.effect_compiler import (
     CompiledEffect,
     compile_application,
@@ -539,15 +535,16 @@ async def test_partial_observation_does_not_confirm_or_repeat_activation(
     repository, cache = await _repositories(hass)
     workspaces = ActiveEffectWorkspaceRepository(InMemoryVersionedDocumentStore())
     await workspaces.async_load()
-    target_signature = "custom:800" if model == "H617A" else "scene-code:401"
-    previous_signature = target_signature if collision else "custom:24" if model == "H617A" else "scene-code:402"
+    diy_code = 800 if model == "H617A" else 73
+    target_signature = f"custom:{diy_code}"
+    previous_signature = target_signature if collision else "custom:24"
     previous_workspace = replace(_flow_workspace(), model=model, observable_signature=previous_signature)
     workspaces.set(previous_workspace)
     coordinator = _coordinator()
     coordinator.model = model
     coordinator.profile = get_profile(model)
-    coordinator.diy_code = (800 if collision else 24) if model == "H617A" else None
-    coordinator.scene_code = (401 if collision else 402) if model == "H6199" else None
+    coordinator.diy_code = diy_code if model == "H6199" or collision else 24
+    coordinator.scene_code = None
     coordinator.async_observe_effect = AsyncMock(return_value=None)
     coordinator.async_restore_effect_control_state = AsyncMock(return_value=True)
     item = (
@@ -555,7 +552,7 @@ async def test_partial_observation_does_not_confirm_or_repeat_activation(
         if model == "H6199"
         else _item()
     )
-    compiled = compile_application(item, model, diy_code=800 if model == "H617A" else None, profile=coordinator.profile)
+    compiled = compile_application(item, model, diy_code=diy_code, profile=coordinator.profile)
     assert isinstance(compiled, CompiledEffect)
     engine = EffectDeploymentEngine(repository, cache, workspaces)
     apply = engine.async_apply_saved if source == "saved" else engine.async_apply_snapshot
@@ -564,7 +561,7 @@ async def test_partial_observation_does_not_confirm_or_repeat_activation(
         item,
         config_entry_id="entry-a",
         updated_at="2026-08-11T00:00:00Z",
-        diy_code=800 if model == "H617A" else None,
+        diy_code=diy_code,
     )
     assert result.phase is DeploymentPhase.UNCERTAIN
     assert result.error_code == "device_state_unconfirmed"
@@ -577,7 +574,9 @@ async def test_partial_observation_does_not_confirm_or_repeat_activation(
     assert workspaces.get("entry-a") == (None if collision else previous_workspace)
     observed = cache.get("entry-a")
     assert observed is not None
-    assert observed.confidence is (ObservationConfidence.UNKNOWN if collision else previous_workspace.confidence)
+    assert observed.confidence is (
+        ObservationConfidence.UNKNOWN if collision or model == "H6199" else previous_workspace.confidence
+    )
     assert observed.matched_operation_id is None
     assert observed.active_effect is None
 
@@ -906,6 +905,30 @@ async def test_h7020_native_template_snapshot_rejects_changed_approved_slot() ->
             config_entry_id="entry-a",
             updated_at="2026-10-21T00:00:00Z",
             diy_code=321,
+        )
+
+    coordinator.send_command.assert_not_awaited()
+
+
+async def test_h6199_palette_rejects_changed_approved_slot_after_compilation() -> None:
+    coordinator = _coordinator()
+    coordinator.model = "H6199"
+    coordinator.profile = get_profile("H6199")
+    coordinator.diy_code = 73
+    item = _h6199_item()
+    compiled = compile_h6199(item, 73)
+    coordinator.diy_code = 74
+    repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
+    await repository.async_load()
+
+    with pytest.raises(ValueError, match="approved disposable DIY code"):
+        await EffectDeploymentEngine(repository).async_apply_saved(
+            coordinator,
+            item,
+            config_entry_id="entry-a",
+            updated_at="2026-10-21T00:00:00Z",
+            diy_code=73,
+            compiled=compiled,
         )
 
     coordinator.send_command.assert_not_awaited()
@@ -2591,14 +2614,17 @@ async def test_h6199_upload_without_selector_readback_stays_uncertain(
     coordinator.model = "H6199"
     coordinator.profile = get_profile("H6199")
     coordinator.unknown_scene_code = None
+    coordinator.diy_code = 73
+    coordinator.async_observe_effect = AsyncMock(return_value=None)
     item = _h6199_item()
-    compiled = compile_h6199(item)
+    compiled = compile_h6199(item, 73)
 
     result = await EffectDeploymentEngine(repository, cache).async_apply_saved(
         coordinator,
         item,
         config_entry_id="entry-a",
         updated_at="2026-08-11T00:00:00Z",
+        diy_code=73,
     )
 
     assert result.phase is DeploymentPhase.UNCERTAIN
@@ -2607,9 +2633,8 @@ async def test_h6199_upload_without_selector_readback_stays_uncertain(
     assert coordinator.send_command.await_args_list == [
         *[call(packet) for packet in compiled.upload_packets],
         call(compiled.activation_packet),
-        call(compiled.activation_packet, write_guard=ANY),
     ]
-    assert coordinator.refresh_state.await_count == 3
+    assert coordinator.async_observe_effect.await_count == 2
 
 
 async def test_h6199_slot_readback_confirms_selection_without_claiming_content_readback(
@@ -2620,14 +2645,16 @@ async def test_h6199_slot_readback_confirms_selection_without_claiming_content_r
     coordinator.model = "H6199"
     coordinator.profile = get_profile("H6199")
     coordinator.unknown_scene_code = None
+    coordinator.diy_code = 73
 
-    _confirm_scene_code_on_call(coordinator, 2, H6199_PALETTE_DIY_APPLY_CODE)
+    _confirm_on_call(coordinator, 2, 73)
 
     result = await EffectDeploymentEngine(repository, cache).async_apply_saved(
         coordinator,
         _h6199_item(),
         config_entry_id="entry-a",
         updated_at="2026-08-11T00:00:00Z",
+        diy_code=73,
     )
 
     assert result.phase is DeploymentPhase.CONFIRMED
@@ -2636,7 +2663,7 @@ async def test_h6199_slot_readback_confirms_selection_without_claiming_content_r
     assert result.evidence_codes == ("native_diy_positive_ack_required", "effect_content_readback_unavailable")
     assert cache.get("entry-a") is not None
     assert cache.get("entry-a").mode == "custom"
-    assert cache.get("entry-a").diy_code == H6199_PALETTE_DIY_APPLY_CODE
+    assert cache.get("entry-a").diy_code == 73
     assert cache.get("entry-a").confidence is ObservationConfidence.ACTIVATION_MATCH
     assert cache.get("entry-a").matched_operation_id == result.operation_id
 
@@ -2689,12 +2716,15 @@ async def test_h6199_uncertain_result_emits_structured_evidence_gap(
     coordinator.model = "H6199"
     coordinator.profile = get_profile("H6199")
     coordinator.unknown_scene_code = None
+    coordinator.diy_code = 73
+    coordinator.async_observe_effect = AsyncMock(return_value=None)
 
     result = await backend.engine.async_apply_saved(
         coordinator,
         _h6199_item(),
         config_entry_id="entry-a",
         updated_at="2026-08-11T00:00:00Z",
+        diy_code=73,
     )
 
     gap = backend.diagnostics.snapshot(config_entry_id="entry-a")["events"][-1]
@@ -2737,12 +2767,17 @@ async def test_workshop_uses_evidenced_model_application(
         if kind == "palette"
         else LibraryItem.new("Workshop", WORKSHOP_PROTOCOL_FIXTURES[0].content(model))
     )
-    compiled = compile_effect(item, model, diy_code=resolve_diy_code(item, model=model))
+    approved_code = 73 if kind == "palette" else None
+    if approved_code is not None:
+        coordinator.diy_code = approved_code
+    compiled = compile_effect(item, model, diy_code=approved_code or resolve_diy_code(item, model=model))
     domain = legacy_effect_selector_domain(get_profile(model), compiled.content_kind)
     assert domain is not None
-    assert domain.value == compiled.selector_kind
+    assert domain.value == ("scene" if kind == "palette" else compiled.selector_kind)
     workshop_code = compiled.diy_code
     if kind == "basic":
+        _confirm_on_call(coordinator, 2, workshop_code)
+    elif kind == "palette":
         _confirm_on_call(coordinator, 2, workshop_code)
     else:
         _confirm_scene_code_on_call(coordinator, 2, workshop_code)
@@ -2754,6 +2789,7 @@ async def test_workshop_uses_evidenced_model_application(
         item,
         config_entry_id="entry-a",
         updated_at="2026-08-11T00:00:00Z",
+        diy_code=approved_code,
     )
 
     assert result.phase is DeploymentPhase.CONFIRMED
@@ -2766,7 +2802,10 @@ async def test_workshop_uses_evidenced_model_application(
     assert result.target_model == model
     assert result.observable_signature == observable_signature_for_compiled(compiled)
     coordinator.async_observe_effect.assert_awaited_once_with(
-        {"is_on": True, "diy_code" if kind == "basic" else "scene_code": workshop_code},
+        {
+            "is_on": True,
+            "diy_code" if kind in {"basic", "palette"} else "scene_code": workshop_code,
+        },
         timeout=4.0,
     )
     await repository.async_load()
@@ -2777,8 +2816,8 @@ async def test_workshop_uses_evidenced_model_application(
         refreshed=True,
     )
     assert observed.matched_operation_id == result.operation_id
-    coordinator.scene_code = workshop_code if kind == "basic" else None
-    coordinator.diy_code = None if kind == "basic" else workshop_code
+    coordinator.scene_code = workshop_code if kind in {"basic", "palette"} else None
+    coordinator.diy_code = None if kind in {"basic", "palette"} else workshop_code
     assert not _activation_matches(coordinator, result)
 
 

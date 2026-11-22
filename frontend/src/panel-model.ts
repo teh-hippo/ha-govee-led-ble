@@ -338,10 +338,12 @@ export class PanelModel {
       return undefined;
     }
     const code = this.selectedDevice?.active_state?.diy_code;
+    const minimum = this.modelCatalogue?.diy_slot_min ?? 0;
+    const maximum = this.modelCatalogue?.diy_slot_max ?? 0xffff;
     return typeof code === "number" &&
       Number.isSafeInteger(code) &&
-      code >= 0 &&
-      code <= 0xffff
+      code >= minimum &&
+      code <= maximum
       ? code
       : undefined;
   }

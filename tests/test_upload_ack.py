@@ -121,6 +121,8 @@ async def connected(hass, monkeypatch, request):
 def selection_ready(connected, monkeypatch):
     """Keep ACK/identity faults independent of static recovery acquisition."""
     c, _ = connected
+    if c.model == "H6199":
+        c.diy_code = 73
     baseline = PriorControlState(
         mode="colour",
         is_on=True,
@@ -1249,9 +1251,10 @@ async def test_palette_public_paths_wait_for_upload_verdict(selection_ready, has
     c, client = selection_ready
     c.is_on = power
     item = LibraryItem.new("Fade", PaletteDiyEffect(c.model, 0, 0, 20, ((30, 0, 0), (0, 30, 0))))
-    compiled = compile_effect(item, c.model, profile=c.profile)
+    compiled = compile_effect(item, c.model, diy_code=73, profile=c.profile)
     uploaded = asyncio.Event()
     monkeypatch.setattr(c, "async_preview_preflight", AsyncMock())
+    monkeypatch.setattr(c, "refresh_state", AsyncMock(return_value=True))
     monkeypatch.setattr(c, "async_observe_effect", AsyncMock(return_value=None))
     monkeypatch.setattr(coordinator_module, "UPLOAD_ACK_TIMEOUT", 1)
     monkeypatch.setattr(coordinator_module, "EFFECT_SEQUENCE_ATTEMPTS", 3)
@@ -1285,6 +1288,7 @@ async def test_palette_public_paths_wait_for_upload_verdict(selection_ready, has
             sequence=1,
             updated_at="2026-09-16T00:00:00Z",
             item=item,
+            diy_code=73,
         )
         task = asyncio.create_task(manager.async_wait_idle("entry-a"))
     else:
@@ -1295,7 +1299,15 @@ async def test_palette_public_paths_wait_for_upload_verdict(selection_ready, has
         monkeypatch.setattr(c, "async_restore_effect_control_state", AsyncMock(return_value=False))
         monkeypatch.setattr(c, "refresh_state", AsyncMock(return_value=False))
         apply = engine.async_apply_saved if path == "saved" else engine.async_apply_snapshot
-        task = asyncio.create_task(apply(c, item, config_entry_id="entry-a", updated_at="2026-09-16T00:00:00Z"))
+        task = asyncio.create_task(
+            apply(
+                c,
+                item,
+                config_entry_id="entry-a",
+                updated_at="2026-09-16T00:00:00Z",
+                diy_code=73,
+            )
+        )
     try:
         await asyncio.wait_for(uploaded.wait(), 1)
         expected = [*([] if power else [build_power(True, c.model)]), *compiled.upload_packets]
@@ -1355,7 +1367,7 @@ async def test_palette_public_paths_wait_for_upload_verdict(selection_ready, has
 @pytest.mark.parametrize("fault", [None, "kind", "palette_length", "chunk_count", "incomplete"])
 def test_palette_ack_boundary_requires_complete_generated_diy(fault):
     item = LibraryItem.new("Fade", PaletteDiyEffect("H6199", 0, 0, 20, ((30, 0, 0), (0, 30, 0))))
-    compiled = compile_effect(item, "H6199")
+    compiled = compile_effect(item, "H6199", diy_code=73)
     envelope = bytearray(reassemble_a3(compiled.upload_packets))
     if fault == "kind":
         envelope[2] = 1

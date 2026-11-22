@@ -784,6 +784,9 @@ MODEL_EFFECT_CATALOGUES: Final = {
         video_modes=H6199_VIDEO_MODES,
         templates=H6199_CATALOGUE_TEMPLATES,
         workshop_templates=(),
+        diy_slot_policy="approved_observed",
+        diy_slot_min=1,
+        diy_slot_max=240,
     ),
     "H6072": ModelEffectCatalogue(
         sku="H6072",

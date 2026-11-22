@@ -9,9 +9,9 @@ from kaitaistruct import KaitaiStream
 from custom_components.ha_govee_led_ble import effect_commands as proto
 from custom_components.ha_govee_led_ble import effect_contracts
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ModelProfile, device_profile, get_profile
+from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode, parse_color_mode
 from custom_components.ha_govee_led_ble.effect_catalogue import (
     H617A_TYPE04_APPLY_CODE,
-    H6199_PALETTE_DIY_APPLY_CODE,
     H6199_PALETTE_DIY_FAMILIES,
     MODEL_EFFECT_CATALOGUES,
     WORKSHOP_PROTOCOL_FIXTURES,
@@ -61,7 +61,9 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
 )
 from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_workshop_effect, encode_workshop_effect
 from custom_components.ha_govee_led_ble.protocol_h6199 import build_h6199_palette_diy_envelope, build_h6199_scene
+from custom_components.ha_govee_led_ble.protocol_parsing import parse_status
 from custom_components.ha_govee_led_ble.transport import fragment_a3, reassemble_a3
+from tests.coordinator_test_support import frame
 
 H = bytes.fromhex
 
@@ -85,6 +87,7 @@ H6199_CONTENT = PaletteDiyEffect(
     50,
     ((255, 0, 0), (0, 0, 255)),
 )
+H6199_TEST_DIY_CODE = 73
 
 
 @pytest.fixture
@@ -204,15 +207,15 @@ def test_palette_diy_uses_target_catalogue_not_global_encoding_roster(monkeypatc
     assert decode_a3_effect(parse_a3_effect_envelope(reassemble_a3(frames), "H6199"), "H6199") == content
     item = LibraryItem.new("Extended", content)
     with pytest.raises(ValueError, match="family 42 variation 7"):
-        compile_h6199(item)
+        compile_h6199(item, H6199_TEST_DIY_CODE)
     family = replace(
         catalogue.effects[0], family=42, variations=(replace(catalogue.effects[0].variations[0], variant=7),)
     )
     monkeypatch.setitem(MODEL_EFFECT_CATALOGUES, "H6199", replace(catalogue, effects=(*catalogue.effects, family)))
-    assert compile_h6199(item).upload_packets == tuple(frames)
+    assert compile_h6199(item, H6199_TEST_DIY_CODE).upload_packets == tuple(frames)
     monkeypatch.setitem(MODEL_EFFECT_CATALOGUES, "H6199", replace(catalogue, palette_max=1))
     with pytest.raises(ValueError, match="palette"):
-        compile_h6199(LibraryItem.new("Too many colours", H6199_CONTENT))
+        compile_h6199(LibraryItem.new("Too many colours", H6199_CONTENT), H6199_TEST_DIY_CODE)
 
 
 @pytest.mark.parametrize("diy_code", [-1, 0x10000, 1.5])
@@ -271,7 +274,7 @@ def test_h6199_compiler_matches_every_visible_family_and_variation(label, family
     palette = ((255, 0, 0), (0, 0, 255))
     item = LibraryItem.new(label, PaletteDiyEffect("H6199", family, variant, 50, palette))
 
-    compiled = compile_h6199(item)
+    compiled = compile_h6199(item, H6199_TEST_DIY_CODE)
     parsed = H6199EffectUpload(KaitaiStream(io.BytesIO(reassemble_a3(compiled.upload_packets))))
     parsed._read()
 
@@ -279,14 +282,26 @@ def test_h6199_compiler_matches_every_visible_family_and_variation(label, family
     assert parsed.content.variant == variant
     assert parsed.content.speed == 50
     assert [(colour.red, colour.green, colour.blue) for colour in parsed.content.palette] == list(palette)
-    assert compiled.activation_packet == bytes.fromhex("33050491010200000000000000000000000000a0")
-    assert compiled.diy_code == H6199_PALETTE_DIY_APPLY_CODE
+    assert compiled.activation_packet == bytes.fromhex("33050a4900000000000000000000000000000075")
+    assert compiled.diy_code == H6199_TEST_DIY_CODE
+    assert compiled.selector_kind == "diy"
 
 
 def test_h6199_activation_encoder_uses_workshop_slot() -> None:
     expected = bytes.fromhex("33050491010200000000000000000000000000a0")
 
     assert build_h6199_scene(401, 2) == expected
+
+
+def test_h6199_native_diy_selector_round_trips_through_status_parser() -> None:
+    activation = build_diy_activation(H6199_TEST_DIY_CODE, "H6199")
+    parsed = parse_status(frame("aa050a4900"), "H6199")
+
+    assert activation == bytes.fromhex("33050a4900000000000000000000000000000075")
+    assert parsed is not None
+    observed = parse_color_mode(parsed, "H6199")
+    assert observed.mode is ParsedMode.DIY
+    assert observed.diy_code == H6199_TEST_DIY_CODE
 
 
 def test_h6179_compiler_uses_a1_transport_and_approved_activation_code() -> None:
@@ -369,7 +384,10 @@ def test_h6199_fixed_diy_envelope_accepts_the_largest_structurally_fitting_palet
     assert len(content.palette) == 9
     assert effect_content_from_dict(effect_content_to_dict(content)) == content
     with pytest.raises(ValueError, match="palette"):
-        compile_h6199(LibraryItem.new("Imported nine colours", content))
+        compile_h6199(
+            LibraryItem.new("Imported nine colours", content),
+            H6199_TEST_DIY_CODE,
+        )
     for model in ("H617A", "H617E", "H6199"):
         assert MODEL_EFFECT_CATALOGUES[model].palette_max == 8
     model = "H9909"
@@ -387,7 +405,7 @@ def test_h6199_fixed_diy_envelope_accepts_the_largest_structurally_fitting_palet
         MODEL_EFFECT_CATALOGUES, model, replace(MODEL_EFFECT_CATALOGUES["H6199"], sku=model, palette_max=9)
     )
     item = LibraryItem.new("Qualified nine colours", replace(content, model=model))
-    assert reassemble_a3(compile_h6199(item, model=model).upload_packets) == envelope
+    assert reassemble_a3(compile_h6199(item, H6199_TEST_DIY_CODE, model=model).upload_packets) == envelope
 
 
 def test_h6199_fixed_diy_envelope_rejects_palette_overflow_before_writing() -> None:
@@ -438,7 +456,7 @@ def test_h6199_fixed_diy_envelope_rejects_palette_overflow_before_writing() -> N
         pytest.param(
             "H6199",
             H6199_CONTENT,
-            H6199_PALETTE_DIY_APPLY_CODE,
+            H6199_TEST_DIY_CODE,
             (
                 H("a30001020409093206ff00000000ff0000000090"),
                 H("a3ff00000000000000000000000000000000005c"),
@@ -489,7 +507,12 @@ def test_basic_effect_decoder_preserves_uncatalogued_pairs_but_rejects_reserved_
         compile_h617a(LibraryItem.new("Imported Multi", decoded), 24)
 
     h6199 = parse_a3_effect_envelope(
-        reassemble_a3(compile_h6199(LibraryItem.new("Palette DIY", H6199_CONTENT)).upload_packets),
+        reassemble_a3(
+            compile_h6199(
+                LibraryItem.new("Palette DIY", H6199_CONTENT),
+                H6199_TEST_DIY_CODE,
+            ).upload_packets
+        ),
         "H6199",
     )
     h6199.content.variant = 8
@@ -586,9 +609,7 @@ def test_basic_grammars_do_not_supply_effect_grammar(monkeypatch, model) -> None
 )
 def test_custom_authorization_without_supported_grammar_pair_is_rejected(monkeypatch, model, content, field, grammar):
     item = LibraryItem.new("Custom", content)
-    independent_scene_codec = grammar == "other" and (
-        isinstance(content, RetainedSceneEffect) or isinstance(content, PaletteDiyEffect) and field == "command_grammar"
-    )
+    independent_scene_codec = grammar == "other" and isinstance(content, RetainedSceneEffect)
     if grammar == "other":
         grammar = "H6199" if model == "H617A" else "H617A"
     monkeypatch.setitem(
@@ -823,7 +844,7 @@ def test_h617e_workshop_preserves_exact_identity_and_h617a_bytes() -> None:
         ("H617A", PAINTED_CONTENT, CapabilityWorkflow.PAINTED, 800),
         ("H617A", SINGLE_CONTENT, CapabilityWorkflow.SINGLE, H617A_TYPE04_APPLY_CODE),
         ("H617A", MULTI_CONTENT, CapabilityWorkflow.MULTI, H617A_TYPE04_APPLY_CODE),
-        ("H6199", H6199_CONTENT, CapabilityWorkflow.PALETTE_DIY, H6199_PALETTE_DIY_APPLY_CODE),
+        ("H6199", H6199_CONTENT, CapabilityWorkflow.PALETTE_DIY, H6199_TEST_DIY_CODE),
     ],
 )
 @pytest.mark.parametrize("disabled_route", [ApplicationRoute.NONE, ApplicationRoute.STUDIO_SCENE_APPLY])
@@ -832,7 +853,11 @@ def test_profile_grammar_selects_basic_canonical_semantics(
 ) -> None:
     monkeypatch.setitem(MODEL_PROFILES, "H9999", ModelProfile("Synthetic", effect_grammar=grammar, segment_count=15))
     item = LibraryItem.new("Reference", content)
-    compiled = compile_effect(item, grammar, diy_code=800 if grammar == "H617A" else None)
+    compiled = compile_effect(
+        item,
+        grammar,
+        diy_code=800 if grammar == "H617A" else H6199_TEST_DIY_CODE,
+    )
     envelope = reassemble_a3(compiled.upload_packets)
     for model in ("H9999", "H617E") if grammar == "H617A" else ("H9999",):
         expected = replace(content, model=model) if isinstance(content, PaletteDiyEffect) else content
@@ -844,7 +869,7 @@ def test_profile_grammar_selects_basic_canonical_semantics(
 
     synthetic_content = replace(content, model="H9999") if isinstance(content, PaletteDiyEffect) else content
     synthetic = LibraryItem.new("Synthetic", synthetic_content)
-    assert resolve_diy_code(item) == default_code
+    assert resolve_diy_code(item) == (None if grammar == "H6199" else default_code)
     with pytest.raises(ValueError, match="application is not supported"):
         resolve_diy_code(synthetic, model="H9999")
     capability = release_capability(grammar, workflow)
@@ -860,21 +885,21 @@ def test_profile_grammar_selects_basic_canonical_semantics(
     with pytest.raises(ValueError, match="no custom-effect catalogue"):
         compile_effect(synthetic, "H9999", diy_code=default_code)
     monkeypatch.setitem(MODEL_EFFECT_CATALOGUES, "H9999", replace(MODEL_EFFECT_CATALOGUES[grammar], sku="H9999"))
-    resolved = resolve_diy_code(synthetic, model="H9999")
+    resolved = resolve_diy_code(synthetic, default_code, model="H9999")
     qualified = compile_effect(synthetic, "H9999", diy_code=resolved)
     reference = compile_effect(item, grammar, diy_code=default_code)
     assert resolved == qualified.diy_code == default_code
     assert qualified.model == "H9999"
     assert qualified.packets == reference.packets
-    assert qualified.selector_kind == ("diy" if grammar == "H617A" else "scene")
+    assert qualified.selector_kind == "diy"
     assert qualified.activation_mode.value == "custom"
     if grammar == "H6199":
-        assert qualified.activation_packet == H("33050491010200000000000000000000000000a0")
-        assert resolve_diy_code(synthetic) == default_code
+        assert qualified.activation_packet == H("33050a4900000000000000000000000000000075")
+        assert resolve_diy_code(synthetic, default_code) == default_code
         stored = synthetic.to_dict()
-        assert compile_effect(synthetic, "H6199").packets == reference.packets
+        assert compile_effect(synthetic, "H6199", diy_code=default_code).packets == reference.packets
         assert synthetic.to_dict() == stored
-        with pytest.raises(ValueError, match="no evidenced activation packet"):
+        with pytest.raises(ValueError, match="approved DIY code must be"):
             resolve_diy_code(synthetic, 402, model="H9999")
     monkeypatch.setattr(
         effect_contracts,

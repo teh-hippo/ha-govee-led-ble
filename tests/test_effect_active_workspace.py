@@ -40,25 +40,31 @@ from tests.storage_test_double import InMemoryVersionedDocumentStore
 
 
 @pytest.mark.parametrize(
-    ("model", "content", "expected"),
+    ("model", "content", "signature", "expected"),
     [
-        ("H617A", WORKSHOP_PROTOCOL_FIXTURES[0].content("H617A"), "scene-code:24"),
-        ("H617E", WORKSHOP_PROTOCOL_FIXTURES[0].content("H617E"), "scene-code:24"),
-        ("H6199", WORKSHOP_PROTOCOL_FIXTURES[0].content("H6199"), "scene-code:24"),
-        ("H6199", PaletteDiyEffect("H6199", 8, 9, 60, ((255, 0, 0),)), "scene-code:24"),
-        ("H617A", SingleEffect(0, 0, 50, ((255, 0, 0),)), "custom:24"),
-        ("H617E", WORKSHOP_PROTOCOL_FIXTURES[0].content("H617A"), "custom:24"),
-        ("H617A", OpaqueContent("shared_scene", {"model": "H6199"}), "custom:24"),
+        ("H617A", WORKSHOP_PROTOCOL_FIXTURES[0].content("H617A"), "custom:24", "scene-code:24"),
+        ("H617E", WORKSHOP_PROTOCOL_FIXTURES[0].content("H617E"), "custom:24", "scene-code:24"),
+        ("H6199", WORKSHOP_PROTOCOL_FIXTURES[0].content("H6199"), "custom:24", "scene-code:24"),
+        ("H6199", PaletteDiyEffect("H6199", 8, 9, 60, ((255, 0, 0),)), "custom:24", "custom:24"),
+        (
+            "H6199",
+            PaletteDiyEffect("H6199", 8, 9, 60, ((255, 0, 0),)),
+            "custom:401",
+            "scene-code:401",
+        ),
+        ("H617A", SingleEffect(0, 0, 50, ((255, 0, 0),)), "custom:24", "custom:24"),
+        ("H617E", WORKSHOP_PROTOCOL_FIXTURES[0].content("H617A"), "custom:24", "custom:24"),
+        ("H617A", OpaqueContent("shared_scene", {"model": "H6199"}), "custom:24", "custom:24"),
     ],
 )
-async def test_legacy_workspace_selector_migration_is_content_scoped(model, content, expected) -> None:
+async def test_legacy_workspace_selector_migration_is_content_scoped(model, content, signature, expected) -> None:
     workspace = ActiveEffectWorkspace(
         config_entry_id="entry-a",
         model=model,
         selector_label="Custom",
         content=content,
         origin=Origin(SourceKind.AUTHORED),
-        observable_signature="custom:24",
+        observable_signature=signature,
         updated_at="2026-08-26T00:00:00Z",
         generation=1,
     )

@@ -99,6 +99,9 @@ export function videoProfile(
 export function h6199Catalogue(): ModelEffectCatalogue {
   return {
     sku: "H6199",
+    diy_slot_policy: "approved_observed",
+    diy_slot_min: 1,
+    diy_slot_max: 240,
     painted_effects: [],
     effects: [
       {
@@ -227,7 +230,7 @@ export function flowWorkspaceDevice(id: string): DeviceCapabilities {
     mode: "custom",
     observed_at: "2026-08-25T00:00:00Z",
     confidence: "write_completed",
-    diy_code: 601,
+    diy_code: 73,
     effect: null,
     native_mode: null,
     matched_operation_id: "operation-flow",
@@ -239,7 +242,7 @@ export function flowWorkspaceDevice(id: string): DeviceCapabilities {
         kind: "catalogue_template",
         source_id: "template:single:1:0",
       },
-      observable_signature: "custom:601",
+      observable_signature: "custom:73",
       confidence: "write_completed",
       item_id: null,
       item_version: null,
@@ -255,7 +258,7 @@ export function flowWorkspaceDevice(id: string): DeviceCapabilities {
       kind: "catalogue_template",
       source_id: "template:single:1:0",
     },
-    observable_signature: "custom:601",
+    observable_signature: "custom:73",
     updated_at: "2026-08-25T00:00:00Z",
     generation: 1,
     confidence: "write_completed",

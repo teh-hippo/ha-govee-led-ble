@@ -19,7 +19,7 @@ from .effect_limits import (
 )
 
 EDITOR_API_VERSION: Final = 21
-EDITOR_ASSET_VERSION: Final = 46
+EDITOR_ASSET_VERSION: Final = 47
 EFFECT_COMPILER_VERSION: Final = 12
 RELEASE_CAPABILITY_SCHEMA_VERSION: Final = 1
 
@@ -360,6 +360,7 @@ _RELEASE_CAPABILITY_BASE: Final = (
         _R.HOME_ASSISTANT_CONTROL,
         _S.H6199_CUSTOM_ENGINE,
         _V.SELECTION_ONLY,
+        activation_operations=frozenset({"diy"}),
     ),
     _capability(
         "H6199",
@@ -982,6 +983,12 @@ def require_effect_route(
     ):
         raise ValueError(f"{model} effective profile does not support {label}")
     if profile.effect_grammar is None or profile.effect_grammar not in grammars or profile.command_grammar is None:
+        raise ValueError(f"{model} has no supported {label} grammar and activation route")
+    if (
+        workflow is CapabilityWorkflow.PALETTE_DIY
+        and profile.effect_grammar == "H6199"
+        and profile.command_grammar != "H6199"
+    ):
         raise ValueError(f"{model} has no supported {label} grammar and activation route")
     if not profile.effect_activation_operations & capability.activation_operations:
         raise ValueError(f"{model} has no supported {label} grammar and activation route")

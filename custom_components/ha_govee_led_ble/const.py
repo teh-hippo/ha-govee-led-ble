@@ -428,7 +428,10 @@ class ModelProfile:
     @property
     def effect_activation_operations(self) -> frozenset[str]:
         operations = frozenset(
-            operation for operation, grammars in _EFFECT_ACTIVATION_GRAMMARS.items() if self.command_grammar in grammars
+            operation
+            for operation, grammars in _EFFECT_ACTIVATION_GRAMMARS.items()
+            if self.command_grammar in grammars
+            and not (operation == "diy" and self.command_grammar == "H6199" and self.effect_grammar != "H6199")
         )
         return operations if self.command_operations is None else operations & self.command_operations
 
@@ -3409,7 +3412,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         scene_catalogue_sku="H6199",
         advanced_scene_carrier=(29884, 41599),
         default_effect_families_override=frozenset({EFFECT_FAMILY_VIDEO}),
-        effect_readback="scene_selector_for_user_effects",
+        effect_readback="diy_code_only",
         legacy_effect_selector_domains=(
             ("workshop", LegacyEffectSelectorDomain.SCENE),
             ("shared_scene", LegacyEffectSelectorDomain.SCENE),
@@ -3570,6 +3573,7 @@ _DIY_ACTIVATION_GRAMMARS = WHOLE_BULB_GRAMMARS | {
     "H6046",
     "H6099",
     "H6179",
+    "H6199",
 }
 _EFFECT_ACTIVATION_GRAMMARS = {
     "diy": _DIY_ACTIVATION_GRAMMARS,
