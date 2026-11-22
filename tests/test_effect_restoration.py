@@ -116,7 +116,12 @@ def resident_video(hass, monkeypatch, request):
         elif packet[:2] == b"\xaa\x05":
             observe_mode()
 
-    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(side_effect=transmit))
+    client = MagicMock(
+        is_connected=True,
+        write_gatt_char=AsyncMock(side_effect=transmit),
+        disconnect=AsyncMock(),
+    )
+    client.disconnect.side_effect = lambda: setattr(client, "is_connected", False)
     coordinator._client = client
     coordinator._notification_token = object()
     coordinator._notify_started_monotonic = time.monotonic() - 1
@@ -165,9 +170,14 @@ async def test_public_cold_resident_video_resume_reads_native_state_without_clai
         assert state["writes"] == []
 
 
-@pytest.mark.parametrize("fault", ["missing", "optimistic", "stale", "unknown"])
-async def test_public_cold_video_resume_requires_independent_complete_current_readback(resident_video, fault):
+@pytest.mark.parametrize("fault", ["missing", "optimistic", "stale", "unknown", "query_timeout"])
+async def test_public_cold_video_resume_requires_independent_complete_current_readback(
+    resident_video, monkeypatch, fault
+):
     coordinator, state = resident_video
+    client = coordinator._client
+    if fault == "query_timeout":
+        monkeypatch.setattr(coordinator, "_send_state_queries", AsyncMock(return_value=False))
     if fault in {"optimistic", "stale"}:
         coordinator._notify_callback(None, reply(5, [0, 0, 1, 42, 1, 55]))
     if fault == "optimistic":
@@ -183,6 +193,8 @@ async def test_public_cold_video_resume_requires_independent_complete_current_re
         await light.async_turn_on(effect="Video: Game", brightness=51)
     assert state["writes"] == []
     assert coordinator._pre_mode_snapshot is None
+    if fault == "query_timeout":
+        client.disconnect.assert_awaited_once()
 
 
 @pytest.mark.parametrize("change", ["none", "settings", "supplementary"])

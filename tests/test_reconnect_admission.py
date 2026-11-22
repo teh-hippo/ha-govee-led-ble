@@ -191,7 +191,25 @@ async def test_background_reconnect_admission(static_recovery_ready, hass, monke
         if identity == "qualified":
             assert not c._segment_query_incomplete
             await asyncio.wait_for(foreground, 3)
-            assert writer.await_count or any(packet[0] == 0x33 for packet in packets)
+            if route == "light_default":
+                writer.assert_not_awaited()
+                assert not any(packet[0] == 0x33 for packet in packets)
+                assert build_colour_mode_query("H6199") in packets
+                assert all(
+                    c.source_field_fresh(field)
+                    for field in (
+                        "color_mode",
+                        "video_mode",
+                        "video_full_screen",
+                        "video_saturation",
+                        "video_sound_effects",
+                        "video_sound_effects_softness",
+                    )
+                )
+                assert c.video_mode == item.content.mode
+                assert c._pre_mode_snapshot is None
+            else:
+                assert writer.await_count or any(packet[0] == 0x33 for packet in packets)
         else:
             with pytest.raises((ValueError, HomeAssistantError)):
                 await asyncio.wait_for(foreground, 3)
