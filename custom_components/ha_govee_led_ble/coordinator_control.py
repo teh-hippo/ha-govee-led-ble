@@ -25,6 +25,7 @@ _LOGGER = logging.getLogger(__name__)
 _CONTROL_STATE_FIELDS = (
     "is_on",
     "brightness_pct",
+    "brightness_pct_source",
     "rgb_color",
     "color_temp_kelvin",
     "effect",
@@ -120,7 +121,7 @@ class ControlStateCheckpoint:
             elif field.startswith("segment_"):
                 if segments_updated:
                     continue
-            elif field not in {"is_on", "brightness_pct"} and mode_updated:
+            elif field not in {"is_on", "brightness_pct", "brightness_pct_source"} and mode_updated:
                 continue
             if (colour_updated or segments_updated) and field in {
                 "rgb_color",
@@ -134,6 +135,10 @@ class ControlStateCheckpoint:
             if revision_field in {"is_on", "brightness_pct", "music_calm"} and coordinator._field_revisions.get(
                 revision_field, 0
             ) != snapshot.revisions.get(revision_field, 0):
+                continue
+            if field == "brightness_pct_source" and coordinator._field_revisions.get(
+                "brightness_pct", 0
+            ) != snapshot.revisions.get("brightness_pct", 0):
                 continue
             values[field] = value
         return values
@@ -151,6 +156,8 @@ class ControlStateCheckpoint:
                     self._coordinator._static_colour_known = False
                     self._coordinator._static_rgb_known = False
             setattr(self._coordinator, field, value)
+        if self._coordinator.brightness_pct_source != "pending":
+            self._coordinator._pending_brightness_pct = None
 
 
 class ControlWriteRequest:

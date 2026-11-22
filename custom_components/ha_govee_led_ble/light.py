@@ -543,6 +543,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         value = last_state.attributes.get(ATTR_BRIGHTNESS)
         if type(value) is int and 0 <= value <= 255:
             coordinator.brightness_pct = round(brightness_to_value((1, 100), value))
+            coordinator.brightness_pct_source = "restored"
 
     def _library_updated(self, snapshot: LibrarySnapshot) -> None:
         self._library_snapshot = snapshot

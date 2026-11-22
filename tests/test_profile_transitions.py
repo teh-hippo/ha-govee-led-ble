@@ -1,6 +1,8 @@
 """Profile changes invalidate batches and control completion, not accepted power."""
 
 import asyncio
+from dataclasses import replace
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -8,11 +10,17 @@ from bleak.exc import BleakError
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.update_coordinator import UpdateFailed
 
-from custom_components.ha_govee_led_ble.const import device_profile
+from custom_components.ha_govee_led_ble.const import (
+    MODEL_PROFILES,
+    ModelProfile,
+    ReadDomain,
+    device_profile,
+)
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
 from custom_components.ha_govee_led_ble.effect_deployments import PriorControlState
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
+    build_brightness,
     build_brightness_query,
     build_firmware_query,
     build_hardware_query,
@@ -28,11 +36,317 @@ from tests.test_h6199_capabilities import lifecycle as transition_lifecycle  # n
 from tests.test_h6199_capabilities import set_qualified_identity
 from tests.test_h6199_pact1 import advertise
 
+M = "custom_components.ha_govee_led_ble.coordinator"
+
 PACT1_STATE_REPLIES = {
     frame("aa04"): frame("aa0488"),
     frame("aa0501"): frame("aa050b00"),
     **{frame(f"aaa2{group:02x}"): frame(f"aaa2{group:02x}" + "010203" * 4) for group in range(1, 5)},
 }
+
+
+@pytest.fixture
+def brightness_profile_transition(hass, monkeypatch):
+    model = "H9904"
+    profile = ModelProfile(
+        "Synthetic brightness profile",
+        command_grammar="H617A",
+        command_ack_grammar="H617A",
+        status_grammar="H617A",
+        command_operations=frozenset({"power", "brightness"}),
+        profile_identity_fields=frozenset({"fw_version"}),
+        read_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE}),
+    )
+    target = {"profile": profile}
+    monkeypatch.setitem(MODEL_PROFILES, model, profile)
+    monkeypatch.setattr(
+        f"{M}.device_profile",
+        lambda *_args, **_kwargs: target["profile"],
+    )
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url=None)
+    coordinator._confirmed_identity_fields.add("fw_version")
+    return coordinator, target, profile
+
+
+@pytest.fixture
+def brightness_client(brightness_profile_transition, monkeypatch):
+    coordinator, target, profile = brightness_profile_transition
+    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(), disconnect=AsyncMock())
+    coordinator._client = client
+    coordinator._notification_token = object()
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
+    monkeypatch.setattr(coordinator, "_renew_foreground_lease", lambda: None)
+    return coordinator, client, target, profile
+
+
+@pytest.mark.parametrize(
+    ("source", "expected_source"),
+    [
+        ("initial", "initial"),
+        ("restored", "restored"),
+        ("delivered", "delivered"),
+        ("observed", "retained"),
+        ("retained", "retained"),
+    ],
+)
+@pytest.mark.parametrize("preserve_state", [False, True])
+def test_equivalent_profile_transition_retains_brightness_authority(
+    brightness_profile_transition, source, expected_source, preserve_state
+):
+    coordinator, target, profile = brightness_profile_transition
+    coordinator.brightness_pct = 42
+    coordinator.brightness_pct_source = source
+    coordinator._brightness_pct_known = source in {"observed", "delivered"}
+    coordinator._field_revisions["brightness_pct"] = int(source in {"observed", "delivered"})
+    target["profile"] = replace(profile, supports_rgb=True)
+    coordinator.fw_version = "1.00.01"
+
+    coordinator._resolve_device_profile(preserve_state=preserve_state)
+
+    assert coordinator.brightness_pct == 42
+    assert coordinator.brightness_pct_source == expected_source
+    assert not coordinator._brightness_pct_known
+    assert coordinator._field_revisions["brightness_pct"] == int(source in {"observed", "delivered"})
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"command_grammar": "H6199"},
+        {"command_ack_grammar": "H6199"},
+        {"brightness_wire_range": (20, 254), "outbound_transform": lambda packet: packet},
+        {"outbound_transform": lambda packet: packet},
+        {"command_operations": frozenset({"power"})},
+        {"read_domains": frozenset({ReadDomain.POWER})},
+        {"status_grammar": "H6199"},
+        {"bulk_status_grammar": "H60A"},
+    ],
+)
+@pytest.mark.parametrize("preserve_state", [False, True])
+def test_incompatible_profile_transition_resets_brightness(brightness_profile_transition, change, preserve_state):
+    coordinator, target, profile = brightness_profile_transition
+    coordinator.brightness_pct = 42
+    coordinator.brightness_pct_source = "delivered"
+    coordinator._brightness_pct_known = True
+    target["profile"] = replace(profile, **change)
+    coordinator.fw_version = "1.00.01"
+
+    coordinator._resolve_device_profile(preserve_state=preserve_state)
+
+    assert coordinator.brightness_pct == 100
+    assert coordinator.brightness_pct_source == "initial"
+    assert not coordinator._brightness_pct_known
+
+
+@pytest.mark.parametrize(("value", "preserved"), [(0, False), (42, True)])
+def test_zero_brightness_policy_only_invalidates_the_ambiguous_value(brightness_profile_transition, value, preserved):
+    coordinator, target, profile = brightness_profile_transition
+    coordinator.brightness_pct = value
+    coordinator.brightness_pct_source = "restored"
+    target["profile"] = replace(profile, brightness_zero_turns_off=True)
+    coordinator.fw_version = "1.00.01"
+
+    coordinator._resolve_device_profile()
+
+    assert coordinator.brightness_pct == (value if preserved else 100)
+    assert coordinator.brightness_pct_source == ("restored" if preserved else "initial")
+
+
+@pytest.mark.parametrize("deadline", [-1, float("inf")])
+def test_profile_transition_retires_brightness_expectations_without_losing_prior_authority(
+    brightness_profile_transition, deadline
+):
+    coordinator, target, profile = brightness_profile_transition
+    coordinator.brightness_pct = 42
+    coordinator.brightness_pct_source = "delivered"
+    coordinator._brightness_pct_known = True
+    coordinator._expected_state["brightness_pct"] = (37, deadline)
+    target["profile"] = replace(profile, supports_rgb=True)
+    coordinator.fw_version = "1.00.01"
+
+    coordinator._resolve_device_profile()
+
+    assert coordinator.brightness_pct == 42
+    assert coordinator.brightness_pct_source == "delivered"
+    assert "brightness_pct" not in coordinator._expected_state
+    assert not coordinator._brightness_pct_known
+
+
+async def test_restored_write_only_brightness_survives_equivalent_profile(brightness_profile_transition, monkeypatch):
+    coordinator, target, profile = brightness_profile_transition
+    write_only = replace(profile, read_domains=frozenset({ReadDomain.POWER}))
+    monkeypatch.setitem(MODEL_PROFILES, coordinator.model, write_only)
+    coordinator.profile = target["profile"] = write_only
+    light = GoveeBLELight(coordinator)
+    monkeypatch.setattr(
+        light,
+        "async_get_last_state",
+        AsyncMock(return_value=SimpleNamespace(attributes={"brightness": 128})),
+    )
+
+    await light._async_restore_brightness()
+    assert coordinator.brightness_pct == 50
+    assert coordinator.brightness_pct_source == "restored"
+    assert coordinator._field_revisions == {}
+
+    target["profile"] = replace(write_only, supports_rgb=True)
+    coordinator.fw_version = "1.00.01"
+    coordinator._resolve_device_profile()
+
+    assert coordinator.brightness_pct == 50
+    assert coordinator.brightness_pct_source == "restored"
+    assert coordinator._field_revisions == {}
+
+
+def test_observed_brightness_becomes_retained_across_equivalent_profile(brightness_profile_transition):
+    coordinator, target, profile = brightness_profile_transition
+    coordinator._notify_callback(None, bytearray(frame("aa0425")))
+    assert coordinator.brightness_pct == 37
+    assert coordinator.brightness_pct_source == "observed"
+    target["profile"] = replace(profile, supports_rgb=True)
+    coordinator.fw_version = "1.00.01"
+
+    coordinator._resolve_device_profile()
+
+    assert coordinator.brightness_pct == 37
+    assert coordinator.brightness_pct_source == "retained"
+    assert coordinator._field_revisions["brightness_pct"] == 1
+    assert not coordinator._brightness_pct_known
+
+
+async def test_brightness_pending_state_has_no_delivery_authority(brightness_client):
+    coordinator, client, _, profile = brightness_client
+    coordinator.brightness_pct = 20
+    coordinator.brightness_pct_source = "restored"
+    started, finish = asyncio.Event(), asyncio.Event()
+
+    async def write(*_args, **_kwargs):
+        started.set()
+        await finish.wait()
+
+    client.write_gatt_char.side_effect = write
+    task = asyncio.create_task(coordinator.send_command(build_brightness(37, coordinator.model, profile=profile)))
+    await started.wait()
+
+    assert coordinator.brightness_pct == 37
+    assert coordinator.brightness_pct_source == "pending"
+    assert not coordinator._brightness_pct_known
+    assert "brightness_pct" in coordinator._expected_state
+
+    finish.set()
+    await task
+    assert coordinator.brightness_pct == 37
+    assert coordinator.brightness_pct_source == "delivered"
+    assert coordinator._brightness_pct_known
+    assert coordinator._field_revisions.get("brightness_pct", 0) == 0
+
+
+async def test_compatible_transition_during_brightness_write_keeps_pre_attempt_authority(brightness_client):
+    coordinator, client, target, profile = brightness_client
+    coordinator.brightness_pct = 20
+    coordinator.brightness_pct_source = "restored"
+    started, finish = asyncio.Event(), asyncio.Event()
+
+    async def write(*_args, **_kwargs):
+        started.set()
+        await finish.wait()
+
+    client.write_gatt_char.side_effect = write
+    task = asyncio.create_task(coordinator.send_command(build_brightness(37, coordinator.model, profile=profile)))
+    await started.wait()
+    target["profile"] = replace(profile, supports_rgb=True)
+    coordinator.fw_version = "1.00.01"
+    coordinator._resolve_device_profile()
+    finish.set()
+
+    with pytest.raises(ValueError, match="profile changed during control write"):
+        await task
+
+    assert coordinator.brightness_pct == 20
+    assert coordinator.brightness_pct_source == "restored"
+    assert not coordinator._brightness_pct_known
+    assert "brightness_pct" not in coordinator._expected_state
+    assert coordinator._field_revisions.get("brightness_pct", 0) == 0
+
+
+async def test_compatible_transition_during_retry_keeps_original_brightness_authority(brightness_client, monkeypatch):
+    coordinator, client, target, profile = brightness_client
+    coordinator.brightness_pct = 20
+    coordinator.brightness_pct_source = "restored"
+    started, finish = asyncio.Event(), asyncio.Event()
+    attempts = 0
+
+    async def write(*_args, **_kwargs):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise BleakError("retryable first write")
+        started.set()
+        await finish.wait()
+
+    client.write_gatt_char.side_effect = write
+    monkeypatch.setattr(coordinator, "_disconnect_locked", AsyncMock())
+    task = asyncio.create_task(coordinator.send_command(build_brightness(37, coordinator.model, profile=profile)))
+    await started.wait()
+    assert attempts == 2
+    target["profile"] = replace(profile, supports_rgb=True)
+    coordinator.fw_version = "1.00.01"
+    coordinator._resolve_device_profile()
+    finish.set()
+
+    with pytest.raises(ValueError, match="profile changed during control write"):
+        await task
+
+    assert coordinator.brightness_pct == 20
+    assert coordinator.brightness_pct_source == "restored"
+    assert coordinator._pending_brightness_pct is None
+    assert not coordinator._brightness_pct_known
+
+
+async def test_mode_notification_during_failed_brightness_write_rolls_back_source(brightness_client):
+    coordinator, client, _, profile = brightness_client
+    coordinator.brightness_pct = 20
+    coordinator.brightness_pct_source = "restored"
+
+    async def write(*_args, **_kwargs):
+        coordinator._notify_callback(
+            None,
+            bytearray.fromhex("aa0502ffffff0100000000000000000000000053"),
+        )
+        assert coordinator._field_revisions["color_mode"] == 1
+        raise TimeoutError("ambiguous write")
+
+    client.write_gatt_char.side_effect = write
+    with pytest.raises(TimeoutError, match="ambiguous write"):
+        with coordinator.control_state_checkpoint():
+            await coordinator.send_command(build_brightness(37, coordinator.model, profile=profile))
+
+    assert coordinator.brightness_pct == 20
+    assert coordinator.brightness_pct_source == "restored"
+    assert coordinator._pending_brightness_pct is None
+    assert coordinator.capture_effect_control_state().brightness_pct_known is None
+
+
+def test_incompatible_transition_invalidates_previous_authority_permanently(brightness_profile_transition):
+    coordinator, target, profile = brightness_profile_transition
+    coordinator.brightness_pct = 42
+    coordinator.brightness_pct_source = "observed"
+    coordinator._brightness_pct_known = True
+    target["profile"] = replace(
+        profile,
+        brightness_wire_range=(20, 254),
+        outbound_transform=lambda packet: packet,
+    )
+    coordinator.fw_version = "1.00.01"
+    coordinator._resolve_device_profile()
+
+    target["profile"] = profile
+    coordinator.fw_version = "1.00.02"
+    coordinator._resolve_device_profile()
+
+    assert coordinator.brightness_pct == 100
+    assert coordinator.brightness_pct_source == "initial"
+    assert not coordinator._brightness_pct_known
 
 
 @pytest.fixture

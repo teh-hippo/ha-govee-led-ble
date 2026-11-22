@@ -50,6 +50,7 @@ from .const import (
     get_profile,
     model_from_ble_name,
     profile_with_physical_ic_count,
+    same_brightness_profile,
     same_control_profile,
     supported_effect_categories,
 )
@@ -254,6 +255,8 @@ class GoveeBLECoordinator(
         self._identity_retries = 0
         self.is_on = False
         self.brightness_pct = 100
+        self.brightness_pct_source = "initial"
+        self._pending_brightness_pct: tuple[int, str, bool] | None = None
         self.rgb_color: tuple[int, int, int] = (255, 255, 255)
         self.color_temp_kelvin: int | None = None
         self._pending_kelvin: int | None = None
@@ -804,16 +807,18 @@ class GoveeBLECoordinator(
                 self.segment_kelvin = [None] * self.profile.segment_count
                 self.segment_brightness_known = [False] * self.profile.segment_count
                 self._brightness_pct_known = False
+                if self.brightness_pct_source == "pending" and self._pending_brightness_pct is not None:
+                    self.brightness_pct, self.brightness_pct_source, _ = self._pending_brightness_pct
+                    self._pending_brightness_pct = None
+                if self.brightness_pct_source == "observed":
+                    self.brightness_pct_source = "retained"
             return
-        preserve_brightness = (
-            self.model == "H607C"
-            and self.profile.status_grammar == profile.status_grammar
-            and self.profile.brightness_wire_range == profile.brightness_wire_range
-            and self.profile.can_read(ReadDomain.BRIGHTNESS)
-            and profile.can_read(ReadDomain.BRIGHTNESS)
-            and self._field_revisions.get("brightness_pct", 0) > 0
-            and "brightness_pct" not in self._expected_state
+        brightness_value = (
+            self._pending_brightness_pct[0]
+            if self.brightness_pct_source == "pending" and self._pending_brightness_pct is not None
+            else self.brightness_pct
         )
+        brightness_compatible = same_brightness_profile(self.profile, profile, brightness_value)
         scene_only_change = bool(
             profile.scene_identity_fields and not context_changed and same_control_profile(profile, self.profile)
         )
@@ -847,11 +852,17 @@ class GoveeBLECoordinator(
         self.segment_kelvin = [None] * self.profile.segment_count
         self.segment_brightness_known = [False] * self.profile.segment_count
         self._brightness_pct_known = False
+        if self.brightness_pct_source == "pending" and self._pending_brightness_pct is not None:
+            self.brightness_pct, self.brightness_pct_source, _ = self._pending_brightness_pct
+        elif self.brightness_pct_source == "observed":
+            self.brightness_pct_source = "retained"
+        self._pending_brightness_pct = None
+        if not brightness_compatible:
+            self.brightness_pct = 100
+            self.brightness_pct_source = "initial"
         self._sync_device_configuration_url()
         if preserve_state:
             return
-        if self.model not in {"H60A1", "H60A6"} and not preserve_brightness:
-            self.brightness_pct = 100
         self.color_mode = None
         self.effect = self.diy_code = self._scene_code = None
         self.music_mode = self.video_mode = "off"
@@ -1291,6 +1302,8 @@ class GoveeBLECoordinator(
         self.segment_kelvin = [None] * self.profile.segment_count
         self.segment_brightness_known = [False] * self.profile.segment_count
         self._brightness_pct_known = False
+        if self.brightness_pct_source == "observed":
+            self.brightness_pct_source = "retained"
         self._segment_query_incomplete = False
         self._bulk_query_incomplete = False
         self._bulk_collector = None
@@ -1369,6 +1382,8 @@ class GoveeBLECoordinator(
                 self._observed_power_profile_generation = self._profile_generation
             elif field == "brightness_pct":
                 self._brightness_pct_known = True
+                self.brightness_pct_source = "observed"
+                self._pending_brightness_pct = None
             elif field.startswith("boolean_"):
                 self._source_power_observation_generation[field] = (
                     self._power_write_generation,
@@ -1709,6 +1724,7 @@ class GoveeBLECoordinator(
             elif static_mode:
                 pre_mode_snapshot = self._capture_static_state()
         mode_revision = self._field_revisions.get("color_mode", 0)
+        brightness_revision = self._field_revisions.get("brightness_pct", 0)
         observed_mode_at = self._field_received_at.get("color_mode")
         mode_confirmed_static = (
             previous_mode is ParsedMode.COLOUR
@@ -1758,11 +1774,19 @@ class GoveeBLECoordinator(
             self._power_write_generation += 1
             self._power_known = False
         if arm_expected:
-            for field in ("is_on", "brightness_pct"):
-                if field in requested:
-                    setattr(self, field, requested[field])
+            if "is_on" in requested:
+                self.is_on = requested["is_on"]
             if "brightness_pct" in requested:
-                self._brightness_pct_known = False
+                if self.brightness_pct_source != "pending":
+                    self._pending_brightness_pct = (
+                        self.brightness_pct,
+                        self.brightness_pct_source,
+                        self._brightness_pct_known,
+                    )
+                if self.brightness_pct != requested["brightness_pct"]:
+                    self.brightness_pct = requested["brightness_pct"]
+                    self.brightness_pct_source = "pending"
+                    self._brightness_pct_known = False
         if state_values is not None:
             for field, value in state_values.items():
                 setattr(self, field, value)
@@ -1862,7 +1886,11 @@ class GoveeBLECoordinator(
         if arm_expected and authorization_generation != self._authorization_generation:
             raise ValueError("Device identity changed during control write; refresh and retry")
         if arm_expected and "brightness_pct" in requested:
+            if self._field_revisions.get("brightness_pct", 0) <= brightness_revision:
+                self.brightness_pct = requested["brightness_pct"]
+                self.brightness_pct_source = "delivered"
             self._brightness_pct_known = True
+            self._pending_brightness_pct = None
         if arm_expected and "is_on" in requested:
             self._power_known = True
         if (

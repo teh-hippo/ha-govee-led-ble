@@ -44,6 +44,8 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
         return cast("GoveeBLECoordinator", self)
 
     brightness_pct: int
+    brightness_pct_source: str
+    _pending_brightness_pct: tuple[int, str, bool] | None
     bottom_brightness: int | None
     bottom_kelvin: int | None
     top_kelvin: int | None

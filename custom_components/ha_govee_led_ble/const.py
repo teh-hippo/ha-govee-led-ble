@@ -4110,6 +4110,29 @@ def profile_with_physical_ic_count(profile: ModelProfile, count: int, *, segment
     return replace(profile, physical_ic_count=count, segment_count=segments)
 
 
+def same_brightness_profile(first: ModelProfile, second: ModelProfile, value: int) -> bool:
+    first_readable = first.can_read(ReadDomain.BRIGHTNESS)
+    second_readable = second.can_read(ReadDomain.BRIGHTNESS)
+    return (
+        first.command_operation_supported("brightness") == second.command_operation_supported("brightness")
+        and first.command_grammar == second.command_grammar
+        and first.command_ack_grammar == second.command_ack_grammar
+        and first.outbound_transform == second.outbound_transform
+        and first.brightness_wire_range == second.brightness_wire_range
+        and (value > 0 or first.brightness_zero_turns_off == second.brightness_zero_turns_off)
+        and tuple(source.key for source in first.light_sources if source.master_brightness)
+        == tuple(source.key for source in second.light_sources if source.master_brightness)
+        and first_readable == second_readable
+        and (
+            not first_readable
+            or (
+                first.status_grammar == second.status_grammar
+                and first.bulk_status_grammar == second.bulk_status_grammar
+            )
+        )
+    )
+
+
 def _basic_revision_profile(profile: ModelProfile) -> ModelProfile:
     """Grant only independently qualified basic controls, never inherit capability flags."""
     domains = frozenset(
