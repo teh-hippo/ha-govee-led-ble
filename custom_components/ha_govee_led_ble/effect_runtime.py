@@ -59,7 +59,12 @@ from .effect_domain import (
     PaletteScene,
     RetainedSceneEffect,
 )
-from .effect_identity import ActiveEffectHint, EffectDeviceCache, ObservedDeviceState
+from .effect_identity import (
+    ActiveEffectHint,
+    EffectDeviceCache,
+    ObservedDeviceState,
+    legacy_deployment_effect_signature,
+)
 from .effect_protocol_decoder import decode_effect_frames
 from .generated_protocol_adapter import (
     build_black_border,
@@ -2092,12 +2097,9 @@ def _record_signature(record: DeploymentRecord, model: str) -> str | None:
     if record.target_mode == "scene":
         return f"scene-code:{record.diy_code}" if record.diy_code is not None else f"scene:{record.target_effect}"
     if record.target_mode == "custom" and record.diy_code is not None:
-        if record.content_kind in {"h617a_painted", "h617a_single", "h617a_multi"} and model in {"H617A", "H617E"}:
-            return f"custom:{record.diy_code}"
-        if record.content_kind in {"workshop", "shared_scene"} or (
-            record.content_kind == "palette_diy" and model == "H6199"
-        ):
+        if record.content_kind in {"workshop", "shared_scene"}:
             return f"scene-code:{record.diy_code}"
+        return legacy_deployment_effect_signature(get_profile(model), record.content_kind, record.diy_code)
     return None
 
 

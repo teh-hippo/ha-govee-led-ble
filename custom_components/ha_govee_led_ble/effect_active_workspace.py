@@ -14,13 +14,12 @@ from .effect_deployments import ObservationConfidence
 from .effect_domain import (
     EffectContent,
     Origin,
-    PaletteDiyEffect,
-    RetainedSceneEffect,
     SourceKind,
     effect_content_from_dict,
     effect_content_hash,
     effect_content_to_dict,
 )
+from .effect_identity import migrate_legacy_workspace_effect_signature
 from .effect_limits import (
     MAX_ACTIVE_WORKSPACE_ENTRIES,
     MAX_ACTIVE_WORKSPACE_STORE_BYTES,
@@ -121,14 +120,7 @@ class ActiveEffectWorkspace:
             raise EffectStorageError("active workspace is invalid") from exc
         signature = required_persisted_string(raw, "observable_signature")
         model = required_persisted_string(raw, "model")
-        if signature.startswith("custom:") and (
-            isinstance(content, RetainedSceneEffect)
-            and content.model == model
-            and model in {"H617A", "H617E", "H6199"}
-            or isinstance(content, PaletteDiyEffect)
-            and content.model == model == "H6199"
-        ):
-            signature = signature.replace("custom:", "scene-code:", 1)
+        signature = migrate_legacy_workspace_effect_signature(model, content, signature)
         value = cls(
             config_entry_id=required_persisted_string(raw, "config_entry_id"),
             model=model,

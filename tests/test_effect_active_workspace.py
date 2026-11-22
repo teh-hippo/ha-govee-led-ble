@@ -4,7 +4,12 @@ from dataclasses import replace
 
 import pytest
 
-from custom_components.ha_govee_led_ble.const import device_profile, get_profile
+from custom_components.ha_govee_led_ble.const import (
+    LegacyEffectSelectorDomain,
+    ModelProfile,
+    device_profile,
+    get_profile,
+)
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.effect_active_workspace import (
     ActiveEffectWorkspace,
@@ -12,7 +17,18 @@ from custom_components.ha_govee_led_ble.effect_active_workspace import (
 )
 from custom_components.ha_govee_led_ble.effect_catalogue import WORKSHOP_PROTOCOL_FIXTURES
 from custom_components.ha_govee_led_ble.effect_compiler import compile_effect
-from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, Origin, SingleEffect, SourceKind
+from custom_components.ha_govee_led_ble.effect_domain import (
+    LibraryItem,
+    OpaqueContent,
+    Origin,
+    PaletteDiyEffect,
+    SingleEffect,
+    SourceKind,
+)
+from custom_components.ha_govee_led_ble.effect_identity import (
+    legacy_deployment_effect_signature,
+    legacy_effect_selector_domain,
+)
 from custom_components.ha_govee_led_ble.effect_runtime import (
     active_workspace_matches,
     observable_signature_for_compiled,
@@ -23,27 +39,52 @@ from custom_components.ha_govee_led_ble.transport import xor_checksum
 from tests.storage_test_double import InMemoryVersionedDocumentStore
 
 
-async def test_legacy_workspace_selector_migration_is_content_scoped() -> None:
-    for content, expected in [
-        (WORKSHOP_PROTOCOL_FIXTURES[0].content("H617A"), "scene-code:24"),
-        (SingleEffect(0, 0, 50, ((255, 0, 0),)), "custom:24"),
-    ]:
-        workspace = ActiveEffectWorkspace(
-            config_entry_id="entry-a",
-            model="H617A",
-            selector_label="Custom",
-            content=content,
-            origin=Origin(SourceKind.AUTHORED),
-            observable_signature="custom:24",
-            updated_at="2026-08-26T00:00:00Z",
-            generation=1,
-        )
-        store = InMemoryVersionedDocumentStore({"devices": {"entry-a": workspace.to_dict()}})
-        repository = ActiveEffectWorkspaceRepository(store)
-        assert (await repository.async_load())[0].observable_signature == expected
-        await repository.async_flush()
-        reloaded = ActiveEffectWorkspaceRepository(store)
-        assert (await reloaded.async_load())[0].observable_signature == expected
+@pytest.mark.parametrize(
+    ("model", "content", "expected"),
+    [
+        ("H617A", WORKSHOP_PROTOCOL_FIXTURES[0].content("H617A"), "scene-code:24"),
+        ("H617E", WORKSHOP_PROTOCOL_FIXTURES[0].content("H617E"), "scene-code:24"),
+        ("H6199", WORKSHOP_PROTOCOL_FIXTURES[0].content("H6199"), "scene-code:24"),
+        ("H6199", PaletteDiyEffect("H6199", 8, 9, 60, ((255, 0, 0),)), "scene-code:24"),
+        ("H617A", SingleEffect(0, 0, 50, ((255, 0, 0),)), "custom:24"),
+        ("H617E", WORKSHOP_PROTOCOL_FIXTURES[0].content("H617A"), "custom:24"),
+        ("H617A", OpaqueContent("shared_scene", {"model": "H6199"}), "custom:24"),
+    ],
+)
+async def test_legacy_workspace_selector_migration_is_content_scoped(model, content, expected) -> None:
+    workspace = ActiveEffectWorkspace(
+        config_entry_id="entry-a",
+        model=model,
+        selector_label="Custom",
+        content=content,
+        origin=Origin(SourceKind.AUTHORED),
+        observable_signature="custom:24",
+        updated_at="2026-08-26T00:00:00Z",
+        generation=1,
+    )
+    store = InMemoryVersionedDocumentStore({"devices": {"entry-a": workspace.to_dict()}})
+    repository = ActiveEffectWorkspaceRepository(store)
+    assert (await repository.async_load())[0].observable_signature == expected
+    await repository.async_flush()
+    reloaded = ActiveEffectWorkspaceRepository(store)
+    assert (await reloaded.async_load())[0].observable_signature == expected
+
+
+def test_legacy_selector_policy_is_route_semantic() -> None:
+    profile = ModelProfile(
+        "Synthetic profile",
+        legacy_effect_selector_domains=(
+            ("diy-route", LegacyEffectSelectorDomain.DIY),
+            ("scene-route", LegacyEffectSelectorDomain.SCENE),
+        ),
+    )
+
+    assert legacy_effect_selector_domain(profile, "diy-route") is LegacyEffectSelectorDomain.DIY
+    assert legacy_effect_selector_domain(profile, "unknown-route") is None
+    assert legacy_deployment_effect_signature(profile, "diy-route", 321) == "custom:321"
+    assert legacy_deployment_effect_signature(profile, "scene-route", 321) == "scene-code:321"
+    assert legacy_deployment_effect_signature(profile, "scene-route", None) is None
+    assert legacy_deployment_effect_signature(profile, "unknown-route", 321) is None
 
 
 @pytest.mark.parametrize("model", ["H6159", "H617A"])

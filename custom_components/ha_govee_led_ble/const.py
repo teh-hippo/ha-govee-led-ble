@@ -120,6 +120,11 @@ class ReadDomain(StrEnum):
     OTHER = "other"
 
 
+class LegacyEffectSelectorDomain(StrEnum):
+    DIY = "diy"
+    SCENE = "scene"
+
+
 _IDENTITY_READ_DOMAINS = frozenset(
     {
         ReadDomain.FIRMWARE,
@@ -394,6 +399,7 @@ class ModelProfile:
     supports_ripple_speed: bool = False
     default_effect_families_override: frozenset[str] | None = None
     effect_readback: str = "none"
+    legacy_effect_selector_domains: tuple[tuple[str, LegacyEffectSelectorDomain], ...] = ()
 
     @property
     def basic_controls_only(self) -> bool:
@@ -427,6 +433,14 @@ class ModelProfile:
         return operations if self.command_operations is None else operations & self.command_operations
 
     def __post_init__(self) -> None:
+        selector_routes = [route for route, _domain in self.legacy_effect_selector_domains]
+        if len(set(selector_routes)) != len(selector_routes):
+            raise ValueError("Legacy effect selector routes must be unique")
+        if any(
+            not isinstance(route, str) or not route or not isinstance(domain, LegacyEffectSelectorDomain)
+            for route, domain in self.legacy_effect_selector_domains
+        ):
+            raise ValueError("Legacy effect selector routes require a route and selector domain")
         if self.color_temp_range is not None:
             if (
                 not isinstance(self.color_temp_range, tuple)
@@ -839,6 +853,13 @@ _H617A_PROFILE = ModelProfile(
     scene_catalogue_sku="H617A",
     advanced_scene_carrier=(1013, 11836),
     effect_readback="diy_code_only",
+    legacy_effect_selector_domains=(
+        ("h617a_painted", LegacyEffectSelectorDomain.DIY),
+        ("h617a_single", LegacyEffectSelectorDomain.DIY),
+        ("h617a_multi", LegacyEffectSelectorDomain.DIY),
+        ("workshop", LegacyEffectSelectorDomain.SCENE),
+        ("shared_scene", LegacyEffectSelectorDomain.SCENE),
+    ),
     # supports_white_brightness stays false because static subcommand 0x02 is segment-relative
     # brightness, not the level of a white colour-temperature mode. It compounds with master
     # brightness and is exposed through set_segment_brightness, including all-segment writes;
@@ -2391,6 +2412,13 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         legacy_scene_catalogue_sku="H617A",
         advanced_scene_carrier=(29884, 41599),
         effect_readback="diy_code_only",
+        legacy_effect_selector_domains=(
+            ("h617a_painted", LegacyEffectSelectorDomain.DIY),
+            ("h617a_single", LegacyEffectSelectorDomain.DIY),
+            ("h617a_multi", LegacyEffectSelectorDomain.DIY),
+            ("workshop", LegacyEffectSelectorDomain.SCENE),
+            ("shared_scene", LegacyEffectSelectorDomain.SCENE),
+        ),
     ),
     "H617C": ModelProfile(
         "H617C LED Strip",
@@ -3382,6 +3410,11 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         advanced_scene_carrier=(29884, 41599),
         default_effect_families_override=frozenset({EFFECT_FAMILY_VIDEO}),
         effect_readback="scene_selector_for_user_effects",
+        legacy_effect_selector_domains=(
+            ("workshop", LegacyEffectSelectorDomain.SCENE),
+            ("shared_scene", LegacyEffectSelectorDomain.SCENE),
+            ("palette_diy", LegacyEffectSelectorDomain.SCENE),
+        ),
     ),
     "H705A": ModelProfile(
         "H705A Permanent Outdoor Lights",
