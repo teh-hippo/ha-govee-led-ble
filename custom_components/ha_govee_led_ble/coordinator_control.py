@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 from bleak.exc import BleakError
 
-from .const import ModelProfile, ReadDomain, same_control_profile
+from .const import BrightnessEvidence, ModelProfile, ReadDomain, same_control_profile
 from .control_arbiter import ControlIntent, async_control_intent
 from .generated_protocol_adapter import build_brightness_query, build_power_query
 
@@ -147,6 +147,8 @@ class ControlStateCheckpoint:
                 if field in {"is_on", "brightness_pct"}:
                     known = "_power_known" if field == "is_on" else "_brightness_pct_known"
                     setattr(self._coordinator, known, False)
+                    if field == "brightness_pct":
+                        self._coordinator._brightness_pct_evidence = BrightnessEvidence.UNKNOWN
                 elif field in {"rgb_color", "color_temp_kelvin"}:
                     self._coordinator._static_colour_known = False
                     self._coordinator._static_rgb_known = False

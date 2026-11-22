@@ -9,6 +9,7 @@ from homeassistant.components.light import ColorMode
 from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.ha_govee_led_ble.const import (
+    BrightnessEvidence,
     ReadDomain,
     SupportQuality,
     device_profile,
@@ -216,7 +217,11 @@ async def test_ceiling_entity_panel_brightness_is_one_write_without_readback(has
     client.write_gatt_char.side_effect = RuntimeError("failed write")
     with pytest.raises(HomeAssistantError):
         await light.async_turn_on(brightness=200)
-    assert c.capture_effect_control_state() == before
+    after = c.capture_effect_control_state()
+    assert replace(after, brightness_pct_known=before.brightness_pct_known) == before
+    assert c.brightness_pct == 50
+    assert c._brightness_pct_evidence is BrightnessEvidence.UNKNOWN
+    assert after.brightness_pct_known is False
 
 
 @pytest.mark.parametrize("model", ["H60A1", "H60A6"])
@@ -265,9 +270,12 @@ async def test_write_only_brightness_restores_as_retained_knowledge(hass, monkey
     await light._async_restore_brightness()
     expected = 50 if type(stored) is int and stored == 128 else 100
     assert c.brightness_pct == expected and c._field_revisions == {}
+    assert c._brightness_pct_evidence in {BrightnessEvidence.DEFAULT, BrightnessEvidence.RESTORED}
+    assert not c._brightness_pct_known
     c.pact_type, c.pact_code = 2, 1
     c._resolve_device_profile()
     assert c.brightness_pct == expected
+    assert not c._brightness_pct_known
 
 
 @pytest.mark.parametrize("model", ["H60A1", "H60A6"])

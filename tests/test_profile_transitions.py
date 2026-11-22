@@ -1,6 +1,8 @@
 """Profile changes invalidate batches and control completion, not accepted power."""
 
 import asyncio
+from dataclasses import replace
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -8,11 +10,17 @@ from bleak.exc import BleakError
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.update_coordinator import UpdateFailed
 
-from custom_components.ha_govee_led_ble.const import device_profile
-from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.const import BrightnessEvidence, ModelProfile, ReadDomain, device_profile
+from custom_components.ha_govee_led_ble.coordinator import (
+    GoveeBLECoordinator,
+    _brightness_value_survives_profile_transition,
+    _equal_profile_requires_identity_reset,
+)
 from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
+from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.effect_deployments import PriorControlState
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
+    build_brightness,
     build_brightness_query,
     build_firmware_query,
     build_hardware_query,
@@ -35,6 +43,92 @@ PACT1_STATE_REPLIES = {
 }
 
 
+def _identity_transform(packet: bytes) -> bytes:
+    return packet
+
+
+def _changed_brightness_transform(packet: bytes) -> bytes:
+    return b"\x00" + packet
+
+
+def _brightness_profile(**changes):
+    profile = ModelProfile(
+        "Generic brightness profile",
+        command_grammar="H617A",
+        command_ack_grammar="H617A",
+        command_operations=frozenset({"power", "brightness"}),
+        status_grammar="generic-status",
+        brightness_wire_range=(20, 254),
+        outbound_transform=_identity_transform,
+        read_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS}),
+        profile_pact_dependent=True,
+    )
+    return replace(profile, **changes)
+
+
+@pytest.mark.parametrize(
+    "evidence",
+    [
+        BrightnessEvidence.DEFAULT,
+        BrightnessEvidence.RESTORED,
+        BrightnessEvidence.RETAINED,
+        BrightnessEvidence.OBSERVED,
+        BrightnessEvidence.DELIVERED,
+    ],
+)
+def test_brightness_presentation_survives_compatible_generic_transition(evidence):
+    profile = _brightness_profile()
+    assert _brightness_value_survives_profile_transition(profile, profile, evidence)
+
+
+@pytest.mark.parametrize("evidence", [BrightnessEvidence.PENDING, BrightnessEvidence.UNKNOWN])
+def test_unresolved_brightness_does_not_survive_generic_transition(evidence):
+    profile = _brightness_profile()
+    assert not _brightness_value_survives_profile_transition(profile, profile, evidence)
+
+
+@pytest.mark.parametrize(
+    "target",
+    [
+        _brightness_profile(command_grammar="changed-command"),
+        _brightness_profile(brightness_wire_range=(1, 100)),
+        _brightness_profile(command_operations=frozenset({"power"})),
+        _brightness_profile(outbound_transform=_changed_brightness_transform),
+    ],
+)
+@pytest.mark.parametrize("evidence", [BrightnessEvidence.RESTORED, BrightnessEvidence.DELIVERED])
+def test_brightness_presentation_requires_compatible_write_semantics(target, evidence):
+    assert not _brightness_value_survives_profile_transition(_brightness_profile(), target, evidence)
+
+
+def test_brightness_compatibility_ignores_unrelated_transform_identity():
+    previous = _brightness_profile()
+    equivalent = replace(previous, outbound_transform=lambda packet: packet)
+
+    assert _brightness_value_survives_profile_transition(previous, equivalent, BrightnessEvidence.DELIVERED)
+
+
+def test_observed_brightness_requires_compatible_read_semantics():
+    previous = _brightness_profile()
+    changed_status = replace(previous, status_grammar="changed-status")
+    write_only = replace(previous, read_domains=frozenset({ReadDomain.POWER}))
+
+    assert not _brightness_value_survives_profile_transition(previous, changed_status, BrightnessEvidence.OBSERVED)
+    assert not _brightness_value_survives_profile_transition(previous, write_only, BrightnessEvidence.OBSERVED)
+    assert _brightness_value_survives_profile_transition(previous, changed_status, BrightnessEvidence.DELIVERED)
+    assert _brightness_value_survives_profile_transition(previous, write_only, BrightnessEvidence.DELIVERED)
+
+
+def test_equal_basic_profile_resets_only_for_real_stateful_identity_change():
+    basic = _brightness_profile(command_operations=frozenset({"power", "brightness"}))
+    full = replace(basic, command_operations=frozenset({"power", "brightness", "static"}))
+
+    assert _equal_profile_requires_identity_reset(basic, identity_changed=True, preserve_state=False)
+    assert not _equal_profile_requires_identity_reset(basic, identity_changed=False, preserve_state=False)
+    assert not _equal_profile_requires_identity_reset(basic, identity_changed=True, preserve_state=True)
+    assert not _equal_profile_requires_identity_reset(full, identity_changed=True, preserve_state=False)
+
+
 @pytest.fixture
 def device(hass, monkeypatch):
     c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url=None)
@@ -45,6 +139,206 @@ def device(hass, monkeypatch):
     monkeypatch.setattr(c, "_ensure_connected", AsyncMock(return_value=client))
     monkeypatch.setattr(c, "_renew_foreground_lease", lambda: None)
     return c, client
+
+
+@pytest.mark.parametrize(
+    ("evidence", "expected_value", "expected_evidence"),
+    [
+        (BrightnessEvidence.RESTORED, 44, BrightnessEvidence.RESTORED),
+        (BrightnessEvidence.OBSERVED, 44, BrightnessEvidence.RETAINED),
+        (BrightnessEvidence.DELIVERED, 44, BrightnessEvidence.RETAINED),
+        (BrightnessEvidence.PENDING, 100, BrightnessEvidence.DEFAULT),
+        (BrightnessEvidence.UNKNOWN, 100, BrightnessEvidence.DEFAULT),
+    ],
+)
+def test_profile_transition_applies_generic_brightness_provenance(
+    hass, monkeypatch, evidence, expected_value, expected_evidence
+):
+    previous = _brightness_profile()
+    target = replace(previous, segment_count=2)
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H617A", configuration_url=None)
+    coordinator.profile = previous
+    coordinator.brightness_pct = 44
+    coordinator._set_brightness_evidence(evidence)
+    monkeypatch.setattr(
+        "custom_components.ha_govee_led_ble.coordinator.get_profile",
+        lambda _model: previous,
+    )
+    monkeypatch.setattr(
+        "custom_components.ha_govee_led_ble.coordinator.device_profile",
+        lambda *_args, **_kwargs: target,
+    )
+
+    coordinator._resolve_device_profile(identity_changed=True)
+
+    assert coordinator.brightness_pct == expected_value
+    assert coordinator._brightness_pct_evidence is expected_evidence
+    assert not coordinator._brightness_pct_known
+
+
+def test_equal_basic_profile_reinitializes_only_for_real_identity_transition(hass, monkeypatch):
+    profile = _brightness_profile(command_operations=frozenset({"power", "brightness"}))
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H617A", configuration_url=None)
+    coordinator.profile = profile
+    coordinator.color_mode = ParsedMode.COLOUR
+    monkeypatch.setattr(
+        "custom_components.ha_govee_led_ble.coordinator.get_profile",
+        lambda _model: profile,
+    )
+    monkeypatch.setattr(
+        "custom_components.ha_govee_led_ble.coordinator.device_profile",
+        lambda *_args, **_kwargs: profile,
+    )
+
+    generation = coordinator._profile_generation
+    coordinator._resolve_device_profile(identity_changed=False)
+    assert coordinator._profile_generation == generation and coordinator.color_mode is ParsedMode.COLOUR
+
+    coordinator._resolve_device_profile(identity_changed=True)
+    assert coordinator._profile_generation == generation + 1 and coordinator.color_mode is None
+
+
+async def test_duplicate_identity_resolution_does_not_interrupt_basic_brightness_write(hass, monkeypatch):
+    profile = _brightness_profile(
+        command_operations=frozenset({"power", "brightness"}),
+        brightness_wire_range=None,
+        outbound_transform=None,
+    )
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H617A", configuration_url=None)
+    coordinator.profile = profile
+    monkeypatch.setattr(
+        "custom_components.ha_govee_led_ble.coordinator.get_profile",
+        lambda _model: profile,
+    )
+    monkeypatch.setattr(
+        "custom_components.ha_govee_led_ble.coordinator.device_profile",
+        lambda *_args, **_kwargs: profile,
+    )
+    started, finish = asyncio.Event(), asyncio.Event()
+
+    async def pause_write(*_args, **_kwargs):
+        started.set()
+        await finish.wait()
+
+    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(side_effect=pause_write))
+    task = asyncio.create_task(
+        coordinator._async_write_packet(client, build_brightness(50, "H617A", profile=profile), arm_expected=True)
+    )
+    await started.wait()
+    generation = coordinator._profile_generation
+    expectation = coordinator._expected_state["brightness_pct"]
+
+    coordinator._resolve_device_profile(identity_changed=False)
+
+    assert coordinator._profile_generation == generation
+    assert coordinator._expected_state["brightness_pct"] == expectation
+    finish.set()
+    await task
+    assert coordinator._brightness_pct_evidence is BrightnessEvidence.DELIVERED
+
+
+def test_advertisement_caller_distinguishes_real_and_duplicate_identity_change(hass, monkeypatch):
+    profile = _brightness_profile(command_operations=frozenset({"power", "brightness"}))
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H617A", configuration_url=None)
+    coordinator.profile = profile
+    coordinator.pact_type, coordinator.pact_code = 3, 1
+    coordinator.brightness_pct = 50
+    coordinator._set_brightness_evidence(BrightnessEvidence.DELIVERED)
+    coordinator._expected_state["brightness_pct"] = (50, 1)
+    monkeypatch.setattr(
+        "custom_components.ha_govee_led_ble.coordinator.get_profile",
+        lambda _model: profile,
+    )
+    monkeypatch.setattr(
+        "custom_components.ha_govee_led_ble.coordinator.device_profile",
+        lambda *_args, **_kwargs: profile,
+    )
+    advertisement = SimpleNamespace(
+        pacts={(3, 2)},
+        invalid_version_seen=False,
+        supports_encryption=False,
+        supports_plaintext=False,
+    )
+    monkeypatch.setattr(
+        "custom_components.ha_govee_led_ble.coordinator.parse_govee_advertisement",
+        lambda _data: advertisement,
+    )
+    service_info = SimpleNamespace(name=None, manufacturer_data={1: b""})
+    generation = coordinator._profile_generation
+
+    coordinator._note_advertisement(service_info)
+
+    assert coordinator._profile_generation == generation + 1
+    assert coordinator.brightness_pct == 50
+    assert coordinator._brightness_pct_evidence is BrightnessEvidence.RETAINED
+    assert not coordinator._brightness_pct_known
+    assert "brightness_pct" not in coordinator._expected_state
+
+    coordinator._set_brightness_evidence(BrightnessEvidence.DELIVERED)
+    coordinator._expected_state["brightness_pct"] = (50, 1)
+    coordinator._note_advertisement(service_info)
+
+    assert coordinator._profile_generation == generation + 1
+    assert coordinator._brightness_pct_evidence is BrightnessEvidence.DELIVERED
+    assert coordinator._expected_state["brightness_pct"] == (50, 1)
+
+
+def test_restored_and_retained_brightness_are_not_recovery_authority(hass):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H617A", configuration_url=None)
+    coordinator._install_restored_brightness(44)
+    assert coordinator.capture_effect_control_state().brightness_pct_known is False
+
+    coordinator._set_brightness_evidence(BrightnessEvidence.DELIVERED)
+    assert coordinator.capture_effect_control_state().brightness_pct_known is None
+
+    coordinator._retire_brightness_authority()
+    assert coordinator._brightness_pct_evidence is BrightnessEvidence.RETAINED
+    assert coordinator.capture_effect_control_state().brightness_pct_known is False
+
+
+async def test_brightness_evidence_tracks_delivery_without_expiring_reorder_protection(hass):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H617A", configuration_url=None)
+    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
+
+    await coordinator._async_write_packet(client, build_brightness(50, "H617A"), arm_expected=True)
+
+    assert coordinator.brightness_pct == 50
+    assert coordinator._brightness_pct_evidence is BrightnessEvidence.DELIVERED
+    assert coordinator._brightness_pct_known and "brightness_pct" in coordinator._expected_state
+
+    coordinator._notify_callback(None, bytearray(frame("aa0432")))
+
+    assert coordinator._brightness_pct_evidence is BrightnessEvidence.OBSERVED
+    assert coordinator._brightness_pct_known and "brightness_pct" in coordinator._expected_state
+
+
+@pytest.mark.parametrize("failure", [RuntimeError("write failed"), asyncio.CancelledError()])
+async def test_brightness_physical_failure_invalidates_same_value_authority(hass, failure):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H617A", configuration_url=None)
+    coordinator.brightness_pct = 50
+    coordinator._set_brightness_evidence(BrightnessEvidence.OBSERVED)
+    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(side_effect=failure))
+
+    with pytest.raises(type(failure)):
+        await coordinator._async_write_packet(client, build_brightness(50, "H617A"), arm_expected=True)
+
+    assert coordinator.brightness_pct == 50
+    assert coordinator._brightness_pct_evidence is BrightnessEvidence.UNKNOWN
+    assert not coordinator._brightness_pct_known
+
+
+async def test_brightness_late_delivery_cannot_outlive_profile_generation(hass):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H617A", configuration_url=None)
+
+    async def advance_during_write(*_args, **_kwargs):
+        coordinator._advance_profile_generation()
+
+    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(side_effect=advance_during_write))
+    with pytest.raises(ValueError, match="profile changed during control write"):
+        await coordinator._async_write_packet(client, build_brightness(50, "H617A"), arm_expected=True)
+
+    assert coordinator._brightness_pct_evidence is BrightnessEvidence.UNKNOWN
+    assert not coordinator._brightness_pct_known
 
 
 async def test_colour_preparation_preserves_nontracked_protocol_identity(hass, monkeypatch):
