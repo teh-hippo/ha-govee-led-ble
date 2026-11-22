@@ -156,7 +156,7 @@ def test_support_quality_has_only_supported_and_experimental_states():
     }
     assert {
         model for model, profile in MODEL_PROFILES.items() if profile.support_quality is SupportQuality.EXPERIMENTAL
-    } == {"H6053", "H6093", "H6117", "H6127", "H6159", "H6179", "H619A", "H7025", "H705A"}
+    } == {"H6053", "H6093", "H6117", "H612A", "H6127", "H6159", "H6179", "H619A", "H7025", "H705A"}
 
 
 @pytest.mark.parametrize("pact", [(1, 1), (2, 1), (2, 2), (None, None), (3, 7)])
@@ -187,6 +187,38 @@ def test_h6125_is_an_exact_supported_profile_on_the_shared_dreamcolor_route():
     assert profile.supports_advanced_effects and not profile.supports_video_mode
     assert profile.brightness_wire_range is None and profile.outbound_transform is None
     assert supported_effect_categories("H6125") == ("scenes", "effects", "multi_layered", "reactive", "advanced")
+
+
+def test_h612a_has_exact_experimental_product_and_revision_contracts():
+    profile = MODEL_PROFILES["H612A"]
+
+    assert profile.support_quality is SupportQuality.EXPERIMENTAL and profile.confirmation_issue == 687
+    assert (profile.command_grammar, profile.status_grammar, profile.effect_grammar) == (
+        "H617A",
+        "H612A",
+        "H617A",
+    )
+    assert profile.extended_static_grammar == "H612A" and profile.setting_grammar == "H612A"
+    assert (profile.physical_ic_count, profile.segment_count, profile.segment_group_size) == (20, 10, 4)
+    assert profile.physical_ic_capacity == 20 and profile.segment_count_ic_divisor == 2
+    assert profile.whole_device_mask == 0x3FF and profile.color_temp_range == (2700, 6500)
+    assert profile.supports_power_on_behaviour and profile.strip_length_metres == (5,)
+    assert profile.scene_catalogue_sku == "H612A" and "H612A" in BLE_DISCOVERABLE_MODELS
+    assert model_from_ble_name("Govee_H612A_ABC") == "H612A"
+    assert len(profile.music_modes) == 11 and profile.advanced_scene_carrier == (29884, 41599)
+
+
+@pytest.mark.parametrize("pact", [(1, 1), (1, 2), (2, 1)])
+def test_h612a_known_pacts_grant_the_full_profile(pact):
+    assert device_profile("H612A", *pact) == MODEL_PROFILES["H612A"]
+
+
+@pytest.mark.parametrize("pact", [(None, None), (1, 3), (2, 2), (10, 1)])
+def test_h612a_unknown_pacts_keep_only_basic_controls(pact):
+    profile = device_profile("H612A", *pact)
+    assert profile.command_operations == frozenset({"power", "brightness"})
+    assert not profile.supports_rgb and not profile.supports_scenes and not profile.music_modes
+    assert not profile.supports_power_on_behaviour and profile.can_read(ReadDomain.PACT)
 
 
 def test_owner_confirmation_issues_are_exact_sku_and_cover_experimental_models():

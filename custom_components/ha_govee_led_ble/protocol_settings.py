@@ -21,6 +21,7 @@ from .protocol_core import (
     H60b2Control,
     H605cVideoSettings,
     H607cControl,
+    H612aSettings,
     H1771Bulk,
     H1771CommandWrite,
     H1771StatusQuery,
@@ -42,10 +43,15 @@ from .protocol_core import (
 from .protocol_h6199 import INSTALLATION_DIRECTIONS
 
 _NATIVE_SETTING_ROOTS = {"H607C": ("h607c_control", H607cControl), "H60B2": ("h60b2_control", H60b2Control)}
-_ORDINARY_SETTING_ROOTS = {"H6097": ("h6097_control", H6097Control), "H1AB2": ("h1ab2_settings", H1ab2Settings)}
+_ORDINARY_SETTING_ROOTS = {
+    "H6097": ("h6097_control", H6097Control),
+    "H1AB2": ("h1ab2_settings", H1ab2Settings),
+    "H612A": ("h612a_settings", H612aSettings),
+}
 _POWER_ON_QUERY_ROOTS = {
     "H6097": ("h6097_control.query", H6097Control.Query),
     "H1AB2": ("h1ab2_settings.power_on_query", H1ab2Settings.PowerOnQuery),
+    "H612A": ("h612a_settings.power_on_query", H612aSettings.PowerOnQuery),
 }
 
 
@@ -70,6 +76,18 @@ class StripCalibrationRequest:
 
 
 def _build_strip_calibration_operation(operation: str, profile: ModelProfile, *, ic_count: int | None = None) -> bytes:
+    if profile.setting_grammar == "H612A" and profile.strip_length_metres:
+        if operation not in H612aSettings.CalibrationOperation.__members__:
+            raise ValueError("Unsupported H612A strip calibration operation")
+        root = H612aSettings()
+        root.header, root.opcode = b"\x33", H612aSettings.Command.strip_calibration
+        body = _child(H612aSettings.CalibrationCommand, root)
+        body.operation = H612aSettings.CalibrationOperation[operation]
+        body.source = 0
+        body.ic_count = 0 if operation in {"start", "cancel", "confirm"} else ic_count or 0
+        body.unknown_tail = bytes(13)
+        root.body = body
+        return _serialize_xor(root)
     if profile.setting_grammar != "H1AB2" or not profile.strip_length_metres:
         raise ValueError("Unsupported strip calibration")
     root = H1ab2Settings()
@@ -93,6 +111,12 @@ def _build_strip_calibration_operation(operation: str, profile: ModelProfile, *,
 def build_strip_calibration(request: StripCalibrationRequest, profile: ModelProfile) -> tuple[bytes, ...]:
     """Compile a complete restoration or cut/endpoint/confirmation operation."""
     final_count = request.expected_ic_count(profile)
+    if profile.setting_grammar == "H612A":
+        return (
+            _build_strip_calibration_operation("start", profile),
+            _build_strip_calibration_operation("locate", profile, ic_count=final_count),
+            _build_strip_calibration_operation("confirm", profile),
+        )
     nominal_count = request.length_metres * profile.strip_ics_per_metre
     if request.final_ic_count is None:
         return (_build_strip_calibration_operation("restore", profile, ic_count=nominal_count),)

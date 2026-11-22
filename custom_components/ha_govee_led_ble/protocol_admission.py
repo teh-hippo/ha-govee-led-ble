@@ -123,6 +123,17 @@ def _check_ordinary_setting_packet(frame: bytes, profile: ModelProfile) -> bool:
             if operation == "strip_calibration" and profile.strip_length_metres:
                 body = setting.body
                 action = getattr(body.operation, "name", None)
+                if profile.setting_grammar == "H612A":
+                    if action in {"start", "cancel", "confirm"}:
+                        if body.source != 0 or body.ic_count != 0:
+                            raise ValueError("H612A calibration boundary command is invalid")
+                        return True
+                    capacity = (
+                        profile.physical_ic_capacity or max(profile.strip_length_metres) * profile.strip_ics_per_metre
+                    )
+                    if action == "locate" and body.source == 0 and 1 <= body.ic_count <= capacity:
+                        return True
+                    raise ValueError("H612A strip calibration is outside product capacity")
                 if action in {"start", "cancel", "confirm"}:
                     return True
                 capacity = max(profile.strip_length_metres) * profile.strip_ics_per_metre

@@ -458,7 +458,8 @@ def _status_frames_for_domain(domain: ReadDomain, model: str, profile: ModelProf
     if domain is ReadDomain.CONFIGURED_STRINGS:
         return (_status(0x0F, b"\x01"),)
     if domain is ReadDomain.PHYSICAL_IC_COUNT:
-        return (_status(0x40, b"\x00\x32"),)
+        count = profile.physical_ic_capacity or 50
+        return (_status(0x40, count.to_bytes(2, "big")),)
     if domain is ReadDomain.INSTALLATION_DIRECTION:
         return (_status(0x30, b"\x02"),)
     if domain is ReadDomain.CAMERA_HEALTH:
