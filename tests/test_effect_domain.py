@@ -17,7 +17,6 @@ from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.effect_catalogue import (
     H617A_WORKSHOP_APPLY_CODE,
     H617A_WORKSHOP_SCENE_TYPE,
-    H6199_PALETTE_DIY_APPLY_CODE,
     H6199_WORKSHOP_APPLY_CODE,
     MODEL_EFFECT_CATALOGUES,
     WORKSHOP_PROTOCOL_FIXTURES,
@@ -32,6 +31,7 @@ from custom_components.ha_govee_led_ble.effect_compiler import (
     compile_h617a,
     compile_music_profile,
     compile_video_profile,
+    resolve_diy_code,
     validate_compiled_geometry,
 )
 from custom_components.ha_govee_led_ble.effect_contracts import (
@@ -243,7 +243,7 @@ def test_effect_route_uses_declared_activation_operations(model, workflow, opera
     assert require_effect_route(model, workflow, profile=profile) == profile.effect_grammar
 
 
-@pytest.mark.parametrize("grammar", ["unknown", "H6199"])
+@pytest.mark.parametrize("grammar", ["unknown"])
 def test_custom_diy_route_requires_an_available_diy_codec(grammar):
     profile = replace(MODEL_PROFILES["H617A"], command_grammar=grammar)
     with pytest.raises(ValueError, match="activation route"):
@@ -791,12 +791,13 @@ def test_palette_portability_requires_an_equivalent_variant(variant, compatible)
 
     assert (result.state is CompatibilityState.COMPATIBLE) is compatible
     if compatible:
-        compiled = compile_application(item, "H6199")
+        compiled = compile_application(item, "H6199", diy_code=73)
         assert compiled.content_kind == "palette_diy"
-        assert compiled.diy_code == H6199_PALETTE_DIY_APPLY_CODE
+        assert compiled.diy_code == 73
+        assert compiled.selector_kind == "diy"
     else:
         with pytest.raises(ValueError, match="equivalent"):
-            compile_application(item, "H6199")
+            compile_application(item, "H6199", diy_code=73)
     assert item.to_dict() == original
 
 
@@ -843,8 +844,14 @@ def test_profile_compatibility_rejects_model_or_mode_mismatches(item, model, rea
 def test_compile_application_retains_the_target_slot_constraints() -> None:
     custom = LibraryItem.new("Custom", SingleEffect(0, 0, 50, ((255, 0, 0),)))
 
-    with pytest.raises(ValueError, match="expected 401"):
-        compile_application(custom, "H6199", diy_code=24)
+    with pytest.raises(ValueError, match="approved observed DIY code"):
+        compile_application(custom, "H6199")
+    assert compile_application(custom, "H6199", diy_code=24).diy_code == 24
+    assert compatibility(custom, "H6199").state is CompatibilityState.COMPATIBLE
+    assert resolve_diy_code(custom, model="H6199") is None
+    for invalid in (0, 241):
+        with pytest.raises(ValueError, match="integer from 1 to 240"):
+            compile_application(custom, "H6199", diy_code=invalid)
     with pytest.raises(ValueError, match="requires a DIY code"):
         compile_application(custom, "H617A")
 
@@ -1271,7 +1278,7 @@ def test_editor_contract_reports_first_slice_boundaries() -> None:
     assert h6199.single is CapabilityState.UNSUPPORTED
     assert h6199.palette_diy is CapabilityState.SUPPORTED
     assert h6199.advanced is CapabilityState.SUPPORTED
-    assert h6199.to_dict()["readback"] == "scene_selector_for_user_effects"
+    assert h6199.to_dict()["readback"] == "diy_code_only"
     assert unknown.to_dict()["readback"] == "none"
     assert h6076.to_dict()["readback"] == "diy_code_only"
     assert h6102.to_dict()["readback"] == "none"

@@ -5,13 +5,14 @@ meta:
   imports:
     - govee_shared
     - govee_segment_page
+    - h6199_diy_selector
     - speculative/h6199_control_payload
 doc: |
   H6199 20-byte status reply.  The final byte is the XOR of bytes 0 through 18.
   Segment groups carry 4+4+4+3 records; the final four bytes remain opaque.
-  DIY, static Gradient, direction30, position31, status32 and A3
-  extensions are speculative reconstructed/direct-register evidence, not
-  device-verified; payloads remain in speculative/h6199_control_payload.ksy.
+  Native DIY0a item selection and readback are evidenced on Pact2/1
+  HW3.02.01/FW1.10.04.  Static Gradient, direction30, position31, status32 and A3
+  extensions remain speculative reconstructed/direct-register evidence.
 seq:
   - id: header
     contents: [0xaa]
@@ -175,7 +176,7 @@ types:
             'mode_sel::video': video_state
             'mode_sel::music': music_state
             'mode_sel::scene': scene_state
-            'mode_sel::diy': h6199_control_payload::diy_selector
+            'mode_sel::diy': h6199_diy_selector::diy_selector
             'mode_sel::static_colour': h6199_control_payload::static_detail
   music_state:
     seq:

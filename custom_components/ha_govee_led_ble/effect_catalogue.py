@@ -454,6 +454,13 @@ def requires_approved_diy_slot(model: str) -> bool:
     return catalogue is not None and catalogue.diy_slot_policy == "approved_observed"
 
 
+def approved_diy_slot_range(model: str) -> tuple[int, int]:
+    catalogue = MODEL_EFFECT_CATALOGUES.get(model)
+    if catalogue is None:
+        return 0, 0xFFFF
+    return catalogue.diy_slot_min, catalogue.diy_slot_max
+
+
 def resolve_catalogue_template(
     model: str,
     template_id: str,

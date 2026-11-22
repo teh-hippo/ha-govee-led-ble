@@ -1425,7 +1425,15 @@ async def test_workshop_preview_verifies_evidenced_selector(
             else WORKSHOP_PROTOCOL_FIXTURES[0].content(model),
         )
     )
-    compiled = compile_application(item, model, diy_code=resolve_diy_code(item, model=model))
+    approved_code = 73 if kind == "palette" else None
+    if approved_code is not None:
+        coordinator.diy_code = approved_code
+        coordinator.refresh_state = AsyncMock(return_value=True)
+    compiled = compile_application(
+        item,
+        model,
+        diy_code=approved_code or resolve_diy_code(item, model=model),
+    )
     assert isinstance(compiled, CompiledEffect)
 
     await manager.async_queue_snapshot(
@@ -1435,23 +1443,27 @@ async def test_workshop_preview_verifies_evidenced_selector(
         sequence=1,
         updated_at="2026-08-17T00:00:00Z",
         item=item,
+        diy_code=approved_code,
     )
     await manager.async_wait_idle("entry-a")
 
     coordinator.async_observe_effect.assert_awaited_once_with(
         {
             "is_on": True,
-            "diy_code" if kind == "basic" else "scene_code": compiled.diy_code,
+            "diy_code" if kind in {"basic", "palette"} else "scene_code": compiled.diy_code,
         },
         timeout=0.1,
     )
     assert any(event.phase is PreviewPhase.CONFIRMED for event in events)
-    assert coordinator.diy_code == (compiled.diy_code if kind == "basic" else None)
-    assert coordinator._scene_code == (None if kind == "basic" else compiled.diy_code)
+    assert coordinator.diy_code == (compiled.diy_code if kind in {"basic", "palette"} else None)
+    assert coordinator._scene_code == (None if kind in {"basic", "palette"} else compiled.diy_code)
     assert manager._active_workspaces is not None
     workspace = manager._active_workspaces.get("entry-a")
     assert workspace is not None
-    assert workspace.observable_signature == f"{'custom' if kind == 'basic' else 'scene-code'}:{compiled.diy_code}"
+    assert (
+        workspace.observable_signature
+        == f"{'custom' if kind in {'basic', 'palette'} else 'scene-code'}:{compiled.diy_code}"
+    )
     await manager.async_shutdown()
 
 

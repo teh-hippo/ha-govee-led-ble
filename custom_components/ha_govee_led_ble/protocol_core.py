@@ -123,6 +123,9 @@ H6199CommandAck = load_generated_class("h6199_command_ack", "H6199CommandAck")
 H6199ControlPayload = load_generated_class("h6199_control_payload", "H6199ControlPayload")
 
 
+H6199DiySelector = load_generated_class("h6199_diy_selector", "H6199DiySelector")
+
+
 H6199EffectUpload = load_generated_class("h6199_effect_upload", "H6199EffectUpload")
 
 

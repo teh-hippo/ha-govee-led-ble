@@ -51,14 +51,15 @@ async def test_non_video_failure_restores_power_without_white_balance(coordinato
     )
     c.white_balance_flag, c.white_balance_red, c.white_balance_blue = 0, 21, 5
     # The hidden resident mode is unknown: power-off recovery cannot prove appearance.
-    c._notify_callback(None, bytearray(frame("aa0504ffff")))
+    mode_reply = "aa050a4900" if kind == "custom" else "aa0504ffff"
+    c._notify_callback(None, bytearray(frame(mode_reply)))
     before = c.capture_effect_control_state()
     assert before.video_restore_controls is None
     wb = AsyncMock(side_effect=RuntimeError("optional white balance silent"))
     monkeypatch.setattr("custom_components.ha_govee_led_ble.coordinator_recovery.apply_white_balance", wb)
 
     async def refresh(request=DEFAULT_REFRESH_REQUEST):
-        for prefix in ("aa0100", "aa0464", "aa0504ffff"):
+        for prefix in ("aa0100", "aa0464", mode_reply):
             c._notify_callback(None, bytearray(frame(prefix)))
         return True
 
@@ -89,7 +90,11 @@ async def test_non_video_failure_restores_power_without_white_balance(coordinato
     )
     with pytest.raises(RuntimeError, match="effect write failed"):
         await getattr(engine, f"async_apply_{source}")(
-            c, LibraryItem.new("Failure", content), config_entry_id="entry-a", updated_at="2026-09-16T00:00:00Z"
+            c,
+            LibraryItem.new("Failure", content),
+            config_entry_id="entry-a",
+            updated_at="2026-09-16T00:00:00Z",
+            **({"diy_code": 73} if kind == "custom" else {}),
         )
     record = repository.snapshot().records[0]
     assert record.phase is DeploymentPhase.UNCERTAIN

@@ -66,6 +66,9 @@ test("canonical backend catalogue decodes through the production catalogue valid
     "relative_brightness",
     "blank_screen",
   ]);
+  expect(decoded.models.H6199.diy_slot_policy).toBe("approved_observed");
+  expect(decoded.models.H6199.diy_slot_min).toBe(1);
+  expect(decoded.models.H6199.diy_slot_max).toBe(240);
 });
 
 test("target catalogue limits reject inverted ranges and wire overflows", () => {
@@ -84,6 +87,10 @@ test("target catalogue limits reject inverted ranges and wire overflows", () => 
   payload.models.H6199.effects[0].rate_min = 61;
   payload.models.H6199.effects[0].rate_max = 60;
   expect(() => decodeCatalogue(payload)).toThrow("rate limits are inverted");
+  const slots = structuredClone(backendContracts.responses.custom_catalogue);
+  slots.models.H6199.diy_slot_min = 241;
+  slots.models.H6199.diy_slot_max = 240;
+  expect(() => decodeCatalogue(slots)).toThrow();
 });
 
 test("structural nine-colour imports and future catalogues do not widen shipped permission", () => {

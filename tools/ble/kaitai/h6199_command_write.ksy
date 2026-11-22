@@ -4,12 +4,13 @@ meta:
   endian: le
   imports:
     - govee_shared
+    - h6199_diy_selector
     - speculative/h6199_control_payload
 doc: |
   H6199 20-byte command frame.  The final byte is the XOR of bytes 0 through 18.
-  DIY0a, direction30, position31 and Gradient A3 extensions are
-  speculative exact-model reconstructed/direct-register evidence, not device-verified;
-  their payloads remain in speculative/h6199_control_payload.ksy.
+  Native DIY0a item selection is evidenced on Pact2/1 HW3.02.01/FW1.10.04.
+  Direction30, position31 and Gradient A3 extensions remain speculative exact-model
+  reconstructed/direct-register evidence in speculative/h6199_control_payload.ksy.
 seq:
   - id: header
     contents: [0x33]
@@ -91,7 +92,7 @@ types:
             'mode_sel::scene': scene_body
             'mode_sel::static_colour': static_colour_body
             'mode_sel::music': music_body
-            'mode_sel::diy': h6199_control_payload::diy_selector
+            'mode_sel::diy': h6199_diy_selector::diy_selector
   scene_body:
     seq:
       - id: scene_id

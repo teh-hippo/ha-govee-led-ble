@@ -1,6 +1,6 @@
 meta:
   id: h6199_control_payload
-  title: H6199 installation, Gradient and DIY selector payloads
+  title: H6199 installation and Gradient payloads
   endian: le
 doc: |
   H6199.  exact-model
@@ -10,9 +10,8 @@ doc: |
   Direction 0/1 means clockwise/anticlockwise; camera position 0/1 top/bottom.
   Camera 0 absent and 2 incompatible are untested; only 1 healthy was tested.
   A3 and static detail expose Color > Subsection > Gradient, not HA transition
-  duration or a proven visual blending algorithm.  DIY code254 readback does
-  not establish populated content, uploads or playback.  Other revisions and
-  unknown tails remain unqualified.
+  duration or a proven visual blending algorithm.  Other revisions and unknown
+  tails remain unqualified.
 seq:
   - id: value
     type: u1
@@ -35,12 +34,6 @@ types:
       - id: value
         type: u1
         enum: camera_status
-      - id: unknown_tail
-        size-eos: true
-  diy_selector:
-    seq:
-      - id: code
-        type: u2
       - id: unknown_tail
         size-eos: true
   static_detail:

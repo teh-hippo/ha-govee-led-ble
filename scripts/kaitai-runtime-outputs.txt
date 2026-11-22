@@ -172,6 +172,7 @@ h6199_pact1_wire_write.py
 h6199_dreamview_frame.py
 h6199_command_ack.py
 h6199_control_payload.py
+h6199_diy_selector.py
 h6199_effect_upload.py
 h6199_status_query.py
 h6199_status_reply.py

@@ -255,6 +255,13 @@ export function decodeModelEffectCatalogue(
       ["fixed", "approved_observed"],
       `${name} DIY slot policy`,
     ),
+    diy_slot_min: integerValue(catalogue.diy_slot_min ?? 0, `${name} DIY slot minimum`, 0, 65_535),
+    diy_slot_max: integerValue(
+      catalogue.diy_slot_max ?? 65_535,
+      `${name} DIY slot maximum`,
+      integerValue(catalogue.diy_slot_min ?? 0, `${name} DIY slot minimum`, 0, 65_535),
+      65_535,
+    ),
     advanced_create: catalogue.advanced_create === undefined
       ? true
       : booleanValue(catalogue.advanced_create, `${name} unrestricted advanced creation`),

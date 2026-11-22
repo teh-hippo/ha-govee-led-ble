@@ -17,9 +17,9 @@ from .effect_catalogue import (
     H617A_WORKSHOP_SCENE_TYPE,
     H6099_DIY_APPLY_CODE,
     H6199_PALETTE_DIY_APPLY_CODE,
-    H6199_PALETTE_DIY_APPLY_MUSIC_CODE,
     H6199_WORKSHOP_APPLY_CODE,
     H6199_WORKSHOP_APPLY_MUSIC_CODE,
+    approved_diy_slot_range,
     native_diy_template_contract,
     requires_approved_diy_slot,
     validate_effect_eligibility,
@@ -494,15 +494,19 @@ def _target_compatibility(item: LibraryItem, model: str, *, profile: ModelProfil
             )
     if isinstance(content, PaintedEffect | SingleEffect | MultiEffect | PaletteDiyEffect):
         try:
-            if requires_approved_diy_slot(model) and isinstance(content, PaintedEffect | SingleEffect | MultiEffect):
+            if requires_approved_diy_slot(model) and isinstance(
+                content, PaintedEffect | SingleEffect | MultiEffect | PaletteDiyEffect
+            ):
                 require_effect_route(
                     model,
                     CapabilityWorkflow.PAINTED
                     if isinstance(content, PaintedEffect)
                     else CapabilityWorkflow.SINGLE
                     if isinstance(content, SingleEffect)
-                    else CapabilityWorkflow.MULTI,
-                    ("H6046", "H6053", "H617A", "H1AB2", "H6099", "H6181"),
+                    else CapabilityWorkflow.MULTI
+                    if isinstance(content, MultiEffect)
+                    else CapabilityWorkflow.PALETTE_DIY,
+                    ("H6046", "H6053", "H617A", "H1AB2", "H6099", "H6181", "H6199"),
                     profile=profile,
                 )
             else:
@@ -629,7 +633,7 @@ def compile_effect(
     if isinstance(item.content, PaletteDiyEffect):
         return compile_h6199(
             item,
-            H6199_PALETTE_DIY_APPLY_CODE if diy_code is None else diy_code,
+            diy_code,
             model=model,
             profile=profile,
         )
@@ -760,18 +764,32 @@ def resolve_diy_code(
         if not isinstance(requested, int) or isinstance(requested, bool) or not 0 <= requested <= 0xFFFF:
             raise ValueError("DIY code must be an integer from 0 to 65535")
         return requested
-    if isinstance(content, RetainedSceneEffect | PaletteDiyEffect):
+    if isinstance(content, RetainedSceneEffect):
         model = content.model if model is None else model
         if content.model != model:
             raise ValueError(f"effect targets {content.model}, not {model}")
-        if isinstance(content, RetainedSceneEffect):
-            _, expected = _retained_scene_upload_route(model, content.application, content.carrier, profile=profile)
-        else:
-            require_effect_route(model, CapabilityWorkflow.PALETTE_DIY, ("H6199",), profile=profile)
-            expected = H6199_PALETTE_DIY_APPLY_CODE
+        _, expected = _retained_scene_upload_route(model, content.application, content.carrier, profile=profile)
         if requested is not None and requested != expected:
             raise ValueError(f"{model} has no evidenced activation packet for the requested slot; expected {expected}")
         return expected
+    if isinstance(content, PaletteDiyEffect):
+        model = content.model if model is None else model
+        if content.model != model:
+            raise ValueError(f"effect targets {content.model}, not {model}")
+        require_effect_route(model, CapabilityWorkflow.PALETTE_DIY, ("H6199",), profile=profile)
+        if requires_approved_diy_slot(model):
+            if requested is None:
+                return None
+            minimum, maximum = approved_diy_slot_range(model)
+            if not isinstance(requested, int) or isinstance(requested, bool) or not minimum <= requested <= maximum:
+                raise ValueError(f"{model} approved DIY code must be an integer from {minimum} to {maximum}")
+            return requested
+        if requested is not None and requested != H6199_PALETTE_DIY_APPLY_CODE:
+            raise ValueError(
+                f"{model} has no evidenced activation packet for the requested slot; "
+                f"expected {H6199_PALETTE_DIY_APPLY_CODE}"
+            )
+        return H6199_PALETTE_DIY_APPLY_CODE
     if isinstance(content, PaintedEffect | SingleEffect | MultiEffect):
         workflow = _effect_workflow(content)
         profile = get_profile("H617A" if model is None else model) if profile is None else profile
@@ -1304,7 +1322,7 @@ def _paint_groups(segments: tuple[tuple[int, int, int] | None, ...]) -> tuple[Di
 
 def compile_h6199(
     item: LibraryItem,
-    diy_code: int = H6199_PALETTE_DIY_APPLY_CODE,
+    diy_code: int | None = None,
     *,
     model: str = "H6199",
     profile: ModelProfile | None = None,
@@ -1315,7 +1333,9 @@ def compile_h6199(
     result = compatibility(item, model, profile=profile)
     if result.state is not CompatibilityState.COMPATIBLE:
         raise ValueError("; ".join(result.reasons))
-    resolve_diy_code(item, diy_code, model=model, profile=profile)
+    resolved_diy_code = resolve_diy_code(item, diy_code, model=model, profile=profile)
+    if resolved_diy_code is None:
+        raise ValueError(f"{model} palette DIY application requires an approved observed DIY code")
 
     content = item.content
     if not isinstance(content, PaletteDiyEffect):
@@ -1326,13 +1346,7 @@ def compile_h6199(
         content.speed,
         content.palette,
     )
-    activation = build_scene_activation(
-        model,
-        H6199_PALETTE_DIY_APPLY_CODE,
-        H6199_PALETTE_DIY_APPLY_MUSIC_CODE,
-        scene_type=H617A_WORKSHOP_SCENE_TYPE,
-        profile=profile,
-    )
+    activation = build_diy_activation(resolved_diy_code, model, profile=profile)
     digest = sha256(b"".join((*upload, activation))).hexdigest()
     return CompiledEffect(
         item_id=str(item.id),
@@ -1340,9 +1354,9 @@ def compile_h6199(
         model=model,
         content_kind="palette_diy",
         workflow=_effect_workflow(content),
-        diy_code=H6199_PALETTE_DIY_APPLY_CODE,
+        diy_code=resolved_diy_code,
         activation_mode=ActivationMode.CUSTOM,
-        selector_kind="scene",
+        selector_kind="diy",
         expected_effect=None,
         upload_packets=tuple(upload),
         activation_packet=activation,
