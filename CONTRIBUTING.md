@@ -139,6 +139,8 @@ Profiles own product facts, Kaitai owns wire structure, and shared runtime opera
 - Distinguish admission, preparation, physical attempt, completed delivery and independent confirmation.
   Track physical attempts explicitly and qualify observations independently of optimistic state and expired expectations.
   Write-only delivery completes after required acknowledgements.
+  Missing independent readback for readable Studio deployments remains uncertain, without replay or rollback solely to obtain confirmation.
+  The first upload attempt invalidates active workspace attribution for its overwritten selector, not unrelated selectors.
   Rollback and retransmission require failure evidence beyond missing readback.
 
 ### Resource ownership

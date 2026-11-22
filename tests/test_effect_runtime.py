@@ -530,22 +530,56 @@ async def test_profile_failure_restores_origin_only_after_successful_physical_re
             assert observed.confidence is ObservationConfidence.UNKNOWN
 
 
-async def test_partial_observation_does_not_confirm_or_repeat_activation(hass: HomeAssistant) -> None:
+@pytest.mark.parametrize("model", ["H617A", "H6199"])
+@pytest.mark.parametrize("source", ["saved", "snapshot"])
+@pytest.mark.parametrize("collision", [False, True])
+async def test_partial_observation_does_not_confirm_or_repeat_activation(
+    hass: HomeAssistant, model, source, collision
+) -> None:
     repository, cache = await _repositories(hass)
+    workspaces = ActiveEffectWorkspaceRepository(InMemoryVersionedDocumentStore())
+    await workspaces.async_load()
+    target_signature = "custom:800" if model == "H617A" else "scene-code:401"
+    previous_signature = target_signature if collision else "custom:24" if model == "H617A" else "scene-code:402"
+    previous_workspace = replace(_flow_workspace(), model=model, observable_signature=previous_signature)
+    workspaces.set(previous_workspace)
     coordinator = _coordinator()
-    coordinator.diy_code = 800
+    coordinator.model = model
+    coordinator.profile = get_profile(model)
+    coordinator.diy_code = (800 if collision else 24) if model == "H617A" else None
+    coordinator.scene_code = (401 if collision else 402) if model == "H6199" else None
     coordinator.async_observe_effect = AsyncMock(return_value=None)
-    item = _item()
-    result = await EffectDeploymentEngine(repository, cache).async_apply_saved(
+    coordinator.async_restore_effect_control_state = AsyncMock(return_value=True)
+    item = (
+        LibraryItem.new("Fade", PaletteDiyEffect("H6199", 0, 0, 20, ((30, 0, 0), (0, 0, 30))))
+        if model == "H6199"
+        else _item()
+    )
+    compiled = compile_application(item, model, diy_code=800 if model == "H617A" else None, profile=coordinator.profile)
+    assert isinstance(compiled, CompiledEffect)
+    engine = EffectDeploymentEngine(repository, cache, workspaces)
+    apply = engine.async_apply_saved if source == "saved" else engine.async_apply_snapshot
+    result = await apply(
         coordinator,
         item,
         config_entry_id="entry-a",
         updated_at="2026-08-11T00:00:00Z",
+        diy_code=800 if model == "H617A" else None,
     )
-    assert result.phase is DeploymentPhase.APPLIED
-    assert result.verification_confidence is ObservationConfidence.WRITE_COMPLETED
+    assert result.phase is DeploymentPhase.UNCERTAIN
+    assert result.error_code == "device_state_unconfirmed"
+    assert result.verification_confidence is ObservationConfidence.UNKNOWN
+    assert repository.get(result.operation_id) == result
+    assert result.prior_state is not None
     assert coordinator.async_observe_effect.await_count == 2
-    assert coordinator.send_command.await_args_list == [call(packet) for packet in compile_h617a(item, 800).packets]
+    assert coordinator.send_command.await_args_list == [call(packet) for packet in compiled.packets]
+    coordinator.async_restore_effect_control_state.assert_not_awaited()
+    assert workspaces.get("entry-a") == (None if collision else previous_workspace)
+    observed = cache.get("entry-a")
+    assert observed is not None
+    assert observed.confidence is (ObservationConfidence.UNKNOWN if collision else previous_workspace.confidence)
+    assert observed.matched_operation_id is None
+    assert observed.active_effect is None
 
 
 def _coordinator(*, readable: bool = True):
@@ -2977,9 +3011,9 @@ async def test_profile_delivery_without_readback_does_not_replay_or_restore(hass
         config_entry_id="entry-a",
         updated_at="2026-11-14T00:00:00Z",
     )
-    assert result.phase is DeploymentPhase.APPLIED
-    assert result.verification_confidence is ObservationConfidence.WRITE_COMPLETED
-    assert result.error_code is None
+    assert result.phase is DeploymentPhase.UNCERTAIN
+    assert result.verification_confidence is ObservationConfidence.UNKNOWN
+    assert result.error_code == "device_state_unconfirmed"
     assert [entry.args[0] for entry in coordinator.send_command.await_args_list] == list(compiled.packets)
     coordinator.async_restore_effect_control_state.assert_not_awaited()
 
