@@ -2631,34 +2631,44 @@ class GoveeBLECoordinator(
 
     def _authorization_profile(self) -> ModelProfile:
         """Read the last reconciled capabilities without changing coordinator state."""
+
+        def qualify_geometry(profile: ModelProfile) -> ModelProfile:
+            if profile.segment_count_ic_divisor is not None and not self._physical_ic_count_confirmed:
+                return replace(profile, physical_ic_count=None)
+            return profile
+
         if get_profile(self.model).reconciles_marker_pact and self._h607c_pact_conflict:
-            return replace(self.profile, command_operations=frozenset())
+            return qualify_geometry(replace(self.profile, command_operations=frozenset()))
         if self.profile.projector_grammar is not None and not self.identity_fields_confirmed(frozenset({"pact"})):
-            return replace(
-                self.profile,
-                projector_control_revision=None,
-                boolean_controls=self.profile.boolean_controls - {"dreamview_laser"},
-                command_operations=(
-                    self.profile.command_operations - {"projector"}
-                    if self.profile.command_operations is not None
-                    else None
-                ),
+            return qualify_geometry(
+                replace(
+                    self.profile,
+                    projector_control_revision=None,
+                    boolean_controls=self.profile.boolean_controls - {"dreamview_laser"},
+                    command_operations=(
+                        self.profile.command_operations - {"projector"}
+                        if self.profile.command_operations is not None
+                        else None
+                    ),
+                )
             )
         if get_profile(self.model).requires_pact_confirmation and not self.identity_fields_confirmed(
             frozenset({"pact"})
         ):
-            return device_profile(self.model, None, None)
+            return qualify_geometry(device_profile(self.model, None, None))
         fields = self.profile.profile_identity_fields | self.profile.scene_identity_fields
         if not fields or self.identity_fields_confirmed(fields):
-            return self.profile
+            return qualify_geometry(self.profile)
         if self.model == "H6102":
-            return self._h6102_authorization_profile()
-        return device_profile(
-            self.model,
-            self.pact_type,
-            self.pact_code,
-            firmware=self.fw_version if self.identity_fields_confirmed(frozenset({"fw_version"})) else None,
-            hardware=self.hw_version if self.identity_fields_confirmed(frozenset({"hw_version"})) else None,
+            return qualify_geometry(self._h6102_authorization_profile())
+        return qualify_geometry(
+            device_profile(
+                self.model,
+                self.pact_type,
+                self.pact_code,
+                firmware=self.fw_version if self.identity_fields_confirmed(frozenset({"fw_version"})) else None,
+                hardware=self.hw_version if self.identity_fields_confirmed(frozenset({"hw_version"})) else None,
+            )
         )
 
     @property
@@ -2733,8 +2743,17 @@ class GoveeBLECoordinator(
 
     def _require_mask_transaction(self) -> None:
         if (
-            self.profile.configured_string_counts and not self._configured_strings_confirmed
-        ) or not self._has_mask_transaction():
+            (self.profile.configured_string_counts and not self._configured_strings_confirmed)
+            or (
+                self.profile.segment_count_ic_divisor is not None
+                and (
+                    not self._physical_ic_count_confirmed
+                    or self.profile.physical_ic_count is None
+                    or not self.profile.can_read(ReadDomain.PHYSICAL_IC_COUNT)
+                )
+            )
+            or not self._has_mask_transaction()
+        ):
             raise ValueError("Device layout changed or is unknown; refresh and retry")
 
     @asynccontextmanager
@@ -2757,7 +2776,11 @@ class GoveeBLECoordinator(
                     client, deadline=time.monotonic() + STATE_QUERY_TIMEOUT
                 ):
                     raise ValueError("Cannot confirm configured bulb layout; refresh and retry")
-                if self.profile.segment_count_ic_divisor is not None and self.profile.physical_ic_count is None:
+                if self.profile.segment_count_ic_divisor is not None and (
+                    not self._physical_ic_count_confirmed or self.profile.physical_ic_count is None
+                ):
+                    if not self.profile.can_read(ReadDomain.PHYSICAL_IC_COUNT):
+                        raise ValueError("Cannot confirm installed geometry; refresh and retry")
                     deadline = time.monotonic() + STATE_QUERY_TIMEOUT
                     baseline = {"physical_ic_count": self._field_revisions.get("physical_ic_count", 0)}
                     await self._async_write_packet(
@@ -2767,6 +2790,7 @@ class GoveeBLECoordinator(
                     )
                     if (
                         not await self._wait_for_revisions(baseline, {}, deadline)
+                        or not self._physical_ic_count_confirmed
                         or self.profile.physical_ic_count is None
                     ):
                         raise ValueError("Cannot confirm installed geometry; refresh and retry")

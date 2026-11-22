@@ -428,6 +428,9 @@ async def test_issue_429_six_operations_settle_without_replaying_kelvin(
             if advertisement_at == "during":
                 advertise_off()
             return
+        if packet[1] == 0x40:
+            reply(0x40, (physical_count or c.profile.physical_ic_count).to_bytes(2, "big"))
+            return
         if packet[1] == 5:
             kelvin = actual_kelvin if model in {"H66A0", "H1A42"} and len(selected) == count else 0
             reply(5, [0x15, 0, *kelvin.to_bytes(2, "big")])

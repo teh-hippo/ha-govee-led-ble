@@ -21,6 +21,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_brightness_query,
     build_colour_mode_query,
     build_configured_strings_query,
+    build_physical_ic_count_query,
     build_power_on_behaviour,
     build_power_on_behaviour_query,
     build_power_query,
@@ -177,6 +178,89 @@ async def test_reported_layout_change_while_waiting_invalidates_prepared_upper_m
     client.write_gatt_char.assert_not_awaited()
     assert c.profile.segment_count == expected_count and c.control_write_attempts == 0
     assert c._mask_transaction is None
+
+
+@pytest.mark.parametrize("device", ["H1AB2", "H61F5", "H612A", "H705A"], indirect=True)
+async def test_mask_transaction_qualifies_declared_physical_geometry(device, monkeypatch):
+    c, client, receive = device
+    if c.model == "H612A":
+        c.pact_type, c.pact_code = 1, 1
+        c._confirmed_identity_fields.add("pact")
+        c._resolve_device_profile()
+    if c.profile.configured_string_counts:
+        c.configured_strings = c.profile.configured_string_counts[-1]
+        c._configured_strings_confirmed = True
+        monkeypatch.setattr(c, "_read_configured_strings", AsyncMock(return_value=True))
+    reported_count = 12
+    nominal_count = c.profile.physical_ic_count
+    assert nominal_count is not None and not c._physical_ic_count_confirmed
+    assert c.effect_authorization_profile.physical_ic_count is None
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet == build_physical_ic_count_query(c.model, profile=c.profile):
+            receive(None, bytearray(_packet(0xAA, 0x40, reported_count.to_bytes(2, "big"))))
+
+    client.write_gatt_char = AsyncMock(side_effect=write)
+    async with c.async_mask_transaction():
+        assert c._physical_ic_count_confirmed
+        assert c.effect_authorization_profile.physical_ic_count == 12
+        assert c.profile.physical_ic_count == reported_count
+        assert c.profile.physical_ic_count != nominal_count
+
+    assert [call.args[1] for call in client.write_gatt_char.await_args_list] == [
+        build_physical_ic_count_query(c.model, profile=c.profile)
+    ]
+
+
+@pytest.mark.parametrize("device", ["H1AB2", "H61F5", "H612A", "H705A"], indirect=True)
+async def test_mask_transaction_reuses_only_current_subscription_geometry(device, monkeypatch):
+    c, client, receive = device
+    if c.model == "H612A":
+        c.pact_type, c.pact_code = 1, 1
+        c._confirmed_identity_fields.add("pact")
+        c._resolve_device_profile()
+    if c.profile.configured_string_counts:
+        c.configured_strings = c.profile.configured_string_counts[-1]
+        c._configured_strings_confirmed = True
+        monkeypatch.setattr(c, "_read_configured_strings", AsyncMock(return_value=True))
+    receive(None, bytearray(_packet(0xAA, 0x40, [0, 12])))
+    client.write_gatt_char = AsyncMock()
+    assert c._physical_ic_count_confirmed
+
+    async with c.async_mask_transaction():
+        assert c.profile.physical_ic_count == 12
+
+    client.write_gatt_char.assert_not_awaited()
+    c._clear_client_state(client)
+    assert not c._physical_ic_count_confirmed
+    assert c.effect_authorization_profile.physical_ic_count is None
+
+
+@pytest.mark.parametrize("device", ["H1AB2", "H61F5", "H612A", "H705A"], indirect=True)
+async def test_missing_current_geometry_cannot_rely_on_declared_nominal_count(device, monkeypatch):
+    c, client, _receive = device
+    if c.model == "H612A":
+        c.pact_type, c.pact_code = 1, 1
+        c._confirmed_identity_fields.add("pact")
+        c._resolve_device_profile()
+    if c.profile.configured_string_counts:
+        c.configured_strings = c.profile.configured_string_counts[-1]
+        c._configured_strings_confirmed = True
+        monkeypatch.setattr(c, "_read_configured_strings", AsyncMock(return_value=True))
+    nominal_count = c.profile.physical_ic_count
+    assert nominal_count is not None and not c._physical_ic_count_confirmed
+    client.write_gatt_char = AsyncMock()
+    monkeypatch.setattr(c, "_wait_for_revisions", AsyncMock(return_value=False))
+
+    with pytest.raises(ValueError, match="Cannot confirm installed geometry"):
+        async with c.async_mask_transaction():
+            pytest.fail("nominal geometry was admitted without subscription confirmation")
+
+    assert c.profile.physical_ic_count == nominal_count
+    assert not c._physical_ic_count_confirmed
+    assert client.write_gatt_char.await_args_list[0].args[1] == build_physical_ic_count_query(
+        c.model, profile=c.profile
+    )
 
 
 @pytest.mark.parametrize("device", ["H7020"], indirect=True)
