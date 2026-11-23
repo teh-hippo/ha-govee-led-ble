@@ -1,7 +1,7 @@
 """Video Apply traffic through Studio and the real coordinator."""
 
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -12,9 +12,10 @@ from homeassistant.core import HomeAssistant
 
 from custom_components.ha_govee_led_ble.const import DOMAIN
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator_refresh import DEFAULT_REFRESH_REQUEST
 from custom_components.ha_govee_led_ble.effect_deployments import DeploymentPhase, ObservationConfidence
 from custom_components.ha_govee_led_ble.effect_domain import RelativeBrightness, VideoProfile, effect_content_to_dict
-from custom_components.ha_govee_led_ble.effect_websocket import WS_APPLY_SNAPSHOT
+from custom_components.ha_govee_led_ble.effect_websocket import WS_APPLY, WS_APPLY_SNAPSHOT
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_blank_screen,
     build_blank_screen_query,
@@ -215,10 +216,12 @@ class _H6199Peripheral:
         self.delivered.append(frame_bytes)
 
 
+@pytest.mark.parametrize("source_kind", ["snapshot", "saved_effect"])
 async def test_registered_studio_video_apply_baseline(
     hass: HomeAssistant,
     hass_ws_client,
     monkeypatch,
+    source_kind: str,
 ) -> None:
     backend = await _setup_backend(hass)
     coordinator = GoveeBLECoordinator(
@@ -268,22 +271,38 @@ async def test_registered_studio_video_apply_baseline(
                 RelativeBrightness(100, 100, 100, 100),
                 False,
             )
-            await connection.send_json_auto_id(
-                {
-                    "type": WS_APPLY_SNAPSHOT,
-                    "config_entry_id": entry.entry_id,
-                    "name": f"#712 local baseline {mode}",
-                    "content": effect_content_to_dict(content),
-                    "updated_at": datetime.now(UTC).isoformat(),
-                }
-            )
+            message: dict[str, object] = {
+                "config_entry_id": entry.entry_id,
+                "updated_at": datetime.now(UTC).isoformat(),
+            }
+            if source_kind == "snapshot":
+                message.update(
+                    {
+                        "type": WS_APPLY_SNAPSHOT,
+                        "name": f"#712 local snapshot {mode}",
+                        "content": effect_content_to_dict(content),
+                    }
+                )
+            else:
+                mutation = await backend.application.async_create_library_item(
+                    name=f"#712 local saved {mode}",
+                    content=effect_content_to_dict(content),
+                )
+                message.update(
+                    {
+                        "type": WS_APPLY,
+                        "item_id": str(mutation.item.id),
+                        "expected_version": mutation.item.version,
+                    }
+                )
+            await connection.send_json_auto_id(message)
             response = await connection.receive_json()
             assert response["success"], response
             deployment = response["result"]["deployment"]
             assert deployment["phase"] == DeploymentPhase.CONFIRMED.value
             assert deployment["verification_confidence"] == ObservationConfidence.SETTINGS_MATCH.value
             exchanged = peripheral.packets[before:]
-            assert len(exchanged) == (25 if index == 0 else 19)
+            assert len(exchanged) == (24 if index == 0 else 18)
             runs.append(
                 {
                     "index": index + 1,
@@ -300,7 +319,7 @@ async def test_registered_studio_video_apply_baseline(
         await backend.preview.async_shutdown()
         await coordinator.async_shutdown()
 
-    assert [run["exchange_count"] for run in runs] == [25, 19]
+    assert [run["exchange_count"] for run in runs] == [24, 18]
     for run in runs:
         packets = [bytes.fromhex(packet) for packet in run["packets"]]
         mode_write = next(index for index, packet in enumerate(packets) if packet[0:2] == b"\x33\x05")
@@ -308,7 +327,7 @@ async def test_registered_studio_video_apply_baseline(
             build_power_query("H6199"),
             build_colour_mode_query("H6199"),
         ]
-        assert packets.count(build_blank_screen_query("H6199")) == 4
+        assert packets.count(build_blank_screen_query("H6199")) == 3
         assert packets.count(build_white_balance_query("H6199")) == 2
         assert packets.count(build_relative_brightness_query("H6199")) == 2
     assert len(peripheral.accepted) == 9
@@ -316,6 +335,186 @@ async def test_registered_studio_video_apply_baseline(
     assert peripheral.state.video_mode == "game"
     assert peripheral.state.relative_brightness == (100, 100, 100, 100)
     assert peripheral.state.blank_screen is False
+
+
+async def test_studio_apply_rejects_blank_screen_policy_change_before_first_write(
+    hass: HomeAssistant,
+    hass_ws_client,
+    monkeypatch,
+) -> None:
+    backend = await _setup_backend(hass)
+    coordinator = GoveeBLECoordinator(
+        hass,
+        "11:22:33:44:55:66",
+        "H6199",
+        configuration_url="test",
+    )
+    set_qualified_identity(coordinator)
+    peripheral = _H6199Peripheral(coordinator)
+    client = MagicMock(
+        is_connected=True,
+        write_gatt_char=peripheral.write_gatt_char,
+        disconnect=AsyncMock(),
+    )
+    coordinator._client = client
+    coordinator._notification_token = object()
+    coordinator._notify_started_monotonic = time.monotonic()
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
+    changed = False
+
+    def transform(packet: bytes) -> bytes:
+        nonlocal changed
+        if packet[0] == 0x33 and not changed:
+            changed = True
+            coordinator._notify_callback(None, _reply(build_blank_screen(True, "H6199", 1, 20, 240)))
+        return packet
+
+    coordinator.profile = replace(coordinator.profile, outbound_transform=transform)
+    entry = SimpleNamespace(
+        entry_id="entry-a",
+        domain=DOMAIN,
+        state=ConfigEntryState.LOADED,
+        runtime_data=coordinator,
+        title="Local H6199",
+        options={},
+    )
+    monkeypatch.setattr(
+        hass.config_entries,
+        "async_get_entry",
+        lambda entry_id: entry if entry_id == entry.entry_id else None,
+    )
+    connection = await hass_ws_client(hass)
+    try:
+        await connection.send_json_auto_id(
+            {
+                "type": WS_APPLY_SNAPSHOT,
+                "config_entry_id": entry.entry_id,
+                "name": "#712 changed policy before first write",
+                "content": effect_content_to_dict(
+                    VideoProfile(
+                        "H6199",
+                        "movie",
+                        True,
+                        50,
+                        False,
+                        50,
+                        17,
+                        RelativeBrightness(100, 100, 100, 100),
+                        False,
+                    )
+                ),
+                "updated_at": datetime.now(UTC).isoformat(),
+            }
+        )
+        response = await connection.receive_json()
+        assert response["success"] is False
+        assert "Blank-screen policy changed after preparation" in response["error"]["message"]
+        assert not any(packet[0] == 0x33 for packet in peripheral.packets)
+    finally:
+        await connection.close()
+        await backend.preview.async_shutdown()
+        await coordinator.async_shutdown()
+
+
+@pytest.mark.parametrize("source_kind", ["snapshot", "saved_effect"])
+@pytest.mark.parametrize("initially_on", [False, True])
+async def test_studio_apply_rejects_filtered_policy_during_preparation(
+    hass: HomeAssistant,
+    hass_ws_client,
+    monkeypatch,
+    source_kind: str,
+    initially_on: bool,
+) -> None:
+    backend = await _setup_backend(hass)
+    coordinator = GoveeBLECoordinator(
+        hass,
+        "11:22:33:44:55:66",
+        "H6199",
+        configuration_url="test",
+    )
+    set_qualified_identity(coordinator)
+    peripheral = _H6199Peripheral(coordinator)
+    peripheral.state.is_on = initially_on
+    client = MagicMock(
+        is_connected=True,
+        write_gatt_char=peripheral.write_gatt_char,
+        disconnect=AsyncMock(),
+    )
+    coordinator._client = client
+    coordinator._notification_token = object()
+    coordinator._notify_started_monotonic = time.monotonic()
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
+    refresh_state = coordinator.refresh_state
+    filtered = False
+
+    async def refresh_with_filtered_policy(request=DEFAULT_REFRESH_REQUEST):
+        nonlocal filtered
+        refreshed = await refresh_state(request)
+        if not filtered and "blank_screen" in request.display_settings:
+            filtered = True
+            coordinator._expected_state["blank_screen_detection"] = (99, float("inf"))
+            coordinator._notify_callback(
+                None,
+                _reply(build_blank_screen(True, "H6199", 1, 20, 240)),
+            )
+        return refreshed
+
+    monkeypatch.setattr(coordinator, "refresh_state", refresh_with_filtered_policy)
+    entry = SimpleNamespace(
+        entry_id="entry-a",
+        domain=DOMAIN,
+        state=ConfigEntryState.LOADED,
+        runtime_data=coordinator,
+        title="Local H6199",
+        options={},
+    )
+    monkeypatch.setattr(
+        hass.config_entries,
+        "async_get_entry",
+        lambda entry_id: entry if entry_id == entry.entry_id else None,
+    )
+    content = VideoProfile(
+        "H6199",
+        "movie",
+        True,
+        50,
+        False,
+        50,
+        17,
+        RelativeBrightness(100, 100, 100, 100),
+        False,
+    )
+    connection = await hass_ws_client(hass)
+    try:
+        if source_kind == "snapshot":
+            message: dict[str, object] = {
+                "type": WS_APPLY_SNAPSHOT,
+                "config_entry_id": entry.entry_id,
+                "name": "#712 filtered policy",
+                "content": effect_content_to_dict(content),
+                "updated_at": datetime.now(UTC).isoformat(),
+            }
+        else:
+            mutation = await backend.application.async_create_library_item(
+                name="#712 saved filtered policy",
+                content=effect_content_to_dict(content),
+            )
+            message = {
+                "type": WS_APPLY,
+                "config_entry_id": entry.entry_id,
+                "item_id": str(mutation.item.id),
+                "expected_version": mutation.item.version,
+                "updated_at": datetime.now(UTC).isoformat(),
+            }
+        await connection.send_json_auto_id(message)
+        response = await connection.receive_json()
+        assert response["success"] is False
+        assert "blank-screen policy" in response["error"]["message"]
+        assert not any(packet[0] == 0x33 for packet in peripheral.packets)
+    finally:
+        await connection.close()
+        await backend.preview.async_shutdown()
+        await coordinator.async_shutdown()
 
 
 async def test_studio_apply_reacquires_policy_before_blank_screen_write(

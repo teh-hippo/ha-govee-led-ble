@@ -199,6 +199,7 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     _segment_groups_observed: set[int]
     _initialized_music_parameters: set[str]
     _blank_screen_notification_revision: int
+    _blank_screen_policy_revision: int
     _dreamview_private_write: bool
     _upload_ack: PendingUploadAck | None
     _domain_revisions: dict[StatusDomain, int]

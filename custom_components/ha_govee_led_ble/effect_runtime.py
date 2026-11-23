@@ -124,18 +124,12 @@ class _PreparedBlankScreenPolicy:
     def capture(
         cls,
         coordinator: GoveeBLECoordinator,
-        prior_state: PriorControlState,
+        policy: tuple[int, int, int],
     ) -> _PreparedBlankScreenPolicy:
-        values = (
-            prior_state.blank_screen_detection,
-            prior_state.blank_screen_low_brightness_duration_seconds,
-            prior_state.blank_screen_same_tone_duration_seconds,
-        )
-        detection, low_duration, same_duration = values
-        if detection is None or low_duration is None or same_duration is None:
-            raise RuntimeError("The prepared blank-screen policy is incomplete")
+        if coordinator._blank_screen_policy_revision != coordinator._blank_screen_notification_revision:
+            raise ValueError("The current blank-screen policy was invalidated; refresh and retry")
         return cls(
-            (detection, low_duration, same_duration),
+            policy,
             coordinator._blank_screen_notification_revision,
             coordinator._client,
             coordinator._notification_token,
@@ -150,6 +144,7 @@ class _PreparedBlankScreenPolicy:
             or coordinator._profile_generation != self.profile_generation
             or coordinator._authorization_generation != self.authorization_generation
             or coordinator._blank_screen_notification_revision != self.notification_revision
+            or coordinator._blank_screen_policy_revision != self.notification_revision
             or (
                 coordinator.blank_screen_detection,
                 coordinator.blank_screen_low_brightness_duration_seconds,
@@ -284,7 +279,7 @@ async def async_apply_compiled_profile(
         expected_values: Mapping[str, Any] | None = None,
         on_write: Callable[[], None] | None = None,
     ) -> None:
-        if defer_confirmation and packet[1] in {0xA9, 0xAE} and state_values is not None:
+        if defer_confirmation and packet[1] in {0xA9, 0xAE, 0xB6} and state_values is not None:
             for field in state_values:
                 coordinator._expected_state.pop(field, None)
             if packet[1] == 0xA9 and "blank_screen" in state_values:
@@ -893,7 +888,7 @@ class EffectDeploymentEngine:
                     if isinstance(compiled, CompiledVideoProfile):
                         require_video_mode(coordinator.profile, coordinator)
                         require_video_controls(coordinator.profile, coordinator, requested_video_controls(compiled))
-                    refreshed = await self._async_prepare_prior_state(coordinator, compiled)
+                    refreshed, prepared_blank_screen = await self._async_prepare_prior_state(coordinator, compiled)
                     _validate_diy_slot_approval(coordinator, compiled)
                     validate_compiled_geometry(compiled, coordinator.effect_authorization_profile)
                     await coordinator.async_admit_effect_selection()
@@ -925,13 +920,6 @@ class EffectDeploymentEngine:
                         )
                     else:
                         prior_state = replace(prior_state, video_restore_controls=())
-                    prepared_blank_screen = (
-                        _PreparedBlankScreenPolicy.capture(coordinator, prior_state)
-                        if isinstance(compiled, CompiledVideoProfile)
-                        and compiled.blank_screen is not None
-                        and compiled.blank_screen_policy is None
-                        else None
-                    )
                     await transaction.store(replace(transaction.current, prior_state=prior_state))
                     await transaction.store(replace(transaction.current, phase=DeploymentPhase.UPLOADING))
                     written_blank_screen_policy: tuple[int, int, int] | None = None
@@ -1154,6 +1142,7 @@ class EffectDeploymentEngine:
         def capture_blank_screen_policy(policy: tuple[int, int, int]) -> None:
             nonlocal written_policy
             written_policy = policy
+
         await async_apply_compiled_profile(
             coordinator,
             compiled,
@@ -1508,10 +1497,10 @@ class EffectDeploymentEngine:
         self,
         coordinator: GoveeBLECoordinator,
         compiled: CompiledApplication,
-    ) -> bool:
+    ) -> tuple[bool, _PreparedBlankScreenPolicy | None]:
         refreshed = await async_prepare_effect_control_state(coordinator, require_restorable_static=False)
         if not isinstance(compiled, CompiledVideoProfile):
-            return refreshed
+            return refreshed, None
         profile = coordinator.profile
         refresh_display_settings = frozenset(
             setting
@@ -1539,7 +1528,7 @@ class EffectDeploymentEngine:
             compiled.relative_brightness is not None and not compiled.relative_brightness_inline
         )
         if not refresh_display_settings and not refresh_relative_brightness:
-            return refreshed
+            return refreshed, None
         if not refreshed or not await coordinator.refresh_state(
             RefreshRequest(
                 display_settings=refresh_display_settings, refresh_relative_brightness=refresh_relative_brightness
@@ -1600,7 +1589,18 @@ class EffectDeploymentEngine:
             and coordinator.white_balance_flag not in (0, 1)
         ):
             raise RuntimeError("The current white-balance mode cannot be safely restored")
-        return True
+        prepared_blank_screen = None
+        if compiled.blank_screen is not None and compiled.blank_screen_policy is None:
+            detection = coordinator.blank_screen_detection
+            low_duration = coordinator.blank_screen_low_brightness_duration_seconds
+            same_duration = coordinator.blank_screen_same_tone_duration_seconds
+            if detection is None or low_duration is None or same_duration is None:
+                raise RuntimeError("The current blank-screen policy is incomplete")
+            prepared_blank_screen = _PreparedBlankScreenPolicy.capture(
+                coordinator,
+                (detection, low_duration, same_duration),
+            )
+        return True, prepared_blank_screen
 
     def _capture_prior_state(
         self,

@@ -92,6 +92,7 @@ def coordinator(version: str | None = None) -> SimpleNamespace:
         _notify_started_monotonic=None,
         _authorization_generation=0,
         _blank_screen_notification_revision=0,
+        _blank_screen_policy_revision=0,
         _client=None,
         _notification_token=None,
         refresh_state=AsyncMock(return_value=True),
@@ -293,6 +294,39 @@ def test_h8604_video_registers_preserve_exact_wire_and_readback(hass) -> None:
     assert device._field_revisions["video_sensitivity"] == 1
     assert device._field_revisions["video_hdmi_input"] == 1
     assert device._field_revisions["video_color_calibration"] == 1
+
+
+async def test_h8604_final_observer_reads_each_requested_video_setting(hass) -> None:
+    device = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H8604", configuration_url=None)
+    device.pact_type, device.pact_code = 2, 1
+    device._resolve_device_profile()
+    responses = {
+        build_video_sensitivity(None, "H8604", profile=device.profile): frame("aaa901012a"),
+        build_hdmi_input(None, "H8604", profile=device.profile): frame("aaa9030203f0"),
+        build_hdmi_box_light_query("H8604", profile=device.profile): frame("aa0708000e010a0001000001020300"),
+        build_video_color_calibration(None, "H8604", profile=device.profile): frame("aaa905040a141e28"),
+    }
+    packets: list[bytes] = []
+
+    async def write_gatt_char(_uuid, packet, **_kwargs):
+        packet = bytes(packet)
+        packets.append(packet)
+        device._notify_callback(None, bytearray(responses[packet]))
+
+    device._client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(side_effect=write_gatt_char))
+    device._notification_token = object()
+    expected = {
+        "video_sensitivity": 42,
+        "video_hdmi_input": 3,
+        "hdmi_box_light": True,
+        "hdmi_box_brightness": 10,
+        "hdmi_box_automatic": True,
+        "hdmi_box_effect": 1,
+        "video_color_calibration": (10, 20, 30, 40),
+    }
+
+    assert await device.async_observe_effect(expected, timeout=0.1) is True
+    assert packets == list(responses)
 
 
 def test_h8604_video_template_uses_one_based_hdmi_inputs() -> None:

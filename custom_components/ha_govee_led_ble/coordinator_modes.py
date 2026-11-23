@@ -192,6 +192,7 @@ class _ActiveModeMixin(_CoordinatorBase):
         self.blank_screen_low_brightness_duration_seconds: int | None = None
         self.blank_screen_same_tone_duration_seconds: int | None = None
         self._blank_screen_notification_revision = 0
+        self._blank_screen_policy_revision = 0
 
     @property
     def _music_body(self) -> tuple[str, bytes] | None:

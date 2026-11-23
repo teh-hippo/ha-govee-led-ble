@@ -4688,6 +4688,19 @@ class GoveeBLECoordinator(
         query_white_balance = any(field.startswith("white_balance_") for field in expectations)
         query_blank_screen = any(field.startswith("blank_screen") for field in expectations)
         query_black_border = "black_border" in expectations
+        query_video_sensitivity = "video_sensitivity" in expectations
+        query_hdmi_input = "video_hdmi_input" in expectations
+        query_hdmi_box_light = bool(
+            set(expectations).intersection(
+                {
+                    "hdmi_box_light",
+                    "hdmi_box_brightness",
+                    "hdmi_box_automatic",
+                    "hdmi_box_effect",
+                }
+            )
+        )
+        query_video_color_calibration = "video_color_calibration" in expectations
         query_whole_relative_brightness = "whole_relative_brightness" in expectations
         query_relative_brightness = bool(
             set(expectations).intersection(
@@ -4719,6 +4732,10 @@ class GoveeBLECoordinator(
                     query_white_balance=query_white_balance,
                     query_blank_screen=query_blank_screen,
                     query_black_border=query_black_border,
+                    query_video_sensitivity=query_video_sensitivity,
+                    query_hdmi_input=query_hdmi_input,
+                    query_hdmi_box_light=query_hdmi_box_light,
+                    query_video_color_calibration=query_video_color_calibration,
                     query_relative_brightness=query_relative_brightness,
                     query_whole_relative_brightness=query_whole_relative_brightness,
                     query_segments=True if "segment_colors" in expectations else None,
