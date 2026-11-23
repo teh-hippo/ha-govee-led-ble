@@ -171,8 +171,8 @@ def test_rgbic_readback_revision_keeps_independently_supported_writes(pact, firm
 def test_h618a_pact3_hardware_uses_complete_readback_without_modern_scene_conversion():
     profile = device_profile("H618A", 3, 1, firmware="1.00.11", hardware="3.08.01")
 
-    assert profile.status_grammar == "H618A"
-    assert profile.segment_group_size == 3
+    assert profile.status_grammar == "H618A-pact3"
+    assert profile.segment_group_size == 4
     assert profile.outbound_transform is None
     assert profile.rgbic_scene_v0
     assert profile.scene_command_versions == {0}
