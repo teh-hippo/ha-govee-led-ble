@@ -3169,6 +3169,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     ),
     "H6159": ModelProfile(
         "H6159 RGB LED Strip",
+        support_quality=SupportQuality.SUPPORTED,
         confirmation_issue=636,
         reconciles_marker_pact=True,
         command_grammar="H6181",
