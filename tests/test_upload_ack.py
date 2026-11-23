@@ -193,7 +193,7 @@ async def test_upload_revalidates_its_own_identity_dependencies(selection_ready,
     repository = EffectDeploymentRepository(store)
     await repository.async_load()
     engine = EffectDeploymentEngine(repository)
-    monkeypatch.setattr(engine, "_async_prepare_prior_state", AsyncMock(return_value=False))
+    monkeypatch.setattr(engine, "_async_prepare_prior_state", AsyncMock(return_value=(False, None)))
     monkeypatch.setattr(c, "async_observe_effect", AsyncMock(return_value=True))
     monkeypatch.setattr(c, "async_restore_effect_control_state", AsyncMock(return_value=False))
     monkeypatch.setattr(coordinator_module, "UPLOAD_ACK_TIMEOUT", 1)
@@ -545,7 +545,7 @@ async def test_newer_scene_during_final_activation_invalidates_upload_completion
     repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
     await repository.async_load()
     engine = EffectDeploymentEngine(repository)
-    monkeypatch.setattr(engine, "_async_prepare_prior_state", AsyncMock(return_value=False))
+    monkeypatch.setattr(engine, "_async_prepare_prior_state", AsyncMock(return_value=(False, None)))
     monkeypatch.setattr(c, "async_restore_effect_control_state", AsyncMock(return_value=False))
     with pytest.raises(ModeTransitionSupersededError):
         await engine.async_apply_snapshot(
@@ -732,7 +732,7 @@ async def test_music_upload_without_verdict_does_not_restore_a_selector(selectio
     repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
     await repository.async_load()
     engine = EffectDeploymentEngine(repository)
-    monkeypatch.setattr(engine, "_async_prepare_prior_state", AsyncMock(return_value=False))
+    monkeypatch.setattr(engine, "_async_prepare_prior_state", AsyncMock(return_value=(False, None)))
     monkeypatch.setattr(c, "async_restore_effect_control_state", AsyncMock(return_value=False))
     uploaded = asyncio.Event()
 
@@ -1365,7 +1365,7 @@ async def test_saved_native_diy_apply_uses_ack_gate(selection_ready, monkeypatch
     repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
     await repository.async_load()
     engine = EffectDeploymentEngine(repository)
-    monkeypatch.setattr(engine, "_async_prepare_prior_state", AsyncMock(return_value=False))
+    monkeypatch.setattr(engine, "_async_prepare_prior_state", AsyncMock(return_value=(False, None)))
     monkeypatch.setattr(c, "async_restore_effect_control_state", AsyncMock(return_value=False))
     monkeypatch.setattr(c, "refresh_state", AsyncMock(return_value=True))
     monkeypatch.setattr(c, "async_observe_effect", AsyncMock(return_value=True))
@@ -1439,7 +1439,7 @@ async def test_palette_public_paths_wait_for_upload_verdict(
         repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
         await repository.async_load()
         engine = EffectDeploymentEngine(repository)
-        monkeypatch.setattr(engine, "_async_prepare_prior_state", AsyncMock(return_value=False))
+        monkeypatch.setattr(engine, "_async_prepare_prior_state", AsyncMock(return_value=(False, None)))
         monkeypatch.setattr(c, "async_restore_effect_control_state", AsyncMock(return_value=False))
         monkeypatch.setattr(c, "refresh_state", AsyncMock(return_value=False))
         apply = engine.async_apply_saved if path == "saved" else engine.async_apply_snapshot
@@ -1589,7 +1589,7 @@ async def test_workshop_public_paths_require_upload_ack(selection_ready, hass, m
         repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
         await repository.async_load()
         engine = EffectDeploymentEngine(repository)
-        monkeypatch.setattr(engine, "_async_prepare_prior_state", AsyncMock(return_value=False))
+        monkeypatch.setattr(engine, "_async_prepare_prior_state", AsyncMock(return_value=(False, None)))
         monkeypatch.setattr(c, "async_restore_effect_control_state", AsyncMock(return_value=False))
         monkeypatch.setattr(c, "refresh_state", AsyncMock(return_value=False))
         if ack == "accepted":

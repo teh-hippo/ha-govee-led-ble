@@ -343,7 +343,7 @@ async def test_prepared_scenes_recheck_revision_before_any_write(
     async def preflight(*args, **kwargs):
         if stage == "preflight":
             c.profile = after
-        return False
+        return (False, None) if path == "saved" else False
 
     write_packet = c._async_write_packet
 

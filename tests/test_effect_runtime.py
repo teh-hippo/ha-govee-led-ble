@@ -66,6 +66,7 @@ from custom_components.ha_govee_led_ble.effect_runtime import (
     EffectDeploymentEngine,
     _activation_matches,
     _record_signature,
+    async_apply_compiled_profile,
     async_prepare_effect_control_state,
     compiled_observation,
     observable_signature_for_compiled,
@@ -609,6 +610,7 @@ def _coordinator(*, readable: bool = True):
         music_color=None,
         _music_body_revision=0,
         _blank_screen_notification_revision=0,
+        _blank_screen_policy_revision=0,
         _profile_generation=0,
         _authorization_generation=0,
         send_command=AsyncMock(),
@@ -1436,7 +1438,7 @@ async def test_queued_user_does_not_interrupt_owned_native_profile_settings(h619
     repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
     await repository.async_load()
     engine = EffectDeploymentEngine(repository)
-    monkeypatch.setattr(engine, "_async_prepare_prior_state", AsyncMock(return_value=True))
+    monkeypatch.setattr(engine, "_async_prepare_prior_state", AsyncMock(return_value=(True, None)))
     item = LibraryItem.new(
         "Video", VideoProfile("H6199", "movie", True, 50, False, 50, 17, RelativeBrightness(10, 20, 30, 40), None)
     )
@@ -1874,7 +1876,7 @@ async def test_preview_admitted_during_apply_persistence_writes_latest_intent(ha
         await preflight(**kwargs)
 
     monkeypatch.setattr(store, "async_save", gated_save)
-    monkeypatch.setattr(engine, "_async_prepare_prior_state", AsyncMock(return_value=True))
+    monkeypatch.setattr(engine, "_async_prepare_prior_state", AsyncMock(return_value=(True, None)))
     monkeypatch.setattr(coordinator, "async_observe_effect", AsyncMock(return_value=True))
     monkeypatch.setattr(coordinator, "async_preview_preflight", preview_preflight)
     monkeypatch.setattr(coordinator, "_encryption", None)
@@ -2549,7 +2551,7 @@ async def test_h6181_music_is_applied_without_claiming_unavailable_selector_veri
     workspaces = ActiveEffectWorkspaceRepository(InMemoryVersionedDocumentStore())
     await workspaces.async_load()
     engine = EffectDeploymentEngine(repository, cache, workspaces)
-    monkeypatch.setattr(engine, "_async_prepare_prior_state", AsyncMock(return_value=True))
+    monkeypatch.setattr(engine, "_async_prepare_prior_state", AsyncMock(return_value=(True, None)))
     item = LibraryItem.new("Music", MusicProfile("H6181", mode, 73))
     apply = engine.async_apply_saved if source == "saved" else engine.async_apply_snapshot
     with _music_transport(coordinator) as physical:
@@ -3098,12 +3100,11 @@ async def test_profile_delivery_without_readback_does_not_replay_or_restore(hass
     coordinator.async_restore_effect_control_state.assert_not_awaited()
 
 
-@pytest.mark.parametrize(("source", "defer_settings"), [("saved", False), ("snapshot", True)])
+@pytest.mark.parametrize("source", ["saved", "snapshot"])
 async def test_h6199_video_profile_uses_native_writers_in_profile_order(
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,
     source: str,
-    defer_settings: bool,
 ) -> None:
     repository, cache = await _repositories(hass)
     coordinator = _profile_coordinator("H6199")
@@ -3128,7 +3129,6 @@ async def test_h6199_video_profile_uses_native_writers_in_profile_order(
         updated_at="2026-08-11T00:00:00Z",
     )
 
-    blank_write_options = {"on_write": ANY} if defer_settings else {}
     assert writers.mock_calls == [
         call.active_video_mode(
             coordinator,
@@ -3145,14 +3145,14 @@ async def test_h6199_video_profile_uses_native_writers_in_profile_order(
             on_write=ANY,
             write_guard=ANY,
         ),
-        call.white_balance(coordinator, (13, 3), writer=ANY, verify=not defer_settings),
-        call.relative_brightness(coordinator, (20, 30, 40, 50), writer=ANY, verify=not defer_settings),
+        call.white_balance(coordinator, (13, 3), writer=ANY, verify=False),
+        call.relative_brightness(coordinator, (20, 30, 40, 50), writer=ANY, verify=False),
         call.blank_screen(
             coordinator,
             True,
             writer=ANY,
-            verify=not defer_settings,
-            **blank_write_options,
+            verify=False,
+            on_write=ANY,
         ),
     ]
     assert {field: getattr(coordinator, field) for field in initial} == initial
@@ -3172,6 +3172,63 @@ async def test_h6199_video_profile_uses_native_writers_in_profile_order(
     assert result.verification_confidence is ObservationConfidence.SETTINGS_MATCH
     assert result.prior_state is not None
     assert result.prior_state.relative_brightness_left == 75
+
+
+async def test_h8604_deferred_box_light_write_retires_previous_expectations(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    coordinator = _profile_coordinator("H8604")
+    old_values = {
+        "hdmi_box_light": True,
+        "hdmi_box_brightness": 10,
+        "hdmi_box_automatic": True,
+        "hdmi_box_effect": 1,
+    }
+    coordinator._expected_state = {}
+    coordinator._expected_state.update((field, (value, float("inf"))) for field, value in old_values.items())
+    monkeypatch.setattr(
+        "custom_components.ha_govee_led_ble.effect_runtime.apply_active_video_mode",
+        AsyncMock(return_value=True),
+    )
+    item = LibraryItem.new(
+        "H8604 box light",
+        VideoProfile(
+            "H8604",
+            "movie",
+            True,
+            50,
+            False,
+            50,
+            None,
+            None,
+            None,
+            hdmi_box_light=True,
+            hdmi_box_brightness=20,
+            hdmi_box_automatic=True,
+            hdmi_box_effect=1,
+        ),
+    )
+    compiled = compile_application(item, "H8604")
+    writes: list[tuple[bytes, object]] = []
+
+    async def writer(packet, *, state_values=None, **_kwargs):
+        writes.append((packet, state_values))
+        assert not old_values.keys() & coordinator._expected_state.keys()
+
+    await async_apply_compiled_profile(
+        coordinator,
+        compiled,
+        writer=writer,
+        defer_confirmation=True,
+    )
+
+    assert len(writes) == 1
+    assert writes[0][1] == {
+        "hdmi_box_light": True,
+        "hdmi_box_brightness": 20,
+        "hdmi_box_automatic": True,
+        "hdmi_box_effect": 1,
+    }
 
 
 async def test_reduced_video_profile_skips_unsupported_companion_workflows(

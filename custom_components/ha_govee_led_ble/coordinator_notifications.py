@@ -811,6 +811,7 @@ class _NotificationMixin(_CoordinatorBase):
                 }
                 # A filtered reply is not fresh state, but still invalidates recovery's write guard.
                 self._blank_screen_notification_revision += 1
+                policy_accepted = False
                 # Legacy H6199 toggle writes retain live policy, even when the
                 # enable echo is stale. Full policy writes remain atomic.
                 if self.profile.status_grammar == "H6199" and not any(
@@ -819,10 +820,14 @@ class _NotificationMixin(_CoordinatorBase):
                     for field, setting_value in values.items():
                         if field != "blank_screen":
                             setattr(self, field, setting_value)
+                    policy_accepted = True
                 if self._accept_expected_values(values):
                     for field, setting_value in values.items():
                         setattr(self, field, setting_value)
                     observed = tuple(values)
+                    policy_accepted = True
+                if policy_accepted:
+                    self._blank_screen_policy_revision = self._blank_screen_notification_revision
         if getattr(generated.body.setting, "name", None) == "black_border" and self.profile.supports_black_border:
             border = bool(
                 getattr(
