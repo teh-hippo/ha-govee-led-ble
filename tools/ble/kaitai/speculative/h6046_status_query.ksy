@@ -28,6 +28,7 @@ seq:
         'query_domain::firmware': zero_body
         'query_domain::hardware': hardware_query_body
         'query_domain::identity': zero_body
+        'query_domain::pact': zero_body
         'query_domain::subordinate_20': zero_body
         'query_domain::subordinate_21': zero_body
         'query_domain::bar_enable': zero_body
@@ -46,6 +47,7 @@ enums:
     0x21: subordinate_21
     0x33: bar_enable
     0xa5: segments
+    0xef: pact
 types:
   colour_mode_query_body:
     doc: The exact profile selects zero or one; compatible H6053 controls use one.

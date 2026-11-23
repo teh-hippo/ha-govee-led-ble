@@ -33,6 +33,7 @@ seq:
         'status_domain::colour_mode': colour_mode_body
         'status_domain::firmware': h6046_status_reply::version_body
         'status_domain::hardware': h6046_status_reply::hardware_version_body
+        'status_domain::pact': pact_body
         'status_domain::bar_enable': h6046_status_reply::bar_enable_body
         'status_domain::segments': govee_segment_page(12, 4, false)
   - id: checksum
@@ -46,6 +47,7 @@ enums:
     0x07: hardware
     0x33: bar_enable
     0xa5: segments
+    0xef: pact
   mode_sel:
     0x04: scene
     0x0a: diy
@@ -54,6 +56,14 @@ enums:
     0x13: music
     0x15: static_colour
 types:
+  pact_body:
+    seq:
+      - id: pact_type
+        type: u2be
+      - id: pact_code
+        type: u1
+      - id: unknown_tail
+        size-eos: true
   colour_mode_body:
     seq:
       - id: mode

@@ -26,6 +26,7 @@ seq:
         'status_domain::colour_mode': h6053_status_reply::colour_mode_body
         'status_domain::firmware': h6046_status_reply::version_body
         'status_domain::hardware': h6046_status_reply::hardware_version_body
+        'status_domain::pact': h6053_status_reply::pact_body
         'status_domain::bar_enable': h6046_status_reply::bar_enable_body
   - id: checksum
     type: u1
@@ -37,3 +38,4 @@ enums:
     0x06: firmware
     0x07: hardware
     0x33: bar_enable
+    0xef: pact

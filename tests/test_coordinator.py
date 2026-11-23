@@ -44,6 +44,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_firmware_query,
     build_hardware_query,
     build_music_mode,
+    build_pact_query,
     build_power,
     build_power_query,
     build_scene_activation,
@@ -347,6 +348,39 @@ async def test_h6053_cached_pact_does_not_authorize_pact_dependent_transport_wit
     )
     assert not profile.supports_custom_effects and profile.effect_workflows == frozenset({"native_scenes"})
     client.write_gatt_char.assert_awaited_once()
+
+
+@pytest.mark.parametrize(("pact_type", "transport"), [(1, "a1_02"), (2, "a3")])
+async def test_h6053_pact_query_authorizes_revision_effect_transport(hass, monkeypatch, pact_type, transport):
+    coordinator = GoveeBLECoordinator(hass, "22:33:44:55:66:77", "H6053", configuration_url=None)
+    coordinator._client = client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
+    coordinator._notification_token = object()
+    coordinator._notify_started_monotonic = 0.0
+    coordinator._encryption = SimpleNamespace(ready=True, decode=lambda frame: frame)
+    coordinator._observe_identity_field("fw_version", "1.08.05")
+    coordinator._observe_identity_field("hw_version", "1.00.00")
+    assert not coordinator.effect_authorization_profile.supports_custom_effects
+
+    async def reply(_client, packet, **_kwargs):
+        assert packet == build_pact_query(coordinator.profile)
+        coordinator._notify_callback(None, bytearray(_packet(0xAA, 0xEF, [0, pact_type, 1])))
+
+    write = AsyncMock(side_effect=reply)
+    monkeypatch.setattr(coordinator, "_async_write_packet", write)
+    await coordinator._async_confirm_pact(client)
+
+    write.assert_awaited_once()
+    profile = coordinator.effect_authorization_profile
+    assert coordinator.identity_fields_confirmed(frozenset({"pact"}))
+    assert (coordinator.pact_type, coordinator.pact_code) == (pact_type, 1)
+    assert profile.supports_custom_effects and profile.diy_upload_transport == transport
+    compiled = compile_application(
+        LibraryItem.new("Fade", SingleEffect(0, 0, 50, ((255, 0, 0),))),
+        "H6053",
+        diy_code=37,
+        profile=profile,
+    )
+    assert compiled.upload_packets and compiled.upload_packets[0][0] == (0xA1 if transport == "a1_02" else 0xA3)
 
 
 @pytest.fixture
