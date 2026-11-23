@@ -247,7 +247,7 @@ async def async_get_config_entry_diagnostics(
                 authorised_supports_rgb=coordinator._authorization_profile().supports_rgb,
             )
         coordinator_data["capability_resolution"] = resolution
-    elif coordinator.profile.profile_identity_fields:
+    elif coordinator.profile.profile_identity_fields | coordinator.profile.effect_identity_fields:
         profile = coordinator.profile
         coordinator_data["capability_resolution"] = {
             "resolved_profile": profile.name,
@@ -255,7 +255,9 @@ async def async_get_config_entry_diagnostics(
             "status_grammar": profile.status_grammar,
             "command_ack_grammar": profile.command_ack_grammar,
             "effect_grammar": profile.effect_grammar,
-            "identity_confirmed": coordinator.identity_fields_confirmed(profile.profile_identity_fields),
+            "identity_confirmed": coordinator.identity_fields_confirmed(
+                profile.profile_identity_fields | profile.effect_identity_fields
+            ),
             "command_operations": sorted(profile.command_operations)
             if profile.command_operations is not None
             else None,

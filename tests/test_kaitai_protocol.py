@@ -93,6 +93,48 @@ def test_whole_strip_exact_model_roots_preserve_unqualified_suffixes(module, cla
     assert protocol_core._write(root, len(raw)) == raw
 
 
+@pytest.mark.parametrize("header", [0x33, 0xAA])
+@pytest.mark.parametrize(
+    "operation,payload,fields",
+    [
+        (
+            "timer",
+            "01081e160001a57f",
+            {
+                "state": 1,
+                "open_hour": 8,
+                "open_minute": 30,
+                "close_hour": 22,
+                "close_minute": 0,
+                "slot": 1,
+                "repeat_mask": 165,
+            },
+        ),
+        ("sleep", "01801e0f7f", {"state": 1, "start_brightness": 128, "duration_minutes": 30, "remaining_minutes": 15}),
+        (
+            "wake",
+            "01fe071ee1147f",
+            {"state": 1, "target_brightness": 254, "hour": 7, "minute": 30, "repeat_mask": 225, "duration_minutes": 20},
+        ),
+    ],
+)
+def test_h6139_schedules_are_typed_losslessly_without_runtime_admission(header, operation, payload, fields):
+    command = header == 0x33
+    module, name = ("h6139_wire_write", "H6139WireWrite") if command else ("h6139_status_reply", "H6139StatusReply")
+    opcode = {"timer": 0x0A, "sleep": 0x11, "wake": 0x12}[operation]
+    raw = (bytes([header, opcode]) + bytes.fromhex(payload)).ljust(19, b"\0")
+    raw += bytes([xor_checksum(raw)])
+    root = getattr(import_module(f"{_MODULE_PREFIX}{module}"), name).from_bytes(raw)
+    root._read()
+    assert {field: getattr(root.body, field) for field in fields} == fields
+    assert root.body.opaque == b"\x7f" + bytes(16 - len(fields))
+    protocol_core._check_tree(root)
+    assert protocol_core._write(root, len(raw)) == raw
+    if command:
+        with pytest.raises(ValueError):
+            generated_protocol_adapter.require_profile_packet(raw, device_profile("H6139", 1, 1))
+
+
 @pytest.mark.parametrize(
     "enabled,command,reply",
     [

@@ -956,8 +956,8 @@ class DeploymentRecord:
                 maximum=MAX_IDENTIFIER_LENGTH,
                 error_type=EffectStorageError,
             )
-        if self.target_mode == "scene" and self.target_effect is None:
-            raise EffectStorageError("scene deployment must include a target effect")
+        if self.target_mode == "scene" and self.target_effect is None and self.diy_code is None:
+            raise EffectStorageError("scene deployment must include a target effect or selector")
         if len(self.evidence_codes) > MAX_DEPLOYMENT_EVIDENCE_CODES:
             raise EffectStorageError(f"deployment must not exceed {MAX_DEPLOYMENT_EVIDENCE_CODES} evidence codes")
         for code in self.evidence_codes:

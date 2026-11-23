@@ -24,7 +24,9 @@ from custom_components.ha_govee_led_ble.effect_deployments import (
 )
 from custom_components.ha_govee_led_ble.effect_domain import (
     BuiltinScene,
+    EffectPair,
     LibraryItem,
+    MultiEffect,
     MusicProfile,
     PaletteDiyEffect,
     RetainedSceneEffect,
@@ -46,6 +48,7 @@ from custom_components.ha_govee_led_ble.layered_scene import CatalogueRef
 from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_workshop_effect
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.music_commands import prepare_music_request
+from custom_components.ha_govee_led_ble.palette_scene_decoder import decode_catalogue_palette_scene
 from custom_components.ha_govee_led_ble.protocol_effect_bodies import A3Sequence
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
 from custom_components.ha_govee_led_ble.transport import fragment_a3, fragment_a3_envelope, reassemble_a3
@@ -62,7 +65,7 @@ DIY_NO = frame("a30201")
 @pytest.fixture
 async def connected(hass, monkeypatch, request):
     model = getattr(request, "param", "H617A")
-    model, pact = model if isinstance(model, tuple) else (model, 2)
+    model, pact = model if isinstance(model, tuple) else (model, 1 if model in {"H6139", "H6159"} else 2)
     c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", model, configuration_url=None)
     if c.model in {"H6097", "H6046", "H6053"}:
         c.pact_type, c.pact_code = pact, 1
@@ -83,7 +86,7 @@ async def connected(hass, monkeypatch, request):
         c._observe_identity_field("fw_version", "1.10.04")
         c._observe_identity_field("hw_version", "3.02.01")
     if c.model in {"H6139", "H6159"}:
-        c._observe_pact(1, 1)
+        c._observe_pact(pact, 1)
         c._observe_identity_field("fw_version", "1.07.02")
         c._observe_identity_field("hw_version", "1.00.01")
     monkeypatch.setattr(c, "_ensure_connected", AsyncMock(return_value=client))
@@ -144,6 +147,106 @@ def selection_ready(connected, monkeypatch):
 
 def receive(client, data):
     client.start_notify.call_args.args[1](None, bytearray(data))
+
+
+@pytest.mark.parametrize(
+    "connected,kind,change",
+    [
+        (("H6139", 1), "single", "qualified"),
+        (("H6139", 1), "multi", "qualified"),
+        (("H6139", 10), "programme", "qualified"),
+        (("H6139", 10), "programme", "unsupported"),
+        (("H6139", 10), "programme", "unconfirmed"),
+        (("H6139", 1), "single", "pact"),
+    ],
+    indirect=["connected"],
+)
+@pytest.mark.parametrize("phase", ["chunk", "verdict"])
+async def test_upload_revalidates_its_own_identity_dependencies(selection_ready, monkeypatch, kind, change, phase):
+    c, client = selection_ready
+    c.fw_version = c.hw_version = None
+    c._confirmed_identity_fields.difference_update({"fw_version", "hw_version"})
+    c._resolve_device_profile()
+    if kind == "programme":
+        c._observe_identity_field("fw_version", "2.04.00")
+        content = next(
+            content
+            for scene in SCENE_ENTRIES[c.model]
+            if (content := decode_catalogue_palette_scene(c.model, scene)) is not None
+        )
+        delayed = frame("aa0703" + b"2.01.01".hex())
+    else:
+        content = (
+            SingleEffect(0, 0, 0, ((12, 34, 56),))
+            if kind == "single"
+            else MultiEffect((EffectPair(0, 0), EffectPair(2, 0)), 0, ((12, 34, 56),))
+        )
+        delayed = frame("aa06" + b"1.07.02".hex())
+    c.is_on = True
+    c.brightness_pct = 23
+    item = LibraryItem.new("Independent upload", content)
+    compiled = compile_effect(item, c.model, profile=c.effect_authorization_profile)
+    last = len(compiled.upload_packets) - 1
+    subtype = upload_ack_subtype(compiled.upload_packets, last, c.model, profile=c.effect_authorization_profile)
+    accepted = frame(f"{compiled.upload_packets[-1][0]:02x}{subtype:02x}00")
+    store = InMemoryVersionedDocumentStore()
+    repository = EffectDeploymentRepository(store)
+    await repository.async_load()
+    engine = EffectDeploymentEngine(repository)
+    monkeypatch.setattr(engine, "_async_prepare_prior_state", AsyncMock(return_value=False))
+    monkeypatch.setattr(c, "async_observe_effect", AsyncMock(return_value=True))
+    monkeypatch.setattr(c, "async_restore_effect_control_state", AsyncMock(return_value=False))
+    monkeypatch.setattr(coordinator_module, "UPLOAD_ACK_TIMEOUT", 1)
+    uploaded = asyncio.Event()
+    generation, authority = c._profile_generation, c._authorization_generation
+
+    def identity_reply():
+        if change == "unsupported":
+            receive(client, frame("aa06" + b"1.00.01".hex()))
+        elif change == "unconfirmed":
+            c._observe_identity_field("fw_version", None)
+        elif change == "pact":
+            c._observe_pact(10, 1)
+        else:
+            receive(client, delayed)
+            assert (c._profile_generation, c._authorization_generation) == (generation, authority)
+            assert c.brightness_pct == 23
+
+    async def write(_uuid, packet, **_kwargs):
+        if phase == "chunk" and packet == compiled.upload_packets[0]:
+            identity_reply()
+        if packet == compiled.upload_packets[-1]:
+            uploaded.set()
+            if phase == "chunk":
+                receive(client, accepted)
+
+    client.write_gatt_char.side_effect = write
+    task = asyncio.create_task(
+        engine.async_apply_saved(c, item, config_entry_id="entry-a", updated_at="2026-11-22T00:00:00Z")
+    )
+    try:
+        if phase == "verdict":
+            await asyncio.wait_for(uploaded.wait(), 1)
+            assert c._upload_ack is not None and not c._upload_ack.future.done()
+            identity_reply()
+            assert c._upload_ack.future.done() == (change != "qualified")
+            receive(client, accepted)
+        if change == "qualified":
+            result = await asyncio.wait_for(task, 2)
+            assert result.phase is DeploymentPhase.CONFIRMED
+            assert [call.args[1] for call in client.write_gatt_char.await_args_list] == list(compiled.packets)
+            reloaded = EffectDeploymentRepository(store)
+            await reloaded.async_load()
+            assert reloaded.snapshot().records == (result,)
+        else:
+            with pytest.raises((ValueError, HomeAssistantError)):
+                await asyncio.wait_for(task, 2)
+            assert compiled.activation_packet not in [call.args[1] for call in client.write_gatt_char.await_args_list]
+        assert c._upload_ack is None
+        assert c._ensure_connected.await_count == 1
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
 
 
 @pytest.mark.parametrize("scene_type", [0, 1])
@@ -319,6 +422,7 @@ async def test_h6181_revision_uploads_require_matching_success_before_activation
     c.profile = replace(
         device_profile(c.model, *pact, firmware="1.07.02", hardware="1.00.02"),
         profile_identity_fields=frozenset(),
+        effect_identity_fields=frozenset(),
     )
     if kind == "scene":
         scene = next(scene for scene in SCENE_ENTRIES[c.model] if scene.scene_type == 1)

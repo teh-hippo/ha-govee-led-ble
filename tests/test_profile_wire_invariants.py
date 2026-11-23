@@ -109,7 +109,9 @@ def _consume_status(coordinator: GoveeBLECoordinator, frame: bytes) -> None:
 def _qualified_coordinator(hass, model: str, profile: ModelProfile) -> GoveeBLECoordinator:
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url="http://x")
     coordinator.profile = profile
-    coordinator._confirmed_identity_fields.update(profile.profile_identity_fields | profile.scene_identity_fields)
+    coordinator._confirmed_identity_fields.update(
+        profile.profile_identity_fields | profile.effect_identity_fields | profile.scene_identity_fields
+    )
     if MODEL_PROFILES[model].requires_pact_confirmation:
         coordinator._confirmed_identity_fields.add("pact")
     return coordinator

@@ -435,14 +435,18 @@ class GoveeBLECoordinator(
         if changed_fields:
             if changed_fields & authorization_fields:
                 self._authorization_generation += 1
-            if self.profile.profile_identity_fields or self.profile.scene_identity_fields:
+            if (
+                self.profile.profile_identity_fields
+                or self.profile.effect_identity_fields
+                or self.profile.scene_identity_fields
+            ):
                 self._resolve_device_profile(identity_changed=True)
             if self.config_entry is not None:
                 registry = dr.async_get(self.hass)
                 device = registry.async_get_device_by_identifier((DOMAIN, self.address), self.config_entry.entry_id)
                 if device is not None:
                     registry.async_update_device(device.id, sw_version=self.fw_version, hw_version=self.hw_version)
-        if changed_fields & self.profile.scene_identity_fields:
+        if changed_fields & (self.profile.scene_identity_fields | self.profile.effect_identity_fields):
             self._revalidate_upload_ack()
 
     @callback
@@ -459,7 +463,7 @@ class GoveeBLECoordinator(
         if field in self._control_identity_fields() and confirmed != (field in self._confirmed_identity_fields):
             self._authorization_generation += 1
         if not parseable or value is None:
-            if field in self.profile.scene_identity_fields:
+            if field in self.profile.scene_identity_fields | self.profile.effect_identity_fields:
                 self._revalidate_upload_ack()
             return False
         previous = getattr(self, field)
@@ -471,7 +475,7 @@ class GoveeBLECoordinator(
             setattr(self, field, value)
             if field in self._control_identity_fields():
                 self._authorization_generation += 1
-        if field in self.profile.scene_identity_fields:
+        if field in self.profile.scene_identity_fields | self.profile.effect_identity_fields:
             self._revalidate_upload_ack()
         return bool(previous != value)
 
@@ -648,6 +652,7 @@ class GoveeBLECoordinator(
         self._resolve_h607c_pact(preserve_state=preserve_state)
 
     def _resolve_h607c_pact(self, *, preserve_state: bool = False) -> None:
+        authorization_generation = self._authorization_generation
         pacts = set(self._h607c_advertised_pacts)
         subscription = self._notify_started_monotonic
         strict = get_profile(self.model).requires_pact_confirmation
@@ -704,6 +709,8 @@ class GoveeBLECoordinator(
                 self._confirmed_identity_fields.discard("pact")
             if previous != confirmed:
                 self._authorization_generation += 1
+        if authorization_generation != self._authorization_generation:
+            self._revalidate_upload_ack()
 
     def _observe_pact(self, pact_type: int, pact_code: int) -> bool:
         if (
@@ -831,6 +838,7 @@ class GoveeBLECoordinator(
         declared = get_profile(self.model)
         if (
             not declared.profile_identity_fields
+            and not declared.effect_identity_fields
             and not declared.scene_identity_fields
             and not declared.profile_pact_dependent
             and declared.video_revision_policy is None
@@ -873,14 +881,14 @@ class GoveeBLECoordinator(
                 self._apply_brightness_profile_transition(self.profile, profile)
             return
         previous_profile = self.profile
-        scene_only_change = bool(
-            profile.scene_identity_fields
+        optional_effect_change = bool(
+            (profile.scene_identity_fields or profile.effect_identity_fields)
             and not context_changed
             and not reset_equal_identity
             and same_control_profile(profile, self.profile)
         )
         self.profile = profile
-        if scene_only_change:
+        if optional_effect_change:
             self._revalidate_upload_ack()
             return
         for variant in profile.music_variants:
@@ -2629,7 +2637,7 @@ class GoveeBLECoordinator(
         validator: Callable[[bytes, ModelProfile], None] = require_profile_packet,
     ) -> None:
         declared = get_profile(self.model)
-        fields = self.profile.profile_identity_fields
+        fields = self.profile.profile_identity_fields | self.profile.effect_identity_fields
         if self.profile.projector_grammar is not None:
             fields |= {"pact"}
         pact_required = declared.requires_pact_confirmation and not declared.can_read(ReadDomain.PACT)
@@ -2737,7 +2745,9 @@ class GoveeBLECoordinator(
         return value is None
 
     def _authorization_identity_fields(self) -> frozenset[str]:
-        return self._control_identity_fields() | self.profile.scene_identity_fields
+        return (
+            self._control_identity_fields() | self.profile.scene_identity_fields | self.profile.effect_identity_fields
+        )
 
     def _control_identity_fields(self) -> frozenset[str]:
         return self.profile.profile_identity_fields | frozenset(video_identity_fields(self.profile))
@@ -2782,7 +2792,11 @@ class GoveeBLECoordinator(
                     hardware=self.hw_version if self.identity_fields_confirmed(frozenset({"hw_version"})) else None,
                 )
             )
-        fields = self.profile.profile_identity_fields | self.profile.scene_identity_fields
+        fields = (
+            self.profile.profile_identity_fields
+            | self.profile.effect_identity_fields
+            | self.profile.scene_identity_fields
+        )
         if not fields or self.identity_fields_confirmed(fields):
             return qualify_geometry(self.profile)
         if self.model == "H6102":
@@ -4350,7 +4364,7 @@ class GoveeBLECoordinator(
     ) -> None:
         """Write a transaction; an injected writer owns its connection and never retries.
 
-        ACKs correlate by subscription, profile generation and completed subtype.
+        ACKs correlate by subscription, control authority, profile generation and completed subtype.
         The wire has no transaction ID: a late same-subtype ACK arriving during a
         later final attempt cannot be distinguished from that attempt's response.
         An unconfirmed channel is released before it can authorise another upload.
@@ -4398,7 +4412,9 @@ class GoveeBLECoordinator(
                                 await self._async_prepare_control_identity(
                                     client, preparation_packets, packet_validator
                                 )
+                        self._reconcile_authorization()
                         token, generation = self._notification_token, self._profile_generation
+                        authorization_generation = self._authorization_generation
                         attempt_client, attempt_token = client, token
                         mode_write_baseline = self._mode_write_generation
                         prepared_profile = self.effect_authorization_profile
@@ -4406,10 +4422,14 @@ class GoveeBLECoordinator(
 
                         def check_profile(
                             generation: int = generation,
+                            authorization_generation: int = authorization_generation,
                             prepared_profile: ModelProfile = prepared_profile,
                         ) -> None:
+                            self._reconcile_authorization()
                             if self._profile_generation != generation:
                                 raise ValueError("Device profile changed during effect upload")
+                            if self._authorization_generation != authorization_generation:
+                                raise ValueError("Device control authority changed during effect upload")
                             if write_guard is not None:
                                 write_guard()
                             elif self.effect_authorization_profile != prepared_profile:

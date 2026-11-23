@@ -503,7 +503,8 @@ async def async_prepare_effect_profile(
             and (scene is None or scene_supported(scene, authorized))
         )
 
-    effect_identity_pending = bool(coordinator.profile.profile_identity_fields) and not effect_identity_ready()
+    effect_fields = coordinator.profile.profile_identity_fields | coordinator.profile.effect_identity_fields
+    effect_identity_pending = bool(effect_fields) and not effect_identity_ready()
     if (
         content is not None
         and coordinator.profile.supports_rgb
@@ -513,7 +514,7 @@ async def async_prepare_effect_profile(
         and not isinstance(content, StaticRgbComposition)
     ):
         return coordinator.effect_authorization_profile
-    fields = coordinator.profile.profile_identity_fields
+    fields = effect_fields
     if scene_required:
         fields |= coordinator.profile.scene_identity_fields
     if fields and coordinator.identity_fields_confirmed(fields):
@@ -522,7 +523,7 @@ async def async_prepare_effect_profile(
         not (scene_required and coordinator.profile.scene_identity_fields)
         and coordinator.profile.rgbic_scene_v0 is None
         and (
-            not coordinator.profile.profile_identity_fields
+            not effect_fields
             or not coordinator._authorization_profile().basic_controls_only
             and not effect_identity_pending
         )
@@ -532,9 +533,7 @@ async def async_prepare_effect_profile(
         async with coordinator._lock:
             client = await coordinator._ensure_connected()
             if effect_identity_pending:
-                await coordinator._async_require_identity(
-                    client, coordinator.profile.profile_identity_fields, ready=effect_identity_ready
-                )
+                await coordinator._async_require_identity(client, effect_fields, ready=effect_identity_ready)
             elif coordinator._authorization_profile().basic_controls_only:
                 await coordinator._async_require_identity(client, coordinator.profile.profile_identity_fields)
             if (

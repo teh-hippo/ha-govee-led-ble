@@ -49,6 +49,7 @@ Profiles own product facts, Kaitai owns wire structure, and shared runtime opera
   Resolve target-local values separately, preserving other defaults.
   Qualify semantics independently of names and wire numbers.
 - Keep authored catalogue references distinct from resolved target scene identities through selection, application, attribution and reload.
+  Persist explicit scene selectors independently of catalogue display names; authored programmes can have no native name.
   The release contract, narrowed by the effective profile, governs support, apply projections, defaults and template resolution.
   Advertised defaults must compile within it.
   Qualify each authoring workflow independently; template identity survives readiness changes and reload.
@@ -74,6 +75,8 @@ Profiles own product facts, Kaitai owns wire structure, and shared runtime opera
 - Prepare optional scene identity during scene admission.
   Scene-policy changes preserve unrelated state and revalidate dependent transfers and acknowledgements against their preparation and current authority.
 - Complete preparation when the requested workflow, selector and scene are qualified, without waiting for unrelated optional identity.
+- Declare optional-only revision prerequisites in `effect_identity_fields`, separately from ordinary-control identity and generations.
+  Late optional replies preserve independent controls, transfers and recovery; revalidate dependent uploads when identity or authority changes.
 
 ### State, ownership and execution
 

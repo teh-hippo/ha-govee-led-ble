@@ -281,6 +281,7 @@ class ModelProfile:
     video_firmware_conditions: tuple[VideoFirmwareCondition, ...] = ()
     video_control_exclusions: tuple[tuple[str, str], ...] = ()
     profile_identity_fields: frozenset[str] = frozenset()
+    effect_identity_fields: frozenset[str] = frozenset()
     scene_identity_fields: frozenset[str] = frozenset()
     static_identity_fields: frozenset[str] = frozenset()
     # None retains whole-profile prerequisites for suspended static history.
@@ -3122,7 +3123,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         command_operations=frozenset({"power", "brightness", "static", "scene", "diy", "music", "effect_upload"}),
         status_grammar="H6139",
         effect_grammar="H6181",
-        profile_identity_fields=frozenset({"fw_version", "hw_version"}),
+        effect_identity_fields=frozenset({"fw_version", "hw_version"}),
         static_recovery_identity_fields=frozenset({"pact"}),
         profile_pact_dependent=True,
         colour_mode_query_selector=1,
@@ -4236,7 +4237,9 @@ def _h6076_profile(pact_type: int | None, pact_code: int | None, firmware: str |
 
 
 def same_control_profile(first: ModelProfile, second: ModelProfile) -> bool:
-    return first == second or bool(
+    if first == second:
+        return True
+    if (
         first.scene_identity_fields
         and replace(
             first,
@@ -4244,6 +4247,27 @@ def same_control_profile(first: ModelProfile, second: ModelProfile) -> bool:
             scene_command_versions=second.scene_command_versions,
         )
         == second
+    ):
+        return True
+    if (
+        not first.effect_identity_fields
+        or first.static_outbound_transform is None
+        or first.static_outbound_transform != second.static_outbound_transform
+    ):
+        return False
+    return replace(
+        first,
+        command_operations=first.command_operations - {"music"} if first.command_operations is not None else None,
+        outbound_transform=second.outbound_transform,
+        effect_workflows=second.effect_workflows,
+        music_modes=second.music_modes,
+        music_variants=second.music_variants,
+        selector_only_scene_bits=second.selector_only_scene_bits,
+        authored_palette_scene_selector=second.authored_palette_scene_selector,
+        scene_codes=second.scene_codes,
+    ) == replace(
+        second,
+        command_operations=second.command_operations - {"music"} if second.command_operations is not None else None,
     )
 
 
@@ -4284,6 +4308,7 @@ def _basic_revision_profile(profile: ModelProfile) -> ModelProfile:
         static_outbound_transform=profile.static_outbound_transform,
         brightness_wire_range=profile.brightness_wire_range,
         profile_identity_fields=profile.profile_identity_fields,
+        effect_identity_fields=profile.effect_identity_fields,
         static_recovery_identity_fields=profile.static_recovery_identity_fields,
         scene_identity_fields=profile.scene_identity_fields,
         resolve_profile_before_state_init=profile.resolve_profile_before_state_init,
@@ -4445,7 +4470,7 @@ def device_profile(
         assert profile.command_operations is not None
         return replace(
             profile,
-            profile_identity_fields=frozenset({"fw_version", "hw_version"}) if later else frozenset({"fw_version"}),
+            effect_identity_fields=frozenset({"fw_version", "hw_version"}) if later else frozenset({"fw_version"}),
             brightness_wire_range=wire_range,
             outbound_transform=whole_rgb_outbound_transform(
                 wire_range, legacy_colour=not later, music_version=None if later else music_version
@@ -4453,7 +4478,7 @@ def device_profile(
             static_outbound_transform=whole_rgb_outbound_transform(
                 wire_range, legacy_colour=not later, music_version=None
             ),
-            diy_upload_transport="a3" if later else "a1_02",
+            diy_upload_transport="a3" if later or pact_type == 10 else "a1_02",
             command_operations=profile.command_operations - (set() if modes else {"music"}),
             effect_workflows=profile.effect_workflows
             - (set() if authored_programmes else {"edited_palette_scenes"})

@@ -639,7 +639,7 @@ def test_upload_only_deployment_round_trip_preserves_nullable_selector_and_compl
         {"config_entry_id": ""},
         {"diy_code": -1},
         {"target_mode": "invalid"},
-        {"target_mode": "scene", "target_effect": None},
+        {"target_mode": "scene", "target_effect": None, "diy_code": None},
         {"compiler_version": 0},
         {"artifact_sha256": "short"},
         {"updated_at": ""},
