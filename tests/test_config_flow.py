@@ -304,9 +304,9 @@ async def test_user_step_creates_entry(hass: HomeAssistant, mock_manual_validati
 
 
 async def test_experimental_confirmation_rechecks_duplicate_entry(hass: HomeAssistant):
-    notice = await _init(hass, config_entries.SOURCE_USER, {CONF_ADDRESS: "AA:BB:CC:DD:EE:FF", CONF_MODEL: "H7025"})
+    notice = await _init(hass, config_entries.SOURCE_USER, {CONF_ADDRESS: "AA:BB:CC:DD:EE:FF", CONF_MODEL: "H705A"})
     assert notice["step_id"] == "experimental"
-    entry = MockConfigEntry(domain=DOMAIN, data={CONF_MODEL: "H7025"}, unique_id="AA:BB:CC:DD:EE:FF")
+    entry = MockConfigEntry(domain=DOMAIN, data={CONF_MODEL: "H705A"}, unique_id="AA:BB:CC:DD:EE:FF")
     entry.add_to_hass(hass)
     result = await _confirm(hass, notice)
     assert result["type"] is FlowResultType.ABORT and result["reason"] == "already_configured"
