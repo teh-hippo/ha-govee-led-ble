@@ -3674,6 +3674,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         segment_count=15,
         segment_group_size=4,
         segment_colour_mode_ambiguous=True,
+        static_palette_recovery=True,
         supports_segment_writes=True,
         supports_segment_brightness=True,
         supports_segment_color_temperature=True,

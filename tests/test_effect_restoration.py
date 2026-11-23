@@ -2478,6 +2478,7 @@ async def test_effect_off_rechecks_mode_before_replaying_suspended_history(
         ("H617A", True, "cancelled"),
         ("H617A", True, "profile_changed"),
         ("H617A", True, "resubscribed"),
+        ("H7025", True, "idle"),
         ("H1AB2", False, "idle"),
         ("H1AB2", True, "poll"),
     ],
