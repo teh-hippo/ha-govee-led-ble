@@ -1308,7 +1308,9 @@ class GoveeBLECoordinator(
         task.add_done_callback(self._client_release_tasks.discard)
         return task
 
-    def _clear_client_state(self, client: BleakClient | None, *, preserve_static_baseline: bool = False) -> None:
+    def _clear_client_state(
+        self, client: BleakClient | None, *, preserve_static_baseline: bool = False, preserve_static_rgb: bool = False
+    ) -> None:
         if self._client is not client:
             return
         from .projector_runtime import invalidate_appearance
@@ -1323,7 +1325,10 @@ class GoveeBLECoordinator(
         else:
             self._discard_static_baseline()
         self._power_known = self._static_colour_known = False
-        self._static_rgb_known = False
+        if not preserve_static_rgb:
+            # A clean planned release leaves the lamp exactly as written; the segment readback after
+            # the next connect still revokes the proof when the rendered colours no longer match.
+            self._static_rgb_known = False
         self._music_palette = self._music_body = None
         self._notification_token = None
         if self.profile.music_readback_ambiguous:
@@ -4931,7 +4936,8 @@ class GoveeBLECoordinator(
         appearance = self.projector_appearance
         generation = self._profile_generation
         released = False
-        self._static_rgb_known = False
+        if not planned_release:
+            self._static_rgb_known = False
         # Invalidate callbacks and keys before disconnect can yield or be cancelled.
         self._music_palette = self._music_body = None
         self.video_parameters = None
@@ -4964,19 +4970,23 @@ class GoveeBLECoordinator(
         except BleakError, TimeoutError:
             _LOGGER.debug("Error disconnecting from %s", self.address)
         finally:
+            clean_release = (
+                planned_release
+                and released
+                and client is not None
+                and not client.is_connected
+                and self._client is client
+                and self._profile_generation == generation
+            )
             self._clear_client_state(
                 client,
+                preserve_static_rgb=clean_release,
                 preserve_static_baseline=(
-                    planned_release
-                    and released
-                    and client is not None
-                    and not client.is_connected
-                    and self._client is client
+                    clean_release
                     and (snapshot is not None or partial is not None or appearance is not None)
                     and self._pre_mode_snapshot is snapshot
                     and self._incomplete_static_exit is partial
                     and self.projector_appearance is appearance
-                    and self._profile_generation == generation
                 ),
             )
             if (
