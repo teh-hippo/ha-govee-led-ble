@@ -170,6 +170,8 @@ async def async_apply_compiled_profile(
     progress: Callable[[int], Awaitable[None]] | None = None,
     on_write: Callable[[], None] | None = None,
     intent: ControlIntent = ControlIntent.APPLY,
+    defer_confirmation: bool = False,
+    on_blank_screen_write: Callable[[tuple[int, int, int]], None] | None = None,
 ) -> None:
     if isinstance(compiled, CompiledStaticRgb):
         if coordinator.model != compiled.model:
@@ -232,6 +234,16 @@ async def async_apply_compiled_profile(
         expected_values: Mapping[str, Any] | None = None,
         on_write: Callable[[], None] | None = None,
     ) -> None:
+        if defer_confirmation and packet[1] in {0xA9, 0xAE} and state_values is not None:
+            for field in state_values:
+                coordinator._expected_state.pop(field, None)
+            if packet[1] == 0xA9 and "blank_screen" in state_values:
+                for field in (
+                    "blank_screen_detection",
+                    "blank_screen_low_brightness_duration_seconds",
+                    "blank_screen_same_tone_duration_seconds",
+                ):
+                    coordinator._expected_state.pop(field, None)
         await _send_video_setting(
             coordinator,
             packet,
@@ -351,44 +363,71 @@ async def async_apply_compiled_profile(
             await progress(completed)
 
         if compiled.white_balance_wire is not None:
-            await apply_white_balance(coordinator, compiled.white_balance_wire, writer=writer, verify=verify)
+            await apply_white_balance(
+                coordinator,
+                compiled.white_balance_wire,
+                writer=writer,
+                verify=verify and not defer_confirmation,
+            )
             completed += 1
             if progress is not None:
                 await progress(completed)
 
         if compiled.video_sensitivity is not None:
-            await apply_video_sensitivity(coordinator, compiled.video_sensitivity, writer=writer, verify=verify)
+            await apply_video_sensitivity(
+                coordinator,
+                compiled.video_sensitivity,
+                writer=writer,
+                verify=verify and not defer_confirmation,
+            )
             completed += 1
             if progress is not None:
                 await progress(completed)
 
         if compiled.hdmi_input is not None:
-            await apply_hdmi_input(coordinator, compiled.hdmi_input, writer=writer, verify=verify)
+            await apply_hdmi_input(
+                coordinator, compiled.hdmi_input, writer=writer, verify=verify and not defer_confirmation
+            )
             completed += 1
             if progress is not None:
                 await progress(completed)
 
         if compiled.hdmi_box_light is not None:
-            await apply_hdmi_box_light(coordinator, compiled.hdmi_box_light, writer=writer, verify=verify)
+            await apply_hdmi_box_light(
+                coordinator, compiled.hdmi_box_light, writer=writer, verify=verify and not defer_confirmation
+            )
             completed += 1
             if progress is not None:
                 await progress(completed)
 
         if compiled.color_calibration is not None:
-            await apply_video_color_calibration(coordinator, compiled.color_calibration, writer=writer, verify=verify)
+            await apply_video_color_calibration(
+                coordinator,
+                compiled.color_calibration,
+                writer=writer,
+                verify=verify and not defer_confirmation,
+            )
             completed += 1
             if progress is not None:
                 await progress(completed)
 
         if compiled.relative_brightness is not None and not compiled.relative_brightness_inline:
-            await apply_relative_brightness(coordinator, compiled.relative_brightness, writer=writer, verify=verify)
+            await apply_relative_brightness(
+                coordinator,
+                compiled.relative_brightness,
+                writer=writer,
+                verify=verify and not defer_confirmation,
+            )
             completed += 1
             if progress is not None:
                 await progress(completed)
 
         if compiled.whole_relative_brightness is not None:
             await apply_whole_relative_brightness(
-                coordinator, compiled.whole_relative_brightness, writer=writer, verify=verify
+                coordinator,
+                compiled.whole_relative_brightness,
+                writer=writer,
+                verify=verify and not defer_confirmation,
             )
             completed += 1
             if progress is not None:
@@ -398,11 +437,13 @@ async def async_apply_compiled_profile(
             policy_options: dict[str, Any] = (
                 {"policy": compiled.blank_screen_policy} if compiled.blank_screen_policy is not None else {}
             )
+            if on_blank_screen_write is not None:
+                policy_options["on_write"] = on_blank_screen_write
             await apply_blank_screen(
                 coordinator,
                 compiled.blank_screen,
                 writer=writer,
-                verify=verify,
+                verify=verify and not defer_confirmation,
                 **policy_options,
             )
             completed += 1
@@ -410,7 +451,9 @@ async def async_apply_compiled_profile(
                 await progress(completed)
 
         if compiled.black_border is not None:
-            await apply_black_border(coordinator, compiled.black_border, writer=writer, verify=verify)
+            await apply_black_border(
+                coordinator, compiled.black_border, writer=writer, verify=verify and not defer_confirmation
+            )
             completed += 1
             if progress is not None:
                 await progress(completed)
@@ -829,6 +872,7 @@ class EffectDeploymentEngine:
                         prior_state = replace(prior_state, video_restore_controls=())
                     await transaction.store(replace(transaction.current, prior_state=prior_state))
                     await transaction.store(replace(transaction.current, phase=DeploymentPhase.UPLOADING))
+                    written_blank_screen_policy: tuple[int, int, int] | None = None
                     if isinstance(compiled, CompiledEffect):
                         if compiled.activation_packet is None:
                             raise RuntimeError("compiled activation verification has no activation packet")
@@ -888,7 +932,19 @@ class EffectDeploymentEngine:
                                 coordinator.diy_code = compiled.diy_code
                             coordinator.music_mode = coordinator.video_mode = "off"
                     else:
-                        await self._async_apply_profile(coordinator, compiled, transaction)
+                        defer_profile_confirmation = (
+                            record.source_kind == "snapshot"
+                            and isinstance(compiled, CompiledVideoProfile)
+                            and compiled_observation(compiled, profile=coordinator.profile)[1]
+                            is ObservationConfidence.SETTINGS_MATCH
+                        )
+                        written_blank_screen_policy = await self._async_apply_profile(
+                            coordinator,
+                            compiled,
+                            transaction,
+                            defer_confirmation=defer_profile_confirmation,
+                            bind_blank_screen_policy=defer_profile_confirmation,
+                        )
 
                     transition.require_current()
                     confirmed = None
@@ -900,6 +956,7 @@ class EffectDeploymentEngine:
                             compiled,
                             transaction,
                             transition.current,
+                            written_blank_screen_policy=written_blank_screen_policy,
                         )
                         if confirmed is False or not transition.current():
                             final = await self._async_finish_failure(
@@ -1023,13 +1080,27 @@ class EffectDeploymentEngine:
         coordinator: GoveeBLECoordinator,
         compiled: CompiledMusicProfile | CompiledVideoProfile,
         transaction: _DeploymentTransaction,
-    ) -> None:
+        *,
+        verify: bool = True,
+        defer_confirmation: bool = False,
+        bind_blank_screen_policy: bool = False,
+    ) -> tuple[int, int, int] | None:
+        written_policy: tuple[int, int, int] | None = None
+
+        def capture_blank_screen_policy(policy: tuple[int, int, int]) -> None:
+            nonlocal written_policy
+            written_policy = policy
+
         await async_apply_compiled_profile(
             coordinator,
             compiled,
             progress=transaction.profile_progress,
             on_write=partial(self.clear_active_origin, transaction.current.config_entry_id),
+            verify=verify,
+            defer_confirmation=defer_confirmation,
+            on_blank_screen_write=capture_blank_screen_policy if bind_blank_screen_policy else None,
         )
+        return written_policy
 
     async def _async_verify(
         self,
@@ -1037,6 +1108,8 @@ class EffectDeploymentEngine:
         compiled: CompiledApplication,
         transaction: _DeploymentTransaction,
         current: Callable[[], bool],
+        *,
+        written_blank_screen_policy: tuple[int, int, int] | None = None,
     ) -> tuple[bool | None, ObservationConfidence]:
         if isinstance(compiled, CompiledStaticRgb):
             return static_rgb_matches(coordinator, compiled), ObservationConfidence.SETTINGS_MATCH
@@ -1044,7 +1117,13 @@ class EffectDeploymentEngine:
         if expectations is None:
             return None, ObservationConfidence.UNKNOWN
         if not isinstance(compiled, CompiledEffect):
-            return await self._async_verify_profile(coordinator, compiled, transaction, current)
+            return await self._async_verify_profile(
+                coordinator,
+                compiled,
+                transaction,
+                current,
+                written_blank_screen_policy=written_blank_screen_policy,
+            )
         if compiled.activation_packet is None:
             raise RuntimeError("compiled activation verification has no activation packet")
         for attempt in range(VERIFICATION_ATTEMPTS):
@@ -1074,12 +1153,27 @@ class EffectDeploymentEngine:
         compiled: CompiledMusicProfile | CompiledVideoProfile,
         transaction: _DeploymentTransaction,
         current: Callable[[], bool],
+        *,
+        written_blank_screen_policy: tuple[int, int, int] | None = None,
     ) -> tuple[bool | None, ObservationConfidence]:
-        expectations, confidence = compiled_observation(compiled, profile=coordinator.profile)
-        if expectations is None:
+        base_expectations, confidence = compiled_observation(compiled, profile=coordinator.profile)
+        if base_expectations is None:
             return None, ObservationConfidence.UNKNOWN
         refreshed = None
         for attempt in range(VERIFICATION_ATTEMPTS):
+            expectations = dict(base_expectations)
+            if written_blank_screen_policy is not None:
+                expectations.update(
+                    zip(
+                        (
+                            "blank_screen_detection",
+                            "blank_screen_low_brightness_duration_seconds",
+                            "blank_screen_same_tone_duration_seconds",
+                        ),
+                        written_blank_screen_policy,
+                        strict=True,
+                    )
+                )
             refreshed = await coordinator.async_observe_effect(expectations, timeout=4.0)
             if refreshed is True:
                 return True, confidence
@@ -1097,7 +1191,12 @@ class EffectDeploymentEngine:
                         progress_current=0,
                     )
                 )
-                await self._async_apply_profile(coordinator, compiled, transaction)
+                written_blank_screen_policy = await self._async_apply_profile(
+                    coordinator,
+                    compiled,
+                    transaction,
+                    bind_blank_screen_policy=written_blank_screen_policy is not None,
+                )
                 await transaction.store(replace(transaction.current, phase=DeploymentPhase.VERIFYING))
         return refreshed, ObservationConfidence.UNKNOWN
 
