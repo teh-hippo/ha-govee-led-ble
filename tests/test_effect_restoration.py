@@ -934,7 +934,7 @@ async def test_public_native_scene_off_restores_complete_projector_optics(physic
     assert coordinator.projector_appearance == prior
 
 
-@pytest.mark.parametrize("physical", [("H6093", (1, 1)), ("H6093", (1, 2)), ("H6093", (2, 1))], indirect=True)
+@pytest.mark.parametrize("physical", [("H6093", (2, 1))], indirect=True)
 @pytest.mark.parametrize("path", ["native", "saved_scene", "saved_diy"])
 @pytest.mark.parametrize("power", [False, True])
 async def test_missing_scene_verdict_preserves_projector_controls_without_initialisation(
@@ -1199,7 +1199,7 @@ async def test_cold_effect_selection_requires_projector_initialisation_not_scala
     assert not any(packet[0] in (0x33, 0xA3) for packet in state["packets"])
 
 
-@pytest.mark.parametrize("physical", [("H6093", (1, 1)), ("H6093", (1, 2)), ("H6093", (2, 1))], indirect=True)
+@pytest.mark.parametrize("physical", [("H6093", (2, 1))], indirect=True)
 @pytest.mark.parametrize("control", ["source", "scalar"])
 @pytest.mark.parametrize("starting_mode", ["native", "scene"])
 @pytest.mark.parametrize("external_change", ["none", "released", "prepared", "attempted", "activated"])
@@ -1293,6 +1293,15 @@ async def test_cached_pact_does_not_authorise_native_writes_but_keeps_bootstrap_
     await coordinator.send_command(build_power(True, "H6093"))
     assert state["on"] and state["speaker"]
     assert not coordinator.identity_fields_confirmed(frozenset({"pact"}))
+
+
+@pytest.mark.parametrize("physical", [("H6093", (1, 1))], indirect=True)
+async def test_projector_appearance_read_does_not_install_without_active_mode(physical):
+    coordinator, state = physical
+
+    assert not coordinator.projector_mode_active
+    assert await read_appearance(coordinator) == state["projector"]
+    assert coordinator.projector_appearance is None
 
 
 @pytest.mark.parametrize("physical", ["H6093"], indirect=True)

@@ -36,7 +36,7 @@ from tests.storage_test_double import InMemoryVersionedDocumentStore
 
 
 @pytest.fixture
-async def radio(hass, monkeypatch):
+async def radio(hass, monkeypatch, virtual_clock):
     entry = MockConfigEntry(domain=DOMAIN)
     entry.add_to_hass(hass)
     with current_entry.set(entry):

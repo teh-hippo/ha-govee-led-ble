@@ -12,7 +12,7 @@ from homeassistant.const import Platform
 from homeassistant.core import ServiceCall, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 
-from custom_components.ha_govee_led_ble.const import DOMAIN, MODEL_PROFILES, ReadDomain, get_profile
+from custom_components.ha_govee_led_ble.const import DOMAIN, MODEL_PROFILES, ReadDomain, device_profile, get_profile
 from custom_components.ha_govee_led_ble.control_arbiter import BLEControlArbiter, ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_refresh import DEFAULT_REFRESH_REQUEST, RefreshRequest
@@ -40,10 +40,8 @@ from tests.coordinator_test_support import frame
 
 @pytest.mark.parametrize("value,code", [("previous", 0), ("on", 1), ("off", 2)])
 @pytest.mark.parametrize("reply", ["match", "mismatch", "unavailable", "unknown", "missing"])
-@pytest.mark.parametrize("model,query_hex", [("H6097", "aa4102"), ("H1AB2", "aa4100"), ("H8604", "aa4102")])
-async def test_power_on_setting_requires_fresh_ordinary_readback(
-    hass, monkeypatch, value, code, reply, model, query_hex
-):
+async def test_power_on_setting_requires_fresh_ordinary_readback(hass, monkeypatch, value, code, reply):
+    model, query_hex = "H6097", "aa4102"
     c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", model, configuration_url=None)
     c.pact_type, c.pact_code = 2, 1
     c._resolve_device_profile()
@@ -80,6 +78,41 @@ async def test_power_on_setting_requires_fresh_ordinary_readback(
     assert [call.args[1] for call in client.write_gatt_char.await_args_list] == [write, query]
     c._clear_client_state(client)
     assert c.power_on_behaviour is None
+
+
+@pytest.mark.parametrize("model,query_hex", [("H6097", "aa4102"), ("H1AB2", "aa4100"), ("H8604", "aa4102")])
+def test_power_on_setting_packet_contract_uses_each_profiles_query(model, query_hex):
+    profile = device_profile(model, 2, 1)
+    for value, code in (("previous", 0), ("on", 1), ("off", 2)):
+        write = build_power_on_behaviour(value, profile)
+        query = build_power_on_behaviour_query(profile)
+        assert write == frame(f"334102{code:02x}") and query == frame(query_hex)
+        for packet in (write, query):
+            require_profile_packet(packet, profile)
+            with pytest.raises(ValueError):
+                require_profile_packet(packet, replace(profile, supports_power_on_behaviour=False))
+
+
+@pytest.mark.parametrize("model", ["H1AB2", "H8604"])
+@pytest.mark.parametrize(
+    ("reply", "expected"),
+    [
+        ("aa410200", "previous"),
+        ("aa410201", "on"),
+        ("aa410202", "off"),
+        ("aa410000", None),
+        ("aa4102ff", None),
+    ],
+)
+def test_native_power_on_reply_contract_preserves_availability_and_unknown_state(hass, model, reply, expected):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", model, configuration_url=None)
+    coordinator.pact_type, coordinator.pact_code = 2, 1
+    coordinator._resolve_device_profile()
+
+    coordinator._notify_callback(None, bytearray(frame(reply)))
+
+    assert coordinator.power_on_behaviour == expected
+    assert coordinator._field_revisions.get("power_on_behaviour", 0) == int(expected is not None)
 
 
 def test_exact_builders_and_generic_status_root() -> None:

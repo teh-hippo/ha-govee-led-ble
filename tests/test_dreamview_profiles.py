@@ -357,7 +357,7 @@ async def test_h6199_video_service_reaches_real_writer(hass, pact, legacy_alias)
 
 
 @pytest.mark.parametrize("pact", [1, 2, 3, 4])
-async def test_h6199_cached_identity_does_not_block_baseline_reads(hass, pact):
+async def test_h6199_cached_identity_does_not_block_baseline_reads(hass, pact, virtual_clock):
     c, client = legacy_coordinator(hass, pact)
     c._confirmed_identity_fields.clear()
 
@@ -385,7 +385,7 @@ async def test_h6199_cached_identity_does_not_block_baseline_reads(hass, pact):
 
 
 @pytest.mark.parametrize("status", [0, 1, None])
-async def test_h6199_group_completion_retains_intent_and_requires_acceptance(hass, status):
+async def test_h6199_group_completion_retains_intent_and_requires_acceptance(hass, status, virtual_clock):
     c, client = legacy_coordinator(hass, 1)
     old = {"operation": "replace", "members": [member(name="old", address=None).as_dict()]}
     await c._dreamview_store.async_save(old)

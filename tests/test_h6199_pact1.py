@@ -144,7 +144,10 @@ async def test_physical_boundary_rejects_before_optimism(hass, monkeypatch, pack
     client.write_gatt_char.assert_not_awaited()
 
 
-async def test_known_pact1_real_setup_and_basic_controls(pact_lifecycle, monkeypatch):  # noqa: F811
+async def test_known_pact1_real_setup_and_basic_controls(
+    pact_lifecycle,  # noqa: F811
+    monkeypatch,
+):
     c, replies, clients, packets = pact_lifecycle
     advertise(c, 1)
     replies[build_hardware_query(c.model)] = frame("aa0703" + b"1.00.01".hex())

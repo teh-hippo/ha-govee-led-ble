@@ -29,7 +29,7 @@ from tests.test_h6199_capabilities import set_qualified_identity
 
 
 @pytest.fixture
-def device(hass, monkeypatch):
+def device(hass, monkeypatch, virtual_clock):
     c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url=None)
     set_qualified_identity(c)
     c._present = True

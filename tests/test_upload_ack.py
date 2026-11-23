@@ -1389,7 +1389,9 @@ async def test_saved_native_diy_apply_uses_ack_gate(selection_ready, monkeypatch
 @pytest.mark.parametrize("path", ["saved", "snapshot", "preview"])
 @pytest.mark.parametrize("power", [False, True])
 @pytest.mark.parametrize("verdict", ["accepted", "rejected", "missing", "disconnect", "subscription"])
-async def test_palette_public_paths_wait_for_upload_verdict(selection_ready, hass, monkeypatch, path, power, verdict):
+async def test_palette_public_paths_wait_for_upload_verdict(
+    selection_ready, hass, monkeypatch, path, power, verdict, virtual_clock
+):
     c, client = selection_ready
     c.is_on = power
     item = LibraryItem.new("Fade", PaletteDiyEffect(c.model, 0, 0, 20, ((30, 0, 0), (0, 30, 0))))

@@ -130,7 +130,7 @@ def test_equal_basic_profile_resets_only_for_real_stateful_identity_change():
 
 
 @pytest.fixture
-def device(hass, monkeypatch):
+def device(hass, monkeypatch, virtual_clock):
     c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url=None)
     set_qualified_identity(c)
     c._present = True

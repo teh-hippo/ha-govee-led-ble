@@ -197,7 +197,7 @@ def test_scene_geometry_rewrites_out_of_budget_fields_without_mutating_authored_
 
 @pytest.mark.parametrize("revoke_during_pacing", [False, True])
 async def test_native_scene_uses_subscription_identity_and_rechecks_after_reply_pacing(
-    hass, monkeypatch, static_baseline, revoke_during_pacing
+    hass, monkeypatch, static_baseline, revoke_during_pacing, virtual_clock
 ):
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model="H619A", configuration_url=None)
     coordinator.profile = device_profile("H619A", 2, 1, firmware="2.07.01", hardware="2.01.02")
@@ -237,7 +237,7 @@ async def test_native_scene_uses_subscription_identity_and_rechecks_after_reply_
 
 @pytest.mark.parametrize("fresh_identity", [False, True])
 async def test_saved_scene_reconnects_before_compilation_after_idle_disconnect(
-    hass, monkeypatch, static_baseline, fresh_identity
+    hass, monkeypatch, static_baseline, fresh_identity, virtual_clock
 ):
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model="H619A", configuration_url=None)
     coordinator.profile = device_profile("H619A", 2, 1, firmware="1.06.00", hardware="1.00.02")

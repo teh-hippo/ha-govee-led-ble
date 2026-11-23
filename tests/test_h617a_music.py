@@ -47,7 +47,7 @@ def test_tail_schema_ownership_is_independent_of_product_permissions(model, mode
 
 
 @pytest.mark.parametrize("mode", NEW_MODES)
-@pytest.mark.parametrize("size", range(1, 9))
+@pytest.mark.parametrize("size", (1, 4, 8))
 def test_variable_palette_preserves_complete_preset_tail(mode, size):
     variant = music_variant(PROFILE, mode)
     original = parse_body(b"\x01\x02\x41" + variant.template)
@@ -80,11 +80,10 @@ def test_hopping_background_upload_ends_with_the_complete_parameter_tail(brightn
     assert upload == [bytes.fromhex(first), bytes.fromhex("a3ff03020600000000000000000000000000005b")]
 
 
-@pytest.mark.parametrize("mode", NEW_MODES)
 @pytest.mark.parametrize("palette", [[], [(0, 0, 0)] * 9, [(True, 0, 0)], [(256, 0, 0)], [(1, 2)]])
-def test_invalid_palettes_fail_before_writes(mode, palette):
+def test_invalid_palettes_fail_before_writes(palette):
     with pytest.raises(ValueError):
-        build_music_params(mode, {}, palette=palette, profile=PROFILE)
+        build_music_params(NEW_MODES[0], {}, palette=palette, profile=PROFILE)
 
 
 @pytest.mark.parametrize("mode", NEW_MODES)

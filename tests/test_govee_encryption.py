@@ -84,7 +84,7 @@ async def test_wire_parsing_does_not_import_on_event_loop():
 
 
 @pytest.mark.parametrize("pact_type", [1, 2])
-async def test_h607c_marker_qualifies_rgb_only_for_current_connection(hass, monkeypatch, pact_type):
+async def test_h607c_marker_qualifies_rgb_only_for_current_connection(hass, monkeypatch, pact_type, virtual_clock):
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H607C", configuration_url=None)
     device = client(bytes((2, 0, 0, 0, pact_type, 1)))
     coordinator.is_on = True
@@ -1458,7 +1458,7 @@ def test_h6097_runtime_profile_tracks_pact_without_version_queries(hass):
         ("H6182", "plaintext"),
     ],
 )
-async def test_coordinator_uses_qualified_plaintext_marker_policy(hass, model, result):
+async def test_coordinator_uses_qualified_plaintext_marker_policy(hass, model, result, virtual_clock):
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", model, configuration_url=None)
     coordinator.profile = replace(
         coordinator.profile,

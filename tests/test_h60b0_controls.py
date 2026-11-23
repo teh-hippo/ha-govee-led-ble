@@ -522,7 +522,7 @@ async def test_source_selection_change_before_physical_write_is_rejected(native_
 
 
 @pytest.fixture
-def source_wire(native_sources):
+def source_wire(native_sources, virtual_clock):
     coordinator, _observe = native_sources
     client = coordinator._client
     coordinator._async_write_packet = GoveeBLECoordinator._async_write_packet.__get__(coordinator)

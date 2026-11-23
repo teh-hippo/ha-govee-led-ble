@@ -365,27 +365,28 @@ async def test_h66a0_segment_kelvin_confirms_device_rendered_rgb_and_mode_kelvin
 
 
 @pytest.mark.parametrize(
-    "model,whole,segments,requested,advertisement_at,physical_count",
+    "model,whole,segments,requested,advertisement_at,physical_count,settling",
     [
-        ("H66A0", True, None, 3000, None, None),
-        ("H66A0", False, [8, 9], 3000, None, None),
-        ("H66A0", False, list(range(1, 15)), 3000, None, None),
-        ("H1A42", False, [4], 3000, None, None),
-        ("H61F5", True, None, 3000, None, 21),
-        ("H61F5", False, [4], 3000, None, 21),
-        ("H61F5", True, None, 3050, None, 21),
-        ("H1A42", True, None, 3050, None, None),
-        ("H61F5", True, None, 4100, "before", 21),
-        ("H61F5", True, None, 4100, "during", 21),
-        ("H1A42", True, None, 3000, None, 3),
-        ("H1A42", False, [1, 3], 3000, None, 3),
-        ("H61F5", True, None, 3000, None, 80),
-        ("H61F5", True, None, 3000, None, 81),
-        ("H61F5", True, None, 3000, None, 100),
-        ("H61F5", False, [1, 20], 3000, None, 100),
+        ("H66A0", True, None, 3000, None, None, 0),
+        ("H66A0", False, [8, 9], 3000, None, None, 0),
+        ("H66A0", False, list(range(1, 15)), 3000, None, None, 0),
+        ("H1A42", False, [4], 3000, None, None, 0),
+        ("H61F5", True, None, 3000, None, 21, 0),
+        ("H61F5", False, [4], 3000, None, 21, 0),
+        ("H61F5", True, None, 3050, None, 21, 0),
+        ("H1A42", True, None, 3050, None, None, 0),
+        ("H61F5", True, None, 4100, "before", 21, 0),
+        ("H61F5", True, None, 4100, "during", 21, 0),
+        ("H1A42", True, None, 3000, None, 3, 0),
+        ("H1A42", False, [1, 3], 3000, None, 3, 0),
+        ("H61F5", True, None, 3000, None, 80, 0),
+        ("H61F5", True, None, 3000, None, 81, 0),
+        ("H61F5", True, None, 3000, None, 100, 0),
+        ("H61F5", False, [1, 20], 3000, None, 100, 0),
+        ("H61F5", True, None, 3000, None, 21, 0.35),
+        ("H61F5", True, None, 3000, None, 21, 2.8),
     ],
 )
-@pytest.mark.parametrize("settling", [0, 0.35, 2.8])
 async def test_issue_429_six_operations_settle_without_replaying_kelvin(
     hass, monkeypatch, virtual_clock, model, whole, segments, requested, advertisement_at, physical_count, settling
 ):

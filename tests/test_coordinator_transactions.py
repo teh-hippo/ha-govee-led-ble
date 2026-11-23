@@ -921,10 +921,8 @@ async def test_preview_preflight_timeout_includes_foreground_wait(coord, virtual
         ("stale_mode", None),
     ],
 )
-@pytest.mark.parametrize("intent", [ControlIntent.PREVIEW, ControlIntent.APPLY])
-async def test_effect_observation_requires_fresh_selector_and_power(
-    coord, virtual_clock, selector, replies, expected, intent
-):
+async def test_effect_observation_requires_fresh_selector_and_power(coord, virtual_clock, selector, replies, expected):
+    intent = ControlIntent.PREVIEW
     coord._client = MagicMock(is_connected=True)
     mode = int(StatusReply.ColorMode.diy) if selector == "diy_code" else int(StatusReply.ColorMode.scene)
     coord._notify_callback(None, bytearray(_packet(0xAA, 0x01, [1])))
@@ -957,6 +955,27 @@ async def test_effect_observation_requires_fresh_selector_and_power(
             result = await coord.async_observe_effect({"is_on": True, selector: 24}, timeout=0.01)
 
     assert result is expected
+    sent.assert_awaited_once()
+    assert not coord._control_arbiter.locked()
+
+
+async def test_effect_observation_preserves_apply_intent(coord, virtual_clock):
+    coord._client = MagicMock(is_connected=True)
+    coord._notify_callback(None, bytearray(_packet(0xAA, 0x01, [1])))
+    mode = int(StatusReply.ColorMode.scene)
+    coord._notify_callback(None, bytearray(_packet(0xAA, 0x05, [mode, 24, 0])))
+
+    async def query(**_kwargs) -> bool:
+        assert coord._control_arbiter.current_task_intent is ControlIntent.APPLY
+        loop = asyncio.get_running_loop()
+        loop.call_soon(coord._notify_callback, None, bytearray(_packet(0xAA, 0x01, [1])))
+        loop.call_soon(coord._notify_callback, None, bytearray(_packet(0xAA, 0x05, [mode, 24, 0])))
+        return True
+
+    with patch.object(coord, "_send_state_queries", new=AsyncMock(side_effect=query)) as sent:
+        async with coord._control_arbiter.hold(ControlIntent.APPLY):
+            assert await coord.async_observe_effect({"is_on": True, "scene_code": 24}, timeout=0.01)
+
     sent.assert_awaited_once()
     assert not coord._control_arbiter.locked()
 

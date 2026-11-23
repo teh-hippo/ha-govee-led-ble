@@ -90,6 +90,14 @@ def test_validation_aggregation_accepts_only_verified_lightweight_runs(
     assert (run.returncode == 0) is accepted, run.stdout + run.stderr
 
 
+def test_lightweight_validation_skips_workflow_lint_with_the_build() -> None:
+    workflow = load_yaml(_REPO / ".github/workflows/validate.yml")
+    assert isinstance(workflow, dict)
+    jobs = workflow["jobs"]
+
+    assert jobs["workflow-lint"].get("if") == jobs["build"]["if"]
+
+
 @pytest.mark.parametrize(
     ("version", "accepted"),
     [("1.2.3", False), ("1.2.3-rc.4.branch", False), ("1.2.3-pr-145.4", True), ("1.2.3-pr-146.4", False)],

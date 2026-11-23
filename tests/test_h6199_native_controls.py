@@ -38,7 +38,7 @@ def qualify(c):
 
 
 @pytest.fixture
-def coordinator(hass, monkeypatch):
+def coordinator(hass, monkeypatch, virtual_clock):
     c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url=None)
     qualify(c)
     c._client = SimpleNamespace(is_connected=True, write_gatt_char=AsyncMock(), disconnect=AsyncMock())

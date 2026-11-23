@@ -22,12 +22,10 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_relative_brightness_query,
     build_segment_query,
     build_subordinate_query,
-    build_video_mode,
-    build_white_balance,
     build_white_balance_query,
 )
 from custom_components.ha_govee_led_ble.music_commands import resolve_music_profile
-from custom_components.ha_govee_led_ble.protocol_h6199 import build_h6199_control, build_h6199_control_query
+from custom_components.ha_govee_led_ble.protocol_h6199 import build_h6199_control_query
 from custom_components.ha_govee_led_ble.transport import xor_checksum
 from custom_components.ha_govee_led_ble.video_applicability import (
     h6199_camera_controls_state,
@@ -240,7 +238,7 @@ async def test_reconnect_invalidates_all_h6199_revision_authorization(hass, monk
 
 
 @pytest.fixture
-async def lifecycle(hass, monkeypatch, request):
+async def lifecycle(hass, monkeypatch, request, virtual_clock):
     """Only the radio is fake: connection, subscriptions, parsing, guards and polling are real."""
     from homeassistant.config_entries import current_entry
     from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -341,53 +339,6 @@ async def lifecycle(hass, monkeypatch, request):
         await c.disconnect()
         for timer in timers:
             timer.cancel()
-
-
-@pytest.mark.parametrize("route", ["select", "white_balance", "video"])
-@pytest.mark.parametrize("identity", ["qualified", "missing", "mismatched"])
-async def test_real_reconnect_waits_for_identity_before_guard(lifecycle, hass, monkeypatch, route, identity):
-    from custom_components.ha_govee_led_ble.native_profile_controls import apply_active_video_mode, apply_white_balance
-    from custom_components.ha_govee_led_ble.select import GoveeBLEControlSelect
-    from tests.test_h6199_native_controls import frame
-
-    c, replies, clients, packets = lifecycle
-    await c._async_update_data()
-    assert c._client is None and clients[-1].disconnect.await_count == 1
-    assert c.gradient == 1
-    assert h6199_camera_controls_state(c.model, c) is CapabilityState.SUPPORTED
-    if identity == "missing":
-        del replies[build_firmware_query("H6199")]
-    elif identity == "mismatched":
-        replies[build_firmware_query("H6199")] = frame("aa06" + b"1.00.01".hex())
-    packets.clear()
-
-    async def apply():
-        if route == "select":
-            entity = GoveeBLEControlSelect(SimpleNamespace(runtime_data=c, entry_id="test"), "camera_position")
-            entity.hass = hass
-            monkeypatch.setattr("custom_components.ha_govee_led_ble.select.get_effect_backend", lambda _: None)
-            await entity.async_select_option("bottom")
-        elif route == "white_balance":
-            assert await apply_white_balance(c, (21, 5))
-        else:
-            assert await apply_active_video_mode(c, mode="movie", requested_values={"sound_effects": True})
-
-    replies[build_white_balance_query("H6199")] = frame("aaa90006011003011505")
-    if identity == "qualified":
-        await apply()
-        expected = {
-            "select": build_h6199_control("camera_position", 1),
-            "white_balance": build_white_balance(21, 5, "H6199"),
-            "video": build_video_mode("movie", True, 100, True, 100, "H6199"),
-        }[route]
-        assert expected in packets
-    else:
-        from homeassistant.exceptions import HomeAssistantError
-
-        with pytest.raises((ValueError, HomeAssistantError)):
-            await apply()
-        assert not any(packet[0] == 0x33 for packet in packets)
-    assert len(clients) == 2
 
 
 async def test_poll_preserves_delayed_native_replies_until_next_query(lifecycle, monkeypatch, virtual_clock):

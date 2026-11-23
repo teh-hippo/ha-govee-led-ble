@@ -1303,7 +1303,7 @@ async def test_keep_alive_stale_identity_failure_stops_before_state_queries(coor
     assert coord.fresh_services_required
 
 
-async def test_start_notify(coord, h6199):
+async def test_start_notify(coord, h6199, virtual_clock):
     c = _c(start_notify=AsyncMock(), write_gatt_char=AsyncMock(), disconnect=AsyncMock())
     with (
         patch(f"{M}.async_resolve_ble_device", new_callable=AsyncMock, return_value=_resolution()),
