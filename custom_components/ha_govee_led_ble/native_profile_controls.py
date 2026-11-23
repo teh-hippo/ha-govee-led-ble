@@ -335,6 +335,7 @@ async def apply_active_video_mode(
     writer: ProfileWriter | None = None,
     verify: bool = True,
     on_write: Callable[[], None] | None = None,
+    write_guard: Callable[[], None] | None = None,
 ) -> bool:
     from .coordinator_modes import ModeTransitionPurpose
 
@@ -367,6 +368,12 @@ async def apply_active_video_mode(
         async_control_intent(coordinator, intent),
         coordinator.async_mode_transition(purpose=ModeTransitionPurpose.SELECTION),
     ):
+
+        def check_write() -> None:
+            check_retained()
+            if write_guard is not None:
+                write_guard()
+
         for _ in range(2 if verify else 1):
             await async_require_video_controls(coordinator, controls)
             if not coordinator.is_on:
@@ -375,7 +382,7 @@ async def apply_active_video_mode(
                     build_power(True, coordinator.model),
                     controls,
                     writer=writer,
-                    write_guard=check_retained,
+                    write_guard=check_write,
                     state_values={"is_on": True},
                 )
             await _send_video_setting(
@@ -383,7 +390,7 @@ async def apply_active_video_mode(
                 packet,
                 controls,
                 writer=writer,
-                write_guard=check_retained,
+                write_guard=check_write,
                 state_values=state_values,
                 on_write=on_write,
             )

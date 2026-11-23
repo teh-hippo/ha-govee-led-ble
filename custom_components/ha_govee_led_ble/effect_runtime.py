@@ -111,6 +111,55 @@ _LOGGER = logging.getLogger(__name__)
 type _PriorEffectOrigin = tuple[ObservedDeviceState | None, ActiveEffectWorkspace | None]
 
 
+@dataclass(frozen=True, slots=True)
+class _PreparedBlankScreenPolicy:
+    policy: tuple[int, int, int]
+    notification_revision: int
+    client: object
+    subscription: object
+    profile_generation: int
+    authorization_generation: int
+
+    @classmethod
+    def capture(
+        cls,
+        coordinator: GoveeBLECoordinator,
+        prior_state: PriorControlState,
+    ) -> _PreparedBlankScreenPolicy:
+        values = (
+            prior_state.blank_screen_detection,
+            prior_state.blank_screen_low_brightness_duration_seconds,
+            prior_state.blank_screen_same_tone_duration_seconds,
+        )
+        detection, low_duration, same_duration = values
+        if detection is None or low_duration is None or same_duration is None:
+            raise RuntimeError("The prepared blank-screen policy is incomplete")
+        return cls(
+            (detection, low_duration, same_duration),
+            coordinator._blank_screen_notification_revision,
+            coordinator._client,
+            coordinator._notification_token,
+            coordinator._profile_generation,
+            coordinator._authorization_generation,
+        )
+
+    def require_current(self, coordinator: GoveeBLECoordinator) -> None:
+        if (
+            coordinator._client is not self.client
+            or coordinator._notification_token is not self.subscription
+            or coordinator._profile_generation != self.profile_generation
+            or coordinator._authorization_generation != self.authorization_generation
+            or coordinator._blank_screen_notification_revision != self.notification_revision
+            or (
+                coordinator.blank_screen_detection,
+                coordinator.blank_screen_low_brightness_duration_seconds,
+                coordinator.blank_screen_same_tone_duration_seconds,
+            )
+            != self.policy
+        ):
+            raise ValueError("Blank-screen policy changed after preparation; refresh and retry")
+
+
 class EffectStateReadError(RuntimeError):
     """Required independent observations could not be acquired."""
 
@@ -172,6 +221,7 @@ async def async_apply_compiled_profile(
     intent: ControlIntent = ControlIntent.APPLY,
     defer_confirmation: bool = False,
     on_blank_screen_write: Callable[[tuple[int, int, int]], None] | None = None,
+    prepared_blank_screen: _PreparedBlankScreenPolicy | None = None,
 ) -> None:
     if isinstance(compiled, CompiledStaticRgb):
         if coordinator.model != compiled.model:
@@ -275,7 +325,7 @@ async def async_apply_compiled_profile(
         ):
             raise ValueError("Cannot preserve omitted video settings without fresh readback")
         await async_require_video_controls(coordinator, requested_video_controls(compiled))
-    if compiled.blank_screen is not None and compiled.blank_screen_policy is None:
+    if compiled.blank_screen is not None and compiled.blank_screen_policy is None and prepared_blank_screen is None:
         baselines = {
             field: coordinator._field_revisions.get(field, 0)
             for field in (
@@ -357,6 +407,11 @@ async def async_apply_compiled_profile(
             writer=writer,
             verify=verify,
             on_write=on_write,
+            write_guard=(
+                (lambda: prepared_blank_screen.require_current(coordinator))
+                if prepared_blank_screen is not None
+                else None
+            ),
         )
         completed = 1
         if progress is not None:
@@ -870,6 +925,13 @@ class EffectDeploymentEngine:
                         )
                     else:
                         prior_state = replace(prior_state, video_restore_controls=())
+                    prepared_blank_screen = (
+                        _PreparedBlankScreenPolicy.capture(coordinator, prior_state)
+                        if isinstance(compiled, CompiledVideoProfile)
+                        and compiled.blank_screen is not None
+                        and compiled.blank_screen_policy is None
+                        else None
+                    )
                     await transaction.store(replace(transaction.current, prior_state=prior_state))
                     await transaction.store(replace(transaction.current, phase=DeploymentPhase.UPLOADING))
                     written_blank_screen_policy: tuple[int, int, int] | None = None
@@ -933,8 +995,7 @@ class EffectDeploymentEngine:
                             coordinator.music_mode = coordinator.video_mode = "off"
                     else:
                         defer_profile_confirmation = (
-                            record.source_kind == "snapshot"
-                            and isinstance(compiled, CompiledVideoProfile)
+                            isinstance(compiled, CompiledVideoProfile)
                             and compiled_observation(compiled, profile=coordinator.profile)[1]
                             is ObservationConfidence.SETTINGS_MATCH
                         )
@@ -944,6 +1005,7 @@ class EffectDeploymentEngine:
                             transaction,
                             defer_confirmation=defer_profile_confirmation,
                             bind_blank_screen_policy=defer_profile_confirmation,
+                            prepared_blank_screen=prepared_blank_screen,
                         )
 
                     transition.require_current()
@@ -957,6 +1019,7 @@ class EffectDeploymentEngine:
                             transaction,
                             transition.current,
                             written_blank_screen_policy=written_blank_screen_policy,
+                            prepared_blank_screen=prepared_blank_screen,
                         )
                         if confirmed is False or not transition.current():
                             final = await self._async_finish_failure(
@@ -1084,13 +1147,13 @@ class EffectDeploymentEngine:
         verify: bool = True,
         defer_confirmation: bool = False,
         bind_blank_screen_policy: bool = False,
+        prepared_blank_screen: _PreparedBlankScreenPolicy | None = None,
     ) -> tuple[int, int, int] | None:
         written_policy: tuple[int, int, int] | None = None
 
         def capture_blank_screen_policy(policy: tuple[int, int, int]) -> None:
             nonlocal written_policy
             written_policy = policy
-
         await async_apply_compiled_profile(
             coordinator,
             compiled,
@@ -1099,6 +1162,7 @@ class EffectDeploymentEngine:
             verify=verify,
             defer_confirmation=defer_confirmation,
             on_blank_screen_write=capture_blank_screen_policy if bind_blank_screen_policy else None,
+            prepared_blank_screen=prepared_blank_screen,
         )
         return written_policy
 
@@ -1110,6 +1174,7 @@ class EffectDeploymentEngine:
         current: Callable[[], bool],
         *,
         written_blank_screen_policy: tuple[int, int, int] | None = None,
+        prepared_blank_screen: _PreparedBlankScreenPolicy | None = None,
     ) -> tuple[bool | None, ObservationConfidence]:
         if isinstance(compiled, CompiledStaticRgb):
             return static_rgb_matches(coordinator, compiled), ObservationConfidence.SETTINGS_MATCH
@@ -1123,6 +1188,7 @@ class EffectDeploymentEngine:
                 transaction,
                 current,
                 written_blank_screen_policy=written_blank_screen_policy,
+                prepared_blank_screen=prepared_blank_screen,
             )
         if compiled.activation_packet is None:
             raise RuntimeError("compiled activation verification has no activation packet")
@@ -1155,6 +1221,7 @@ class EffectDeploymentEngine:
         current: Callable[[], bool],
         *,
         written_blank_screen_policy: tuple[int, int, int] | None = None,
+        prepared_blank_screen: _PreparedBlankScreenPolicy | None = None,
     ) -> tuple[bool | None, ObservationConfidence]:
         base_expectations, confidence = compiled_observation(compiled, profile=coordinator.profile)
         if base_expectations is None:
@@ -1162,6 +1229,18 @@ class EffectDeploymentEngine:
         refreshed = None
         for attempt in range(VERIFICATION_ATTEMPTS):
             expectations = dict(base_expectations)
+            if prepared_blank_screen is not None:
+                expectations.update(
+                    zip(
+                        (
+                            "blank_screen_detection",
+                            "blank_screen_low_brightness_duration_seconds",
+                            "blank_screen_same_tone_duration_seconds",
+                        ),
+                        prepared_blank_screen.policy,
+                        strict=True,
+                    )
+                )
             if written_blank_screen_policy is not None:
                 expectations.update(
                     zip(
