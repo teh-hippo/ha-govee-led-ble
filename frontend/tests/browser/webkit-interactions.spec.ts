@@ -39,7 +39,7 @@ test("projector advanced layers can be created, reordered and removed through sh
   await expect(editor.getByRole("heading", { name: "Projector layer 2", exact: true })).toHaveCount(0);
 });
 
-async function mountFeedbackPanel(page: Page, model = "H7025", showFeedback = true): Promise<void> {
+async function mountFeedbackPanel(page: Page, model = "H705A", showFeedback = true): Promise<void> {
   await page.evaluate(async ({ model, showFeedback }) => {
     const modulePath = "/src/panel.ts";
     const { GoveeLedEffectStudio } = await import(modulePath);
@@ -295,7 +295,7 @@ for (const viewport of [{ width: 320, height: 844 }, { width: 1280, height: 900 
     const report = dialog.getByRole("textbox", { name: "Details", exact: true });
     await expect(report).toHaveValue(/Hardware version: 3\.01\.10/);
     await expect(report).toHaveValue(/Firmware version: not yet observed/);
-    await expect(report).not.toHaveValue(/Private device name|private-owner|h7025-main/);
+    await expect(report).not.toHaveValue(/Private device name|private-owner|h705a-main/);
     await dialog.getByRole("button", { name: "Copy details", exact: true }).click();
     await expect(dialog.getByRole("status")).toContainText(viewport.width < 1000 ? "Copying failed" : "Copying is unavailable");
     expect(await report.evaluate((element: HTMLTextAreaElement) => {
@@ -320,12 +320,12 @@ for (const viewport of [{ width: 320, height: 844 }, { width: 1280, height: 900 
     if (!reportBox || !copyBox || !openBox) throw new Error("Feedback actions must be visible");
     expect(copyBox.y).toBeGreaterThanOrEqual(reportBox.y + reportBox.height);
     expect(copyBox.y + copyBox.height).toBeLessThan(openBox.y);
-    await page.context().route("https://github.com/teh-hippo/ha-govee-led-ble/issues/451", route =>
+    await page.context().route("https://github.com/teh-hippo/ha-govee-led-ble/issues/596", route =>
       route.fulfill({ contentType: "text/html", body: "<h1>Model confirmation issue</h1>" }));
     const opened = page.waitForEvent("popup");
     await openGitHub.click();
     const issuePage = await opened;
-    await expect(issuePage).toHaveURL("https://github.com/teh-hippo/ha-govee-led-ble/issues/451");
+    await expect(issuePage).toHaveURL("https://github.com/teh-hippo/ha-govee-led-ble/issues/596");
     await issuePage.close();
     expect(await page.locator("ha-govee-led-ble-editor").getAttribute("data-calls")).toBe(callsBefore);
     await page.keyboard.press("Escape");
