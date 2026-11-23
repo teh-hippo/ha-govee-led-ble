@@ -23,9 +23,11 @@ from .effect_limits import (
     MAX_IDENTIFIER_LENGTH,
     MAX_REVISION,
     MAX_STORE_JSON_NODES,
+    JsonDocumentMetrics,
     json_document_size,
     validate_bounded_string,
     validate_json_document,
+    validate_json_document_metrics,
     validate_revision,
     validate_timestamp,
 )
@@ -1153,6 +1155,7 @@ class EffectDeploymentRepository:
         self._snapshot: tuple[dict[str, Any], DeploymentSnapshot, dict[UUID, DeploymentRecord]] | None = None
         self._listeners: set[Callable[[DeploymentSnapshot], None]] = set()
         self._encoded_size = 0
+        self._encoded_nodes = 0
 
     async def async_load(self) -> DeploymentSnapshot:
         async with self._lock:
@@ -1318,28 +1321,114 @@ class EffectDeploymentRepository:
                 raise EffectVersionConflictError(version)
             if not durable and (progress := self._progress_update(record)) is not None:
                 candidate, snapshot, encoded_size = progress
-                self._install_data(candidate, snapshot, encoded_size=encoded_size)
+                self._install_data(
+                    candidate,
+                    snapshot,
+                    encoded_size=encoded_size,
+                    node_count=self._encoded_nodes,
+                )
                 self._store.async_delay_save(lambda: copy.deepcopy(self._require_loaded()), delay=5)
                 self._notify_listeners(snapshot)
                 return snapshot
-            candidate = copy.deepcopy(current)
-            key = str(record.operation_id)
-            if key not in candidate["records"] and len(candidate["records"]) >= MAX_DEPLOYMENT_RECORDS:
-                _remove_oldest_terminal_deployment(candidate["records"])
-            candidate["records"][str(record.operation_id)] = record.to_dict()
-            candidate["version"] += 1
-            snapshot = _validate_deployments(candidate)
+            candidate, snapshot, encoded_size, encoded_nodes = self._incremental_record_update(record)
             if durable:
                 await self._store.async_save(candidate)
-                self._install_data(candidate, snapshot)
+                self._install_data(candidate, snapshot, encoded_size=encoded_size, node_count=encoded_nodes)
             else:
-                self._install_data(candidate, snapshot)
+                self._install_data(candidate, snapshot, encoded_size=encoded_size, node_count=encoded_nodes)
                 self._store.async_delay_save(
                     lambda: copy.deepcopy(self._require_loaded()),
                     delay=5,
                 )
             self._notify_listeners(snapshot)
             return snapshot
+
+    def _incremental_record_update(
+        self,
+        record: DeploymentRecord,
+    ) -> tuple[dict[str, Any], DeploymentSnapshot, int, int]:
+        snapshot, records = self._cached()
+        current = self._require_loaded()
+        current_records = _required_mapping(current, "records")
+        key = str(record.operation_id)
+        previous = records.get(record.operation_id)
+
+        canonical = DeploymentRecord.from_dict(
+            _as_mapping(record.to_dict(), f"deployment {key}"),
+        )
+        if canonical.operation_id != record.operation_id:
+            raise EffectStorageError("deployment record key does not match operation ID")
+        raw = canonical.to_dict()
+        raw_metrics = _validate_deployment_record_metrics(raw, key)
+
+        candidate_records = dict(current_records)
+        old_metrics: JsonDocumentMetrics | None = None
+        if previous is not None:
+            old_raw = candidate_records[key]
+            old_metrics = _validate_deployment_record_metrics(old_raw, key)
+
+        evicted: DeploymentRecord | None = None
+        evicted_metrics: JsonDocumentMetrics | None = None
+        if previous is None and len(candidate_records) >= MAX_DEPLOYMENT_RECORDS:
+            terminal = [
+                item
+                for item in snapshot.records
+                if item.phase
+                in {
+                    DeploymentPhase.CONFIRMED,
+                    DeploymentPhase.APPLIED,
+                    DeploymentPhase.UNCERTAIN,
+                    DeploymentPhase.FAILED,
+                    DeploymentPhase.INTERRUPTED,
+                    DeploymentPhase.UNKNOWN,
+                }
+            ]
+            if not terminal:
+                raise EffectLimitError(f"deployment history cannot exceed {MAX_DEPLOYMENT_RECORDS} active records")
+            evicted = min(terminal, key=lambda item: item.updated_at)
+            evicted_key = str(evicted.operation_id)
+            evicted_metrics = _validate_deployment_record_metrics(candidate_records.pop(evicted_key), evicted_key)
+
+        candidate_records[key] = raw
+        version = snapshot.version + 1
+        validate_revision(version, "deployment store version", minimum=0, error_type=EffectStorageError)
+        if len(candidate_records) > MAX_DEPLOYMENT_RECORDS:
+            raise EffectLimitError(f"deployment history must not exceed {MAX_DEPLOYMENT_RECORDS} records")
+
+        old_count = len(current_records)
+        new_count = len(candidate_records)
+        encoded_size = self._encoded_size + json_document_size(version) - json_document_size(snapshot.version)
+        entry_delta = _deployment_entry_encoded_size(key, raw_metrics)
+        node_delta = raw_metrics.node_count
+        if old_metrics is not None:
+            entry_delta -= _deployment_entry_encoded_size(key, old_metrics)
+            node_delta -= old_metrics.node_count
+        if evicted is not None and evicted_metrics is not None:
+            entry_delta -= _deployment_entry_encoded_size(str(evicted.operation_id), evicted_metrics)
+            node_delta -= evicted_metrics.node_count
+        encoded_size += entry_delta + max(new_count - 1, 0) - max(old_count - 1, 0)
+        if encoded_size > MAX_DEPLOYMENT_STORE_BYTES:
+            raise EffectStorageError(f"deployment store must not exceed {MAX_DEPLOYMENT_STORE_BYTES} bytes")
+        encoded_nodes = self._encoded_nodes + node_delta
+        if encoded_nodes > MAX_STORE_JSON_NODES:
+            raise EffectStorageError(f"deployment store must not exceed {MAX_STORE_JSON_NODES} JSON values")
+
+        updated_records = tuple(
+            item for item in snapshot.records if evicted is None or item.operation_id != evicted.operation_id
+        )
+        if previous is None:
+            updated_records += (canonical,)
+        else:
+            updated_records = tuple(
+                canonical if item.operation_id == canonical.operation_id else item for item in updated_records
+            )
+        candidate = {**current, "version": version, "records": candidate_records}
+        return (
+            candidate,
+            DeploymentSnapshot(version, updated_records),
+            encoded_size,
+            encoded_nodes,
+        )
 
     def _progress_update(self, record: DeploymentRecord) -> tuple[dict[str, Any], DeploymentSnapshot, int] | None:
         snapshot, records = self._cached()
@@ -1409,11 +1498,27 @@ class EffectDeploymentRepository:
             self._install_data(candidate, snapshot)
 
     def _install_data(
-        self, data: dict[str, Any], snapshot: DeploymentSnapshot, *, encoded_size: int | None = None
+        self,
+        data: dict[str, Any],
+        snapshot: DeploymentSnapshot,
+        *,
+        encoded_size: int | None = None,
+        node_count: int | None = None,
     ) -> None:
+        if encoded_size is None or node_count is None:
+            metrics = validate_json_document_metrics(
+                data,
+                "deployment store",
+                maximum_bytes=MAX_DEPLOYMENT_STORE_BYTES,
+                error_type=EffectStorageError,
+                maximum_nodes=MAX_STORE_JSON_NODES,
+            )
+            encoded_size = metrics.encoded_size if encoded_size is None else encoded_size
+            node_count = metrics.node_count if node_count is None else node_count
         self._data = data
         self._snapshot = (data, snapshot, {record.operation_id: record for record in snapshot.records})
-        self._encoded_size = json_document_size(data) if encoded_size is None else encoded_size
+        self._encoded_size = encoded_size
+        self._encoded_nodes = node_count
 
     def _cached(self) -> tuple[DeploymentSnapshot, dict[UUID, DeploymentRecord]]:
         data = self._require_loaded()
@@ -1521,6 +1626,21 @@ def _validate_deployments(data: object) -> DeploymentSnapshot:
     if any(str(record.operation_id) != str(key) for key, record in zip(records, parsed, strict=True)):
         raise EffectStorageError("deployment record key does not match operation ID")
     return DeploymentSnapshot(version, parsed)
+
+
+def _validate_deployment_record_metrics(raw: object, key: str) -> JsonDocumentMetrics:
+    return validate_json_document_metrics(
+        raw,
+        f"deployment {key}",
+        maximum_bytes=MAX_DEPLOYMENT_STORE_BYTES,
+        error_type=EffectStorageError,
+        maximum_nodes=MAX_STORE_JSON_NODES,
+        initial_depth=2,
+    )
+
+
+def _deployment_entry_encoded_size(key: str, metrics: JsonDocumentMetrics) -> int:
+    return json_document_size(key) + 1 + metrics.encoded_size
 
 
 def _load_deployments(data: object) -> tuple[DeploymentSnapshot, dict[str, Any]]:

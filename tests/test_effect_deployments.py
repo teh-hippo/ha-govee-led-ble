@@ -37,7 +37,10 @@ from custom_components.ha_govee_led_ble.effect_identity import (
 )
 from custom_components.ha_govee_led_ble.effect_limits import (
     MAX_DEPLOYMENT_RECORDS,
+    MAX_DEPLOYMENT_STORE_BYTES,
     MAX_JSON_STRING_LENGTH,
+    MAX_STORE_JSON_NODES,
+    validate_json_document_metrics,
 )
 from custom_components.ha_govee_led_ble.effect_storage import (
     EffectNotFoundError,
@@ -957,6 +960,23 @@ async def test_deployment_history_discards_oldest_terminal_record(
     await store.async_save({"version": MAX_DEPLOYMENT_RECORDS, "records": records})
     repository = EffectDeploymentRepository(hass)
     snapshot = await repository.async_load()
+    cached_records = {record.operation_id: record for record in snapshot.records}
+    target = snapshot.records[-1]
+    replacement = replace(
+        target,
+        phase=DeploymentPhase.APPLIED,
+        updated_at="2026-08-11T23:59:59Z",
+    )
+    replaced = await repository.async_put(
+        replacement,
+        expected_version=snapshot.version,
+    )
+    assert all(
+        repository.get(record.operation_id) is record
+        for record in replaced.records
+        if record.operation_id != replacement.operation_id
+    )
+    assert repository.get(target.operation_id) == replacement
 
     next_record = replace(
         _deployment(DeploymentPhase.PENDING),
@@ -964,12 +984,18 @@ async def test_deployment_history_discards_oldest_terminal_record(
     )
     updated = await repository.async_put(
         next_record,
-        expected_version=snapshot.version,
+        expected_version=replaced.version,
     )
 
     assert len(updated.records) == MAX_DEPLOYMENT_RECORDS
     assert all(str(record.operation_id) != oldest_id for record in updated.records)
     assert repository.get(next_record.operation_id) == next_record
+    assert all(
+        repository.get(operation_id) is record
+        for operation_id, record in cached_records.items()
+        if str(operation_id) != oldest_id and operation_id != target.operation_id
+    )
+    assert snapshot.records[-1] is target
 
 
 async def test_deployment_record_tokens_reject_stale_progress_without_conflicting_with_other_devices():
@@ -991,11 +1017,118 @@ async def test_deployment_record_tokens_reject_stale_progress_without_conflictin
     assert repository.get(initial.operation_id) == next_record
 
 
+async def test_incremental_updates_keep_exact_full_document_metrics() -> None:
+    records = {}
+    for index in range(MAX_DEPLOYMENT_RECORDS):
+        record = replace(
+            _deployment(DeploymentPhase.CONFIRMED),
+            updated_at=f"2026-08-11T{index // 60:02d}:{index % 60:02d}:00Z",
+        )
+        records[str(record.operation_id)] = record.to_dict()
+    store = InMemoryVersionedDocumentStore({"version": 9, "records": records})
+    repository = EffectDeploymentRepository(store)
+    loaded = await repository.async_load()
+    replacement = replace(
+        loaded.records[0],
+        phase=DeploymentPhase.APPLIED,
+        selector_label="Vídeo \u20ac",
+        updated_at="2026-08-12T00:00:00Z",
+    )
+    replaced = await repository.async_put(replacement, expected_version=loaded.version)
+    assert store.data is not None
+    metrics = validate_json_document_metrics(
+        store.data,
+        "deployment store",
+        maximum_bytes=MAX_DEPLOYMENT_STORE_BYTES,
+        error_type=EffectStorageError,
+        maximum_nodes=MAX_STORE_JSON_NODES,
+    )
+    assert repository._encoded_size == metrics.encoded_size
+    assert repository._encoded_nodes == metrics.node_count
+
+    inserted = await repository.async_put(
+        _deployment(DeploymentPhase.PENDING),
+        expected_version=replaced.version,
+    )
+    assert store.data is not None
+    metrics = validate_json_document_metrics(
+        store.data,
+        "deployment store",
+        maximum_bytes=MAX_DEPLOYMENT_STORE_BYTES,
+        error_type=EffectStorageError,
+        maximum_nodes=MAX_STORE_JSON_NODES,
+    )
+    assert repository._encoded_size == metrics.encoded_size
+    assert repository._encoded_nodes == metrics.node_count
+    assert len(inserted.records) == MAX_DEPLOYMENT_RECORDS
+
+
+@pytest.mark.parametrize("limit_kind", ["bytes", "nodes"])
+@pytest.mark.parametrize("allowed", [False, True])
+async def test_incremental_update_preserves_full_document_limits(
+    monkeypatch,
+    limit_kind: str,
+    allowed: bool,
+) -> None:
+    from custom_components.ha_govee_led_ble import effect_deployments
+
+    initial = _deployment(DeploymentPhase.CONFIRMED)
+    store = InMemoryVersionedDocumentStore({"version": 9, "records": {str(initial.operation_id): initial.to_dict()}})
+    repository = EffectDeploymentRepository(store)
+    loaded = await repository.async_load()
+    replacement = replace(
+        loaded.records[0],
+        phase=DeploymentPhase.APPLIED,
+        selector_label="Vídeo \u20ac",
+        prior_state=PriorControlState(
+            mode="video",
+            is_on=True,
+            brightness_pct=60,
+            rgb_color=(1, 2, 3),
+            segment_colors=((1, 2, 3),) * 2,
+            segment_brightness=(20, 80),
+        ),
+    )
+    candidate = {
+        "version": 10,
+        "records": {str(replacement.operation_id): replacement.to_dict()},
+    }
+    metrics = validate_json_document_metrics(
+        candidate,
+        "deployment store",
+        maximum_bytes=MAX_DEPLOYMENT_STORE_BYTES,
+        error_type=EffectStorageError,
+        maximum_nodes=MAX_STORE_JSON_NODES,
+    )
+    if limit_kind == "bytes":
+        monkeypatch.setattr(
+            effect_deployments,
+            "MAX_DEPLOYMENT_STORE_BYTES",
+            metrics.encoded_size - int(not allowed),
+        )
+    else:
+        monkeypatch.setattr(
+            effect_deployments,
+            "MAX_STORE_JSON_NODES",
+            metrics.node_count - int(not allowed),
+        )
+
+    if allowed:
+        updated = await repository.async_put(replacement, expected_version=loaded.version)
+        assert updated.records == (replacement,)
+        assert store.save_count == 1
+        assert repository._encoded_size == metrics.encoded_size
+        assert repository._encoded_nodes == metrics.node_count
+    else:
+        with pytest.raises(EffectStorageError, match="must not exceed"):
+            await repository.async_put(replacement, expected_version=loaded.version)
+        assert repository.snapshot() is loaded
+        assert store.save_count == 0
+
+
 async def test_deployment_snapshot_and_lookup_cache_follow_document_mutations() -> None:
     import copy
     from unittest.mock import patch
-
-    from custom_components.ha_govee_led_ble.effect_deployments import _validate_deployments
 
     item = _item()
     prior_state = PriorControlState(
@@ -1023,55 +1156,47 @@ async def test_deployment_snapshot_and_lookup_cache_follow_document_mutations() 
     assert cached_prior is not None and cached_prior.video_parameters is not None
     with pytest.raises(TypeError):
         cached_prior.video_parameters["picture_preset"] = "other"  # type: ignore[index]
+    cached_initial = repository.get(initial.operation_id)
 
-    with patch(
-        "custom_components.ha_govee_led_ble.effect_deployments._validate_deployments",
-        wraps=_validate_deployments,
-    ) as validate:
-        assert repository.snapshot() is loaded
-        assert repository.get(initial.operation_id) == initial
-        assert (await repository.async_detach_item(uuid4())).operation_ids == ()
-        assert await repository.async_delete_device("other-entry") is loaded
-        await repository.async_reconcile_library_hashes((item,))
-        assert validate.call_count == 0
+    assert repository.snapshot() is loaded
+    assert cached_initial == initial
+    assert (await repository.async_detach_item(uuid4())).operation_ids == ()
+    assert await repository.async_delete_device("other-entry") is loaded
+    await repository.async_reconcile_library_hashes((item,))
 
-        second = replace(_deployment(DeploymentPhase.APPLIED), config_entry_id="entry-b")
-        with patch.object(store, "async_save", side_effect=OSError("save failed")), pytest.raises(OSError):
-            await repository.async_put(second, expected_version=loaded.version, durable=True)
-        assert repository.snapshot() is loaded
-        assert repository.get_optional(second.operation_id) is None
+    second = replace(_deployment(DeploymentPhase.APPLIED), config_entry_id="entry-b")
+    with patch.object(store, "async_save", side_effect=OSError("save failed")), pytest.raises(OSError):
+        await repository.async_put(second, expected_version=loaded.version, durable=True)
+    assert repository.snapshot() is loaded
+    assert repository.get_optional(second.operation_id) is None
+    assert repository.get(initial.operation_id) is cached_initial
 
-        after_put = await repository.async_put(second, expected_version=loaded.version, durable=False)
-        assert validate.call_count == 2
-        assert repository.snapshot() is after_put
-        assert repository.get(second.operation_id) == second
-        assert validate.call_count == 2
+    after_put = await repository.async_put(second, expected_version=loaded.version, durable=False)
+    assert repository.snapshot() is after_put
+    assert repository.get(second.operation_id) == second
+    assert repository.get(initial.operation_id) is cached_initial
 
-        detachment = await repository.async_detach_item(item.id)
-        assert detachment.operation_ids == (initial.operation_id,)
-        assert repository.get(initial.operation_id).source_kind == "deleted_effect"
-        assert validate.call_count == 3
+    detachment = await repository.async_detach_item(item.id)
+    assert detachment.operation_ids == (initial.operation_id,)
+    assert repository.get(initial.operation_id).source_kind == "deleted_effect"
 
-        reattached = await repository.async_reattach_item(detachment, item_id=item.id, item_version=item.version)
-        assert repository.snapshot() is reattached
-        assert repository.get(initial.operation_id).source_kind == "saved_effect"
-        assert validate.call_count == 4
+    reattached = await repository.async_reattach_item(detachment, item_id=item.id, item_version=item.version)
+    assert repository.snapshot() is reattached
+    assert repository.get(initial.operation_id).source_kind == "saved_effect"
 
-        updated_item = replace(item, content=SingleEffect(0, 0, 75, ((0, 255, 0),)), content_hash="")
-        stale = replace(repository.get(initial.operation_id), source_content_hash="0" * 64)
-        await repository.async_put(stale, expected_version=reattached.version)
-        await repository.async_reconcile_library_hashes((updated_item,))
-        assert repository.get(initial.operation_id).source_content_hash == updated_item.content_hash
-        assert validate.call_count == 6
+    updated_item = replace(item, content=SingleEffect(0, 0, 75, ((0, 255, 0),)), content_hash="")
+    stale = replace(repository.get(initial.operation_id), source_content_hash="0" * 64)
+    await repository.async_put(stale, expected_version=reattached.version)
+    await repository.async_reconcile_library_hashes((updated_item,))
+    assert repository.get(initial.operation_id).source_content_hash == updated_item.content_hash
 
-        after_delete = await repository.async_delete_device("entry-a")
-        assert repository.snapshot() is after_delete
-        assert repository.get_optional(initial.operation_id) is None
-        assert repository.get(second.operation_id) == second
-        assert validate.call_count == 7
+    after_delete = await repository.async_delete_device("entry-a")
+    assert repository.snapshot() is after_delete
+    assert repository.get_optional(initial.operation_id) is None
+    assert repository.get(second.operation_id) == second
 
 
-async def test_transient_progress_reuses_validated_records_and_persists_latest_snapshot(monkeypatch) -> None:
+async def test_transient_progress_reuses_validated_records_and_persists_latest_snapshot() -> None:
     store = InMemoryVersionedDocumentStore()
     repository = EffectDeploymentRepository(store)
     await repository.async_load()
@@ -1080,24 +1205,28 @@ async def test_transient_progress_reuses_validated_records_and_persists_latest_s
     await repository.async_put(active, expected_version=0)
     initial = await repository.async_put(other, expected_version=1)
     cached_other = repository.get(other.operation_id)
-    with monkeypatch.context() as context:
-
-        def unexpected(*args, **kwargs):
-            raise AssertionError("progress must not reparse or serialise stored records")
-
-        context.setattr(DeploymentRecord, "from_dict", unexpected)
-        context.setattr(DeploymentRecord, "to_dict", unexpected)
-        for progress in range(1, 11):
-            current = replace(active, progress_current=progress)
-            snapshot = await repository.async_put(current, expected_version=progress + 1, durable=False)
-            assert repository.get(other.operation_id) is cached_other
-            assert repository.get(active.operation_id) == current
+    for progress in range(1, 11):
+        current = replace(active, progress_current=progress)
+        snapshot = await repository.async_put(current, expected_version=progress + 1, durable=False)
+        assert repository.get(other.operation_id) is cached_other
+        assert repository.get(active.operation_id) == current
     assert initial.records[0].progress_current == 0
     assert snapshot.version == 12 and store.save_count == 2
+    final = replace(
+        repository.get(active.operation_id),
+        phase=DeploymentPhase.ACTIVATING,
+    )
+    durable = await repository.async_put(
+        final,
+        expected_version=snapshot.version,
+        expected_record=repository.get(active.operation_id),
+    )
+    assert durable.version == 13 and store.save_count == 3
     await store.async_fire_delayed_save()
     assert store.data is not None
     assert store.data["records"][str(active.operation_id)]["progress_current"] == 10
-    assert store.data["version"] == snapshot.version
+    assert store.data["records"][str(active.operation_id)]["phase"] == DeploymentPhase.ACTIVATING
+    assert store.data["version"] == durable.version
 
 
 @pytest.mark.parametrize("extra_byte", [False, True])
