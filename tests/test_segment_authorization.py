@@ -81,6 +81,32 @@ async def test_segment_read_authority_is_required_for_queries_and_subscription_o
     client.write_gatt_char.assert_not_awaited()
 
 
+async def test_h618a_pact3_reads_four_record_a5_pages(hass, monkeypatch):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H618A", configuration_url=None)
+    coordinator.pact_type, coordinator.pact_code = 3, 1
+    coordinator.fw_version, coordinator.hw_version = "1.00.11", "3.08.01"
+    coordinator._resolve_device_profile()
+    client = MagicMock(is_connected=True, start_notify=AsyncMock(), write_gatt_char=AsyncMock())
+    coordinator._client = client
+    monkeypatch.setattr("custom_components.ha_govee_led_ble.coordinator.REPLY_PACING_TIMEOUT", 0)
+    await coordinator._start_notify()
+    receive = client.start_notify.await_args.args[1]
+    receive(None, bytearray(frame("aa06" + b"1.00.11".hex())))
+    receive(None, bytearray(frame("aa0703" + b"3.08.01".hex())))
+    receive(None, bytearray(frame("aaa50164ff866b64ff866b64ff866b64ff866b")))
+    receive(None, bytearray(frame("aaa50264ff866b64ff866b64ff866b64ff866b")))
+    receive(None, bytearray(frame("aaa50364ff866b00ff866b00ff866b00ff866b")))
+    receive(None, bytearray(frame("aaa50400000000000000000000000000000000")))
+
+    assert coordinator.profile.status_grammar == "H618A-pact3"
+    assert coordinator.profile.segment_group_count == 4
+    assert coordinator.segment_state_source == "observed"
+    assert coordinator.segment_colors == [(255, 134, 107)] * 12 + [(0, 0, 0)] * 3
+    assert coordinator.segment_brightness == [100] * 9 + [0] * 6
+    query = build_segment_query(4, "H618A", profile=coordinator.profile)
+    assert query[1:3] == b"\xa5\x04"
+
+
 @pytest.fixture(params=["H617A", "H6099", "H6199"])
 def profile(request, monkeypatch):
     profile = ModelProfile(

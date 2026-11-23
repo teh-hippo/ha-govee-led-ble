@@ -2646,6 +2646,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         status_grammar="H618A",
         effect_grammar="H617A",
         colour_mode_query_selector=1,
+        profile_pact_dependent=True,
         profile_identity_fields=frozenset({"fw_version", "hw_version"}),
         scene_identity_fields=frozenset({"fw_version", "hw_version"}),
         static_readback_kelvin=True,
@@ -4775,10 +4776,11 @@ def device_profile(
             fw is not None and hw is not None and fw >= FirmwareVersion((1, 6)) and hw >= FirmwareVersion((1, 0, 2))
         )
         modern_readback = modern or (pact_type, pact_code) == (3, 1) and hw is not None and hw >= FirmwareVersion((3,))
+        pact3_readback = modern_readback and not modern and (pact_type, pact_code) == (3, 1)
         return replace(
             get_profile(model),
-            status_grammar="H618A" if modern_readback else "H618A-legacy",
-            segment_group_size=3 if modern_readback else 4,
+            status_grammar="H618A-pact3" if pact3_readback else "H618A" if modern else "H618A-legacy",
+            segment_group_size=4 if pact3_readback or not modern_readback else 3,
             outbound_transform=None if modern_readback else rgb_only_segment_query_transform,
             rgbic_scene_v0=not modern,
             scene_command_versions=frozenset({0, 1}) if modern else frozenset({0}),
