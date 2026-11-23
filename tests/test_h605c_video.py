@@ -11,7 +11,7 @@ from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_expectations import expectations_from_packet
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode, decode_status_frame, parse_color_mode
 from custom_components.ha_govee_led_ble.effect_compiler import compile_video_profile
-from custom_components.ha_govee_led_ble.effect_deployments import PriorControlState
+from custom_components.ha_govee_led_ble.effect_deployments import EffectDeploymentRepository, PriorControlState
 from custom_components.ha_govee_led_ble.effect_domain import (
     LibraryItem,
     RelativeBrightness,
@@ -19,7 +19,11 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     effect_content_from_dict,
     effect_content_to_dict,
 )
-from custom_components.ha_govee_led_ble.effect_runtime import async_apply_compiled_profile, compiled_observation
+from custom_components.ha_govee_led_ble.effect_runtime import (
+    EffectDeploymentEngine,
+    async_apply_compiled_profile,
+    compiled_observation,
+)
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_blank_screen,
     build_relative_brightness_query,
@@ -39,6 +43,7 @@ from custom_components.ha_govee_led_ble.native_profile_controls import (
 )
 from custom_components.ha_govee_led_ble.video_applicability import video_control_states, video_profile_control_states
 from tests.coordinator_test_support import frame
+from tests.storage_test_double import InMemoryVersionedDocumentStore
 
 EDGES = {"left_percent": 27, "top_percent": 48, "right_percent": 69, "bottom_percent": 80}
 SETTINGS = {"full_screen": True, "saturation": 50, "sound_effects": False, "sound_effects_softness": 50}
@@ -368,6 +373,54 @@ async def test_older_complete_profile_embeds_edges_without_requiring_the_newer_r
     assert not any(key.startswith("relative_brightness") for key in expected)
     with pytest.raises(ValueError, match="relative_brightness is unsupported"):
         await apply_relative_brightness(device, (27, 48, 69, 80), verify=False)
+
+
+async def test_committed_preflight_preserves_inline_video_parameters(device, monkeypatch):
+    device.video_parameters = None
+
+    async def refresh(request):
+        for field in ("is_on", "brightness_pct", "color_mode"):
+            device._field_revisions[field] = device._field_revisions.get(field, 0) + 1
+        return True
+
+    async def read_parameters(control):
+        if control == "video_parameters":
+            device.video_parameters = EDGES
+        else:
+            assert control == "whole_relative_brightness"
+            device.whole_relative_brightness = 47
+        return True
+
+    monkeypatch.setattr(device, "refresh_state", AsyncMock(side_effect=refresh))
+    monkeypatch.setattr(device, "async_refresh_segments", AsyncMock(return_value=True))
+    reader = AsyncMock(side_effect=read_parameters)
+    monkeypatch.setattr(device, "async_read_video_setting", reader)
+    compiled = compile_video_profile(
+        LibraryItem.new(
+            "Inline video",
+            VideoProfile(
+                "H605C",
+                "movie",
+                True,
+                50,
+                False,
+                50,
+                None,
+                RelativeBrightness(27, 48, 69, 80),
+                None,
+                whole_relative_brightness=47,
+            ),
+        ),
+        "H605C",
+    )
+    engine = EffectDeploymentEngine(EffectDeploymentRepository(InMemoryVersionedDocumentStore()))
+    assert await engine._async_prepare_prior_state(device, compiled)
+    prior = engine._capture_prior_state(device, config_entry_id="entry-a")
+    assert prior.video_parameters == EDGES
+    assert [call.args[0] for call in reader.await_args_list] == [
+        "whole_relative_brightness",
+        "video_parameters",
+    ]
 
 
 async def test_inline_recovery_restores_mode_values_without_the_independent_register(device, monkeypatch):

@@ -566,25 +566,45 @@ async def test_refresh_state_query_selection(coord):
         }
         assert await coord.refresh_state(RefreshRequest(effect=None, on=True)) is True
         sq.assert_awaited_with(
-            query_power=True, query_brightness=False, query_color_mode=False, deadline=ANY, **query_options
+            full_query=False,
+            query_power=True,
+            query_brightness=False,
+            query_color_mode=False,
+            deadline=ANY,
+            **query_options,
         )
         sq.reset_mock()
 
         assert await coord.refresh_state(RefreshRequest(effect="candy", on=None)) is True
         sq.assert_awaited_with(
-            query_power=False, query_brightness=False, query_color_mode=True, deadline=ANY, **query_options
+            full_query=False,
+            query_power=False,
+            query_brightness=False,
+            query_color_mode=True,
+            deadline=ANY,
+            **query_options,
         )
         sq.reset_mock()
 
         assert await coord.refresh_state(RefreshRequest(brightness=42)) is True
         sq.assert_awaited_with(
-            query_power=False, query_brightness=True, query_color_mode=False, deadline=ANY, **query_options
+            full_query=False,
+            query_power=False,
+            query_brightness=True,
+            query_color_mode=False,
+            deadline=ANY,
+            **query_options,
         )
         sq.reset_mock()
 
         assert await coord.refresh_state(RefreshRequest(effect=None, on=None)) is True
         sq.assert_awaited_with(
-            query_power=True, query_brightness=False, query_color_mode=True, deadline=ANY, **query_options
+            full_query=False,
+            query_power=True,
+            query_brightness=False,
+            query_color_mode=True,
+            deadline=ANY,
+            **query_options,
         )
 
 
@@ -640,6 +660,7 @@ async def test_refresh_without_colour_readback_requires_power_and_brightness_onl
 
     async def _reply(**kwargs) -> bool:
         assert kwargs == {
+            "full_query": True,
             "query_power": True,
             "query_brightness": True,
             "query_color_mode": False,

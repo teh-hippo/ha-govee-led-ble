@@ -1351,6 +1351,11 @@ class EffectDeploymentEngine:
             "whole_relative_brightness"
         ):
             raise RuntimeError("Could not read the current whole-video brightness before applying the profile")
+        if compiled.relative_brightness_inline and (
+            coordinator.video_parameters is None or not coordinator.source_field_fresh("video_parameters")
+        ):
+            if not await coordinator.async_read_video_setting("video_parameters"):
+                raise RuntimeError("Could not read the current inline video brightness before applying the profile")
         refresh_relative_brightness = (
             compiled.relative_brightness is not None and not compiled.relative_brightness_inline
         )
@@ -1397,6 +1402,8 @@ class EffectDeploymentEngine:
             required.extend(
                 getattr(coordinator, f"relative_brightness_{zone}") for zone in profile.video_brightness_zones
             )
+        if compiled.relative_brightness_inline:
+            required.append(coordinator.video_parameters)
         if compiled.blank_screen is not None:
             required.extend(
                 (
@@ -1911,7 +1918,6 @@ async def async_prepare_effect_control_state(
     refreshed = (
         await coordinator.refresh_state(
             RefreshRequest(
-                refresh_all=True,
                 query_native_settings=STATIC_RECOVERY_SETTINGS,
                 query_segments=False,
                 required_domains=profile.read_domains

@@ -336,7 +336,7 @@ async def test_prior_preflight_refreshes_master_brightness_in_every_mode(mode):
     coordinator.brightness_pct = 99
 
     async def refresh(request=DEFAULT_REFRESH_REQUEST):
-        assert request.refresh_all is True
+        assert request.refresh_all is False
         assert request.query_segments is False
         assert ReadDomain.BRIGHTNESS in request.required_domains
         coordinator.brightness_pct = 37
@@ -689,7 +689,7 @@ def _profile_coordinator(model: str):
     coordinator._field_revisions = {}
 
     async def refresh(request=DEFAULT_REFRESH_REQUEST):
-        if request.refresh_all:
+        if request.refresh_all or ReadDomain.BRIGHTNESS in (request.required_domains or frozenset()):
             for field in ("is_on", "brightness_pct", "color_mode"):
                 coordinator._field_revisions[field] = coordinator._field_revisions.get(field, 0) + 1
         if "blank_screen" in request.display_settings:

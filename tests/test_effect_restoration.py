@@ -13,7 +13,7 @@ from homeassistant.setup import async_setup_component
 from kaitaistruct import KaitaiStream
 
 from custom_components.ha_govee_led_ble import coordinator as coordinator_module
-from custom_components.ha_govee_led_ble.const import device_profile, get_profile
+from custom_components.ha_govee_led_ble.const import ReadDomain, device_profile, get_profile
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent, async_control_intent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_modes import ModeTransitionSupersededError
@@ -255,7 +255,11 @@ async def test_public_cold_video_resume_rechecks_every_physical_boundary(
 
     async def arm(request=None):
         result = await refresh(request)
-        if request is not None and (request.on is True if after_power else request.refresh_all):
+        if request is not None and (
+            request.on is True
+            if after_power
+            else request.refresh_all or ReadDomain.BRIGHTNESS in (request.required_domains or frozenset())
+        ):
             state["boundary"] = change
         return result
 

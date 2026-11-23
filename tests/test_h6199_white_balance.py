@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from custom_components.ha_govee_led_ble.const import ReadDomain
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_refresh import DEFAULT_REFRESH_REQUEST, RefreshRequest
 from custom_components.ha_govee_led_ble.effect_compiler import compile_video_profile
@@ -208,7 +209,7 @@ async def test_deployment_requires_complete_prior_wb_register(coordinator, monke
     setattr(coordinator, missing, None)
 
     async def refresh(request=DEFAULT_REFRESH_REQUEST):
-        if request.refresh_all:
+        if request.refresh_all or ReadDomain.BRIGHTNESS in (request.required_domains or frozenset()):
             for prefix in ("aa0101", "aa0464", "aa05000100320032"):
                 coordinator._notify_callback(None, bytearray(frame(prefix)))
         return True
