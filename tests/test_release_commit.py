@@ -1,4 +1,6 @@
 import json
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -48,5 +50,33 @@ def test_release_files_reject_newline_only_changes() -> None:
         verify_release_files(parent, current, set(RELEASE_FILES))
 
 
-def test_existing_release_commit_is_valid() -> None:
-    verify_commit("da748615^", "da748615", Path(__file__).parents[1])
+def test_release_commit_verifies_diff_and_subject(tmp_path: Path) -> None:
+    git = shutil.which("git")
+    if git is None:
+        pytest.skip("git is required")
+
+    def run_git(*arguments: str) -> None:
+        subprocess.run(  # noqa: S603 - fixed Git executable and local fixture arguments
+            [git, *arguments],
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+    run_git("init", "-b", "master")
+    run_git("config", "user.name", "Fixture")
+    run_git("config", "user.email", "fixture@example.invalid")
+    for path, content in _release_files("8.0.0-rc.35").items():
+        destination = tmp_path / path
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(content, encoding="utf-8")
+    run_git("add", ".")
+    run_git("-c", "commit.gpgsign=false", "commit", "-m", "fix: source")
+
+    for path, content in _release_files("8.0.0-rc.36").items():
+        (tmp_path / path).write_text(content, encoding="utf-8")
+    run_git("add", ".")
+    run_git("-c", "commit.gpgsign=false", "commit", "-m", "chore(release): 8.0.0-rc.36")
+
+    verify_commit("HEAD^", "HEAD", tmp_path)
