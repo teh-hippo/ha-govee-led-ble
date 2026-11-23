@@ -3652,7 +3652,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     ),
     "H7025": ModelProfile(
         "H7025 Outdoor String Lights",
-        support_quality=SupportQuality.EXPERIMENTAL,
+        support_quality=SupportQuality.SUPPORTED,
         confirmation_issue=451,
         command_grammar="H617A",
         status_grammar="H7025",

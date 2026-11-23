@@ -214,6 +214,7 @@ def test_support_quality_has_only_supported_and_experimental_states():
         "H61F5",
         "H66A0",
         "H7020",
+        "H7025",
     }
     assert {
         model for model, profile in MODEL_PROFILES.items() if profile.support_quality is SupportQuality.EXPERIMENTAL
@@ -228,7 +229,6 @@ def test_support_quality_has_only_supported_and_experimental_states():
         "H6179",
         "H618A",
         "H619A",
-        "H7025",
         "H705A",
         "H8604",
     }
