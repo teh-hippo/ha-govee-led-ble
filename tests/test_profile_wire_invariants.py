@@ -152,6 +152,7 @@ def _bar_packet(profile: ModelProfile, operation: str) -> bytes:
 _QUALIFIED_CONTEXTS: tuple[tuple[str, str, int | None, int | None, str | None, str | None], ...] = (
     ("H618A-bootstrap", "H618A", None, None, None, None),
     ("H618A-legacy", "H618A", 2, 1, "1.05.99", "1.00.02"),
+    ("H618A-pact3-readback", "H618A", 3, 1, "1.00.11", "3.08.01"),
     ("H6093-original", "H6093", 1, 1, "1.00.16", "3.03.02"),
     ("H6093-expanded-pact1", "H6093", 1, 2, "1.00.16", "3.03.02"),
     ("H619A-bootstrap", "H619A", None, None, None, None),
