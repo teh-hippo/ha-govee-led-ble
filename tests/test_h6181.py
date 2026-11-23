@@ -282,7 +282,12 @@ async def test_whole_strip_power_survives_disconnect_without_optional_revision_i
     await light._async_turn_on()
     assert frame(bytes.fromhex("330101")) in packets
     assert coordinator.is_on
-    assert coordinator.identity_fields_confirmed(coordinator.profile.profile_identity_fields) is fresh_identity
+    assert (
+        coordinator.identity_fields_confirmed(
+            coordinator.profile.profile_identity_fields | coordinator.profile.effect_identity_fields
+        )
+        is fresh_identity
+    )
 
 
 @pytest.mark.parametrize("lifecycle", ["H6182"], indirect=True)
@@ -698,6 +703,41 @@ def test_legacy_diy_upload_uses_the_approved_selector_and_round_trips(content, m
         validate_compiled_geometry(compiled, replace(profile, diy_upload_transport="a3"))
     with pytest.raises(ValueError, match="one-byte"):
         compile_effect(LibraryItem.new("Palette", content), model, diy_code=256, profile=profile)
+
+
+@pytest.mark.parametrize(
+    "pact,colour_mode,modes",
+    [
+        ((10, 0), 2, ("dynamic", "soft", "bloom", "radiant")),
+        ((11, 1), 13, ()),
+        ((65535, 255), 13, ()),
+    ],
+)
+@pytest.mark.parametrize(
+    "content,body",
+    [
+        (SingleEffect(0, 0, 0, ((12, 34, 56),)), "000000030c223800"),
+        (
+            MultiEffect((EffectPair(0, 0), EffectPair(2, 0)), 0, ((12, 34, 56), (56, 34, 12))),
+            "ff0000060c223838220c0400000200",
+        ),
+    ],
+)
+def test_whole_strip_diy_route_is_independent_of_static_and_music_registration(pact, colour_mode, modes, content, body):
+    profile = device_profile("H6139", *pact, firmware="1.07.02", hardware="1.00.01")
+    compiled = compile_effect(LibraryItem.new("Palette", content), "H6139", profile=profile)
+    payload = bytes.fromhex(body)
+    assert compiled.upload_packets == (
+        frame(b"\xa3\x00\x01\x02\x04" + payload[:14]),
+        frame(b"\xa3\xff" + payload[14:]),
+    )
+    assert compiled.activation_packet == frame(bytes.fromhex("33050afe00"))
+    assert profile.music_modes == modes
+    assert profile.outbound_transform is not None
+    assert profile.outbound_transform(build_color_rgb(12, 34, 56, "H6139", profile=profile)) == frame(
+        bytes([0x33, 5, colour_mode, 12, 34, 56])
+    )
+    validate_compiled_geometry(compiled, profile)
 
 
 def test_diy_application_requires_owner_approval_of_a_disposable_slot():

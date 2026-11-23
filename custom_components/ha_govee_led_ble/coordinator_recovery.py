@@ -214,7 +214,9 @@ class _RecoveryMixin(_CoordinatorBase):
             return False
         if self._pre_mode_needs_qualification:
             identity_fields = profile.static_identity_fields | (
-                profile.profile_identity_fields | frozenset(video_identity_fields(profile))
+                profile.profile_identity_fields
+                | profile.effect_identity_fields
+                | frozenset(video_identity_fields(profile))
                 if profile.static_recovery_identity_fields is None
                 else profile.static_recovery_identity_fields
             )

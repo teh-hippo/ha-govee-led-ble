@@ -5,6 +5,7 @@ meta:
   imports:
     - h6181_status_reply
     - h6159_status_reply
+    - h6139_wire_write
 doc: |
   SPECULATIVE H6139 status, awaiting recorded device traffic.
   AA01 reports power, AA04 brightness, AA06 ASCII firmware and AA07/03
@@ -15,6 +16,8 @@ doc: |
   carries a style byte. Palette parameters are not independently read.
   Brightness scaling belongs to the qualified controller profile.
   Scene04 and DIY0A carry LE16 selectors. Unqualified tails stay opaque.
+  Decode-only AA0A, AA11 and AA12 schedule replies retain the write-body
+  field order. State and repeat bytes remain uninterpreted.
 seq:
   - id: header
     contents: [0xaa]
@@ -31,6 +34,9 @@ seq:
         'aa_domain::colour_mode': h6159_status_reply::colour_mode_body
         'aa_domain::firmware': h6181_status_reply::version_body
         'aa_domain::hardware': h6181_status_reply::hardware_body
+        'aa_domain::timer': h6139_wire_write::timer_body
+        'aa_domain::sleep': h6139_wire_write::sleep_body
+        'aa_domain::wake': h6139_wire_write::wake_body
   - id: checksum
     type: u1
 enums:
@@ -40,3 +46,6 @@ enums:
     0x05: colour_mode
     0x06: firmware
     0x07: hardware
+    0x0a: timer
+    0x11: sleep
+    0x12: wake
