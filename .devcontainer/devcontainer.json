@@ -1,10 +1,11 @@
 {
-  "name": "Python Dev",
-  "image": "mcr.microsoft.com/devcontainers/python:3.14@sha256:80dc8003934b4b734ae187a979a357a1985bf95e2ea2ec23ae39006679e5882f",
+  "name": "Govee LED BLE",
+  "image": "mcr.microsoft.com/devcontainers/python:3.15",
   "features": {
-    "ghcr.io/devcontainers/features/github-cli:1": {}
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers-extra/features/mise:1": {}
   },
-  "postCreateCommand": "pip install uv && uv sync --all-groups",
+  "postCreateCommand": "make bootstrap",
   "customizations": {
     "vscode": {
       "extensions": ["ms-python.python", "charliermarsh.ruff", "ms-python.mypy-type-checker"]

@@ -9,9 +9,16 @@ Record contributor-wide lessons there and agent-only lessons here.
 ## Build, lint, and test commands
 
 The Makefile owns orchestration.
-Use `make check-fast` while iterating and finish with a passing `make check`.
-Use `make build` for generated outputs and `make package` for a requested distributable.
-For a focused test: `uv run pytest tests/test_coordinator_status.py -q`.
+Run `make bootstrap` for a new checkout.
+Use the narrowest relevant command while iterating: a focused pytest file, frontend `typecheck`/`test:unit`, or the affected generated-output target.
+Use `make check-fast` for a broad checkpoint and finish with a passing `make check`.
+Use `make package` only for a requested distributable.
+
+Read the relevant local guidance before editing:
+
+- `.github/instructions/backend.instructions.md` for Python backend and tests;
+- `.github/instructions/frontend.instructions.md` for frontend code and fixtures;
+- `.github/instructions/protocol.instructions.md` for Kaitai/protocol work.
 
 ## Agent-specific reminders
 
@@ -19,3 +26,4 @@ For a focused test: `uv run pytest tests/test_coordinator_status.py -q`.
 - Keep local rebase recovery refs outside `refs/heads/` and use `--no-update-refs` from the first invocation.
   Preserve Git's generated `update-ref` commands in an active rebase.
 - Follow `docs/release-candidates.md` for hardware qualification.
+- Run independent pytest processes serially within one checkout and use the suite's configured workers.

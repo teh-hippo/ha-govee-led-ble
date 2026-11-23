@@ -42,7 +42,7 @@ For `govee-add` and `govee-audit`, record each hardware/firmware revision's:
 
 Use plan mode when available.
 Follow `CONTRIBUTING.md` for tracing, classification, shared implementation, tests and independent acceptance review.
-Record acceptance in the plan/PR table and consolidate corrections with `make check-fast`.
+Record acceptance in the plan/PR table, use focused checks while iterating and run `make check-fast` after broader corrections.
 Finish with commits, a passing `make check` and the `.github/PULL_REQUEST_TEMPLATE.md` PR.
 Identify affected models in its description.
 

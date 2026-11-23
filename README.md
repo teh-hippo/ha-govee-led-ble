@@ -107,13 +107,28 @@ Download `ha_govee_led_ble.zip` from the [latest GitHub release][release-url], e
 
 ## Development
 
+Native development is the default.
+Install [mise](https://mise.jdx.dev/getting-started.html), then run:
+
 ```bash
-make build
-make check
-make package
+make bootstrap
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for architecture, repository non-goals and development commands.
+Use the narrowest relevant loop while editing:
+
+```bash
+uv run pytest tests/test_coordinator_status.py -q
+npm --prefix frontend run dev
+npm --prefix frontend run typecheck
+npm --prefix frontend run test:unit
+make protocol
+```
+
+Run `make check-fast` for a broad checkpoint and `make check` at the completion boundary.
+Run `make package` only when a distributable is explicitly required.
+The optional dev container is a thin wrapper around the same project-local bootstrap, not a separate toolchain.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for architecture, repository non-goals and acceptance requirements.
 
 ## License
 

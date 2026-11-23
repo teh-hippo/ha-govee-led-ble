@@ -13,10 +13,44 @@ concurrency:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
+  release-metadata:
+    name: Release metadata
+    runs-on: ubuntu-latest
+    outputs:
+      lightweight: ${{ steps.classify.outputs.lightweight }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Verify release-only commit
+        id: classify
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          lightweight=false
+          if [[ "$GITHUB_EVENT_NAME" == push && "$HEAD_MESSAGE" == chore\(release\):\ * ]]; then
+            parent="$(git rev-parse HEAD^)"
+            python3 scripts/verify_release_commit.py "$parent" "$GITHUB_SHA"
+            conclusion="$(gh run list --repo "$GITHUB_REPOSITORY" \
+              --workflow validate.yml --branch master --commit "$parent" --limit 20 \
+              --json event,conclusion \
+              --jq '[.[] | select(.event == "push" or .event == "workflow_dispatch")][0].conclusion // ""')"
+            if [[ "$conclusion" != success ]]; then
+              echo "::error::Release metadata is allowed only after successful validation of its parent."
+              exit 1
+            fi
+            lightweight=true
+          fi
+          echo "lightweight=$lightweight" >> "$GITHUB_OUTPUT"
+
   hassfest:
     name: Hassfest
+    if: "${{ !(github.event_name == 'push' && startsWith(github.event.head_commit.message, 'chore(release): ')) }}"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -26,6 +60,7 @@ jobs:
 
   hacs:
     name: HACS
+    if: "${{ !(github.event_name == 'push' && startsWith(github.event.head_commit.message, 'chore(release): ')) }}"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -187,17 +222,32 @@ jobs:
   check:
     name: Check
     if: ${{ always() }}
-    needs: [fixtures, core, browser, package, workflow-lint]
+    needs: [release-metadata, fixtures, core, browser, package, workflow-lint]
     runs-on: ubuntu-latest
     steps:
       - name: Require complete validation
         env:
+          ADMISSION_RESULT: ${{ needs.release-metadata.result }}
+          LIGHTWEIGHT: ${{ needs.release-metadata.outputs.lightweight }}
           FIXTURES_RESULT: ${{ needs.fixtures.result }}
           CORE_RESULT: ${{ needs.core.result }}
           BROWSER_RESULT: ${{ needs.browser.result }}
           PACKAGE_RESULT: ${{ needs.package.result }}
           WORKFLOW_LINT_RESULT: ${{ needs.workflow-lint.result }}
         run: |
+          if [[ "$ADMISSION_RESULT" != success ]]; then
+            echo "::error::Release metadata admission: $ADMISSION_RESULT"
+            exit 1
+          fi
+          if [[ "$LIGHTWEIGHT" == true ]]; then
+            if [[ "$FIXTURES_RESULT" != skipped || "$CORE_RESULT" != skipped ||
+                  "$BROWSER_RESULT" != skipped || "$PACKAGE_RESULT" != skipped ||
+                  "$WORKFLOW_LINT_RESULT" != skipped ]]; then
+              echo "::error::A validated release-only commit did not take the lightweight path."
+              exit 1
+            fi
+            exit 0
+          fi
           if [[ "$FIXTURES_RESULT" != "success" || "$CORE_RESULT" != "success" ||
                 "$BROWSER_RESULT" != "success" || "$PACKAGE_RESULT" != "success" ||
                 "$WORKFLOW_LINT_RESULT" != "success" ]]; then
@@ -208,6 +258,7 @@ jobs:
 
   build:
     name: Build
+    if: "${{ !(github.event_name == 'push' && startsWith(github.event.head_commit.message, 'chore(release): ')) }}"
     runs-on: ubuntu-latest
     outputs:
       artifact_id: ${{ steps.upload.outputs.artifact-id }}

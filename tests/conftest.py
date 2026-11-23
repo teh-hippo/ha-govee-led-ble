@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 import pytest
 from aiotools import VirtualClock
 from homeassistant.config_entries import current_entry
+from pytest import ExitCode
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.ha_govee_led_ble.const import (
@@ -18,6 +19,26 @@ from custom_components.ha_govee_led_ble.const import (
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.h6199_calibration import WHITE_BALANCE_RESET
 from tests.coordinator_test_support import _CONFIGURATION_URL
+from tests.pytest_lock import acquire_checkout_lock
+
+_CHECKOUT_LOCK_KEY = "govee_checkout_lock"
+
+
+def pytest_sessionstart(session: pytest.Session) -> None:
+    if hasattr(session.config, "workerinput"):
+        return
+    lock_path = Path(__file__).parents[1] / ".pytest-lock"
+    try:
+        lock = acquire_checkout_lock(lock_path)
+    except RuntimeError as error:
+        pytest.exit(str(error), returncode=ExitCode.USAGE_ERROR)
+    setattr(session.config, _CHECKOUT_LOCK_KEY, lock)
+
+
+def pytest_unconfigure(config: pytest.Config) -> None:
+    lock = getattr(config, _CHECKOUT_LOCK_KEY, None)
+    if lock is not None:
+        lock.close()
 
 
 @pytest.fixture

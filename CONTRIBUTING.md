@@ -214,14 +214,22 @@ The Makefile owns build orchestration:
 
 | Command | Purpose |
 | --- | --- |
+| `make bootstrap` | Install project-pinned tools and locked Python/frontend dependencies. |
 | `make protocol` | Generate protocol code after a fresh clone, new worktree or `.ksy` change. |
 | `make build` | Build protocol and frontend outputs. |
-| `make check-fast` | Prepare dependencies, outputs and fixtures; run workflow, lint, static and frontend contract checks while iterating. |
+| `make check-fast` | Run a broad non-hardware checkpoint: workflows, lint, generated outputs, fixtures and frontend/static contracts. |
 | `make check` | Completion gate, including independent generated-output verification, full Python branch coverage and mobile WebKit. |
 | `make package` | Produce a requested distributable archive. |
 
-CI requires exact-run contract fixtures, package reproducibility and a fail-closed aggregate Check.
+CI requires exact-run contract fixtures, package reproducibility and a fail-closed aggregate Check for source-bearing runs.
+Semantic-release commits use the lightweight path only after exact version-only diff verification and successful validation of their parent.
 
+- Start with `make bootstrap` in each native checkout, or use the optional dev container as a wrapper around the same target.
+  Native development is the default; OS prerequisites are limited to Git, mise and the C toolchain required by native Python dependencies.
+- Prefer the narrowest loop while editing: a focused pytest target, frontend `typecheck`/`test:unit` or the affected generated-output target.
+  The Vite fixture loop runs with `npm --prefix frontend run dev`; it does not require a Home Assistant restart or a release candidate.
+- Use `make check-fast` after broader local changes and `make check` once the final tree is ready.
+  Do not repeatedly run the completion gate for unchanged files or package unless a distributable is requested.
 - Run independent pytest processes serially within a checkout; use the runner's workers for parallel tests.
   Use `PYTEST_WORKERS=1` to diagnose collisions, then fix resource ownership.
 - Keep mutable storage test-local.
@@ -260,6 +268,7 @@ A fresh-context audit also satisfies code review when it covers implementation c
 Consolidate corrections, reconcile upstream at readiness and validate the final tree.
 Reuse unchanged local proof after fetch/status or no-op rebase.
 Relevant input changes reopen checks; rewritten commits require exact-SHA CI.
+Keep generated contract fixtures incremental locally, but retain clean generation and independent verification at package and completion boundaries.
 Approve public drafts before posting and track known workflow run/check IDs.
 
 ### Dependency caches
@@ -267,7 +276,8 @@ Approve public drafts before posting and track known workflow run/check IDs.
 Retain dependency pins, Home Assistant verification and required native compilation.
 Share compatible dependency-only caches across validation and packaging; master uses trusted default-branch caches.
 Prune with `uv cache prune --ci`.
-Every run performs clean generation, verification and exact-SHA acceptance.
+Every source-bearing run performs clean generation, verification and exact-SHA acceptance.
+Only verified release metadata may reuse its validated parent.
 
 ## Releases
 
