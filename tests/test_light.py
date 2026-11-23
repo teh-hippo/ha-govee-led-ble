@@ -1907,7 +1907,7 @@ async def saved_video_light(hass, monkeypatch, request):
     monkeypatch.setattr(coordinator, "_renew_foreground_lease", lambda: None)
 
     async def refresh(request):
-        if request.refresh_all:
+        if request.refresh_all or ReadDomain.BRIGHTNESS in (request.required_domains or frozenset()):
             for field in ("is_on", "brightness_pct", "color_mode"):
                 coordinator._field_revisions[field] = coordinator._field_revisions.get(field, 0) + 1
         return True

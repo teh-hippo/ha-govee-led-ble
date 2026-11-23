@@ -2332,6 +2332,7 @@ class GoveeBLECoordinator(
     async def _send_state_queries(
         self,
         *,
+        full_query: bool | None = None,
         query_power: bool = True,
         query_brightness: bool = True,
         query_color_mode: bool = True,
@@ -2356,7 +2357,8 @@ class GoveeBLECoordinator(
         token = self._notification_token
         if deadline is None:
             deadline = time.monotonic() + STATE_QUERY_TIMEOUT
-        full_query = query_power and query_brightness and query_color_mode
+        if full_query is None:
+            full_query = query_power and query_brightness and query_color_mode
         if self.profile.configured_string_counts and (full_query or query_segments is True):
             if not self._has_mask_transaction():
                 # Missing optional geometry must leave time for topology-independent reads.
@@ -4101,6 +4103,7 @@ class GoveeBLECoordinator(
                     if self._client is not client:
                         return None
                     ok = await self._send_state_queries(
+                        full_query=request.refresh_all,
                         query_power=query_power,
                         query_brightness=query_brightness,
                         query_color_mode=query_color,

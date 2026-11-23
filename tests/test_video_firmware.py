@@ -22,6 +22,7 @@ from custom_components.ha_govee_led_ble.effect_deployments import (
 from custom_components.ha_govee_led_ble.effect_diagnostics import EffectDiagnosticHistory
 from custom_components.ha_govee_led_ble.effect_domain import (
     LibraryItem,
+    RelativeBrightness,
     VideoProfile,
     effect_content_from_dict,
     effect_content_to_dict,
@@ -33,15 +34,24 @@ from custom_components.ha_govee_led_ble.effect_scene_defaults import NativeScene
 from custom_components.ha_govee_led_ble.effect_template_defaults import CatalogueTemplateDefaultRepository
 from custom_components.ha_govee_led_ble.effect_websocket import _device_payload
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
+    build_blank_screen_query,
     build_brightness,
+    build_brightness_query,
+    build_colour_mode_query,
     build_power,
+    build_power_query,
     build_relative_brightness,
+    build_relative_brightness_query,
+    build_segment_query,
     build_white_balance,
     build_white_balance_query,
 )
 from custom_components.ha_govee_led_ble.light_commands import build_color_rgb
+from custom_components.ha_govee_led_ble.protocol_h6199 import H6199_NATIVE_CONTROLS, build_h6199_control_query
 from custom_components.ha_govee_led_ble.video_applicability import validate_video_request, video_control_states
+from tests.coordinator_test_support import _packet
 from tests.storage_test_double import InMemoryVersionedDocumentStore
+from tests.test_h6199_capabilities import set_qualified_identity
 from tests.test_video_semantics import alternate, reply
 
 
@@ -728,34 +738,49 @@ async def test_retained_native_field_changed_during_transform_is_guarded(hass, m
     physical.assert_not_awaited()
 
 
-@pytest.mark.parametrize("setting", ["white_balance", "blank_screen"])
+@pytest.mark.parametrize("setting", ["white_balance", "relative_brightness", "blank_screen"])
 async def test_prior_refresh_requires_only_requested_register(hass, monkeypatch, setting):
-    from custom_components.ha_govee_led_ble.transport import xor_checksum
-
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url="test")
+    set_qualified_identity(coordinator)
     omitted = "blank_screen" if setting == "white_balance" else "white_balance"
     coordinator.profile = replace(
         coordinator.profile,
         video_firmware_conditions=(VideoFirmwareCondition(omitted, "subordinate_21_version", "9.08.07"),),
     )
-    client = MagicMock(is_connected=True)
-    coordinator._client = client
-    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
+    confirm_firmware(coordinator)
     queries = []
 
-    async def respond(**kwargs):
-        queries.append(kwargs)
-        bodies = ["aa0101", "aa0464", "aa05000100320032"]
-        if kwargs.get(f"query_{setting}"):
-            bodies.append("aaa90006011003011003" if setting == "white_balance" else "aaa90a0600020a007800")
-        for body in bodies:
-            frame = bytearray.fromhex(body)
-            frame.extend(bytes(19 - len(frame)))
-            frame.append(xor_checksum(frame))
-            coordinator._notify_callback(None, frame)
-        return True
+    async def transmit(_uuid, packet, **_kwargs):
+        packet = bytes(packet)
+        queries.append(packet)
+        if packet[0] != 0xAA:
+            raise AssertionError("preflight must not write controls")
+        domain = packet[1]
+        if domain == 0x01:
+            body = [1]
+        elif domain == 0x04:
+            body = [100]
+        elif domain == 0x05:
+            body = [0x15, 0, 0, 0]
+        elif domain == 0xA9 and packet[2] == 0:
+            body = [0, 6, 1, 16, 3, 1, 16, 3]
+        elif domain == 0xA9 and packet[2] == 0x0A:
+            body = [0x0A, 6, 0, 2, 10, 0, 120, 0]
+        elif domain == 0xAE:
+            body = [1, 4, 100, 100, 100, 100]
+        elif domain == 0xA5:
+            page = packet[2]
+            count = min(coordinator.profile.segment_group_size, coordinator.profile.segment_count - (page - 1) * 4)
+            body = [page, *([100, 255, 255, 255] * count)]
+        else:
+            body = [1 if domain == 0x32 else 0]
+        coordinator._notify_callback(None, bytearray(_packet(0xAA, domain, body)))
 
-    monkeypatch.setattr(coordinator, "_send_state_queries", respond)
+    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(side_effect=transmit))
+    coordinator._client = client
+    coordinator._notification_token = object()
+    coordinator._notify_started_monotonic = time.monotonic() - 1
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
     content = VideoProfile(
         "H6199",
         "movie",
@@ -764,14 +789,35 @@ async def test_prior_refresh_requires_only_requested_register(hass, monkeypatch,
         False,
         50,
         17 if setting == "white_balance" else None,
-        None,
+        RelativeBrightness(100, 100, 100, 100) if setting == "relative_brightness" else None,
         False if setting == "blank_screen" else None,
     )
     compiled = compile_video_profile(LibraryItem.new("One register", content), "H6199")
     engine = EffectDeploymentEngine(EffectDeploymentRepository(InMemoryVersionedDocumentStore()))
     assert await engine._async_prepare_prior_state(coordinator, compiled)
-    assert queries[-1][f"query_{setting}"] is True
-    assert queries[-1][f"query_{omitted}"] is False
+    requested_query = {
+        "white_balance": build_white_balance_query("H6199"),
+        "relative_brightness": build_relative_brightness_query("H6199"),
+        "blank_screen": build_blank_screen_query("H6199"),
+    }[setting]
+    assert queries.count(requested_query) == 1
+    assert all(
+        query not in queries
+        for control, query in (
+            ("white_balance", build_white_balance_query("H6199")),
+            ("relative_brightness", build_relative_brightness_query("H6199")),
+            ("blank_screen", build_blank_screen_query("H6199")),
+        )
+        if control != setting
+    )
+    assert all(build_h6199_control_query(control) not in queries for control in H6199_NATIVE_CONTROLS)
+    assert queries.count(build_power_query("H6199")) == 2
+    assert queries.count(build_brightness_query("H6199")) == 1
+    assert queries.count(build_colour_mode_query("H6199")) == 1
+    assert all(
+        queries.count(build_segment_query(page, "H6199")) == 1
+        for page in range(1, coordinator.profile.segment_group_count + 1)
+    )
     if setting == "blank_screen":
         assert coordinator.blank_screen_low_brightness_duration_seconds == 10
         assert coordinator.blank_screen_same_tone_duration_seconds == 120

@@ -43,7 +43,7 @@ from tests.test_music_commands import _music_transport as _transport
 def _music_transport(coordinator):
     async def refresh(request=DEFAULT_REFRESH_REQUEST):
         # Fresh preflight replies, without turning optimistic writes into observations.
-        if not request.refresh_all:
+        if not (request.refresh_all or ReadDomain.BRIGHTNESS in (request.required_domains or frozenset())):
             return True
         for prefix in (f"aa01{int(coordinator.is_on):02x}", "aa0464", "aa0515000000"):
             coordinator._notify_callback(None, bytearray(frame(prefix)))

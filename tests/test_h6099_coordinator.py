@@ -8,7 +8,7 @@ from unittest.mock import ANY, AsyncMock, MagicMock
 import pytest
 from bleak import BleakError
 
-from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, get_profile
+from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ReadDomain, get_profile
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent, async_control_intent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_refresh import DEFAULT_REFRESH_REQUEST, RefreshRequest
@@ -630,7 +630,7 @@ async def test_studio_persists_policy_recovery_only_for_explicit_policy(device, 
     notify(device, "aaa90a0601020a007800")
 
     async def refresh(request=DEFAULT_REFRESH_REQUEST):
-        if request.refresh_all:
+        if request.refresh_all or ReadDomain.BRIGHTNESS in (request.required_domains or frozenset()):
             for prefix in ("aa0101", "aa0464", "aa0500010864010237"):
                 notify(device, prefix)
         if request.display_settings:
