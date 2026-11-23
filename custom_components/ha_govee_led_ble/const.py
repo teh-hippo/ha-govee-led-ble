@@ -2640,6 +2640,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     ),
     "H618A": ModelProfile(
         "H618A RGBIC Strip Lights",
+        support_quality=SupportQuality.SUPPORTED,
         confirmation_issue=690,
         command_grammar="H617A",
         command_ack_grammar="H617A",
