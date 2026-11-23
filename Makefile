@@ -107,8 +107,10 @@ verify-protocol: protocol
 	rm -rf $(BUILD_DIR)/verify-protocol
 	mkdir -p $(BUILD_DIR)/verify-protocol
 	bash scripts/generate-kaitai.sh all $(BUILD_DIR)/verify-protocol/all >/dev/null
-	KAITAI_GENERATED_DIR=$(BUILD_DIR)/verify-protocol/all uv run --no-sync pytest tests/test_kaitai_protocol.py -q
-	bash scripts/generate-kaitai.sh runtime $(BUILD_DIR)/verify-protocol/runtime >/dev/null
+	KAITAI_GENERATED_DIR=$(BUILD_DIR)/verify-protocol/all uv run --no-sync pytest tests/test_kaitai_protocol.py \
+		-n $(PYTEST_WORKERS) --dist worksteal -q
+	bash scripts/generate-kaitai.sh runtime-from \
+		$(BUILD_DIR)/verify-protocol/all $(BUILD_DIR)/verify-protocol/runtime
 	LC_ALL=C diff --brief --recursive --no-dereference --exclude='__pycache__' $(BUILD_DIR)/verify-protocol/runtime $(PROTOCOL_DIR) || \
 		{ echo 'Generated protocol differs: run make protocol. If diff reports "Only in" files absent from scripts/kaitai-runtime-outputs.txt, delete just those ignored files and rerun.' >&2; exit 1; }
 

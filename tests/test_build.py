@@ -125,11 +125,14 @@ if "--version" in sys.argv:
     print("kaitai-struct-compiler 0.11")
     raise SystemExit
 
+if log_path := os.environ.get("FAKE_KAITAI_LOG"):
+    with Path(log_path).open("a") as log:
+        log.write(" ".join(sys.argv[1:]) + "\\n")
 output = Path(sys.argv[sys.argv.index("--outdir") + 1])
 output.mkdir(parents=True, exist_ok=True)
 inputs = [Path(value) for value in sys.argv if value.endswith(".ksy")]
-digest = hashlib.sha256(b"".join(path.read_bytes() for path in inputs)).hexdigest()
 for path in inputs:
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
     source = f'BUILD = "{digest}"\\n'
     if path.stem == "sample" and (order := os.environ.get("FAKE_IMPORT_ORDER")):
         prefix = (
@@ -381,6 +384,26 @@ def test_protocol_generation_canonicalises_peer_imports(build_repo: tuple[Path, 
 
     env["FAKE_IMPORT_ORDER"] = "candidate,shared"
     _make(root, env, "verify-protocol")
+
+
+def test_protocol_verification_compiles_once_and_derives_runtime(build_repo: tuple[Path, dict[str, str]]) -> None:
+    root, env = build_repo
+    _write(root / "scripts/kaitai-runtime-roots.txt", "sample\nshared\nspeculative/candidate\n")
+    _write(root / "scripts/kaitai-runtime-outputs.txt", "__init__.py\nsample.py\nshared.py\ncandidate.py\n")
+    env["FAKE_IMPORT_ORDER"] = "shared,candidate"
+    _make(root, env, "protocol")
+    runtime = root / "custom_components/ha_govee_led_ble/generated_protocol/sample.py"
+    expected = runtime.read_bytes()
+    log = root / "kaitai.log"
+    env["FAKE_KAITAI_LOG"] = str(log)
+
+    _make(root, env, "verify-protocol")
+
+    invocations = log.read_text(encoding="utf-8").splitlines()
+    assert len(invocations) == 1
+    assert "--python-package" not in invocations[0]
+    assert (root / ".build/verify-protocol/runtime/sample.py").read_bytes() == expected
+    assert runtime.read_bytes() == expected
 
 
 def test_verification_rejects_modified_and_extra_outputs(build_repo: tuple[Path, dict[str, str]]) -> None:

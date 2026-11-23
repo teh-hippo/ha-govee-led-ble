@@ -52,13 +52,20 @@ case "$mode" in
     mapfile -d '' -t specs < <(find "$kaitai" -type f -name '*.ksy' -printf '%P\0' | LC_ALL=C sort -z)
     package_args=()
     ;;
+  runtime-from)
+    if [[ -z "${2:-}" || -z "${3:-}" ]]; then
+      echo "runtime-from requires a generated source and output directory" >&2
+      exit 2
+    fi
+    source_output="$2"
+    output="$3"
+    mapfile -t expected < <(sed -e '/^[[:space:]]*$/d' -e '/^[[:space:]]*#/d' "$outputs_file" | LC_ALL=C sort)
+    ;;
   *)
-    echo "usage: $0 [runtime|all|verify] [output-directory]" >&2
+    echo "usage: $0 [runtime|all|runtime-from|verify] [output-directory]" >&2
     exit 2
     ;;
 esac
-
-resolve_compiler
 
 stage="$PWD/.build/kaitai-stage-${BASHPID}"
 trap 'rm -rf "$stage"' EXIT
@@ -66,22 +73,57 @@ rm -rf "$stage"
 mkdir -p "$stage"
 mkdir -p "$output"
 
-inputs=()
-for spec in "${specs[@]}"; do
-  [[ "$spec" == *.ksy ]] || spec="$spec.ksy"
-  inputs+=("$kaitai/$spec")
-done
+if [[ "$mode" == runtime-from ]]; then
+  python3 - "$source_output" "$stage" "${expected[@]}" <<'PY'
+import ast
+import sys
+from pathlib import Path
 
-"${compiler[@]}" \
-  --target python \
-  --read-write \
-  --import-path "$kaitai" \
-  --outdir "$stage" \
-  "${package_args[@]}" \
-  "${inputs[@]}"
+source = Path(sys.argv[1])
+stage = Path(sys.argv[2])
+expected = sys.argv[3:]
+package = "custom_components.ha_govee_led_ble.generated_protocol"
+modules = {path.stem for path in source.glob("*.py")}
 
-# Peer-schema imports come from an unordered compiler collection.
-python3 - "$stage" <<'PY'
+for filename in expected:
+    generated = stage / filename
+    if filename == "__init__.py":
+        generated.write_text("", encoding="utf-8")
+        continue
+    original = source / filename
+    if not original.is_file():
+        raise SystemExit(f"generated source is missing {filename}")
+    source_text = original.read_text(encoding="utf-8")
+    lines = source_text.splitlines(keepends=True)
+    for node in reversed(ast.parse(source_text).body):
+        if not isinstance(node, ast.Import) or not all(alias.name in modules for alias in node.names):
+            continue
+        replacement = sorted(
+            f"from {package} import {alias.name}" + (f" as {alias.asname}" if alias.asname else "") + "\n"
+            for alias in node.names
+        )
+        lines[node.lineno - 1 : node.end_lineno] = replacement
+    generated.write_text("".join(lines), encoding="utf-8")
+PY
+else
+  resolve_compiler
+
+  inputs=()
+  for spec in "${specs[@]}"; do
+    [[ "$spec" == *.ksy ]] || spec="$spec.ksy"
+    inputs+=("$kaitai/$spec")
+  done
+
+  "${compiler[@]}" \
+    --target python \
+    --read-write \
+    --import-path "$kaitai" \
+    --outdir "$stage" \
+    "${package_args[@]}" \
+    "${inputs[@]}"
+
+  # Peer-schema imports come from an unordered compiler collection.
+  python3 - "$stage" <<'PY'
 import ast
 import sys
 from pathlib import Path
@@ -102,6 +144,7 @@ for path in paths:
         lines[node.lineno - 1 : node.end_lineno] = block.splitlines(keepends=True)
     path.write_text("".join(lines), encoding="utf-8")
 PY
+fi
 
 if [[ "$mode" == runtime ]]; then
   : >"$stage/__init__.py"
@@ -111,7 +154,7 @@ if [[ "$mode" == runtime ]]; then
     echo "runtime protocol output set differs from $outputs_file" >&2
     exit 1
   fi
-else
+elif [[ "$mode" == all ]]; then
   mapfile -t expected < <(find "$stage" -maxdepth 1 -type f -name '*.py' -printf '%f\n' | LC_ALL=C sort)
   if ((${#expected[@]} != ${#specs[@]})); then
     echo "all-schema generation produced ${#expected[@]} modules from ${#specs[@]} schemas; check duplicate meta.id values" >&2
@@ -119,8 +162,21 @@ else
   fi
 fi
 
-for filename in "${expected[@]}"; do
-  temporary="$output/.$filename.new-${BASHPID}"
-  install -m 0644 "$stage/$filename" "$temporary"
-  mv -f "$temporary" "$output/$filename"
-done
+python3 - "$stage" "$output" "${expected[@]}" <<'PY'
+import os
+import shutil
+import sys
+from pathlib import Path
+
+stage = Path(sys.argv[1])
+output = Path(sys.argv[2])
+for filename in sys.argv[3:]:
+    temporary = output / f".{filename}.new-{os.getpid()}"
+    try:
+        with temporary.open("wb") as destination, (stage / filename).open("rb") as source:
+            shutil.copyfileobj(source, destination)
+        temporary.chmod(0o644)
+        os.replace(temporary, output / filename)
+    finally:
+        temporary.unlink(missing_ok=True)
+PY
