@@ -669,6 +669,7 @@ async def apply_blank_screen(
     writer: ProfileWriter | None = None,
     verify: bool = True,
     write_guard: Callable[[], None] | None = None,
+    on_write: Callable[[tuple[int, int, int]], None] | None = None,
 ) -> bool:
     if policy is None:
         await async_require_video_controls(coordinator, ("blank_screen",))
@@ -733,6 +734,7 @@ async def apply_blank_screen(
             write_guard=check_policy,
             state_values=fields,
             expected_values=fields if verify else None,
+            on_write=(None if on_write is None else lambda: on_write((detection, low_duration, same_duration))),
         )
         if not verify:
             return True

@@ -3095,9 +3095,12 @@ async def test_profile_delivery_without_readback_does_not_replay_or_restore(hass
     coordinator.async_restore_effect_control_state.assert_not_awaited()
 
 
+@pytest.mark.parametrize(("source", "defer_settings"), [("saved", False), ("snapshot", True)])
 async def test_h6199_video_profile_uses_native_writers_in_profile_order(
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,
+    source: str,
+    defer_settings: bool,
 ) -> None:
     repository, cache = await _repositories(hass)
     coordinator = _profile_coordinator("H6199")
@@ -3113,13 +3116,16 @@ async def test_h6199_video_profile_uses_native_writers_in_profile_order(
         monkeypatch.setattr(f"custom_components.ha_govee_led_ble.effect_runtime.apply_{name}", writer)
     coordinator.async_observe_effect = AsyncMock(return_value=True)
 
-    result = await EffectDeploymentEngine(repository, cache).async_apply_saved(
+    engine = EffectDeploymentEngine(repository, cache)
+    apply = engine.async_apply_saved if source == "saved" else engine.async_apply_snapshot
+    result = await apply(
         coordinator,
         _video_item(),
         config_entry_id="entry-a",
         updated_at="2026-08-11T00:00:00Z",
     )
 
+    blank_write_options = {"on_write": ANY} if defer_settings else {}
     assert writers.mock_calls == [
         call.active_video_mode(
             coordinator,
@@ -3135,9 +3141,15 @@ async def test_h6199_video_profile_uses_native_writers_in_profile_order(
             verify=True,
             on_write=ANY,
         ),
-        call.white_balance(coordinator, (13, 3), writer=ANY, verify=True),
-        call.relative_brightness(coordinator, (20, 30, 40, 50), writer=ANY, verify=True),
-        call.blank_screen(coordinator, True, writer=ANY, verify=True),
+        call.white_balance(coordinator, (13, 3), writer=ANY, verify=not defer_settings),
+        call.relative_brightness(coordinator, (20, 30, 40, 50), writer=ANY, verify=not defer_settings),
+        call.blank_screen(
+            coordinator,
+            True,
+            writer=ANY,
+            verify=not defer_settings,
+            **blank_write_options,
+        ),
     ]
     assert {field: getattr(coordinator, field) for field in initial} == initial
     coordinator.send_command.assert_not_awaited()
