@@ -7,6 +7,7 @@ __pycache__/
 .*_cache/
 .coverage
 .build/
+.pytest-lock
 dist/
 frontend/node_modules/
 .claude/

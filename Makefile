@@ -3,6 +3,7 @@ SHELL := /usr/bin/env bash
 .DEFAULT_GOAL := build
 
 PYTHON ?= python3
+MISE := $(shell command -v mise 2>/dev/null || true)
 NODE := node
 NPM := npm
 PYTEST_WORKERS ?= 4
@@ -47,11 +48,37 @@ FRONTEND_CONTRACTS := \
 	$(INTEGRATION_DIR)/scenes.py \
 	$(wildcard $(INTEGRATION_DIR)/scene_catalogues/*.json)
 FRONTEND_INPUTS := $(sort $(FRONTEND_SOURCE) $(FRONTEND_CONFIG) $(FRONTEND_CONTRACTS) scripts/generate-frontend.sh .node-version mise.toml Makefile)
+FRONTEND_FIXTURE := frontend/tests/fixtures/backend-contracts.json
+FRONTEND_FIXTURE_INPUTS := \
+	$(shell find $(INTEGRATION_DIR) -type f -name '*.py' ! -path '$(INTEGRATION_DIR)/generated_protocol/*' -print | LC_ALL=C sort) \
+	$(wildcard $(INTEGRATION_DIR)/scene_catalogues/*.json) \
+	tools/generate_frontend_contract_fixtures.py \
+	$(wildcard pyproject.toml uv.lock) \
+	Makefile
 
 PACKAGE_PATH := $(DIST_DIR)/ha_govee_led_ble.zip
 
-.PHONY: fixtures protocol frontend build check check-fast check-core check-code check-workflows check-lint check-static check-tests \
+.PHONY: bootstrap fixtures protocol frontend build check check-fast check-core check-code check-workflows check-lint check-static check-tests \
 	package clean verify-node verify-kaitai verify-protocol verify-frontend verify-generated
+
+bootstrap:
+	@if [[ -n "$(MISE)" ]]; then \
+		$(MISE) install \
+			uv@0.13.9 \
+			node@26.13.1 \
+			actionlint@1.7.12 \
+			zizmor@1.32.0 \
+			npm:typescript-language-server@6.1.0 \
+			github:kaitai-io/kaitai_struct_compiler@0.11; \
+		$(MISE) exec -- uv sync --locked --all-groups; \
+		$(MISE) exec -- npm --prefix frontend ci --ignore-scripts; \
+	else \
+		expected="$$(cat .node-version)"; actual="$$(node --version)"; \
+		[[ "$$actual" == "v$$expected" ]] || \
+			{ echo "Node.js $$expected is required; found $$actual" >&2; exit 1; }; \
+		uv sync --locked --all-groups; \
+		npm --prefix frontend ci --ignore-scripts; \
+	fi
 
 verify-node:
 	@expected="$$(cat .node-version)"; actual="$$($(NODE) --version)"; \
@@ -93,8 +120,10 @@ verify-frontend: frontend
 
 verify-generated: verify-protocol verify-frontend
 
-fixtures:
+$(FRONTEND_FIXTURE): $(FRONTEND_FIXTURE_INPUTS)
 	uv run --no-sync python -m tools.generate_frontend_contract_fixtures
+
+fixtures: $(FRONTEND_FIXTURE)
 
 check: check-core
 	CI=true $(NPM) --prefix frontend run test:browser
@@ -126,7 +155,7 @@ check-lint:
 	uv run --no-sync ruff format --check .
 
 check-static:
-	@test -s frontend/tests/fixtures/backend-contracts.json
+	@test -s $(FRONTEND_FIXTURE)
 	$(NPM) --prefix frontend run typecheck
 	$(NPM) --prefix frontend run test:unit
 	uv run --no-sync vulture $(INTEGRATION_DIR) vulture_whitelist.py --min-confidence 60 --exclude "*/generated_protocol/*"
@@ -141,4 +170,4 @@ package: build verify-generated
 
 clean:
 	rm -rf $(BUILD_DIR) $(DIST_DIR)
-	rm -f $(PROTOCOL_OUTPUTS) $(FRONTEND_OUTPUTS)
+	rm -f $(PROTOCOL_OUTPUTS) $(FRONTEND_OUTPUTS) $(FRONTEND_FIXTURE)

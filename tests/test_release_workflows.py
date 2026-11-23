@@ -49,6 +49,8 @@ def _run(script: str, root: Path, env: dict[str, str]) -> subprocess.CompletedPr
 def test_validation_aggregation_rejects_incomplete_required_stages(tmp_path: Path, stage: str, result: str) -> None:
     env = {
         **os.environ,
+        "ADMISSION_RESULT": "success",
+        "LIGHTWEIGHT": "false",
         **dict.fromkeys(
             ("FIXTURES_RESULT", "CORE_RESULT", "BROWSER_RESULT", "PACKAGE_RESULT", "WORKFLOW_LINT_RESULT"), "success"
         ),
@@ -59,6 +61,33 @@ def test_validation_aggregation_rejects_incomplete_required_stages(tmp_path: Pat
     run = _run(_step_script("validate.yml", "Require complete validation"), tmp_path, env)
 
     assert (run.returncode == 0) is (not stage), run.stdout + run.stderr
+
+
+@pytest.mark.parametrize(
+    ("stage", "result", "accepted"),
+    [
+        (None, "skipped", True),
+        ("FIXTURES_RESULT", "success", False),
+        ("ADMISSION_RESULT", "failure", False),
+    ],
+)
+def test_validation_aggregation_accepts_only_verified_lightweight_runs(
+    tmp_path: Path, stage: str | None, result: str, accepted: bool
+) -> None:
+    env = {
+        **os.environ,
+        "ADMISSION_RESULT": "success",
+        "LIGHTWEIGHT": "true",
+        **dict.fromkeys(
+            ("FIXTURES_RESULT", "CORE_RESULT", "BROWSER_RESULT", "PACKAGE_RESULT", "WORKFLOW_LINT_RESULT"), "skipped"
+        ),
+    }
+    if stage:
+        env[stage] = result
+
+    run = _run(_step_script("validate.yml", "Require complete validation"), tmp_path, env)
+
+    assert (run.returncode == 0) is accepted, run.stdout + run.stderr
 
 
 @pytest.mark.parametrize(
