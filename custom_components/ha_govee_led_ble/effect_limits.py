@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Final
 
@@ -88,14 +89,21 @@ def json_document_size(value: object) -> int:
     return len(json.dumps(value, allow_nan=False, ensure_ascii=False, separators=(",", ":")).encode())
 
 
-def validate_json_document(
+@dataclass(frozen=True, slots=True)
+class JsonDocumentMetrics:
+    encoded_size: int
+    node_count: int
+
+
+def validate_json_document_metrics(
     value: object,
     name: str,
     *,
     maximum_bytes: int,
     error_type: type[Exception],
     maximum_nodes: int = MAX_JSON_NODES,
-) -> None:
+    initial_depth: int = 0,
+) -> JsonDocumentMetrics:
     nodes = 0
 
     def visit(item: object, path: str, depth: int) -> None:
@@ -137,10 +145,28 @@ def validate_json_document(
             return
         raise error_type(f"{path} contains a non-JSON value")
 
-    visit(value, name, 0)
+    visit(value, name, initial_depth)
     try:
         encoded_size = json_document_size(value)
     except (TypeError, ValueError) as exc:
         raise error_type(f"{name} must contain valid JSON values") from exc
     if encoded_size > maximum_bytes:
         raise error_type(f"{name} must not exceed {maximum_bytes} bytes")
+    return JsonDocumentMetrics(encoded_size, nodes)
+
+
+def validate_json_document(
+    value: object,
+    name: str,
+    *,
+    maximum_bytes: int,
+    error_type: type[Exception],
+    maximum_nodes: int = MAX_JSON_NODES,
+) -> None:
+    validate_json_document_metrics(
+        value,
+        name,
+        maximum_bytes=maximum_bytes,
+        error_type=error_type,
+        maximum_nodes=maximum_nodes,
+    )
