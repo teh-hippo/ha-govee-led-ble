@@ -608,6 +608,9 @@ def _coordinator(*, readable: bool = True):
         music_calm=False,
         music_color=None,
         _music_body_revision=0,
+        _blank_screen_notification_revision=0,
+        _profile_generation=0,
+        _authorization_generation=0,
         send_command=AsyncMock(),
         refresh_state=AsyncMock(return_value=True),
         segment_colors=[(1, 2, 3)] * 15,
@@ -3134,6 +3137,7 @@ async def test_h6199_video_profile_uses_native_writers_in_profile_order(
             writer=ANY,
             verify=True,
             on_write=ANY,
+            write_guard=ANY,
         ),
         call.white_balance(coordinator, (13, 3), writer=ANY, verify=True),
         call.relative_brightness(coordinator, (20, 30, 40, 50), writer=ANY, verify=True),
@@ -3142,6 +3146,12 @@ async def test_h6199_video_profile_uses_native_writers_in_profile_order(
     assert {field: getattr(coordinator, field) for field in initial} == initial
     coordinator.send_command.assert_not_awaited()
     expectations, _ = compiled_observation(compile_application(_video_item(), "H6199"))
+    assert expectations is not None
+    expectations.update(
+        blank_screen_detection=2,
+        blank_screen_low_brightness_duration_seconds=10,
+        blank_screen_same_tone_duration_seconds=120,
+    )
     coordinator.async_observe_effect.assert_awaited_once_with(expectations, timeout=4.0)
     assert result.phase is DeploymentPhase.CONFIRMED
     assert result.content_kind == "video_profile"
