@@ -125,7 +125,9 @@ Profiles own product facts, Kaitai owns wire structure, and shared runtime opera
   Basic static controls can establish missing recovery state.
   Separate the original baseline from immediate-prior deployment-failure recovery.
 - Live effects retain the original baseline and capability-specific independent-colour/layout requirements.
-  Cancel and close stop future work while retaining completed changes.
+  Explicit cancel and close stop future work, then restore the original owned appearance after any active transaction reaches a known boundary.
+  A newer state-changing foreground control or committed Apply takes ownership; supersession retains those completed changes instead of rolling them back.
+  Read-only refreshes and admission supersession do not transfer appearance ownership.
   Internal recovery uses its own prepared authority and original baseline.
   Confirm readable power-off independently; otherwise require completed delivery.
 - Native static RGB authoring uses ordinary segment controls.

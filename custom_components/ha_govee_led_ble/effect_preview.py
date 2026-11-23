@@ -18,7 +18,7 @@ from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import Event, HomeAssistant
 
 from .ble_connection import CONNECTION_SETUP_TIMEOUT
-from .const import DOMAIN, ModelProfile, ReadDomain
+from .const import DOMAIN, ModelProfile, ReadDomain, same_control_profile
 from .control_arbiter import ControlIntent, PreviewAdmission, async_control_intent
 from .coordinator_base import async_prepare_effect_profile
 from .coordinator_modes import ModeTransitionPurpose
@@ -32,13 +32,12 @@ from .effect_compiler import (
     DIY_ACK_EVIDENCE,
     CompiledApplication,
     CompiledEffect,
-    CompiledStaticRgb,
     CompiledVideoProfile,
     compile_application,
     require_native_scenes,
     validate_compiled_geometry,
 )
-from .effect_deployments import ObservationConfidence
+from .effect_deployments import ObservationConfidence, PriorControlState
 from .effect_diagnostics import DiagnosticOutcome, DiagnosticStage, EffectDiagnosticHistory
 from .effect_domain import (
     BuiltinScene,
@@ -141,6 +140,29 @@ class PreviewHealthPhase(StrEnum):
     DEGRADED = "degraded"
 
 
+class PreviewCancellationOutcome(StrEnum):
+    RESTORED = "restored"
+    NOT_WRITTEN = "not_written"
+    SUPERSEDED = "superseded"
+    FAILED = "failed"
+
+
+@dataclass(frozen=True, slots=True)
+class PreviewCancellation:
+    config_entry_id: str
+    outcome: PreviewCancellationOutcome
+    error_code: str | None = None
+    error_message: str | None = None
+
+    def to_dict(self) -> dict[str, str | None]:
+        return {
+            "config_entry_id": self.config_entry_id,
+            "outcome": self.outcome.value,
+            "error_code": self.error_code,
+            "error_message": self.error_message,
+        }
+
+
 @dataclass(frozen=True, slots=True)
 class PreviewStatus:
     session_id: str
@@ -222,6 +244,8 @@ class _PreviewSession:
     owner: object
     listeners: dict[object, Callable[[PreviewStatus], None]] = field(default_factory=dict)
     last_sequence: int = 0
+    cancellation_generation: int = 0
+    device_cancellation_generations: dict[str, int] = field(default_factory=dict)
     expiry_handle: asyncio.TimerHandle | None = None
     latest_status: PreviewStatus | None = None
     last_request_key: tuple[str, str, bool] | None = None
@@ -238,6 +262,8 @@ class _PreviewRequest:
     correlation_id: str
     persist_default: bool
     content_kind: str
+    session_cancellation_generation: int = 0
+    device_cancellation_generation: int = 0
     item: LibraryItem | None = None
     diy_code: int | None = None
     scene: ResolvedScene | None = None
@@ -254,6 +280,18 @@ class _HealthTarget:
     confirmed_confidence: ObservationConfidence
 
 
+@dataclass(frozen=True, slots=True)
+class _PreviewRecovery:
+    session_id: str
+    state: PriorControlState
+    profile: ModelProfile
+    profile_generation: int
+    planned_release_generation: int
+    recovery_invalidation_generation: int
+    subscription: object | None
+    workspace: ActiveEffectWorkspace | None
+
+
 @dataclass(slots=True)
 class _DeviceWorker:
     pending: _PreviewRequest | None = None
@@ -265,11 +303,25 @@ class _DeviceWorker:
     verification_tasks: set[asyncio.Task[None]] = field(default_factory=set)
     cancelled_verifications: set[int] = field(default_factory=set)
     latest_accepted_generation: int = 0
+    recovery: _PreviewRecovery | None = None
+    recovery_write_started: bool = False
+    recovery_superseded: bool = False
+    finalizing: bool = False
+    finalization_task: asyncio.Task[PreviewCancellation] | None = None
     closing: bool = False
 
     @property
-    def tasks(self) -> tuple[asyncio.Task[None], ...]:
-        return tuple(task for task in (self.task, self.verification_task, *self.verification_tasks) if task is not None)
+    def tasks(self) -> tuple[asyncio.Task[Any], ...]:
+        return tuple(
+            task
+            for task in (
+                self.task,
+                self.verification_task,
+                *self.verification_tasks,
+                self.finalization_task,
+            )
+            if task is not None
+        )
 
     def track_verification(self, task: asyncio.Task[None]) -> None:
         if task in self.verification_tasks:
@@ -510,7 +562,7 @@ class EffectPreviewManager:
             ):
                 self._schedule_session_expiry(session_id, session)
                 return
-            self._sessions.pop(session_id, None)
+        await self.async_close_session(session_id, owner)
 
     async def async_queue_snapshot(
         self,
@@ -524,8 +576,10 @@ class EffectPreviewManager:
         persist_default: bool = False,
         diy_code: int | None = None,
     ) -> PreviewAcceptance:
-        self.ensure_session(session_id, owner)
+        session = self.ensure_session(session_id, owner)
         coordinator = self._loaded_coordinator(config_entry_id)
+        session_cancellation_generation = session.cancellation_generation
+        device_cancellation_generation = session.device_cancellation_generations.get(config_entry_id, 0)
         preparation_generation = coordinator._control_arbiter.foreground_generation
         try:
             profile = await async_prepare_effect_profile(
@@ -566,6 +620,8 @@ class EffectPreviewManager:
             correlation_id=str(uuid4()),
             persist_default=persist_default,
             content_kind=str(effect_content_to_dict(item.content)["kind"]),
+            session_cancellation_generation=session_cancellation_generation,
+            device_cancellation_generation=device_cancellation_generation,
             item=item,
             diy_code=diy_code,
             compiled=compiled,
@@ -590,8 +646,10 @@ class EffectPreviewManager:
         speed_index: int | None,
         persist_default: bool = False,
     ) -> PreviewAcceptance:
-        self.ensure_session(session_id, owner)
+        session = self.ensure_session(session_id, owner)
         coordinator = self._loaded_coordinator(config_entry_id)
+        session_cancellation_generation = session.cancellation_generation
+        device_cancellation_generation = session.device_cancellation_generations.get(config_entry_id, 0)
         preparation_generation = coordinator._control_arbiter.foreground_generation
         resolved = resolve_scene(coordinator.model, scene_id, effect_id)
         scene_default = scene_default_for(
@@ -636,6 +694,8 @@ class EffectPreviewManager:
             correlation_id=str(uuid4()),
             persist_default=persist_default,
             content_kind="scene_builtin",
+            session_cancellation_generation=session_cancellation_generation,
+            device_cancellation_generation=device_cancellation_generation,
             scene=resolved,
             speed_index=resolved_speed,
             canonical_body=canonical_body or None,
@@ -664,6 +724,12 @@ class EffectPreviewManager:
         async with self._lock:
             session = self._session_owner_locked(request.session_id, owner)
             if (
+                request.session_cancellation_generation != session.cancellation_generation
+                or request.device_cancellation_generation
+                != session.device_cancellation_generations.get(request.config_entry_id, 0)
+            ):
+                raise PreviewError("Preview was cancelled during connection preparation")
+            if (
                 preparation_generation is not None
                 and preparation_generation
                 != self._loaded_coordinator(request.config_entry_id)._control_arbiter.foreground_generation
@@ -673,6 +739,12 @@ class EffectPreviewManager:
                 raise PreviewShutdownError("Home Assistant is stopping")
             if request.config_entry_id in self._blocked_devices:
                 raise PreviewTargetUnavailableError("target config entry is unloading")
+            existing_worker = self._devices.get(request.config_entry_id)
+            if existing_worker is not None:
+                if existing_worker.finalizing:
+                    raise PreviewError("Live cancellation is still restoring the light")
+                if existing_worker.recovery is not None and existing_worker.recovery.session_id != request.session_id:
+                    raise PreviewOwnershipError("target config entry belongs to another Live session")
             request_key = _preview_request_key(request)
             if request.sequence == session.last_sequence:
                 if session.last_request_key != request_key:
@@ -745,29 +817,78 @@ class EffectPreviewManager:
         session_id: str,
         owner: object,
         config_entry_id: str | None = None,
-    ) -> None:
+    ) -> tuple[PreviewCancellation, ...]:
         self.require_owner(session_id, owner)
         cancelled: list[_PreviewRequest] = []
+        finalizing: dict[str, asyncio.Task[PreviewCancellation]] = {}
         async with self._lock:
-            self._session_owner_locked(session_id, owner)
+            session = self._session_owner_locked(session_id, owner)
+            if config_entry_id is None:
+                session.cancellation_generation += 1
+            else:
+                session.device_cancellation_generations[config_entry_id] = (
+                    session.device_cancellation_generations.get(config_entry_id, 0) + 1
+                )
             for device_id, worker in self._devices.items():
                 if config_entry_id is not None and device_id != config_entry_id:
                     continue
+                owned = worker.recovery is not None and worker.recovery.session_id == session_id
                 if worker.pending is not None and worker.pending.session_id == session_id:
                     cancelled.append(worker.pending)
                     worker.pending = None
                 if worker.active is not None and worker.active.session_id == session_id:
                     cancelled.append(worker.active)
                     worker.cancelled_generations.add(worker.active.generation)
+                    owned = True
                 if (
                     worker.verification_request is not None
                     and worker.verification_request.session_id == session_id
                     and worker.verification_task is not None
                 ):
                     worker.cancel_verification()
+                    owned = True
+                if owned:
+                    worker.finalizing = True
+                    preceding_tasks = tuple(
+                        task
+                        for task in worker.tasks
+                        if task is not worker.finalization_task and task is not asyncio.current_task()
+                    )
+                    finalization = worker.finalization_task
+                    if finalization is None or finalization.done():
+                        finalization = self._hass.async_create_task(
+                            self._async_finalize_after_tasks(
+                                device_id,
+                                session_id,
+                                preceding_tasks,
+                            ),
+                            name=f"{DOMAIN} preview restore {device_id}",
+                        )
+                        worker.finalization_task = finalization
+                    finalizing[device_id] = finalization
         for request in cancelled:
             self._publish(request, PreviewPhase.CANCELLED, error_code="session_cancelled")
             self._degrade_checking_health(request.config_entry_id)
+        if finalizing:
+            return tuple(await asyncio.gather(*finalizing.values()))
+        return ()
+
+    async def _async_finalize_after_tasks(
+        self,
+        config_entry_id: str,
+        session_id: str,
+        tasks: tuple[asyncio.Task[Any], ...],
+    ) -> PreviewCancellation:
+        current_task = asyncio.current_task()
+        try:
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+            return await self._async_finalize_cancelled_device(config_entry_id, session_id)
+        finally:
+            async with self._lock:
+                worker = self._devices.get(config_entry_id)
+                if worker is not None and worker.finalization_task is current_task:
+                    worker.finalization_task = None
 
     async def async_supersede_device(
         self,
@@ -794,6 +915,10 @@ class EffectPreviewManager:
                     cancelled[request.generation] = request
             if worker.active is not None:
                 worker.cancelled_generations.add(worker.active.generation)
+            if worker.recovery is not None:
+                worker.recovery_superseded = True
+                worker.recovery = None
+                worker.recovery_write_started = False
             worker.pending = None
             worker.cancel_verification()
             verification_tasks = tuple(worker.verification_tasks)
@@ -802,14 +927,155 @@ class EffectPreviewManager:
         if verification_tasks:
             await asyncio.gather(*verification_tasks, return_exceptions=True)
 
-    async def async_close_session(self, session_id: str, owner: object) -> None:
+    async def _async_finalize_cancelled_device(
+        self,
+        config_entry_id: str,
+        session_id: str,
+    ) -> PreviewCancellation:
+        async with self._lock:
+            worker = self._devices.get(config_entry_id)
+            if worker is None:
+                return PreviewCancellation(config_entry_id, PreviewCancellationOutcome.NOT_WRITTEN)
+            recovery = worker.recovery
+            superseded = worker.recovery_superseded
+            write_started = worker.recovery_write_started
+        if superseded or not write_started:
+            outcome = PreviewCancellationOutcome.SUPERSEDED if superseded else PreviewCancellationOutcome.NOT_WRITTEN
+            async with self._lock:
+                worker = self._devices.get(config_entry_id)
+                if worker is not None:
+                    worker.finalizing = False
+                    if worker.recovery is not None and worker.recovery.session_id == session_id:
+                        worker.recovery = None
+                    worker.recovery_write_started = False
+                    worker.recovery_superseded = False
+            return PreviewCancellation(config_entry_id, outcome)
+        if recovery is None or recovery.session_id != session_id:
+            return await self._async_cancel_finalization_failed(
+                config_entry_id,
+                "recovery_context_unavailable",
+                "The Live recovery target is unavailable after cancellation.",
+            )
+        try:
+            coordinator = self._loaded_coordinator(config_entry_id)
+            if recovery.profile_generation != coordinator._profile_generation or not same_control_profile(
+                recovery.profile, coordinator.profile
+            ):
+                raise EffectRestorationError("Live recovery authority changed after preview")
+            await coordinator.async_preview_preflight(timeout=self._connect_timeout)
+            requalified = await self._async_requalify_recovery(coordinator, recovery)
+            if requalified is not recovery:
+                async with self._lock:
+                    worker = self._devices.get(config_entry_id)
+                    if worker is None or worker.recovery is not recovery or worker.recovery_superseded:
+                        raise _PreviewSupersededError
+                    worker.recovery = requalified
+                recovery = requalified
+            async with async_control_intent(coordinator, ControlIntent.USER):
+                async with self._lock:
+                    worker = self._devices.get(config_entry_id)
+                    if worker is None or worker.recovery is not recovery or worker.recovery_superseded:
+                        raise _PreviewSupersededError
+                restored = await coordinator.async_restore_effect_control_state(
+                    recovery.state,
+                    overwritten_diy_code=None,
+                )
+                if not restored:
+                    raise EffectRestorationError("Live could not restore the complete original state")
+        except _PreviewSupersededError:
+            async with self._lock:
+                worker = self._devices.get(config_entry_id)
+                if worker is not None:
+                    worker.finalizing = False
+                    if worker.recovery is recovery:
+                        worker.recovery = None
+                    worker.recovery_write_started = False
+                    worker.recovery_superseded = False
+            return PreviewCancellation(config_entry_id, PreviewCancellationOutcome.SUPERSEDED)
+        except Exception as exc:
+            return await self._async_cancel_finalization_failed(
+                config_entry_id,
+                "recovery_failed",
+                "Live cancellation could not restore the light's original appearance.",
+                exc=exc,
+            )
+        async with self._lock:
+            worker = self._devices.get(config_entry_id)
+            still_owned = worker is not None and worker.recovery is recovery and not worker.recovery_superseded
+            if worker is not None:
+                worker.finalizing = False
+                if worker.recovery is recovery:
+                    worker.recovery = None
+                worker.recovery_write_started = False
+                worker.recovery_superseded = False
+            self._health_targets.pop(config_entry_id, None)
+        if not still_owned:
+            return PreviewCancellation(config_entry_id, PreviewCancellationOutcome.SUPERSEDED)
+        if self._active_workspaces is not None:
+            if recovery.workspace is None:
+                self._active_workspaces.clear(config_entry_id)
+            else:
+                self._active_workspaces.set(recovery.workspace)
+        coordinator.async_update_listeners()
+        self._set_health(
+            config_entry_id,
+            PreviewHealthPhase.HEALTHY,
+            write_disposition=PreviewWriteDisposition.COMPLETED,
+        )
+        return PreviewCancellation(config_entry_id, PreviewCancellationOutcome.RESTORED)
+
+    async def _async_cancel_finalization_failed(
+        self,
+        config_entry_id: str,
+        error_code: str,
+        error_message: str,
+        *,
+        exc: Exception | None = None,
+    ) -> PreviewCancellation:
+        if exc is not None:
+            entry = self._hass.config_entries.async_get_entry(config_entry_id)
+            runtime = None if entry is None else getattr(entry, "runtime_data", None)
+            _LOGGER.debug(
+                "Effect Studio Live recovery failed: operation=cancel model=%s code=%s",
+                getattr(runtime, "model", "unavailable"),
+                error_code,
+                exc_info=(type(exc), exc, exc.__traceback__),
+            )
+        async with self._lock:
+            worker = self._devices.get(config_entry_id)
+            if worker is not None:
+                worker.finalizing = False
+                worker.recovery = None
+                worker.recovery_write_started = False
+                worker.recovery_superseded = False
+            self._health_targets.pop(config_entry_id, None)
+        self._set_health(
+            config_entry_id,
+            PreviewHealthPhase.DEGRADED,
+            error_code=error_code,
+            error_message=error_message,
+            write_disposition=PreviewWriteDisposition.COMPLETED,
+        )
+        return PreviewCancellation(
+            config_entry_id,
+            PreviewCancellationOutcome.FAILED,
+            error_code=error_code,
+            error_message=error_message,
+        )
+
+    async def async_close_session(
+        self,
+        session_id: str,
+        owner: object,
+    ) -> tuple[PreviewCancellation, ...]:
         self.require_owner(session_id, owner)
-        await self.async_cancel(session_id=session_id, owner=owner)
+        outcomes = await self.async_cancel(session_id=session_id, owner=owner)
         async with self._lock:
             session = self._sessions.get(session_id)
             if session is not None and session.owner == _owner_key(owner):
                 self._cancel_session_expiry(session)
                 self._sessions.pop(session_id, None)
+        return outcomes
 
     async def async_unload_device(self, config_entry_id: str) -> None:
         cancelled: list[_PreviewRequest] = []
@@ -997,6 +1263,7 @@ class EffectPreviewManager:
                 coordinator.async_mode_transition(purpose=ModeTransitionPurpose.PREVIEW) as transition,
             ):
                 await self._async_prepare_execution(coordinator, compiled)
+                await self._async_prepare_recovery(request, coordinator, compiled)
                 writer = _PreviewWriter(self, request, coordinator, health_target)
                 await self._async_transmit_request(request, coordinator, compiled, writer)
                 if not transition.current():
@@ -1139,9 +1406,6 @@ class EffectPreviewManager:
             and compiled.relative_brightness is not None
         )
         inline_revision = coordinator._field_revisions.get("video_parameters", 0) if inline_brightness else 0
-        if not isinstance(compiled, CompiledStaticRgb):
-            async with async_control_intent(coordinator, ControlIntent.PREVIEW):
-                await async_prepare_effect_control_state(coordinator, require_restorable_static=True)
         if inline_brightness and coordinator._field_revisions.get("video_parameters", 0) <= inline_revision:
             await coordinator.refresh_state()
             if coordinator._field_revisions.get("video_parameters", 0) <= inline_revision and (
@@ -1158,6 +1422,122 @@ class EffectPreviewManager:
             if not await coordinator.refresh_state():
                 raise PreviewError("approved disposable DIY code could not be refreshed")
             _validate_diy_slot_approval(coordinator, compiled)
+
+    async def _async_prepare_recovery(
+        self,
+        request: _PreviewRequest,
+        coordinator: Any,
+        compiled: CompiledApplication | None,
+    ) -> None:
+        async with self._lock:
+            worker = self._devices.get(request.config_entry_id)
+            existing = None if worker is None else worker.recovery
+        if existing is not None:
+            if existing.profile_generation != coordinator._profile_generation or not same_control_profile(
+                existing.profile, coordinator.profile
+            ):
+                raise _PreviewSupersededError
+            requalified = await self._async_requalify_recovery(coordinator, existing)
+            if requalified is not existing:
+                async with self._lock:
+                    worker = self._devices.get(request.config_entry_id)
+                    if worker is None or worker.recovery is not existing:
+                        raise _PreviewSupersededError
+                    worker.recovery = requalified
+            if requalified.session_id != request.session_id:
+                raise _PreviewSupersededError
+            self._validate_preview_recovery_target(requalified.state, compiled)
+            return
+
+        async with async_control_intent(coordinator, ControlIntent.PREVIEW):
+            await async_prepare_effect_control_state(coordinator, require_restorable_static=True)
+            if not await self._async_request_is_current(request):
+                raise _PreviewSupersededError
+            state = coordinator.capture_effect_control_state()
+            if not isinstance(state, PriorControlState):
+                raise TypeError("coordinator returned an invalid prior control state")
+            transition = coordinator._mode_transition
+            if (
+                state.mode == "colour"
+                and transition is not None
+                and transition.purpose is ModeTransitionPurpose.PREVIEW
+                and transition.snapshot is not None
+            ):
+                state = transition.snapshot
+            available = getattr(coordinator, "preview_recovery_target_available", None)
+            if available is None or not available(state):
+                raise EffectRestorationError("The current appearance cannot be safely restored after Live")
+            self._validate_preview_recovery_target(state, compiled)
+            profile = coordinator.profile
+            profile_generation = coordinator._profile_generation
+            planned_release_generation = coordinator._planned_release_generation
+            recovery_invalidation_generation = coordinator._recovery_invalidation_generation
+            subscription = coordinator._notification_token
+            workspace = self._active_workspaces.get(request.config_entry_id) if self._active_workspaces else None
+        recovery = _PreviewRecovery(
+            session_id=request.session_id,
+            state=state,
+            profile=profile,
+            profile_generation=profile_generation,
+            planned_release_generation=planned_release_generation,
+            recovery_invalidation_generation=recovery_invalidation_generation,
+            subscription=subscription,
+            workspace=workspace,
+        )
+        async with self._lock:
+            worker = self._devices.get(request.config_entry_id)
+            if (
+                worker is None
+                or worker.finalizing
+                or request.generation != worker.latest_accepted_generation
+                or request.generation in worker.cancelled_generations
+                or (request.admission is not None and not request.admission.is_current)
+            ):
+                raise _PreviewSupersededError
+            if worker.recovery is not None:
+                if worker.recovery != recovery:
+                    raise _PreviewSupersededError
+                return
+            worker.recovery = recovery
+            worker.recovery_write_started = False
+            worker.recovery_superseded = False
+
+    async def _async_requalify_recovery(
+        self,
+        coordinator: Any,
+        recovery: _PreviewRecovery,
+    ) -> _PreviewRecovery:
+        if recovery.subscription is coordinator._notification_token:
+            return recovery
+        if (
+            recovery.profile_generation != coordinator._profile_generation
+            or not same_control_profile(recovery.profile, coordinator.profile)
+            or recovery.recovery_invalidation_generation != coordinator._recovery_invalidation_generation
+            or recovery.planned_release_generation >= coordinator._planned_release_generation
+        ):
+            raise EffectRestorationError("Live recovery authority is no longer available")
+        if recovery.profile_generation != coordinator._profile_generation or not same_control_profile(
+            recovery.profile, coordinator.profile
+        ):
+            raise EffectRestorationError("Live recovery profile changed during qualification")
+        return replace(
+            recovery,
+            planned_release_generation=coordinator._planned_release_generation,
+            recovery_invalidation_generation=coordinator._recovery_invalidation_generation,
+            subscription=coordinator._notification_token,
+        )
+
+    @staticmethod
+    def _validate_preview_recovery_target(
+        state: PriorControlState,
+        compiled: CompiledApplication | None,
+    ) -> None:
+        if not isinstance(compiled, CompiledEffect) or compiled.diy_code is None:
+            return
+        if state.mode == "custom" and state.diy_code == compiled.diy_code:
+            raise EffectRestorationError("Live would overwrite the only recoverable resident custom effect")
+        if state.mode == "scene" and state.scene_code == compiled.diy_code:
+            raise EffectRestorationError("Live would overwrite the only recoverable resident scene selector")
 
     async def _async_transmit_request(
         self,
@@ -1186,6 +1566,7 @@ class EffectPreviewManager:
                     writer=writer,
                     verify=False,
                     on_write=lambda: self._supersede_active_origin(request),
+                    intent=ControlIntent.PREVIEW,
                 )
             return
         final_activation = (
@@ -1336,6 +1717,8 @@ class EffectPreviewManager:
                 self._health_targets.pop(request.config_entry_id, None)
             else:
                 self._health_targets[request.config_entry_id] = health_target
+            if worker.recovery is not None and worker.recovery.session_id == request.session_id:
+                worker.recovery_write_started = True
         self._publish(request, PreviewPhase.WRITING)
 
     async def _async_verify(

@@ -124,7 +124,7 @@ for (const width of [320, 1280]) {
             "library/list": library(), "library/get": { item: saved },
             "custom/catalogue": { catalogue: contracts.responses.custom_catalogue },
             "user_state/get": { user_state: userState }, "user_state/update": { user_state: userState },
-            "preview/cancel": { cancelled: true },
+            "preview/cancel": { cancelled: true, devices: [] },
           };
           if (!(type in responses)) throw new Error(`Unexpected WebSocket call: ${type}`);
           return structuredClone(responses[type]) as T;
@@ -232,7 +232,7 @@ test("Auto Save keeps keyboard editing responsive and serialises the latest draf
           "custom/catalogue": { catalogue: contracts.responses.custom_catalogue },
           "user_state/get": { user_state: userState },
           "user_state/update": { user_state: userState },
-          "preview/cancel": { cancelled: true },
+          "preview/cancel": { cancelled: true, devices: [] },
         };
         if (!(type in responses)) throw new Error(`Unexpected WebSocket call: ${type}`);
         return structuredClone(responses[type]) as T;

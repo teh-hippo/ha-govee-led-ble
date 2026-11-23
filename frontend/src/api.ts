@@ -292,9 +292,10 @@ export class EffectStudioApi {
   }
 
   public async closePreviewSession(sessionId: string): Promise<void> {
-    await this.call("preview/session/close", {
+    const result = await this.call("preview/session/close", {
       session_id: sessionId,
     });
+    throwPreviewCancellationFailure(result);
   }
 
   public async previewSnapshot(
@@ -344,10 +345,11 @@ export class EffectStudioApi {
     sessionId: string,
     configEntryId?: string,
   ): Promise<void> {
-    await this.call("preview/cancel", {
+    const result = await this.call("preview/cancel", {
       session_id: sessionId,
       ...(configEntryId ? { config_entry_id: configEntryId } : {}),
     });
+    throwPreviewCancellationFailure(result);
   }
 
   public async sceneCatalogue(
@@ -597,6 +599,26 @@ function resultField(value: unknown, field: string): unknown {
   return (value as Record<string, unknown>)[field];
 }
 
+function throwPreviewCancellationFailure(value: unknown): void {
+  const devices = resultField(value, "devices");
+  if (!Array.isArray(devices)) {
+    throw new Error("Malformed Effect Studio server payload: preview cancellation devices must be an array.");
+  }
+  for (const device of devices) {
+    if (typeof device !== "object" || device === null || Array.isArray(device)) {
+      throw new Error("Malformed Effect Studio server payload: preview cancellation device must be an object.");
+    }
+    const details = device as Record<string, unknown>;
+    if (details.outcome !== "failed") {
+      continue;
+    }
+    throw new Error(
+      typeof details.error_message === "string"
+        ? details.error_message
+        : "Live cancellation could not restore the original light state.",
+    );
+  }
+}
 
 function asError(error: unknown): Error {
   return error instanceof Error ? error : new Error("Malformed Effect Studio server payload.");

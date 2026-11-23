@@ -169,6 +169,7 @@ async def async_apply_compiled_profile(
     verify: bool = True,
     progress: Callable[[int], Awaitable[None]] | None = None,
     on_write: Callable[[], None] | None = None,
+    intent: ControlIntent = ControlIntent.APPLY,
 ) -> None:
     if isinstance(compiled, CompiledStaticRgb):
         if coordinator.model != compiled.model:
@@ -177,7 +178,7 @@ async def async_apply_compiled_profile(
             SegmentPaintRequest(
                 compiled.groups,
                 writer=writer,
-                intent=ControlIntent.APPLY,
+                intent=intent,
                 write_guard=lambda: validate_compiled_geometry(compiled, coordinator.effect_authorization_profile),
                 on_write=on_write,
             )
@@ -207,7 +208,7 @@ async def async_apply_compiled_profile(
             writes,
             mode_code=music_code_for(compiled.model, compiled.mode, profile=coordinator.profile),
             physical_ic_count=compiled.physical_ic_count,
-            intent=ControlIntent.APPLY,
+            intent=intent,
             writer=writer,
             on_write=on_write,
         )
@@ -331,9 +332,9 @@ async def async_apply_compiled_profile(
         build_black_border(compiled.black_border, coordinator.model)
     if compiled.whole_relative_brightness is not None:
         build_whole_relative_brightness(compiled.whole_relative_brightness, coordinator.model, profile=profile)
-    intent = coordinator._control_arbiter.current_task_intent or ControlIntent.APPLY
+    active_intent = coordinator._control_arbiter.current_task_intent or intent
     async with (
-        async_control_intent(coordinator, intent),
+        async_control_intent(coordinator, active_intent),
         coordinator.async_mode_transition(purpose=ModeTransitionPurpose.SELECTION),
     ):
         await apply_active_video_mode(

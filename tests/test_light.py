@@ -2076,7 +2076,7 @@ async def test_native_music_power_packet_does_not_supersede_saved_origin(saved_v
     assert (backend.device_cache.get("entry-a").active_effect is not None) is rejected
 
 
-async def test_failed_live_profile_does_not_revive_saved_origin_or_restore_lighting(
+async def test_failed_live_profile_attempts_recovery_without_reviving_saved_origin(
     saved_video_light, hass, monkeypatch
 ):
     from tests.test_effect_preview import PreviewPhase, _manager, _open
@@ -2101,8 +2101,9 @@ async def test_failed_live_profile_does_not_revive_saved_origin_or_restore_light
         )
         await manager.async_wait_idle("entry-a")
         assert events[-1].phase is PreviewPhase.FAILED
-        await manager.async_cancel(session_id=session, owner=owner, config_entry_id="entry-a")
-        assert client.write_gatt_char.await_count == 1
+        outcomes = await manager.async_cancel(session_id=session, owner=owner, config_entry_id="entry-a")
+        assert [outcome.outcome.value for outcome in outcomes] == ["failed"]
+        assert client.write_gatt_char.await_count == 2
         observed = backend.engine.reconcile_current(
             coordinator,
             config_entry_id="entry-a",

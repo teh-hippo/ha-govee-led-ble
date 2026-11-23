@@ -682,6 +682,7 @@ class _ActiveModeMixin(_CoordinatorBase):
         writer: ProfileWriter | None = None,
         parameters: Mapping[str, Any] | None = None,
         calm: bool | None = None,
+        before_apply: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
         if (
             self.music_mode not in self.profile.music_modes
@@ -725,6 +726,8 @@ class _ActiveModeMixin(_CoordinatorBase):
         last_upload = len(upload) - 1
         if self.profile.music_params_require_activation:
             upload.append(writes[-1] if self.profile.music_upload_before_selector else writes[1])
+        if before_apply is not None:
+            await before_apply()
         await self.async_write_music_sequence(
             replace(
                 writes,

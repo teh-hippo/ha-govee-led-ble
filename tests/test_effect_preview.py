@@ -52,12 +52,14 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     RelativeBrightness,
     SingleEffect,
     SourceKind,
+    StaticRgbComposition,
     VideoProfile,
 )
 from custom_components.ha_govee_led_ble.effect_identity import EffectDeviceCache, ObservedDeviceState
 from custom_components.ha_govee_led_ble.effect_limits import MAX_EFFECT_NAME_LENGTH
 from custom_components.ha_govee_led_ble.effect_preview import (
     EffectPreviewManager,
+    PreviewCancellationOutcome,
     PreviewError,
     PreviewHealthPhase,
     PreviewHealthStatus,
@@ -82,7 +84,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
 from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_catalogue_layered_scene
 from custom_components.ha_govee_led_ble.native_scenes import encode_authored_scene_body
 from custom_components.ha_govee_led_ble.protocol_core import MusicBody
-from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES, SceneEntry
+from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES, SceneEntry, scene_selector_code
 from custom_components.ha_govee_led_ble.transport import reassemble_a3, xor_checksum
 from tests.storage_test_double import InMemoryVersionedDocumentStore
 
@@ -123,6 +125,9 @@ class _EffectCoordinator(SimpleNamespace):
     def identity_fields_confirmed(self, fields=None):
         return True
 
+    def preview_recovery_target_available(self, state):
+        return True
+
     def _reconcile_authorization(self):
         pass
 
@@ -147,11 +152,21 @@ def _coordinator(*, model: str = "H617A", readable: bool = False) -> SimpleNames
         diy_code=None,
         music_mode="off",
         video_mode="off",
+        _mode_transition=None,
         writes=[],
         async_update_listeners=MagicMock(),
+        _profile_generation=0,
+        _notification_token=object(),
+        _planned_release_generation=0,
+        _recovery_invalidation_generation=0,
+        _pre_mode_snapshot=None,
     )
     coordinator.async_preview_preflight = AsyncMock()
     coordinator.disconnect = AsyncMock()
+    coordinator.capture_effect_control_state = MagicMock(
+        return_value=replace(_known_static_baseline(coordinator), is_on=False)
+    )
+    coordinator.async_restore_effect_control_state = AsyncMock(return_value=True)
 
     async def write(packet: bytes) -> None:
         coordinator.writes.append(packet)
@@ -210,6 +225,9 @@ async def _manager(
     coordinator: Any,
     **timing: float,
 ) -> tuple[EffectPreviewManager, EffectDeviceCache]:
+    strict_recovery = bool(timing.pop("strict_recovery", 0))
+    if not strict_recovery and not isinstance(coordinator, _EffectCoordinator):
+        monkeypatch.setattr(coordinator, "preview_recovery_target_available", lambda _state: True)
     cache = EffectDeviceCache(InMemoryVersionedDocumentStore())
     await cache.async_load()
     scene_defaults = NativeSceneDefaultRepository(InMemoryVersionedDocumentStore())
@@ -230,6 +248,8 @@ async def _manager(
         connect_timeout=timing.get("connect_timeout", 0.1),
         channel_idle_timeout=timing.get("channel_idle_timeout", 300),
     )
+    if not strict_recovery:
+        monkeypatch.setattr(manager, "_validate_preview_recovery_target", lambda _state, _compiled: None)
     entry = SimpleNamespace(
         entry_id="entry-a",
         domain=DOMAIN,
@@ -1548,6 +1568,7 @@ async def test_snapshot_profile_previews_use_preview_transport(
     monkeypatch.setattr(
         coordinator, "async_prepare_static_baseline", AsyncMock(return_value=_known_static_baseline(coordinator))
     )
+    monkeypatch.setattr(coordinator, "preview_recovery_target_available", lambda _state: True)
     coordinator.async_observe_effect = AsyncMock(return_value=True)  # type: ignore[method-assign]
     coordinator.send_command = AsyncMock(side_effect=AssertionError("preview must use preview transport"))  # type: ignore[method-assign]
     manager, _cache = await _manager(hass, monkeypatch, coordinator)
@@ -1879,17 +1900,359 @@ async def test_session_cancel_finishes_active_sequence_without_replaying_pending
         item=_item("pending", 60),
     )
 
-    await manager.async_cancel(
-        session_id=session_id,
-        owner=owner,
-        config_entry_id="entry-a",
+    cancellation = asyncio.create_task(
+        manager.async_cancel(
+            session_id=session_id,
+            owner=owner,
+            config_entry_id="entry-a",
+        )
     )
+    await asyncio.sleep(0)
+    assert not cancellation.done()
     release_write.set()
+    await cancellation
     await manager.async_wait_idle("entry-a")
 
     assert any(event.sequence == 1 and event.error_code == "session_cancelled" for event in events)
     assert any(event.sequence == 2 and event.error_code == "session_cancelled" for event in events)
     assert not any(event.phase is PreviewPhase.WRITTEN for event in events)
+    await manager.async_shutdown()
+
+
+async def test_cancel_during_revision_preparation_fences_admission_without_writing(hass, monkeypatch):
+    from custom_components.ha_govee_led_ble import effect_preview
+
+    coordinator = _coordinator(model="H619A")
+    manager, _cache = await _manager(hass, monkeypatch, coordinator)
+    owner = object()
+    session_id = _open(manager, owner, [])
+    entered, finish = asyncio.Event(), asyncio.Event()
+
+    async def prepare(_coordinator, **kwargs):
+        entered.set()
+        await finish.wait()
+        return coordinator.profile
+
+    monkeypatch.setattr(effect_preview, "async_prepare_effect_profile", prepare)
+    request = asyncio.create_task(
+        manager.async_queue_snapshot(
+            session_id=session_id,
+            owner=owner,
+            config_entry_id="entry-a",
+            sequence=1,
+            updated_at="2026-08-17T00:00:00Z",
+            item=_item("Preparing"),
+        )
+    )
+    try:
+        await asyncio.wait_for(entered.wait(), 1)
+        outcomes = await manager.async_cancel(session_id=session_id, owner=owner, config_entry_id="entry-a")
+        finish.set()
+        with pytest.raises(PreviewError, match="cancelled"):
+            await request
+        assert outcomes == ()
+        coordinator.async_preview_write.assert_not_awaited()
+        assert manager._sessions[session_id].last_sequence == 0
+    finally:
+        finish.set()
+        await asyncio.gather(request, return_exceptions=True)
+        await manager.async_shutdown()
+
+
+async def test_completed_static_previews_share_one_recovery_epoch_and_restore_on_cancel(hass, monkeypatch):
+    from custom_components.ha_govee_led_ble import effect_preview
+
+    coordinator = _coordinator(readable=True)
+    manager, _cache = await _manager(hass, monkeypatch, coordinator)
+    owner = object()
+    session_id = _open(manager, owner, [])
+    baseline = coordinator.capture_effect_control_state.return_value
+    apply = AsyncMock()
+
+    async def apply_static(*args, writer, intent, **kwargs):
+        await apply(*args, writer=writer, intent=intent, **kwargs)
+        await writer(b"static-preview")
+
+    monkeypatch.setattr(
+        effect_preview,
+        "async_prepare_effect_profile",
+        AsyncMock(return_value=coordinator.profile),
+    )
+    monkeypatch.setattr(effect_preview, "async_apply_compiled_profile", apply_static)
+    content = StaticRgbComposition(((10, 20, 30),) * coordinator.profile.segment_count)
+
+    for sequence in (1, 2):
+        await manager.async_queue_snapshot(
+            session_id=session_id,
+            owner=owner,
+            config_entry_id="entry-a",
+            sequence=sequence,
+            updated_at=f"2026-08-17T00:00:0{sequence}Z",
+            item=LibraryItem.new(f"Static {sequence}", content),
+        )
+        await manager.async_wait_idle("entry-a")
+
+    coordinator._notification_token = object()
+    coordinator._planned_release_generation += 1
+    await manager.async_queue_snapshot(
+        session_id=session_id,
+        owner=owner,
+        config_entry_id="entry-a",
+        sequence=3,
+        updated_at="2026-08-17T00:00:03Z",
+        item=LibraryItem.new("Static 3", content),
+    )
+    await manager.async_wait_idle("entry-a")
+    outcomes = await manager.async_cancel(session_id=session_id, owner=owner, config_entry_id="entry-a")
+
+    assert [outcome.outcome for outcome in outcomes] == [PreviewCancellationOutcome.RESTORED]
+    assert coordinator.capture_effect_control_state.call_count == 1
+    assert [call.kwargs["intent"] for call in apply.await_args_list] == [
+        ControlIntent.PREVIEW,
+        ControlIntent.PREVIEW,
+        ControlIntent.PREVIEW,
+    ]
+    coordinator.async_restore_effect_control_state.assert_awaited_once_with(
+        baseline,
+        overwritten_diy_code=None,
+    )
+    await manager.async_shutdown()
+
+
+async def test_state_changing_supersession_relinquishes_preview_recovery(hass, monkeypatch):
+    coordinator = _coordinator()
+    manager, _cache = await _manager(hass, monkeypatch, coordinator)
+    owner = object()
+    session_id = _open(manager, owner, [])
+
+    await manager.async_queue_snapshot(
+        session_id=session_id,
+        owner=owner,
+        config_entry_id="entry-a",
+        sequence=1,
+        updated_at="2026-08-17T00:00:00Z",
+        item=_item("Preview"),
+    )
+    await manager.async_wait_idle("entry-a")
+    await manager.async_supersede_device("entry-a", reason="home_assistant_control")
+    outcomes = await manager.async_cancel(session_id=session_id, owner=owner, config_entry_id="entry-a")
+
+    assert outcomes == ()
+    coordinator.async_restore_effect_control_state.assert_not_awaited()
+    await manager.async_shutdown()
+
+
+async def test_unplanned_subscription_loss_revokes_preview_recovery(hass, monkeypatch):
+    coordinator = _coordinator()
+    manager, _cache = await _manager(hass, monkeypatch, coordinator)
+    owner = object()
+    session_id = _open(manager, owner, [])
+    await manager.async_queue_snapshot(
+        session_id=session_id,
+        owner=owner,
+        config_entry_id="entry-a",
+        sequence=1,
+        updated_at="2026-08-17T00:00:00Z",
+        item=_item("Preview"),
+    )
+    await manager.async_wait_idle("entry-a")
+    coordinator._notification_token = object()
+
+    outcomes = await manager.async_cancel(session_id=session_id, owner=owner, config_entry_id="entry-a")
+
+    assert [outcome.outcome for outcome in outcomes] == [PreviewCancellationOutcome.FAILED]
+    coordinator.async_restore_effect_control_state.assert_not_awaited()
+    await manager.async_shutdown()
+
+
+async def test_unexpected_loss_revokes_recovery_after_planned_release(hass, monkeypatch):
+    coordinator = _coordinator()
+    manager, _cache = await _manager(hass, monkeypatch, coordinator)
+    owner = object()
+    session_id = _open(manager, owner, [])
+    for sequence in (1, 2):
+        await manager.async_queue_snapshot(
+            session_id=session_id,
+            owner=owner,
+            config_entry_id="entry-a",
+            sequence=sequence,
+            updated_at=f"2026-08-17T00:00:0{sequence}Z",
+            item=_item(f"Preview {sequence}"),
+        )
+        await manager.async_wait_idle("entry-a")
+        if sequence == 1:
+            coordinator._notification_token = object()
+            coordinator._planned_release_generation += 1
+
+    coordinator._notification_token = object()
+    coordinator._recovery_invalidation_generation += 1
+    outcomes = await manager.async_cancel(session_id=session_id, owner=owner, config_entry_id="entry-a")
+
+    assert [outcome.outcome for outcome in outcomes] == [PreviewCancellationOutcome.FAILED]
+    coordinator.async_restore_effect_control_state.assert_not_awaited()
+    await manager.async_shutdown()
+
+
+async def test_cancel_after_recovery_capture_before_first_write_reports_not_written(hass, monkeypatch):
+    coordinator = _coordinator()
+    manager, _cache = await _manager(hass, monkeypatch, coordinator)
+    owner = object()
+    session_id = _open(manager, owner, [])
+    captured, release = asyncio.Event(), asyncio.Event()
+    prepare_recovery = manager._async_prepare_recovery
+
+    async def gated_recovery(*args, **kwargs):
+        await prepare_recovery(*args, **kwargs)
+        captured.set()
+        await release.wait()
+
+    monkeypatch.setattr(manager, "_async_prepare_recovery", gated_recovery)
+    await manager.async_queue_snapshot(
+        session_id=session_id,
+        owner=owner,
+        config_entry_id="entry-a",
+        sequence=1,
+        updated_at="2026-08-17T00:00:00Z",
+        item=_item("Capture"),
+    )
+    await captured.wait()
+    cancellation = asyncio.create_task(
+        manager.async_cancel(session_id=session_id, owner=owner, config_entry_id="entry-a")
+    )
+    await asyncio.sleep(0)
+    release.set()
+    outcomes = await cancellation
+
+    assert [outcome.outcome for outcome in outcomes] == [PreviewCancellationOutcome.NOT_WRITTEN]
+    coordinator.async_preview_write.assert_not_awaited()
+    coordinator.async_restore_effect_control_state.assert_not_awaited()
+    await manager.async_shutdown()
+
+
+async def test_parameterized_resident_scene_rejects_live_before_write(hass, monkeypatch):
+    coordinator = GoveeBLECoordinator(
+        hass,
+        "AA:BB:CC:DD:EE:FF",
+        "H617A",
+        configuration_url="homeassistant://ha-govee-led-ble/editor/entry-a",
+    )
+    scene = next(entry for entry in SCENE_ENTRIES["H617A"] if entry.param)
+    baseline = _known_static_baseline(coordinator)
+    state = replace(
+        baseline,
+        mode="scene",
+        scene_code=scene_selector_code("H617A", scene, profile=coordinator.profile),
+        effect=None,
+    )
+    coordinator.capture_effect_control_state = MagicMock(return_value=state)
+    monkeypatch.setattr(coordinator, "async_prepare_static_baseline", AsyncMock(return_value=baseline))
+    coordinator.async_preview_preflight = AsyncMock()
+    coordinator.async_preview_write = AsyncMock()
+    manager, _cache = await _manager(hass, monkeypatch, coordinator, strict_recovery=True)
+    owner = object()
+    events: list[PreviewStatus] = []
+    session_id = _open(manager, owner, events)
+
+    await manager.async_queue_snapshot(
+        session_id=session_id,
+        owner=owner,
+        config_entry_id="entry-a",
+        sequence=1,
+        updated_at="2026-08-17T00:00:00Z",
+        item=_item("New preview"),
+    )
+    await manager.async_wait_idle("entry-a")
+
+    assert events[-1].phase is PreviewPhase.FAILED
+    assert events[-1].error_code == "state_not_restorable"
+    coordinator.async_preview_write.assert_not_awaited()
+    await manager.async_shutdown()
+
+
+def test_incomplete_resident_music_and_video_targets_are_not_recoverable(hass):
+    from tests.test_h6199_capabilities import set_qualified_identity
+
+    music = GoveeBLECoordinator(
+        hass,
+        "AA:BB:CC:DD:EE:01",
+        "H617A",
+        configuration_url=None,
+    )
+    music_state = replace(
+        _known_static_baseline(music),
+        mode="music",
+        is_on=False,
+        music_mode="hopping",
+        music_model="H617A",
+        music_body=None,
+    )
+    assert not music.preview_recovery_target_available(music_state)
+
+    video = GoveeBLECoordinator(
+        hass,
+        "AA:BB:CC:DD:EE:02",
+        "H605C",
+        configuration_url=None,
+    )
+    video_state = replace(
+        _known_static_baseline(video),
+        mode="video",
+        video_mode="movie",
+        video_parameters=None,
+    )
+    assert not video.preview_recovery_target_available(video_state)
+
+    native_video = GoveeBLECoordinator(
+        hass,
+        "AA:BB:CC:DD:EE:03",
+        "H6199",
+        configuration_url=None,
+    )
+    set_qualified_identity(native_video)
+    native_video_state = replace(
+        _known_static_baseline(native_video),
+        mode="video",
+        video_mode="movie",
+        video_parameters=None,
+    )
+    assert native_video.preview_recovery_target_available(native_video_state)
+
+
+async def test_unload_waits_for_owned_live_restoration(hass, monkeypatch):
+    coordinator = _coordinator()
+    manager, _cache = await _manager(hass, monkeypatch, coordinator)
+    owner = object()
+    session_id = _open(manager, owner, [])
+    await manager.async_queue_snapshot(
+        session_id=session_id,
+        owner=owner,
+        config_entry_id="entry-a",
+        sequence=1,
+        updated_at="2026-08-17T00:00:00Z",
+        item=_item("Written"),
+    )
+    await manager.async_wait_idle("entry-a")
+    entered, release = asyncio.Event(), asyncio.Event()
+
+    async def restore(*_args, **_kwargs):
+        entered.set()
+        await release.wait()
+        return True
+
+    coordinator.async_restore_effect_control_state.side_effect = restore
+    cancellation = asyncio.create_task(
+        manager.async_cancel(session_id=session_id, owner=owner, config_entry_id="entry-a")
+    )
+    await entered.wait()
+    unload = asyncio.create_task(manager.async_unload_device("entry-a"))
+    await asyncio.sleep(0)
+    assert not unload.done()
+    release.set()
+    outcomes = await cancellation
+    await unload
+
+    assert [outcome.outcome for outcome in outcomes] == [PreviewCancellationOutcome.RESTORED]
+    assert "entry-a" not in manager._devices
     await manager.async_shutdown()
 
 
@@ -1985,6 +2348,7 @@ async def test_toggle_only_live_preview_uses_fresh_external_policy(hass, monkeyp
     monkeypatch.setattr(
         coordinator, "async_prepare_static_baseline", AsyncMock(return_value=_known_static_baseline(coordinator))
     )
+    monkeypatch.setattr(coordinator, "preview_recovery_target_available", lambda _state: True)
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(), disconnect=AsyncMock())
     coordinator._client = client
     monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
@@ -2605,10 +2969,15 @@ async def test_h6179_preview_holds_previews_through_admission_check_before_selec
     coordinator.pact_type, coordinator.pact_code = pact_type, 1
     coordinator._resolve_device_profile()
     coordinator.is_on = True
-    coordinator.diy_code = 0x1234
+    coordinator.diy_code = None
+    monkeypatch.setattr(
+        "custom_components.ha_govee_led_ble.effect_preview._validate_diy_slot_approval",
+        lambda *_args: None,
+    )
     baseline = _known_static_baseline(coordinator)
     coordinator._pre_mode_snapshot = baseline
     monkeypatch.setattr(coordinator, "async_prepare_static_baseline", AsyncMock(return_value=baseline))
+    monkeypatch.setattr(coordinator, "preview_recovery_target_available", lambda _state: True)
     coordinator.async_preview_preflight = AsyncMock()  # type: ignore[method-assign]
     coordinator.refresh_state = AsyncMock(return_value=True)  # type: ignore[method-assign]
     item = _h6179_item()

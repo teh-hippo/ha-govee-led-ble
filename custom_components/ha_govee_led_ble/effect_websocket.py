@@ -799,7 +799,7 @@ async def ws_preview_close(
     msg: dict[str, Any],
 ) -> None:
     try:
-        await _backend(hass).preview.async_close_session(
+        outcomes = await _backend(hass).preview.async_close_session(
             msg["session_id"],
             connection,
         )
@@ -809,7 +809,7 @@ async def ws_preview_close(
     except PreviewSessionNotFoundError as exc:
         _send_error(hass, connection, msg, PREVIEW_SESSION_NOT_FOUND_CODE, exc)
         return
-    connection.send_result(msg["id"], {"closed": True})
+    connection.send_result(msg["id"], {"closed": True, "devices": [outcome.to_dict() for outcome in outcomes]})
 
 
 @websocket_command(
@@ -838,6 +838,7 @@ async def ws_music_edit_retained(hass: HomeAssistant, connection: ActiveConnecti
             or msg["mode"] not in coordinator.profile.music_modes
         ):
             raise ValueError("Retained music body changed; refresh and retry")
+        backend = _backend(hass)
         # The existing apply path compiles the complete body before acquiring control,
         # then guards its captured revision at each physical write.
         await coordinator.async_apply_music_params(
@@ -846,6 +847,11 @@ async def ws_music_edit_retained(hass: HomeAssistant, connection: ActiveConnecti
             calm=msg.get("calm")
             if "calm" in msg or coordinator.music_body is None
             else music_body_style(coordinator.music_body, msg["mode"], profile=coordinator.profile),
+            before_apply=partial(
+                backend.preview.async_supersede_device,
+                entry.entry_id,
+                reason="home_assistant_control",
+            ),
         )
     except (ValueError, HomeAssistantError, BleakError, TimeoutError) as exc:
         _send_error(hass, connection, msg, "apply_failed", exc)
@@ -965,7 +971,7 @@ async def ws_preview_cancel(
     msg: dict[str, Any],
 ) -> None:
     try:
-        await _backend(hass).preview.async_cancel(
+        outcomes = await _backend(hass).preview.async_cancel(
             session_id=msg["session_id"],
             owner=connection,
             config_entry_id=msg.get("config_entry_id"),
@@ -976,7 +982,10 @@ async def ws_preview_cancel(
     except PreviewSessionNotFoundError as exc:
         _send_error(hass, connection, msg, PREVIEW_SESSION_NOT_FOUND_CODE, exc)
         return
-    connection.send_result(msg["id"], {"cancelled": True})
+    connection.send_result(
+        msg["id"],
+        {"cancelled": True, "devices": [outcome.to_dict() for outcome in outcomes]},
+    )
 
 
 @websocket_command(

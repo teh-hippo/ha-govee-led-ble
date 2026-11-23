@@ -205,7 +205,9 @@ def test_bloom_rejects_inconsistent_direction_topology(change):
 @pytest.mark.parametrize("failure", [None, "stale", "unknown", "geometry", "during_write"])
 @pytest.mark.parametrize("model", ["H6102", "H617A"])
 async def test_retained_music_actual_endpoint_preserves_companions(hass, hass_ws_client, monkeypatch, failure, model):
-    await _setup_backend(hass)
+    backend = await _setup_backend(hass)
+    supersede = AsyncMock(wraps=backend.preview.async_supersede_device)
+    monkeypatch.setattr(backend.preview, "async_supersede_device", supersede)
     coordinator = (
         _coordinator(hass)
         if model == "H6102"
@@ -253,6 +255,7 @@ async def test_retained_music_actual_endpoint_preserves_companions(hass, hass_ws
         else:
             assert not response["success"], response
             assert physical.await_count == (1 if failure == "during_write" else 0)
+        assert supersede.await_count == (1 if failure in (None, "during_write") else 0)
 
 
 def test_fresh_geometry_authoring_stays_gated():

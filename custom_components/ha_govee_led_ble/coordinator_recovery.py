@@ -769,6 +769,102 @@ class _RecoveryMixin(_CoordinatorBase):
             blank_screen_same_tone_duration_seconds=self.blank_screen_same_tone_duration_seconds,
         )
 
+    def preview_recovery_target_available(self, state: PriorControlState) -> bool:
+        profile = self.profile
+        native_zones = profile.boolean_controls.intersection(NATIVE_ZONE_CONTROLS)
+        expected = {name: value for name in native_zones if (value := getattr(state, name)) is not None}
+        if profile.minimum_enabled_sources and (
+            set(expected) != native_zones
+            or not (
+                profile.minimum_enabled_sources
+                <= sum(expected.values())
+                <= (profile.maximum_enabled_sources or len(native_zones))
+            )
+            or any(sum(expected.get(name, False) for name in group) > 1 for group in profile.exclusive_source_groups)
+        ):
+            return False
+        if self._prepare_native_sources(state) is None:
+            return False
+        authorization = self._authorization_profile()
+        strict = get_profile(self.model).requires_pact_confirmation
+        if state.mode == "colour":
+            return self._prepare_static_colour(state) is not None
+        if state.mode == "custom":
+            return (
+                state.diy_code is not None
+                and profile.supports_custom_effects
+                and profile.diy_upload_transport != "single"
+                and (profile.command_grammar != "H607C" or state.diy_companion is not None)
+                and (not strict or authorization.supports_custom_effects)
+            )
+        if state.mode == "scene":
+            from .effect_catalogue import MODEL_EFFECT_CATALOGUES
+            from .effect_domain import LayeredEffect
+
+            catalogue = MODEL_EFFECT_CATALOGUES.get(self.model)
+            native_selectors = {
+                template.content.native_diy
+                for template in (() if catalogue is None else catalogue.templates)
+                if profile.supports_advanced_effects
+                and isinstance(template.content, LayeredEffect)
+                and template.content.native_diy is not None
+            }
+            if profile.supports_advanced_effects and profile.advanced_diy_selector is not None:
+                native_selectors.add(profile.advanced_diy_selector)
+            if profile.authored_palette_scene_selector is not None and profile_supports_workflow(
+                profile, CapabilityWorkflow.EDITED_PALETTE_SCENES
+            ):
+                native_selectors.add(profile.authored_palette_scene_selector)
+            if state.scene_code in native_selectors:
+                return False
+            resolved = (
+                resolve_scene_code(
+                    self.model,
+                    state.scene_code,
+                    preferred_key=state.effect,
+                    profile=profile,
+                )
+                if state.scene_code is not None
+                else None
+            )
+            if resolved is None:
+                if state.effect is None:
+                    return False
+                scene = MODEL_SCENES.get(self.model, {}).get(canonical_scene_key(self.model, state.effect))
+            else:
+                _scene_name, scene = resolved
+            return (
+                scene is not None
+                and not scene.param
+                and scene_supported(scene, profile)
+                and (not strict or authorization.supports_scenes)
+            )
+        if state.mode == "music":
+            return (not strict or state.music_mode in authorization.music_modes) and self._prepare_music_restore(
+                state
+            ) is not None
+        if state.mode == "video":
+            try:
+                from .generated_protocol_adapter import validate_video_parameters
+
+                validate_video_parameters(profile.video_grammar, state.video_parameters or {})
+            except ValueError:
+                return False
+            states = video_control_states(profile, self)
+            for _name, attr, control in _VIDEO_VALUE_FIELDS:
+                if (
+                    states.get(control) is CapabilityState.SUPPORTED
+                    and (state.video_restore_controls is None or control in state.video_restore_controls)
+                    and getattr(state, attr) is None
+                ):
+                    return False
+            return (
+                profile.supports_video_mode
+                and state.video_mode in {"movie", "game"}
+                and (not strict or authorization.supports_video_mode)
+            )
+        return False
+
     async def async_restore_effect_control_state(
         self,
         state: PriorControlState | PreparedStaticRecovery,
@@ -1012,7 +1108,7 @@ class _RecoveryMixin(_CoordinatorBase):
 
         variant = None
         music_writes = MusicWriteSequence()
-        if state.mode == "music" and state.is_on:
+        if state.mode == "music":
             if state.music_model is not None and state.music_model != self.model:
                 raise ValueError("music recovery model does not match device")
             if state.music_mode not in self.profile.music_modes:

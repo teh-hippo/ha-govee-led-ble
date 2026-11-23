@@ -74,6 +74,10 @@ async def test_partial_static_live_uses_guarded_native_writes_without_an_effect_
     coord.segment_brightness = [22] + [75] * 14
     before = list(coord.segment_colors)
     manager, _cache = await _manager(hass, monkeypatch, coord)
+    monkeypatch.setattr(
+        "custom_components.ha_govee_led_ble.effect_preview.async_prepare_effect_control_state",
+        AsyncMock(return_value=True),
+    )
     events = []
     owner = object()
     session = _open(manager, owner, events)

@@ -616,7 +616,9 @@ class SourceTurnOnTransaction:
                 if coordinator.profile is not prepared.profile and coordinator.profile != prepared.profile:
                     raise ValueError("The device profile changed")
 
-            await coordinator._async_supersede_effect_preview()
+            transition = coordinator._mode_transition
+            if transition is None or getattr(transition.purpose, "value", transition.purpose) != "recovery":
+                await coordinator._async_supersede_effect_preview()
             async with async_control_intent(coordinator, ControlIntent.USER):
                 attempts = coordinator.control_write_attempts
                 try:
