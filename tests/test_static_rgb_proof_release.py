@@ -40,7 +40,7 @@ async def test_other_releases_revoke_static_rgb_proof(hass, release):
         client.is_connected = False
 
     coord, client = _coordinator(hass, disconnect)
-    await coord._disconnect_locked(planned_release=release == "planned")
+    await coord._disconnect_locked(planned_release=release == "failed")
     assert not coord._static_rgb_known
 
 
