@@ -1435,6 +1435,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
                 ReadDomain.COLOUR_MODE,
                 ReadDomain.FIRMWARE,
                 ReadDomain.HARDWARE,
+                ReadDomain.PACT,
                 ReadDomain.SEGMENTS,
             }
         ),
