@@ -133,6 +133,7 @@ class CompiledEffect:
     upload_transport: str = "a3"
     scene_entry: SceneEntry | None = None
     scene_route: tuple[str | None, str | None, int | None] | None = None
+    scene_speed_index: int | None = None
     upload_subtype: int | None = None
     body_template_id: int | None = None
     body_effect_code: int | None = None
@@ -317,15 +318,24 @@ def validate_compiled_geometry(compiled: CompiledApplication, profile: ModelProf
             selector = scene_selector_code(
                 compiled.model, entry, profile=profile, authored=compiled.content_kind == "scene_palette"
             )
-            if (
-                compiled.scene_route
-                != (
-                    profile.command_grammar,
-                    profile.effect_grammar,
-                    profile.selector_only_scene_bits,
+            packets_match = compiled.scene_route == (
+                profile.command_grammar,
+                profile.effect_grammar,
+                profile.selector_only_scene_bits,
+            )
+            if compiled.content_kind == "scene_builtin":
+                packets_match = (
+                    tuple(
+                        build_native_scene_packets(
+                            compiled.model,
+                            entry,
+                            speed_index=compiled.scene_speed_index,
+                            profile=profile,
+                        )
+                    )
+                    == compiled.packets
                 )
-                or compiled.diy_code != selector
-            ):
+            if not packets_match or compiled.diy_code != selector:
                 raise ValueError("Device scene route changed since compilation; refresh and retry")
         if compiled.content_kind in {"h617a_single", "h617a_multi"}:
             if compiled.authored_diy is not None:
@@ -1076,6 +1086,7 @@ def compile_scene_effect(
         evidence_codes=tuple(evidence_codes),
         scene_entry=entry,
         scene_route=(profile.command_grammar, profile.effect_grammar, profile.selector_only_scene_bits),
+        scene_speed_index=content.speed_index if isinstance(content, BuiltinScene) else None,
         rgbic_scene_v0=profile.rgbic_scene_v0
         if content_kind in {"advanced", "scene_layered"} or entry.scene_type == 2
         else None,

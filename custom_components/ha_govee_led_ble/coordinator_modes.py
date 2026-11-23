@@ -342,6 +342,8 @@ class _ActiveModeMixin(_CoordinatorBase):
         if transition.captured:
             raise RuntimeError("Effect selection must be admitted before control writes")
         preview = transition.purpose is ModeTransitionPurpose.PREVIEW
+        if not preview:
+            transition.purpose = ModeTransitionPurpose.SELECTION
         snapshot = await self.async_prepare_static_baseline()
         if (
             preview

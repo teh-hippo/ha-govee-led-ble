@@ -19,6 +19,7 @@ from custom_components.ha_govee_led_ble.effect_compiler import (
     CompatibilityState,
     compatibility,
     compile_effect,
+    validate_compiled_geometry,
 )
 from custom_components.ha_govee_led_ble.effect_contracts import ApplicationRoute, CapabilityWorkflow, release_capability
 from custom_components.ha_govee_led_ble.effect_domain import (
@@ -487,6 +488,26 @@ def test_decoded_layered_scenes_compile_to_byte_exact_model_frames() -> None:
             "layered_field_semantics_uncalibrated",
             *(("native_diy_positive_ack_required",) if get_profile(model).diy_requires_upload_ack else ()),
         )
+
+
+@pytest.mark.parametrize(
+    ("model", "scene_name"),
+    [("H617A", "Forest"), ("H6093", "Emerald Aurora")],
+)
+def test_builtin_scene_revalidation_preserves_non_default_speed(model, scene_name) -> None:
+    entry = next(scene for scene in SCENE_ENTRIES[model] if scene.display_name == scene_name)
+    assert entry.speed is not None
+    speed_index = (entry.speed.default_index + 1) % entry.speed.option_count
+    content = BuiltinScene(
+        CatalogueRef(model, entry.scene_id, entry.effect_id),
+        speed_index=speed_index,
+    )
+    compiled = compile_effect(LibraryItem.new("Speed", content), model)
+
+    validate_compiled_geometry(compiled, get_profile(model))
+
+    assert compiled.scene_speed_index == speed_index
+    assert compiled.packets == tuple(build_native_scene_packets(model, entry, speed_index=speed_index))
 
 
 @pytest.mark.parametrize("grammar", ["H617A", "H6199"])

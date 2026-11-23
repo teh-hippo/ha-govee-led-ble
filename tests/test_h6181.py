@@ -11,6 +11,7 @@ from custom_components.ha_govee_led_ble.coordinator_base import async_prepare_ef
 from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
 from custom_components.ha_govee_led_ble.coordinator_status import decode_status_frame, parse_color_mode
 from custom_components.ha_govee_led_ble.effect_compiler import compile_effect, validate_compiled_geometry
+from custom_components.ha_govee_led_ble.effect_deployments import EffectDeploymentRepository
 from custom_components.ha_govee_led_ble.effect_domain import (
     BuiltinScene,
     CatalogueRef,
@@ -21,7 +22,7 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     SingleEffect,
 )
 from custom_components.ha_govee_led_ble.effect_protocol_decoder import decode_effect_frames
-from custom_components.ha_govee_led_ble.effect_runtime import async_prepare_application
+from custom_components.ha_govee_led_ble.effect_runtime import EffectDeploymentEngine, async_prepare_application
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_brightness,
     build_colour_mode_query,
@@ -41,6 +42,7 @@ from custom_components.ha_govee_led_ble.protocol_core import H6181DiyBody
 from custom_components.ha_govee_led_ble.protocol_music_params import parse_music_parameters
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES, SCENE_ENTRIES, scene_supported
 from custom_components.ha_govee_led_ble.transport import fragment_a3, reassemble_a1_02, xor_checksum
+from tests.storage_test_double import InMemoryVersionedDocumentStore
 from tests.test_h6199_capabilities import lifecycle  # noqa: F401
 
 
@@ -255,6 +257,106 @@ async def test_whole_strip_controls_prepare_identity_after_basic_setup(
     else:
         payload = "3305020c2238" if control == "rgb" else "330502ffffff01ffae54"
         assert frame(bytes.fromhex(payload)) in packets
+
+
+@pytest.mark.parametrize("lifecycle", ["H6139"], indirect=True)
+async def test_h6139_native_scenes_reuse_the_original_static_baseline(lifecycle, monkeypatch):  # noqa: F811
+    coordinator, replies, _clients, packets = lifecycle
+    await coordinator._async_update_data()
+    light = GoveeBLELight(coordinator)
+    monkeypatch.setattr(light, "_notify_state_changed", MagicMock())
+
+    await light.async_turn_on(effect="Movie")
+    baseline = coordinator._pre_mode_snapshot
+    assert baseline is not None
+    await coordinator._async_disconnect_on_timeout(coordinator._disconnect_generation)
+    assert coordinator._client is None
+    assert coordinator._pre_mode_snapshot is baseline
+    assert coordinator._pre_mode_needs_qualification
+    del replies[build_firmware_query(coordinator.model)]
+
+    await light.async_turn_on(effect="Dating")
+
+    assert coordinator.effect == "dating"
+    assert coordinator._pre_mode_snapshot is baseline
+    assert coordinator._pre_mode_needs_qualification
+    with pytest.raises(HomeAssistantError) as error:
+        await light.async_turn_on(effect="off")
+    assert error.value.translation_key == "recovery_not_ready"
+    assert [packet[:3] for packet in packets].count(bytes.fromhex("330504")) == 2
+    coordinator._observe_pact(1, 1)
+    await light.async_turn_on(effect="off")
+    assert coordinator.static_mode_confirmed()
+    assert coordinator._pre_mode_snapshot is None
+
+
+@pytest.mark.parametrize("lifecycle", ["H6139"], indirect=True)
+async def test_h6139_saved_scenes_reuse_the_original_static_baseline(lifecycle):  # noqa: F811
+    coordinator, _replies, _clients, packets = lifecycle
+    await coordinator._async_update_data()
+    repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
+    await repository.async_load()
+    engine = EffectDeploymentEngine(repository)
+
+    baseline = None
+    for index, key in enumerate(("movie", "dating")):
+        if baseline is not None:
+            await coordinator._async_disconnect_on_timeout(coordinator._disconnect_generation)
+        scene = MODEL_SCENES[coordinator.model][key]
+        await engine.async_apply_saved(
+            coordinator,
+            LibraryItem.new(
+                f"Scene {index}",
+                BuiltinScene(CatalogueRef(coordinator.model, scene.scene_id, scene.effect_id)),
+            ),
+            config_entry_id="entry-a",
+            updated_at=f"2026-11-23T00:0{index}:00Z",
+        )
+        if baseline is None:
+            baseline = coordinator._pre_mode_snapshot
+            assert baseline is not None
+        else:
+            assert coordinator._pre_mode_snapshot is baseline
+
+    assert coordinator.effect == "dating"
+    assert [packet[:3] for packet in packets].count(bytes.fromhex("330504")) == 2
+
+
+@pytest.mark.parametrize("lifecycle", ["H6139"], indirect=True)
+async def test_h6139_saved_diy_reuses_the_original_static_baseline(lifecycle):  # noqa: F811
+    coordinator, _replies, clients, _packets = lifecycle
+    await coordinator._async_update_data()
+    repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
+    await repository.async_load()
+    engine = EffectDeploymentEngine(repository)
+    baseline = None
+    for index, colour in enumerate(((255, 0, 0), (0, 0, 255))):
+        if baseline is not None:
+            await coordinator._async_disconnect_on_timeout(coordinator._disconnect_generation)
+        client = await coordinator._ensure_connected()
+        receive = clients[-1].start_notify.call_args.args[1]
+        transmit = client.write_gatt_char.side_effect
+
+        async def acknowledged_write(uuid, packet, _transmit=transmit, _receive=receive, **kwargs):
+            await _transmit(uuid, packet, **kwargs)
+            if packet[:3] == b"\xa1\x02\xff":
+                _receive(None, bytearray(frame(bytes.fromhex("a10200"))))
+
+        client.write_gatt_char.side_effect = acknowledged_write
+        await engine.async_apply_saved(
+            coordinator,
+            LibraryItem.new(f"DIY {index}", SingleEffect(0, 0, 50, (colour,))),
+            config_entry_id="entry-a",
+            updated_at=f"2026-11-23T00:0{index}:00Z",
+        )
+        if baseline is None:
+            baseline = coordinator._pre_mode_snapshot
+            assert baseline is not None
+        else:
+            assert coordinator._pre_mode_snapshot is baseline
+
+    assert coordinator.active_mode == "custom"
+    assert coordinator._pre_mode_snapshot is baseline
 
 
 @pytest.mark.parametrize("lifecycle", ["H6139", "H6159", "H6182"], indirect=True)
