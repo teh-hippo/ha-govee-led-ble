@@ -1034,7 +1034,15 @@ class GoveeBLECoordinator(
                     read_succeeded = False
                     poll_completed = False
                     try:
-                        for _ in range(2):
+                        declared = get_profile(self.model)
+                        profile_sources = len(declared.profile_identity_fields)
+                        profile_sources += int(declared.profile_pact_dependent)
+                        profile_sources += int(bool(declared.configured_string_counts))
+                        profile_sources += int(
+                            declared.can_read(ReadDomain.PHYSICAL_IC_COUNT) and declared.physical_ic_count is None
+                        )
+                        # Identity inputs can qualify independently; retain a final poll with a stable profile.
+                        for _ in range(max(2, profile_sources + 1)):
                             generation = self._profile_generation
                             authorization_generation = self._authorization_generation
                             refreshed = await self.refresh_state(
