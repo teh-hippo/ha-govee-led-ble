@@ -1859,6 +1859,32 @@ async def test_config_entry_first_refresh_raises_config_entry_not_ready(coord, e
     assert not any("Unexpected error fetching" in record.getMessage() for record in caplog.records)
 
 
+async def test_h6127_setup_retries_until_profile_identity_is_stable(hass, monkeypatch):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:99", "H6127", configuration_url=None)
+    coordinator.pact_type, coordinator.pact_code = 1, 1
+    coordinator._resolve_device_profile()
+    client = MagicMock(is_connected=True, disconnect=AsyncMock())
+    coordinator._client = client
+    identities = iter(({"fw_version": "1.08.08"}, {"hw_version": "1.00.03"}))
+    polls = 0
+
+    async def refresh(_request):
+        nonlocal polls
+        polls += 1
+        identity = next(identities, None)
+        if identity is not None:
+            coordinator._note_identity(**identity)
+        return True
+
+    monkeypatch.setattr(coordinator, "refresh_state", refresh)
+    await coordinator._async_update_data()
+
+    assert polls == 3
+    assert coordinator.available
+    assert coordinator.profile.supports_segments
+    assert (coordinator.fw_version, coordinator.hw_version) == ("1.08.08", "1.00.03")
+
+
 async def test_hold_keeps_connection_and_refreshes_basic_state_without_segments(hass, monkeypatch):
     from custom_components.ha_govee_led_ble.const import CONNECTION_MODE_HOLD, ReadDomain
 

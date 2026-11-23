@@ -401,7 +401,7 @@ async def test_setup_transition_retry_is_bounded(device):
     client.write_gatt_char.side_effect = write
     with pytest.raises(UpdateFailed):
         await c._async_update_data()
-    assert client.write_gatt_char.await_count == 2
+    assert client.write_gatt_char.await_count == 4
     assert c._client is None and client.disconnect.await_count == 1
 
 
@@ -529,7 +529,7 @@ async def test_setup_identity_retry_is_bounded(transition_lifecycle, virtual_clo
     with pytest.raises(UpdateFailed):
         await c._async_update_data()
 
-    assert packets.count(build_power_query(c.model)) == 2
+    assert packets.count(build_power_query(c.model)) == 4
     assert len(clients) == 1 and c._client is None
 
 
