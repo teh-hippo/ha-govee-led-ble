@@ -2673,6 +2673,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_scenes=True,
         scene_catalogue_sku="H618A",
         rgbic_scene_v0=False,
+        scene_command_versions=frozenset({0, 1}),
         supports_custom_effects=True,
         supports_advanced_effects=True,
         supports_multi_layered_effects=True,
@@ -4779,6 +4780,7 @@ def device_profile(
             segment_group_size=3 if modern else 4,
             outbound_transform=None if modern else rgb_only_segment_query_transform,
             rgbic_scene_v0=not modern,
+            scene_command_versions=frozenset({0, 1}) if modern else frozenset({0}),
             read_domains=get_profile(model).read_domains
             if fw is not None and hw is not None
             else get_profile(model).read_domains - {ReadDomain.SEGMENTS},

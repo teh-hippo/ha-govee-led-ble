@@ -30,7 +30,7 @@ from custom_components.ha_govee_led_ble.light_commands import (
 )
 from custom_components.ha_govee_led_ble.music_commands import prepare_music_request
 from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_packets
-from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
+from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES, scene_supported
 from custom_components.ha_govee_led_ble.transport import reassemble_a3
 from tests.coordinator_test_support import frame as _frame
 
@@ -139,6 +139,8 @@ def test_every_rgbic_template_and_scene_compiles_for_each_scene_revision(model):
             )
             assert compiled.packets
         for entry in SCENE_ENTRIES[model]:
+            if not scene_supported(entry, profile):
+                continue
             packets = build_native_scene_packets(model, entry, profile=profile)
             assert packets[-1] == _frame(f"330504{entry.code.to_bytes(2, 'little').hex()}")
             if entry.speed is not None:
