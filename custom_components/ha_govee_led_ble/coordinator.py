@@ -268,6 +268,8 @@ class GoveeBLECoordinator(
         self._advertised_plaintext = False
         self._connection_initializing = False
         self._notification_token: object | None = None
+        self._planned_release_generation = 0
+        self._recovery_invalidation_generation = 0
         self._reply_gate = ReplyGate(REPLY_PACING_TIMEOUT)
         self._a3_sequence: tuple[asyncio.Task[Any] | None, A3Sequence] | None = None
         self._confirmed_identity_fields: set[str] = set()
@@ -1309,10 +1311,17 @@ class GoveeBLECoordinator(
         return task
 
     def _clear_client_state(
-        self, client: BleakClient | None, *, preserve_static_baseline: bool = False, preserve_static_rgb: bool = False
+        self,
+        client: BleakClient | None,
+        *,
+        preserve_static_baseline: bool = False,
+        preserve_static_rgb: bool = False,
+        planned_release: bool = False,
     ) -> None:
         if self._client is not client:
             return
+        if not planned_release:
+            self._recovery_invalidation_generation += 1
         from .projector_runtime import invalidate_appearance
 
         invalidate_appearance(self, retain=preserve_static_baseline)
@@ -3555,6 +3564,13 @@ class GoveeBLECoordinator(
     async def _async_supersede_effect_preview(self) -> None:
         if self.config_entry is None:
             return
+        transition = self._mode_transition
+        if (
+            transition is not None
+            and transition.owner is asyncio.current_task()
+            and transition.purpose is ModeTransitionPurpose.RECOVERY
+        ):
+            return
         from .effect_setup import get_effect_backend
 
         if backend := get_effect_backend(self.hass):
@@ -4981,6 +4997,8 @@ class GoveeBLECoordinator(
                 and self._client is client
                 and self._profile_generation == generation
             )
+            if clean_release:
+                self._planned_release_generation += 1
             self._clear_client_state(
                 client,
                 preserve_static_rgb=clean_release,
@@ -4991,6 +5009,7 @@ class GoveeBLECoordinator(
                     and self._incomplete_static_exit is partial
                     and self.projector_appearance is appearance
                 ),
+                planned_release=clean_release,
             )
             if (
                 client is not None

@@ -292,6 +292,9 @@ export class EffectStudioPreviewSession {
           }
           continue;
         }
+        if (this.desired !== submission) {
+          continue;
+        }
         if (this.desired === submission) {
           this.desired = undefined;
         }
@@ -358,6 +361,7 @@ export class EffectStudioPreviewSession {
     } catch (error) {
       if (errorCode(error) !== "preview_session_not_found") {
         console.warn("Could not close Effect Studio preview session", error);
+        this.requestFailed(error);
       }
     }
   }

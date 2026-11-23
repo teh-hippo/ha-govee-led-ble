@@ -59,6 +59,8 @@ export class PanelPreviewController {
   private rejectedRequestSequence = 0;
   private readonly refreshedDefaultSequences = new Set<string>();
   private readonly reportedPreviewErrors = new Set<string>();
+  private cancellation?: Promise<void>;
+  private deferredPreviewRequest?: PanelPreviewRequest;
   private readonly progress = new LivePreviewProgressController({
     changed: (visible) => {
       this.model.patch({ previewProgressVisible: visible });
@@ -71,6 +73,7 @@ export class PanelPreviewController {
     subscriptionFailed: (error: Error) => void,
   ): Promise<boolean> {
     this.api = api;
+    this.deferredPreviewRequest = undefined;
     this.reportedPreviewErrors.clear();
     this.refreshedDefaultSequences.clear();
     const session = new EffectStudioPreviewSession(
@@ -137,6 +140,7 @@ export class PanelPreviewController {
 
   public beginEditorTransition(cancelBackend = true): number {
     const editorTransitionEpoch = this.model.editorTransitionEpoch + 1;
+    this.deferredPreviewRequest = undefined;
     if (cancelBackend) {
       void this.cancel();
     } else {
@@ -215,8 +219,12 @@ export class PanelPreviewController {
     if (!session) {
       return;
     }
+    const cancellation = this.cancellation ?? session.cancel(configEntryId);
+    this.cancellation = cancellation;
+    let succeeded = false;
     try {
-      await session.cancel(configEntryId);
+      await cancellation;
+      succeeded = true;
     } catch (error) {
       if (errorCode(error) !== "preview_session_not_found") {
         if (propagateErrors) throw error;
@@ -224,11 +232,21 @@ export class PanelPreviewController {
           model.notice = `Could not cancel Live: ${errorMessage(error)}`;
         });
       }
+    } finally {
+      if (this.cancellation === cancellation) {
+        this.cancellation = undefined;
+        const deferred = this.deferredPreviewRequest;
+        this.deferredPreviewRequest = undefined;
+        if (succeeded && deferred) {
+          this.submit(deferred);
+        }
+      }
     }
   }
 
   public dispose(): void {
     this.progress.reset();
+    this.deferredPreviewRequest = undefined;
     this.session?.close();
     this.session = undefined;
     this.api = undefined;
@@ -242,6 +260,10 @@ export class PanelPreviewController {
   }
 
   private submit(request: PanelPreviewRequest): void {
+    if (this.cancellation) {
+      this.deferredPreviewRequest = request;
+      return;
+    }
     if (
       this.model.liveApplyEnabled &&
       request.configEntryId === this.model.selectedDeviceId

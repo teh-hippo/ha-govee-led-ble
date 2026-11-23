@@ -1,6 +1,7 @@
 import asyncio
 import time
 from dataclasses import replace
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -9,7 +10,7 @@ from homeassistant.components.light import ColorMode
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.setup import async_setup_component
 
-from custom_components.ha_govee_led_ble.const import ReadDomain, device_profile
+from custom_components.ha_govee_led_ble.const import DOMAIN, ReadDomain, device_profile
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
@@ -22,6 +23,7 @@ from custom_components.ha_govee_led_ble.effect_compiler import compile_effect, v
 from custom_components.ha_govee_led_ble.effect_deployments import PriorControlState
 from custom_components.ha_govee_led_ble.effect_domain import BuiltinScene, CatalogueRef, LibraryItem
 from custom_components.ha_govee_led_ble.effect_runtime import async_prepare_effect_control_state
+from custom_components.ha_govee_led_ble.effect_setup import EFFECT_BACKEND_DATA_KEY
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_boolean_control,
     build_boolean_control_query,
@@ -838,11 +840,14 @@ async def test_native_source_recovery_uses_fresh_values_without_ripple_dependenc
     assert (physical["bottom"], physical["bottom_brightness"]) == expected
 
 
-async def test_live_reuses_observed_original_layout_without_cancel_undo(hass, monkeypatch, source_wire, virtual_clock):
-    from custom_components.ha_govee_led_ble.effect_preview import PreviewPhase
+async def test_live_reuses_observed_original_layout_and_restores_it_on_cancel(
+    hass, monkeypatch, source_wire, virtual_clock
+):
+    from custom_components.ha_govee_led_ble.effect_preview import PreviewCancellationOutcome, PreviewPhase
     from tests.test_effect_preview import _manager, _open
 
     coordinator, physical = source_wire
+    coordinator.config_entry = SimpleNamespace(entry_id="entry-a")
     physical.update(
         apply=True,
         colours=[(255, 0, 0), (0, 255, 0), (0, 0, 255), (128, 0, 128)] * 2 + [table_kelvin_rgb(2700)],
@@ -853,6 +858,7 @@ async def test_live_reuses_observed_original_layout_without_cancel_undo(hass, mo
         physical[key] for key in ("flags", "top", "bottom", "bottom_brightness", "ripple", "master")
     )
     manager, _cache = await _manager(hass, monkeypatch, coordinator, verify_timeout=2)
+    hass.data.setdefault(DOMAIN, {})[EFFECT_BACKEND_DATA_KEY] = MagicMock(preview=manager)
     owner, events = object(), []
     session = _open(manager, owner, events)
 
@@ -881,14 +887,25 @@ async def test_live_reuses_observed_original_layout_without_cancel_undo(hass, mo
         assert coordinator._pre_mode_snapshot is baseline
         assert not any(call.args[1][:2] == b"\xaa\xa5" for call in coordinator._client.write_gatt_char.await_args_list)
         coordinator._client.write_gatt_char.reset_mock()
-        await manager.async_cancel(session_id=session, owner=owner, config_entry_id="entry-a")
+        outcomes = await manager.async_cancel(session_id=session, owner=owner, config_entry_id="entry-a")
+        assert [outcome.outcome for outcome in outcomes] == [PreviewCancellationOutcome.RESTORED]
         await manager.async_close_session(session, owner)
-        coordinator._client.write_gatt_char.assert_not_awaited()
+        assert coordinator._client.write_gatt_char.await_count > 0
+        assert physical["colours"] == expected_colours
+        assert physical["levels"] == expected_levels
+        assert (
+            tuple(physical[key] for key in ("flags", "top", "bottom", "bottom_brightness", "ripple", "master"))
+            == expected_native
+        )
         assert coordinator._pre_mode_snapshot is baseline
+        coordinator._client.write_gatt_char.reset_mock()
         session = _open(manager, owner, events)
         await apply(1, "rainbow")
-        assert coordinator._pre_mode_snapshot is baseline
-        await manager.async_close_session(session, owner)
+        assert coordinator._pre_mode_snapshot is not None
+        close_outcomes = await manager.async_close_session(session, owner)
+        assert [outcome.outcome for outcome in close_outcomes] == [PreviewCancellationOutcome.RESTORED]
+        assert physical["colours"] == expected_colours
+        coordinator._client.write_gatt_char.reset_mock()
         light = GoveeBLELight(coordinator)
         light.async_write_ha_state = MagicMock()
         await light.async_turn_on(effect="off")

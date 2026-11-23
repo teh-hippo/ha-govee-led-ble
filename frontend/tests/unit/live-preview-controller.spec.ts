@@ -15,7 +15,9 @@ import {
   PanelPreviewController,
   previewStatusMessage,
 } from "../../src/panel-preview-controller";
+import type { ScenePreviewRequest } from "../../src/scene-browser-model";
 import type { PreviewStatus } from "../../src/types";
+import { device, installH6199Catalogue, painted } from "./panel-test-support";
 
 test("preview channels fall back to getRandomValues outside secure contexts", () => {
   const channelId = createPreviewChannelId(
@@ -75,10 +77,12 @@ test("snapshot provenance uses only exact catalogue template identity", () => {
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((complete) => {
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((complete, fail) => {
     resolve = complete;
+    reject = fail;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 function request(name: string): PanelPreviewRequest & { kind: "snapshot" } {
@@ -171,6 +175,49 @@ test("latest desired request replaces pending admissions without local statuses"
     undefined,
     undefined,
   );
+});
+
+test("obsolete admission rejection waits for the newer desired request", async () => {
+  const first = deferred<void>();
+  const rejection = {
+    code: "invalid_format",
+    message: "Preview was superseded during connection preparation",
+  };
+  const previewSnapshot = vi
+    .fn()
+    .mockReturnValueOnce(first.promise)
+    .mockResolvedValue(undefined);
+  const api = {
+    subscribePreview: vi.fn().mockResolvedValue(() => undefined),
+    onConnectionReady: vi.fn().mockReturnValue(() => undefined),
+    closePreviewSession: vi.fn().mockResolvedValue(undefined),
+    previewSnapshot,
+  } as unknown as EffectStudioApi;
+  const requestFailed = vi.fn();
+  const session = new EffectStudioPreviewSession(
+    api,
+    () => undefined,
+    () => undefined,
+    requestFailed,
+  );
+  await session.open();
+
+  session.submit(request("Rejected"));
+  session.submit(request("Newest"));
+  first.reject(rejection);
+  await vi.waitFor(() => expect(previewSnapshot).toHaveBeenCalledTimes(2));
+
+  expect(previewSnapshot).toHaveBeenNthCalledWith(
+    2,
+    expect.any(String),
+    2,
+    "entry-a",
+    "Newest",
+    expect.any(Object),
+    undefined,
+    undefined,
+  );
+  expect(requestFailed).not.toHaveBeenCalled();
 });
 
 test("catalogue provenance reaches snapshot admission unchanged", async () => {
@@ -269,6 +316,122 @@ test("queued default persistence remains dirty when Live is cancelled", async ()
   vi.mocked(api.cancelPreview).mockRejectedValueOnce(new Error("Restore failed"));
   await expect(preview.cancel("entry-a", true)).rejects.toThrow("Restore failed");
   vi.unstubAllGlobals();
+});
+
+test("edits wait for Live recovery before starting a new preview epoch", async () => {
+  const cancellation = deferred<void>();
+  const previewSnapshot = vi.fn().mockResolvedValue(undefined);
+  const previewScene = vi.fn().mockResolvedValue(undefined);
+  const api = {
+    subscribePreview: vi.fn().mockResolvedValue(() => undefined),
+    onConnectionReady: vi.fn().mockReturnValue(() => undefined),
+    closePreviewSession: vi.fn().mockResolvedValue(undefined),
+    previewSnapshot,
+    previewScene,
+    cancelPreview: vi.fn().mockReturnValue(cancellation.promise),
+  } as unknown as EffectStudioApi;
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  const selectedDevice = device("entry-a", "H617A");
+  model.devices = [selectedDevice];
+  model.selectedDeviceId = "entry-a";
+  installH6199Catalogue(model);
+  model.customCatalogue!.models.H617A.painted_effects = [{ id: "cycle", label: "Cycle" }];
+  model.customCatalogue!.models.H617A.apply.painted = "supported";
+  model.customEffectCategory = "advanced";
+  model.editorSource = {
+    kind: "catalogue",
+    owner: { section: "custom", category: "advanced" },
+    selectionIdentity: "template:single:0:0",
+    label: "Flow",
+  };
+  model.content = painted();
+  model.builtInBaselines = cloneBuiltInDefaultBaselines(
+    model.content,
+    model.content,
+    false,
+  );
+  model.liveApplyEnabled = false;
+  const preview = new PanelPreviewController(model);
+  await preview.open(api, () => undefined);
+
+  expect(model.previewCapability).toBe("supported");
+  expect(model.editorOwnedByActiveView).toBe(true);
+  preview.toggle();
+  await vi.waitFor(() => expect(previewSnapshot).toHaveBeenCalledOnce());
+  preview.toggle();
+  model.section = "scenes";
+  preview.toggle();
+  const scene: ScenePreviewRequest = {
+    kind: "scene",
+    scene: {
+      scene_id: 1,
+      effect_id: 2,
+      category_id: 3,
+      category: "test",
+      name: "Scene",
+      variant: "Scene",
+      display_name: "Scene",
+      scene_type: 0,
+      selector_only: true,
+      parameter_kind: "none",
+      speed: null,
+    },
+    speedIndex: null,
+  };
+  preview.scheduleScene(scene);
+  expect(previewSnapshot).toHaveBeenCalledOnce();
+
+  cancellation.resolve();
+  await vi.waitFor(() => expect(previewScene).toHaveBeenCalledOnce());
+  expect(previewScene).toHaveBeenCalledWith(
+    expect.any(String),
+    2,
+    "entry-a",
+    scene.scene,
+    null,
+    undefined,
+  );
+});
+
+test("editor transitions invalidate deferred scene previews", async () => {
+  const cancellation = deferred<void>();
+  const previewScene = vi.fn().mockResolvedValue(undefined);
+  const api = {
+    subscribePreview: vi.fn().mockResolvedValue(() => undefined),
+    onConnectionReady: vi.fn().mockReturnValue(() => undefined),
+    closePreviewSession: vi.fn().mockResolvedValue(undefined),
+    cancelPreview: vi.fn().mockReturnValue(cancellation.promise),
+    previewScene,
+  } as unknown as EffectStudioApi;
+  const model = new PanelModel(() => undefined);
+  model.selectedDeviceId = "entry-a";
+  model.liveApplyEnabled = true;
+  const preview = new PanelPreviewController(model);
+  await preview.open(api, () => undefined);
+  const cancel = preview.cancel();
+  preview.scheduleScene({
+    kind: "scene",
+    scene: {
+      scene_id: 1,
+      effect_id: 2,
+      category_id: 3,
+      category: "test",
+      name: "Scene",
+      variant: "Scene",
+      display_name: "Scene",
+      scene_type: 0,
+      selector_only: true,
+      parameter_kind: "none",
+      speed: null,
+    },
+    speedIndex: null,
+  });
+  preview.beginEditorTransition();
+  cancellation.resolve();
+  await cancel;
+
+  expect(previewScene).not.toHaveBeenCalled();
 });
 
 test("written default persistence refreshes the authoritative baseline", async () => {
