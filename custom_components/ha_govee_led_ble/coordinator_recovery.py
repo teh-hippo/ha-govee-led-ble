@@ -205,7 +205,7 @@ class _RecoveryMixin(_CoordinatorBase):
 
             return check
 
-    def _static_history_profile_current(self) -> bool:
+    def _static_history_profile_current(self, *, require_identity: bool = True) -> bool:
         profile = self._pre_mode_profile
         if self._pre_mode_snapshot is None and self._incomplete_static_exit is None:
             return False
@@ -221,9 +221,12 @@ class _RecoveryMixin(_CoordinatorBase):
                 else profile.static_recovery_identity_fields
             )
             if (
-                profile.projector_grammar is not None
-                and not self.identity_fields_confirmed(frozenset({"pact"}))
-                or not self.identity_fields_confirmed(identity_fields)
+                require_identity
+                and (
+                    profile.projector_grammar is not None
+                    and not self.identity_fields_confirmed(frozenset({"pact"}))
+                    or not self.identity_fields_confirmed(identity_fields)
+                )
                 or profile.segment_count_ic_divisor is not None
                 and not self._physical_ic_count_confirmed
                 or profile.configured_string_counts
@@ -264,7 +267,7 @@ class _RecoveryMixin(_CoordinatorBase):
         return True
 
     @asynccontextmanager
-    async def _async_qualified_static_history(self) -> AsyncIterator[None]:
+    async def _async_qualified_static_history(self, *, require_identity: bool = True) -> AsyncIterator[None]:
         foreground = self._control_arbiter.foreground_generation
         subscription = self._notification_token
         observations = {field: self._field_revisions.get(field, 0) for field in ("color_mode", "segment_colors")}
@@ -286,9 +289,10 @@ class _RecoveryMixin(_CoordinatorBase):
                 self._discard_static_baseline()
                 raise ValueError("Static restoration observations changed; refresh and retry")
             if self._pre_mode_needs_qualification:
-                if not self._static_history_profile_current():
+                if not self._static_history_profile_current(require_identity=require_identity):
                     raise self._static_recovery_error()
-                self._pre_mode_needs_qualification = False
+                if require_identity:
+                    self._pre_mode_needs_qualification = False
             yield
 
     @asynccontextmanager
@@ -358,8 +362,15 @@ class _RecoveryMixin(_CoordinatorBase):
             yield prepared
 
     async def async_prepare_static_baseline(self) -> PriorControlState:
+        transition = self._mode_transition
+        allow_suspended_history = (
+            transition is not None
+            and transition.owner is asyncio.current_task()
+            and transition.purpose is ModeTransitionPurpose.SELECTION
+            and self.color_mode is not ParsedMode.COLOUR
+        )
         if self._pre_mode_needs_qualification:
-            async with self._async_qualified_static_history():
+            async with self._async_qualified_static_history(require_identity=not allow_suspended_history):
                 pass
         profile = self.profile
         transition = self._mode_transition

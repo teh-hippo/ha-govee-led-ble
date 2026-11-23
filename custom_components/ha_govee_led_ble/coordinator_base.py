@@ -238,7 +238,7 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
 
         def require_static_baseline(self) -> PriorControlState: ...
         def _discard_static_baseline(self, *, keep_incomplete_exit: bool = False) -> None: ...
-        def _static_history_profile_current(self) -> bool: ...
+        def _static_history_profile_current(self, *, require_identity: bool = True) -> bool: ...
         def _recovery_brightness_supported(self) -> bool: ...
         def _prepare_static_colour(self, state: PriorControlState) -> PreparedStaticRecovery | None: ...
         def async_prepare_static_recovery(
@@ -493,14 +493,24 @@ async def async_prepare_effect_profile(
     workflow = effect_content_workflow(content) if content is not None else None
 
     def effect_identity_ready() -> bool:
+        from .native_scenes import build_native_scene_packets
+
         authorized = coordinator.effect_authorization_profile
+        scene_packets_match = scene is None
+        if scene is not None:
+            try:
+                scene_packets_match = scene_supported(scene, authorized) and build_native_scene_packets(
+                    coordinator.model, scene, profile=authorized
+                ) == build_native_scene_packets(coordinator.model, scene, profile=coordinator.profile)
+            except ValueError:
+                scene_packets_match = False
         return (
             (
                 workflow is None
                 or profile_supports_workflow(authorized, CapabilityWorkflow(workflow), model=coordinator.model)
             )
             and (not isinstance(content, MusicProfile) or content.mode in authorized.music_modes)
-            and (scene is None or scene_supported(scene, authorized))
+            and scene_packets_match
         )
 
     effect_fields = coordinator.profile.profile_identity_fields | coordinator.profile.effect_identity_fields
