@@ -159,6 +159,7 @@ def test_rgbic_readback_revision_keeps_independently_supported_writes(pact, firm
     assert profile.status_grammar == ("H618A" if modern else "H618A-legacy")
     assert profile.segment_group_size == (3 if modern else 4)
     assert profile.rgbic_scene_v0 is not modern
+    assert profile.scene_command_versions == ({0, 1} if modern else {0})
     assert profile.supports_rgb and profile.supports_color_temperature
     assert profile.supports_segment_brightness and profile.supports_segment_color_temperature
     assert profile.segment_count == profile.physical_ic_count == 15
