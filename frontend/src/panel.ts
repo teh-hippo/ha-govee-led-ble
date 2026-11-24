@@ -668,9 +668,9 @@ export class GoveeLedEffectStudio extends LitElement {
       this.model.previewProgressVisible &&
       (phase === "queued" || phase === "writing");
     const status = pending ? "Applying changes" : undefined;
-    const missingDiyCode =
-      this.model.h6179DiyCodeRequired &&
-      this.model.h6179DiyCode === undefined;
+    const missingDiyDestination =
+      this.model.diyDestinationRequired &&
+      this.model.diyDestinationConsent === undefined;
     return html`
       <div class="live-apply-control">
         <span
@@ -685,9 +685,9 @@ export class GoveeLedEffectStudio extends LitElement {
           type="button"
           aria-pressed=${this.model.liveApplyEnabled}
           ?disabled=${this.model.stateUpdatesUnavailable ||
-          (!this.model.liveApplyEnabled && missingDiyCode)}
-          title=${missingDiyCode
-            ? this.model.h6179DiyApprovalMessage
+          (!this.model.liveApplyEnabled && missingDiyDestination)}
+          title=${missingDiyDestination
+            ? this.model.diyDestinationApprovalMessage
             : "Apply committed changes automatically"}
           @click=${() =>
             void this.controller.toggleLive(this.currentScenePreviewRequest())}
@@ -1552,8 +1552,6 @@ export class GoveeLedEffectStudio extends LitElement {
     return html`
       ${this.renderEditorHeading()}
 
-      ${this.renderH6179DiyApproval()}
-
       ${this.renderSingleEffectSelector()}
 
       <govee-custom-effect-editor
@@ -1655,43 +1653,73 @@ export class GoveeLedEffectStudio extends LitElement {
     `;
   }
 
-  private renderH6179DiyApproval() {
-    if (!this.model.h6179DiyCodeRequired) {
+  private renderDiyDestinationConsent() {
+    if (!this.model.diyDestinationRequired) {
       return nothing;
     }
-    const observed = this.model.h6179ObservedDiyCode;
-    const approved = this.model.h6179DiyCode === observed;
+    const observed = this.model.observedDiyDestination;
+    const destination = this.model.diyDestination;
+    const approved = this.model.diyDestinationConsent !== undefined;
+    const minimum = this.model.modelCatalogue?.diy_destination_min ?? 0;
+    const maximum = this.model.modelCatalogue?.diy_destination_max ?? 0xffff;
     return html`
-      <section class="card h6179-diy-approval" role="note">
-        <h3 class="section-title">Disposable DIY item required</h3>
+      <section class="card diy-destination-consent" role="note">
+        <h3 class="section-title">Choose a DIY destination</h3>
         <p>
-          Apply and Live preview overwrite the explicitly approved device DIY
-          item. The approved code is sent only with the action and is not saved
-          with the effect.
+          Apply and Live preview overwrite the selected device DIY destination.
+          This approval is sent only with the action and is not saved with the
+          effect.
         </p>
+        <div class="diy-destination-controls">
+          <label>
+            Destination
+            <input
+              type="number"
+              min=${minimum}
+              max=${maximum}
+              step="1"
+              .value=${destination === undefined ? "" : String(destination)}
+              ?disabled=${this.editorDisabled}
+              @change=${(event: Event) =>
+                void this.controller.setDiyDestination(
+                  (event.target as HTMLInputElement).value,
+                )}
+            />
+          </label>
+          <button
+            class="warning"
+            type="button"
+            ?disabled=${this.editorDisabled ||
+            destination === undefined ||
+            destination < minimum ||
+            destination > maximum ||
+            approved}
+            @click=${() => void this.controller.approveDiyDestination()}
+          >
+            ${approved
+              ? `Overwrite of ${destination} approved`
+              : `Approve overwrite of ${destination ?? "destination"}`}
+          </button>
+        </div>
         ${observed === undefined
-          ? html`
-              <p class="approval-status">
-                No DIY item is currently observed. Select a disposable DIY item
-                in the Govee app, then refresh or return to Effect Studio before
-                Apply or Live can be enabled.
-              </p>
-            `
+          ? html`<p class="approval-status">
+              No allowed active DIY destination is available as a suggestion.
+              The active destination is not used as permission to overwrite.
+            </p>`
           : html`
-              <div class="observed-diy-code">
+              <div class="observed-diy-destination">
                 <p class="approval-status">
-                  Currently observed DIY code: <code>${observed}</code>
+                  Currently active DIY destination (suggestion only):
+                  <code>${observed}</code>
                 </p>
                 <button
                   class="secondary"
                   type="button"
-                  ?disabled=${this.editorDisabled || approved}
+                  ?disabled=${this.editorDisabled}
                   @click=${() =>
-                    void this.controller.useObservedH6179DiyCode()}
+                    void this.controller.useObservedDiyDestination()}
                 >
-                  ${approved
-                    ? "Disposable item approved"
-                    : "Use observed disposable item"}
+                  Use ${observed} as destination
                 </button>
               </div>
             `}
@@ -1816,6 +1844,7 @@ export class GoveeLedEffectStudio extends LitElement {
             .map((action) => this.renderEditorAction(action))}
         </div>
       </div>
+      ${this.renderDiyDestinationConsent()}
     `;
   }
 

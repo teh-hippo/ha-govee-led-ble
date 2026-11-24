@@ -106,7 +106,8 @@ async def test_entity_action_applies_saved_effect_and_returns_deployment(
     response = await entity.async_apply_custom_effect(
         effect=item.name if reference == "name" else None,
         effect_id=str(item.id) if reference == "id" else None,
-        diy_code=None if static else 0x1234,
+        diy_destination=None if static else 0x1234,
+        overwrite_confirmed=not static,
     )
 
     assert response["phase"] == "confirmed"
@@ -118,6 +119,8 @@ async def test_entity_action_applies_saved_effect_and_returns_deployment(
     assert apply_saved.await_args is not None
     assert apply_saved.await_args.kwargs["operation_id"] is not None
     assert apply_saved.await_args.kwargs.get("diy_code") == (None if static else 0x1234)
+    if not static:
+        assert apply_saved.await_args.kwargs["destination_consent"].destination == 0x1234
 
 
 @pytest.mark.parametrize(

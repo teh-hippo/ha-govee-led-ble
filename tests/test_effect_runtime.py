@@ -6,10 +6,12 @@ import asyncio
 from dataclasses import replace
 from hashlib import sha256
 from types import MethodType, SimpleNamespace
+from typing import Any
 from unittest.mock import ANY, AsyncMock, MagicMock, call
 from uuid import uuid4
 
 import pytest
+from bleak.exc import BleakError
 from homeassistant.core import HomeAssistant
 
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ReadDomain, device_profile, get_profile
@@ -25,6 +27,7 @@ from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
 from custom_components.ha_govee_led_ble.effect_catalogue import (
     MODEL_EFFECT_CATALOGUES,
     WORKSHOP_PROTOCOL_FIXTURES,
+    diy_destination_route,
     resolve_catalogue_template,
 )
 from custom_components.ha_govee_led_ble.effect_compiler import (
@@ -40,6 +43,11 @@ from custom_components.ha_govee_led_ble.effect_deployments import (
     EffectDeploymentRepository,
     ObservationConfidence,
     PriorControlState,
+)
+from custom_components.ha_govee_led_ble.effect_diy_destination import (
+    DiyDestinationConsent,
+    async_prepare_diy_destination_consent,
+    diy_destination_authority,
 )
 from custom_components.ha_govee_led_ble.effect_domain import (
     BuiltinScene,
@@ -82,6 +90,7 @@ from custom_components.ha_govee_led_ble.light_commands import build_color_rgb
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
 from custom_components.ha_govee_led_ble.transport import WRITE_UUID, xor_checksum
 from custom_components.ha_govee_led_ble.video_applicability import video_identity_fields
+from tests.coordinator_test_support import approve_diy_destination_operation
 from tests.storage_test_double import InMemoryVersionedDocumentStore
 from tests.test_effect_preview import _EffectCoordinator, _manager, _open
 from tests.test_music_commands import _music_transport
@@ -579,6 +588,11 @@ async def test_partial_observation_does_not_confirm_or_repeat_activation(
         config_entry_id="entry-a",
         updated_at="2026-08-11T00:00:00Z",
         diy_code=diy_code,
+        **(
+            {"destination_consent": approve_diy_destination_operation(coordinator, "entry-a", diy_code)}
+            if model == "H6199"
+            else {}
+        ),
     )
     assert result.phase is DeploymentPhase.UNCERTAIN
     assert result.error_code == "device_state_unconfirmed"
@@ -904,6 +918,7 @@ async def test_h7020_native_template_snapshot_uses_custom_capability(template_id
         config_entry_id="entry-a",
         updated_at="2026-10-21T00:00:00Z",
         diy_code=321,
+        destination_consent=approve_diy_destination_operation(coordinator, "entry-a", 321),
     )
 
     assert result.phase is DeploymentPhase.CONFIRMED
@@ -911,7 +926,7 @@ async def test_h7020_native_template_snapshot_uses_custom_capability(template_id
     assert coordinator.send_command.await_count > 1
 
 
-async def test_h7020_native_template_snapshot_rejects_changed_approved_slot() -> None:
+async def test_h7020_native_template_snapshot_accepts_changed_active_selector() -> None:
     coordinator = _profile_coordinator("H7020")
     coordinator.diy_code = 320
     coordinator.effect = "existing"
@@ -919,40 +934,195 @@ async def test_h7020_native_template_snapshot_rejects_changed_approved_slot() ->
     repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
     await repository.async_load()
 
-    with pytest.raises(ValueError, match="approved disposable DIY code"):
-        await EffectDeploymentEngine(repository).async_apply_snapshot(
-            coordinator,
-            LibraryItem.new(template.label, template.content),
-            config_entry_id="entry-a",
-            updated_at="2026-10-21T00:00:00Z",
-            diy_code=321,
-        )
+    consent = approve_diy_destination_operation(coordinator, "entry-a", 321)
+    coordinator.diy_code = 320
+    result = await EffectDeploymentEngine(repository).async_apply_snapshot(
+        coordinator,
+        LibraryItem.new(template.label, template.content),
+        config_entry_id="entry-a",
+        updated_at="2026-10-21T00:00:00Z",
+        diy_code=321,
+        destination_consent=consent,
+    )
+    assert result.diy_code == 321
 
-    coordinator.send_command.assert_not_awaited()
 
-
-async def test_h6199_palette_rejects_changed_approved_slot_after_compilation() -> None:
+async def test_h6199_palette_accepts_changed_active_selector_after_compilation() -> None:
     coordinator = _coordinator()
     coordinator.model = "H6199"
     coordinator.profile = get_profile("H6199")
     coordinator.diy_code = 73
     item = _h6199_item()
     compiled = compile_h6199(item, 73)
+    consent = approve_diy_destination_operation(coordinator, "entry-a", 73)
     coordinator.diy_code = 74
     repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
     await repository.async_load()
 
-    with pytest.raises(ValueError, match="approved disposable DIY code"):
+    result = await EffectDeploymentEngine(repository).async_apply_saved(
+        coordinator,
+        item,
+        config_entry_id="entry-a",
+        updated_at="2026-10-21T00:00:00Z",
+        diy_code=73,
+        compiled=compiled,
+        destination_consent=consent,
+    )
+    assert result.diy_code == 73
+
+
+async def test_activation_retry_revalidates_destination_consent_before_write() -> None:
+    coordinator = _coordinator()
+    coordinator.model = "H6199"
+    coordinator.profile = get_profile("H6199")
+    compiled = compile_h6199(_h6199_item(), 73)
+    consent = approve_diy_destination_operation(coordinator, "entry-a", 73)
+    engine = EffectDeploymentEngine(EffectDeploymentRepository(InMemoryVersionedDocumentStore()))
+
+    def guard() -> None:
+        consent.require_current(coordinator)
+
+    async def fail_first(_packet: bytes, **_kwargs: Any) -> None:
+        coordinator._authorization_generation += 1
+        raise BleakError("activation interrupted")
+
+    coordinator.send_command.side_effect = fail_first
+
+    with pytest.raises(ValueError, match="authority changed"):
+        await engine._async_activate(coordinator, compiled, guard)
+
+    coordinator.send_command.assert_awaited_once()
+
+
+async def test_h6199_missing_destination_consent_rejects_before_power_or_upload() -> None:
+    coordinator = _coordinator()
+    coordinator.model = "H6199"
+    coordinator.profile = get_profile("H6199")
+    coordinator.is_on = False
+    repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
+    await repository.async_load()
+
+    with pytest.raises(ValueError, match="explicit overwrite confirmation"):
         await EffectDeploymentEngine(repository).async_apply_saved(
             coordinator,
-            item,
+            _h6199_item(),
             config_entry_id="entry-a",
             updated_at="2026-10-21T00:00:00Z",
             diy_code=73,
-            compiled=compiled,
         )
 
     coordinator.send_command.assert_not_awaited()
+    coordinator.async_write_effect_sequence.assert_not_awaited()
+
+
+def test_diy_destination_consent_rejects_malformed_stale_and_wrong_device_values() -> None:
+    coordinator = _coordinator()
+    coordinator.model = "H6199"
+    coordinator.profile = get_profile("H6199")
+    valid = {
+        "config_entry_id": "entry-a",
+        "model": "H6199",
+        "destination": 73,
+        "minimum": 1,
+        "maximum": 240,
+        "route": diy_destination_route("H6199", coordinator.profile),
+        "authority": diy_destination_authority(coordinator),
+        "overwrite_confirmed": True,
+    }
+
+    for patch in (
+        {"config_entry_id": "entry-b"},
+        {"model": "H6179"},
+        {"destination": True},
+        {"destination": 241},
+        {"minimum": 0},
+        {"maximum": 255},
+        {"route": "stale-route"},
+        {"authority": "9:9"},
+        {"overwrite_confirmed": False},
+        {"overwrite_confirmed": 1},
+    ):
+        with pytest.raises(ValueError):
+            DiyDestinationConsent.bind(coordinator, "entry-a", {**valid, **patch})
+
+    consent = DiyDestinationConsent.bind(coordinator, "entry-a", valid)
+    coordinator.diy_code = 74
+    consent.require_current(coordinator)
+    coordinator._authorization_generation += 1
+    with pytest.raises(ValueError, match="authority changed"):
+        consent.require_current(coordinator)
+
+
+def test_diy_destination_authority_distinguishes_reloaded_coordinators() -> None:
+    first = _coordinator()
+    first.model = "H6199"
+    first.profile = get_profile("H6199")
+    first._physical_authority_id = "first-incarnation"
+    second = _coordinator()
+    second.model = "H6199"
+    second.profile = get_profile("H6199")
+    second._physical_authority_id = "second-incarnation"
+    consent = approve_diy_destination_operation(first, "entry-a", 73)
+
+    with pytest.raises(ValueError, match="authority changed"):
+        consent.require_current(second)
+
+
+async def test_disconnected_destination_consent_binds_to_prepared_subscription() -> None:
+    coordinator = _coordinator()
+    coordinator.model = "H6199"
+    coordinator.profile = get_profile("H6199")
+    coordinator._client = None
+    coordinator._notification_token = None
+    coordinator._physical_authority_id = "disconnected"
+    coordinator._lock = asyncio.Lock()
+    raw = {
+        "config_entry_id": "entry-a",
+        "model": "H6199",
+        "destination": 73,
+        "minimum": 1,
+        "maximum": 240,
+        "route": diy_destination_route("H6199", coordinator.profile),
+        "authority": diy_destination_authority(coordinator),
+        "overwrite_confirmed": True,
+    }
+
+    async def connect() -> None:
+        coordinator._client = object()
+        coordinator._notification_token = object()
+        coordinator._physical_authority_id = "connected"
+        coordinator._authorization_generation += 1
+
+    coordinator._ensure_connected = AsyncMock(side_effect=connect)
+
+    consent = await async_prepare_diy_destination_consent(coordinator, "entry-a", raw)
+
+    consent.require_current(coordinator)
+    assert consent.subscription is coordinator._notification_token
+    coordinator._ensure_connected.assert_awaited_once_with()
+
+
+@pytest.mark.parametrize("change", ["profile", "subscription"])
+def test_diy_destination_consent_revalidates_profile_and_subscription(change: str) -> None:
+    coordinator = _coordinator()
+    coordinator.model = "H6199"
+    coordinator.profile = get_profile("H6199")
+    coordinator._client = object()
+    coordinator._notification_token = object()
+    consent = approve_diy_destination_operation(coordinator, "entry-a", 73)
+
+    if change == "profile":
+        coordinator.profile = replace(
+            coordinator.profile,
+            diy_requires_upload_ack=not coordinator.profile.diy_requires_upload_ack,
+        )
+        coordinator._profile_generation += 1
+    else:
+        coordinator._notification_token = object()
+        coordinator._authorization_generation += 1
+
+    with pytest.raises(ValueError, match="authority changed"):
+        consent.require_current(coordinator)
 
 
 async def test_native_effect_profile_narrowing_rejects_before_apply_power_or_upload() -> None:
@@ -2679,6 +2849,7 @@ async def test_h6199_upload_without_selector_readback_stays_uncertain(
         config_entry_id="entry-a",
         updated_at="2026-08-11T00:00:00Z",
         diy_code=73,
+        destination_consent=approve_diy_destination_operation(coordinator, "entry-a", 73),
     )
 
     assert result.phase is DeploymentPhase.UNCERTAIN
@@ -2709,6 +2880,7 @@ async def test_h6199_slot_readback_confirms_selection_without_claiming_content_r
         config_entry_id="entry-a",
         updated_at="2026-08-11T00:00:00Z",
         diy_code=73,
+        destination_consent=approve_diy_destination_operation(coordinator, "entry-a", 73),
     )
 
     assert result.phase is DeploymentPhase.CONFIRMED
@@ -2779,6 +2951,7 @@ async def test_h6199_uncertain_result_emits_structured_evidence_gap(
         config_entry_id="entry-a",
         updated_at="2026-08-11T00:00:00Z",
         diy_code=73,
+        destination_consent=approve_diy_destination_operation(coordinator, "entry-a", 73),
     )
 
     gap = backend.diagnostics.snapshot(config_entry_id="entry-a")["events"][-1]
@@ -2844,6 +3017,11 @@ async def test_workshop_uses_evidenced_model_application(
         config_entry_id="entry-a",
         updated_at="2026-08-11T00:00:00Z",
         diy_code=approved_code,
+        **(
+            {"destination_consent": approve_diy_destination_operation(coordinator, "entry-a", approved_code)}
+            if kind == "palette"
+            else {}
+        ),
     )
 
     assert result.phase is DeploymentPhase.CONFIRMED

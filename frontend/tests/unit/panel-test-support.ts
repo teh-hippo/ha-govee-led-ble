@@ -101,9 +101,10 @@ export function videoProfile(
 export function h6199Catalogue(): ModelEffectCatalogue {
   return {
     sku: "H6199",
-    diy_slot_policy: "approved_observed",
-    diy_slot_min: 1,
-    diy_slot_max: 240,
+    diy_destination_policy: "explicit_destination",
+    diy_destination_route: "H6199:H6199:default:ack",
+    diy_destination_min: 1,
+    diy_destination_max: 240,
     painted_effects: [],
     effects: [
       {
@@ -218,6 +219,8 @@ export function panelModal(model: PanelModel): PanelModalController {
 
 export function flowWorkspaceDevice(id: string): DeviceCapabilities {
   const selected = device(id, "H6199");
+  selected.compatibility_revision = "1:1";
+  selected.diy_destination_authority = "physical:1:1";
   selected.custom_effects.palette_diy = "supported";
   const content: PaletteDiyEffectContent = {
     kind: "palette_diy",

@@ -44,6 +44,11 @@ from .effect_catalogue import (
 )
 from .effect_contracts import CapabilityWorkflow, EditorApiInfo, device_effect_capabilities
 from .effect_deployments import DeploymentSnapshot
+from .effect_diy_destination import (
+    async_prepare_diy_destination_consent,
+    diy_destination_authority,
+    requested_diy_destination,
+)
 from .effect_domain import (
     BuiltinScene,
     EffectValidationError,
@@ -97,6 +102,7 @@ from .effect_websocket_payloads import (
 )
 from .effect_websocket_schema import (
     DIY_CODE,
+    DIY_DESTINATION_CONSENT,
     EFFECT_CONTENT,
     EFFECT_NAME,
     IDENTIFIER,
@@ -277,6 +283,7 @@ def _device_payload(
     device["compatibility_revision"] = (
         f"{getattr(coordinator, '_profile_generation', 0)}:{getattr(coordinator, '_authorization_generation', 0)}"
     )
+    device["diy_destination_authority"] = diy_destination_authority(coordinator)
     device["hw_version"] = coordinator.hw_version
     device["fw_version"] = coordinator.fw_version
     device["subordinate_20_version"] = coordinator.subordinate_20_version
@@ -989,6 +996,7 @@ async def ws_music_edit_retained(hass: HomeAssistant, connection: ActiveConnecti
         vol.Optional("origin_id"): IDENTIFIER,
         vol.Optional("persist_default", default=False): STRICT_BOOL,
         vol.Optional("diy_code"): DIY_CODE,
+        vol.Optional("diy_destination_consent"): DIY_DESTINATION_CONSENT,
     }
 )
 @async_response
@@ -1032,7 +1040,10 @@ async def ws_preview_apply_snapshot(
             "control_guard": partial(_ensure_entry_control, hass, connection, entry),
             "default_guard": partial(_ensure_default_admin, connection),
         }
-        if "diy_code" in msg:
+        if "diy_destination_consent" in msg:
+            kwargs["diy_code"] = msg.get("diy_code")
+            kwargs["destination_consent_raw"] = msg["diy_destination_consent"]
+        elif "diy_code" in msg:
             kwargs["diy_code"] = msg["diy_code"]
         acceptance = await backend.preview.async_queue_snapshot(**kwargs)
     except Unauthorized as exc:
@@ -1584,6 +1595,7 @@ def ws_user_state_update(
         vol.Required("updated_at"): TIMESTAMP,
         vol.Optional("operation_id"): UUID_TEXT,
         vol.Optional("diy_code"): DIY_CODE,
+        vol.Optional("diy_destination_consent"): DIY_DESTINATION_CONSENT,
         vol.Optional("live"): bool,
     }
 )
@@ -1609,8 +1621,25 @@ async def ws_apply(
             msg["item_id"],
             expected_version=msg["expected_version"],
         ) as item:
+            destination_consent = (
+                await async_prepare_diy_destination_consent(
+                    entry.runtime_data,
+                    entry.entry_id,
+                    msg["diy_destination_consent"],
+                )
+                if "diy_destination_consent" in msg
+                else None
+            )
+            diy_code = requested_diy_destination(
+                msg.get("diy_destination_consent"),
+                msg.get("diy_code"),
+            )
             compiled = await async_prepare_application(
-                entry.runtime_data, item, diy_code=msg.get("diy_code"), intent=ControlIntent.BACKGROUND
+                entry.runtime_data,
+                item,
+                diy_code=diy_code,
+                destination_consent=destination_consent,
+                intent=ControlIntent.BACKGROUND,
             )
             await backend.preview.async_supersede_device(entry.entry_id, reason="committed_apply")
             result = await backend.engine.async_apply_saved(
@@ -1619,10 +1648,11 @@ async def ws_apply(
                 config_entry_id=entry.entry_id,
                 updated_at=msg["updated_at"],
                 operation_id=operation_id,
-                diy_code=msg.get("diy_code"),
+                diy_code=diy_code,
                 compiled=compiled,
                 write_guard=partial(_ensure_entry_control, hass, connection, entry),
-                **({"live": msg["live"]} if "live" in msg else {}),
+                destination_consent=destination_consent,
+                live=msg.get("live", False),
             )
     except EffectNotFoundError as exc:
         _send_error(hass, connection, msg, "not_found", exc)
@@ -1659,6 +1689,7 @@ async def ws_apply(
         vol.Optional("origin_id"): IDENTIFIER,
         vol.Optional("operation_id"): UUID_TEXT,
         vol.Optional("diy_code"): DIY_CODE,
+        vol.Optional("diy_destination_consent"): DIY_DESTINATION_CONSENT,
     }
 )
 @async_response
@@ -1688,8 +1719,22 @@ async def ws_apply_snapshot(
             ),
         )
         operation_id = UUID(msg["operation_id"]) if "operation_id" in msg else None
+        destination_consent = (
+            await async_prepare_diy_destination_consent(
+                entry.runtime_data,
+                entry.entry_id,
+                msg["diy_destination_consent"],
+            )
+            if "diy_destination_consent" in msg
+            else None
+        )
+        diy_code = requested_diy_destination(msg.get("diy_destination_consent"), msg.get("diy_code"))
         compiled = await async_prepare_application(
-            entry.runtime_data, item, diy_code=msg.get("diy_code"), intent=ControlIntent.BACKGROUND
+            entry.runtime_data,
+            item,
+            diy_code=diy_code,
+            destination_consent=destination_consent,
+            intent=ControlIntent.BACKGROUND,
         )
         await backend.preview.async_supersede_device(entry.entry_id, reason="committed_apply")
         result = await backend.engine.async_apply_snapshot(
@@ -1698,9 +1743,10 @@ async def ws_apply_snapshot(
             config_entry_id=entry.entry_id,
             updated_at=msg["updated_at"],
             operation_id=operation_id,
-            diy_code=msg.get("diy_code"),
+            diy_code=diy_code,
             compiled=compiled,
             write_guard=partial(_ensure_entry_control, hass, connection, entry),
+            **({"destination_consent": destination_consent} if destination_consent is not None else {}),
         )
     except EffectValidationError as exc:
         _send_error(hass, connection, msg, "invalid_format", exc)

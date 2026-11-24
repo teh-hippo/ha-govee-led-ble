@@ -191,7 +191,7 @@ export class PanelPreviewController {
     this.submit(scenePreviewRequest(request, deviceId));
   }
 
-  public async diyCodeChanged(): Promise<void> {
+  public async destinationConsentChanged(): Promise<void> {
     await this.cancel();
     const request = this.currentRequest();
     if (request) {
@@ -307,7 +307,8 @@ export class PanelPreviewController {
         this.model.autoSaveEnabled &&
         this.model.builtInDefaultDirty,
       editorSnapshotProvenance(this.model.editorSource),
-      this.model.h6179DiyCode,
+      undefined,
+      this.model.diyDestinationConsent,
     );
   }
 
@@ -429,8 +430,8 @@ export class PanelPreviewController {
       this.model.canControlSelectedDevice &&
       !this.model.deletingCurrentItem &&
       this.model.previewCapability === "supported" &&
-      (!this.model.h6179DiyCodeRequired ||
-        this.model.h6179DiyCode !== undefined) &&
+      (!this.model.diyDestinationRequired ||
+        this.model.diyDestinationConsent !== undefined) &&
       this.model.selectedDevice !== undefined &&
       this.session?.ready === true
     );

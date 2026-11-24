@@ -222,15 +222,30 @@ test.each([false, true])("live video conditions narrow resolved compatibility wi
 test("portable H6179 content requires the recipient's observed-slot approval", () => {
   const model = new PanelModel(() => undefined);
   installH6199Catalogue(model);
-  model.customCatalogue!.models.H6181 = {...model.customCatalogue!.models.H6199, sku: "H6181", diy_slot_policy: "approved_observed"};
+  model.customCatalogue!.models.H6181 = {
+    ...model.customCatalogue!.models.H6199,
+    sku: "H6181",
+    diy_destination_policy: "explicit_destination",
+    diy_destination_route: "H6181:H6181:default:ack",
+  };
   const recipient = {...flowWorkspaceDevice("recipient"), model: "H6181"};
   model.devices = [recipient];
   model.selectedDeviceId = recipient.config_entry_id;
   model.content = {kind: "h6179_single_diy", model: "H6179", family: 2, variant: 0, speed: 50, palette: [[1, 2, 3]]};
-  expect(model.h6179DiyCodeRequired).toBe(true);
-  expect(model.h6179DiyCode).toBeUndefined();
-  model.h6179ApprovedDiyCode = model.h6179ObservedDiyCode;
-  expect(model.h6179DiyCode).toBe(model.h6179ObservedDiyCode);
+  expect(model.diyDestinationRequired).toBe(true);
+  expect(model.diyDestinationConsent).toBeUndefined();
+  model.diyDestination = 24;
+  model.diyDestinationApproval = {
+    config_entry_id: recipient.config_entry_id,
+    model: recipient.model,
+    destination: 24,
+    minimum: 1,
+    maximum: 240,
+    route: model.modelCatalogue!.diy_destination_route!,
+    authority: recipient.diy_destination_authority!,
+    overwrite_confirmed: true,
+  };
+  expect(model.diyDestinationConsent?.destination).toBe(24);
 });
 
 test("H6199 DIY approval rejects observed item codes outside the app range", () => {
@@ -248,10 +263,59 @@ test("H6199 DIY approval rejects observed item codes outside the app range", () 
     palette: [[255, 0, 0]],
   };
 
-  expect(model.h6179DiyCodeRequired).toBe(true);
-  expect(model.h6179ObservedDiyCode).toBe(73);
+  expect(model.diyDestinationRequired).toBe(true);
+  expect(model.observedDiyDestination).toBe(73);
   target.active_state!.diy_code = 241;
-  expect(model.h6179ObservedDiyCode).toBeUndefined();
+  expect(model.observedDiyDestination).toBeUndefined();
+});
+
+test("DIY destination approval is independent of the active selector but stale across authority changes", () => {
+  const model = new PanelModel(() => undefined);
+  installH6199Catalogue(model);
+  const target = flowWorkspaceDevice("target");
+  model.devices = [target];
+  model.selectedDeviceId = target.config_entry_id;
+  model.content = {
+    kind: "palette_diy",
+    model: "H6199",
+    family: 1,
+    variant: 0,
+    speed: 50,
+    palette: [[255, 0, 0]],
+  };
+  model.diyDestination = 24;
+  model.diyDestinationApproval = {
+    config_entry_id: target.config_entry_id,
+    model: target.model,
+    destination: 24,
+    minimum: 1,
+    maximum: 240,
+    route: model.modelCatalogue!.diy_destination_route!,
+    authority: target.diy_destination_authority!,
+    overwrite_confirmed: true,
+  };
+
+  target.active_state!.diy_code = 73;
+  expect(model.diyDestinationConsent?.destination).toBe(24);
+  target.diy_destination_authority = "other:2:1";
+  expect(model.diyDestinationConsent).toBeUndefined();
+});
+
+test("advanced native DIY templates use the shared destination consent controls", () => {
+  const model = new PanelModel(() => undefined);
+  installFlowCatalogue(model);
+  const target = flowWorkspaceDevice("target");
+  model.devices = [target];
+  model.selectedDeviceId = target.config_entry_id;
+  model.content = {
+    kind: "advanced",
+    model: "H6199",
+    version: 1,
+    native_diy: 507,
+    layers: [],
+  } as never;
+
+  expect(model.diyDestinationRequired).toBe(true);
 });
 
 test("unknown border firmware blocks only profiles requesting border removal", () => {

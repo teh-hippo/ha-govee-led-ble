@@ -230,6 +230,21 @@ export function decodeModelEffectCatalogue(
       arrayValue(catalogue.painted_background, "painted background", 3).length !== 3) {
     invalid("painted background must contain three channels");
   }
+  const diyDestinationPolicy = enumString(
+    catalogue.diy_destination_policy ?? "fixed",
+    ["fixed", "explicit_destination"],
+    `${name} DIY destination policy`,
+  );
+  const diyDestinationRoute = catalogue.diy_destination_route === undefined
+    ? undefined
+    : boundedString(
+        catalogue.diy_destination_route,
+        `${name} DIY destination route`,
+        MAX_IDENTIFIER_LENGTH,
+      );
+  if (diyDestinationPolicy === "explicit_destination" && diyDestinationRoute === undefined) {
+    invalid(`${name} explicit DIY destination route is missing`);
+  }
   return {
     sku,
     ...(catalogue.native_zones === undefined ? {} : {
@@ -250,16 +265,18 @@ export function decodeModelEffectCatalogue(
           ])),
       }),
     }),
-    diy_slot_policy: enumString(
-      catalogue.diy_slot_policy ?? "fixed",
-      ["fixed", "approved_observed"],
-      `${name} DIY slot policy`,
+    diy_destination_policy: diyDestinationPolicy,
+    ...(diyDestinationRoute === undefined ? {} : { diy_destination_route: diyDestinationRoute }),
+    diy_destination_min: integerValue(
+      catalogue.diy_destination_min ?? 0,
+      `${name} DIY destination minimum`,
+      0,
+      65_535,
     ),
-    diy_slot_min: integerValue(catalogue.diy_slot_min ?? 0, `${name} DIY slot minimum`, 0, 65_535),
-    diy_slot_max: integerValue(
-      catalogue.diy_slot_max ?? 65_535,
-      `${name} DIY slot maximum`,
-      integerValue(catalogue.diy_slot_min ?? 0, `${name} DIY slot minimum`, 0, 65_535),
+    diy_destination_max: integerValue(
+      catalogue.diy_destination_max ?? 65_535,
+      `${name} DIY destination maximum`,
+      integerValue(catalogue.diy_destination_min ?? 0, `${name} DIY destination minimum`, 0, 65_535),
       65_535,
     ),
     advanced_create: catalogue.advanced_create === undefined

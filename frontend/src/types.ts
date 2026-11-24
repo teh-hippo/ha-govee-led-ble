@@ -50,6 +50,7 @@ export interface EditorApiInfo {
 export interface DeviceCapabilities {
   effect_compatibilities?: Record<string, EffectCompatibility>;
   compatibility_revision?: string;
+  diy_destination_authority?: string;
   physical_ic_count?: number | null;
   catalogue?: ModelEffectCatalogue;
   music_settings?: Record<string, MusicSettings>;
@@ -133,6 +134,17 @@ export interface ActiveEffectWorkspace {
   updated_at: string;
   generation: number;
   confidence: ObservationConfidence;
+}
+
+export interface DiyDestinationConsent {
+  config_entry_id: string;
+  model: string;
+  destination: number;
+  minimum: number;
+  maximum: number;
+  route: string;
+  authority: string;
+  overwrite_confirmed: true;
 }
 
 export interface StaticRgbContent {
@@ -593,9 +605,10 @@ export interface ModelEffectCatalogue {
   workshop_templates: WorkshopTemplate[];
   workflows: ReleaseWorkflowCapability[];
   native_diy_templates?: NativeDiyTemplateContract[];
-  diy_slot_policy?: "fixed" | "approved_observed";
-  diy_slot_min?: number;
-  diy_slot_max?: number;
+  diy_destination_policy?: "fixed" | "explicit_destination";
+  diy_destination_route?: string;
+  diy_destination_min?: number;
+  diy_destination_max?: number;
   advanced_create?: boolean;
   supports: {
     multi: CapabilityState;

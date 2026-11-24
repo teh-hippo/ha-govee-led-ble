@@ -744,6 +744,73 @@ test("saved scene callbacks cannot enqueue older content after a newer Live edit
   expect(model.library.items).toEqual([expect.objectContaining({ id: saved.id, version: saved.version })]);
 });
 
+test("saved Live rechecks DIY destination consent after loading the item", async () => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  model.liveApplyEnabled = true;
+  const target = device("entry-a", "H6199");
+  model.devices = [target];
+  model.selectedDeviceId = target.config_entry_id;
+  installH6199Catalogue(model);
+  const saved: LibraryItem = {
+    ...item(painted()),
+    content: {
+      kind: "palette_diy",
+      model: "H6199",
+      family: 1,
+      variant: 0,
+      speed: 50,
+      palette: [[255, 0, 0]],
+    },
+  };
+  target.effect_compatibilities = {
+    [saved.id]: {version: saved.version, state: "compatible", reasons: []},
+  };
+  model.content = saved.content;
+  model.diyDestination = 24;
+  model.diyDestinationApproval = {
+    config_entry_id: target.config_entry_id,
+    model: "H6199",
+    destination: 24,
+    minimum: 1,
+    maximum: 240,
+    route: model.modelCatalogue!.diy_destination_route!,
+    authority: target.diy_destination_authority!,
+    overwrite_confirmed: true,
+  };
+  const { controller, preview } = panelControllerHarness(model);
+  const submit = vi.spyOn(preview, "submit");
+  let entered!: () => void;
+  let finish!: (result: LibraryItem) => void;
+  const waiting = new Promise<void>(resolve => {entered = resolve;});
+  const loading = new Promise<LibraryItem>(resolve => {finish = resolve;});
+  const applySavedEffect = vi.fn().mockResolvedValue(undefined);
+  controller.api = {
+    item: vi.fn(() => {entered(); return loading;}),
+    applySavedEffect,
+  } as unknown as EffectStudioApi;
+
+  const selection = controller.selectItem(saved.id);
+  await waiting;
+  await controller.setDiyDestination("25");
+  finish(saved);
+  await selection;
+
+  expect(submit).not.toHaveBeenCalled();
+  expect(applySavedEffect).not.toHaveBeenCalled();
+});
+
+test("clearing a DIY destination leaves it unset", async () => {
+  const model = new PanelModel(() => undefined);
+  const { controller } = panelControllerHarness(model);
+  model.diyDestination = 24;
+
+  await controller.setDiyDestination("");
+
+  expect(model.diyDestination).toBeUndefined();
+  expect(model.diyDestinationApproval).toBeUndefined();
+});
+
 test.each(["H617A", "H6199"] as const)("clean saved %s Live uses the cancellable preview session", async (sku) => {
   const selected = sku === "H6199" ? flowWorkspaceDevice("entry-a") : device("entry-a", sku);
   const model = new PanelModel(() => undefined);
@@ -752,7 +819,6 @@ test.each(["H617A", "H6199"] as const)("clean saved %s Live uses the cancellable
   model.selectedDeviceId = selected.config_entry_id;
   installPaintCatalogue(model);
   model.liveApplyEnabled = false;
-  model.h6179ApprovedDiyCode = 73;
   const { controller, editorController, preview } = panelControllerHarness(model);
   const saved: LibraryItem = {
     ...item(painted()),
@@ -774,6 +840,10 @@ test.each(["H617A", "H6199"] as const)("clean saved %s Live uses the cancellable
     device: vi.fn().mockResolvedValue(selected),
   } as unknown as EffectStudioApi;
   controller.api = api;
+  if (sku === "H6199") {
+    model.diyDestination = 73;
+    await controller.approveDiyDestination();
+  }
   await preview.open(api, vi.fn());
 
   await controller.toggleLive();
@@ -788,7 +858,7 @@ test.each(["H617A", "H6199"] as const)("clean saved %s Live uses the cancellable
     saved.content,
     false,
     undefined,
-    ...(sku === "H6199" ? [73] : []),
+    ...(sku === "H6199" ? [undefined, model.diyDestinationConsent] : []),
   );
   expect(applySavedEffect).not.toHaveBeenCalled();
 

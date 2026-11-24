@@ -1245,11 +1245,11 @@ export class PanelController {
     }
     if (
       !this.model.liveApplyEnabled &&
-      this.model.h6179DiyCodeRequired &&
-      this.model.h6179DiyCode === undefined
+      this.model.diyDestinationRequired &&
+      this.model.diyDestinationConsent === undefined
     ) {
       this.model.patch({
-        notice: this.model.h6179DiyApprovalMessage,
+        notice: this.model.diyDestinationApprovalMessage,
       });
       return;
     }
@@ -1288,14 +1288,60 @@ export class PanelController {
     this.model.rememberLiveApplyChoice();
   }
 
-  public async useObservedH6179DiyCode(): Promise<boolean> {
-    const code = this.model.h6179ObservedDiyCode;
-    if (!this.model.h6179DiyCodeRequired || code === undefined) {
+  public async useObservedDiyDestination(): Promise<boolean> {
+    const code = this.model.observedDiyDestination;
+    if (!this.model.diyDestinationRequired || code === undefined) {
       return false;
     }
-    this.model.patch({ h6179ApprovedDiyCode: code, notice: undefined });
-    await this.preview.diyCodeChanged();
+    this.model.patch({ diyDestination: code, diyDestinationApproval: undefined, notice: undefined });
+    await this.preview.destinationConsentChanged();
     return true;
+  }
+
+  public async setDiyDestination(value: string): Promise<void> {
+    const parsed = Number(value.trim());
+    if (value.trim() === "") {
+      this.model.patch({ diyDestination: undefined, diyDestinationApproval: undefined, notice: undefined });
+      await this.preview.destinationConsentChanged();
+      return;
+    }
+    const destination = Number.isSafeInteger(parsed) ? parsed : undefined;
+    this.model.patch({ diyDestination: destination, diyDestinationApproval: undefined, notice: undefined });
+    await this.preview.destinationConsentChanged();
+  }
+
+  public async approveDiyDestination(): Promise<void> {
+    const device = this.model.selectedDevice;
+    const catalogue = this.model.modelCatalogue;
+    const destination = this.model.diyDestination;
+    const route = catalogue?.diy_destination_route;
+    const authority = device?.diy_destination_authority;
+    if (
+      !this.model.diyDestinationRequired ||
+      device === undefined ||
+      destination === undefined ||
+      route === undefined ||
+      authority === undefined ||
+      destination < (catalogue?.diy_destination_min ?? 0) ||
+      destination > (catalogue?.diy_destination_max ?? 0xffff)
+    ) {
+      this.model.patch({ notice: this.model.diyDestinationApprovalMessage });
+      return;
+    }
+    this.model.patch({
+      diyDestinationApproval: {
+        config_entry_id: device.config_entry_id,
+        model: device.model,
+        destination,
+        minimum: catalogue?.diy_destination_min ?? 0,
+        maximum: catalogue?.diy_destination_max ?? 0xffff,
+        route,
+        authority,
+        overwrite_confirmed: true,
+      },
+      notice: undefined,
+    });
+    await this.preview.destinationConsentChanged();
   }
 
   public async applyCurrentDraft(): Promise<boolean> {
@@ -1316,10 +1362,10 @@ export class PanelController {
     }
     const transitionEpoch = this.model.editorTransitionEpoch;
     const content = cloneEditableEffect(this.model.content);
-    const diyCode = this.model.h6179DiyCode;
-    if (this.model.h6179DiyCodeRequired && diyCode === undefined) {
+    const consent = this.model.diyDestinationConsent;
+    if (this.model.diyDestinationRequired && consent === undefined) {
       this.model.patch({
-        notice: this.model.h6179DiyApprovalMessage,
+        notice: this.model.diyDestinationApprovalMessage,
       });
       return false;
     }
@@ -1330,7 +1376,7 @@ export class PanelController {
         this.model.currentItem &&
         !this.model.dirty
       ) {
-        if (diyCode === undefined) {
+        if (consent === undefined) {
           await api.applySavedEffect(
             device.config_entry_id,
             this.model.currentItem,
@@ -1339,7 +1385,9 @@ export class PanelController {
           await api.applySavedEffect(
             device.config_entry_id,
             this.model.currentItem,
-            diyCode,
+            undefined,
+            false,
+            consent,
           );
         }
       } else {
@@ -1350,7 +1398,7 @@ export class PanelController {
                 origin_id: this.model.editorSource.selectionIdentity,
               }
             : undefined;
-        if (diyCode === undefined) {
+        if (consent === undefined) {
           await api.applySnapshot(
             device.config_entry_id,
             this.model.name.trim() || "Effect Studio draft",
@@ -1363,7 +1411,8 @@ export class PanelController {
             this.model.name.trim() || "Effect Studio draft",
             content,
             provenance,
-            diyCode,
+            undefined,
+            consent,
           );
         }
       }
@@ -2086,14 +2135,14 @@ export class PanelController {
     if (device.effect_compatibilities === undefined &&
         !effectContentEligible(item.content, this.model.modelCatalogue, device.model, device.segment_count)) return false;
     const configEntryId = device.config_entry_id;
-    const diyCode = this.model.h6179DiyCode;
-    if (this.model.h6179DiyCodeRequired && diyCode === undefined) {
+    const consent = this.model.diyDestinationConsent;
+    if (this.model.diyDestinationRequired && consent === undefined) {
       this.model.patch({
-        notice: this.model.h6179DiyApprovalMessage,
+        notice: this.model.diyDestinationApprovalMessage,
       });
       return false;
     }
-    this.preview.submit(snapshotPreviewRequest(configEntryId, item.name, item.content, false, undefined, diyCode));
+    this.preview.submit(snapshotPreviewRequest(configEntryId, item.name, item.content, false, undefined, undefined, consent));
     return true;
   }
 

@@ -249,13 +249,24 @@ test("H6179 DIY actions carry an explicit code while other actions omit it", asy
     contentSamples.h6179_single_diy,
   );
   const h617aContent = decodeEffectContent(contentSamples.h617a_single);
+  const consent = {
+    config_entry_id: "h6179-main",
+    model: "H6199",
+    destination: 73,
+    minimum: 1,
+    maximum: 240,
+    route: "H6199:H6199:default:ack",
+    authority: "1:1",
+    overwrite_confirmed: true as const,
+  };
 
   await api.applySnapshot(
     "h6179-main",
     "Disposable",
     h6179Content,
     undefined,
-    0x1234,
+    undefined,
+    consent,
   );
   await api.previewSnapshot(
     "session-a",
@@ -265,13 +276,17 @@ test("H6179 DIY actions carry an explicit code while other actions omit it", asy
     h6179Content,
     false,
     undefined,
-    0x1234,
+    undefined,
+    consent,
   );
   await api.applySnapshot("h617a-main", "Compatible", h617aContent);
 
-  expect(callWS.mock.calls[0][0]).toMatchObject({ diy_code: 0x1234 });
-  expect(callWS.mock.calls[1][0]).toMatchObject({ diy_code: 0x1234 });
+  expect(callWS.mock.calls[0][0]).toMatchObject({ diy_destination_consent: consent });
+  expect(callWS.mock.calls[1][0]).toMatchObject({ diy_destination_consent: consent });
+  expect(callWS.mock.calls[0][0].content).not.toHaveProperty("diy_destination_consent");
+  expect(callWS.mock.calls[1][0].content).not.toHaveProperty("diy_destination_consent");
   expect(callWS.mock.calls[2][0]).not.toHaveProperty("diy_code");
+  expect(callWS.mock.calls[2][0]).not.toHaveProperty("diy_destination_consent");
 });
 
 test("saved-name collisions confirm a guarded overwrite and accept its generation", async () => {

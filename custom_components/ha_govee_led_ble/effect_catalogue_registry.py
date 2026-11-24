@@ -187,7 +187,7 @@ MODEL_EFFECT_CATALOGUES: Final = {
             *(_video_template("H605C", mode) for mode in _native_video_modes("H605C")),
         ),
         workshop_templates=(),
-        diy_slot_policy="approved_observed",
+        diy_destination_policy="explicit_destination",
     ),
     "H1771": ModelEffectCatalogue(
         sku="H1771",
@@ -213,7 +213,7 @@ MODEL_EFFECT_CATALOGUES: Final = {
         workshop_templates=(),
         speed_min=1,
         multi_max=4,
-        diy_slot_policy="approved_observed",
+        diy_destination_policy="explicit_destination",
     ),
     "H6053": ModelEffectCatalogue(
         sku="H6053",
@@ -228,7 +228,7 @@ MODEL_EFFECT_CATALOGUES: Final = {
         workshop_templates=(),
         speed_min=1,
         multi_max=4,
-        diy_slot_policy="approved_observed",
+        diy_destination_policy="explicit_destination",
     ),
     "H60A1": _ceiling_catalogue("H60A1"),
     "H60A6": _ceiling_catalogue("H60A6"),
@@ -739,7 +739,7 @@ MODEL_EFFECT_CATALOGUES: Final = {
             ),
         ),
         workshop_templates=(),
-        diy_slot_policy="approved_observed",
+        diy_destination_policy="explicit_destination",
     ),
     "H6182": ModelEffectCatalogue(
         sku="H6182",
@@ -763,7 +763,7 @@ MODEL_EFFECT_CATALOGUES: Final = {
             ),
         ),
         workshop_templates=(),
-        diy_slot_policy="approved_observed",
+        diy_destination_policy="explicit_destination",
     ),
     "H6179": ModelEffectCatalogue(
         sku="H6179",
@@ -773,7 +773,7 @@ MODEL_EFFECT_CATALOGUES: Final = {
         video_modes=(),
         templates=H6179_CATALOGUE_TEMPLATES,
         workshop_templates=(),
-        diy_slot_policy="approved_observed",
+        diy_destination_policy="explicit_destination",
     ),
     "H618A": ModelEffectCatalogue(
         sku="H618A",
@@ -851,9 +851,9 @@ MODEL_EFFECT_CATALOGUES: Final = {
         video_modes=H6199_VIDEO_MODES,
         templates=H6199_CATALOGUE_TEMPLATES,
         workshop_templates=(),
-        diy_slot_policy="approved_observed",
-        diy_slot_min=1,
-        diy_slot_max=240,
+        diy_destination_policy="explicit_destination",
+        diy_destination_min=1,
+        diy_destination_max=240,
     ),
     "H6072": ModelEffectCatalogue(
         sku="H6072",
@@ -884,7 +884,7 @@ MODEL_EFFECT_CATALOGUES: Final = {
             *(_music_template("H6072", mode) for mode in H6072_NATIVE_MUSIC_MODES),
         ),
         workshop_templates=(),
-        diy_slot_policy="approved_observed",
+        diy_destination_policy="explicit_destination",
     ),
     "H607C": ModelEffectCatalogue(
         sku="H607C",
@@ -942,7 +942,7 @@ MODEL_EFFECT_CATALOGUES: Final = {
         templates=H7020_CATALOGUE_TEMPLATES,
         workshop_templates=(),
         native_diy_templates=H7020_NATIVE_DIY_CONTRACTS,
-        diy_slot_policy="approved_observed",
+        diy_destination_policy="explicit_destination",
         advanced_create=False,
         speed_min=1,
     ),
@@ -954,7 +954,7 @@ MODEL_EFFECT_CATALOGUES: Final = {
         video_modes=(),
         templates=H7025_CATALOGUE_TEMPLATES,
         workshop_templates=(),
-        diy_slot_policy="approved_observed",
+        diy_destination_policy="explicit_destination",
         advanced_create=False,
     ),
     "H600A": ModelEffectCatalogue(
@@ -966,7 +966,7 @@ MODEL_EFFECT_CATALOGUES: Final = {
         templates=tuple(_single_template("H600A", family) for family in H600A_DIY_FAMILIES),
         workshop_templates=(),
         advanced_create=False,
-        diy_slot_policy="approved_observed",
+        diy_destination_policy="explicit_destination",
     ),
     "H601C": ModelEffectCatalogue(
         sku="H601C",

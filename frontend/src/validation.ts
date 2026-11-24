@@ -176,6 +176,13 @@ export function decodeDevices(value: unknown): DeviceCapabilities[] {
       ...(device.compatibility_revision === undefined ? {} : {
         compatibility_revision: boundedString(device.compatibility_revision, "compatibility revision", MAX_IDENTIFIER_LENGTH),
       }),
+      ...(device.diy_destination_authority === undefined ? {} : {
+        diy_destination_authority: boundedString(
+          device.diy_destination_authority,
+          "DIY destination authority",
+          MAX_IDENTIFIER_LENGTH,
+        ),
+      }),
       ...(device.static_composition === undefined ? {} : {
         static_composition: booleanValue(device.static_composition, "static composition capability"),
       }),

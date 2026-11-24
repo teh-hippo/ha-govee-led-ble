@@ -80,7 +80,8 @@ export class PanelEditorController {
   public beginTransition(cancelPreview = true): number {
     this.options.editorTransitionStarted();
     this.modal.closeForEditorTransition();
-    this.model.h6179ApprovedDiyCode = undefined;
+    this.model.diyDestination = undefined;
+    this.model.diyDestinationApproval = undefined;
     return this.preview.beginEditorTransition(cancelPreview);
   }
 

@@ -4,6 +4,7 @@ import type { ScenePreviewRequest } from "./scene-browser";
 import type { EditorSource } from "./editor-state";
 import type {
   EffectContent,
+  DiyDestinationConsent,
   PreviewSnapshotProvenance,
   PreviewStatus,
 } from "./types";
@@ -18,6 +19,7 @@ export type PanelPreviewRequest = LivePreviewRequest &
         content: EffectContent;
         provenance?: PreviewSnapshotProvenance;
         diyCode?: number;
+        destinationConsent?: DiyDestinationConsent;
       }
     | {
         kind: "scene";
@@ -33,6 +35,7 @@ export function snapshotPreviewRequest(
   persistDefault = false,
   provenance?: PreviewSnapshotProvenance,
   diyCode?: number,
+  destinationConsent?: DiyDestinationConsent,
 ): PanelPreviewRequest {
   return {
     kind: "snapshot",
@@ -41,6 +44,7 @@ export function snapshotPreviewRequest(
     content,
     ...(provenance ? { provenance } : {}),
     ...(diyCode === undefined ? {} : { diyCode }),
+    ...(destinationConsent === undefined ? {} : { destinationConsent }),
     fingerprint: JSON.stringify({
       configEntryId,
       name,
@@ -48,6 +52,7 @@ export function snapshotPreviewRequest(
       provenance,
       persistDefault,
       diyCode,
+      destinationConsent,
     }),
     persistDefault,
   };
@@ -320,7 +325,7 @@ export class EffectStudioPreviewSession {
       );
       return;
     }
-    if (request.diyCode === undefined) {
+    if (request.destinationConsent === undefined && request.diyCode === undefined) {
       await this.api.previewSnapshot(
         this.sessionId,
         sequence,
@@ -340,6 +345,7 @@ export class EffectStudioPreviewSession {
         request.persistDefault,
         request.provenance,
         request.diyCode,
+        request.destinationConsent,
       );
     }
   }

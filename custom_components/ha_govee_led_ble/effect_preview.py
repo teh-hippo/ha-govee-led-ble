@@ -24,10 +24,7 @@ from .coordinator_base import async_prepare_effect_profile
 from .coordinator_modes import ModeTransitionPurpose
 from .coordinator_status import ParsedMode
 from .effect_active_workspace import ActiveEffectWorkspace, ActiveEffectWorkspaceRepository
-from .effect_catalogue import (
-    requires_approved_diy_slot,
-    validate_catalogue_template_identity,
-)
+from .effect_catalogue import requires_diy_destination_consent, validate_catalogue_template_identity
 from .effect_compiler import (
     DIY_ACK_EVIDENCE,
     CompiledApplication,
@@ -39,6 +36,12 @@ from .effect_compiler import (
 )
 from .effect_deployments import ObservationConfidence, PriorControlState
 from .effect_diagnostics import DiagnosticOutcome, DiagnosticStage, EffectDiagnosticHistory
+from .effect_diy_destination import (
+    DiyDestinationConsent,
+    async_prepare_diy_destination_consent,
+    requested_diy_destination,
+    validate_diy_destination_consent,
+)
 from .effect_domain import (
     BuiltinScene,
     JsonValue,
@@ -55,7 +58,6 @@ from .effect_runtime import (
     EffectRestorationError,
     EffectStateReadError,
     _active_workspace_content,
-    _validate_diy_slot_approval,
     active_workspace_matches,
     async_apply_compiled_profile,
     async_prepare_effect_control_state,
@@ -266,6 +268,7 @@ class _PreviewRequest:
     device_cancellation_generation: int = 0
     item: LibraryItem | None = None
     diy_code: int | None = None
+    destination_consent: DiyDestinationConsent | None = None
     scene: ResolvedScene | None = None
     speed_index: int | None = None
     canonical_body: bytes | None = None
@@ -581,6 +584,8 @@ class EffectPreviewManager:
         item: LibraryItem,
         persist_default: bool = False,
         diy_code: int | None = None,
+        destination_consent: DiyDestinationConsent | None = None,
+        destination_consent_raw: Mapping[str, Any] | None = None,
         control_guard: Callable[[], None] | None = None,
         default_guard: Callable[[], None] | None = None,
     ) -> PreviewAcceptance:
@@ -593,7 +598,17 @@ class EffectPreviewManager:
         session_cancellation_generation = session.cancellation_generation
         device_cancellation_generation = session.device_cancellation_generations.get(config_entry_id, 0)
         preparation_generation = coordinator._control_arbiter.foreground_generation
+        if destination_consent is not None and destination_consent_raw is not None:
+            raise PreviewError("DIY destination consent was supplied twice")
+        if destination_consent_raw is not None:
+            diy_code = requested_diy_destination(destination_consent_raw, diy_code)
         try:
+            if destination_consent_raw is not None:
+                destination_consent = await async_prepare_diy_destination_consent(
+                    coordinator,
+                    config_entry_id,
+                    destination_consent_raw,
+                )
             profile = await async_prepare_effect_profile(
                 coordinator, intent=ControlIntent.PREVIEW, content=item.content
             )
@@ -621,7 +636,16 @@ class EffectPreviewManager:
                 item.content,
                 profile=coordinator.profile,
             )
-        fingerprint = _snapshot_fingerprint(coordinator.model, item, diy_code)
+        try:
+            validate_diy_destination_consent(
+                coordinator,
+                compiled,
+                destination_consent,
+                config_entry_id=config_entry_id,
+            )
+        except ValueError as exc:
+            raise PreviewError(str(exc)) from exc
+        fingerprint = _snapshot_fingerprint(coordinator.model, item, diy_code, destination_consent)
         request = _PreviewRequest(
             session_id=session_id,
             config_entry_id=config_entry_id,
@@ -636,6 +660,7 @@ class EffectPreviewManager:
             device_cancellation_generation=device_cancellation_generation,
             item=item,
             diy_code=diy_code,
+            destination_consent=destination_consent,
             compiled=compiled,
             control_guard=control_guard,
             default_guard=default_guard,
@@ -1289,7 +1314,7 @@ class EffectPreviewManager:
             ):
                 if request.control_guard is not None:
                     request.control_guard()
-                await self._async_prepare_execution(coordinator, compiled)
+                await self._async_prepare_execution(request, coordinator, compiled)
                 await self._async_prepare_recovery(request, coordinator, compiled)
                 writer = _PreviewWriter(self, request, coordinator, health_target)
                 await self._async_transmit_request(request, coordinator, compiled, writer)
@@ -1428,7 +1453,12 @@ class EffectPreviewManager:
         if expectations is None:
             self._mark_write_unverified(request)
 
-    async def _async_prepare_execution(self, coordinator: Any, compiled: CompiledApplication | None) -> None:
+    async def _async_prepare_execution(
+        self,
+        request: _PreviewRequest,
+        coordinator: Any,
+        compiled: CompiledApplication | None,
+    ) -> None:
         inline_brightness = (
             isinstance(compiled, CompiledVideoProfile)
             and compiled.relative_brightness_inline
@@ -1443,14 +1473,13 @@ class EffectPreviewManager:
                 raise PreviewError("Fresh video brightness observations are required before Preview")
         if compiled is not None:
             validate_compiled_geometry(compiled, coordinator.effect_authorization_profile)
-        if (
-            isinstance(compiled, CompiledEffect)
-            and compiled.selector_kind == "diy"
-            and requires_approved_diy_slot(compiled.model)
-        ):
-            if not await coordinator.refresh_state():
-                raise PreviewError("approved disposable DIY code could not be refreshed")
-            _validate_diy_slot_approval(coordinator, compiled)
+        if isinstance(compiled, CompiledEffect):
+            validate_diy_destination_consent(
+                coordinator,
+                compiled,
+                request.destination_consent,
+                config_entry_id=request.config_entry_id,
+            )
 
     async def _async_prepare_recovery(
         self,
@@ -1600,7 +1629,7 @@ class EffectPreviewManager:
             return
         final_activation = (
             compiled.activation_packet
-            if compiled.upload_transport == "a1_02" or requires_approved_diy_slot(compiled.model)
+            if compiled.upload_transport == "a1_02" or requires_diy_destination_consent(compiled.model)
             else None
         )
         packets = list(compiled.upload_packets if final_activation is not None else compiled.packets)
@@ -1613,6 +1642,13 @@ class EffectPreviewManager:
                 request.control_guard()
             if not await self._async_request_is_current(request):
                 raise _PreviewSupersededError
+            validate_compiled_geometry(compiled, coordinator.effect_authorization_profile)
+            validate_diy_destination_consent(
+                coordinator,
+                compiled,
+                request.destination_consent,
+                config_entry_id=request.config_entry_id,
+            )
 
         write_options: dict[str, Any] = (
             {
@@ -1628,7 +1664,12 @@ class EffectPreviewManager:
 
         def validate_effect_write() -> None:
             validate_compiled_geometry(compiled, coordinator.effect_authorization_profile)
-            _validate_diy_slot_approval(coordinator, compiled)
+            validate_diy_destination_consent(
+                coordinator,
+                compiled,
+                request.destination_consent,
+                config_entry_id=request.config_entry_id,
+            )
 
         await coordinator.async_write_effect_sequence(
             packets,
@@ -2120,12 +2161,27 @@ def _preview_request_key(request: _PreviewRequest) -> tuple[str, str, bool]:
     )
 
 
-def _snapshot_fingerprint(model: str, item: LibraryItem, diy_code: int | None) -> str:
+def _snapshot_fingerprint(
+    model: str,
+    item: LibraryItem,
+    diy_code: int | None,
+    destination_consent: DiyDestinationConsent | None = None,
+) -> str:
     encoded = json.dumps(
         {
             "model": model,
             "content": effect_content_to_dict(item.content),
             "diy_code": diy_code,
+            "destination_consent": (
+                None
+                if destination_consent is None
+                else {
+                    "destination": destination_consent.destination,
+                    "route": destination_consent.route,
+                    "authority": destination_consent.authority,
+                    "overwrite_confirmed": True,
+                }
+            ),
         },
         allow_nan=False,
         ensure_ascii=False,

@@ -1253,6 +1253,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         operation_id: UUID | None = None,
         turn_on_kwargs: dict[str, Any] | None = None,
         diy_code: int | None = None,
+        overwrite_confirmed: bool = False,
         native_write_guard: Callable[[], None] | None = None,
         source_colour: PreparedSourceColour | None = None,
     ) -> DeploymentRecord:
@@ -1278,11 +1279,48 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                         requested_video_controls(compiled) | video_mode_controls(self.coordinator.profile),
                     )
 
+                from .effect_catalogue import diy_destination_range, diy_destination_route
+                from .effect_diy_destination import (
+                    async_prepare_diy_destination_consent,
+                    compiled_requires_diy_destination_consent,
+                    diy_destination_authority,
+                    validate_diy_destination_consent,
+                )
+
+                destination_consent = None
+                if compiled_requires_diy_destination_consent(compiled, self.coordinator.effect_authorization_profile):
+                    if diy_code is None or not overwrite_confirmed:
+                        raise ValueError("DIY destination and explicit overwrite confirmation are required")
+                    minimum, maximum = diy_destination_range(self.coordinator.model)
+                    destination_consent = await async_prepare_diy_destination_consent(
+                        self.coordinator,
+                        self._config_entry_id,
+                        {
+                            "config_entry_id": self._config_entry_id,
+                            "model": self.coordinator.model,
+                            "destination": diy_code,
+                            "minimum": minimum,
+                            "maximum": maximum,
+                            "route": diy_destination_route(
+                                self.coordinator.model,
+                                self.coordinator.effect_authorization_profile,
+                            ),
+                            "authority": diy_destination_authority(self.coordinator),
+                            "overwrite_confirmed": True,
+                        },
+                    )
+
                 def guard() -> None:
                     if native_write_guard is not None:
                         native_write_guard()
                     validate_compiled_geometry(compiled, self.coordinator.effect_authorization_profile)
                     validate_video_request(self.coordinator, current.content)
+                    validate_diy_destination_consent(
+                        self.coordinator,
+                        compiled,
+                        destination_consent,
+                        config_entry_id=self._config_entry_id,
+                    )
 
                 async with (
                     async_control_intent(
@@ -1312,6 +1350,8 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                         kwargs["operation_id"] = operation_id
                     if diy_code is not None:
                         kwargs["diy_code"] = diy_code
+                    if destination_consent is not None:
+                        kwargs["destination_consent"] = destination_consent
                     return await self._effect_backend.engine.async_apply_saved(
                         self.coordinator,
                         current,
@@ -1336,6 +1376,8 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         effect: str | None = None,
         effect_id: str | None = None,
         diy_code: int | None = None,
+        diy_destination: int | None = None,
+        overwrite_confirmed: bool = False,
     ) -> dict[str, Any]:
         if self._platform_state is EntityPlatformState.REMOVED and self._effect_backend is not None:
             self._library_snapshot = self._effect_backend.application.library_snapshot()
@@ -1395,10 +1437,18 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 translation_key="invalid_custom_effect",
             )
         try:
+            if diy_destination is not None:
+                if diy_code is not None and diy_code != diy_destination:
+                    raise ServiceValidationError(
+                        translation_domain=DOMAIN,
+                        translation_key="invalid_custom_effect",
+                    )
+                diy_code = diy_destination
             deployment = await self._async_apply_saved_item(
                 item,
                 operation_id=operation_id,
                 diy_code=diy_code,
+                overwrite_confirmed=overwrite_confirmed,
             )
         except Exception:
             self._record_custom_effect_service(

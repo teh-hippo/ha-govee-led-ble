@@ -26,12 +26,17 @@ from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_modes import ModeTransitionSupersededError
 from custom_components.ha_govee_led_ble.coordinator_segments import SegmentPaintRequest
 from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
-from custom_components.ha_govee_led_ble.effect_catalogue import resolve_catalogue_template
+from custom_components.ha_govee_led_ble.effect_catalogue import (
+    diy_destination_route,
+    resolve_catalogue_template,
+)
 from custom_components.ha_govee_led_ble.effect_contracts import EDITOR_API_VERSION
+from custom_components.ha_govee_led_ble.effect_diy_destination import diy_destination_authority
 from custom_components.ha_govee_led_ble.effect_domain import (
     BuiltinScene,
     CatalogueRef,
     MusicProfile,
+    PaletteDiyEffect,
     SingleEffect,
     effect_content_to_dict,
 )
@@ -913,6 +918,67 @@ async def test_apply_forwards_expected_item_version(
         write_guard=ANY,
         **({"live": True} if live else {}),
     )
+
+
+async def test_apply_snapshot_requires_and_forwards_bound_destination_consent(
+    hass: HomeAssistant,
+    hass_ws_client,
+    monkeypatch,
+) -> None:
+    backend = await _setup_backend(hass)
+    monkeypatch.setattr(cast(Any, backend.preview), "async_supersede_device", AsyncMock())
+    deployment = MagicMock()
+    deployment.to_public_dict.return_value = {"phase": "confirmed"}
+    apply_snapshot = AsyncMock(return_value=deployment)
+    monkeypatch.setattr(backend.engine, "async_apply_snapshot", apply_snapshot)
+    coordinator = _EffectCoordinator(model="H6199", profile=get_profile("H6199"))
+    entry = SimpleNamespace(
+        entry_id="entry-a",
+        domain=DOMAIN,
+        state=ConfigEntryState.LOADED,
+        runtime_data=coordinator,
+    )
+    monkeypatch.setattr(hass.config_entries, "async_get_entry", lambda _entry_id: entry)
+    client = await hass_ws_client(hass)
+    content = effect_content_to_dict(PaletteDiyEffect("H6199", 0, 0, 50, ((255, 0, 0),)))
+    base = {
+        "type": WS_APPLY_SNAPSHOT,
+        "config_entry_id": entry.entry_id,
+        "name": "Destination",
+        "content": content,
+        "updated_at": "2026-11-24T00:00:00Z",
+    }
+
+    await client.send_json_auto_id(base)
+    assert (await client.receive_json())["error"]["code"] == "unsupported_model"
+    apply_snapshot.assert_not_awaited()
+
+    consent = {
+        "config_entry_id": entry.entry_id,
+        "model": coordinator.model,
+        "destination": 24,
+        "minimum": 1,
+        "maximum": 240,
+        "route": diy_destination_route(coordinator.model, coordinator.profile),
+        "authority": diy_destination_authority(coordinator),
+        "overwrite_confirmed": True,
+    }
+    await client.send_json_auto_id({**base, "diy_destination_consent": {**consent, "overwrite_confirmed": False}})
+    assert (await client.receive_json())["error"]["code"] == "invalid_format"
+    apply_snapshot.assert_not_awaited()
+
+    await client.send_json_auto_id({**base, "diy_code": 25, "diy_destination_consent": consent})
+    assert (await client.receive_json())["error"]["code"] == "unsupported_model"
+    apply_snapshot.assert_not_awaited()
+
+    await client.send_json_auto_id({**base, "diy_destination_consent": consent})
+    response = await client.receive_json()
+    assert response["success"] is True, response
+    apply_snapshot.assert_awaited_once()
+    args = apply_snapshot.await_args
+    assert args is not None
+    assert args.kwargs["diy_code"] == 24
+    assert args.kwargs["destination_consent"].destination == 24
 
 
 @pytest.mark.parametrize("live", [False, True])

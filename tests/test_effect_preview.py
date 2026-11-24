@@ -71,7 +71,7 @@ from custom_components.ha_govee_led_ble.effect_preview import (
     PreviewStatus,
     PreviewWriteDisposition,
 )
-from custom_components.ha_govee_led_ble.effect_runtime import resolve_diy_code
+from custom_components.ha_govee_led_ble.effect_runtime import EffectRestorationError, resolve_diy_code
 from custom_components.ha_govee_led_ble.effect_scene_defaults import NativeSceneDefaultRepository
 from custom_components.ha_govee_led_ble.effect_template_defaults import CatalogueTemplateDefaultRepository
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
@@ -86,6 +86,7 @@ from custom_components.ha_govee_led_ble.native_scenes import encode_authored_sce
 from custom_components.ha_govee_led_ble.protocol_core import MusicBody
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES, SceneEntry, scene_selector_code
 from custom_components.ha_govee_led_ble.transport import reassemble_a3, xor_checksum
+from tests.coordinator_test_support import approve_diy_destination_operation
 from tests.storage_test_double import InMemoryVersionedDocumentStore
 
 
@@ -1508,6 +1509,11 @@ async def test_workshop_preview_verifies_evidenced_selector(
         updated_at="2026-08-17T00:00:00Z",
         item=item,
         diy_code=approved_code,
+        destination_consent=(
+            approve_diy_destination_operation(coordinator, "entry-a", approved_code)
+            if approved_code is not None
+            else None
+        ),
     )
     await manager.async_wait_idle("entry-a")
 
@@ -2853,7 +2859,7 @@ async def test_preview_requires_observed_disposable_approval_before_preflight(
     owner = object()
     session_id = _open(manager, owner, [])
 
-    with pytest.raises(PreviewError, match="explicitly approved disposable DIY code"):
+    with pytest.raises(PreviewError, match="explicit DIY destination"):
         await manager.async_queue_snapshot(
             session_id=session_id,
             owner=owner,
@@ -2883,6 +2889,7 @@ async def test_h6179_preview_decodes_workspace_and_selects_only_after_upload(
     item = _h6179_item()
     compiled = compile_application(item, "H6179", diy_code=0x1234)
     assert isinstance(compiled, CompiledEffect)
+    consent = approve_diy_destination_operation(coordinator, "entry-a", 0x1234)
 
     await manager.async_queue_snapshot(
         session_id=session_id,
@@ -2892,13 +2899,14 @@ async def test_h6179_preview_decodes_workspace_and_selects_only_after_upload(
         updated_at="2026-09-03T00:00:00Z",
         item=item,
         diy_code=0x1234,
+        destination_consent=consent,
     )
     await manager.async_wait_idle("entry-a")
 
     assert coordinator.writes == [*compiled.upload_packets, compiled.activation_packet]
     coordinator.async_write_effect_sequence.assert_awaited_once()
     assert coordinator.async_write_effect_sequence.await_args.args[0] == list(compiled.upload_packets)
-    coordinator.refresh_state.assert_awaited_once_with()
+    coordinator.refresh_state.assert_not_awaited()
     assert coordinator.async_write_effect_sequence.await_args.kwargs["final_packet"] == compiled.activation_packet
     assert events[-1].phase is PreviewPhase.CONFIRMED
     assert manager._active_workspaces is not None
@@ -2908,24 +2916,140 @@ async def test_h6179_preview_decodes_workspace_and_selects_only_after_upload(
     await manager.async_shutdown()
 
 
-@pytest.mark.parametrize("failure", ["refresh", "changed_code"])
-async def test_h6179_preview_revalidates_fresh_mode_before_zero_effect_writes(
+async def test_preview_cancellation_during_destination_preparation_prevents_writes(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from custom_components.ha_govee_led_ble import effect_preview
+
+    coordinator = _coordinator(model="H6179", readable=True)
+    coordinator.diy_code = 0x1234
+    manager, _cache = await _manager(hass, monkeypatch, coordinator)
+    owner = object()
+    session_id = _open(manager, owner, [])
+    consent = approve_diy_destination_operation(coordinator, "entry-a", 0x1234)
+    entered = asyncio.Event()
+    resume = asyncio.Event()
+
+    async def prepare(*_args, **_kwargs):
+        entered.set()
+        await resume.wait()
+        return consent
+
+    monkeypatch.setattr(effect_preview, "async_prepare_diy_destination_consent", prepare)
+    request = asyncio.create_task(
+        manager.async_queue_snapshot(
+            session_id=session_id,
+            owner=owner,
+            config_entry_id="entry-a",
+            sequence=1,
+            updated_at="2026-09-03T00:00:00Z",
+            item=_h6179_item(),
+            diy_code=0x1234,
+            destination_consent_raw={
+                "config_entry_id": consent.config_entry_id,
+                "model": consent.model,
+                "destination": consent.destination,
+                "minimum": consent.minimum,
+                "maximum": consent.maximum,
+                "route": consent.route,
+                "authority": consent.authority,
+                "overwrite_confirmed": True,
+            },
+        )
+    )
+    await entered.wait()
+    await manager.async_cancel(session_id=session_id, owner=owner)
+    resume.set()
+
+    with pytest.raises(PreviewError, match="cancelled during connection preparation"):
+        await request
+    assert coordinator.writes == []
+    coordinator.async_preview_write.assert_not_awaited()
+    await manager.async_shutdown()
+
+
+async def test_preview_binds_destination_consent_before_cold_profile_preparation(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from custom_components.ha_govee_led_ble import effect_preview
+
+    coordinator = _coordinator(model="H6053", readable=True)
+    manager, _cache = await _manager(hass, monkeypatch, coordinator)
+    owner = object()
+    session_id = _open(manager, owner, [])
+    consent = approve_diy_destination_operation(coordinator, "entry-a", 24)
+    order: list[str] = []
+
+    async def prepare_consent(*_args, **_kwargs):
+        order.append("consent")
+        return consent
+
+    async def prepare_profile(*_args, **_kwargs):
+        order.append("profile")
+        return coordinator.profile
+
+    monkeypatch.setattr(effect_preview, "async_prepare_diy_destination_consent", prepare_consent)
+    monkeypatch.setattr(effect_preview, "async_prepare_effect_profile", prepare_profile)
+
+    await manager.async_queue_snapshot(
+        session_id=session_id,
+        owner=owner,
+        config_entry_id="entry-a",
+        sequence=1,
+        updated_at="2026-09-03T00:00:00Z",
+        item=_item("Cold DIY"),
+        diy_code=24,
+        destination_consent_raw={
+            "config_entry_id": consent.config_entry_id,
+            "model": consent.model,
+            "destination": consent.destination,
+            "minimum": consent.minimum,
+            "maximum": consent.maximum,
+            "route": consent.route,
+            "authority": consent.authority,
+            "overwrite_confirmed": True,
+        },
+    )
+
+    assert order == ["consent", "profile"]
+    await manager.async_shutdown()
+
+
+@pytest.mark.parametrize("mode", ["custom", "scene"])
+def test_preview_rejects_only_recoverable_resident_diy_destination(mode: str) -> None:
+    compiled = compile_application(_h6179_item(), "H6179", diy_code=73)
+    state = PriorControlState(
+        mode,
+        True,
+        50,
+        (1, 2, 3),
+        diy_code=73 if mode == "custom" else None,
+        scene_code=73 if mode == "scene" else None,
+    )
+
+    with pytest.raises(EffectRestorationError, match="only recoverable resident"):
+        EffectPreviewManager._validate_preview_recovery_target(state, compiled)
+
+
+@pytest.mark.parametrize("failure", ["changed_active", "authority"])
+async def test_h6179_preview_consent_ignores_active_selector_and_revalidates_authority(
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,
     failure: str,
 ) -> None:
     coordinator = _coordinator(model="H6179", readable=True)
     coordinator.is_on = True
-    coordinator.diy_code = 0x1234
-    if failure == "refresh":
-        coordinator.refresh_state = AsyncMock(return_value=False)
+    consent = approve_diy_destination_operation(coordinator, "entry-a", 0x1234)
+    if failure == "changed_active":
+        coordinator.diy_code = 0x5678
     else:
 
-        async def changed_code(*_args, **_kwargs) -> bool:
-            coordinator.diy_code = 0x5678
-            return True
+        async def invalidate_authority(*_args, **_kwargs) -> None:
+            coordinator._authorization_generation = 1
 
-        coordinator.refresh_state = AsyncMock(side_effect=changed_code)
+        coordinator.async_preview_preflight.side_effect = invalidate_authority
     manager, _cache = await _manager(hass, monkeypatch, coordinator)
     owner = object()
     events: list[PreviewStatus] = []
@@ -2939,13 +3063,18 @@ async def test_h6179_preview_revalidates_fresh_mode_before_zero_effect_writes(
         updated_at="2026-09-03T00:00:00Z",
         item=_h6179_item(),
         diy_code=0x1234,
+        destination_consent=consent,
     )
     await manager.async_wait_idle("entry-a")
 
-    assert coordinator.writes == []
-    coordinator.async_preview_write.assert_not_awaited()
-    assert events[-1].phase is PreviewPhase.FAILED
-    assert events[-1].write_disposition is PreviewWriteDisposition.NOT_STARTED
+    if failure == "changed_active":
+        assert coordinator.writes
+        assert events[-1].phase is not PreviewPhase.FAILED
+    else:
+        assert coordinator.writes == []
+        coordinator.async_preview_write.assert_not_awaited()
+        assert events[-1].phase is PreviewPhase.FAILED
+        assert events[-1].write_disposition is PreviewWriteDisposition.NOT_STARTED
     await manager.async_shutdown()
 
 
@@ -3012,10 +3141,6 @@ async def test_h6179_preview_holds_previews_through_admission_check_before_selec
     coordinator._resolve_device_profile()
     coordinator.is_on = True
     coordinator.diy_code = None
-    monkeypatch.setattr(
-        "custom_components.ha_govee_led_ble.effect_preview._validate_diy_slot_approval",
-        lambda *_args: None,
-    )
     baseline = _known_static_baseline(coordinator)
     coordinator._pre_mode_snapshot = baseline
     monkeypatch.setattr(coordinator, "async_prepare_static_baseline", AsyncMock(return_value=baseline))
@@ -3057,6 +3182,7 @@ async def test_h6179_preview_holds_previews_through_admission_check_before_selec
         updated_at="2026-09-03T00:00:00Z",
         item=item,
         diy_code=0x1234,
+        destination_consent=approve_diy_destination_operation(coordinator, "entry-a", 0x1234),
     )
     await manager.async_wait_idle("entry-a")
     assert foreground is not None
