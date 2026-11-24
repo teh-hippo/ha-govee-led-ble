@@ -23,9 +23,6 @@ from .const import (
     CONF_CONNECTION_MODE,
     CONF_EFFECT_CATEGORIES,
     CONF_EFFECT_FAMILIES,
-    CONF_H6102_APP_FIRMWARE,
-    CONF_H6102_APP_HARDWARE,
-    CONF_H6102_PACT,
     CONF_MODEL,
     CONF_PREFIX_EFFECT_NAMES,
     CONF_REGISTER_EFFECT_STUDIO,
@@ -147,13 +144,21 @@ async def _async_cleanup_legacy_entities(hass: HomeAssistant, entry: GoveeBLECon
     model = resolve_model(raw_model) if isinstance(raw_model, str) else None
     profile = MODEL_PROFILES.get(model) if model is not None else None
     unsupported = set(_LEGACY_ENTITY_SUFFIXES)
+    camera_suffixes: set[str] = set()
+    for candidate in MODEL_PROFILES.values():
+        if candidate.camera_control_policy is not None:
+            camera_suffixes.update(candidate.camera_control_policy.entity_suffixes)
     if profile is not None:
         for control in {"gradual", "limit", "power_off_memory"} - profile.boolean_controls:
             unsupported.add(f"_{control}")
         if not profile.configured_string_counts:
             unsupported.add("_configured_strings")
-        if model != "H6199":
-            unsupported.update({"_strip_direction", "_camera_position", "_gradient", "_camera_status"})
+        retained_camera = (
+            profile.camera_control_policy.entity_suffixes if profile.camera_control_policy is not None else frozenset()
+        )
+        unsupported.update(camera_suffixes - retained_camera)
+    else:
+        unsupported.update(camera_suffixes)
     registry = er.async_get(hass)
     for entity in er.async_entries_for_config_entry(registry, entry.entry_id):
         if entity.unique_id and any(entity.unique_id.endswith(suffix) for suffix in unsupported):
@@ -169,10 +174,12 @@ async def _async_migrate_entry_model(
 ) -> None:
     data = dict(entry.data)
     data[CONF_MODEL] = new_model
-    if new_model != "H6102":
-        data.pop(CONF_H6102_APP_FIRMWARE, None)
-        data.pop(CONF_H6102_APP_HARDWARE, None)
-        data.pop(CONF_H6102_PACT, None)
+    identity_policy = MODEL_PROFILES[new_model].configured_identity
+    retained_identity = identity_policy.keys if identity_policy is not None else frozenset()
+    for candidate in MODEL_PROFILES.values():
+        if candidate.configured_identity is not None:
+            for key in candidate.configured_identity.keys - retained_identity:
+                data.pop(key, None)
     options = dict(entry.options)
     options.pop(CONF_EFFECT_FAMILIES, None)
     if CONF_EFFECT_CATEGORIES in options:
@@ -280,6 +287,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> 
         await _async_migrate_entry_model(hass, entry, old_model=model, new_model=advertised_model)
         model = advertised_model
     ir.async_delete_issue(hass, DOMAIN, issue_id)
+    identity_policy = MODEL_PROFILES[model].configured_identity
     coordinator = GoveeBLECoordinator(
         hass,
         entry.unique_id,
@@ -292,7 +300,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> 
         effect_categories=effect_categories_from_options(model, entry.options),
         prefix_effect_names=prefix_effect_names_from_options(entry.options),
         always_include_custom_effects=always_include_custom_effects_from_options(entry.options),
-        initial_identity=initial_identity_from_entry(entry.data),
+        initial_identity=(
+            initial_identity_from_entry(entry.data, identity_policy) if identity_policy is not None else None
+        ),
     )
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator

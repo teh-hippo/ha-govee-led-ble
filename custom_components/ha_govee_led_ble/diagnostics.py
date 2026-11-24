@@ -9,14 +9,14 @@ from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.core import HomeAssistant
 
 from . import GoveeBLEConfigEntry
-from .const import CONF_H6102_APP_FIRMWARE, CONF_H6102_APP_HARDWARE, CONF_H6102_PACT, ReadDomain, get_profile
+from .const import ModelProfile, ReadDomain, get_profile
 from .coordinator import PACKET_LOG_LIMIT, PACKET_LOG_RAW_BYTES_LIMIT
 from .coordinator_status import decode_status_frame
 from .effect_contracts import diagnostics_release_capabilities
 from .effect_diagnostics import empty_effect_diagnostic_snapshot
 from .h6199_calibration import WHITE_BALANCE_POSITIONS
 from .protocol_core import StatusReply
-from .video_applicability import h6199_camera_controls_state, video_control_states
+from .video_applicability import camera_controls_state, video_control_states
 
 REDACT_KEYS = {"address", "unique_id"}
 
@@ -81,7 +81,7 @@ async def async_get_config_entry_diagnostics(
         "video_control_states": {
             control: state.value for control, state in video_control_states(coordinator.profile, coordinator).items()
         },
-        "h6199_camera_controls_state": h6199_camera_controls_state(coordinator.model, coordinator).value,
+        "h6199_camera_controls_state": camera_controls_state(coordinator.profile, coordinator).value,
         "video_modes": list(coordinator.profile.video_modes),
         "supports_video_capture_region": coordinator.profile.supports_video_capture_region,
         "supports_video_saturation": coordinator.profile.supports_video_saturation,
@@ -105,7 +105,7 @@ async def async_get_config_entry_diagnostics(
         "physical_ic_count_source": coordinator.physical_ic_count_source,
         "configured_strings": coordinator.configured_strings,
         "configured_strings_confirmed": coordinator._configured_strings_confirmed,
-        "light_count_observation": _light_count_observation(packet_log, coordinator.model),
+        "light_count_observation": _light_count_observation(packet_log, coordinator.model, profile=coordinator.profile),
         "connection_mode": coordinator.connection_mode,
         "advertisement_present": coordinator._present,
         "state_read_available": coordinator._state_read_available,
@@ -200,7 +200,7 @@ async def async_get_config_entry_diagnostics(
         "packet_log": packet_log,
         "last_rx_aa05_raw": last_rx_aa05_raw,
     }
-    if coordinator.model == "H6102":
+    if coordinator.profile.configured_identity is not None:
         coordinator_data["capability_resolution"] = _h6102_capability_resolution(entry, coordinator)
     elif coordinator.identity_gated_controls:
         cutoff = time.monotonic() - FALLBACK_MAXIMUM_STALE_ADVERTISEMENT_SECONDS
@@ -291,10 +291,12 @@ def _h6102_capability_resolution(
     coordinator: Any,
 ) -> dict[str, Any]:
     profile = coordinator.profile
+    policy = profile.configured_identity
+    assert policy is not None
     data: dict[str, Any] = {
-        "configured_app_firmware": entry.data.get(CONF_H6102_APP_FIRMWARE),
-        "configured_app_hardware": entry.data.get(CONF_H6102_APP_HARDWARE),
-        "configured_pact": entry.data.get(CONF_H6102_PACT),
+        "configured_app_firmware": entry.data.get(policy.firmware_key),
+        "configured_app_hardware": entry.data.get(policy.hardware_key),
+        "configured_pact": entry.data.get(policy.pact_key),
         "pact_type": coordinator.pact_type,
         "pact_code": coordinator.pact_code,
         "music_modes": list(profile.music_modes),
@@ -322,9 +324,11 @@ def _h6102_capability_resolution(
     return data
 
 
-def _light_count_observation(packet_log: list[dict[str, Any]], model: str) -> dict[str, Any] | None:
+def _light_count_observation(
+    packet_log: list[dict[str, Any]], model: str, *, profile: ModelProfile
+) -> dict[str, Any] | None:
     """Report the latest qualified AA0F in the bounded log, without querying or changing geometry."""
-    if model != "H617A":
+    if not profile.diagnostic_light_count:
         return None
     for entry in reversed(packet_log):
         if (

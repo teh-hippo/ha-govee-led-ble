@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from .const import CONF_H6102_APP_FIRMWARE, CONF_H6102_APP_HARDWARE, CONF_H6102_PACT, CONF_MODEL, ModelProfile
+from .const import ConfiguredIdentityPolicy, ModelProfile
 from .coordinator_base import _CoordinatorBase
 from .coordinator_identity import InitialDeviceIdentity
 from .h6102_capabilities import (
@@ -47,13 +47,13 @@ class H6102InitialIdentity(InitialDeviceIdentity):
             object.__setattr__(self, "hardware_source", "configured")
 
 
-def initial_identity_from_entry(data: Mapping[str, Any]) -> H6102InitialIdentity | None:
-    """Adapt persisted H6102 config without leaking its product keys into the coordinator."""
-    if data.get(CONF_MODEL) != "H6102":
-        return None
-    firmware = data.get(CONF_H6102_APP_FIRMWARE)
-    hardware = data.get(CONF_H6102_APP_HARDWARE)
-    pact = data.get(CONF_H6102_PACT)
+def initial_identity_from_entry(
+    data: Mapping[str, Any], policy: ConfiguredIdentityPolicy
+) -> H6102InitialIdentity | None:
+    """Adapt profile-declared persisted identity without leaking product keys into the coordinator."""
+    firmware = data.get(policy.firmware_key)
+    hardware = data.get(policy.hardware_key)
+    pact = data.get(policy.pact_key)
     return H6102InitialIdentity(
         firmware=firmware if isinstance(firmware, str) else None,
         firmware_source="configured" if isinstance(firmware, str) else None,

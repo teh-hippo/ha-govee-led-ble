@@ -9,7 +9,7 @@ from . import GoveeBLEConfigEntry
 from .coordinator import GoveeBLECoordinator
 from .effect_contracts import CapabilityState
 from .entity import GoveeBLEEntity
-from .video_applicability import h6199_camera_controls_state
+from .video_applicability import camera_controls_state
 
 PARALLEL_UPDATES = 0
 
@@ -18,7 +18,7 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: GoveeBLEConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     coordinator = entry.runtime_data
-    if coordinator.model != "H6199":
+    if coordinator.profile.camera_control_policy is None:
         return
     added = False
     last_unqualified_revision = 0
@@ -27,7 +27,7 @@ async def async_setup_entry(
         nonlocal added, last_unqualified_revision
         if added:
             return
-        if h6199_camera_controls_state(coordinator.model, coordinator) is not CapabilityState.SUPPORTED:
+        if camera_controls_state(coordinator.profile, coordinator) is not CapabilityState.SUPPORTED:
             last_unqualified_revision = coordinator._field_revisions.get("camera_status", 0)
             return
         added = True
@@ -53,7 +53,7 @@ class GoveeBLECameraStatus(GoveeBLEEntity, SensorEntity):
 
     def _update_camera_status(self) -> None:
         revision = self.coordinator._field_revisions.get("camera_status", 0)
-        if h6199_camera_controls_state(self.coordinator.model, self.coordinator) is not CapabilityState.SUPPORTED:
+        if camera_controls_state(self.coordinator.profile, self.coordinator) is not CapabilityState.SUPPORTED:
             self._reported_camera_status = "unknown"
         elif revision > self._camera_status_revision:
             # Missing replies clear coordinator state without adding a camera observation.
@@ -67,6 +67,6 @@ class GoveeBLECameraStatus(GoveeBLEEntity, SensorEntity):
 
     @property
     def native_value(self) -> str:
-        if h6199_camera_controls_state(self.coordinator.model, self.coordinator) is not CapabilityState.SUPPORTED:
+        if camera_controls_state(self.coordinator.profile, self.coordinator) is not CapabilityState.SUPPORTED:
             return "unknown"
         return self._reported_camera_status

@@ -130,7 +130,7 @@ from .scenes import (
 )
 from .transport import READ_UUID, WRITE_UUID
 from .video_applicability import (
-    h6199_camera_controls_state,
+    camera_controls_state,
     identity_version,
     video_control_states,
     video_identity_fields,
@@ -848,7 +848,7 @@ class GoveeBLECoordinator(
             and not declared.configured_string_counts
         ):
             return
-        if self.model == "H6102":
+        if declared.configured_identity is not None:
             profile, context_changed = self._resolve_h6102_profile()
         else:
             context_changed = False
@@ -1066,7 +1066,9 @@ class GoveeBLECoordinator(
                                 RefreshRequest(
                                     refresh_all=True,
                                     required_domains=self.profile.setup_required_read_domains,
-                                    query_native_settings=self.profile.setting_grammar != "H607C",
+                                    query_native_settings=not self.profile.setting_grammar_has(
+                                        "deferred_native_settings"
+                                    ),
                                 ),
                             )
                             if generation == self._profile_generation and (
@@ -1083,7 +1085,7 @@ class GoveeBLECoordinator(
                                 await self._disconnect_if_current_locked(client)
                             raise BleakError(f"State query failed for {self.address}")
                         read_succeeded = True
-                        if self.profile.setting_grammar == "H607C":
+                        if self.profile.setting_grammar_has("deferred_native_settings"):
                             await self._async_read_optional_h607c_settings(client)
                         if self.profile.supports_low_blue_light and self.identity_fields_confirmed(
                             frozenset({"fw_version"})
@@ -2047,14 +2049,16 @@ class GoveeBLECoordinator(
         controls = profile.boolean_controls if scope is True else profile.boolean_controls & (scope or frozenset())
         power_on = profile.supports_power_on_behaviour and scope is True
         queries: dict[bytes, tuple[str, ...]] = {}
-        if profile.bulk_status_grammar in {"H1771", "H60A"}:
+        if profile.bulk_status_grammar_has("bulk_settings"):
             fields = tuple(f"boolean_{control}" for control in sorted(controls))
             if power_on:
                 fields += ("power_on_behaviour",)
             if fields:
                 if scope is True:
                     return (
-                        [(build_bulk_status_query(profile), fields)] if profile.bulk_status_grammar == "H1771" else []
+                        [(build_bulk_status_query(profile), fields)]
+                        if profile.bulk_status_grammar_has("bulk_identity")
+                        else []
                     )
                 return [
                     (build_bulk_status_query(profile, domains=(domain,)), selected)
@@ -2068,7 +2072,7 @@ class GoveeBLECoordinator(
         if power_on and profile.bulk_status_grammar is None:
             fields = (
                 ("power_on_behaviour", "power_on_open_flag")
-                if profile.setting_grammar == "H607C"
+                if profile.setting_grammar_has("deferred_native_settings")
                 else ("power_on_behaviour",)
             )
             queries[build_power_on_behaviour_query(profile)] = fields
@@ -2331,7 +2335,7 @@ class GoveeBLECoordinator(
                 )
             )
         if full_query and video_identity_ready:
-            if h6199_camera_controls_state(self.model, self) is CapabilityState.SUPPORTED:
+            if camera_controls_state(self.profile, self) is CapabilityState.SUPPORTED:
                 queries.extend(
                     (build_h6199_control_query(control), ReadDomain.OTHER, (control,))
                     for control in H6199_NATIVE_CONTROLS
@@ -2444,7 +2448,7 @@ class GoveeBLECoordinator(
             ) & profile.read_domains
             if query_segments is True and profile.supports_segments:
                 required |= {ReadDomain.SEGMENTS}
-            if profile.bulk_status_grammar == "H1771" and ReadDomain.SEGMENTS in required:
+            if profile.bulk_status_grammar_has("bulk_identity") and ReadDomain.SEGMENTS in required:
                 # Bulk settings can report mode; collect dependent pages after resolving it.
                 queries.sort(key=lambda request: request[1] is ReadDomain.SEGMENTS)
             remaining_segment_queries = sum(domain is ReadDomain.SEGMENTS for _, domain, _ in queries)
@@ -2469,11 +2473,11 @@ class GoveeBLECoordinator(
                     if not await self._async_qualify_bulk_mode(client, deadline=deadline, required=True):
                         return False
                 baselines = {field: self._field_revisions.get(field, 0) for field in fields}
-                if profile.setting_grammar == "H607C" and domain is ReadDomain.OTHER:
+                if profile.setting_grammar_has("deferred_native_settings") and domain is ReadDomain.OTHER:
                     if not await self._async_read_setting_fields(client, query, fields, deadline=deadline):
                         return domain not in required and all(d not in required for _, d, _ in queries[index + 1 :])
                     continue
-                if profile.setting_grammar == "H6046" and set(fields) == {
+                if profile.setting_grammar_has("paired_bar_settings") and set(fields) == {
                     "boolean_left_bar_enabled",
                     "boolean_right_bar_enabled",
                 }:
@@ -2485,9 +2489,9 @@ class GoveeBLECoordinator(
                     continue
                 if (
                     domain is ReadDomain.COLOUR_MODE
-                    and profile.bulk_status_grammar == "H60A"
+                    and profile.bulk_status_grammar_has("bulk_compact")
                     or domain is ReadDomain.OTHER
-                    and profile.bulk_status_grammar in {"H1771", "H60A"}
+                    and profile.bulk_status_grammar_has("bulk_settings")
                     and is_bulk_status_frame(query, profile)
                 ):
                     isolated_gradual = isinstance(query_native_settings, frozenset) and fields == ("boolean_gradual",)
@@ -2593,7 +2597,7 @@ class GoveeBLECoordinator(
         def qualified() -> None:
             if (
                 not self.identity_fields_confirmed(video_identity_fields(self.profile))
-                or h6199_camera_controls_state(self.model, self) is not CapabilityState.SUPPORTED
+                or camera_controls_state(self.profile, self) is not CapabilityState.SUPPORTED
             ):
                 raise ValueError("H6199 control is not qualified for this device revision")
 
@@ -2733,7 +2737,7 @@ class GoveeBLECoordinator(
         if client is None or not client.is_connected:
             return
         try:
-            if self.profile.bulk_status_grammar == "H1771":
+            if self.profile.bulk_status_grammar_has("bulk_identity"):
                 fields = (
                     (ReadDomain.FIRMWARE, "fw_version"),
                     (ReadDomain.HARDWARE, "hw_version"),
@@ -2846,7 +2850,7 @@ class GoveeBLECoordinator(
         )
         if not fields or self.identity_fields_confirmed(fields):
             return qualify_geometry(self.profile)
-        if self.model == "H6102":
+        if self.profile.configured_identity is not None:
             return qualify_geometry(self._h6102_authorization_profile())
         return qualify_geometry(
             device_profile(
@@ -3136,7 +3140,7 @@ class GoveeBLECoordinator(
                 raise ValueError("Installation changed but segment state could not be read")
 
     def _preflight_bar_control(self, control: str, enabled: bool) -> None:
-        if self.profile.setting_grammar != "H6046":
+        if not self.profile.setting_grammar_has("paired_bar_settings"):
             return
         from .generated_protocol_adapter import build_boolean_control
 
@@ -3375,7 +3379,7 @@ class GoveeBLECoordinator(
                 raise ValueError("Source selection changed before the write")
 
         qualified()
-        if self.profile.setting_grammar == "H6046":
+        if self.profile.setting_grammar_has("paired_bar_settings"):
             if type(value) is not bool:
                 raise ValueError("Boolean setting requires a boolean")
             await self._async_set_bar_control(control, value, write_guard=write_guard)
@@ -3522,18 +3526,18 @@ class GoveeBLECoordinator(
                 if generation != self._profile_generation:
                     raise ValueError("Device profile changed during setting write")
                 deadline = time.monotonic() + 4.0
-                if self.profile.setting_grammar in {"H1771", "H60A6"}:
+                if self.profile.setting_grammar_has("bulk_settings"):
                     if self._field_revisions.get(field, 0) <= baseline[field]:
                         domain = (
                             "power_on_behaviour"
                             if control == "power_on_behaviour"
                             else "gradual"
-                            if self.profile.setting_grammar == "H1771" and control == "gradual"
+                            if self.profile.setting_grammar_has("bulk_identity") and control == "gradual"
                             else "zone_enable"
                         )
                         if not await self._async_read_bulk_status(client, deadline=deadline, domains=(domain,)):
                             raise ValueError("Device did not provide complete setting readback")
-                elif self.profile.setting_grammar == "H607C":
+                elif self.profile.setting_grammar_has("deferred_native_settings"):
                     query = (
                         build_power_on_behaviour_query(self.profile)
                         if control == "power_on_behaviour"
@@ -4846,7 +4850,7 @@ class GoveeBLECoordinator(
                     generation = self._profile_generation
                     authorization_generation = self._authorization_generation
                     if self.connection_mode == CONNECTION_MODE_HOLD and full:
-                        h607c_settings = self.profile.setting_grammar == "H607C"
+                        h607c_settings = self.profile.setting_grammar_has("deferred_native_settings")
                         ok = await self._refresh_connected_state(
                             RefreshRequest(
                                 refresh_all=True,

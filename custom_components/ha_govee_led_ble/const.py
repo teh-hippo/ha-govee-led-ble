@@ -150,6 +150,43 @@ class LegacyEffectSelectorDomain(StrEnum):
     SCENE = "scene"
 
 
+class VideoRevisionPolicy(StrEnum):
+    QUALIFIED_CAMERA = "qualified_camera"
+
+
+@dataclass(frozen=True, slots=True)
+class ConfiguredIdentityOption:
+    value: str
+    label: str
+    pact_type: int
+    pact_code: int
+
+
+@dataclass(frozen=True, slots=True)
+class ConfiguredIdentityPolicy:
+    step_id: str
+    firmware_key: str
+    hardware_key: str
+    pact_key: str
+    pact_options: tuple[ConfiguredIdentityOption, ...]
+
+    @property
+    def keys(self) -> frozenset[str]:
+        return frozenset({self.firmware_key, self.hardware_key, self.pact_key})
+
+    @property
+    def pact_by_value(self) -> dict[str, tuple[int, int]]:
+        return {option.value: (option.pact_type, option.pact_code) for option in self.pact_options}
+
+
+@dataclass(frozen=True, slots=True)
+class CameraControlPolicy:
+    identity_fields: tuple[str, ...]
+    qualified_versions: tuple[int, ...]
+    qualified_pact: tuple[int, int]
+    entity_suffixes: frozenset[str]
+
+
 _IDENTITY_READ_DOMAINS = frozenset(
     {
         ReadDomain.FIRMWARE,
@@ -175,6 +212,254 @@ KELVIN_RANGE_2000_9000 = (2000, 9000)
 KELVIN_RANGE_2200_6500 = (2200, 6500)
 KELVIN_RANGE_2700_6500 = (2700, 6500)
 KELVIN_RANGE_1000_10000 = (1000, 10000)
+
+_GRAMMAR_TRAITS: Mapping[str, frozenset[str]] = {
+    "H1771": frozenset(
+        {
+            "bulk_identity",
+            "bulk_mode_reconciliation",
+            "bulk_segments",
+            "bulk_custom_query",
+            "bulk_settings",
+            "common_static",
+            "custom_power_body",
+            "display_music",
+            "multi_native_music",
+            "music_upload_ack",
+            "native_music_status",
+            "native_sources",
+            "power_on_custom",
+        }
+    ),
+    "H600A": frozenset({"kelvin_status_omits_rgb", "whole_bulb_static", "whole_bulb_music"}),
+    "H601C": frozenset({"kelvin_status_omits_rgb", "whole_bulb_static", "whole_bulb_music"}),
+    "H6022": frozenset({"opaque_scene_grammar"}),
+    "H6046": frozenset(
+        {
+            "bar_sources",
+            "display_static",
+            "display_music",
+            "h617a_workshop_selector",
+            "mode_music",
+            "music_selector_bar_parameters",
+            "paired_bar_settings",
+            "segment_query_tail",
+            "setting_readback_separate",
+        }
+    ),
+    "H6053-legacy": frozenset({"legacy_source_segments", "percent_brightness"}),
+    "H605C": frozenset(
+        {"music_status_settings", "percent_brightness", "source_only_static", "video_embedded_settings"}
+    ),
+    "H605C-video": frozenset(
+        {"video_embedded_parameters", "video_inline_relative_brightness", "video_status_settings", "video_v3"}
+    ),
+    "H6072": frozenset(
+        {
+            "common_boolean_registers",
+            "common_static",
+            "legacy_music_selector",
+            "low_blue_light",
+            "mode_music",
+            "revision_static",
+            "workshop_scene_type",
+        }
+    ),
+    "H6072-legacy": frozenset(
+        {
+            "common_boolean_registers",
+            "common_static",
+            "legacy_static",
+            "revision_static",
+            "segment_query_legacy",
+            "workshop_scene_type",
+        }
+    ),
+    "H607C": frozenset(
+        {
+            "common_static",
+            "deferred_native_settings",
+            "device_info_status",
+            "diy_companion_required",
+            "native_music_selector",
+            "native_sources",
+            "separate_native_setting_read",
+            "workshop_scene_type",
+        }
+    ),
+    "H6093": frozenset(
+        {
+            "kelvin_status_omits_rgb",
+            "projector",
+            "projector_audio",
+            "projector_status",
+            "percent_brightness",
+        }
+    ),
+    "H6099": frozenset(
+        {
+            "display_controls",
+            "colour_mode_byte_selector",
+            "display_music",
+            "display_static",
+            "display_video",
+            "installation_direction",
+            "music_status_settings",
+            "mode_music",
+            "video_status_settings",
+            "video_sound_type",
+            "default_diy_selector_254",
+            "fixed_diy_slot",
+        }
+    ),
+    "H60A": frozenset({"bulk_compact", "bulk_music_mode", "bulk_settings"}),
+    "H60A6": frozenset({"bulk_settings", "native_sources", "power_on_bulk"}),
+    "H60B0": frozenset(
+        {
+            "bulk_mode_reconciliation",
+            "common_static",
+            "custom_power_body",
+            "display_music",
+            "multi_native_music",
+            "native_music_selector",
+            "native_source_static",
+            "native_sources",
+            "separate_native_setting_read",
+            "kelvin_status_omits_rgb",
+            "source_status",
+            "special_static",
+            "native_music_status",
+        }
+    ),
+    "H60B2": frozenset(
+        {
+            "native_music_selector",
+            "native_sources",
+            "separate_native_setting_read",
+            "source_status",
+            "zone_notification_v2",
+        }
+    ),
+    "H6076": frozenset({"legacy_music_selector"}),
+    "H612A": frozenset({"extended_static", "strip_calibration", "strip_calibration_direct"}),
+    "H6179": frozenset(
+        {
+            "common_boolean_registers",
+            "custom_command",
+            "custom_mode",
+            "custom_status",
+            "custom_status_query",
+            "mode_music",
+            "special_static",
+        }
+    ),
+    "H617A": frozenset(
+        {
+            "common_boolean_registers",
+            "common_music_selector",
+            "common_static",
+            "generic_native_diy",
+            "h617a_workshop_selector",
+            "legacy_effects",
+            "mode_music",
+            "workshop_scene_type",
+        }
+    ),
+    "H6181": frozenset(
+        {
+            "common_boolean_registers",
+            "native_music_selector",
+            "dedicated_palette_music",
+            "whole_bulb_music",
+            "whole_bulb_static",
+            "kelvin_status_omits_rgb",
+            "dedicated_a1_diy",
+        }
+    ),
+    "H6181-modern": frozenset({"kelvin_status_omits_rgb"}),
+    "H6182-modern": frozenset({"kelvin_status_omits_rgb"}),
+    "H6139": frozenset({"kelvin_status_omits_rgb"}),
+    "H6159": frozenset({"kelvin_status_omits_rgb"}),
+    "H6199": frozenset(
+        {
+            "blank_screen_legacy_echo",
+            "effect_diy_grammar_mismatch",
+            "display_controls",
+            "display_music",
+            "always_fixed_music_state",
+            "display_static",
+            "display_video",
+            "gradient_status",
+            "music_status_settings",
+            "mode_music",
+            "display_scene_body",
+            "exact_palette_diy_activation",
+            "video_status_settings",
+        }
+    ),
+    "H6199-Pact1": frozenset({"legacy_segments", "percent_brightness"}),
+    "H66A0": frozenset(
+        {
+            "new_music_omits_colour",
+            "new_music_selector",
+            "music_status_settings",
+            "scaled_music_sensitivity",
+            "video_picture_preset",
+        }
+    ),
+    "H66A0-video": frozenset({"video_picture_preset", "video_status_settings", "video_v3"}),
+    "H7020": frozenset(
+        {
+            "common_boolean_registers",
+            "common_static",
+            "display_music",
+            "music_selector_parameters",
+            "rhythm_selector_parameter",
+            "workshop_scene_type",
+        }
+    ),
+    "H7025": frozenset({"new_music_selector"}),
+    "H705A": frozenset({"common_boolean_registers", "common_static", "new_music_selector"}),
+    "H8604": frozenset(
+        {
+            "display_settings",
+            "device_info_status",
+            "video_device_info_status",
+            "native_music_selector",
+            "music_status_settings",
+            "native_sources",
+            "separate_native_setting_read",
+            "power_on_query_selector",
+            "video_settings",
+        }
+    ),
+    "H1A42": frozenset({"new_music_omits_colour", "new_music_selector", "scaled_music_sensitivity"}),
+    "H1AB2": frozenset(
+        {
+            "new_music_omits_colour",
+            "new_music_selector",
+            "ordinary_settings",
+            "strip_calibration",
+            "strip_calibration_restore",
+        }
+    ),
+    "H6097": frozenset(
+        {
+            "music_status_sensitivity",
+            "new_music_omits_colour",
+            "new_music_selector",
+            "ordinary_settings",
+            "power_on_query_selector",
+        }
+    ),
+    "H61E5": frozenset({"new_music_selector"}),
+    "H61F5": frozenset({"extended_static", "new_music_omits_colour", "new_music_selector", "scaled_music_sensitivity"}),
+}
+
+
+def grammar_traits(grammar: str | None) -> frozenset[str]:
+    return frozenset() if grammar is None else _GRAMMAR_TRAITS.get(grammar, frozenset())
+
 
 NATIVE_ZONE_CONTROLS = (
     "panel_enabled",
@@ -245,6 +530,22 @@ class LightSource:
     palette_restore: bool = False
 
 
+@dataclass(frozen=True, slots=True)
+class ModelRevisionContext:
+    model: str
+    pact_type: int | None
+    pact_code: int | None
+    firmware: str | None = None
+    firmware_source: DeviceIdentitySource | None = None
+    hardware: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ModelRevisionPolicyRegistration:
+    model: str
+    policy_id: str
+
+
 @dataclass(frozen=True)
 class ModelProfile:
     name: str
@@ -269,12 +570,14 @@ class ModelProfile:
     colour_mode_query_selector: int = 0
     # Effect semantics require evidence independent of basic command compatibility.
     effect_grammar: str | None = None
+    native_effect_codec: str | None = None
     native_effect_revision: int = 0
     projector_grammar: str | None = None
     projector_control_revision: int | None = None
     # None permits the exact-SKU workflow ceiling; a set narrows it for this device.
     effect_workflows: frozenset[str] | None = None
     video_grammar: str | None = None
+    video_control_grammar: str | None = None
     dreamview_grammar: str | None = None
     dreamview_operations: frozenset[str] = frozenset()
     dreamview_reads: frozenset[str] = frozenset()
@@ -291,11 +594,16 @@ class ModelProfile:
     resolve_profile_before_state_init: bool = False
     # Set when Pact alone changes capabilities, so the profile also resolves before hardware/firmware replies arrive.
     profile_pact_dependent: bool = False
+    revision_policy: str | None = None
+    configured_identity: ConfiguredIdentityPolicy | None = None
+    protocol_identity: str | None = None
     # Colour and Kelvin controls are presented before identity resolves, but writes need fresh qualified Pact.
     requires_qualified_identity: bool = False
     requires_pact_confirmation: bool = False
     # Exact-product revision policy, independent of compatible wire grammars.
-    video_revision_policy: str | None = None
+    video_revision_policy: VideoRevisionPolicy | None = None
+    camera_control_policy: CameraControlPolicy | None = None
+    diagnostic_light_count: bool = False
     read_domains: frozenset[ReadDomain] = frozenset()
     setup_required_read_domains: frozenset[ReadDomain] = frozenset()
     supports_rgb: bool = False
@@ -430,6 +738,7 @@ class ModelProfile:
     default_effect_families_override: frozenset[str] | None = None
     effect_readback: str = "none"
     legacy_effect_selector_domains: tuple[tuple[str, LegacyEffectSelectorDomain], ...] = ()
+    legacy_custom_to_scene_signatures: tuple[tuple[str, int], ...] = ()
 
     @property
     def basic_controls_only(self) -> bool:
@@ -441,6 +750,27 @@ class ModelProfile:
 
     def command_operation_supported(self, operation: str) -> bool:
         return self.command_operations is None or operation in self.command_operations
+
+    def command_grammar_has(self, *traits: str) -> bool:
+        return frozenset(traits) <= grammar_traits(self.command_grammar)
+
+    def status_grammar_has(self, *traits: str) -> bool:
+        return frozenset(traits) <= grammar_traits(self.status_grammar)
+
+    def effect_grammar_has(self, *traits: str) -> bool:
+        return frozenset(traits) <= grammar_traits(self.effect_grammar)
+
+    def setting_grammar_has(self, *traits: str) -> bool:
+        return frozenset(traits) <= grammar_traits(self.setting_grammar)
+
+    def music_grammar_has(self, *traits: str) -> bool:
+        return frozenset(traits) <= grammar_traits(self.music_grammar or self.command_grammar)
+
+    def bulk_status_grammar_has(self, *traits: str) -> bool:
+        return frozenset(traits) <= grammar_traits(self.bulk_status_grammar)
+
+    def video_grammar_has(self, *traits: str) -> bool:
+        return frozenset(traits) <= grammar_traits(self.video_grammar)
 
     def source_control_supported(self, source: LightSource | None) -> bool:
         return (
@@ -464,7 +794,11 @@ class ModelProfile:
             operation
             for operation, grammars in _EFFECT_ACTIVATION_GRAMMARS.items()
             if self.command_grammar in grammars
-            and not (operation == "diy" and self.command_grammar == "H6199" and self.effect_grammar != "H6199")
+            and not (
+                operation == "diy"
+                and self.command_grammar_has("effect_diy_grammar_mismatch")
+                and self.effect_grammar != self.command_grammar
+            )
         )
         return operations if self.command_operations is None else operations & self.command_operations
 
@@ -477,6 +811,11 @@ class ModelProfile:
             for route, domain in self.legacy_effect_selector_domains
         ):
             raise ValueError("Legacy effect selector routes require a route and selector domain")
+        if any(
+            not isinstance(route, str) or not route or type(selector) is not int or not 0 <= selector <= 65535
+            for route, selector in self.legacy_custom_to_scene_signatures
+        ):
+            raise ValueError("Legacy signature migrations require a route and unsigned selector")
         if self.color_temp_range is not None:
             if (
                 not isinstance(self.color_temp_range, tuple)
@@ -546,6 +885,8 @@ class ModelProfile:
             raise ValueError("source power constraints require declared sources and valid limits")
         if self.diy_upload_transport not in {None, "a1_02", "a3", "single"}:
             raise ValueError("unknown DIY upload transport")
+        if self.revision_policy is not None and (not isinstance(self.revision_policy, str) or not self.revision_policy):
+            raise ValueError("model revision policy must be a non-empty identifier")
         if self.native_diy_upload_subtype is not None and (
             type(self.native_diy_upload_subtype) is not int or not 0 <= self.native_diy_upload_subtype <= 255
         ):
@@ -641,7 +982,9 @@ class ModelProfile:
             type(self.physical_ic_count) is not int or self.physical_ic_count <= 0
         ):
             raise ValueError("physical IC count must be a positive integer or unknown")
-        if self.video_revision_policy not in (None, "H6199"):
+        if self.video_revision_policy is VideoRevisionPolicy.QUALIFIED_CAMERA and self.camera_control_policy is None:
+            raise ValueError("qualified video identity requires a camera-control policy")
+        if self.video_revision_policy not in (None, VideoRevisionPolicy.QUALIFIED_CAMERA):
             raise ValueError("unknown video revision policy")
         if type(self.video_saturation_min) is not int or not 0 <= self.video_saturation_min <= 100:
             raise ValueError("video saturation minimum must be from 0 to 100")
@@ -815,6 +1158,9 @@ _H6199_MUSIC_MODES = ("energetic", "rhythm", "spectrum", "rolling")
 _H617A_PROFILE = ModelProfile(
     "H617A LED Strip",
     color_temp_range=KELVIN_RANGE_2000_9000,
+    revision_policy="h617a",
+    protocol_identity="H617A",
+    diagnostic_light_count=True,
     support_quality=SupportQuality.SUPPORTED,
     confirmation_issue=443,
     command_grammar="H617A",
@@ -922,6 +1268,7 @@ _H6076_ALL_MUSIC_MODES = (
 _H6076_PROFILE = ModelProfile(
     "H6076 Lyra Floor Lamp",
     support_quality=SupportQuality.SUPPORTED,
+    revision_policy="h6076",
     command_grammar="H617A",
     status_grammar="H6076",
     effect_grammar="H617A",
@@ -990,6 +1337,7 @@ _H6076_MUSIC_PROFILE = replace(
 _H6072_PROFILE = ModelProfile(
     "H6072 Floor Lamp",
     support_quality=SupportQuality.SUPPORTED,
+    revision_policy="h6072",
     confirmation_issue=486,
     command_grammar="H6072",
     command_ack_grammar="H617A",
@@ -1147,6 +1495,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         status_grammar="H6093",
         outbound_transform=_projection_power_wire,
         effect_grammar="H6093",
+        native_effect_codec="h6093-projector",
         command_operations=frozenset({"power", "brightness", "static", "scene", "diy", "effect_upload", "projector"}),
         colour_mode_query_selector=1,
         read_domains=frozenset(
@@ -1210,12 +1559,14 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     ),
     "H6022": ModelProfile(
         "H6022 RGBICWW Table Lamp 2",
+        protocol_identity="H617A",
         confirmation_issue=622,
         color_temp_range=KELVIN_RANGE_2700_6500,
         command_grammar="H617A",
         command_ack_grammar="H617A",
         status_grammar="H6022",
         effect_grammar="H6022",
+        native_effect_codec="h6022-opaque-scenes",
         colour_mode_query_selector=1,
         static_readback_kelvin=True,
         static_readback_zero_kelvin_is_rgb=True,
@@ -1287,6 +1638,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         setting_grammar="H1771",
         bulk_status_grammar="H1771",
         effect_grammar="H1771",
+        native_effect_codec="h1771",
         music_grammar="H1771",
         effect_workflows=frozenset({"native_scenes", "layered_scenes", "native_music", "single", "multi", "advanced"}),
         command_operations=frozenset({"power", "brightness", "static", "scene", "diy", "music", "effect_upload"}),
@@ -1516,6 +1868,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         bulk_status_grammar="H60A",
         setting_grammar="H60A6",
         effect_grammar="H60A6",
+        native_effect_codec="h60a6",
         command_operations=frozenset({"power", "brightness", "static", "scene", "diy", "effect_upload"}),
         read_domains=frozenset({ReadDomain.POWER, ReadDomain.COLOUR_MODE, ReadDomain.FIRMWARE, ReadDomain.HARDWARE}),
         supports_scenes=True,
@@ -1551,6 +1904,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         status_grammar="H60B2",
         setting_grammar="H60B2",
         effect_grammar="H60B2",
+        native_effect_codec="h60b2-palette",
         music_grammar="H60B2",
         command_operations=frozenset({"power", "brightness", "static", "scene", "diy", "music", "effect_upload"}),
         read_domains=frozenset(
@@ -1606,6 +1960,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         status_grammar="H60B0",
         setting_grammar="H60B0",
         effect_grammar="H60B0",
+        native_effect_codec="h60b0",
         music_grammar="H60B0",
         profile_pact_dependent=True,
         requires_qualified_identity=True,
@@ -1803,6 +2158,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         effect_grammar="H617A",
         music_grammar="H6199",
         video_grammar="H605C-video",
+        video_control_grammar="H6199",
         dreamview_grammar="H6199",
         dreamview_operations=frozenset(
             {
@@ -2044,6 +2400,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         effect_grammar="H6099",
         music_grammar="H66A0",
         video_grammar="H66A0-video",
+        video_control_grammar="H6099",
         dreamview_grammar="H6099",
         dreamview_operations=frozenset(
             {
@@ -2325,6 +2682,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         command_grammar="H617A",
         status_grammar="H1AB2",
         effect_grammar="H1AB2",
+        native_effect_codec="h1ab2-accumulation",
         setting_grammar="H1AB2",
         music_grammar="H1AB2",
         kelvin_verification_reads_colour_mode=True,
@@ -2540,6 +2898,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         "H617E LED Strip",
         color_temp_range=KELVIN_RANGE_2000_9000,
         support_quality=SupportQuality.SUPPORTED,
+        protocol_identity="H617A",
         command_grammar="H617A",
         status_grammar="H617A",
         effect_grammar="H617A",
@@ -2598,6 +2957,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         "H617C LED Strip",
         color_temp_range=KELVIN_RANGE_2000_9000,
         support_quality=SupportQuality.SUPPORTED,
+        protocol_identity="H617A",
         command_grammar="H617A",
         status_grammar="H617C",
         effect_grammar="H617A",
@@ -2662,6 +3022,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         "H617F LED Strip",
         color_temp_range=KELVIN_RANGE_2000_9000,
         support_quality=SupportQuality.SUPPORTED,
+        protocol_identity="H617A",
         command_grammar="H617A",
         status_grammar="H617A",
         effect_grammar="H617A",
@@ -2783,6 +3144,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         status_grammar="H607C",
         setting_grammar="H607C",
         effect_grammar="H607C",
+        native_effect_codec="h607c-zoned",
         effect_workflows=frozenset({"native_scenes", "layered_scenes", "native_music", "single", "multi", "painted"}),
         command_operations=frozenset({"power", "brightness", "static", "scene", "diy", "music", "effect_upload"}),
         profile_pact_dependent=True,
@@ -2854,6 +3216,18 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         "H6102 LED Strip",
         color_temp_range=KELVIN_RANGE_2000_9000,
         support_quality=SupportQuality.SUPPORTED,
+        configured_identity=ConfiguredIdentityPolicy(
+            step_id="h6102_firmware",
+            firmware_key=CONF_H6102_APP_FIRMWARE,
+            hardware_key=CONF_H6102_APP_HARDWARE,
+            pact_key=CONF_H6102_PACT,
+            pact_options=(
+                ConfiguredIdentityOption("10/1", "RGBIC Pact 10/1", 10, 1),
+                ConfiguredIdentityOption("10/2", "RGBIC Pact 10/2", 10, 2),
+                ConfiguredIdentityOption("1/1", "Legacy Pact 1/1", 1, 1),
+                ConfiguredIdentityOption("1/2", "Legacy Pact 1/2", 1, 2),
+            ),
+        ),
         resolve_profile_before_state_init=True,
         brightness_zero_turns_off=True,
         command_grammar="H617A",
@@ -3558,7 +3932,13 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         status_grammar="H6199",
         effect_grammar="H6199",
         video_grammar="H6199",
-        video_revision_policy="H6199",
+        video_revision_policy=VideoRevisionPolicy.QUALIFIED_CAMERA,
+        camera_control_policy=CameraControlPolicy(
+            identity_fields=("fw_version", "hw_version", "subordinate_20_version", "subordinate_21_version"),
+            qualified_versions=(11004, 30201, 10300, 10033),
+            qualified_pact=(2, 1),
+            entity_suffixes=frozenset({"_strip_direction", "_camera_position", "_gradient", "_camera_status"}),
+        ),
         profile_identity_fields=frozenset({"fw_version", "hw_version"}),
         profile_pact_dependent=True,
         dreamview_grammar="H6199",
@@ -3647,6 +4027,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
             ("shared_scene", LegacyEffectSelectorDomain.SCENE),
             ("palette_diy", LegacyEffectSelectorDomain.SCENE),
         ),
+        legacy_custom_to_scene_signatures=(("palette_diy", 401),),
     ),
     "H705A": ModelProfile(
         "H705A Permanent Outdoor Lights",
@@ -3729,6 +4110,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         command_grammar="H617A",
         status_grammar="H7025",
         effect_grammar="H617A",
+        native_effect_codec="h7025-a3-0x58",
         music_grammar="H7025",
         colour_mode_query_selector=1,
         read_domains=frozenset(
@@ -3782,6 +4164,48 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         music_params_require_activation=True,
         supports_music_color=True,
     ),
+}
+
+MODEL_REVISION_POLICY_REGISTRATIONS = (
+    ModelRevisionPolicyRegistration("H612A", "h612a"),
+    ModelRevisionPolicyRegistration("H6053", "h6053"),
+    ModelRevisionPolicyRegistration("H6093", "h6093"),
+    ModelRevisionPolicyRegistration("H6139", "h6139"),
+    ModelRevisionPolicyRegistration("H6159", "h6159"),
+    ModelRevisionPolicyRegistration("H6182", "h6182"),
+    ModelRevisionPolicyRegistration("H6181", "h6181"),
+    ModelRevisionPolicyRegistration("H60B0", "h60b0"),
+    ModelRevisionPolicyRegistration("H705A", "h705a"),
+    ModelRevisionPolicyRegistration("H605C", "h605c"),
+    ModelRevisionPolicyRegistration("H8604", "h8604"),
+    ModelRevisionPolicyRegistration("H6046", "standard_pacts"),
+    ModelRevisionPolicyRegistration("H607C", "h607c"),
+    ModelRevisionPolicyRegistration("H6097", "standard_pacts"),
+    ModelRevisionPolicyRegistration("H61E5", "standard_pacts"),
+    ModelRevisionPolicyRegistration("H7020", "standard_pacts"),
+    ModelRevisionPolicyRegistration("H60A1", "h60a1"),
+    ModelRevisionPolicyRegistration("H60A6", "h60a6"),
+    ModelRevisionPolicyRegistration("H61F5", "h61f5"),
+    ModelRevisionPolicyRegistration("H617A", "h617a"),
+    ModelRevisionPolicyRegistration("H619A", "h619a"),
+    ModelRevisionPolicyRegistration("H618A", "h618a"),
+    ModelRevisionPolicyRegistration("H6199", "h6199"),
+    ModelRevisionPolicyRegistration("H6072", "h6072"),
+    ModelRevisionPolicyRegistration("H6076", "h6076"),
+    ModelRevisionPolicyRegistration("H6179", "h6179"),
+    ModelRevisionPolicyRegistration("H6117", "h6117"),
+    ModelRevisionPolicyRegistration("H6125", "h6125"),
+    ModelRevisionPolicyRegistration("H6127", "h6127"),
+    ModelRevisionPolicyRegistration("H6102", "h6102"),
+)
+_REVISION_POLICY_BY_MODEL = {
+    registration.model: registration.policy_id for registration in MODEL_REVISION_POLICY_REGISTRATIONS
+}
+MODEL_PROFILES = {
+    model: replace(profile, revision_policy=_REVISION_POLICY_BY_MODEL[model])
+    if model in _REVISION_POLICY_BY_MODEL
+    else profile
+    for model, profile in MODEL_PROFILES.items()
 }
 
 BLE_DISCOVERABLE_MODELS = frozenset(MODEL_PROFILES)
@@ -3844,6 +4268,7 @@ def _h6199_pact1_wire(packet: bytes) -> bytes:
 H6199_PACT1_PROFILE = ModelProfile(
     "H6199 Pact 1",
     support_quality=SupportQuality.SUPPORTED,
+    revision_policy="h6199",
     command_grammar="H6199",
     command_operations=frozenset({"power", "brightness", "static", "scene", "music"}),
     status_grammar="H6199-Pact1",
@@ -3918,6 +4343,7 @@ H6199_PACT1_PROFILE = ModelProfile(
 H6125_POWER_ONLY_PROFILE = ModelProfile(
     "H6125 (power only)",
     support_quality=SupportQuality.SUPPORTED,
+    revision_policy="h6125",
     confirmation_issue=MODEL_PROFILES["H6125"].confirmation_issue,
     command_grammar="H617A",
     command_operations=frozenset({"power"}),
@@ -3929,6 +4355,7 @@ H6125_POWER_ONLY_PROFILE = ModelProfile(
 
 H6117_POWER_ONLY_PROFILE = ModelProfile(
     "H6117 (awaiting controller identity)",
+    revision_policy="h6117",
     confirmation_issue=537,
     command_grammar="H617A",
     command_operations=frozenset({"power"}),
@@ -4424,6 +4851,7 @@ def _basic_revision_profile(profile: ModelProfile) -> ModelProfile:
         profile_pact_dependent=profile.profile_pact_dependent,
         requires_qualified_identity=profile.requires_qualified_identity,
         requires_pact_confirmation=profile.requires_pact_confirmation,
+        revision_policy=profile.revision_policy,
         read_domains=domains & profile.read_domains,
         setup_required_read_domains=domains & profile.setup_required_read_domains,
         segment_count=profile.segment_count,
@@ -4439,6 +4867,647 @@ def _basic_revision_profile(profile: ModelProfile) -> ModelProfile:
     )
 
 
+def _h612a_revision_policy(context: ModelRevisionContext) -> ModelProfile:
+    profile = get_profile(context.model)
+    return profile if (context.pact_type, context.pact_code) in _H612A_PACTS else _basic_revision_profile(profile)
+
+
+def _h6053_revision_policy(context: ModelRevisionContext) -> ModelProfile:
+    from .protocol_transforms import h6053_outbound_transform
+
+    pact_type, pact_code = context.pact_type, context.pact_code
+    profile = get_profile(context.model)
+    known_pact = (pact_type, pact_code) in _STANDARD_PACTS
+    legacy_pact = (pact_type, pact_code) == (1, 1)
+    wire_range = (20, 254) if legacy_pact else None
+    fw, hw = FirmwareVersion.parse(context.firmware), FirmwareVersion.parse(context.hardware)
+    modern_static = (
+        fw is not None and hw is not None and fw >= FirmwareVersion((1, 0, 12)) and hw >= FirmwareVersion((1,))
+    )
+    profile = replace(
+        profile,
+        brightness_wire_range=wire_range,
+        outbound_transform=h6053_outbound_transform(
+            wire_range, legacy_colour=not modern_static, legacy_music=legacy_pact
+        ),
+    )
+    if fw is None or hw is None:
+        basic = _basic_revision_profile(profile)
+        return (
+            replace(
+                basic,
+                command_operations=frozenset({"power"}),
+                read_domains=basic.read_domains - {ReadDomain.BRIGHTNESS},
+                setup_required_read_domains=basic.setup_required_read_domains - {ReadDomain.BRIGHTNESS},
+            )
+            if not known_pact
+            else basic
+        )
+    uploaded_scenes = fw >= FirmwareVersion((1, 1))
+    expanded_music = fw >= FirmwareVersion((1, 8))
+    workshop = uploaded_scenes and hw.identity_number() > 0
+    assert profile.effect_workflows is not None
+    profile = replace(
+        profile,
+        status_grammar="H6053" if modern_static else "H6053-legacy",
+        supports_segment_brightness=modern_static,
+        segment_count=12 if modern_static else 2,
+        segment_group_size=4 if modern_static else 2,
+        light_sources=profile.light_sources
+        if modern_static
+        else (
+            LightSource("left_bar", "left_bar_enabled", (1,)),
+            LightSource("right_bar", "right_bar_enabled", (2,)),
+        ),
+        effect_workflows=profile.effect_workflows
+        - (set() if uploaded_scenes else {"layered_scenes"})
+        - (set() if workshop else {"advanced", "workshop"}),
+        scene_command_versions=None if uploaded_scenes else frozenset(),
+        shared_scene_carriers=profile.shared_scene_carriers
+        if uploaded_scenes
+        else tuple(route for route in profile.shared_scene_carriers if route[0] == "rgb"),
+        diy_upload_transport="a1_02" if legacy_pact else "a3",
+        a1_diy_prefix=254 if legacy_pact else None,
+        music_modes=profile.music_modes if expanded_music else profile.music_modes[:4],
+        music_variants=profile.music_variants if expanded_music else profile.music_variants[:4],
+    )
+    if known_pact:
+        return profile
+    assert profile.command_operations is not None
+    return replace(
+        profile,
+        command_operations=profile.command_operations & {"power", "static", "scene", "bar_enable", "swap_bars"},
+        effect_workflows=frozenset({"native_scenes"}),
+        music_modes=(),
+        music_variants=(),
+        supports_music_color=False,
+        music_upload_before_selector=False,
+        music_requires_upload_ack=False,
+        supports_custom_effects=False,
+        supports_multi_layered_effects=False,
+        supports_advanced_effects=False,
+        advanced_diy_selector=None,
+        workshop_scene_selector=None,
+        workshop_carriers=(),
+        shared_scene_carriers=(),
+        diy_upload_transport=None,
+        a1_diy_prefix=None,
+        read_domains=profile.read_domains - {ReadDomain.BRIGHTNESS},
+        setup_required_read_domains=profile.setup_required_read_domains - {ReadDomain.BRIGHTNESS},
+    )
+
+
+def _h6093_revision_policy(context: ModelRevisionContext) -> ModelProfile:
+    pact = (context.pact_type, context.pact_code)
+    revision = 0 if pact == (1, 1) else 1 if pact in {(1, 2), (2, 1)} else None
+    profile = get_profile(context.model)
+    sources = tuple(source for source in profile.light_sources if revision != 0 or source.key in {"aurora", "stars"})
+    controls = profile.boolean_controls if pact == (2, 1) else profile.boolean_controls - {"dreamview_laser"}
+    return replace(profile, projector_control_revision=revision, light_sources=sources, boolean_controls=controls)
+
+
+def _h6139_revision_policy(context: ModelRevisionContext) -> ModelProfile:
+    from .protocol_transforms import whole_rgb_outbound_transform
+
+    profile = get_profile(context.model)
+    fw, hw = FirmwareVersion.parse(context.firmware), FirmwareVersion.parse(context.hardware)
+    later = (
+        context.pact_type is not None
+        and context.pact_code is not None
+        and context.pact_type >= 10
+        and context.pact_code >= 1
+    )
+    later_music = (context.pact_type, context.pact_code) in {(10, 1), (10, 2)}
+    wire_range = None if later else (6, 254)
+    hardware_number = hw.identity_number() if hw is not None else 0
+    palette_hardware = 20100 <= hardware_number < 20200 or (
+        30000 <= hardware_number < 40000 and not 30400 <= hardware_number < 30500
+    )
+    palette_music = fw is not None and (
+        later_music and palette_hardware and fw >= FirmwareVersion((2, 4)) if later else fw >= FirmwareVersion((1, 7))
+    )
+    music_version = 2 if palette_music else 1 if fw is not None and fw >= FirmwareVersion((1, 3)) else 0
+    modes = (
+        profile.music_modes
+        if palette_music
+        else ("dynamic", "soft")
+        if later_music or not later and music_version
+        else ("dynamic",)
+        if not later and fw is not None
+        else ()
+    )
+    authored_programmes = fw is not None and fw >= FirmwareVersion((1, 3))
+    uploaded_scenes = later or authored_programmes
+    assert profile.effect_workflows is not None
+    assert profile.command_operations is not None
+    return replace(
+        profile,
+        effect_identity_fields=frozenset({"fw_version", "hw_version"}) if later else frozenset({"fw_version"}),
+        brightness_wire_range=wire_range,
+        outbound_transform=whole_rgb_outbound_transform(
+            wire_range, legacy_colour=not later, music_version=None if later else music_version
+        ),
+        static_outbound_transform=whole_rgb_outbound_transform(wire_range, legacy_colour=not later, music_version=None),
+        diy_upload_transport="a3" if later or context.pact_type == 10 else "a1_02",
+        command_operations=profile.command_operations - (set() if modes else {"music"}),
+        effect_workflows=profile.effect_workflows
+        - (set() if authored_programmes else {"edited_palette_scenes"})
+        - (set() if modes else {"native_music"}),
+        selector_only_scene_bits=None if uploaded_scenes else 16,
+        authored_palette_scene_selector=198 if authored_programmes else None,
+        scene_codes=None if uploaded_scenes else frozenset({4, 5, 7, 8, 9, 16, 10}),
+        music_modes=modes,
+        music_variants=tuple(
+            variant for variant in profile.music_variants if palette_music or variant.mode_code < len(modes)
+        ),
+    )
+
+
+def _h6159_revision_policy(context: ModelRevisionContext) -> ModelProfile:
+    from .protocol_transforms import whole_rgb_outbound_transform
+
+    profile = get_profile(context.model)
+    fw, hw = FirmwareVersion.parse(context.firmware), FirmwareVersion.parse(context.hardware)
+    later = (
+        context.pact_type is not None
+        and context.pact_code is not None
+        and context.pact_type >= 2
+        and context.pact_code >= 1
+    )
+    wire_range = None if later else (6, 254)
+    if fw is None or hw is None:
+        return _basic_revision_profile(
+            replace(
+                profile,
+                brightness_wire_range=wire_range,
+                outbound_transform=whole_rgb_outbound_transform(
+                    wire_range, legacy_colour=not later, music_version=None if later else 0
+                ),
+                static_outbound_transform=whole_rgb_outbound_transform(
+                    wire_range, legacy_colour=not later, music_version=None
+                ),
+            )
+        )
+    hardware_number = hw.identity_number()
+    telink = 10000 <= hardware_number < 20000
+    palette_hardware = 20100 <= hardware_number < 20200 or (
+        30000 <= hardware_number < 40000 and not 30400 <= hardware_number < 30500
+    )
+    palette_music = palette_hardware and fw >= FirmwareVersion((2, 4)) if later else fw >= FirmwareVersion((1, 7))
+    music_version = 2 if palette_music else 1 if fw >= FirmwareVersion((1, 3)) else 0
+    modes = profile.music_modes if palette_music else ("dynamic", "soft") if music_version else ("dynamic",)
+    uploaded_scenes = fw >= FirmwareVersion((1, 3))
+    mixed = fw >= FirmwareVersion((1, 2, 3))
+    assert profile.effect_workflows is not None
+    return replace(
+        profile,
+        brightness_wire_range=wire_range,
+        outbound_transform=whole_rgb_outbound_transform(
+            wire_range, legacy_colour=not later, music_version=None if later else music_version
+        ),
+        static_outbound_transform=whole_rgb_outbound_transform(wire_range, legacy_colour=not later, music_version=None),
+        diy_upload_transport="a3" if later or not telink else "a1_02",
+        supports_multi_layered_effects=mixed,
+        effect_workflows=profile.effect_workflows
+        - (set() if mixed else {"multi"})
+        - (set() if uploaded_scenes else {"edited_palette_scenes"}),
+        selector_only_scene_bits=None if uploaded_scenes else 16,
+        authored_palette_scene_selector=198 if uploaded_scenes else None,
+        scene_codes=None if uploaded_scenes else frozenset({0, 1, 4, 5, 7, 8, 9}),
+        music_modes=modes,
+        music_variants=tuple(
+            variant for variant in profile.music_variants if palette_music or variant.mode_code < len(modes)
+        ),
+    )
+
+
+def _h6182_revision_policy(context: ModelRevisionContext) -> ModelProfile:
+    from .protocol_transforms import whole_rgb_outbound_transform
+
+    profile = get_profile(context.model)
+    fw, hw = FirmwareVersion.parse(context.firmware), FirmwareVersion.parse(context.hardware)
+    later = (
+        context.pact_type is not None
+        and context.pact_code is not None
+        and context.pact_type >= 2
+        and context.pact_code >= 1
+    )
+    telink = hw is None or 10000 <= hw.identity_number() < 20000
+    wire_range = (20, 254) if telink else None
+    profile = replace(
+        profile,
+        status_grammar="H6182-modern" if later else "H6182",
+        profile_identity_fields=profile.profile_identity_fields if later else frozenset({"hw_version"}),
+        brightness_wire_range=wire_range,
+        outbound_transform=whole_rgb_outbound_transform(
+            wire_range, legacy_colour=not later, music_version=None if later else 0
+        ),
+        static_outbound_transform=whole_rgb_outbound_transform(wire_range, legacy_colour=not later, music_version=None),
+    )
+    if hw is None or later and fw is None:
+        basic = _basic_revision_profile(profile)
+        return (
+            replace(
+                basic,
+                command_operations=frozenset({"power"}),
+                read_domains=basic.read_domains - {ReadDomain.BRIGHTNESS},
+            )
+            if hw is None
+            else basic
+        )
+    hardware_number = hw.identity_number()
+    palette_hardware = 20100 <= hardware_number < 20200 or (
+        30000 <= hardware_number < 40000 and not 30400 <= hardware_number < 30500
+    )
+    palette_music = later and palette_hardware and fw is not None and fw >= FirmwareVersion((2, 4))
+    modes = profile.music_modes if palette_music else ("dynamic", "soft") if later else ("dynamic",)
+    uploaded_scenes = not telink and (
+        not later or context.pact_code != 1 or fw is not None and fw >= FirmwareVersion((1, 3))
+    )
+    local_scenes = (
+        profile.local_scenes
+        if telink
+        else (
+            (0, "Sunrise"),
+            (1, "Sunset"),
+            (4, "Movie"),
+            (5, "Date"),
+            (7, "Romantic"),
+            (8, "Blink"),
+            (9, "Candle"),
+        )
+    )
+    assert profile.effect_workflows is not None
+    return replace(
+        profile,
+        diy_upload_transport="a3" if later else "a1_02",
+        effect_workflows=profile.effect_workflows - (set() if uploaded_scenes else {"edited_palette_scenes"}),
+        selector_only_scene_bits=None if uploaded_scenes else 8 if telink else 16,
+        authored_palette_scene_selector=198 if uploaded_scenes else None,
+        local_scenes=local_scenes,
+        scene_codes=None if uploaded_scenes else frozenset(code for code, _name in local_scenes),
+        music_modes=modes,
+        music_variants=tuple(
+            variant for variant in profile.music_variants if palette_music or variant.mode_code < len(modes)
+        ),
+        music_readback_ambiguous=later,
+    )
+
+
+def _h6181_revision_policy(context: ModelRevisionContext) -> ModelProfile:
+    profile = get_profile(context.model)
+    later = (
+        context.pact_type is not None
+        and context.pact_code is not None
+        and context.pact_type >= 10
+        and context.pact_code >= 1
+    )
+    if not later:
+        legacy_colour = context.firmware == "1.03.00" and context.hardware == "1.00.03"
+        return replace(
+            profile,
+            status_grammar="H6181",
+            brightness_wire_range=(20, 254),
+            outbound_transform=_h6181_legacy_colour_wire if legacy_colour else _h6181_wire,
+            diy_upload_transport="a1_02",
+            music_modes=(),
+            music_variants=(),
+            scene_codes=frozenset({0, 1, 4, 5, 7, 8, 9}),
+            selector_only_scene_bits=8,
+        )
+    fw = FirmwareVersion.parse(context.firmware)
+    hw = FirmwareVersion.parse(context.hardware)
+    percentage = (context.pact_type, context.pact_code) in {(10, 1), (10, 2)}
+    uploaded_scenes = context.pact_code != 1 or fw is not None and fw >= FirmwareVersion((1, 3))
+    hardware_number = hw.identity_number() if hw is not None else 0
+    palette_hardware = 20100 <= hardware_number < 20200 or (
+        30000 <= hardware_number < 40000 and not 30400 <= hardware_number < 30500
+    )
+    palette_music = palette_hardware and fw is not None and fw >= FirmwareVersion((2, 4))
+    modes = profile.music_modes if palette_music else ("dynamic", "soft")
+    return replace(
+        profile,
+        static_identity_fields=frozenset(),
+        brightness_wire_range=None if percentage else (20, 254),
+        outbound_transform=None if percentage else _h6181_wire,
+        music_modes=modes if percentage else (),
+        music_variants=tuple(
+            variant
+            for variant in profile.music_variants
+            if percentage and (palette_music or variant.mode_code in (0, 1))
+        ),
+        selector_only_scene_bits=None if uploaded_scenes else 16,
+        scene_codes=None if uploaded_scenes else frozenset({0, 1, 4, 5, 7, 8, 9, 10, 16}),
+    )
+
+
+def _h60b0_revision_policy(context: ModelRevisionContext) -> ModelProfile:
+    profile = get_profile(context.model)
+    if context.pact_type == 1 and context.pact_code in {1, 2, 3}:
+        return replace(
+            profile,
+            native_effect_revision=context.pact_code,
+            exclusive_source_groups=(frozenset({"top_enabled", "bottom_enabled"}),) if context.pact_code == 1 else (),
+        )
+    return _basic_revision_profile(profile)
+
+
+def _h705a_revision_policy(context: ModelRevisionContext) -> ModelProfile:
+    profile = get_profile(context.model)
+    assert profile.command_operations is not None
+    installation = (
+        {"refresh_ic"}
+        if (context.pact_type, context.pact_code) == (1, 1)
+        else {"configured_strings"}
+        if (context.pact_type, context.pact_code) == (1, 2)
+        else set()
+    )
+    return replace(
+        profile,
+        command_operations=(profile.command_operations - {"configured_strings", "refresh_ic"}) | installation,
+        supports_ic_refresh="refresh_ic" in installation,
+        configured_string_counts=profile.configured_string_counts if "configured_strings" in installation else (),
+    )
+
+
+def _h605c_revision_policy(context: ModelRevisionContext) -> ModelProfile:
+    profile = get_profile(context.model)
+    if (context.pact_type, context.pact_code) == (1, 2):
+        return replace(
+            profile,
+            dreamview_grammar="H6099",
+            dreamview_operations=profile.dreamview_operations | {"same_brightness"},
+            dreamview_reads=profile.dreamview_reads | {"same_brightness"},
+            dreamview_max_sub_devices=7,
+            dreamview_requires_group_ack=False,
+        )
+    if (context.pact_type, context.pact_code) != (1, 1):
+        return replace(profile, dreamview_operations=frozenset(), dreamview_reads=frozenset())
+    return profile
+
+
+def _standard_pacts_revision_policy(context: ModelRevisionContext) -> ModelProfile:
+    profile = get_profile(context.model)
+    return profile if (context.pact_type, context.pact_code) in _STANDARD_PACTS else _basic_revision_profile(profile)
+
+
+def _h607c_revision_policy(context: ModelRevisionContext) -> ModelProfile:
+    profile = get_profile(context.model)
+    known = (context.pact_type, context.pact_code) in _STANDARD_PACTS or (
+        context.pact_type,
+        context.pact_code,
+    ) == (2, 2)
+    return profile if known else _basic_revision_profile(profile)
+
+
+def _h8604_revision_policy(context: ModelRevisionContext) -> ModelProfile:
+    profile = get_profile(context.model)
+    return (
+        profile
+        if (context.pact_type, context.pact_code) in {(1, 1), (2, 1), (3, 1)}
+        else _basic_revision_profile(profile)
+    )
+
+
+def _h60a_revision_profile(
+    context: ModelRevisionContext,
+    *,
+    segmented_firmware: str,
+    supports_segment_color_temperature: bool,
+    native_controls: bool,
+) -> ModelProfile:
+    profile = get_profile(context.model)
+    pact = (context.pact_type, context.pact_code)
+    if native_controls and not (
+        pact in _H60A6_NATIVE_CONTROL_PACTS
+        or (*pact, context.hardware, context.firmware)
+        == (None, None, _H60A_SEGMENTED_HARDWARE, _H60A6_SEGMENTED_FIRMWARE)
+    ):
+        profile = replace(profile, boolean_controls=frozenset(), supports_power_on_behaviour=False)
+    hw = FirmwareVersion.parse(context.hardware)
+    if not native_controls and hw is not None and hw.identity_number() < 10403:
+        profile = replace(profile, color_temp_range=KELVIN_RANGE_2200_6500)
+    segmented = (
+        pact in _STANDARD_PACTS
+        if not native_controls
+        else context.pact_type == 1 and type(context.pact_code) is int and context.pact_code >= 2
+    )
+    if pact == (None, None):
+        segmented = (context.hardware, context.firmware) == (_H60A_SEGMENTED_HARDWARE, segmented_firmware)
+    if segmented:
+        return replace(
+            profile,
+            supports_rgb=True,
+            supports_color_temperature=True,
+            supports_segment_writes=True,
+            supports_segment_color_temperature=supports_segment_color_temperature,
+            read_domains=profile.read_domains | {ReadDomain.SEGMENTS},
+        )
+    return profile
+
+
+def _h60a1_revision_policy(context: ModelRevisionContext) -> ModelProfile:
+    return _h60a_revision_profile(
+        context,
+        segmented_firmware=_H60A1_SEGMENTED_FIRMWARE,
+        supports_segment_color_temperature=False,
+        native_controls=False,
+    )
+
+
+def _h60a6_revision_policy(context: ModelRevisionContext) -> ModelProfile:
+    profile = _h60a_revision_profile(
+        context,
+        segmented_firmware=_H60A6_SEGMENTED_FIRMWARE,
+        supports_segment_color_temperature=True,
+        native_controls=True,
+    )
+    if (context.pact_type, context.pact_code) == (1, 1):
+        from .protocol_transforms import h60a6_legacy_outbound_transform
+
+        return replace(
+            profile,
+            segment_count=1,
+            supports_rgb=True,
+            supports_color_temperature=True,
+            outbound_transform=h60a6_legacy_outbound_transform,
+        )
+    return profile
+
+
+def _h61f5_revision_policy(context: ModelRevisionContext) -> ModelProfile:
+    profile = get_profile(context.model)
+    return (
+        replace(profile, color_temp_range=KELVIN_RANGE_1000_10000)
+        if (context.pact_type, context.pact_code) == (4, 1)
+        else profile
+    )
+
+
+def _h617a_revision_policy(context: ModelRevisionContext) -> ModelProfile:
+    fw, hw = FirmwareVersion.parse(context.firmware), FirmwareVersion.parse(context.hardware)
+    modern_firmware = fw is not None and fw >= FirmwareVersion((1, 6))
+    return replace(
+        get_profile(context.model),
+        rgbic_scene_v0=not modern_firmware or hw is None or hw < FirmwareVersion((1, 0, 3)),
+        scene_command_versions=frozenset({0, 1})
+        if modern_firmware and hw is not None and hw >= FirmwareVersion((1, 0, 2))
+        else frozenset({0}),
+    )
+
+
+def _h619a_revision_policy(context: ModelRevisionContext) -> ModelProfile:
+    from .protocol_transforms import rgb_only_segment_query_transform
+
+    fw, hw = FirmwareVersion.parse(context.firmware), FirmwareVersion.parse(context.hardware)
+    modern = fw is not None and hw is not None and fw >= FirmwareVersion((1, 6)) and hw >= FirmwareVersion((1, 0, 2))
+    profile = get_profile(context.model)
+    return replace(
+        profile,
+        status_grammar="H619A" if modern else "H619A-legacy",
+        segment_group_size=3 if modern else 4,
+        status_query_transform=None if modern else rgb_only_segment_query_transform,
+        rgbic_scene_v0=not modern,
+        read_domains=profile.read_domains
+        if fw is not None and hw is not None
+        else profile.read_domains - {ReadDomain.SEGMENTS},
+    )
+
+
+def _h618a_revision_policy(context: ModelRevisionContext) -> ModelProfile:
+    from .protocol_transforms import rgb_only_segment_query_transform
+
+    fw, hw = FirmwareVersion.parse(context.firmware), FirmwareVersion.parse(context.hardware)
+    modern = fw is not None and hw is not None and fw >= FirmwareVersion((1, 6)) and hw >= FirmwareVersion((1, 0, 2))
+    modern_readback = modern or (
+        (context.pact_type, context.pact_code) == (3, 1) and hw is not None and hw >= FirmwareVersion((3,))
+    )
+    pact3_readback = modern_readback and not modern and (context.pact_type, context.pact_code) == (3, 1)
+    profile = get_profile(context.model)
+    return replace(
+        profile,
+        status_grammar="H618A-pact3" if pact3_readback else "H618A" if modern else "H618A-legacy",
+        segment_group_size=4 if pact3_readback or not modern_readback else 3,
+        status_query_transform=None if modern_readback else rgb_only_segment_query_transform,
+        rgbic_scene_v0=not modern,
+        scene_command_versions=frozenset({0, 1}) if modern else frozenset({0}),
+        read_domains=profile.read_domains
+        if fw is not None and hw is not None
+        else profile.read_domains - {ReadDomain.SEGMENTS},
+    )
+
+
+def _h6199_revision_policy(context: ModelRevisionContext) -> ModelProfile:
+    pact = (context.pact_type, context.pact_code)
+    profile = H6199_PACT1_PROFILE if pact == (1, 1) else get_profile(context.model)
+    if pact not in _H6199_DREAMVIEW_PACTS:
+        return replace(profile, dreamview_operations=frozenset(), dreamview_reads=frozenset())
+    fw, hw = FirmwareVersion.parse(context.firmware), FirmwareVersion.parse(context.hardware)
+    if fw is None or hw is None or fw < FirmwareVersion((1, 9)) or hw < FirmwareVersion((3, 2, 1)):
+        if "same_brightness" not in profile.dreamview_operations:
+            return profile
+        return replace(
+            profile,
+            dreamview_operations=profile.dreamview_operations - {"same_brightness"},
+            dreamview_reads=profile.dreamview_reads - {"same_brightness"},
+        )
+    if "same_brightness" not in profile.dreamview_operations:
+        return replace(
+            profile,
+            dreamview_operations=profile.dreamview_operations | {"same_brightness"},
+            dreamview_reads=profile.dreamview_reads | {"same_brightness"},
+        )
+    return profile
+
+
+def _h6072_revision_policy(context: ModelRevisionContext) -> ModelProfile:
+    return _h6072_profile(context.pact_type, context.pact_code, context.firmware, context.hardware)
+
+
+def _h6076_revision_policy(context: ModelRevisionContext) -> ModelProfile:
+    return _h6076_profile(context.pact_type, context.pact_code, context.firmware)
+
+
+def _h6179_revision_policy(context: ModelRevisionContext) -> ModelProfile:
+    profile = get_profile(context.model)
+    if context.pact_type is None or context.pact_code is None:
+        return replace(
+            profile,
+            diy_upload_transport=None,
+            supports_custom_effects=False,
+            supports_multi_layered_effects=False,
+            boolean_controls=frozenset(),
+            restarting_boolean_controls=frozenset(),
+        )
+    if context.pact_type >= 10 and context.pact_code >= 1:
+        return replace(
+            profile,
+            diy_upload_transport="a3",
+            boolean_controls=frozenset(),
+            restarting_boolean_controls=frozenset(),
+        )
+    return profile
+
+
+def _h6117_revision_policy(context: ModelRevisionContext) -> ModelProfile:
+    return _h6117_profile(context.pact_type, context.pact_code, context.firmware, context.hardware)
+
+
+def _h6125_revision_policy(context: ModelRevisionContext) -> ModelProfile:
+    return _h6125_profile(context.pact_type, context.pact_code, context.firmware, context.hardware)
+
+
+def _h6127_revision_policy(context: ModelRevisionContext) -> ModelProfile:
+    return _h6127_profile(context.pact_type, context.pact_code, context.firmware, context.hardware)
+
+
+def _h6102_revision_policy(context: ModelRevisionContext) -> ModelProfile:
+    from .h6102_capabilities import resolve_h6102_capabilities
+
+    return resolve_h6102_capabilities(
+        context.firmware,
+        context.firmware_source
+        if context.firmware_source is not None
+        else "ble"
+        if context.firmware is not None
+        else None,
+        hardware=context.hardware,
+        pact_type=context.pact_type,
+        pact_code=context.pact_code,
+    ).profile
+
+
+_MODEL_REVISION_POLICIES: Mapping[str, Callable[[ModelRevisionContext], ModelProfile]] = {
+    "h612a": _h612a_revision_policy,
+    "h6053": _h6053_revision_policy,
+    "h6093": _h6093_revision_policy,
+    "h6139": _h6139_revision_policy,
+    "h6159": _h6159_revision_policy,
+    "h6182": _h6182_revision_policy,
+    "h6181": _h6181_revision_policy,
+    "h60b0": _h60b0_revision_policy,
+    "h705a": _h705a_revision_policy,
+    "h605c": _h605c_revision_policy,
+    "h8604": _h8604_revision_policy,
+    "standard_pacts": _standard_pacts_revision_policy,
+    "h607c": _h607c_revision_policy,
+    "h60a1": _h60a1_revision_policy,
+    "h60a6": _h60a6_revision_policy,
+    "h61f5": _h61f5_revision_policy,
+    "h617a": _h617a_revision_policy,
+    "h619a": _h619a_revision_policy,
+    "h618a": _h618a_revision_policy,
+    "h6199": _h6199_revision_policy,
+    "h6072": _h6072_revision_policy,
+    "h6076": _h6076_revision_policy,
+    "h6179": _h6179_revision_policy,
+    "h6117": _h6117_revision_policy,
+    "h6125": _h6125_revision_policy,
+    "h6127": _h6127_revision_policy,
+    "h6102": _h6102_revision_policy,
+}
+
+
 def device_profile(
     model: str,
     pact_type: int | None,
@@ -4448,522 +5517,23 @@ def device_profile(
     firmware_source: DeviceIdentitySource | None = None,
     hardware: str | None = None,
 ) -> ModelProfile:
-    """Resolve exact-product capabilities from evidenced revision context."""
-    if model == "H612A":
-        profile = get_profile(model)
-        return profile if (pact_type, pact_code) in _H612A_PACTS else _basic_revision_profile(profile)
-    if model == "H6053":
-        from .protocol_transforms import h6053_outbound_transform
-
-        profile = get_profile(model)
-        known_pact = (pact_type, pact_code) in _STANDARD_PACTS
-        legacy_pact = (pact_type, pact_code) == (1, 1)
-        wire_range = (20, 254) if legacy_pact else None
-        fw, hw = FirmwareVersion.parse(firmware), FirmwareVersion.parse(hardware)
-        modern_static = (
-            fw is not None and hw is not None and fw >= FirmwareVersion((1, 0, 12)) and hw >= FirmwareVersion((1,))
-        )
-        profile = replace(
-            profile,
-            brightness_wire_range=wire_range,
-            outbound_transform=h6053_outbound_transform(
-                wire_range, legacy_colour=not modern_static, legacy_music=legacy_pact
-            ),
-        )
-        if fw is None or hw is None:
-            basic = _basic_revision_profile(profile)
-            return (
-                replace(
-                    basic,
-                    command_operations=frozenset({"power"}),
-                    read_domains=basic.read_domains - {ReadDomain.BRIGHTNESS},
-                    setup_required_read_domains=basic.setup_required_read_domains - {ReadDomain.BRIGHTNESS},
-                )
-                if not known_pact
-                else basic
-            )
-        uploaded_scenes = fw >= FirmwareVersion((1, 1))
-        expanded_music = fw >= FirmwareVersion((1, 8))
-        workshop = uploaded_scenes and hw.identity_number() > 0
-        assert profile.effect_workflows is not None
-        profile = replace(
-            profile,
-            status_grammar="H6053" if modern_static else "H6053-legacy",
-            supports_segment_brightness=modern_static,
-            segment_count=12 if modern_static else 2,
-            segment_group_size=4 if modern_static else 2,
-            light_sources=profile.light_sources
-            if modern_static
-            else (
-                LightSource("left_bar", "left_bar_enabled", (1,)),
-                LightSource("right_bar", "right_bar_enabled", (2,)),
-            ),
-            effect_workflows=profile.effect_workflows
-            - (set() if uploaded_scenes else {"layered_scenes"})
-            - (set() if workshop else {"advanced", "workshop"}),
-            scene_command_versions=None if uploaded_scenes else frozenset(),
-            shared_scene_carriers=profile.shared_scene_carriers
-            if uploaded_scenes
-            else tuple(route for route in profile.shared_scene_carriers if route[0] == "rgb"),
-            diy_upload_transport="a1_02" if legacy_pact else "a3",
-            a1_diy_prefix=254 if legacy_pact else None,
-            music_modes=profile.music_modes if expanded_music else profile.music_modes[:4],
-            music_variants=profile.music_variants if expanded_music else profile.music_variants[:4],
-        )
-        if known_pact:
-            return profile
-        assert profile.command_operations is not None
-        return replace(
-            profile,
-            command_operations=profile.command_operations & {"power", "static", "scene", "bar_enable", "swap_bars"},
-            effect_workflows=frozenset({"native_scenes"}),
-            music_modes=(),
-            music_variants=(),
-            supports_music_color=False,
-            music_upload_before_selector=False,
-            music_requires_upload_ack=False,
-            supports_custom_effects=False,
-            supports_multi_layered_effects=False,
-            supports_advanced_effects=False,
-            advanced_diy_selector=None,
-            workshop_scene_selector=None,
-            workshop_carriers=(),
-            shared_scene_carriers=(),
-            diy_upload_transport=None,
-            a1_diy_prefix=None,
-            read_domains=profile.read_domains - {ReadDomain.BRIGHTNESS},
-            setup_required_read_domains=profile.setup_required_read_domains - {ReadDomain.BRIGHTNESS},
-        )
-    if model == "H6093":
-        revision = 0 if (pact_type, pact_code) == (1, 1) else 1 if (pact_type, pact_code) in {(1, 2), (2, 1)} else None
-        profile = get_profile(model)
-        sources = tuple(
-            source for source in profile.light_sources if revision != 0 or source.key in {"aurora", "stars"}
-        )
-        controls = (
-            profile.boolean_controls
-            if (pact_type, pact_code) == (2, 1)
-            else profile.boolean_controls - {"dreamview_laser"}
-        )
-        return replace(profile, projector_control_revision=revision, light_sources=sources, boolean_controls=controls)
-    if model == "H6139":
-        from .protocol_transforms import whole_rgb_outbound_transform
-
-        profile = get_profile(model)
-        fw, hw = FirmwareVersion.parse(firmware), FirmwareVersion.parse(hardware)
-        later = pact_type is not None and pact_code is not None and pact_type >= 10 and pact_code >= 1
-        later_music = (pact_type, pact_code) in {(10, 1), (10, 2)}
-        wire_range = None if later else (6, 254)
-        hardware_number = hw.identity_number() if hw is not None else 0
-        palette_hardware = 20100 <= hardware_number < 20200 or (
-            30000 <= hardware_number < 40000 and not 30400 <= hardware_number < 30500
-        )
-        palette_music = fw is not None and (
-            later_music and palette_hardware and fw >= FirmwareVersion((2, 4))
-            if later
-            else fw >= FirmwareVersion((1, 7))
-        )
-        music_version = 2 if palette_music else 1 if fw is not None and fw >= FirmwareVersion((1, 3)) else 0
-        modes = (
-            profile.music_modes
-            if palette_music
-            else ("dynamic", "soft")
-            if later_music or not later and music_version
-            else ("dynamic",)
-            if not later and fw is not None
-            else ()
-        )
-        authored_programmes = fw is not None and fw >= FirmwareVersion((1, 3))
-        uploaded_scenes = later or authored_programmes
-        assert profile.effect_workflows is not None
-        assert profile.command_operations is not None
-        return replace(
-            profile,
-            effect_identity_fields=frozenset({"fw_version", "hw_version"}) if later else frozenset({"fw_version"}),
-            brightness_wire_range=wire_range,
-            outbound_transform=whole_rgb_outbound_transform(
-                wire_range, legacy_colour=not later, music_version=None if later else music_version
-            ),
-            static_outbound_transform=whole_rgb_outbound_transform(
-                wire_range, legacy_colour=not later, music_version=None
-            ),
-            diy_upload_transport="a3" if later or pact_type == 10 else "a1_02",
-            command_operations=profile.command_operations - (set() if modes else {"music"}),
-            effect_workflows=profile.effect_workflows
-            - (set() if authored_programmes else {"edited_palette_scenes"})
-            - (set() if modes else {"native_music"}),
-            selector_only_scene_bits=None if uploaded_scenes else 16,
-            authored_palette_scene_selector=198 if authored_programmes else None,
-            scene_codes=None if uploaded_scenes else frozenset({4, 5, 7, 8, 9, 16, 10}),
-            music_modes=modes,
-            music_variants=tuple(
-                variant for variant in profile.music_variants if palette_music or variant.mode_code < len(modes)
-            ),
-        )
-    if model == "H6159":
-        from .protocol_transforms import whole_rgb_outbound_transform
-
-        profile = get_profile(model)
-        fw, hw = FirmwareVersion.parse(firmware), FirmwareVersion.parse(hardware)
-        later = pact_type is not None and pact_code is not None and pact_type >= 2 and pact_code >= 1
-        wire_range = None if later else (6, 254)
-        if fw is None or hw is None:
-            return _basic_revision_profile(
-                replace(
-                    profile,
-                    brightness_wire_range=wire_range,
-                    outbound_transform=whole_rgb_outbound_transform(
-                        wire_range, legacy_colour=not later, music_version=None if later else 0
-                    ),
-                    static_outbound_transform=whole_rgb_outbound_transform(
-                        wire_range, legacy_colour=not later, music_version=None
-                    ),
-                )
-            )
-        hardware_number = hw.identity_number()
-        telink = 10000 <= hardware_number < 20000
-        palette_hardware = 20100 <= hardware_number < 20200 or (
-            30000 <= hardware_number < 40000 and not 30400 <= hardware_number < 30500
-        )
-        palette_music = palette_hardware and fw >= FirmwareVersion((2, 4)) if later else fw >= FirmwareVersion((1, 7))
-        music_version = 2 if palette_music else 1 if fw >= FirmwareVersion((1, 3)) else 0
-        modes = profile.music_modes if palette_music else ("dynamic", "soft") if music_version else ("dynamic",)
-        uploaded_scenes = fw >= FirmwareVersion((1, 3))
-        mixed = fw >= FirmwareVersion((1, 2, 3))
-        assert profile.effect_workflows is not None
-        return replace(
-            profile,
-            brightness_wire_range=wire_range,
-            outbound_transform=whole_rgb_outbound_transform(
-                wire_range, legacy_colour=not later, music_version=None if later else music_version
-            ),
-            static_outbound_transform=whole_rgb_outbound_transform(
-                wire_range, legacy_colour=not later, music_version=None
-            ),
-            diy_upload_transport="a3" if later or not telink else "a1_02",
-            supports_multi_layered_effects=mixed,
-            effect_workflows=profile.effect_workflows
-            - (set() if mixed else {"multi"})
-            - (set() if uploaded_scenes else {"edited_palette_scenes"}),
-            selector_only_scene_bits=None if uploaded_scenes else 16,
-            authored_palette_scene_selector=198 if uploaded_scenes else None,
-            scene_codes=None if uploaded_scenes else frozenset({0, 1, 4, 5, 7, 8, 9}),
-            music_modes=modes,
-            music_variants=tuple(
-                variant for variant in profile.music_variants if palette_music or variant.mode_code < len(modes)
-            ),
-        )
-    if model == "H6182":
-        from .protocol_transforms import whole_rgb_outbound_transform
-
-        profile = get_profile(model)
-        fw, hw = FirmwareVersion.parse(firmware), FirmwareVersion.parse(hardware)
-        later = pact_type is not None and pact_code is not None and pact_type >= 2 and pact_code >= 1
-        telink = hw is None or 10000 <= hw.identity_number() < 20000
-        wire_range = (20, 254) if telink else None
-        profile = replace(
-            profile,
-            status_grammar="H6182-modern" if later else "H6182",
-            profile_identity_fields=profile.profile_identity_fields if later else frozenset({"hw_version"}),
-            brightness_wire_range=wire_range,
-            outbound_transform=whole_rgb_outbound_transform(
-                wire_range, legacy_colour=not later, music_version=None if later else 0
-            ),
-            static_outbound_transform=whole_rgb_outbound_transform(
-                wire_range, legacy_colour=not later, music_version=None
-            ),
-        )
-        if hw is None or later and fw is None:
-            basic = _basic_revision_profile(profile)
-            return (
-                replace(
-                    basic,
-                    command_operations=frozenset({"power"}),
-                    read_domains=basic.read_domains - {ReadDomain.BRIGHTNESS},
-                )
-                if hw is None
-                else basic
-            )
-        hardware_number = hw.identity_number()
-        palette_hardware = 20100 <= hardware_number < 20200 or (
-            30000 <= hardware_number < 40000 and not 30400 <= hardware_number < 30500
-        )
-        palette_music = later and palette_hardware and fw is not None and fw >= FirmwareVersion((2, 4))
-        modes = profile.music_modes if palette_music else ("dynamic", "soft") if later else ("dynamic",)
-        uploaded_scenes = not telink and (
-            not later or pact_code != 1 or fw is not None and fw >= FirmwareVersion((1, 3))
-        )
-        local_scenes = (
-            profile.local_scenes
-            if telink
-            else (
-                (0, "Sunrise"),
-                (1, "Sunset"),
-                (4, "Movie"),
-                (5, "Date"),
-                (7, "Romantic"),
-                (8, "Blink"),
-                (9, "Candle"),
-            )
-        )
-        assert profile.effect_workflows is not None
-        return replace(
-            profile,
-            diy_upload_transport="a3" if later else "a1_02",
-            effect_workflows=profile.effect_workflows - (set() if uploaded_scenes else {"edited_palette_scenes"}),
-            selector_only_scene_bits=None if uploaded_scenes else 8 if telink else 16,
-            authored_palette_scene_selector=198 if uploaded_scenes else None,
-            local_scenes=local_scenes,
-            scene_codes=None if uploaded_scenes else frozenset(code for code, _name in local_scenes),
-            music_modes=modes,
-            music_variants=tuple(
-                variant for variant in profile.music_variants if palette_music or variant.mode_code < len(modes)
-            ),
-            music_readback_ambiguous=later,
-        )
-    if model == "H6181":
-        profile = get_profile(model)
-        later = pact_type is not None and pact_code is not None and pact_type >= 10 and pact_code >= 1
-        if not later:
-            legacy_colour = firmware == "1.03.00" and hardware == "1.00.03"
-            return replace(
-                profile,
-                status_grammar="H6181",
-                brightness_wire_range=(20, 254),
-                outbound_transform=_h6181_legacy_colour_wire if legacy_colour else _h6181_wire,
-                diy_upload_transport="a1_02",
-                music_modes=(),
-                music_variants=(),
-                scene_codes=frozenset({0, 1, 4, 5, 7, 8, 9}),
-                selector_only_scene_bits=8,
-            )
-        fw = FirmwareVersion.parse(firmware)
-        hw = FirmwareVersion.parse(hardware)
-        percentage = (pact_type, pact_code) in {(10, 1), (10, 2)}
-        uploaded_scenes = pact_code != 1 or fw is not None and fw >= FirmwareVersion((1, 3))
-        hardware_number = hw.identity_number() if hw is not None else 0
-        palette_hardware = 20100 <= hardware_number < 20200 or (
-            30000 <= hardware_number < 40000 and not 30400 <= hardware_number < 30500
-        )
-        palette_music = palette_hardware and fw is not None and fw >= FirmwareVersion((2, 4))
-        modes = profile.music_modes if palette_music else ("dynamic", "soft")
-        return replace(
-            profile,
-            static_identity_fields=frozenset(),
-            brightness_wire_range=None if percentage else (20, 254),
-            outbound_transform=None if percentage else _h6181_wire,
-            music_modes=modes if percentage else (),
-            music_variants=tuple(
-                variant
-                for variant in profile.music_variants
-                if percentage and (palette_music or variant.mode_code in (0, 1))
-            ),
-            selector_only_scene_bits=None if uploaded_scenes else 16,
-            scene_codes=None if uploaded_scenes else frozenset({0, 1, 4, 5, 7, 8, 9, 10, 16}),
-        )
-    if model == "H60B0":
-        profile = get_profile(model)
-        if pact_type == 1 and pact_code in {1, 2, 3}:
-            return replace(
-                profile,
-                native_effect_revision=pact_code,
-                exclusive_source_groups=(frozenset({"top_enabled", "bottom_enabled"}),) if pact_code == 1 else (),
-            )
-        return _basic_revision_profile(profile)
-    if model == "H705A":
-        profile = get_profile(model)
-        assert profile.command_operations is not None
-        installation = (
-            {"refresh_ic"}
-            if (pact_type, pact_code) == (1, 1)
-            else {"configured_strings"}
-            if (pact_type, pact_code) == (1, 2)
-            else set()
-        )
-        return replace(
-            profile,
-            command_operations=(profile.command_operations - {"configured_strings", "refresh_ic"}) | installation,
-            supports_ic_refresh="refresh_ic" in installation,
-            configured_string_counts=profile.configured_string_counts if "configured_strings" in installation else (),
-        )
-    if model == "H605C":
-        profile = get_profile(model)
-        if (pact_type, pact_code) == (1, 2):
-            return replace(
-                profile,
-                dreamview_grammar="H6099",
-                dreamview_operations=profile.dreamview_operations | {"same_brightness"},
-                dreamview_reads=profile.dreamview_reads | {"same_brightness"},
-                dreamview_max_sub_devices=7,
-                dreamview_requires_group_ack=False,
-            )
-        if (pact_type, pact_code) != (1, 1):
-            return replace(profile, dreamview_operations=frozenset(), dreamview_reads=frozenset())
+    """Resolve exact-product capabilities from its declared revision policy."""
+    profile = get_profile(model)
+    if model not in MODEL_PROFILES or profile.revision_policy is None:
         return profile
-    if model == "H8604":
-        profile = get_profile(model)
-        if (pact_type, pact_code) in {(1, 1), (2, 1), (3, 1)}:
-            return profile
-        return _basic_revision_profile(profile)
-    if model in {"H6046", "H607C", "H6097", "H61E5", "H7020"}:
-        profile = get_profile(model)
-        if (pact_type, pact_code) in _STANDARD_PACTS or (model == "H607C" and (pact_type, pact_code) == (2, 2)):
-            return profile
-        return _basic_revision_profile(profile)
-    if model in {"H60A1", "H60A6"}:
-        profile = get_profile(model)
-        if model == "H60A6" and not (
-            (pact_type, pact_code) in _H60A6_NATIVE_CONTROL_PACTS
-            or (pact_type, pact_code, hardware, firmware)
-            == (None, None, _H60A_SEGMENTED_HARDWARE, _H60A6_SEGMENTED_FIRMWARE)
-        ):
-            profile = replace(profile, boolean_controls=frozenset(), supports_power_on_behaviour=False)
-        if model == "H60A6" and (pact_type, pact_code) == (1, 1):
-            from .protocol_transforms import h60a6_legacy_outbound_transform
-
-            return replace(
-                profile,
-                segment_count=1,
-                supports_rgb=True,
-                supports_color_temperature=True,
-                outbound_transform=h60a6_legacy_outbound_transform,
-            )
-        hw = FirmwareVersion.parse(hardware)
-        # Hardware from 1.04.03 has a 2700 K floor; older hardware 2200 K. Unknown keeps the higher floor.
-        if model == "H60A1" and hw is not None and hw.identity_number() < 10403:
-            profile = replace(profile, color_temp_range=KELVIN_RANGE_2200_6500)
-        # The owner tuple qualifies absent Pact metadata, never a contradictory topology.
-        segmented = (
-            ((pact_type, pact_code) in _STANDARD_PACTS)
-            if model == "H60A1"
-            else (pact_type == 1 and type(pact_code) is int and pact_code >= 2)
-        )
-        known_firmware = _H60A1_SEGMENTED_FIRMWARE if model == "H60A1" else _H60A6_SEGMENTED_FIRMWARE
-        if (pact_type, pact_code) == (None, None):
-            segmented = (hardware, firmware) == (_H60A_SEGMENTED_HARDWARE, known_firmware)
-        if segmented:
-            return replace(
-                profile,
-                supports_rgb=True,
-                supports_color_temperature=True,
-                supports_segment_writes=True,
-                supports_segment_color_temperature=model == "H60A6",
-                read_domains=profile.read_domains | {ReadDomain.SEGMENTS},
-            )
-        return profile
-    if model == "H61F5":
-        profile = get_profile(model)
-        return (
-            replace(profile, color_temp_range=KELVIN_RANGE_1000_10000) if (pact_type, pact_code) == (4, 1) else profile
-        )
-    if model == "H617A":
-        fw, hw = FirmwareVersion.parse(firmware), FirmwareVersion.parse(hardware)
-        modern_firmware = fw is not None and fw >= FirmwareVersion((1, 6))
-        return replace(
-            get_profile(model),
-            rgbic_scene_v0=not modern_firmware or hw is None or hw < FirmwareVersion((1, 0, 3)),
-            scene_command_versions=frozenset({0, 1})
-            if modern_firmware and hw is not None and hw >= FirmwareVersion((1, 0, 2))
-            else frozenset({0}),
-        )
-    if model == "H619A":
-        from .protocol_transforms import rgb_only_segment_query_transform
-
-        fw, hw = FirmwareVersion.parse(firmware), FirmwareVersion.parse(hardware)
-        modern = (
-            fw is not None and hw is not None and fw >= FirmwareVersion((1, 6)) and hw >= FirmwareVersion((1, 0, 2))
-        )
-        profile = get_profile(model)
-        return replace(
-            profile,
-            status_grammar="H619A" if modern else "H619A-legacy",
-            segment_group_size=3 if modern else 4,
-            status_query_transform=None if modern else rgb_only_segment_query_transform,
-            rgbic_scene_v0=not modern,
-            read_domains=profile.read_domains
-            if fw is not None and hw is not None
-            else profile.read_domains - {ReadDomain.SEGMENTS},
-        )
-    if model == "H618A":
-        from .protocol_transforms import rgb_only_segment_query_transform
-
-        fw, hw = FirmwareVersion.parse(firmware), FirmwareVersion.parse(hardware)
-        modern = (
-            fw is not None and hw is not None and fw >= FirmwareVersion((1, 6)) and hw >= FirmwareVersion((1, 0, 2))
-        )
-        modern_readback = modern or (pact_type, pact_code) == (3, 1) and hw is not None and hw >= FirmwareVersion((3,))
-        pact3_readback = modern_readback and not modern and (pact_type, pact_code) == (3, 1)
-        return replace(
-            get_profile(model),
-            status_grammar="H618A-pact3" if pact3_readback else "H618A" if modern else "H618A-legacy",
-            segment_group_size=4 if pact3_readback or not modern_readback else 3,
-            status_query_transform=None if modern_readback else rgb_only_segment_query_transform,
-            rgbic_scene_v0=not modern,
-            scene_command_versions=frozenset({0, 1}) if modern else frozenset({0}),
-            read_domains=get_profile(model).read_domains
-            if fw is not None and hw is not None
-            else get_profile(model).read_domains - {ReadDomain.SEGMENTS},
-        )
-    if model == "H6199":
-        profile = H6199_PACT1_PROFILE if (pact_type, pact_code) == (1, 1) else get_profile(model)
-        if (pact_type, pact_code) not in _H6199_DREAMVIEW_PACTS:
-            return replace(profile, dreamview_operations=frozenset(), dreamview_reads=frozenset())
-        fw, hw = FirmwareVersion.parse(firmware), FirmwareVersion.parse(hardware)
-        if fw is None or hw is None or fw < FirmwareVersion((1, 9)) or hw < FirmwareVersion((3, 2, 1)):
-            if "same_brightness" not in profile.dreamview_operations:
-                return profile
-            return replace(
-                profile,
-                dreamview_operations=profile.dreamview_operations - {"same_brightness"},
-                dreamview_reads=profile.dreamview_reads - {"same_brightness"},
-            )
-        if "same_brightness" not in profile.dreamview_operations:
-            return replace(
-                profile,
-                dreamview_operations=profile.dreamview_operations | {"same_brightness"},
-                dreamview_reads=profile.dreamview_reads | {"same_brightness"},
-            )
-        return profile
-    if model == "H6072":
-        return _h6072_profile(pact_type, pact_code, firmware, hardware)
-    if model == "H6076":
-        return _h6076_profile(pact_type, pact_code, firmware)
-    if model == "H6179":
-        profile = get_profile(model)
-        if pact_type is None or pact_code is None:
-            return replace(
-                profile,
-                diy_upload_transport=None,
-                supports_custom_effects=False,
-                supports_multi_layered_effects=False,
-                boolean_controls=frozenset(),
-                restarting_boolean_controls=frozenset(),
-            )
-        if pact_type >= 10 and pact_code >= 1:
-            return replace(
-                profile,
-                diy_upload_transport="a3",
-                boolean_controls=frozenset(),
-                restarting_boolean_controls=frozenset(),
-            )
-        return profile
-    if model == "H6117":
-        return _h6117_profile(pact_type, pact_code, firmware, hardware)
-    if model == "H6125":
-        return _h6125_profile(pact_type, pact_code, firmware, hardware)
-    if model == "H6127":
-        return _h6127_profile(pact_type, pact_code, firmware, hardware)
-    if model == "H6102":
-        from .h6102_capabilities import resolve_h6102_capabilities
-
-        return resolve_h6102_capabilities(
-            firmware,
-            firmware_source if firmware_source is not None else "ble" if firmware is not None else None,
-            hardware=hardware,
+    policy = _MODEL_REVISION_POLICIES.get(profile.revision_policy)
+    if policy is None:
+        raise ValueError("unknown model revision policy")
+    return policy(
+        ModelRevisionContext(
+            model=model,
             pact_type=pact_type,
             pact_code=pact_code,
-        ).profile
-    return get_profile(model)
+            firmware=firmware,
+            firmware_source=firmware_source,
+            hardware=hardware,
+        )
+    )
 
 
 def light_unique_id(address: str, source: str | None = None) -> str:
@@ -4988,7 +5558,9 @@ def model_from_ble_name(name: str) -> str | None:
 def protocol_model(model: str) -> str | None:
     """Resolve legacy runtime policy identity, not effect-grammar compatibility."""
     resolved = resolve_model(model)
-    return "H617A" if resolved in {"H6022", "H617A", "H617C", "H617E", "H617F"} else resolved
+    if resolved is None:
+        return None
+    return MODEL_PROFILES[resolved].protocol_identity or resolved
 
 
 def get_profile(model: str) -> ModelProfile:

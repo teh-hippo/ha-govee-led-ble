@@ -3,7 +3,7 @@
 from collections.abc import Iterable
 from typing import Any
 
-from .const import ModelProfile, ReadDomain, get_profile
+from .const import ModelProfile, ReadDomain, VideoRevisionPolicy, get_profile
 from .effect_contracts import CapabilityState
 from .effect_domain import VideoProfile
 from .firmware_version import FirmwareVersion
@@ -28,28 +28,30 @@ def video_identity_fields(profile: ModelProfile, controls: Iterable[str] | None 
                 for condition in profile.video_firmware_conditions
                 if condition.control == target
             )
-    if profile.video_revision_policy == "H6199" and (requested is None or requested):
-        fields |= {"fw_version", "hw_version", "subordinate_20_version", "subordinate_21_version"}
+    if profile.video_revision_policy is VideoRevisionPolicy.QUALIFIED_CAMERA and (requested is None or requested):
+        assert profile.camera_control_policy is not None
+        fields |= frozenset(profile.camera_control_policy.identity_fields)
     return fields
 
 
-def h6199_camera_controls_state(model: str, identity: object) -> CapabilityState:
-    """Installation/status controls qualified only on the qualified H6199 revision.
+def camera_controls_state(profile: ModelProfile, identity: object) -> CapabilityState:
+    """Installation/status controls qualified only by the profile's exact camera revision.
 
     Other revisions remain unqualified, not inferred compatible or incompatible.
     """
-    if model != "H6199":
+    policy = profile.camera_control_policy
+    if policy is None:
         return CapabilityState.UNSUPPORTED
-    versions = tuple(
-        identity_version(getattr(identity, field, None))
-        for field in ("fw_version", "hw_version", "subordinate_20_version", "subordinate_21_version")
-    )
-    qualified = (11004, 30201, 10300, 10033)
+    versions = tuple(identity_version(getattr(identity, field, None)) for field in policy.identity_fields)
     pact = (getattr(identity, "pact_type", None), getattr(identity, "pact_code", None))
-    return CapabilityState.SUPPORTED if versions == qualified and pact == (2, 1) else CapabilityState.EVIDENCE_GAP
+    return (
+        CapabilityState.SUPPORTED
+        if versions == policy.qualified_versions and pact == policy.qualified_pact
+        else CapabilityState.EVIDENCE_GAP
+    )
 
 
-def _h6199_video_states(identity: object) -> dict[str, CapabilityState]:
+def _qualified_camera_video_states(identity: object) -> dict[str, CapabilityState]:
     # 0x20 is Wi-Fi hardware, 0x21 Wi-Fi firmware; the minimum is 1.00.30.
     fw, hw, wifi_hw, wifi_fw = (
         identity_version(getattr(identity, field, None))
@@ -133,8 +135,8 @@ def white_balance_readback_state(profile: ModelProfile, identity: object) -> Cap
 def _apply_video_conditions(
     profile: ModelProfile, identity: object, states: dict[str, CapabilityState]
 ) -> dict[str, CapabilityState]:
-    if profile.video_revision_policy == "H6199":
-        for control, state in _h6199_video_states(identity).items():
+    if profile.video_revision_policy is VideoRevisionPolicy.QUALIFIED_CAMERA:
+        for control, state in _qualified_camera_video_states(identity).items():
             if states.get(control) is CapabilityState.SUPPORTED:
                 states[control] = state
     for control, initial in tuple(states.items()):
@@ -254,7 +256,7 @@ def require_video_mode(profile: ModelProfile, identity: object) -> None:
     state = "unknown"
     if profile.can_read(ReadDomain.CAMERA_HEALTH):
         state = getattr(identity, "camera_health", "unknown")
-    elif h6199_camera_controls_state(getattr(identity, "model", ""), identity) is CapabilityState.SUPPORTED:
+    elif camera_controls_state(profile, identity) is CapabilityState.SUPPORTED:
         state = getattr(identity, "camera_status", "unknown")
     if state in {"absent", "incompatible"}:
         raise CameraUnavailableError(state)
