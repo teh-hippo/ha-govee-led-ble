@@ -548,7 +548,7 @@ class GoveeBLECoordinator(
         """Register BLE presence tracking once, before the first refresh (HA idiom)."""
         self._present = bluetooth.async_address_present(self.hass, self.address, connectable=True)
         self._note_advertisement(bluetooth.async_last_service_info(self.hass, self.address, connectable=True))
-        if self._tracks_pact_identity:
+        if self._monitors_pact_identity:
             self._refresh_h607c_advertisements()
         unsubs = [
             bluetooth.async_register_callback(
@@ -559,7 +559,7 @@ class GoveeBLECoordinator(
             ),
             bluetooth.async_track_unavailable(self.hass, self._async_on_unavailable, self.address, connectable=True),
         ]
-        if self._tracks_pact_identity:
+        if self._monitors_pact_identity:
             register_all = getattr(bluetooth, "async_register_advertisement_callback", None)
             if register_all is not None:
                 unsubs.append(register_all(self.hass, self._async_on_h607c_advertisement, self.address))
@@ -583,7 +583,7 @@ class GoveeBLECoordinator(
         previous_pact = self.pact_type, self.pact_code
         was_present = self._present
         self._note_advertisement(_service_info)
-        if self._tracks_pact_identity and getattr(_service_info, "source", None) is not None:
+        if self._monitors_pact_identity and getattr(_service_info, "source", None) is not None:
             self._refresh_h607c_advertisements()
         self._set_present(True)
         if was_present and previous_pact != (self.pact_type, self.pact_code):
@@ -778,6 +778,12 @@ class GoveeBLECoordinator(
     @property
     def identity_gated_controls(self) -> bool:
         return get_profile(self.model).requires_qualified_identity
+
+    @property
+    def _monitors_pact_identity(self) -> bool:
+        declared = get_profile(self.model)
+        recovery_fields = declared.static_recovery_identity_fields or frozenset()
+        return self.identity_gated_controls or declared.reconciles_marker_pact or "pact" in recovery_fields
 
     @property
     def _tracks_pact_identity(self) -> bool:
