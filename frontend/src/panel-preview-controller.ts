@@ -68,6 +68,15 @@ export class PanelPreviewController {
   });
   public constructor(private readonly model: PanelModel) {}
 
+  public get ready(): boolean {
+    return this.session?.ready === true;
+  }
+
+  public canOpen(api: EffectStudioApi): boolean {
+    return typeof api.subscribePreview === "function" &&
+      typeof api.closePreviewSession === "function";
+  }
+
   public async open(
     api: EffectStudioApi,
     subscriptionFailed: (error: Error) => void,
@@ -294,7 +303,9 @@ export class PanelPreviewController {
       this.model.selectedDeviceId,
       this.model.name.trim() || "Live preview",
       this.model.content,
-      this.model.autoSaveEnabled && this.model.builtInDefaultDirty,
+      this.model.isAdmin &&
+        this.model.autoSaveEnabled &&
+        this.model.builtInDefaultDirty,
       editorSnapshotProvenance(this.model.editorSource),
       this.model.h6179DiyCode,
     );
@@ -415,7 +426,7 @@ export class PanelPreviewController {
   private get canPreview(): boolean {
     return (
       isEditableEffectContent(this.model.content) &&
-      this.model.isAdmin &&
+      this.model.canControlSelectedDevice &&
       !this.model.deletingCurrentItem &&
       this.model.previewCapability === "supported" &&
       (!this.model.h6179DiyCodeRequired ||

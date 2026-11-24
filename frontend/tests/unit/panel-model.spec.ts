@@ -6,6 +6,36 @@ import { decodeCustomCatalogue, decodeDevices, decodeEffectContent } from "../..
 import type { HomeAssistant, MusicProfileContent } from "../../src/types";
 import { device, painted, videoProfile, installH6199Catalogue, item, flowWorkspaceDevice, installFlowCatalogue } from "./panel-test-support";
 
+test("selected-device control is independent from administrator status", () => {
+  const model = new PanelModel(() => undefined);
+  const target = device("controlled", "H617A");
+  installH6199Catalogue(model);
+  model.devices = [target];
+  model.selectedDeviceId = target.config_entry_id;
+  target.static_composition = true;
+  model.content = {
+    kind: "static_rgb",
+    segments: Array.from({ length: target.segment_count }, () => [1, 2, 3]),
+    rgb_scale: 100,
+  };
+  model.editorSource = {
+    kind: "new",
+    owner: { section: "custom", category: "single-layer" },
+  };
+  model.liveApplyEnabled = false;
+
+  expect(model.isAdmin).toBe(false);
+  expect(model.editorReadOnly).toBe(false);
+  expect(model.editorAction("apply")?.enabled).toBe(true);
+  expect(model.editorActions.some(action =>
+    (action.id === "save" || action.id === "saveAs") && action.enabled,
+  )).toBe(false);
+
+  target.can_control = false;
+  expect(model.editorReadOnly).toBe(true);
+  expect(model.editorAction("apply")?.enabled).toBe(false);
+});
+
 test.each(["workshop_rgb", "workshop_rgbic_v2", "shared_scene_rgb", "shared_scene_rgbic_v1"] as const)("retained %s content remains applicable and lossless without a fabricated body editor", (kind) => {
   const model = new PanelModel(() => undefined);
   const target = device("retained", "H6053");

@@ -422,6 +422,20 @@ test("unknown content remains opaque and preserves its wire form", () => {
 });
 
 describe("focused response mutations", () => {
+  test("device permissions are required booleans", () => {
+    const missing = structuredClone(responses.devices) as JsonObject[];
+    delete missing[0].can_control;
+    expect(() => decodeDevices(missing)).toThrow(
+      "devices[0].can_control must be a boolean",
+    );
+
+    const invalid = structuredClone(responses.devices) as JsonObject[];
+    invalid[0].can_read = "yes";
+    expect(() => decodeDevices(invalid)).toThrow(
+      "devices[0].can_read must be a boolean",
+    );
+  });
+
   test("device entity references tolerate old payloads and reject non-light IDs", () => {
     const oldPayload = structuredClone(responses.devices) as JsonObject[];
     delete oldPayload[0].light_entity_id;

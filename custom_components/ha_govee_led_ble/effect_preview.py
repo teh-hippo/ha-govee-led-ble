@@ -272,6 +272,8 @@ class _PreviewRequest:
     default_action: str | None = None
     admission: PreviewAdmission | None = None
     compiled: CompiledApplication | None = None
+    control_guard: Callable[[], None] | None = None
+    default_guard: Callable[[], None] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -359,6 +361,8 @@ class _PreviewWriter:
         self.completed = False
 
     async def begin(self) -> None:
+        if self._request.control_guard is not None:
+            self._request.control_guard()
         if not self.started:
             await self._manager._async_begin_transmission(self._request, self._health_target)
             self.started = True
@@ -372,6 +376,8 @@ class _PreviewWriter:
         expected_values: Mapping[str, Any] | None = None,
         on_write: Callable[[], None] | None = None,
     ) -> None:
+        if self._request.control_guard is not None:
+            self._request.control_guard()
         await self.begin()
         if self._manager._stopping or self._manager._hass.is_stopping:
             raise PreviewShutdownError("Home Assistant is stopping")
@@ -575,8 +581,14 @@ class EffectPreviewManager:
         item: LibraryItem,
         persist_default: bool = False,
         diy_code: int | None = None,
+        control_guard: Callable[[], None] | None = None,
+        default_guard: Callable[[], None] | None = None,
     ) -> PreviewAcceptance:
         session = self.ensure_session(session_id, owner)
+        if control_guard is not None:
+            control_guard()
+        if persist_default and default_guard is not None:
+            default_guard()
         coordinator = self._loaded_coordinator(config_entry_id)
         session_cancellation_generation = session.cancellation_generation
         device_cancellation_generation = session.device_cancellation_generations.get(config_entry_id, 0)
@@ -625,6 +637,8 @@ class EffectPreviewManager:
             item=item,
             diy_code=diy_code,
             compiled=compiled,
+            control_guard=control_guard,
+            default_guard=default_guard,
             default_action=(
                 _snapshot_default_action(item, coordinator.model, profile=coordinator.profile)
                 if persist_default
@@ -645,8 +659,14 @@ class EffectPreviewManager:
         effect_id: int,
         speed_index: int | None,
         persist_default: bool = False,
+        control_guard: Callable[[], None] | None = None,
+        default_guard: Callable[[], None] | None = None,
     ) -> PreviewAcceptance:
         session = self.ensure_session(session_id, owner)
+        if control_guard is not None:
+            control_guard()
+        if persist_default and default_guard is not None:
+            default_guard()
         coordinator = self._loaded_coordinator(config_entry_id)
         session_cancellation_generation = session.cancellation_generation
         device_cancellation_generation = session.device_cancellation_generations.get(config_entry_id, 0)
@@ -708,6 +728,8 @@ class EffectPreviewManager:
                 if persist_default
                 else None
             ),
+            control_guard=control_guard,
+            default_guard=default_guard,
         )
         return await self._async_accept(owner, request, preparation_generation=preparation_generation)
 
@@ -1257,11 +1279,15 @@ class EffectPreviewManager:
             self._degrade_checking_health(request.config_entry_id)
             return
         try:
+            if request.control_guard is not None:
+                request.control_guard()
             await coordinator.async_preview_preflight(timeout=self._connect_timeout)
             async with (
                 async_control_intent(coordinator, ControlIntent.PREVIEW),
                 coordinator.async_mode_transition(purpose=ModeTransitionPurpose.PREVIEW) as transition,
             ):
+                if request.control_guard is not None:
+                    request.control_guard()
                 await self._async_prepare_execution(coordinator, compiled)
                 await self._async_prepare_recovery(request, coordinator, compiled)
                 writer = _PreviewWriter(self, request, coordinator, health_target)
@@ -1348,6 +1374,8 @@ class EffectPreviewManager:
             if workspace is not None and self._active_workspaces is not None:
                 self._active_workspaces.set(workspace)
             if request.persist_default:
+                if request.default_guard is not None:
+                    request.default_guard()
                 await self._async_persist_built_in_default(request)
         except Exception as exc:
             self._diagnostics.record(
@@ -1580,6 +1608,8 @@ class EffectPreviewManager:
             packets.insert(0, build_power(True, coordinator.model))
 
         async def before_final() -> None:
+            if request.control_guard is not None:
+                request.control_guard()
             if not await self._async_request_is_current(request):
                 raise _PreviewSupersededError
 

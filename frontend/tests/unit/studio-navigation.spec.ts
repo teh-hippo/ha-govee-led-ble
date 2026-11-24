@@ -20,6 +20,8 @@ const device = (
 ): DeviceCapabilities => ({
   config_entry_id: id,
   light_entity_id: `light.${id}`,
+  can_read: true,
+  can_control: true,
   model: "H617A",
   support_quality: "supported",
   display_name: id,

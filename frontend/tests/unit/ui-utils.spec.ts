@@ -24,6 +24,8 @@ function device(lightEntityId: string | null): DeviceCapabilities {
   return {
     config_entry_id: "entry-a",
     light_entity_id: lightEntityId,
+    can_read: true,
+    can_control: true,
     model: "H617A",
     support_quality: "supported",
     display_name: "Test Light",

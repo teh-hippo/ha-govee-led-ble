@@ -231,7 +231,12 @@ export class PanelController {
       ) {
         return;
       }
-      if (isAdmin) {
+      if (
+        this.model.canControlSelectedDevice &&
+        this.model.interactiveEffectsAvailable &&
+        this.preview.canOpen(api) &&
+        !this.preview.ready
+      ) {
         const opened = await this.preview.open(api, (error) => this.subscriptionFailed(error, request));
         if (
           !opened ||
@@ -307,6 +312,21 @@ export class PanelController {
       await this.subscribeSelectedDevice(api);
     }
     if (!isCurrent()) return;
+    if (
+      api &&
+      this.model.canControlSelectedDevice &&
+      this.model.interactiveEffectsAvailable &&
+      this.preview.canOpen(api) &&
+      !this.preview.ready
+    ) {
+      const opened = await this.preview.open(api, (error) => {
+        if (isCurrent()) this.stateUpdatesFailed(error);
+      });
+      if (!opened || !isCurrent()) {
+        this.preview.dispose();
+        return;
+      }
+    }
     this.options.replacePath(editorDevicePath(selectedDeviceId));
     try {
       const userState = await api?.updateUserState(
@@ -995,6 +1015,7 @@ export class PanelController {
       this.model.name.trim(),
       !saveWork && this.model.editorSource.kind === "new",
       returnFocus,
+      this.model.isAdmin,
     );
     return false;
   }
@@ -1029,7 +1050,7 @@ export class PanelController {
     const pending = this.pendingTransition;
     const updatesGeneration = this.stateUpdatesGeneration;
     const dialog = this.model.pendingTransitionDialog;
-    if (!pending || !dialog || dialog.busy) {
+    if (!pending || !dialog || dialog.busy || !dialog.canSave || !this.model.isAdmin) {
       return;
     }
     const name = dialog.saveName.trim();
@@ -1234,7 +1255,7 @@ export class PanelController {
     if (this.model.liveApplyEnabled) {
       this.preview.toggle(scene);
       this.model.rememberLiveApplyChoice();
-      if (this.model.autoSaveEnabled) {
+      if (this.model.isAdmin && this.model.autoSaveEnabled) {
         if (
           this.model.builtInDefaultSource &&
           this.model.builtInDefaultDirty
@@ -1282,7 +1303,7 @@ export class PanelController {
     if (
       !api ||
       !device ||
-      !this.model.isAdmin ||
+      !this.model.canControlSelectedDevice ||
       this.model.previewCapability !== "supported" ||
       this.model.liveApplyEnabled ||
       this.model.stateUpdatesUnavailable ||
@@ -2060,7 +2081,7 @@ export class PanelController {
     const api = this.api;
     const document = this.currentEditorDocument();
     const selectedItem = this.model.currentItem;
-    if (!api || !device) {
+    if (!api || !device || !this.model.canControlSelectedDevice) {
       return false;
     }
     if (device.effect_compatibilities === undefined &&

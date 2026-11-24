@@ -53,6 +53,7 @@ export interface PendingTransitionDialog {
   primaryLabel: "Save" | "Save As";
   saveName: string;
   requiresName: boolean;
+  canSave: boolean;
   busy: boolean;
   error?: string;
 }
@@ -271,6 +272,10 @@ export class PanelModel {
     );
   }
 
+  public get canControlSelectedDevice(): boolean {
+    return this.selectedDevice?.can_control === true;
+  }
+
   public get selectedModel(): ModelSku | undefined {
     return this.selectedDevice?.model;
   }
@@ -364,7 +369,7 @@ export class PanelModel {
   }
 
   public get editorReadOnly(): boolean {
-    return !this.isAdmin || this.stateUpdatesUnavailable;
+    return !this.canControlSelectedDevice || this.stateUpdatesUnavailable;
   }
 
   public get editorOwnedByActiveView(): boolean {
@@ -465,6 +470,10 @@ export class PanelModel {
     );
   }
 
+  public get interactiveEffectsAvailable(): boolean {
+    return this.scenesAvailable || this.videoAvailable || this.customEffectsAvailable;
+  }
+
   public get customEffectListContext(): CustomEffectListContext {
     return {
       model: this.selectedModel,
@@ -560,7 +569,7 @@ export class PanelModel {
         canApply:
           isEditableEffectContent(this.content) &&
           this.previewCapability === "supported" &&
-          this.isAdmin &&
+          this.canControlSelectedDevice &&
           !this.stateUpdatesUnavailable &&
           (!this.h6179DiyCodeRequired ||
             this.h6179DiyCode !== undefined),

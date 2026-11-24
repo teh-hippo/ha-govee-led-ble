@@ -405,7 +405,7 @@ export class PanelEditorController {
     }
     if (existingTransitionEpoch === undefined) this.beginTransition();
     if (
-      !this.options.apiReady() || !this.model.isAdmin || !this.model.customEffectKindAvailable(kind) ||
+      !this.options.apiReady() || !this.model.canControlSelectedDevice || !this.model.customEffectKindAvailable(kind) ||
       (kind !== "advanced" && kind !== "static_rgb" && !this.model.modelCatalogue)
     ) return;
     const content = initial?.content ?? (
@@ -528,7 +528,7 @@ export class PanelEditorController {
     catalogue_content?: LayeredSceneContent | import("./types").NativeEffectContent;
     has_default?: boolean;
   }): void {
-    if (!this.model.isAdmin || detail.config_entry_id !== this.model.selectedDeviceId) return;
+    if (!this.model.canControlSelectedDevice || detail.config_entry_id !== this.model.selectedDeviceId) return;
     this.beginTransition();
     this.model.patch({
       currentItem: detail.item,
@@ -764,7 +764,7 @@ export class PanelEditorController {
   private switchCustomMode(kind: CustomEffectContent["kind"], schedulePreview = true): void {
     const catalogue = this.model.modelCatalogue;
     if (
-      !this.model.isAdmin || !catalogue || !isCustomEffectContent(this.model.content) ||
+      !this.model.canControlSelectedDevice || !catalogue || !isCustomEffectContent(this.model.content) ||
       this.model.content.kind === kind
     ) return;
     const current = this.model.content;

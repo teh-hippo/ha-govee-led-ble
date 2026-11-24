@@ -653,7 +653,7 @@ export class SceneBrowserWorkflow {
     return true;
   }
 
-  public async applyCurrent(isAdmin: boolean): Promise<boolean> {
+  public async applyCurrent(canControl: boolean): Promise<boolean> {
     const { content, selectedItem, selectedScene, speedIndex } =
       this.stateValue;
     if (
@@ -662,7 +662,7 @@ export class SceneBrowserWorkflow {
       !this.device ||
       !content ||
       !selectedScene ||
-      !isAdmin ||
+      !canControl ||
       this.stateValue.applying ||
       this.stateValue.saving ||
       !this.hasCurrentSceneContent()
@@ -700,7 +700,7 @@ export class SceneBrowserWorkflow {
     }
   }
 
-  public async resetToCatalogue(isAdmin: boolean): Promise<void> {
+  public async resetToCatalogue(canControl: boolean): Promise<void> {
     const {
       catalogueContent,
       selectedItem,
@@ -713,7 +713,7 @@ export class SceneBrowserWorkflow {
       selectedItem !== undefined ||
       this.stateValue.editingCopy ||
       !this.sceneCatalogueDirty ||
-      !isAdmin ||
+      !canControl ||
       !this.hasCurrentSceneContent()
     ) {
       return;
@@ -861,9 +861,9 @@ export class SceneBrowserWorkflow {
     await this.refreshSelectedDefault();
   }
 
-  public edit(isAdmin: boolean): SceneEditSelection | undefined {
+  public edit(canControl: boolean): SceneEditSelection | undefined {
     const { content, selectedItem, selectedScene } = this.stateValue;
-    if (!isAdmin || !selectedScene || !this.hasCurrentSceneContent()) {
+    if (!canControl || !selectedScene || !this.hasCurrentSceneContent()) {
       return undefined;
     }
     if (!selectedItem && selectedScene.selector_only) {

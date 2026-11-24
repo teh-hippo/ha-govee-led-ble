@@ -21,6 +21,8 @@ export function device(
   return {
     config_entry_id: id,
     light_entity_id: `light.${id}`,
+    can_read: true,
+    can_control: true,
     model,
     support_quality: "supported",
     display_name: id,

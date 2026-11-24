@@ -219,8 +219,26 @@ test("pending transitions save named new drafts directly", async () => {
   });
 });
 
+test("controlling non-admin transitions discard local work without a save action", async () => {
+  const model = new PanelModel(() => undefined);
+  model.liveApplyEnabled = false;
+  model.devices = [device("entry-a", "H617A")];
+  model.selectedDeviceId = "entry-a";
+  installH6199Catalogue(model);
+  const { controller, editorController } = panelControllerHarness(model);
+  editorController.newEffect("advanced");
+  model.name = "Local draft";
+
+  await controller.requestTransition(() => undefined);
+
+  expect(model.pendingTransitionDialog?.canSave).toBe(false);
+  await controller.savePendingTransition();
+  expect(model.pendingTransitionDialog?.busy).toBe(false);
+});
+
 test("scene-owned transitions use the scene save continuation", async () => {
   const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
   model.sceneWorkDirty = true;
   const { controller } = panelControllerHarness(model);
   const execute = vi.fn();

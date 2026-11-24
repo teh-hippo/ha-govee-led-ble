@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from functools import partial
 from typing import Any, cast
 from uuid import UUID
 
 from bleak.exc import BleakError
+from homeassistant.auth.permissions.const import POLICY_CONTROL, POLICY_READ
 from homeassistant.components import websocket_api
 from homeassistant.components.websocket_api.connection import ActiveConnection
 from homeassistant.components.websocket_api.decorators import (
@@ -17,7 +19,7 @@ from homeassistant.components.websocket_api.decorators import (
 )
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, Unauthorized
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.event import async_call_later
 from homeassistant.loader import async_get_integration
@@ -154,6 +156,13 @@ PREVIEW_TARGET_UNAVAILABLE_CODE = "preview_target_unavailable"
 _LOGGER = logging.getLogger(__name__)
 
 
+@dataclass(frozen=True, slots=True)
+class _StudioDeviceAccess:
+    light_entity_id: str | None
+    can_read: bool
+    can_control: bool
+
+
 @websocket_command({vol.Required("type"): WS_INFO})
 @async_response
 async def ws_editor_info(
@@ -172,13 +181,16 @@ async def ws_editor_devices(
     connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    entries = [
-        entry
-        for entry in hass.config_entries.async_entries(DOMAIN)
-        if entry.state is ConfigEntryState.LOADED
-        and supported_effect_categories(entry.runtime_data.model, profile=entry.runtime_data.profile)
-    ]
-    if len(entries) > MAX_EDITOR_DEVICES:
+    visible: list[tuple[ConfigEntry[Any], _StudioDeviceAccess]] = []
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        if entry.state is not ConfigEntryState.LOADED or not supported_effect_categories(
+            entry.runtime_data.model, profile=entry.runtime_data.profile
+        ):
+            continue
+        access = _studio_device_access(hass, connection, entry)
+        if access.can_read:
+            visible.append((entry, access))
+    if len(visible) > MAX_EDITOR_DEVICES:
         _send_error(
             hass,
             connection,
@@ -188,7 +200,7 @@ async def ws_editor_devices(
         )
         return
     backend = _backend(hass)
-    devices = [_device_payload(hass, backend, entry) for entry in entries]
+    devices = [_device_payload(hass, backend, entry, access) for entry, access in visible]
     connection.send_result(msg["id"], {"devices": devices})
 
 
@@ -205,10 +217,10 @@ async def ws_editor_device(
     connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    entry = hass.config_entries.async_get_entry(msg["config_entry_id"])
-    if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
-        _send_error(hass, connection, msg, "not_found", "target config entry is not loaded")
+    authorized = _loaded_entry_with_access(hass, connection, msg, POLICY_READ)
+    if authorized is None:
         return
+    entry, access = authorized
     if "content" in msg:
         from .effect_application import EffectStudioApplication, effect_compatibility_payload
 
@@ -224,7 +236,7 @@ async def ws_editor_device(
         return
     connection.send_result(
         msg["id"],
-        {"device": _device_payload(hass, _backend(hass), entry)},
+        {"device": _device_payload(hass, _backend(hass), entry, access)},
     )
 
 
@@ -232,7 +244,13 @@ def _device_payload(
     hass: HomeAssistant,
     backend: EffectBackend,
     entry: ConfigEntry[Any],
+    access: _StudioDeviceAccess | None = None,
 ) -> dict[str, Any]:
+    access = access or _StudioDeviceAccess(
+        light_entity_id=_primary_light_entity_id(hass, entry.entry_id),
+        can_read=True,
+        can_control=True,
+    )
     coordinator = entry.runtime_data
     observed = backend.device_cache.get(entry.entry_id)
     if observed is None:
@@ -263,6 +281,8 @@ def _device_payload(
     device["fw_version"] = coordinator.fw_version
     device["subordinate_20_version"] = coordinator.subordinate_20_version
     device["subordinate_21_version"] = coordinator.subordinate_21_version
+    device["can_read"] = access.can_read
+    device["can_control"] = access.can_control
     device["active_state"] = observed.to_public_dict()
     device.update(device_catalogue_settings(coordinator.model, profile=coordinator.profile))
     device["retained_music_edit"] = retained_music_edit(coordinator)
@@ -277,18 +297,98 @@ def _device_payload(
     return device
 
 
-def _light_entity_id(hass: HomeAssistant, config_entry_id: str) -> str | None:
+def _primary_light_registry_entry(
+    hass: HomeAssistant,
+    config_entry_id: str,
+) -> er.RegistryEntry | None:
     entry = hass.config_entries.async_get_entry(config_entry_id)
-    if entry is None or entry.domain != DOMAIN or not entry.unique_id:
+    unique_id = getattr(entry, "unique_id", None)
+    if entry is None or entry.domain != DOMAIN or not unique_id:
         return None
     registry = er.async_get(hass)
-    entity_id = registry.async_get_entity_id("light", DOMAIN, light_unique_id(entry.unique_id))
+    entity_id = registry.async_get_entity_id("light", DOMAIN, light_unique_id(unique_id))
     registered = registry.async_get(entity_id) if entity_id is not None else None
-    return (
-        entity_id
-        if registered is not None and registered.config_entry_id == config_entry_id and registered.disabled_by is None
-        else None
-    )
+    if registered is None or registered.config_entry_id != config_entry_id:
+        return None
+    return registered
+
+
+def _primary_light_entity_id(hass: HomeAssistant, config_entry_id: str) -> str | None:
+    registered = _primary_light_registry_entry(hass, config_entry_id)
+    return registered.entity_id if registered is not None else None
+
+
+def _light_entity_id(hass: HomeAssistant, config_entry_id: str) -> str | None:
+    registered = _primary_light_registry_entry(hass, config_entry_id)
+    return registered.entity_id if registered is not None and registered.disabled_by is None else None
+
+
+def _studio_device_access(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    entry: ConfigEntry[Any],
+) -> _StudioDeviceAccess:
+    entity_id = _primary_light_entity_id(hass, entry.entry_id)
+    if connection.user.is_admin:
+        return _StudioDeviceAccess(entity_id, can_read=True, can_control=True)
+    if entity_id is None:
+        return _StudioDeviceAccess(None, can_read=False, can_control=False)
+    can_control = connection.user.permissions.check_entity(entity_id, POLICY_CONTROL)
+    can_read = connection.user.permissions.check_entity(entity_id, POLICY_READ) or can_control
+    return _StudioDeviceAccess(entity_id, can_read=can_read, can_control=can_control)
+
+
+def _loaded_entry_with_access(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+    permission: str,
+) -> tuple[ConfigEntry[Any], _StudioDeviceAccess] | None:
+    entry = hass.config_entries.async_get_entry(msg["config_entry_id"])
+    if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
+        _send_error(hass, connection, msg, "not_found", "target config entry is not loaded")
+        return None
+    access = _studio_device_access(hass, connection, entry)
+    allowed = access.can_control if permission == POLICY_CONTROL else access.can_read
+    if not allowed:
+        _send_error(hass, connection, msg, "unauthorized", "target config entry is not permitted")
+        return None
+    return entry, access
+
+
+def _ensure_entry_control(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    entry: ConfigEntry[Any],
+) -> None:
+    access = _studio_device_access(hass, connection, entry)
+    if not access.can_control:
+        raise Unauthorized(entity_id=access.light_entity_id, permission=POLICY_CONTROL)
+
+
+def _ensure_default_admin(connection: ActiveConnection) -> None:
+    if not connection.user.is_admin:
+        raise Unauthorized()
+
+
+async def _before_scene_apply(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    entry: ConfigEntry[Any],
+    backend: EffectBackend,
+) -> None:
+    _ensure_entry_control(hass, connection, entry)
+    await backend.preview.async_supersede_device(entry.entry_id, reason="committed_apply")
+
+
+async def _before_music_apply(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    entry: ConfigEntry[Any],
+    backend: EffectBackend,
+) -> None:
+    _ensure_entry_control(hass, connection, entry)
+    await backend.preview.async_supersede_device(entry.entry_id, reason="home_assistant_control")
 
 
 @websocket_command(
@@ -303,17 +403,23 @@ def ws_device_subscribe(
     connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    entry = hass.config_entries.async_get_entry(msg["config_entry_id"])
-    if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
-        _send_error(hass, connection, msg, "not_found", "target config entry is not loaded")
+    authorized = _loaded_entry_with_access(hass, connection, msg, POLICY_READ)
+    if authorized is None:
         return
+    entry, access = authorized
     backend = _backend(hass)
     cancel_forward: CALLBACK_TYPE | None = None
 
     @callback
     def forward() -> None:
-        nonlocal cancel_forward
+        nonlocal cancel_forward, access
         cancel_forward = None
+        access = _studio_device_access(hass, connection, entry)
+        if not access.can_read:
+            unsubscribe_all()
+            connection.subscriptions.pop(msg["id"], None)
+            connection.send_error(msg["id"], "unauthorized", "target config entry is no longer permitted")
+            return
         backend.engine.reconcile_current(
             entry.runtime_data,
             config_entry_id=entry.entry_id,
@@ -322,7 +428,7 @@ def ws_device_subscribe(
         )
         connection.send_event(
             msg["id"],
-            {"device": _device_payload(hass, backend, entry)},
+            {"device": _device_payload(hass, backend, entry, access)},
         )
 
     @callback
@@ -378,10 +484,10 @@ def ws_scene_catalogue_list(
     connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    entry = hass.config_entries.async_get_entry(msg["config_entry_id"])
-    if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
-        _send_error(hass, connection, msg, "not_found", "target config entry is not loaded")
+    authorized = _loaded_entry_with_access(hass, connection, msg, POLICY_READ)
+    if authorized is None:
         return
+    entry, _ = authorized
     coordinator = entry.runtime_data
     if not coordinator.profile.supports_scenes:
         _send_error(hass, connection, msg, "unsupported_model", "Device profile supports no scenes")
@@ -421,10 +527,10 @@ def ws_scene_catalogue_get(
     connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    entry = hass.config_entries.async_get_entry(msg["config_entry_id"])
-    if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
-        _send_error(hass, connection, msg, "not_found", "target config entry is not loaded")
+    authorized = _loaded_entry_with_access(hass, connection, msg, POLICY_READ)
+    if authorized is None:
         return
+    entry, _ = authorized
     if not entry.runtime_data.profile.supports_scenes:
         _send_error(hass, connection, msg, "unsupported_model", "Device profile supports no scenes")
         return
@@ -459,17 +565,16 @@ def ws_scene_catalogue_get(
         vol.Optional("speed_index"): SPEED_INDEX,
     }
 )
-@require_admin
 @async_response
 async def ws_scene_apply(
     hass: HomeAssistant,
     connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    entry = hass.config_entries.async_get_entry(msg["config_entry_id"])
-    if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
-        _send_error(hass, connection, msg, "not_found", "target config entry is not loaded")
+    authorized = _loaded_entry_with_access(hass, connection, msg, POLICY_CONTROL)
+    if authorized is None:
         return
+    entry, _ = authorized
     try:
         backend = _backend(hass)
         resolved = resolve_scene(entry.runtime_data.model, msg["scene_id"], msg["effect_id"])
@@ -493,11 +598,20 @@ async def ws_scene_apply(
             speed_index=msg.get("speed_index"),
             user_id=connection.user.id,
             scene_defaults=backend.scene_defaults,
-            before_apply=partial(backend.preview.async_supersede_device, entry.entry_id, reason="committed_apply"),
+            before_apply=partial(
+                _before_scene_apply,
+                hass,
+                connection,
+                entry,
+                backend,
+            ),
             profile=profile,
         )
     except (GoveeCryptoError, ModeTransitionSupersededError) as exc:
         _send_error(hass, connection, msg, "apply_failed", exc)
+        return
+    except Unauthorized as exc:
+        _send_error(hass, connection, msg, "unauthorized", exc)
         return
     except ValueError as exc:
         _send_error(hass, connection, msg, "invalid_format", exc)
@@ -668,10 +782,10 @@ def ws_template_default_get(
     connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    entry = hass.config_entries.async_get_entry(msg["config_entry_id"])
-    if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
-        _send_error(hass, connection, msg, "not_found", "target config entry is not loaded")
+    authorized = _loaded_entry_with_access(hass, connection, msg, POLICY_READ)
+    if authorized is None:
         return
+    entry, _ = authorized
     try:
         detail = _template_default_detail(
             _backend(hass),
@@ -791,7 +905,6 @@ async def ws_template_default_reset(
         vol.Required("session_id"): UUID_TEXT,
     }
 )
-@require_admin
 @async_response
 async def ws_preview_close(
     hass: HomeAssistant,
@@ -822,13 +935,12 @@ async def ws_preview_close(
         vol.Optional("calm"): STRICT_BOOL,
     }
 )
-@require_admin
 @async_response
 async def ws_music_edit_retained(hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]) -> None:
-    entry = hass.config_entries.async_get_entry(msg["config_entry_id"])
-    if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
-        _send_error(hass, connection, msg, "not_found", "target config entry is not loaded")
+    authorized = _loaded_entry_with_access(hass, connection, msg, POLICY_CONTROL)
+    if authorized is None:
         return
+    entry, _ = authorized
     coordinator = entry.runtime_data
     try:
         if (
@@ -848,11 +960,16 @@ async def ws_music_edit_retained(hass: HomeAssistant, connection: ActiveConnecti
             if "calm" in msg or coordinator.music_body is None
             else music_body_style(coordinator.music_body, msg["mode"], profile=coordinator.profile),
             before_apply=partial(
-                backend.preview.async_supersede_device,
-                entry.entry_id,
-                reason="home_assistant_control",
+                _before_music_apply,
+                hass,
+                connection,
+                entry,
+                backend,
             ),
         )
+    except Unauthorized as exc:
+        _send_error(hass, connection, msg, "unauthorized", exc)
+        return
     except (ValueError, HomeAssistantError, BleakError, TimeoutError) as exc:
         _send_error(hass, connection, msg, "apply_failed", exc)
         return
@@ -874,13 +991,19 @@ async def ws_music_edit_retained(hass: HomeAssistant, connection: ActiveConnecti
         vol.Optional("diy_code"): DIY_CODE,
     }
 )
-@require_admin
 @async_response
 async def ws_preview_apply_snapshot(
     hass: HomeAssistant,
     connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
+    authorized = _loaded_entry_with_access(hass, connection, msg, POLICY_CONTROL)
+    if authorized is None:
+        return
+    entry, _ = authorized
+    if msg["persist_default"] and not connection.user.is_admin:
+        _send_error(hass, connection, msg, "unauthorized", "Only administrators may persist Studio defaults")
+        return
     backend = _backend(hass)
     try:
         backend.preview.ensure_session(msg["session_id"], connection)
@@ -906,10 +1029,15 @@ async def ws_preview_apply_snapshot(
             "updated_at": msg["updated_at"],
             "item": item,
             "persist_default": msg["persist_default"],
+            "control_guard": partial(_ensure_entry_control, hass, connection, entry),
+            "default_guard": partial(_ensure_default_admin, connection),
         }
         if "diy_code" in msg:
             kwargs["diy_code"] = msg["diy_code"]
         acceptance = await backend.preview.async_queue_snapshot(**kwargs)
+    except Unauthorized as exc:
+        _send_error(hass, connection, msg, "unauthorized", exc)
+        return
     except Exception as exc:
         _send_preview_error(hass, connection, msg, exc)
         return
@@ -929,13 +1057,19 @@ async def ws_preview_apply_snapshot(
         vol.Optional("persist_default", default=False): STRICT_BOOL,
     }
 )
-@require_admin
 @async_response
 async def ws_preview_apply_scene(
     hass: HomeAssistant,
     connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
+    authorized = _loaded_entry_with_access(hass, connection, msg, POLICY_CONTROL)
+    if authorized is None:
+        return
+    entry, _ = authorized
+    if msg["persist_default"] and not connection.user.is_admin:
+        _send_error(hass, connection, msg, "unauthorized", "Only administrators may persist Studio defaults")
+        return
     backend = _backend(hass)
     try:
         backend.preview.ensure_session(msg["session_id"], connection)
@@ -949,7 +1083,12 @@ async def ws_preview_apply_scene(
             effect_id=msg["effect_id"],
             speed_index=msg.get("speed_index"),
             persist_default=msg["persist_default"],
+            control_guard=partial(_ensure_entry_control, hass, connection, entry),
+            default_guard=partial(_ensure_default_admin, connection),
         )
+    except Unauthorized as exc:
+        _send_error(hass, connection, msg, "unauthorized", exc)
+        return
     except Exception as exc:
         _send_preview_error(hass, connection, msg, exc)
         return
@@ -963,7 +1102,6 @@ async def ws_preview_apply_scene(
         vol.Optional("config_entry_id"): IDENTIFIER,
     }
 )
-@require_admin
 @async_response
 async def ws_preview_cancel(
     hass: HomeAssistant,
@@ -994,7 +1132,6 @@ async def ws_preview_cancel(
         vol.Required("session_id"): UUID_TEXT,
     }
 )
-@require_admin
 @callback
 def ws_preview_subscribe(
     hass: HomeAssistant,
@@ -1002,18 +1139,27 @@ def ws_preview_subscribe(
     msg: dict[str, Any],
 ) -> None:
     backend = _backend(hass)
+    unsubscribe: CALLBACK_TYPE | None = None
 
     @callback
     def forward(status: PreviewStatus) -> None:
+        entry = hass.config_entries.async_get_entry(status.config_entry_id)
+        if entry is None or not _studio_device_access(hass, connection, entry).can_read:
+            if unsubscribe is not None:
+                unsubscribe()
+            connection.subscriptions.pop(msg["id"], None)
+            connection.send_error(msg["id"], "unauthorized", "preview target is no longer permitted")
+            return
         connection.send_event(msg["id"], status.to_dict())
 
     try:
-        connection.subscriptions[msg["id"]] = backend.preview.subscribe(
+        unsubscribe = backend.preview.subscribe(
             session_id=msg["session_id"],
             owner=connection,
             subscription_id=msg["id"],
             listener=forward,
         )
+        connection.subscriptions[msg["id"]] = unsubscribe
     except Exception as exc:
         _send_preview_error(hass, connection, msg, exc)
         return
@@ -1023,7 +1169,6 @@ def ws_preview_subscribe(
 
 
 @websocket_command({vol.Required("type"): WS_PREVIEW_HEALTH_SUBSCRIBE})
-@require_admin
 @callback
 def ws_preview_health_subscribe(
     hass: HomeAssistant,
@@ -1035,7 +1180,9 @@ def ws_preview_health_subscribe(
 
     @callback
     def forward(status: PreviewHealthStatus) -> None:
-        connection.send_event(msg["id"], status.to_dict())
+        entry = hass.config_entries.async_get_entry(status.config_entry_id)
+        if entry is not None and _studio_device_access(hass, connection, entry).can_read:
+            connection.send_event(msg["id"], status.to_dict())
 
     connection.subscriptions[msg["id"]] = preview.subscribe_health(
         subscription_id=subscription_token,
@@ -1053,13 +1200,15 @@ def ws_preview_health_subscribe(
         vol.Required("config_entry_id"): IDENTIFIER,
     }
 )
-@require_admin
 @async_response
 async def ws_preview_health_check(
     hass: HomeAssistant,
     connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
+    authorized = _loaded_entry_with_access(hass, connection, msg, POLICY_READ)
+    if authorized is None:
+        return
     try:
         status = await _backend(hass).preview.async_check_health(
             msg["config_entry_id"],
@@ -1407,10 +1556,11 @@ def ws_user_state_update(
     connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
+    selected_entry_id = msg.get("selected_config_entry_id")
     try:
         updated = _backend(hass).application.update_user_state(
             connection.user.id,
-            selected_config_entry_id=msg.get("selected_config_entry_id"),
+            selected_config_entry_id=selected_entry_id,
             navigation=msg["navigation"],
         )
     except EffectStorageError as exc:
@@ -1437,7 +1587,6 @@ def ws_user_state_update(
         vol.Optional("live"): bool,
     }
 )
-@require_admin
 @async_response
 async def ws_apply(
     hass: HomeAssistant,
@@ -1445,10 +1594,10 @@ async def ws_apply(
     msg: dict[str, Any],
 ) -> None:
     backend = _backend(hass)
-    entry = hass.config_entries.async_get_entry(msg["config_entry_id"])
-    if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
-        _send_error(hass, connection, msg, "not_found", "target config entry is not loaded")
+    authorized = _loaded_entry_with_access(hass, connection, msg, POLICY_CONTROL)
+    if authorized is None:
         return
+    entry, _ = authorized
     try:
         UUID(msg["item_id"])
         operation_id = UUID(msg["operation_id"]) if "operation_id" in msg else None
@@ -1472,6 +1621,7 @@ async def ws_apply(
                 operation_id=operation_id,
                 diy_code=msg.get("diy_code"),
                 compiled=compiled,
+                write_guard=partial(_ensure_entry_control, hass, connection, entry),
                 **({"live": msg["live"]} if "live" in msg else {}),
             )
     except EffectNotFoundError as exc:
@@ -1488,6 +1638,9 @@ async def ws_apply(
         return
     except EffectStorageError as exc:
         _send_error(hass, connection, msg, "storage_unavailable", exc)
+        return
+    except Unauthorized as exc:
+        _send_error(hass, connection, msg, "unauthorized", exc)
         return
     except Exception as exc:
         _send_error(hass, connection, msg, "apply_failed", exc)
@@ -1508,7 +1661,6 @@ async def ws_apply(
         vol.Optional("diy_code"): DIY_CODE,
     }
 )
-@require_admin
 @async_response
 async def ws_apply_snapshot(
     hass: HomeAssistant,
@@ -1516,10 +1668,10 @@ async def ws_apply_snapshot(
     msg: dict[str, Any],
 ) -> None:
     backend = _backend(hass)
-    entry = hass.config_entries.async_get_entry(msg["config_entry_id"])
-    if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
-        _send_error(hass, connection, msg, "not_found", "target config entry is not loaded")
+    authorized = _loaded_entry_with_access(hass, connection, msg, POLICY_CONTROL)
+    if authorized is None:
         return
+    entry, _ = authorized
     try:
         if "origin_id" in msg and "origin_kind" not in msg:
             raise EffectValidationError("origin ID requires an origin kind")
@@ -1548,6 +1700,7 @@ async def ws_apply_snapshot(
             operation_id=operation_id,
             diy_code=msg.get("diy_code"),
             compiled=compiled,
+            write_guard=partial(_ensure_entry_control, hass, connection, entry),
         )
     except EffectValidationError as exc:
         _send_error(hass, connection, msg, "invalid_format", exc)
@@ -1560,6 +1713,9 @@ async def ws_apply_snapshot(
         return
     except EffectStorageError as exc:
         _send_error(hass, connection, msg, "storage_unavailable", exc)
+        return
+    except Unauthorized as exc:
+        _send_error(hass, connection, msg, "unauthorized", exc)
         return
     except Exception as exc:
         _send_error(hass, connection, msg, "apply_failed", exc)
@@ -1671,7 +1827,10 @@ def _send_preview_error(
     msg: dict[str, Any],
     error: Exception,
 ) -> None:
-    if isinstance(error, PreviewOwnershipError):
+    if isinstance(error, Unauthorized):
+        code = "unauthorized"
+        message = "The target light is no longer permitted."
+    elif isinstance(error, PreviewOwnershipError):
         code = PREVIEW_SESSION_UNAUTHORIZED_CODE
         message = "The preview session belongs to another connection."
     elif isinstance(error, PreviewSessionNotFoundError):

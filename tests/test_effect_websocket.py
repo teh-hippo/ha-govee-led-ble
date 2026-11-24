@@ -7,12 +7,14 @@ from dataclasses import replace
 from datetime import timedelta
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import AsyncMock, MagicMock, Mock
+from unittest.mock import ANY, AsyncMock, MagicMock, Mock
 from uuid import uuid4
 
 import pytest
+from homeassistant.auth.models import Group
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import Unauthorized
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import translation
 from homeassistant.setup import async_setup_component
@@ -49,6 +51,7 @@ from custom_components.ha_govee_led_ble.effect_websocket import (
     WS_CUSTOM_CATALOGUE,
     WS_DEVICE,
     WS_DEVICE_SUBSCRIBE,
+    WS_DEVICES,
     WS_INFO,
     WS_LIBRARY_CREATE,
     WS_LIBRARY_DELETE,
@@ -82,6 +85,45 @@ async def _setup_backend(hass: HomeAssistant) -> EffectBackend:
     backend = await EffectBackend.async_create(hass)
     async_register_effect_websocket(hass, backend)
     return backend
+
+
+def _restrict_user(user, policy: dict[str, Any]) -> None:
+    user.groups = [Group(name="Studio policy test", policy=policy)]
+    user.invalidate_cache()
+
+
+def _permission_entry(
+    hass: HomeAssistant,
+    entity_registry,
+    coordinator: Any,
+    *,
+    entry_id: str,
+    address: str,
+    entity_name: str,
+    disabled_by: er.RegistryEntryDisabler | None = None,
+):
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        entry_id=entry_id,
+        unique_id=address,
+        title=entity_name,
+        data={},
+        options={},
+        state=ConfigEntryState.LOADED,
+    )
+    entry.runtime_data = coordinator
+    if not hasattr(coordinator, "disconnect"):
+        coordinator.disconnect = AsyncMock()
+    entry.add_to_hass(hass)
+    registered = entity_registry.async_get_or_create(
+        "light",
+        DOMAIN,
+        address.replace(":", "").lower(),
+        suggested_object_id=entity_name.lower().replace(" ", "_"),
+        config_entry=entry,
+        disabled_by=disabled_by,
+    )
+    return entry, registered
 
 
 def _content(speed: int = 50) -> dict[str, Any]:
@@ -368,6 +410,193 @@ async def test_authenticated_users_can_read_contracts(
     }
 
 
+async def test_studio_filters_devices_and_direct_ids_by_entity_read_policy(
+    hass: HomeAssistant,
+    hass_ws_client,
+    hass_read_only_user,
+    hass_read_only_access_token: str,
+    entity_registry,
+    mock_coordinator,
+) -> None:
+    await _setup_backend(hass)
+    allowed, allowed_entity = _permission_entry(
+        hass,
+        entity_registry,
+        mock_coordinator,
+        entry_id="allowed-entry",
+        address="AA:BB:CC:DD:EE:FF",
+        entity_name="Allowed Light",
+        disabled_by=er.RegistryEntryDisabler.USER,
+    )
+    hidden_coordinator = _EffectCoordinator(model="H617A", profile=get_profile("H617A"))
+    hidden, _ = _permission_entry(
+        hass,
+        entity_registry,
+        hidden_coordinator,
+        entry_id="hidden-entry",
+        address="11:22:33:44:55:66",
+        entity_name="Hidden Light",
+    )
+    _restrict_user(
+        hass_read_only_user,
+        {
+            "entities": {
+                "entity_ids": {
+                    allowed_entity.entity_id: {"read": True},
+                }
+            }
+        },
+    )
+    client = await hass_ws_client(hass, access_token=hass_read_only_access_token)
+
+    await client.send_json_auto_id({"type": WS_DEVICES})
+    devices = (await client.receive_json())["result"]["devices"]
+    assert [device["config_entry_id"] for device in devices] == [allowed.entry_id]
+    assert devices[0]["light_entity_id"] is None
+    assert devices[0]["can_read"] is True
+    assert devices[0]["can_control"] is False
+
+    await client.send_json_auto_id({"type": WS_DEVICE, "config_entry_id": hidden.entry_id})
+    assert (await client.receive_json())["error"]["code"] == "unauthorized"
+
+    await client.send_json_auto_id(
+        {
+            "type": WS_APPLY,
+            "config_entry_id": allowed.entry_id,
+            "item_id": str(uuid4()),
+            "expected_version": 1,
+            "updated_at": "2026-08-27T00:00:00Z",
+        }
+    )
+    assert (await client.receive_json())["error"]["code"] == "unauthorized"
+
+
+async def test_control_only_policy_can_read_and_apply_without_admin(
+    hass: HomeAssistant,
+    hass_ws_client,
+    hass_read_only_user,
+    hass_read_only_access_token: str,
+    entity_registry,
+    mock_coordinator,
+    monkeypatch,
+) -> None:
+    backend = await _setup_backend(hass)
+    entry, light = _permission_entry(
+        hass,
+        entity_registry,
+        mock_coordinator,
+        entry_id="controlled-entry",
+        address="AA:BB:CC:DD:EE:FF",
+        entity_name="Controlled Light",
+    )
+    _restrict_user(
+        hass_read_only_user,
+        {
+            "entities": {
+                "entity_ids": {
+                    light.entity_id: {"control": True},
+                }
+            }
+        },
+    )
+    mutation = await backend.application.async_create_library_item(name="Controlled", content=_content())
+    deployment = MagicMock()
+    deployment.to_public_dict.return_value = {"phase": "confirmed"}
+    apply_saved = AsyncMock(return_value=deployment)
+    monkeypatch.setattr(backend.engine, "async_apply_saved", apply_saved)
+    monkeypatch.setattr(backend.preview, "async_supersede_device", AsyncMock())
+    monkeypatch.setattr(
+        "custom_components.ha_govee_led_ble.effect_websocket.async_prepare_application",
+        AsyncMock(return_value=object()),
+    )
+    client = await hass_ws_client(hass, access_token=hass_read_only_access_token)
+
+    await client.send_json_auto_id({"type": WS_DEVICES})
+    device = (await client.receive_json())["result"]["devices"][0]
+    assert device["can_read"] is True
+    assert device["can_control"] is True
+
+    await client.send_json_auto_id(
+        {
+            "type": WS_APPLY,
+            "config_entry_id": entry.entry_id,
+            "item_id": str(mutation.item.id),
+            "expected_version": mutation.item.version,
+            "updated_at": "2026-08-27T00:00:00Z",
+        }
+    )
+    response = await client.receive_json()
+    assert response["success"] is True
+    apply_saved.assert_awaited_once()
+    apply_args = apply_saved.await_args
+    assert apply_args is not None
+    deferred_control_guard = apply_args.kwargs["write_guard"]
+
+    queue_preview = AsyncMock()
+    monkeypatch.setattr(backend.preview, "async_queue_snapshot", queue_preview)
+    await client.send_json_auto_id(
+        {
+            "type": WS_PREVIEW_APPLY_SNAPSHOT,
+            "session_id": str(uuid4()),
+            "sequence": 1,
+            "config_entry_id": entry.entry_id,
+            "updated_at": "2026-08-27T00:00:00Z",
+            "name": "Default attempt",
+            "content": _content(),
+            "persist_default": True,
+        }
+    )
+    response = await client.receive_json()
+    assert response["error"]["code"] == "unauthorized"
+    queue_preview.assert_not_awaited()
+
+    _restrict_user(hass_read_only_user, {"entities": {}})
+    with pytest.raises(Unauthorized):
+        deferred_control_guard()
+
+
+async def test_device_subscription_stops_after_read_permission_revocation(
+    hass: HomeAssistant,
+    hass_ws_client,
+    hass_read_only_user,
+    hass_read_only_access_token: str,
+    entity_registry,
+    mock_coordinator,
+) -> None:
+    await _setup_backend(hass)
+    entry, light = _permission_entry(
+        hass,
+        entity_registry,
+        mock_coordinator,
+        entry_id="subscribed-entry",
+        address="AA:BB:CC:DD:EE:FF",
+        entity_name="Subscribed Light",
+    )
+    _restrict_user(
+        hass_read_only_user,
+        {
+            "entities": {
+                "entity_ids": {
+                    light.entity_id: {"read": True},
+                }
+            }
+        },
+    )
+    client = await hass_ws_client(hass, access_token=hass_read_only_access_token)
+    await client.send_json_auto_id({"type": WS_DEVICE_SUBSCRIBE, "config_entry_id": entry.entry_id})
+    assert (await client.receive_json())["success"] is True
+    assert (await client.receive_json())["event"]["device"]["config_entry_id"] == entry.entry_id
+
+    _restrict_user(hass_read_only_user, {"entities": {}})
+    mock_coordinator.async_add_listener.call_args.args[0]()
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=1))
+    await hass.async_block_till_done()
+
+    terminal = await client.receive_json()
+    assert terminal["success"] is False
+    assert terminal["error"]["code"] == "unauthorized"
+
+
 async def test_device_subscription_reports_observed_identity_without_querying(
     hass: HomeAssistant,
     hass_ws_client,
@@ -496,16 +725,25 @@ async def test_template_default_get_is_readable_but_mutations_require_admin(
     hass: HomeAssistant,
     hass_ws_client,
     hass_read_only_access_token: str,
-    monkeypatch,
+    entity_registry,
 ) -> None:
     await _setup_backend(hass)
-    entry = SimpleNamespace(
-        entry_id="entry-a",
+    entry = MockConfigEntry(
         domain=DOMAIN,
+        entry_id="entry-a",
+        unique_id="AA:BB:CC:DD:EE:FF",
         state=ConfigEntryState.LOADED,
-        runtime_data=_EffectCoordinator(model="H617A", profile=get_profile("H617A")),
+        data={},
+        options={},
     )
-    monkeypatch.setattr(hass.config_entries, "async_get_entry", lambda _entry_id: entry)
+    entry.runtime_data = _EffectCoordinator(model="H617A", profile=get_profile("H617A"))
+    entry.add_to_hass(hass)
+    entity_registry.async_get_or_create(
+        "light",
+        DOMAIN,
+        "aabbccddeeff",
+        config_entry=entry,
+    )
     client = await hass_ws_client(hass, access_token=hass_read_only_access_token)
     template = resolve_catalogue_template("H617A", "template:single:0:0")
 
@@ -672,6 +910,7 @@ async def test_apply_forwards_expected_item_version(
         operation_id=None,
         diy_code=None,
         compiled=apply_saved.await_args.kwargs["compiled"],
+        write_guard=ANY,
         **({"live": True} if live else {}),
     )
 

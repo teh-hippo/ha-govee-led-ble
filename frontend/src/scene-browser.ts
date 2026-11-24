@@ -72,6 +72,9 @@ export class GoveeSceneBrowser extends LitElement {
   public isAdmin = false;
 
   @property({ type: Boolean })
+  public canControl = false;
+
+  @property({ type: Boolean })
   public autoSaveEnabled = false;
 
   @property({ type: Boolean })
@@ -155,8 +158,8 @@ export class GoveeSceneBrowser extends LitElement {
 
   public currentPreviewRequest(): ScenePreviewRequest | undefined {
     return this.workflow.previewRequest(
-      this.isAdmin,
-      this.autoSaveEnabled,
+      this.canControl,
+      this.isAdmin && this.autoSaveEnabled,
     );
   }
 
@@ -409,7 +412,7 @@ export class GoveeSceneBrowser extends LitElement {
                     aria-label="Scene name"
                     maxlength="128"
                     .value=${state.name}
-                    ?disabled=${!this.isAdmin || state.saving}
+                    ?disabled=${!this.canControl || state.saving}
                     @input=${(event: Event) => {
                       this.workflow.setName((event.target as HTMLInputElement).value);
                     }}
@@ -434,12 +437,12 @@ export class GoveeSceneBrowser extends LitElement {
                 <button
                   class="secondary apply-action"
                   type="button"
-                  ?disabled=${!this.isAdmin ||
+                  ?disabled=${!this.canControl ||
                   state.saving ||
                   state.applying ||
                   !this.workflow.hasCurrentSceneContent()}
                   @click=${() =>
-                    void this.workflow.applyCurrent(this.isAdmin)}
+                    void this.workflow.applyCurrent(this.canControl)}
                 >
                   ${state.applying ? "Applying..." : "Apply"}
                 </button>
@@ -488,7 +491,7 @@ export class GoveeSceneBrowser extends LitElement {
                 <button
                   class=${layered ? "secondary" : "primary"}
                   type="button"
-                  ?disabled=${!this.isAdmin ||
+                  ?disabled=${(layered ? !this.canControl : !this.isAdmin) ||
                   state.saving ||
                   !this.workflow.hasCurrentSceneContent() ||
                   (!layered && saveDisabled)}
@@ -523,7 +526,7 @@ export class GoveeSceneBrowser extends LitElement {
       <button
         class=${action.style}
         type="button"
-        ?disabled=${!this.isAdmin ||
+        ?disabled=${(action.id === "save-default" ? !this.isAdmin : !this.canControl) ||
         this.viewState.saving ||
         !this.workflow.hasCurrentSceneContent() ||
         action.disabled === true}
@@ -543,10 +546,10 @@ export class GoveeSceneBrowser extends LitElement {
             .label=${"Speed"}
             .value=${speedIndex}
             .options=${sceneSpeedOptions(speed.option_count, speed.default_index)}
-            .disabled=${!this.isAdmin || this.viewState.saving}
+            .disabled=${!this.canControl || this.viewState.saving}
             @value-changed=${(event: CustomEvent<SegmentedControlChange<number>>) => {
               this.workflow.setSpeedIndex(event.detail.value);
-              if (this.autoSaveEnabled) {
+              if (this.isAdmin && this.autoSaveEnabled) {
                 if (this.liveApplyEnabled) {
                   this.dispatchPreview();
                 } else {
@@ -575,7 +578,7 @@ export class GoveeSceneBrowser extends LitElement {
   }
 
   private edit(): void {
-    const detail = this.workflow.edit(this.isAdmin);
+    const detail = this.workflow.edit(this.canControl);
     if (detail) {
       this.emit<SceneEditSelection>("scene-edit-selected", detail);
     }
@@ -590,8 +593,8 @@ export class GoveeSceneBrowser extends LitElement {
   }
 
   private resetToCatalogue(): void {
-    void this.workflow.resetToCatalogue(this.isAdmin).then(() => {
-      if (this.autoSaveEnabled && !this.liveApplyEnabled) {
+    void this.workflow.resetToCatalogue(this.canControl).then(() => {
+      if (this.isAdmin && this.autoSaveEnabled && !this.liveApplyEnabled) {
         void this.workflow.setCurrentDefault(this.isAdmin);
       } else {
         this.dispatchPreview();

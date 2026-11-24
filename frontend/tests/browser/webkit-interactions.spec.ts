@@ -57,6 +57,8 @@ async function mountFeedbackPanel(page: Page, model = "H705A", showFeedback = tr
       devices: { devices: [device] },
       "library/list": { generation: 0, items: [] },
       "custom/catalogue": { catalogue: contracts.responses.custom_catalogue },
+      "preview/cancel": { cancelled: true, devices: [] },
+      "preview/session/close": { closed: true, devices: [] },
       "user_state/get": {
         user_state: { owner_id: "private-owner", recent_colours: [], selected_config_entry_id: device.config_entry_id, navigation: {} },
       },

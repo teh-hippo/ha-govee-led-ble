@@ -163,6 +163,7 @@ export class GoveeLedEffectStudio extends LitElement {
   private get currentItem() { return this.model.currentItem; }
   private get content() { return this.model.content; }
   private get isAdmin() { return this.hass?.user?.is_admin === true; }
+  private get canControl() { return this.model.canControlSelectedDevice; }
   private get editorReadOnly() { return this.model.editorReadOnly; }
   private get editorDisabled() {
     return this.editorReadOnly || (this.model.saving && !this.model.autoSaveInProgress);
@@ -408,6 +409,7 @@ export class GoveeLedEffectStudio extends LitElement {
           .previewStatus=${this.model.previewStatus}
           .stateUpdatesAvailable=${!this.model.stateUpdatesUnavailable}
           .isAdmin=${this.canMutate}
+          .canControl=${this.canControl}
           .autoSaveEnabled=${this.model.autoSaveEnabled}
           .autoSaveFailed=${this.model.autoSaveFailed}
           .liveApplyEnabled=${this.model.liveApplyEnabled}
@@ -472,9 +474,11 @@ export class GoveeLedEffectStudio extends LitElement {
             ? "Choose another light or wait for this config entry to load."
             : "Add or enable a supported Govee Bluetooth light to use Effect Studio."}
         </p>
-        <a href=${this.panel?.config?.configuration_path ?? "/config/integrations"}>
-          Open integration configuration
-        </a>
+        ${this.isAdmin
+          ? html`<a href=${this.panel?.config?.configuration_path ?? "/config/integrations"}>
+              Open integration configuration
+            </a>`
+          : nothing}
       </main>
     `;
   }
@@ -484,7 +488,7 @@ export class GoveeLedEffectStudio extends LitElement {
       <main class="empty-state">
         <h2>No Effect Studio categories are enabled</h2>
         <p>Enable one or more categories in this light's integration settings.</p>
-        ${this.model.selectedDevice
+        ${this.isAdmin && this.model.selectedDevice
           ? this.renderIntegrationSettings(
               this.model.selectedDevice.display_name,
               this.model.selectedDevice.config_entry_id,
@@ -497,10 +501,15 @@ export class GoveeLedEffectStudio extends LitElement {
   private renderStudioToolbar() {
     const device = this.model.selectedDevice;
     const lightEntityId = lightControlEntityId(device);
+    const showControlControls = this.canControl && device !== undefined;
     const showAdminControls = this.isAdmin && device !== undefined;
-    const showLightControl = device !== undefined && lightEntityId !== undefined;
+    const showReadOnly = device !== undefined && !device.can_control;
+    const showLightControl =
+      this.canControl && device !== undefined && lightEntityId !== undefined;
     if (
       !this.model.showDeviceSelector &&
+      !showReadOnly &&
+      !showControlControls &&
       !showAdminControls &&
       !showLightControl
     ) {
@@ -514,7 +523,10 @@ export class GoveeLedEffectStudio extends LitElement {
             : nothing}
         </div>
         <div class="studio-toolbar-controls">
-          ${showAdminControls ? this.renderLiveApplyControl() : nothing}
+          ${showReadOnly
+            ? html`<span class="toolbar-read-only" title="Your Home Assistant account can view but not control this light.">Read only</span>`
+            : nothing}
+          ${showControlControls ? this.renderLiveApplyControl() : nothing}
           ${showAdminControls ? this.renderAutoSaveControl() : nothing}
           ${showLightControl && device && lightEntityId
             ? this.renderLightControl(device.display_name, lightEntityId)
@@ -639,7 +651,9 @@ export class GoveeLedEffectStudio extends LitElement {
                   .selected=${device.config_entry_id ===
                   this.model.selectedDeviceId}
                 >
-                  ${device.display_name} (${device.model})
+                  ${device.display_name} (${device.model})${device.can_control
+                    ? ""
+                    : " · Read only"}
                 </option>
               `,
             )}
@@ -766,7 +780,7 @@ export class GoveeLedEffectStudio extends LitElement {
         .currentItemId=${this.currentItem?.id}
         .templateSelection=${this.model.templateSelection}
         .newSelected=${this.model.newCustomEffectSelected}
-        .isAdmin=${this.canMutate}
+        .canControl=${this.canControl}
         @custom-entry-requested=${(
           event: CustomEvent<CustomEffectBrowserEntryRequest>,
         ) =>
@@ -900,7 +914,7 @@ export class GoveeLedEffectStudio extends LitElement {
       <button
         class="selector item ${selected ? "selected" : ""}"
         type="button"
-        ?disabled=${!item && !this.canMutate}
+        ?disabled=${!item && !this.canControl}
         @click=${(event: Event) =>
           select(event.currentTarget as HTMLElement)}
       >
@@ -952,7 +966,7 @@ export class GoveeLedEffectStudio extends LitElement {
         }>) => {
           const device = this.model.selectedDevice;
           const editor = event.currentTarget as GoveeMusicProfileEditor;
-          if (!device || !this.controller.api || !this.canMutate) return;
+          if (!device || !this.controller.api || !this.canControl) return;
           try {
             this.model.patch({ applying: true });
             device.retained_music_edit = await this.controller.api.editRetainedMusic(
@@ -1125,10 +1139,11 @@ export class GoveeLedEffectStudio extends LitElement {
               this.controller.cancelPendingTransition(),
             )}
         >
-          <h2 id="pending-transition-title">Save changes?</h2>
+          <h2 id="pending-transition-title">${dialog.canSave ? "Save changes?" : "Discard local changes?"}</h2>
           <p>
-            This effect has unsaved changes.  Save them before leaving,
-            discard the local draft, or cancel to keep editing.
+            ${dialog.canSave
+              ? "This effect has unsaved changes.  Save them before leaving, discard the local draft, or cancel to keep editing."
+              : "This effect has local changes.  Your account can control this light but cannot save shared Studio content."}
           </p>
           ${dialog.requiresName
             ? html`
@@ -1166,14 +1181,16 @@ export class GoveeLedEffectStudio extends LitElement {
             >
               Discard
             </button>
-            <button
-              class="primary"
-              type="button"
-              ?disabled=${dialog.busy}
-              @click=${() => void this.controller.savePendingTransition()}
-            >
-              ${dialog.primaryLabel}
-            </button>
+            ${dialog.canSave
+              ? html`<button
+                  class="primary"
+                  type="button"
+                  ?disabled=${dialog.busy}
+                  @click=${() => void this.controller.savePendingTransition()}
+                >
+                  ${dialog.primaryLabel}
+                </button>`
+              : nothing}
           </div>
         </section>
       </div>

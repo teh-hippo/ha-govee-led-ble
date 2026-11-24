@@ -94,6 +94,7 @@ export class PanelModalController {
     saveName: string,
     requiresName: boolean,
     returnFocus?: HTMLElement,
+    canSave = true,
   ): void {
     if (this.open) {
       return;
@@ -105,6 +106,7 @@ export class PanelModalController {
         primaryLabel,
         saveName,
         requiresName,
+        canSave,
         busy: false,
       },
     });

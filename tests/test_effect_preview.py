@@ -264,6 +264,48 @@ async def _manager(
     return manager, cache
 
 
+async def test_preview_rechecks_control_after_queueing_before_physical_write(hass, monkeypatch):
+    coordinator = _coordinator()
+    entered = asyncio.Event()
+    release = asyncio.Event()
+
+    async def preflight(*, timeout):
+        entered.set()
+        await release.wait()
+
+    coordinator.async_preview_preflight = AsyncMock(side_effect=preflight)
+    manager, _cache = await _manager(hass, monkeypatch, coordinator)
+    events: list[PreviewStatus] = []
+    owner = object()
+    session = _open(manager, owner, events)
+    permitted = True
+
+    def control_guard() -> None:
+        if not permitted:
+            raise HomeAssistantError("permission revoked")
+
+    try:
+        await manager.async_queue_snapshot(
+            session_id=session,
+            owner=owner,
+            config_entry_id="entry-a",
+            sequence=1,
+            updated_at="2026-11-10T00:00:00Z",
+            item=LibraryItem.new("Guarded", SingleEffect(0, 0, 50, ((255, 0, 0),))),
+            control_guard=control_guard,
+        )
+        await entered.wait()
+        permitted = False
+        release.set()
+        await manager.async_wait_idle("entry-a")
+
+        coordinator.async_write_effect_sequence.assert_not_awaited()
+        assert events[-1].phase is PreviewPhase.FAILED
+    finally:
+        release.set()
+        await manager.async_shutdown()
+
+
 async def test_h6181_music_preview_is_written_without_attempting_selector_verification(hass, monkeypatch):
     from custom_components.ha_govee_led_ble.effect_domain import MusicProfile
 

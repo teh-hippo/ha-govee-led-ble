@@ -56,6 +56,8 @@ export interface DeviceCapabilities {
   retained_music_edit?: RetainedMusicEdit | null;
   config_entry_id: string;
   light_entity_id: string | null;
+  can_read: boolean;
+  can_control: boolean;
   model: string;
   support_quality: SupportQuality;
   confirmation_issue?: number | null;

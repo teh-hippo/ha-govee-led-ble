@@ -30,6 +30,9 @@ Profiles own product facts, Kaitai owns wire structure, and shared runtime opera
 - Keep ordinary controls independent of optional features.
   Capabilities authorise workflows; grammars encode them.
   Preserve semantic intent through preparation.
+- Effect Studio reads and direct BLE operations honour the Home Assistant primary-light entity policy.
+  `read` or `control` grants Studio viewing; `control` grants that light's physical operations.
+  Shared library, default and configuration mutations remain administrator-only.
 - Identify entities by stable identity and declared role.
   The primary light retains its role when disabled or absent.
   Sources have independently addressable power, explicit colour modes and native attributes.

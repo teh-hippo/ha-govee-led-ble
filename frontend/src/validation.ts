@@ -167,6 +167,8 @@ export function decodeDevices(value: unknown): DeviceCapabilities[] {
         device.light_entity_id,
         `devices[${index}].light_entity_id`,
       ),
+      can_read: booleanValue(device.can_read, `devices[${index}].can_read`),
+      can_control: booleanValue(device.can_control, `devices[${index}].can_control`),
       model,
       ...(device.effect_compatibilities === undefined ? {} : {
         effect_compatibilities: decodeEffectCompatibilities(device.effect_compatibilities),

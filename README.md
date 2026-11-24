@@ -62,6 +62,8 @@ To request another model or suggest a device-specific fix, see [CONTRIBUTING.md]
 
 Effect Studio is a Home Assistant sidebar panel showing your device's available effect controls.
 Explore built-in scenes, create effects with colours and layers, tune music and camera/video settings, and preview changes live before saving.
+Studio visibility and control follow Home Assistant's permission policy for each light.
+Readable lights are shown read-only; users with control permission can apply and preview that light, while shared library and default changes remain administrator-only.
 
 Effects require a recoverable static layout before starting.
 Normal release-mode idle disconnects retain that history, with identity and layout checked again before reuse.

@@ -260,6 +260,13 @@ export const effectStudioPanelStyles = [
       margin-inline-start: auto;
     }
 
+    .toolbar-read-only {
+      color: var(--secondary-text-color);
+      font-size: var(--studio-caption-size);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
     .support-notice {
       display: flex;
       flex-wrap: nowrap;

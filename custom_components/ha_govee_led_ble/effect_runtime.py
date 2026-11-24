@@ -108,6 +108,16 @@ VERIFICATION_ATTEMPTS = 2
 
 _LOGGER = logging.getLogger(__name__)
 
+
+def _clear_active_origin_with_guard(
+    clear: Callable[[], None],
+    write_guard: Callable[[], None] | None,
+) -> None:
+    if write_guard is not None:
+        write_guard()
+    clear()
+
+
 type _PriorEffectOrigin = tuple[ObservedDeviceState | None, ActiveEffectWorkspace | None]
 
 
@@ -569,6 +579,7 @@ class EffectDeploymentEngine:
         operation_id: UUID | None,
         source_kind: str,
         compiled: CompiledApplication | None,
+        write_guard: Callable[[], None] | None = None,
         purpose: ModeTransitionPurpose = ModeTransitionPurpose.SELECTION,
     ) -> _LibraryApplicationResult:
         if compiled is None:
@@ -605,7 +616,13 @@ class EffectDeploymentEngine:
                     generation=self._active_workspaces.next_generation(),
                 )
                 self._active_workspaces.validate(workspace)
-        result, still_active = await self._async_apply(coordinator, compiled, record, purpose=purpose)
+        result, still_active = await self._async_apply(
+            coordinator,
+            compiled,
+            record,
+            purpose=purpose,
+            write_guard=write_guard,
+        )
         return _LibraryApplicationResult(result, workspace, still_active)
 
     async def async_apply_saved(
@@ -618,6 +635,7 @@ class EffectDeploymentEngine:
         diy_code: int | None = None,
         operation_id: UUID | None = None,
         compiled: CompiledApplication | None = None,
+        write_guard: Callable[[], None] | None = None,
         live: bool = False,
     ) -> DeploymentRecord:
         applied = await self._apply_library_item(
@@ -629,6 +647,7 @@ class EffectDeploymentEngine:
             operation_id=operation_id,
             source_kind="saved_effect",
             compiled=compiled,
+            write_guard=write_guard,
             purpose=ModeTransitionPurpose.PREVIEW if live else ModeTransitionPurpose.SELECTION,
         )
         result = applied.record
@@ -661,6 +680,7 @@ class EffectDeploymentEngine:
         diy_code: int | None = None,
         operation_id: UUID | None = None,
         compiled: CompiledApplication | None = None,
+        write_guard: Callable[[], None] | None = None,
     ) -> DeploymentRecord:
         applied = await self._apply_library_item(
             coordinator,
@@ -671,6 +691,7 @@ class EffectDeploymentEngine:
             operation_id=operation_id,
             source_kind="snapshot",
             compiled=compiled,
+            write_guard=write_guard,
         )
         result, workspace = applied.record, applied.workspace
         write_only_completed = (
@@ -797,9 +818,16 @@ class EffectDeploymentEngine:
         record: DeploymentRecord,
         *,
         purpose: ModeTransitionPurpose = ModeTransitionPurpose.SELECTION,
+        write_guard: Callable[[], None] | None = None,
     ) -> tuple[DeploymentRecord, bool]:
         async with self._operation_lock(record.operation_id):
-            return await self._async_apply_serialised(coordinator, compiled, record, purpose=purpose)
+            return await self._async_apply_serialised(
+                coordinator,
+                compiled,
+                record,
+                purpose=purpose,
+                write_guard=write_guard,
+            )
 
     async def _async_apply_serialised(
         self,
@@ -808,6 +836,7 @@ class EffectDeploymentEngine:
         record: DeploymentRecord,
         *,
         purpose: ModeTransitionPurpose = ModeTransitionPurpose.SELECTION,
+        write_guard: Callable[[], None] | None = None,
     ) -> tuple[DeploymentRecord, bool]:
         if existing := self._deployments.get_optional(record.operation_id):
             if (
@@ -823,6 +852,8 @@ class EffectDeploymentEngine:
             self._deployments, record, len(compiled.upload_packets) if isinstance(compiled, CompiledEffect) else 0
         )
         if isinstance(compiled, CompiledStaticRgb):
+            if write_guard is not None:
+                write_guard()
             async with (
                 async_control_intent(coordinator, ControlIntent.APPLY),
                 coordinator.async_mode_transition(),
@@ -946,6 +977,8 @@ class EffectDeploymentEngine:
                             ack_options["final_packet"] = a1_activation
 
                         def validate_effect_write() -> None:
+                            if write_guard is not None:
+                                write_guard()
                             validate_compiled_geometry(compiled, coordinator.effect_authorization_profile)
                             _validate_diy_slot_approval(coordinator, compiled)
 
@@ -991,6 +1024,7 @@ class EffectDeploymentEngine:
                             coordinator,
                             compiled,
                             transaction,
+                            write_guard=write_guard,
                             defer_confirmation=defer_profile_confirmation,
                             bind_blank_screen_policy=defer_profile_confirmation,
                             prepared_blank_screen=prepared_blank_screen,
@@ -1008,6 +1042,7 @@ class EffectDeploymentEngine:
                             transition.current,
                             written_blank_screen_policy=written_blank_screen_policy,
                             prepared_blank_screen=prepared_blank_screen,
+                            write_guard=write_guard,
                         )
                         if confirmed is False or not transition.current():
                             final = await self._async_finish_failure(
@@ -1113,9 +1148,12 @@ class EffectDeploymentEngine:
         self,
         coordinator: GoveeBLECoordinator,
         compiled: CompiledEffect,
+        write_guard: Callable[[], None] | None = None,
     ) -> None:
         for attempt in range(ACTIVATION_ATTEMPTS):
             try:
+                if write_guard is not None:
+                    write_guard()
                 assert compiled.activation_packet is not None
                 await coordinator.send_command(
                     compiled.activation_packet,
@@ -1133,11 +1171,14 @@ class EffectDeploymentEngine:
         transaction: _DeploymentTransaction,
         *,
         verify: bool = True,
+        write_guard: Callable[[], None] | None = None,
         defer_confirmation: bool = False,
         bind_blank_screen_policy: bool = False,
         prepared_blank_screen: _PreparedBlankScreenPolicy | None = None,
     ) -> tuple[int, int, int] | None:
         written_policy: tuple[int, int, int] | None = None
+        if write_guard is not None:
+            write_guard()
 
         def capture_blank_screen_policy(policy: tuple[int, int, int]) -> None:
             nonlocal written_policy
@@ -1147,7 +1188,11 @@ class EffectDeploymentEngine:
             coordinator,
             compiled,
             progress=transaction.profile_progress,
-            on_write=partial(self.clear_active_origin, transaction.current.config_entry_id),
+            on_write=partial(
+                _clear_active_origin_with_guard,
+                partial(self.clear_active_origin, transaction.current.config_entry_id),
+                write_guard,
+            ),
             verify=verify,
             defer_confirmation=defer_confirmation,
             on_blank_screen_write=capture_blank_screen_policy if bind_blank_screen_policy else None,
@@ -1164,6 +1209,7 @@ class EffectDeploymentEngine:
         *,
         written_blank_screen_policy: tuple[int, int, int] | None = None,
         prepared_blank_screen: _PreparedBlankScreenPolicy | None = None,
+        write_guard: Callable[[], None] | None = None,
     ) -> tuple[bool | None, ObservationConfidence]:
         if isinstance(compiled, CompiledStaticRgb):
             return static_rgb_matches(coordinator, compiled), ObservationConfidence.SETTINGS_MATCH
@@ -1178,6 +1224,7 @@ class EffectDeploymentEngine:
                 current,
                 written_blank_screen_policy=written_blank_screen_policy,
                 prepared_blank_screen=prepared_blank_screen,
+                write_guard=write_guard,
             )
         if compiled.activation_packet is None:
             raise RuntimeError("compiled activation verification has no activation packet")
@@ -1198,7 +1245,7 @@ class EffectDeploymentEngine:
             if refreshed is not False or attempt + 1 == VERIFICATION_ATTEMPTS or not current():
                 break
             await transaction.store(replace(transaction.current, phase=DeploymentPhase.ACTIVATING))
-            await self._async_activate(coordinator, compiled)
+            await self._async_activate(coordinator, compiled, write_guard)
             await transaction.store(replace(transaction.current, phase=DeploymentPhase.VERIFYING))
         return refreshed, ObservationConfidence.UNKNOWN
 
@@ -1211,6 +1258,7 @@ class EffectDeploymentEngine:
         *,
         written_blank_screen_policy: tuple[int, int, int] | None = None,
         prepared_blank_screen: _PreparedBlankScreenPolicy | None = None,
+        write_guard: Callable[[], None] | None = None,
     ) -> tuple[bool | None, ObservationConfidence]:
         base_expectations, confidence = compiled_observation(compiled, profile=coordinator.profile)
         if base_expectations is None:
@@ -1263,6 +1311,7 @@ class EffectDeploymentEngine:
                     coordinator,
                     compiled,
                     transaction,
+                    write_guard=write_guard,
                     bind_blank_screen_policy=written_blank_screen_policy is not None,
                 )
                 await transaction.store(replace(transaction.current, phase=DeploymentPhase.VERIFYING))

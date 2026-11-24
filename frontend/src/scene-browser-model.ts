@@ -330,14 +330,14 @@ export function buildScenePreviewRequest(
   state: SceneBrowserViewState,
   activeSelectionIdentity: string | undefined,
   available: boolean,
-  isAdmin: boolean,
+  canControl: boolean,
 ): ScenePreviewRequest | undefined {
   if (
     !available ||
     !state.selectedScene ||
     !state.content ||
     !hasCurrentSceneContent(state, activeSelectionIdentity) ||
-    !isAdmin
+    !canControl
   ) {
     return undefined;
   }
