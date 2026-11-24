@@ -5,6 +5,7 @@ import type {
   DeviceCapabilities,
   EditorApiInfo,
   EffectContent,
+  DiyDestinationConsent,
   EffectUserState,
   HomeAssistant,
   LibraryItem,
@@ -250,6 +251,7 @@ export class EffectStudioApi {
     item: Pick<LibraryItem, "id" | "version">,
     diyCode?: number,
     live = false,
+    destinationConsent?: DiyDestinationConsent,
   ): Promise<void> {
     await this.call("apply", {
       config_entry_id: configEntryId,
@@ -257,6 +259,9 @@ export class EffectStudioApi {
       expected_version: item.version,
       updated_at: new Date().toISOString(),
       ...(diyCode === undefined ? {} : { diy_code: diyCode }),
+      ...(destinationConsent === undefined ? {} : {
+        diy_destination_consent: destinationConsent,
+      }),
       ...(live ? { live: true } : {}),
     });
   }
@@ -267,6 +272,7 @@ export class EffectStudioApi {
     content: EffectContent,
     provenance?: PreviewSnapshotProvenance,
     diyCode?: number,
+    destinationConsent?: DiyDestinationConsent,
   ): Promise<void> {
     await this.call("apply_snapshot", {
       config_entry_id: configEntryId,
@@ -275,6 +281,9 @@ export class EffectStudioApi {
       updated_at: new Date().toISOString(),
       ...(provenance ?? {}),
       ...(diyCode === undefined ? {} : { diy_code: diyCode }),
+      ...(destinationConsent === undefined ? {} : {
+        diy_destination_consent: destinationConsent,
+      }),
     });
   }
 
@@ -307,6 +316,7 @@ export class EffectStudioApi {
     persistDefault = false,
     provenance?: PreviewSnapshotProvenance,
     diyCode?: number,
+    destinationConsent?: DiyDestinationConsent,
   ): Promise<void> {
     await this.call("preview/apply_snapshot", {
       session_id: sessionId,
@@ -318,6 +328,9 @@ export class EffectStudioApi {
       persist_default: persistDefault,
       ...(provenance ?? {}),
       ...(diyCode === undefined ? {} : { diy_code: diyCode }),
+      ...(destinationConsent === undefined ? {} : {
+        diy_destination_consent: destinationConsent,
+      }),
     });
   }
 

@@ -14,13 +14,16 @@ from custom_components.ha_govee_led_ble.effect_compiler import (
     compile_application,
 )
 from custom_components.ha_govee_led_ble.effect_contracts import CapabilityWorkflow
+from custom_components.ha_govee_led_ble.effect_diy_destination import (
+    compiled_requires_diy_destination_consent,
+)
 from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, NativeEffect, SingleEffect
 from custom_components.ha_govee_led_ble.effect_protocol_decoder import (
     UnsupportedA3EffectError,
     decode_a3_effect,
     decode_effect_frames,
 )
-from custom_components.ha_govee_led_ble.effect_runtime import _active_workspace_content, _validate_diy_slot_approval
+from custom_components.ha_govee_led_ble.effect_runtime import _active_workspace_content
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_diy_activation,
     parse_command_ack_result,
@@ -284,15 +287,9 @@ def test_h7025_fixed_native_selector_does_not_replace_generic_approved_slot_poli
     template, content = next(item for item in _templates() if item[1].preset_id == 16)
     native = compile_application(LibraryItem.new(template.label, content), "H7025")
     assert isinstance(native, CompiledEffect)
-    coordinator = type(
-        "Coordinator",
-        (),
-        {"diy_code": 1234, "profile": get_profile("H7025")},
-    )()
-    _validate_diy_slot_approval(coordinator, native)
-    coordinator.diy_code = 4321
-    with pytest.raises(ValueError, match="no longer selected"):
-        _validate_diy_slot_approval(coordinator, generic)
+    profile = get_profile("H7025")
+    assert not compiled_requires_diy_destination_consent(native, profile)
+    assert compiled_requires_diy_destination_consent(generic, profile)
 
 
 def test_h7025_glimmer_uses_zero_based_wire_density() -> None:

@@ -33,6 +33,7 @@ import {
 import type {
   CustomEffectCatalogue, DeviceCapabilities, DiyEffectFamily, EffectContent, EffectUserState, LibraryItem, LibrarySnapshot,
   LibrarySummary, HomeAssistant, ModelEffectCatalogue, ModelSku, PreviewStatus, RGB,
+  DiyDestinationConsent,
 } from "./types";
 
 const LIVE_APPLY_STORAGE_KEY = "ha_govee_led_ble/effect_studio/live_apply";
@@ -126,7 +127,8 @@ export class PanelModel {
     content: EffectContent;
     result: import("./types").EffectCompatibility;
   };
-  public h6179ApprovedDiyCode?: number;
+  public diyDestination?: number;
+  public diyDestinationApproval?: DiyDestinationConsent;
   public paintColour: RGB = [255, 69, 58];
   public paintBrushOff = false;
   public saving = false;
@@ -315,9 +317,9 @@ export class PanelModel {
     ].join("\n");
   }
 
-  public get h6179DiyCodeRequired(): boolean {
+  public get diyDestinationRequired(): boolean {
     return (
-      this.modelCatalogue?.diy_slot_policy === "approved_observed" &&
+      this.modelCatalogue?.diy_destination_policy === "explicit_destination" &&
       (
         (
           (this.content.kind === "h6179_single_diy" ||
@@ -331,20 +333,35 @@ export class PanelModel {
     );
   }
 
-  public get h6179DiyCode(): number | undefined {
-    const observed = this.h6179ObservedDiyCode;
-    return observed !== undefined && this.h6179ApprovedDiyCode === observed
-      ? observed
-      : undefined;
+  public get diyDestinationConsent(): DiyDestinationConsent | undefined {
+    const approval = this.diyDestinationApproval;
+    const device = this.selectedDevice;
+    if (
+      !this.diyDestinationRequired ||
+      approval === undefined ||
+      device === undefined ||
+      this.modelCatalogue?.diy_destination_route === undefined ||
+      device.diy_destination_authority === undefined ||
+      approval.config_entry_id !== device.config_entry_id ||
+      approval.model !== device.model ||
+      approval.destination !== this.diyDestination ||
+      approval.minimum !== (this.modelCatalogue.diy_destination_min ?? 0) ||
+      approval.maximum !== (this.modelCatalogue.diy_destination_max ?? 0xffff) ||
+      approval.route !== this.modelCatalogue.diy_destination_route ||
+      approval.authority !== device.diy_destination_authority
+    ) {
+      return undefined;
+    }
+    return approval;
   }
 
-  public get h6179ObservedDiyCode(): number | undefined {
-    if (!this.h6179DiyCodeRequired) {
+  public get observedDiyDestination(): number | undefined {
+    if (!this.diyDestinationRequired) {
       return undefined;
     }
     const code = this.selectedDevice?.active_state?.diy_code;
-    const minimum = this.modelCatalogue?.diy_slot_min ?? 0;
-    const maximum = this.modelCatalogue?.diy_slot_max ?? 0xffff;
+    const minimum = this.modelCatalogue?.diy_destination_min ?? 0;
+    const maximum = this.modelCatalogue?.diy_destination_max ?? 0xffff;
     return typeof code === "number" &&
       Number.isSafeInteger(code) &&
       code >= minimum &&
@@ -353,10 +370,8 @@ export class PanelModel {
       : undefined;
   }
 
-  public get h6179DiyApprovalMessage(): string {
-    return this.h6179ObservedDiyCode === undefined
-      ? `Select a disposable ${this.selectedModel ?? "device"} DIY item in the Govee app, then refresh or return to Effect Studio before applying or enabling Live preview.`
-      : "Use the currently observed disposable DIY item before applying or enabling Live preview.";
+  public get diyDestinationApprovalMessage(): string {
+    return `Choose an allowed ${this.selectedModel ?? "device"} DIY destination and explicitly approve overwriting it before Apply or Live preview.`;
   }
 
   public get showDeviceSelector(): boolean {
@@ -571,8 +586,8 @@ export class PanelModel {
           this.previewCapability === "supported" &&
           this.canControlSelectedDevice &&
           !this.stateUpdatesUnavailable &&
-          (!this.h6179DiyCodeRequired ||
-            this.h6179DiyCode !== undefined),
+          (!this.diyDestinationRequired ||
+            this.diyDestinationConsent !== undefined),
         canSave: this.canSaveCurrentDraft,
         canSaveAs: this.content.kind !== "static_rgb" || this.content.segments.every(colour => colour !== null),
         canMutate: this.isAdmin && !this.stateUpdatesUnavailable,

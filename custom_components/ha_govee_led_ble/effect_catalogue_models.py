@@ -200,9 +200,9 @@ class ModelEffectCatalogue:
     # Exact-model authoring bounds; wire grammar alone does not qualify them.
     native_diy_palette_groups: tuple[tuple[int, tuple[int, ...], int, int], ...] = ()
     native_diy_templates: tuple[NativeDiyTemplateContract, ...] = ()
-    diy_slot_policy: str = "fixed"
-    diy_slot_min: int = 0
-    diy_slot_max: int = 0xFFFF
+    diy_destination_policy: str = "fixed"
+    diy_destination_min: int = 0
+    diy_destination_max: int = 0xFFFF
     advanced_create: bool = True
     temporary_diy_selector: int | None = None
     native_actions: tuple[NativeModeOption, ...] = ()
@@ -211,16 +211,16 @@ class ModelEffectCatalogue:
     auxiliary_music_modes: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        if self.diy_slot_policy not in {"fixed", "approved_observed"}:
-            raise ValueError("DIY slot policy must be fixed or approved_observed")
+        if self.diy_destination_policy not in {"fixed", "explicit_destination"}:
+            raise ValueError("DIY destination policy must be fixed or explicit_destination")
         if (
-            not isinstance(self.diy_slot_min, int)
-            or isinstance(self.diy_slot_min, bool)
-            or not isinstance(self.diy_slot_max, int)
-            or isinstance(self.diy_slot_max, bool)
-            or not 0 <= self.diy_slot_min <= self.diy_slot_max <= 0xFFFF
+            not isinstance(self.diy_destination_min, int)
+            or isinstance(self.diy_destination_min, bool)
+            or not isinstance(self.diy_destination_max, int)
+            or isinstance(self.diy_destination_max, bool)
+            or not 0 <= self.diy_destination_min <= self.diy_destination_max <= 0xFFFF
         ):
-            raise ValueError("DIY slot bounds must be an ordered unsigned 16-bit range")
+            raise ValueError("DIY destination bounds must be an ordered unsigned 16-bit range")
 
     def effects_for_profile(self, profile: ModelProfile) -> tuple[DiyEffectFamily, ...]:
         if profile.diy_family_variants is None:
@@ -366,9 +366,27 @@ class ModelEffectCatalogue:
                 )
                 else {}
             ),
-            **({"diy_slot_policy": self.diy_slot_policy} if self.diy_slot_policy != "fixed" else {}),
-            **({"diy_slot_min": self.diy_slot_min} if self.diy_slot_min else {}),
-            **({"diy_slot_max": self.diy_slot_max} if self.diy_slot_max != 0xFFFF else {}),
+            **(
+                {"diy_destination_policy": self.diy_destination_policy}
+                if self.diy_destination_policy != "fixed"
+                else {}
+            ),
+            **(
+                {
+                    "diy_destination_route": ":".join(
+                        (
+                            self.sku,
+                            profile.effect_grammar or "",
+                            profile.diy_upload_transport or "default",
+                            "ack" if profile.diy_requires_upload_ack else "activation-only",
+                        )
+                    )
+                }
+                if self.diy_destination_policy == "explicit_destination"
+                else {}
+            ),
+            **({"diy_destination_min": self.diy_destination_min} if self.diy_destination_min else {}),
+            **({"diy_destination_max": self.diy_destination_max} if self.diy_destination_max != 0xFFFF else {}),
             **({"advanced_create": False} if not self.advanced_create else {}),
             "limits": {
                 "palette_min": self.palette_min,

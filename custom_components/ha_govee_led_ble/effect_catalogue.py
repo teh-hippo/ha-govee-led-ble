@@ -424,15 +424,26 @@ def native_diy_template_contract(model: str, template_id: int | None) -> NativeD
     )
 
 
-def requires_approved_diy_slot(model: str) -> bool:
+def requires_diy_destination_consent(model: str) -> bool:
     return release_selector_policy(model) is SelectorPolicy.APPROVED_DISPOSABLE
 
 
-def approved_diy_slot_range(model: str) -> tuple[int, int]:
+def diy_destination_range(model: str) -> tuple[int, int]:
     catalogue = MODEL_EFFECT_CATALOGUES.get(model)
     if catalogue is None:
         return 0, 0xFFFF
-    return catalogue.diy_slot_min, catalogue.diy_slot_max
+    return catalogue.diy_destination_min, catalogue.diy_destination_max
+
+
+def diy_destination_route(model: str, profile: ModelProfile) -> str:
+    return ":".join(
+        (
+            model,
+            profile.effect_grammar or "",
+            profile.diy_upload_transport or "default",
+            "ack" if profile.diy_requires_upload_ack else "activation-only",
+        )
+    )
 
 
 def resolve_catalogue_template(

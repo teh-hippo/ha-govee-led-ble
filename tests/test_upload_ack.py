@@ -52,7 +52,7 @@ from custom_components.ha_govee_led_ble.palette_scene_decoder import decode_cata
 from custom_components.ha_govee_led_ble.protocol_effect_bodies import A3Sequence
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
 from custom_components.ha_govee_led_ble.transport import fragment_a3, fragment_a3_envelope, reassemble_a3
-from tests.coordinator_test_support import frame
+from tests.coordinator_test_support import approve_diy_destination_operation, frame
 from tests.storage_test_double import InMemoryVersionedDocumentStore
 from tests.test_effect_preview import _manager, _open
 
@@ -549,7 +549,12 @@ async def test_newer_scene_during_final_activation_invalidates_upload_completion
     monkeypatch.setattr(c, "async_restore_effect_control_state", AsyncMock(return_value=False))
     with pytest.raises(ModeTransitionSupersededError):
         await engine.async_apply_snapshot(
-            c, item, config_entry_id="entry-a", updated_at="2026-09-16T00:00:00Z", diy_code=37
+            c,
+            item,
+            config_entry_id="entry-a",
+            updated_at="2026-09-16T00:00:00Z",
+            diy_code=37,
+            destination_consent=approve_diy_destination_operation(c, "entry-a", 37),
         )
     assert c.scene_code == 24
     assert c.diy_code is None
@@ -1396,6 +1401,7 @@ async def test_palette_public_paths_wait_for_upload_verdict(
     c.is_on = power
     item = LibraryItem.new("Fade", PaletteDiyEffect(c.model, 0, 0, 20, ((30, 0, 0), (0, 30, 0))))
     compiled = compile_effect(item, c.model, diy_code=73, profile=c.profile)
+    destination_consent = approve_diy_destination_operation(c, "entry-a", 73)
     uploaded = asyncio.Event()
     monkeypatch.setattr(c, "async_preview_preflight", AsyncMock())
     monkeypatch.setattr(c, "refresh_state", AsyncMock(return_value=True))
@@ -1433,6 +1439,7 @@ async def test_palette_public_paths_wait_for_upload_verdict(
             updated_at="2026-09-16T00:00:00Z",
             item=item,
             diy_code=73,
+            destination_consent=destination_consent,
         )
         task = asyncio.create_task(manager.async_wait_idle("entry-a"))
     else:
@@ -1450,6 +1457,7 @@ async def test_palette_public_paths_wait_for_upload_verdict(
                 config_entry_id="entry-a",
                 updated_at="2026-09-16T00:00:00Z",
                 diy_code=73,
+                destination_consent=destination_consent,
             )
         )
     try:

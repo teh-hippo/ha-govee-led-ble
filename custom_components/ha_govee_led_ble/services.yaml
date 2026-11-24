@@ -62,6 +62,11 @@ apply_custom_effect:
       selector: {text:}
     diy_code:
       selector: {number: {min: 0, max: 65535, mode: box}}
+    diy_destination:
+      selector: {number: {min: 0, max: 65535, mode: box}}
+    overwrite_confirmed:
+      description: Explicitly confirms overwriting the selected DIY destination when this device route requires destructive destination consent.
+      selector: {boolean:}
 replace_dreamview_group:
   name: Replace DreamView Group
   description: Advanced action to replace DreamView membership and area assignments on a supported profile; not required to control a group configured in Govee. Matching Home Assistant member config entries are automatically disabled and disconnected before group upload so the sync centre can claim their single-client BLE peripheral slots; external member devices not configured in Home Assistant are uploaded directly. Successful replacement restores dropped members that DreamView disabled. Previous device membership cannot be read or recovered. Local authored metadata is not confirmed membership. Supply known cmd_ver and exactly one address or name. Camera members require is_rgbic and zones (wire 1..10, 0 unassigned, 255 disabled). H607C music members instead require explicit mark and scalar area_num (1..255), without is_rgbic or zones. Member capacity is target-specific (five for H6199, seven for H6097 and H6099, ten for H66A0 and H607C). H6199 and H607C require a device acceptance reply; ambiguous changes retain claims and are not automatically replayed. No command-version defaults.

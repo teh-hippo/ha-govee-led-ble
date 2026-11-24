@@ -19,9 +19,9 @@ from .effect_catalogue import (
     H6199_PALETTE_DIY_APPLY_CODE,
     H6199_WORKSHOP_APPLY_CODE,
     H6199_WORKSHOP_APPLY_MUSIC_CODE,
-    approved_diy_slot_range,
+    diy_destination_range,
     native_diy_template_contract,
-    requires_approved_diy_slot,
+    requires_diy_destination_consent,
     validate_effect_eligibility,
     validate_native_diy,
 )
@@ -520,7 +520,7 @@ def _target_compatibility(item: LibraryItem, model: str, *, profile: ModelProfil
             )
     if isinstance(content, PaintedEffect | SingleEffect | MultiEffect | PaletteDiyEffect):
         try:
-            if requires_approved_diy_slot(model) and isinstance(
+            if requires_diy_destination_consent(model) and isinstance(
                 content, PaintedEffect | SingleEffect | MultiEffect | PaletteDiyEffect
             ):
                 require_effect_route(
@@ -639,7 +639,7 @@ def compile_effect(
     item = resolve_target_item(item, model, profile)
     if isinstance(item.content, H6179SingleDiyEffect | H6179MixedDiyEffect):
         if diy_code is None:
-            raise ValueError("Typed DIY application requires an approved disposable DIY code")
+            raise ValueError("Typed DIY application requires an explicit DIY destination")
         return compile_h6179(item, diy_code, model, profile=profile)
     if isinstance(item.content, NativeEffect):
         return compile_native_effect(item, model, diy_code=diy_code, profile=profile)
@@ -773,9 +773,9 @@ def resolve_diy_code(
                 for template in catalogue.templates
             ):
                 raise ValueError("native DIY template is not in the exact-model catalogue")
-        if model is not None and requires_approved_diy_slot(model):
+        if model is not None and requires_diy_destination_consent(model):
             if requested is None:
-                raise ValueError(f"{model} native DIY application requires an explicitly approved disposable DIY code")
+                raise ValueError(f"{model} native DIY application requires an explicit DIY destination")
             if not isinstance(requested, int) or isinstance(requested, bool) or not 0 <= requested <= 0xFFFF:
                 raise ValueError("DIY code must be an integer from 0 to 65535")
             return requested
@@ -796,7 +796,7 @@ def resolve_diy_code(
         if capability is None or capability.content_projection is not ContentProjection.TYPED_DIY:
             raise ValueError(f"{model} has no supported typed DIY route")
         if requested is None:
-            raise ValueError("Typed DIY application requires an explicitly approved disposable DIY code")
+            raise ValueError("Typed DIY application requires an explicit DIY destination")
         if not isinstance(requested, int) or isinstance(requested, bool) or not 0 <= requested <= 0xFFFF:
             raise ValueError("DIY code must be an integer from 0 to 65535")
         return requested
@@ -816,7 +816,7 @@ def resolve_diy_code(
         if release_selector_policy(model, CapabilityWorkflow.PALETTE_DIY) is SelectorPolicy.APPROVED_DISPOSABLE:
             if requested is None:
                 return None
-            minimum, maximum = approved_diy_slot_range(model)
+            minimum, maximum = diy_destination_range(model)
             if not isinstance(requested, int) or isinstance(requested, bool) or not minimum <= requested <= maximum:
                 raise ValueError(f"{model} approved DIY code must be an integer from {minimum} to {maximum}")
             return requested
@@ -853,7 +853,7 @@ def resolve_diy_code(
                 raise ValueError("native paint requires its exact activation selector")
             return selector
         a1_selector = None if isinstance(content, PaintedEffect) else profile.a1_diy_selector
-        approved_slot = (
+        explicit_destination = (
             model is not None and release_selector_policy(model, workflow) is SelectorPolicy.APPROVED_DISPOSABLE
         )
         if model is not None:
@@ -865,8 +865,8 @@ def resolve_diy_code(
                 if requested is not None and requested != fixed_selector:
                     raise ValueError(f"{model} custom effects require temporary selector {fixed_selector}")
                 return fixed_selector
-        if approved_slot and requested is None:
-            raise ValueError(f"{model} custom-effect application requires an explicitly approved disposable DIY code")
+        if explicit_destination and requested is None:
+            raise ValueError(f"{model} custom-effect application requires an explicit DIY destination")
         code = (
             (
                 H6099_DIY_APPLY_CODE
@@ -970,7 +970,7 @@ def compile_scene_effect(
             contract.activation_selector
             if contract is not None and contract.activation_selector is not None
             else diy_code
-            if contract is not None and requires_approved_diy_slot(model)
+            if contract is not None and requires_diy_destination_consent(model)
             else content.native_diy
             if content.native_diy is not None
             else profile.advanced_diy_selector
@@ -980,7 +980,7 @@ def compile_scene_effect(
         upload = tuple(fragment_a3(subtype, encode_workshop_effect(model, content, profile=profile)))
         activation = (
             build_diy_activation(selector, model, profile=profile)
-            if contract is not None and requires_approved_diy_slot(model)
+            if contract is not None and requires_diy_destination_consent(model)
             else build_scene_activation(model, selector, 0, profile=profile)
         )
         return CompiledEffect(
@@ -991,7 +991,7 @@ def compile_scene_effect(
             workflow=_effect_workflow(content),
             diy_code=selector,
             activation_mode=ActivationMode.CUSTOM,
-            selector_kind="diy" if contract is not None and requires_approved_diy_slot(model) else "scene",
+            selector_kind="diy" if contract is not None and requires_diy_destination_consent(model) else "scene",
             expected_effect=None,
             upload_packets=upload,
             activation_packet=activation,

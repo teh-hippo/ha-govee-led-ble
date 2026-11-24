@@ -636,16 +636,17 @@ export const effectStudioPanelStyles = [
       color: var(--studio-muted);
     }
 
-    .h6179-diy-approval {
+    .diy-destination-consent {
       margin-bottom: var(--studio-section-gap);
       border-color: var(--warning-color, #ff9800);
     }
 
-    .h6179-diy-approval p {
+    .diy-destination-consent p {
       line-height: var(--studio-muted-line-height);
     }
 
-    .observed-diy-code {
+    .diy-destination-controls,
+    .observed-diy-destination {
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -658,11 +659,15 @@ export const effectStudioPanelStyles = [
       color: var(--studio-muted);
     }
 
-    .observed-diy-code .approval-status {
+    .diy-destination-controls label {
+      flex: 1;
+    }
+
+    .observed-diy-destination .approval-status {
       margin-bottom: 0;
     }
 
-    .observed-diy-code code {
+    .observed-diy-destination code {
       color: var(--primary-text-color);
       font-weight: var(--studio-font-weight-semibold);
     }

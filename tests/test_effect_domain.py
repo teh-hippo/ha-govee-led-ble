@@ -976,7 +976,7 @@ def test_explicit_workshop_carrier_uses_native_activation_without_legacy_suffix(
 def test_independent_diy_upload_prefix_does_not_choose_the_approved_activation_slot(pact, expected):
     profile = device_profile("H6053", pact, 1, firmware="1.08.05", hardware="1.00.00")
     item = LibraryItem.new("Two colours", SingleEffect(0, 0, 50, ((255, 0, 0), (0, 0, 255))))
-    with pytest.raises(ValueError, match="approved"):
+    with pytest.raises(ValueError, match="explicit DIY destination"):
         compile_application(item, "H6053", profile=profile)
     compiled = compile_application(item, "H6053", diy_code=37, profile=profile)
     assert compiled.upload_packets == tuple(bytes.fromhex(frame) for frame in expected)

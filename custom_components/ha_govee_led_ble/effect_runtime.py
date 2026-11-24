@@ -28,7 +28,7 @@ from .effect_active_workspace import (
     ActiveEffectWorkspace,
     ActiveEffectWorkspaceRepository,
 )
-from .effect_catalogue import requires_approved_diy_slot
+from .effect_catalogue import requires_diy_destination_consent
 from .effect_compiler import (
     DIY_ACK_EVIDENCE,
     ActivationMode,
@@ -48,6 +48,7 @@ from .effect_deployments import (
     ObservationConfidence,
     PriorControlState,
 )
+from .effect_diy_destination import DiyDestinationConsent, validate_diy_destination_consent
 from .effect_domain import (
     BuiltinScene,
     EffectContent,
@@ -524,6 +525,7 @@ async def async_prepare_application(
     item: LibraryItem,
     *,
     diy_code: int | None = None,
+    destination_consent: DiyDestinationConsent | None = None,
     intent: ControlIntent = ControlIntent.APPLY,
 ) -> CompiledApplication:
     profile = await async_prepare_effect_profile(coordinator, intent=intent, content=item.content)
@@ -536,6 +538,7 @@ async def async_prepare_application(
     if isinstance(compiled, CompiledVideoProfile):
         await async_require_video_controls(coordinator, requested_video_controls(compiled), intent=intent)
         require_video_mode(coordinator.profile, coordinator)
+    validate_diy_destination_consent(coordinator, compiled, destination_consent)
     return compiled
 
 
@@ -579,15 +582,27 @@ class EffectDeploymentEngine:
         operation_id: UUID | None,
         source_kind: str,
         compiled: CompiledApplication | None,
+        destination_consent: DiyDestinationConsent | None = None,
         write_guard: Callable[[], None] | None = None,
         purpose: ModeTransitionPurpose = ModeTransitionPurpose.SELECTION,
     ) -> _LibraryApplicationResult:
         if compiled is None:
-            compiled = await async_prepare_application(coordinator, item, diy_code=diy_code)
+            compiled = await async_prepare_application(
+                coordinator,
+                item,
+                diy_code=diy_code,
+                destination_consent=destination_consent,
+            )
         if (compiled.item_id, compiled.item_version, compiled.model) != (str(item.id), item.version, coordinator.model):
             raise ValueError("Prepared application does not match its item and device")
         if diy_code is not None and compiled.diy_code != diy_code:
             raise ValueError("Prepared application does not match its requested selector")
+        validate_diy_destination_consent(
+            coordinator,
+            compiled,
+            destination_consent,
+            config_entry_id=config_entry_id,
+        )
         validate_compiled_geometry(compiled, coordinator.effect_authorization_profile)
         record = self._new_record(
             compiled,
@@ -622,6 +637,7 @@ class EffectDeploymentEngine:
             record,
             purpose=purpose,
             write_guard=write_guard,
+            destination_consent=destination_consent,
         )
         return _LibraryApplicationResult(result, workspace, still_active)
 
@@ -635,6 +651,7 @@ class EffectDeploymentEngine:
         diy_code: int | None = None,
         operation_id: UUID | None = None,
         compiled: CompiledApplication | None = None,
+        destination_consent: DiyDestinationConsent | None = None,
         write_guard: Callable[[], None] | None = None,
         live: bool = False,
     ) -> DeploymentRecord:
@@ -648,6 +665,7 @@ class EffectDeploymentEngine:
             source_kind="saved_effect",
             compiled=compiled,
             write_guard=write_guard,
+            destination_consent=destination_consent,
             purpose=ModeTransitionPurpose.PREVIEW if live else ModeTransitionPurpose.SELECTION,
         )
         result = applied.record
@@ -680,6 +698,7 @@ class EffectDeploymentEngine:
         diy_code: int | None = None,
         operation_id: UUID | None = None,
         compiled: CompiledApplication | None = None,
+        destination_consent: DiyDestinationConsent | None = None,
         write_guard: Callable[[], None] | None = None,
     ) -> DeploymentRecord:
         applied = await self._apply_library_item(
@@ -692,6 +711,7 @@ class EffectDeploymentEngine:
             source_kind="snapshot",
             compiled=compiled,
             write_guard=write_guard,
+            destination_consent=destination_consent,
         )
         result, workspace = applied.record, applied.workspace
         write_only_completed = (
@@ -819,6 +839,7 @@ class EffectDeploymentEngine:
         *,
         purpose: ModeTransitionPurpose = ModeTransitionPurpose.SELECTION,
         write_guard: Callable[[], None] | None = None,
+        destination_consent: DiyDestinationConsent | None = None,
     ) -> tuple[DeploymentRecord, bool]:
         async with self._operation_lock(record.operation_id):
             return await self._async_apply_serialised(
@@ -827,6 +848,7 @@ class EffectDeploymentEngine:
                 record,
                 purpose=purpose,
                 write_guard=write_guard,
+                destination_consent=destination_consent,
             )
 
     async def _async_apply_serialised(
@@ -837,6 +859,7 @@ class EffectDeploymentEngine:
         *,
         purpose: ModeTransitionPurpose = ModeTransitionPurpose.SELECTION,
         write_guard: Callable[[], None] | None = None,
+        destination_consent: DiyDestinationConsent | None = None,
     ) -> tuple[DeploymentRecord, bool]:
         if existing := self._deployments.get_optional(record.operation_id):
             if (
@@ -848,6 +871,12 @@ class EffectDeploymentEngine:
             raise RuntimeError(
                 f"deployment operation {record.operation_id} already exists in phase {existing.phase.value}"
             )
+        validate_diy_destination_consent(
+            coordinator,
+            compiled,
+            destination_consent,
+            config_entry_id=record.config_entry_id,
+        )
         transaction = _DeploymentTransaction(
             self._deployments, record, len(compiled.upload_packets) if isinstance(compiled, CompiledEffect) else 0
         )
@@ -920,7 +949,12 @@ class EffectDeploymentEngine:
                         require_video_mode(coordinator.profile, coordinator)
                         require_video_controls(coordinator.profile, coordinator, requested_video_controls(compiled))
                     refreshed, prepared_blank_screen = await self._async_prepare_prior_state(coordinator, compiled)
-                    _validate_diy_slot_approval(coordinator, compiled)
+                    validate_diy_destination_consent(
+                        coordinator,
+                        compiled,
+                        destination_consent,
+                        config_entry_id=record.config_entry_id,
+                    )
                     validate_compiled_geometry(compiled, coordinator.effect_authorization_profile)
                     await coordinator.async_admit_effect_selection()
                     self._reconcile_observation(
@@ -957,12 +991,17 @@ class EffectDeploymentEngine:
                     if isinstance(compiled, CompiledEffect):
                         if compiled.activation_packet is None:
                             raise RuntimeError("compiled activation verification has no activation packet")
+
+                        def validate_effect_write() -> None:
+                            if write_guard is not None:
+                                write_guard()
+                            validate_compiled_geometry(compiled, coordinator.effect_authorization_profile)
+                            validate_diy_destination_consent(coordinator, compiled, destination_consent)
+
                         if not coordinator.is_on:
                             await coordinator.send_command(
                                 build_power(True, coordinator.model),
-                                write_guard=lambda: validate_compiled_geometry(
-                                    compiled, coordinator.effect_authorization_profile
-                                ),
+                                write_guard=validate_effect_write,
                             )
                             coordinator.is_on = True
                         upload_count = len(compiled.upload_packets)
@@ -974,13 +1013,11 @@ class EffectDeploymentEngine:
                             ack_options = {"require_upload_ack": True, "upload_ack_index": upload_count - 1}
                         a1_activation = compiled.activation_packet if compiled.upload_transport == "a1_02" else None
                         if a1_activation is not None:
-                            ack_options["final_packet"] = a1_activation
 
-                        def validate_effect_write() -> None:
-                            if write_guard is not None:
-                                write_guard()
-                            validate_compiled_geometry(compiled, coordinator.effect_authorization_profile)
-                            _validate_diy_slot_approval(coordinator, compiled)
+                            async def before_final() -> None:
+                                validate_effect_write()
+
+                            ack_options.update(final_packet=a1_activation, before_final=before_final)
 
                         def upload_started(index: int) -> None:
                             if index != 0 or not compiled.upload_packets:
@@ -1042,7 +1079,9 @@ class EffectDeploymentEngine:
                             transition.current,
                             written_blank_screen_policy=written_blank_screen_policy,
                             prepared_blank_screen=prepared_blank_screen,
-                            write_guard=write_guard,
+                            write_guard=(
+                                validate_effect_write if isinstance(compiled, CompiledEffect) else write_guard
+                            ),
                         )
                         if confirmed is False or not transition.current():
                             final = await self._async_finish_failure(
@@ -1155,9 +1194,15 @@ class EffectDeploymentEngine:
                 if write_guard is not None:
                     write_guard()
                 assert compiled.activation_packet is not None
+
+                def activation_guard() -> None:
+                    validate_compiled_geometry(compiled, coordinator.effect_authorization_profile)
+                    if write_guard is not None:
+                        write_guard()
+
                 await coordinator.send_command(
                     compiled.activation_packet,
-                    write_guard=lambda: validate_compiled_geometry(compiled, coordinator.effect_authorization_profile),
+                    write_guard=activation_guard,
                 )
                 return
             except Exception:
@@ -2000,7 +2045,7 @@ def active_workspace_matches(
         identity = (resolved_scene[1].scene_id, resolved_scene[1].effect_id) if resolved_scene else None
     elif isinstance(content, LayeredEffect):
         if content.native_diy is not None:
-            if requires_approved_diy_slot(workspace.model):
+            if requires_diy_destination_consent(workspace.model):
                 return coordinator.diy_code is not None
             return getattr(coordinator, "scene_code", None) == content.native_diy
         if coordinator.profile.advanced_diy_selector is not None:
@@ -2378,22 +2423,6 @@ def _record_signature(record: DeploymentRecord, model: str) -> str | None:
             return f"scene-code:{record.diy_code}"
         return legacy_deployment_effect_signature(get_profile(model), record.content_kind, record.diy_code)
     return None
-
-
-def _validate_diy_slot_approval(
-    coordinator: GoveeBLECoordinator,
-    compiled: CompiledApplication,
-) -> None:
-    if (
-        not isinstance(compiled, CompiledEffect)
-        or compiled.selector_kind != "diy"
-        or not requires_approved_diy_slot(compiled.model)
-    ):
-        return
-    if compiled.content_kind == "native_effect" and compiled.diy_code == coordinator.profile.native_diy_selector:
-        return
-    if coordinator.diy_code != compiled.diy_code:
-        raise ValueError("approved disposable DIY code is no longer selected")
 
 
 def _activation_matches(

@@ -15,6 +15,8 @@ SERVICE_APPLY_CUSTOM_EFFECT = "apply_custom_effect"
 ATTR_EFFECT = "effect"
 ATTR_EFFECT_ID = "effect_id"
 ATTR_DIY_CODE = "diy_code"
+ATTR_DIY_DESTINATION = "diy_destination"
+ATTR_OVERWRITE_CONFIRMED = "overwrite_confirmed"
 
 
 def _diy_code(value: object) -> int:
@@ -23,10 +25,18 @@ def _diy_code(value: object) -> int:
     return value
 
 
+def _overwrite_confirmed(value: object) -> bool:
+    if value is not True:
+        raise vol.Invalid("DIY destination overwrite must be explicitly confirmed")
+    return True
+
+
 APPLY_CUSTOM_EFFECT_SCHEMA: VolDictType = {
     vol.Exclusive(ATTR_EFFECT, "effect_reference"): cv.string,
     vol.Exclusive(ATTR_EFFECT_ID, "effect_reference"): cv.string,
     vol.Optional(ATTR_DIY_CODE): _diy_code,
+    vol.Optional(ATTR_DIY_DESTINATION): _diy_code,
+    vol.Optional(ATTR_OVERWRITE_CONFIRMED): _overwrite_confirmed,
 }
 
 

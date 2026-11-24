@@ -710,7 +710,7 @@ def test_h7020_params_v2_compilation_separates_template_body_and_slot(
     content = template.content
     assert isinstance(content, LayeredEffect)
     item = LibraryItem.new(template.label, content)
-    with pytest.raises(ValueError, match="approved disposable DIY code"):
+    with pytest.raises(ValueError, match="explicit DIY destination"):
         compile_effect(item, "H7020", profile=h7020_effect_profile)
 
     compiled = compile_effect(item, "H7020", diy_code=321, profile=h7020_effect_profile)

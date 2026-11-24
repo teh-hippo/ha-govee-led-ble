@@ -121,6 +121,18 @@ LAYER_LABELS = vol.All(
 SCENE_ID = vol.All(strict_int, vol.Range(min=0, max=0xFFFF))
 SPEED_INDEX = vol.All(strict_int, vol.Range(min=0, max=0xFF))
 DIY_CODE = vol.All(strict_int, vol.Range(min=0, max=0xFFFF))
+DIY_DESTINATION_CONSENT = vol.Schema(
+    {
+        vol.Required("config_entry_id"): IDENTIFIER,
+        vol.Required("model"): IDENTIFIER,
+        vol.Required("destination"): DIY_CODE,
+        vol.Required("minimum"): DIY_CODE,
+        vol.Required("maximum"): DIY_CODE,
+        vol.Required("route"): IDENTIFIER,
+        vol.Required("authority"): IDENTIFIER,
+        vol.Required("overwrite_confirmed"): vol.All(_strict_bool, vol.In([True])),
+    }
+)
 EFFECT_CONTENT = vol.All(dict, _bounded_effect_content)
 NAVIGATION = vol.All(dict, _bounded_navigation)
 STRICT_BOOL = vol.All(_strict_bool)

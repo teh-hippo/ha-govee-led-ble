@@ -302,8 +302,16 @@
           "description": "Stable ID of the saved custom effect. Use either Effect or Effect ID."
         },
         "diy_code": {
-          "name": "Disposable DIY code",
-          "description": "Code of the currently selected disposable DIY item. Required for H6179 DIY effects."
+          "name": "DIY selector",
+          "description": "Legacy selector used by routes that do not provide a separate destination action."
+        },
+        "diy_destination": {
+          "name": "DIY destination",
+          "description": "Device DIY destination to upload to and activate."
+        },
+        "overwrite_confirmed": {
+          "name": "Confirm overwrite",
+          "description": "Explicitly approve replacing the existing content at the selected DIY destination."
         }
       }
     }
