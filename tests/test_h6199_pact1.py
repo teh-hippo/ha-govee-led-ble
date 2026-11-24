@@ -1,5 +1,6 @@
 """Positive Pact 1 evidence narrows H6199; hardware versions never choose Pact."""
 
+import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -55,6 +56,39 @@ from tests.test_h6199_capabilities import lifecycle as pact_lifecycle  # noqa: F
 
 def advertise(c, pact):
     c._note_advertisement(SimpleNamespace(manufacturer_data={34818: bytes((0xEC, 0, pact, 1, 0))}))
+
+
+def test_passive_replay_cannot_replace_a_newer_h6199_pact(hass):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url=None)
+    now = time.monotonic()
+    coordinator._note_advertisement(
+        SimpleNamespace(
+            source="connectable",
+            time=now,
+            manufacturer_data={34818: bytes((0xEC, 0, 1, 1, 0))},
+        )
+    )
+    assert (coordinator.pact_type, coordinator.pact_code) == (1, 1)
+
+    coordinator._note_advertisement(
+        SimpleNamespace(
+            source="passive",
+            time=now - 1,
+            manufacturer_data={34818: bytes((0xEC, 0, 2, 1, 0))},
+        )
+    )
+
+    assert (coordinator.pact_type, coordinator.pact_code) == (1, 1)
+    assert coordinator.profile is H6199_PACT1_PROFILE
+    coordinator._prune_h607c_advertisements()
+    assert (coordinator.pact_type, coordinator.pact_code) == (1, 1)
+    assert coordinator.profile is H6199_PACT1_PROFILE
+    coordinator._client = MagicMock(is_connected=True)
+    coordinator._notification_token = object()
+    coordinator._notify_started_monotonic = now - 2
+    coordinator._resolve_h607c_pact()
+    assert (coordinator.pact_type, coordinator.pact_code) == (1, 1)
+    assert coordinator.profile is H6199_PACT1_PROFILE
 
 
 @pytest.mark.parametrize("model", ["H6199", "H6099", "H617A"])

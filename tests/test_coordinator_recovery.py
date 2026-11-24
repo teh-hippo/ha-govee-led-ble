@@ -1071,12 +1071,42 @@ def test_compound_recovery_planned_release_preserves_presentation_but_revokes_pa
 
     assert (coordinator.pact_type, coordinator.pact_code) == (2, 1)
     assert coordinator.profile == profile
+    assert coordinator._h607c_marker_pact is None
+    assert coordinator._subscription_advertised_pact is None
     assert not coordinator.identity_fields_confirmed(frozenset({"pact"}))
     coordinator._resolve_h607c_pact(preserve_state=True)
     assert (coordinator.pact_type, coordinator.pact_code) == (2, 1)
     assert coordinator.profile == profile
     assert not coordinator.identity_fields_confirmed(frozenset({"pact"}))
     assert coordinator._prepare_static_colour(_compound_h6199_state()) is None
+
+
+async def test_pending_disconnect_cannot_merge_retired_h6199_pact_marker(hass):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6199", configuration_url=None)
+    _qualify_compound_h6199(coordinator)
+    coordinator._notification_token = object()
+    coordinator._h607c_marker_pact = (2, 1)
+    client = _c()
+
+    async def disconnect():
+        assert coordinator._notification_token is None
+        assert coordinator._h607c_marker_pact is None
+        coordinator._note_advertisement(SimpleNamespace(manufacturer_data={34818: bytes((0xEC, 0, 1, 1, 0))}))
+        client.is_connected = False
+
+    client.disconnect.side_effect = disconnect
+    coordinator._client = client
+
+    await coordinator._disconnect_locked(planned_release=True)
+
+    assert (coordinator.pact_type, coordinator.pact_code) == (1, 1)
+    assert coordinator.profile == device_profile(
+        "H6199",
+        pact_type=1,
+        pact_code=1,
+        firmware="1.10.04",
+        hardware="3.02.01",
+    )
 
 
 async def test_preview_requires_independent_static_observation_but_apply_keeps_delivery_boundary(hass):
