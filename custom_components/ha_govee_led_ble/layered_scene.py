@@ -272,7 +272,10 @@ class LayeredScene:
         _validate_instance(self.template, CatalogueRef, "scene template")
         _validate_instance(self.effect, LayeredEffect, "scene effect")
         _validate_items(self.ripple_layers, RippleLayer, "ripple layers")
-        if self.ripple_layers and self.template.sku != "H60B0":
+        from .native_effect_codecs import native_effect_codec_for_target
+
+        codec = native_effect_codec_for_target(self.template.sku)
+        if self.ripple_layers and (codec is None or not codec.combined_layered_scenes):
             raise LayeredSceneValidationError("ripple layers require the combined scene grammar")
         if self.speed_index is not None:
             _validate_byte(self.speed_index, "scene speed index")
@@ -306,7 +309,10 @@ def layered_effect_from_value(raw: Mapping[str, Any]) -> LayeredEffect:
 
 def layered_scene_to_value(scene: LayeredScene) -> dict[str, JsonValue]:
     """Return a layered scene as JSON-compatible values."""
+    from .native_effect_codecs import native_effect_codec_for_target
+
     _validate_instance(scene, LayeredScene, "layered scene")
+    codec = native_effect_codec_for_target(scene.template.sku)
     return {
         "template": _catalogue_ref_to_value(scene.template),
         "effect": layered_effect_to_value(scene.effect),
@@ -330,7 +336,7 @@ def layered_scene_to_value(scene: LayeredScene) -> dict[str, JsonValue]:
                     for layer in scene.ripple_layers
                 ]
             }
-            if scene.template.sku == "H60B0"
+            if codec is not None and codec.combined_layered_scenes
             else {}
         ),
     }

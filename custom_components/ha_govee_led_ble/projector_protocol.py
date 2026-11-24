@@ -5,6 +5,7 @@ from typing import Any
 from kaitaistruct import KaitaiStructError
 
 from .const import ModelProfile
+from .layered_scene import LayeredSceneValidationError
 from .native_effect import NativeEffect
 from .projector import ProjectorAppearance, ProjectorLayer, ProjectorSource, ProjectorStars
 from .protocol_core import (
@@ -101,7 +102,7 @@ def _write_stars(value: ProjectorStars, parent: Any) -> Any:
 
 
 def encode_projector(content: NativeEffect) -> bytes:
-    content.__post_init__()
+    validate_projector_structure(content)
     if content.model != "H6093":
         raise ValueError("Projector content does not match the model")
     root = Wire()
@@ -124,6 +125,25 @@ def encode_projector(content: NativeEffect) -> bytes:
         record.len_body = len(serialize_native_body(body))
         root.layers.append(record)
     return serialize_native_body(root)
+
+
+def validate_projector_structure(content: NativeEffect) -> None:
+    if (
+        content.model != "H6093"
+        or content.family != int(Wire.CatalogueFamily.projector)
+        or content.layers
+        or not 1 <= len(content.projector_layers) <= 255
+        or any(not isinstance(layer, ProjectorLayer) for layer in content.projector_layers)
+        or content.backgrounds
+        or content.background_flag
+        or content.background != (0, 0, 0)
+        or content.background_brightness != 100
+        or content.show_type != 1
+        or content.section_tail
+        or content.revision
+        or content.combined is not None
+    ):
+        raise LayeredSceneValidationError("invalid native projector effect")
 
 
 def apply_projector_speed(payload: bytes, speed: SceneSpeed, index: int) -> bytes:

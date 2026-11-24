@@ -6,16 +6,74 @@ from typing import Any
 
 from kaitaistruct import KaitaiStream
 
+from .layered_scene import LayeredScene, LayeredSceneValidationError
 from .native_effect import NativeDiyLayer, NativeEffect, NativeLayer, NativeOpaqueLayer
 from .protocol_core import (
     H607cDiyBody,
     H607cMusicBody,
     H607cMusicWrite,
+    H607cSceneBody,
     _serialize_a3_scene_param,
     new_child,
     new_rgb,
     serialize_native_body,
 )
+
+
+def encode_h607c_layered_scene(scene: LayeredScene) -> bytes:
+    from .generated_protocol_adapter import serialize_scene_body_param
+    from .layered_scene_decoder import _encode_record, _profile_layers
+
+    root = H607cSceneBody()
+    root.marker = bytes((int(H607cSceneBody.UploadSubtype.layered_scene),))
+    layers = _profile_layers(scene.effect, None)
+    root.num_records = len(layers)
+    root.records = [_encode_record(H607cSceneBody.Record, root, layer) for layer in layers]
+    root.padding = [0] * scene.trailing_padding
+    return serialize_scene_body_param(root)
+
+
+def validate_h607c_layered_payload(payload: bytes) -> None:
+    from kaitaistruct import KaitaiStructError
+
+    from .generated_protocol_adapter import parse_scene_body
+
+    try:
+        parse_scene_body(payload, scene_type=int(H607cSceneBody.CatalogueType.layered_scene))
+    except (EOFError, KaitaiStructError) as error:
+        raise ValueError("Invalid layered scene body") from error
+
+
+def validate_h607c_structure(content: NativeEffect) -> None:
+    families = H607cDiyBody.Family
+    expected_count = 2 if content.family == families.paired else 1
+    if (
+        content.model != "H607C"
+        or content.family not in families
+        or len(content.layers) != expected_count
+        or any(not isinstance(layer, NativeDiyLayer | NativeOpaqueLayer) for layer in content.layers)
+        or content.template is not None
+        or content.projector_layers
+        or content.revision
+        or content.combined is not None
+        or content.section_tail
+    ):
+        raise LayeredSceneValidationError("invalid native zoned DIY structure")
+    first = content.layers[0]
+    if (
+        content.family != families.paired
+        and isinstance(first, NativeDiyLayer | NativeOpaqueLayer)
+        and first.kind != content.family
+    ):
+        raise LayeredSceneValidationError("single native DIY must retain its body family")
+    if (
+        content.backgrounds
+        or content.background_flag
+        or content.background != (0, 0, 0)
+        or content.background_brightness != 100
+        or content.show_type != 1
+    ):
+        raise LayeredSceneValidationError("unrepresented native zone background fields")
 
 
 def _palette(parent: Any, colours: tuple[tuple[int, int, int], ...]) -> Any:
@@ -86,7 +144,7 @@ def decode_zoned_diy(payload: bytes) -> NativeEffect:
 
 
 def encode_zoned_diy(content: NativeEffect) -> bytes:
-    content.__post_init__()
+    validate_h607c_structure(content)
     root = H607cDiyBody()
     root.marker = b"\x0b"
     root.family = H607cDiyBody.Family(content.family)

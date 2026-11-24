@@ -3,13 +3,10 @@
 from __future__ import annotations
 
 import io
-from dataclasses import replace
 from typing import Any
 
 from kaitaistruct import KaitaiStream, KaitaiStructError
 
-from .const import ModelProfile, get_profile
-from .layered_scene import CatalogueRef
 from .native_effect import (
     NativeDiyLayer,
     NativeEffect,
@@ -18,30 +15,11 @@ from .native_effect import (
     NativePaintGroup,
     NativePaintLayer,
 )
-from .native_effect_codecs import native_a3_codec_for_profile
 from .protocol_core import GoveeShared, H60a6DiyBody, H60a6PaintBody
 
 
 def _rgb(value: Any) -> tuple[int, int, int]:
     return int(value.red), int(value.green), int(value.blue)
-
-
-def decode_native_scene(scene_ref: CatalogueRef, payload: bytes, *, family: int) -> NativeEffect:
-    """Decode catalogue bytes without discarding their scene activation identity."""
-    if scene_ref.sku == "H6093":
-        from .projector_protocol import decode_projector
-
-        if family != 712:
-            raise ValueError("unknown native projector family")
-        return replace(decode_projector(payload), template=scene_ref)
-    if scene_ref.sku == "H1771":
-        from .h1771_effects import decode_h1771_scene
-        from .protocol_core import H1771DiyBody
-
-        if family != H1771DiyBody.CatalogueFamily.native_scene:
-            raise ValueError("unknown native effect family")
-        return replace(decode_h1771_scene(payload), template=scene_ref)
-    return replace(decode_native_body(payload, family=family), template=scene_ref)
 
 
 def decode_native_body(payload: bytes, *, family: int) -> NativeEffect:
@@ -136,39 +114,32 @@ def _serialise(value: Any) -> bytes:
         raise ValueError(f"invalid native effect structure: {error}") from error
 
 
-def encode_native_body(content: NativeEffect, *, profile: ModelProfile | None = None) -> bytes:
-    effective_profile = profile or get_profile(content.model)
-    codec = native_a3_codec_for_profile(effective_profile)
-    if codec is not None:
-        if content.model != codec.canonical_model:
-            raise ValueError("native content does not match the selected codec")
-        return codec.encode(content)
-    if content.model == "H1AB2":
-        from .h1ab2_effects import encode_accumulation
+def validate_h60a6_structure(content: NativeEffect) -> None:
+    from .layered_scene import LayeredSceneValidationError
+    from .native_effect import NativeDiyLayer, NativeOpaqueLayer, NativePaintLayer
 
-        return encode_accumulation(content)
-    if content.model == "H6093":
-        from .projector_protocol import encode_projector
+    if content.model != "H60A6" or content.family not in (797, 798):
+        raise LayeredSceneValidationError("unsupported native effect model or family")
+    if (
+        content.projector_layers
+        or content.revision
+        or content.combined is not None
+        or any(isinstance(layer, NativeDiyLayer) and layer.temperatures for layer in content.layers)
+        or content.section_tail
+    ):
+        raise LayeredSceneValidationError("native fields do not match the layered H60A6 grammar")
+    expected = NativeDiyLayer if content.family == 797 else NativePaintLayer
+    if any(not isinstance(layer, expected | NativeOpaqueLayer) for layer in content.layers):
+        raise LayeredSceneValidationError("native layer does not match its effect family")
+    if any(
+        isinstance(layer, NativeDiyLayer) and (not layer.enabled or layer.secondary_palette) for layer in content.layers
+    ):
+        raise LayeredSceneValidationError("zone parameters do not match the native layered grammar")
 
-        return encode_projector(content)
-    if content.model == "H60B2":
-        from .h60b2_effects import encode_h60b2_diy
 
-        return encode_h60b2_diy(content)
-    """Build all lengths and byte order through generated native structures."""
-    if content.model == "H60B0":
-        from .h60b0_diy import encode_h60b0_diy
-
-        return encode_h60b0_diy(content)
-    if content.model == "H1771":
-        from .h1771_effects import encode_h1771_diy, encode_h1771_scene
-
-        return encode_h1771_scene(content) if content.template is not None else encode_h1771_diy(content)
-    if content.model == "H607C":
-        from .h607c_effects import encode_zoned_diy
-
-        return encode_zoned_diy(content)
-    content.__post_init__()
+def encode_native_body(content: NativeEffect) -> bytes:
+    """Build all lengths and byte order through the H60A6 generated structures."""
+    validate_h60a6_structure(content)
     if content.family == 797:
         root = H60a6DiyBody()
         root.marker = b"\x50"

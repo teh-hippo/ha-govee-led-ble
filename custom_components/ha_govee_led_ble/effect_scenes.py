@@ -25,8 +25,8 @@ from .effect_domain import (
     effect_content_to_dict,
 )
 from .effect_scene_defaults import NativeSceneDefault, NativeSceneDefaultRepository
-from .h60a6_effects import decode_native_scene
 from .layered_scene_decoder import decode_layered_scene
+from .native_effect_codecs import native_effect_codec_for_profile
 from .native_scenes import (
     apply_scene_speed,
     build_native_scene_packets,
@@ -35,7 +35,6 @@ from .native_scenes import (
     resolve_native_scene_body,
 )
 from .palette_scene_decoder import decode_palette_scene
-from .protocol_core import H607cSceneBody
 from .scenes import (
     MODEL_SCENE_LABELS,
     MODEL_SCENES,
@@ -79,8 +78,16 @@ def scene_default_for(
     speed_index = value.speed_index
     if entry.speed is None:
         speed_index = None
-    elif (speed_index is None and entry.scene_type != 5 and model != "H60B0") or (
-        speed_index is not None and not 0 <= speed_index < entry.speed.option_count
+    else:
+        from .native_effect_codecs import native_effect_codec_for_target
+
+        codec = native_effect_codec_for_target(model)
+        preserve_unspecified = codec is not None and codec.preserves_unspecified_scene_speed
+    if entry.speed is not None and (
+        speed_index is None
+        and entry.scene_type != 5
+        and not preserve_unspecified
+        or (speed_index is not None and not 0 <= speed_index < entry.speed.option_count)
     ):
         speed_index = entry.speed.default_index
     return replace(
@@ -171,7 +178,7 @@ def scene_catalogue_payload(model: str, *, profile: ModelProfile | None = None) 
         "sku": model,
         "enabled": (get_profile(model) if profile is None else profile).supports_scenes,
         "categories": categories,
-        "scenes": [_scene_summary(entry, labels[entry.scene_id, entry.effect_id]) for entry in entries],
+        "scenes": [_scene_summary(model, entry, labels[entry.scene_id, entry.effect_id]) for entry in entries],
     }
 
 
@@ -214,7 +221,7 @@ def scene_detail_payload(
         speed_index,
     )
     return {
-        "scene": _scene_summary(resolved.entry, resolved.label),
+        "scene": _scene_summary(model, resolved.entry, resolved.label),
         "content": effect_content_to_dict(content),
         "catalogue_content": effect_content_to_dict(catalogue_content),
         "has_default": scene_default is not None,
@@ -322,8 +329,9 @@ async def async_set_scene_default(
         canonical_body, resolved_speed = resolve_native_scene_body(
             resolved.entry,
             speed_index=parsed.speed_index,
+            target=coordinator.model,
         )
-    catalogue_body, catalogue_speed = resolve_native_scene_body(resolved.entry)
+    catalogue_body, catalogue_speed = resolve_native_scene_body(resolved.entry, target=coordinator.model)
     if canonical_body == catalogue_body and resolved_speed == catalogue_speed:
         await async_delete_scene_defaults(scene_defaults, config_entry.entry_id, coordinator.model, resolved)
     elif canonical_body:
@@ -353,16 +361,28 @@ def _scene_content(
         body = base64.b64decode(entry.param, validate=True)
     if entry.scene_type == 1 and body:
         return decode_palette_scene(template, body, speed_index=speed_index)
-    if entry.scene_type in {2, int(H607cSceneBody.CatalogueType.layered_scene)} and body:
+    codec = native_effect_codec_for_profile(get_profile(template.sku))
+    layered_type = None if codec is None else codec.layered_scene_type
+    if (entry.scene_type == 2 or entry.scene_type == layered_type) and body:
         return decode_layered_scene(template, body, speed_index=speed_index, scene_type=entry.scene_type)
     if native_scene_body_is_opaque(entry, template.sku) and body:
         return BuiltinScene(template, speed_index=speed_index)
     if entry.scene_type == 5 and body:
-        body, resolved_speed = resolve_native_scene_body(entry, speed_index=speed_index, canonical_body=canonical_body)
+        body, resolved_speed = resolve_native_scene_body(
+            entry,
+            speed_index=speed_index,
+            canonical_body=canonical_body,
+            target=template.sku,
+        )
         if len(entry.diy_effect_codes) != 1:
             raise EffectValidationError("native scene has no documented body family")
+        from .native_effect_codecs import native_effect_codec_for_target
+
+        codec = native_effect_codec_for_target(template.sku)
+        if codec is None:
+            raise EffectValidationError("native scene has no selected codec")
         return replace(
-            decode_native_scene(template, body, family=entry.diy_effect_codes[0]),
+            codec.decode_scene_content(template, body, entry.diy_effect_codes[0]),
             speed_index=resolved_speed,
         )
     return BuiltinScene(template, speed_index=speed_index)
@@ -384,6 +404,8 @@ def _validate_scene_content_identity(
         or template.catalogue_schema_version != CATALOGUE_SCHEMA_VERSION
     ):
         raise EffectValidationError("scene default content has mismatched catalogue identity")
+    codec = native_effect_codec_for_profile(get_profile(model))
+    layered_type = None if codec is None else codec.layered_scene_type
     expected_type = (
         BuiltinScene
         if entry.selector_only or not entry.param
@@ -392,7 +414,7 @@ def _validate_scene_content_identity(
             1: PaletteScene,
             2: LayeredScene,
             5: NativeEffect,
-            int(H607cSceneBody.CatalogueType.layered_scene): LayeredScene,
+            **({layered_type: LayeredScene} if layered_type is not None else {}),
         }.get(entry.scene_type)
     )
     if native_scene_body_is_opaque(entry, model):
@@ -417,16 +439,21 @@ def resolve_scene_application_body(
             raise ValueError("selector-only scenes do not accept canonical_body defaults")
         return b"", None
     if scene_default is None:
-        return resolve_native_scene_body(scene, speed_index=speed_index)
+        codec = None if profile is None else native_effect_codec_for_profile(profile)
+        return resolve_native_scene_body(
+            scene,
+            speed_index=speed_index,
+            target=None if codec is None else codec.canonical_target,
+        )
     speed = scene.speed
     if speed is None:
         if speed_index is not None:
             raise ValueError("this scene does not expose a documented Speed control")
         return scene_default.canonical_body, None
     resolved_speed = scene_default.speed_index if speed_index is None else speed_index
-    if resolved_speed is None and (
-        scene.scene_type == 5 or scene.scene_type == 6 and scene_default.canonical_body[:1] == b"\x51"
-    ):
+    codec = None if profile is None else native_effect_codec_for_profile(profile)
+    preserves_unspecified = codec is not None and codec.preserves_unspecified_scene_speed
+    if resolved_speed is None and (scene.scene_type == 5 or preserves_unspecified):
         return scene_default.canonical_body, None
     if resolved_speed is None:
         resolved_speed = speed.default_index
@@ -434,19 +461,27 @@ def resolve_scene_application_body(
         raise ValueError(f"scene speed index {resolved_speed} outside 0..{speed.option_count - 1}")
     body = scene_default.canonical_body
     if speed_index is not None and speed_index != scene_default.speed_index:
-        body = apply_scene_speed(body, speed, speed_index, scene_type=scene.scene_type)
+        body = apply_scene_speed(
+            body,
+            speed,
+            speed_index,
+            scene_type=scene.scene_type,
+            target=None if codec is None else codec.canonical_target,
+        )
     return body, resolved_speed
 
 
-def _scene_summary(entry: SceneEntry, label: str) -> dict[str, JsonValue]:
+def _scene_summary(model: str, entry: SceneEntry, label: str) -> dict[str, JsonValue]:
+    codec = native_effect_codec_for_profile(get_profile(model))
     parameter_kind = (
         "none"
         if entry.selector_only or not entry.param
         else "palette"
         if entry.scene_type == 1
         else "layers"
-        if entry.scene_type in {2, int(H607cSceneBody.CatalogueType.layered_scene)}
-        or (entry.scene_type == 5 and entry.diy_effect_codes in {(797,), (798,)})
+        if entry.scene_type == 2
+        or entry.scene_type == (None if codec is None else codec.layered_scene_type)
+        or (entry.scene_type == 5 and codec is not None and codec.native_catalogue)
         else "opaque"
     )
     return {

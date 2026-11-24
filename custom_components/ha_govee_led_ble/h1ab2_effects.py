@@ -1,11 +1,12 @@
 """Semantic codec for the native Accumulation wire format."""
 
+from .layered_scene import LayeredSceneValidationError
 from .native_effect import NativeDiyLayer, NativeEffect
 from .protocol_core import H1ab2DiyBody, new_rgb, serialize_native_body
 
 
 def encode_accumulation(content: NativeEffect) -> bytes:
-    content.__post_init__()
+    validate_h1ab2_structure(content)
     layer = content.layers[0]
     assert isinstance(layer, NativeDiyLayer)
     variation = H1ab2DiyBody.Variation(layer.parameter)
@@ -23,6 +24,39 @@ def encode_accumulation(content: NativeEffect) -> bytes:
     root.num_palette = len(layer.palette)
     root.palette = [new_rgb(root, rgb) for rgb in layer.palette]
     return serialize_native_body(root)
+
+
+def validate_h1ab2_structure(content: NativeEffect) -> None:
+    if (
+        content.model != "H1AB2"
+        or content.family != H1ab2DiyBody.CatalogueFamily.accumulation
+        or len(content.layers) != 1
+        or not isinstance(content.layers[0], NativeDiyLayer)
+        or content.layers[0].kind != H1ab2DiyBody.Effect.accumulation
+        or content.layers[0].parameter not in H1ab2DiyBody.Variation
+        or content.layers[0].parameters
+        or content.layers[0].flag
+        or content.layers[0].points
+        or content.layers[0].direction
+        or content.layers[0].angle
+        or content.layers[0].opaque
+        or not content.layers[0].enabled
+        or content.layers[0].secondary_palette
+        or content.backgrounds
+        or content.background_flag
+        or content.background != (0, 0, 0)
+        or content.background_brightness != 100
+        or content.show_type != 1
+        or content.template is not None
+        or content.preset_id is not None
+        or content.speed_index is not None
+        or content.opaque
+        or content.section_tail
+        or content.projector_layers
+        or content.revision
+        or content.combined is not None
+    ):
+        raise LayeredSceneValidationError("invalid native Accumulation structure")
 
 
 def decode_accumulation(payload: bytes) -> NativeEffect:

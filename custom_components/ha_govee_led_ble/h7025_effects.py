@@ -6,6 +6,7 @@ from typing import Any
 
 from kaitaistruct import KaitaiStructError
 
+from .layered_scene import LayeredSceneValidationError
 from .native_effect import NativeDiyLayer, NativeEffect
 from .protocol_core import H7025DiyBody, new_child, new_rgb, serialize_native_body
 
@@ -30,8 +31,40 @@ def _rgb(value: Any) -> tuple[int, int, int]:
     return int(value.red), int(value.green), int(value.blue)
 
 
+def _validate_h7025_structure(content: NativeEffect) -> None:
+    if content.model != "H7025":
+        return
+    if content.projector_layers:
+        raise LayeredSceneValidationError("projector layers require the exact model")
+    if (
+        content.revision
+        or content.combined is not None
+        or any(isinstance(layer, NativeDiyLayer) and layer.temperatures for layer in content.layers)
+    ):
+        raise LayeredSceneValidationError("native revision and temperature records require the exact model")
+    if (
+        content.family != 767
+        or len(content.layers) != 1
+        or not isinstance(content.layers[0], NativeDiyLayer)
+        or content.preset_id not in range(16, 25)
+        or content.backgrounds
+        or content.background_flag
+        or content.background != (0, 0, 0)
+        or content.background_brightness != 100
+        or content.show_type != 1
+        or content.template is not None
+        or content.speed_index is not None
+        or content.opaque
+    ):
+        raise LayeredSceneValidationError("invalid H7025 native DIY structure")
+    if not isinstance(content.opaque, bytes) or not isinstance(content.section_tail, bytes):
+        raise LayeredSceneValidationError("native extension field must be bytes")
+    if content.section_tail:
+        raise LayeredSceneValidationError("native section extension does not match the model")
+
+
 def validate_h7025_diy(content: NativeEffect) -> None:
-    content.__post_init__()
+    _validate_h7025_structure(content)
     if content.model != "H7025" or content.family != H7025_NATIVE_DIY_FAMILY or content.preset_id not in _PRESETS:
         raise ValueError("H7025 native DIY requires an exact catalogue preset")
     if len(content.layers) != 1 or not isinstance(content.layers[0], NativeDiyLayer):

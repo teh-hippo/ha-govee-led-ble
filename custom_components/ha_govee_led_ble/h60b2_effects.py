@@ -4,12 +4,13 @@ import io
 
 from kaitaistruct import KaitaiStream
 
+from .layered_scene import LayeredSceneValidationError
 from .native_effect import NativeDiyLayer, NativeEffect
 from .protocol_core import H60b2DiyBody, new_child, new_rgb, serialize_native_body
 
 
 def encode_h60b2_diy(content: NativeEffect) -> bytes:
-    content.__post_init__()
+    validate_h60b2_structure(content)
     layer = content.layers[0]
     if content.model != "H60B2" or not isinstance(layer, NativeDiyLayer):
         raise ValueError("native palette content does not match the codec")
@@ -49,3 +50,26 @@ def encode_h60b2_diy(content: NativeEffect) -> bytes:
     body._io = KaitaiStream(io.BytesIO(bytes(root.len_body)))
     root.unknown_tail = b""
     return serialize_native_body(root)
+
+
+def validate_h60b2_structure(content: NativeEffect) -> None:
+    if (
+        content.model != "H60B2"
+        or content.family != 803
+        or len(content.layers) != 1
+        or not isinstance(content.layers[0], NativeDiyLayer)
+        or content.backgrounds
+        or content.background_flag
+        or content.background != (0, 0, 0)
+        or content.background_brightness != 100
+        or content.show_type != 1
+        or content.template is not None
+        or content.preset_id is not None
+        or content.speed_index is not None
+        or content.opaque
+        or content.section_tail
+        or content.projector_layers
+        or content.revision
+        or content.combined is not None
+    ):
+        raise LayeredSceneValidationError("invalid single native palette structure")
