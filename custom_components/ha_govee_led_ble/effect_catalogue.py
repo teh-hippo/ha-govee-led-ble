@@ -10,6 +10,7 @@ from .effect_catalogue_families import DEFAULT_PALETTE as DEFAULT_PALETTE
 from .effect_catalogue_families import H1A42_DIY_FAMILIES as H1A42_DIY_FAMILIES
 from .effect_catalogue_families import H60A1_DIY_FAMILIES as H60A1_DIY_FAMILIES
 from .effect_catalogue_families import H60B2_DIY_FAMILIES as H60B2_DIY_FAMILIES
+from .effect_catalogue_families import H61E5_DIY_FAMILIES as H61E5_DIY_FAMILIES
 from .effect_catalogue_families import H61F5_DIY_FAMILIES as H61F5_DIY_FAMILIES
 from .effect_catalogue_families import H66A0_DIY_FAMILIES as H66A0_DIY_FAMILIES
 from .effect_catalogue_families import H600A_DIY_FAMILIES as H600A_DIY_FAMILIES

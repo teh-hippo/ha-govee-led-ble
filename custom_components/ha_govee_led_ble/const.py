@@ -15,6 +15,7 @@ from .music_semantics import (
     H1AB2_MUSIC_VARIANTS,
     H60B0_MUSIC_VARIANTS,
     H60B2_MUSIC_VARIANTS,
+    H61E5_MUSIC_VARIANTS,
     H61F5_MUSIC_VARIANTS,
     H66A0_MUSIC_VARIANTS,
     H617A_MUSIC_VARIANTS,
@@ -2394,6 +2395,74 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         boolean_controls=frozenset({"gradual"}),
         supports_power_on_behaviour=True,
     ),
+    "H61E5": ModelProfile(
+        "H61E5 COB Strip Light Pro",
+        confirmation_issue=731,
+        command_grammar="H617A",
+        status_grammar="H61F5",
+        effect_grammar="H617A",
+        music_grammar="H61F5",
+        profile_pact_dependent=True,
+        kelvin_verification_reads_colour_mode=True,
+        segment_colour_mode_ambiguous=True,
+        static_readback_gradual=True,
+        read_domains=frozenset(
+            {
+                ReadDomain.POWER,
+                ReadDomain.BRIGHTNESS,
+                ReadDomain.COLOUR_MODE,
+                ReadDomain.FIRMWARE,
+                ReadDomain.HARDWARE,
+                ReadDomain.SUBORDINATE_20,
+                ReadDomain.SUBORDINATE_21,
+                ReadDomain.PHYSICAL_IC_COUNT,
+                ReadDomain.SEGMENTS,
+            }
+        ),
+        setup_required_read_domains=frozenset(
+            {
+                ReadDomain.POWER,
+                ReadDomain.BRIGHTNESS,
+                ReadDomain.COLOUR_MODE,
+            }
+        ),
+        supports_rgb=True,
+        supports_color_temperature=True,
+        color_temp_range=KELVIN_RANGE_2700_6500,
+        supports_custom_effects=True,
+        supports_scenes=True,
+        music_modes=(
+            "energetic",
+            "rhythm",
+            "spectrum",
+            "rolling",
+            "separation",
+            "hopping",
+            "piano_keys",
+            "fountain",
+            "day_and_night",
+            "bloom",
+            "shiny",
+        ),
+        music_variants=H61E5_MUSIC_VARIANTS,
+        music_upload_before_selector=True,
+        supports_music_color=True,
+        supports_advanced_effects=True,
+        supports_multi_layered_effects=True,
+        effect_workflows=frozenset({"native_scenes", "painted", "single", "multi", "native_music", "advanced"}),
+        physical_ic_count=36,
+        physical_ic_capacity=36,
+        segment_count_ic_divisor=3,
+        segment_count_capacity=12,
+        segment_count=12,
+        segment_group_size=4,
+        supports_segment_writes=True,
+        supports_segment_brightness=True,
+        supports_segment_color_temperature=True,
+        scene_catalogue_sku="H61E5",
+        effect_readback="diy_code_only",
+        boolean_controls=frozenset({"gradual"}),
+    ),
     "H61F5": ModelProfile(
         "H61F5 Strip Light 2 Pro",
         support_quality=SupportQuality.SUPPORTED,
@@ -4703,7 +4772,7 @@ def device_profile(
         if (pact_type, pact_code) in {(1, 1), (2, 1), (3, 1)}:
             return profile
         return _basic_revision_profile(profile)
-    if model in {"H6046", "H607C", "H6097", "H7020"}:
+    if model in {"H6046", "H607C", "H6097", "H61E5", "H7020"}:
         profile = get_profile(model)
         if (pact_type, pact_code) in _STANDARD_PACTS or (model == "H607C" and (pact_type, pact_code) == (2, 2)):
             return profile
