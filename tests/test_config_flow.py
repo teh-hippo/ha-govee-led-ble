@@ -12,7 +12,8 @@ from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType, InvalidData
 from homeassistant.helpers import entity_registry as er
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant.common import MockConfigEntry
+from pytest_homeassistant.components.bluetooth import inject_bluetooth_service_info
 
 from custom_components.ha_govee_led_ble.const import (
     BLE_DISCOVERABLE_MODELS,
@@ -44,17 +45,24 @@ SVC_UNSUPPORTED = BluetoothServiceInfo("SomeOtherDevice", "11:22:33:44:55:66", -
 
 
 @pytest.fixture(autouse=True)
-async def mock_bluetooth(hass, enable_custom_integrations):
-    hass.config.components |= {"bluetooth", "bluetooth_adapters"}
+def bluetooth_components(hass, mock_bluetooth, request):
+    if "enable_bluetooth" not in request.fixturenames:
+        hass.config.components |= {"bluetooth", "bluetooth_adapters"}
 
 
 @pytest.fixture(autouse=True)
 def mock_manual_validation():
-    with (
-        patch(f"{M}.async_validate_ble_connection", new_callable=AsyncMock) as validation,
-        patch(f"{M}.bluetooth.async_last_service_info", return_value=None),
-    ):
+    with patch(f"{M}.async_validate_ble_connection", new_callable=AsyncMock) as validation:
         yield validation
+
+
+@pytest.fixture(autouse=True)
+def mock_bluetooth_lookup(request):
+    if "enable_bluetooth" in request.fixturenames:
+        yield
+        return
+    with patch(f"{M}.bluetooth.async_last_service_info", return_value=None):
+        yield
 
 
 async def _init(hass, source, data=None):
@@ -396,13 +404,13 @@ async def test_user_step_rejects_invalid_h6102_firmware(hass: HomeAssistant, fir
     assert cleared["data"] == {CONF_MODEL: "H6102"}
 
 
-async def test_user_step_rejects_positive_model_mismatch(hass: HomeAssistant, mock_manual_validation):
-    with patch(f"{M}.bluetooth.async_last_service_info", return_value=SVC):
-        r = await _init(
-            hass,
-            config_entries.SOURCE_USER,
-            {CONF_ADDRESS: SVC.address, CONF_MODEL: "H6199"},
-        )
+async def test_user_step_rejects_positive_model_mismatch(hass: HomeAssistant, mock_manual_validation, enable_bluetooth):
+    inject_bluetooth_service_info(hass, SVC)
+    r = await _init(
+        hass,
+        config_entries.SOURCE_USER,
+        {CONF_ADDRESS: SVC.address, CONF_MODEL: "H6199"},
+    )
     assert r["type"] == FlowResultType.FORM
     assert r["errors"] == {"base": "model_mismatch"}
     assert not hass.config_entries.async_entries(DOMAIN)

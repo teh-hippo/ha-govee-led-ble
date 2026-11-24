@@ -4,7 +4,7 @@ from collections.abc import Awaitable, Callable
 from contextlib import AbstractContextManager
 from typing import TYPE_CHECKING, Any
 
-from homeassistant.components.light import ColorMode  # type: ignore[attr-defined]
+from homeassistant.components.light import ColorMode
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError

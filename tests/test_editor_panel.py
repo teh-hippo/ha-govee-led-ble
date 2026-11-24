@@ -16,7 +16,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import UnsupportedStorageVersionError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.setup import async_setup_component
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.ha_govee_led_ble import _async_update_editor_panel, async_setup
 from custom_components.ha_govee_led_ble.const import CONF_MODEL, CONF_REGISTER_EFFECT_STUDIO, DOMAIN, device_profile

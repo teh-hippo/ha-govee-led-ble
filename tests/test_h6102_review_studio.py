@@ -1,12 +1,12 @@
 """Issue 115 review: real Studio admission and retained-body editing endpoints."""
 
 from dataclasses import replace
-from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
 from homeassistant.config_entries import ConfigEntryState
+from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.ha_govee_led_ble.const import DOMAIN, device_profile, get_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
@@ -39,16 +39,21 @@ def _coordinator(hass, *, resolved=True):
     return coordinator
 
 
-def _entry(hass, monkeypatch, coordinator):
-    entry = SimpleNamespace(entry_id="h6102", domain=DOMAIN, state=ConfigEntryState.LOADED, runtime_data=coordinator)
-    monkeypatch.setattr(hass.config_entries, "async_get_entry", lambda _id: entry)
+def _entry(hass, coordinator):
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        entry_id="h6102",
+        state=ConfigEntryState.LOADED,
+    )
+    entry.runtime_data = coordinator
+    entry.add_to_hass(hass)
     return entry
 
 
 async def test_native_preview_rejects_unresolved_profile_before_accept(hass, hass_ws_client, monkeypatch):
     backend = await _setup_backend(hass)
     coordinator = _coordinator(hass, resolved=False)
-    _entry(hass, monkeypatch, coordinator)
+    _entry(hass, coordinator)
     accept = AsyncMock()
     monkeypatch.setattr(backend.preview, "_async_accept", accept)
     scene = SCENE_ENTRIES["H6102"][0]
@@ -214,7 +219,7 @@ async def test_retained_music_actual_endpoint_preserves_companions(hass, hass_ws
         else GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url=None)
     )
     coordinator.profile = replace(coordinator.profile, physical_ic_count=None)
-    _entry(hass, monkeypatch, coordinator)
+    _entry(hass, coordinator)
     coordinator.music_mode = "hopping"
     coordinator._music_body = ("hopping", BODY)
     edit = retained_music_edit(coordinator)
@@ -272,7 +277,7 @@ async def test_retained_piano_endpoint_allows_gradient_but_rejects_key_count(has
     await _setup_backend(hass)
     coordinator = _coordinator(hass)
     coordinator.profile = replace(coordinator.profile, physical_ic_count=None)
-    _entry(hass, monkeypatch, coordinator)
+    _entry(hass, coordinator)
     coordinator.music_mode = "piano_keys"
     body = bytes.fromhex("3402010203040506000f0a0407")
     coordinator._music_body = ("piano_keys", body)

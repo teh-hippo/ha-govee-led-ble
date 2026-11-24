@@ -13,21 +13,22 @@ dependencies = [
 [dependency-groups]
 dev = [
     "aiotools>=2.0",
-    "aiousbwatcher>=1.1.1",
     "bleak-esphome==4.1.0",
     "mypy>=1.15",
     # Home Assistant pins Pillow below its security fixes. Do not override that pin: tests
     # must match what HA ships. Pillow is test-only here and never bundled with the integration.
-    "pytest-homeassistant-custom-component>=0.13.374",
+    "pytest-homeassistant[bluetooth]==2026.11.3",
     "pytest-cov>=7.1",
     "pytest-xdist>=3.8",
     "ruff>=0.9",
-    "serialx>=1.8.2",
     "vulture>=2.16",
 ]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = "-p no:respx"
+pythonpath = ["."]
 testpaths = ["tests"]
 
 [tool.coverage.run]
@@ -47,7 +48,7 @@ module = [
     "homeassistant.*",
     "kaitaistruct",
     "kaitaistruct.*",
-    "pytest_homeassistant_custom_component.*",
+    "pytest_homeassistant.*",
 ]
 ignore_missing_imports = true
 disable_error_code = ["attr-defined"]
@@ -65,7 +66,6 @@ required-version = ">=0.13.4"
 override-dependencies = [
     "cryptography>=50.0.0",
     "PyJWT>=2.12.0",
-    "pytest>=9.0.3",
 ]
 
 [tool.semantic_release]

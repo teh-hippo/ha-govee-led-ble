@@ -17,10 +17,10 @@ from homeassistant.config_entries import current_entry
 from homeassistant.core import CoreState, ServiceCall, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import issue_registry as ir
-from homeassistant.helpers.storage import Store
+from homeassistant.helpers import storage
 from homeassistant.util.file import WriteError
 from kaitaistruct import KaitaiStream
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.ha_govee_led_ble.const import DOMAIN, device_profile, get_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
@@ -45,16 +45,23 @@ from tests.coordinator_test_support import frame
 from tests.test_govee_encryption import KEY, negotiate
 
 PROFILE = get_profile("H6099")
-_STORE_WRITE_DATA = Store._async_write_data
-_STORE_LOAD = Store._async_load
+_FILE_STORE_IO = storage._FileStoreIO
 
 
 @pytest.fixture
-def durable_storage(hass_storage):
-    """Restore HA's real disk reads and writes inside the storage fixture."""
+def durable_storage(hass, hass_storage):
+    """Restore HA's real disk IO inside the in-memory storage fixture."""
+    native_store = hass.config_entries._store
+    native_io = _FILE_STORE_IO(
+        hass,
+        native_store.key,
+        native_store.path,
+        native_store._io._private,
+        native_store._io._atomic_writes,
+    )
     with (
-        patch.object(Store, "_async_write_data", _STORE_WRITE_DATA),
-        patch.object(Store, "_async_load", _STORE_LOAD),
+        patch.object(native_store, "_io", native_io),
+        patch("homeassistant.helpers.storage._FileStoreIO", _FILE_STORE_IO),
     ):
         yield
 
@@ -341,7 +348,6 @@ async def test_storage_failure_prevents_transmission(hass, tmp_path, durable_sto
     path = Path(c._dreamview_store.path)
     before = await hass.async_add_executor_job(path.read_bytes)
     assert json.loads(before)["data"] == prior
-    assert c._dreamview_store._atomic_writes
     target = (
         "homeassistant.helpers.storage.write_utf8_file_atomic"
         if failure == "write_error"
@@ -1118,7 +1124,7 @@ async def test_dreamview_disconnect_failure_does_not_poison_native_entry_unload(
         domain=DOMAIN, async_get_component=AsyncMock(return_value=integration)
     )
     hass.config.components.add(DOMAIN)
-    monkeypatch.setattr(hass.config_entries, "async_unload_platforms", AsyncMock(return_value=True))
+    monkeypatch.setattr(hass.config_entries, "async_unload_platforms_or_raise", AsyncMock())
     monkeypatch.setattr(hass.config_entries, "async_setup", AsyncMock(return_value=True))
     monkeypatch.setattr(integration, "_async_update_editor_panel", AsyncMock())
     with pytest.raises(BleakError, match="could not be released"):
