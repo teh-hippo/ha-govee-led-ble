@@ -29,7 +29,6 @@ from .layered_scene import (
 )
 from .protocol_core import (
     GoveeShared,
-    H607cSceneBody,
     H6046EffectUpload,
     H6053EffectUpload,
     H6199EffectUpload,
@@ -62,12 +61,13 @@ def decode_layered_scene(
     scene_type: int = 2,
 ) -> LayeredScene:
     """Decode layered fields while preserving source-only bytes and V2 trailers."""
-    if template.sku == "H60B0":
-        from .h60b0_effects import decode_combined_scene
+    from .native_effect_codecs import native_effect_codec_for_target
 
+    codec = native_effect_codec_for_target(template.sku)
+    if codec is not None and codec.decode_layered is not None:
         if scene_type != 6:
             raise ValueError("Combined scenes require the exact catalogue type")
-        return decode_combined_scene(template, raw_param, speed_index=speed_index)
+        return codec.decode_layered(template, raw_param, speed_index)
     parsed, trailing_padding = parse_scene_body(raw_param, scene_type=scene_type)
     return LayeredScene(
         template=template,
@@ -80,10 +80,11 @@ def decode_layered_scene(
 
 def decode_catalogue_layered_scene(sku: str, entry: SceneEntry) -> LayeredScene | None:
     """Decode one layered catalogue entry, returning None for other scene grammars."""
-    if entry.scene_type not in {
-        int(SceneBody.SceneType.scene_v2),
-        int(H607cSceneBody.CatalogueType.layered_scene),
-    }:
+    from .native_effect_codecs import native_effect_codec_for_target
+
+    codec = native_effect_codec_for_target(sku)
+    layered_type = None if codec is None else codec.layered_scene_type
+    if entry.scene_type != int(SceneBody.SceneType.scene_v2) and entry.scene_type != layered_type:
         return None
     if not entry.param:
         raise ValueError("layered catalogue scene has no parameter")
@@ -97,17 +98,14 @@ def decode_catalogue_layered_scene(sku: str, entry: SceneEntry) -> LayeredScene 
 
 def encode_layered_scene(scene: LayeredScene, *, scene_type: int = 2, profile: ModelProfile | None = None) -> bytes:
     """Serialize canonical layers through the selected catalogue container."""
-    if scene.template.sku == "H60B0":
-        from .h60b0_effects import encode_combined_scene
+    from .native_effect_codecs import native_effect_codec_for_target
 
+    codec = native_effect_codec_for_target(scene.template.sku)
+    if codec is not None and codec.encode_layered is not None:
         if scene_type != 6:
             raise ValueError("Combined scenes require the exact catalogue type")
-        return encode_combined_scene(scene)
-    if scene_type == int(H607cSceneBody.CatalogueType.layered_scene):
-        root = H607cSceneBody()
-        root.marker = bytes((int(H607cSceneBody.UploadSubtype.layered_scene),))
-        record_type = H607cSceneBody.Record
-    elif scene_type == int(SceneBody.SceneType.scene_v2):
+        return codec.encode_layered(scene)
+    if scene_type == int(SceneBody.SceneType.scene_v2):
         root = SceneBody()
         root.scene_type = SceneBody.SceneType.scene_v2
         record_type = SceneBody.Record

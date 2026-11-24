@@ -5,6 +5,7 @@ from typing import Any
 
 from kaitaistruct import KaitaiStream, KaitaiStructError
 
+from .layered_scene import LayeredSceneValidationError
 from .native_effect import NativeDiyLayer, NativeEffect, NativeLayer, NativeOpaqueLayer
 from .protocol_core import H1771DiyBody, new_child, new_rgb, serialize_native_body
 
@@ -26,6 +27,26 @@ _SECOND_TYPES = {
     _SECOND.background: H1771DiyBody.BackgroundPalette,
     _SECOND.temperature: H1771DiyBody.Temperature,
 }
+
+
+def validate_h1771_structure(content: NativeEffect) -> None:
+    if (
+        content.model != "H1771"
+        or content.family != 957
+        or len(content.layers) != 2
+        or content.backgrounds
+        or content.background_flag
+        or content.background != (0, 0, 0)
+        or content.background_brightness != 100
+        or content.show_type != 1
+        or content.preset_id is not None
+        or content.projector_layers
+        or content.revision
+        or content.combined is not None
+    ):
+        raise LayeredSceneValidationError("invalid native dual-source DIY structure")
+    if any(not isinstance(layer, NativeDiyLayer | NativeOpaqueLayer) for layer in content.layers):
+        raise LayeredSceneValidationError("native layer does not match its effect family")
 
 
 def _rgb(value: Any) -> tuple[int, int, int]:
@@ -136,7 +157,7 @@ def _section(layer: NativeLayer, parent: Any, *, first: bool) -> tuple[Any, int]
 
 
 def encode_h1771_diy(content: NativeEffect) -> bytes:
-    content.__post_init__()
+    validate_h1771_structure(content)
     if content.model != "H1771":
         raise ValueError("native dual-source DIY does not match the model")
     root = H1771DiyBody()

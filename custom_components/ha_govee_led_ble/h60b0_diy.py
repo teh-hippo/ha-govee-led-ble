@@ -2,12 +2,48 @@
 
 from typing import Any, cast
 
+from .layered_scene import LayeredScene, LayeredSceneValidationError
 from .native_effect import NativeDiyLayer, NativeEffect, NativeOpaqueLayer
 from .protocol_core import new_child, new_rgb, serialize_native_body
 from .protocol_imports import load_generated_class
 
 H60b0DiyBody = load_generated_class("h60b0_diy_body", "H60b0DiyBody")
 H60b0DiyV3 = load_generated_class("h60b0_diy_v3", "H60b0DiyV3")
+
+
+def validate_h60b0_structure(content: NativeEffect) -> None:
+    if content.model != "H60B0":
+        raise LayeredSceneValidationError("H60B0 native content has the wrong target")
+    expected_count = 0 if content.family == 81 else 3 if content.revision == 3 else 2 if content.family == 13 else 1
+    if (
+        (content.revision != 0 if content.family == 81 else content.revision not in (1, 3))
+        or (content.family not in (922, 923) if content.revision == 3 else content.family not in (*range(1, 14), 81))
+        or len(content.layers) != expected_count
+        or content.template is not None
+        or content.backgrounds
+        or content.background_flag
+        or content.background != (0, 0, 0)
+        or content.background_brightness != 100
+        or content.show_type != 1
+        or content.preset_id is not None
+        or content.speed_index is not None
+        or content.projector_layers
+    ):
+        raise LayeredSceneValidationError("invalid revision-qualified native DIY")
+    if any(not isinstance(layer, NativeDiyLayer | NativeOpaqueLayer) for layer in content.layers):
+        raise LayeredSceneValidationError("native layer does not match its effect family")
+    if content.family == 81:
+        if (
+            not isinstance(content.combined, LayeredScene)
+            or content.combined.template.sku != content.model
+            or not content.combined.ripple_layers
+            or content.combined.speed_index is not None
+            or content.opaque
+            or content.section_tail
+        ):
+            raise LayeredSceneValidationError("native combination requires side and ripple content")
+    elif content.combined is not None:
+        raise LayeredSceneValidationError("combined content does not match the native family")
 
 
 def _palette(parent: Any, colours: tuple[tuple[int, int, int], ...]) -> Any:
@@ -18,6 +54,7 @@ def _palette(parent: Any, colours: tuple[tuple[int, int, int], ...]) -> Any:
 
 
 def validate_h60b0_diy(content: NativeEffect, revision: int) -> None:
+    validate_h60b0_structure(content)
     if content.model == "H60B0" and content.family == 81:
         if revision not in (1, 2, 3):
             raise ValueError("Native combination requires a freshly resolved device Pact")

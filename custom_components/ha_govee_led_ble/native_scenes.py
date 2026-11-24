@@ -1,59 +1,53 @@
 """Native-scene payload patching and application packet encoding."""
 
 import base64
-import io
 from dataclasses import replace
 from typing import Any
 
-from kaitaistruct import KaitaiStream, KaitaiStructError
+from kaitaistruct import KaitaiStructError
 
 from .const import ModelProfile, get_profile
 from .effect_domain import LayeredScene, NativeEffect, PaletteScene
 from .generated_protocol_adapter import build_scene_activation, parse_scene_body
-from .h60a6_effects import encode_native_body
 from .layered_scene import CatalogueRef, LayeredEffect
 from .layered_scene_decoder import decode_layered_scene, encode_layered_scene
-from .palette_scene_decoder import encode_palette_scene
-from .protocol_core import (
-    H60a6DiyBody,
-    H60a6EffectFrame,
-    H60a6PaintBody,
-    H607cSceneBody,
-    H1771DiyBody,
-    H1771EffectUpload,
-    H6022SceneBody,
-    H6093Projector,
-    serialize_native_body,
+from .native_effect_codecs import (
+    native_effect_codec_for_content,
+    native_effect_codec_for_profile,
+    native_effect_codec_for_scene_family,
+    native_effect_codec_for_scene_speed,
+    native_effect_codec_for_target,
 )
+from .palette_scene_decoder import encode_palette_scene
 from .scenes import SceneEntry, SceneSpeed, scene_for_profile, scene_selector_code
 from .transport import fragment_a3, fragment_a4
 
-H6022_LEGACY_SCENE_FAMILIES = frozenset({1, 18, 33, 389, 390, 464})
-H6022_PROFESSIONAL_SCENE_FAMILIES = frozenset({693})
-H6022_SCENE_FAMILIES = H6022_LEGACY_SCENE_FAMILIES | H6022_PROFESSIONAL_SCENE_FAMILIES
 
-
-def apply_scene_speed(payload: bytes, speed: SceneSpeed, index: int, *, scene_type: int = 2) -> bytes:
+def apply_scene_speed(
+    payload: bytes,
+    speed: SceneSpeed,
+    index: int,
+    *,
+    scene_type: int = 2,
+    target: str | None = None,
+) -> bytes:
     """Apply one speed option through the generated layered-scene fields."""
     if speed.projector_speeds:
         from .projector_protocol import apply_projector_speed
 
         return apply_projector_speed(payload, speed, index)
-    if payload[:1] == b"\x51" and scene_type == 6:
-        from .h60b0_effects import apply_combined_speed
-
-        return apply_combined_speed(payload, speed, index)
+    codec = (
+        native_effect_codec_for_target(target)
+        if target is not None
+        else native_effect_codec_for_scene_speed(scene_type, payload)
+    )
+    if target is None and codec is not None:
+        target = codec.canonical_target
+    if codec is not None and codec.apply_layered_speed is not None:
+        return codec.apply_layered_speed(payload, speed, index)
     if speed.layer_speeds:
-        if not 0 <= index < speed.option_count:
-            raise ValueError("Scene speed index is outside its documented options")
-        root = _parse_native_scene_body(payload, 797)
-        speed.validate_layer_count(root.payload.layer_count)
-        for layer, value in zip(root.payload.layers, speed.layer_speeds[index], strict=True):
-            if not hasattr(layer.body, "speed"):
-                raise ValueError("Scene speed targets an unknown native layer")
-            layer.body.speed = value
-        return serialize_native_body(root)
-    scene = decode_layered_scene(CatalogueRef("H617A", 0, 0), payload, scene_type=scene_type)
+        raise ValueError("Scene speed has no selected native codec")
+    scene = decode_layered_scene(CatalogueRef(target or "H617A", 0, 0), payload, scene_type=scene_type)
     layers = list(scene.effect.layers)
     for page in speed.pages:
         if not 0 <= page.page < len(layers):
@@ -89,41 +83,12 @@ def _speed_value(options: tuple[int, ...], index: int) -> int:
 
 
 def _parse_native_scene_body(payload: bytes, family: int) -> Any:
-    if family in H6022_SCENE_FAMILIES:
-        try:
-            root = H6022SceneBody.from_bytes(payload)
-            root._read()
-            if root.marker != (0x41 if family in H6022_PROFESSIONAL_SCENE_FAMILIES else 0):
-                raise ValueError("H6022 native scene marker does not match its body family")
-            return root
-        except (KaitaiStructError, EOFError) as error:
-            raise ValueError("Invalid H6022 native scene body") from error
-    if family == H6093Projector.CatalogueFamily.projector:
-        from .projector_protocol import decode_projector
-
-        decode_projector(payload)
-        root = H6093Projector.from_bytes(payload)
-        root._read()
-        return root
-    if family == int(H1771DiyBody.CatalogueFamily.native_scene):
-        try:
-            root = H1771DiyBody.Scene(KaitaiStream(io.BytesIO(payload)), _root=H1771DiyBody())
-            root._read()
-            if not root._io.is_eof():
-                raise ValueError("Native scene body contains trailing data")
-            return root
-        except (KaitaiStructError, EOFError) as error:
-            raise ValueError("Invalid native scene body") from error
-    root_type = {797: H60a6DiyBody, 798: H60a6PaintBody}.get(family)
-    if root_type is None:
+    codec = native_effect_codec_for_scene_family(family)
+    if codec is None:
         raise ValueError("Native scene has no documented body family")
     try:
-        root = root_type.from_bytes(payload)
-        root._read()
-        if not root._io.is_eof():
-            raise ValueError("Native scene body contains trailing data")
-        return root
-    except KaitaiStructError as error:
+        return codec.parse_scene(payload, family)
+    except (KaitaiStructError, EOFError) as error:
         raise ValueError("Invalid native scene body") from error
 
 
@@ -131,53 +96,33 @@ def native_scene_upload_route(scene: SceneEntry, profile: ModelProfile) -> tuple
     """Resolve exact catalogue families independently of their scene-type number."""
     if scene.selector_only or not scene.param:
         return None
-    if profile.command_grammar == "H6179" or profile.selector_only_scene_bits is not None:
+    if profile.selector_only_scene_bits is not None:
         return None
-    if profile.effect_grammar == "H6093" and scene.scene_type == 5:
-        if scene.diy_effect_codes == (int(H6093Projector.CatalogueFamily.projector),):
-            return "a3", int(H6093Projector.UploadKind.scene)
-        raise ValueError("Native scene has no documented projector family")
-    if profile.effect_grammar == "H1771" and scene.scene_type == 5:
-        if scene.diy_effect_codes == (int(H1771DiyBody.CatalogueFamily.native_scene),):
-            return "a3", int(H1771EffectUpload.UploadKind.native_diy)
-        raise ValueError("Native scene has no documented upload family")
-    if profile.effect_grammar == "H6022" and scene.scene_type == 5:
-        if len(scene.diy_effect_codes) != 1 or scene.diy_effect_codes[0] not in H6022_SCENE_FAMILIES:
-            raise ValueError("H6022 native scene has no documented upload family")
-        return "a3", 0x58 if scene.diy_effect_codes[0] in H6022_PROFESSIONAL_SCENE_FAMILIES else 0x04
-    if profile.effect_grammar == "H60A6" and scene.scene_type == 5:
-        if scene.diy_effect_codes == (797,):
-            return "a3", int(H60a6EffectFrame.Subtype.native_effect)
-        if scene.diy_effect_codes == (798,):
-            return "a4", int(H60a6EffectFrame.Subtype.native_effect)
-        raise ValueError("Native scene has no documented upload family")
-    if scene.scene_type == 5:
-        raise ValueError("Device profile does not support this native scene body")
-    if profile.effect_grammar == "H60B0":
-        from .h60b0_effects import H60b0SceneBody
-
-        if scene.scene_type != 6:
-            raise ValueError("Device profile does not support this combined scene body")
-        return "a3", int(H60b0SceneBody.UploadSubtype.combined)
-    if profile.effect_grammar == "H607C" or scene.scene_type == int(H607cSceneBody.CatalogueType.layered_scene):
-        if profile.effect_grammar != "H607C" or scene.scene_type != int(H607cSceneBody.CatalogueType.layered_scene):
-            raise ValueError("Device profile does not support this layered scene body")
-        return "a3", int(H607cSceneBody.UploadSubtype.layered_scene)
+    codec = native_effect_codec_for_profile(profile)
+    route = None if codec is None else codec.scene_route_for(scene)
+    if route is not None:
+        return route.carrier.value, route.subtype
+    if scene.scene_type == 5 or (profile.native_effect_codec is not None and scene.scene_type not in {1, 2}):
+        kind = "native" if scene.scene_type == 5 else "layered"
+        raise ValueError(f"Device profile does not support this {kind} scene body")
     return "a3", scene.scene_type
 
 
 def native_scene_body_is_opaque(scene: SceneEntry, model: str) -> bool:
-    return (
-        model == "H6022"
+    codec = native_effect_codec_for_target(model)
+    return bool(
+        codec is not None
         and scene.scene_type == 5
         and len(scene.diy_effect_codes) == 1
-        and scene.diy_effect_codes[0] in H6022_SCENE_FAMILIES
+        and scene.diy_effect_codes[0] in codec.opaque_scene_families
     )
 
 
 def native_scene_prefers_selector(scene: SceneEntry, payload: bytes, profile: ModelProfile) -> bool:
+    codec = native_effect_codec_for_profile(profile)
     return bool(
-        profile.effect_grammar == "H1771"
+        codec is not None
+        and codec.selector_only_native_scene
         and scene.scene_type == 5
         and scene.param
         and payload == base64.b64decode(scene.param, validate=True)
@@ -196,7 +141,7 @@ def build_native_scene_packets(
     if profile is not None:
         scene = scene_for_profile(scene, profile)
     profile = get_profile(model) if profile is None else profile
-    if scene.selector_only or profile.command_grammar == "H6179" or profile.selector_only_scene_bits is not None:
+    if scene.selector_only or profile.selector_only_scene_bits is not None:
         if speed_index is not None:
             raise ValueError(f"{model} selector-only native scenes do not accept speed_index")
         if canonical_body is not None:
@@ -207,6 +152,7 @@ def build_native_scene_packets(
         scene,
         speed_index=speed_index,
         canonical_body=canonical_body,
+        target=model,
     )
     if payload and scene.scene_type == 2 and profile.rgbic_scene_v0 is not None:
         decoded = decode_layered_scene(CatalogueRef(model, scene.scene_id, scene.effect_id), payload)
@@ -216,15 +162,13 @@ def build_native_scene_packets(
     route = native_scene_upload_route(scene, profile)
     if payload and scene.scene_type == 5:
         native = _parse_native_scene_body(payload, scene.diy_effect_codes[0])
-        if profile.effect_grammar == "H1771":
-            payload = serialize_native_body(native.body)
-        elif profile.effect_grammar == "H6093":
-            payload = payload[len(native.marker) :]
-    if payload and scene.scene_type == int(H607cSceneBody.CatalogueType.layered_scene):
-        if profile.effect_grammar == "H60B0":
-            from .h60b0_effects import combined_upload_body
-
-            payload = combined_upload_body(payload)
+        codec = native_effect_codec_for_profile(profile)
+        if codec is not None and codec.prepare_scene_payload is not None:
+            payload = codec.prepare_scene_payload(payload, scene.diy_effect_codes[0], native)
+    codec = native_effect_codec_for_profile(profile)
+    if payload and codec is not None and codec.layered_scene_type == scene.scene_type:
+        if codec is not None and codec.prepare_layered_payload is not None:
+            payload = codec.prepare_layered_payload(payload)
         else:
             parsed, _padding = parse_scene_body(payload, scene_type=scene.scene_type)
             payload = payload[len(parsed.marker) :]
@@ -240,6 +184,7 @@ def resolve_native_scene_body(
     *,
     speed_index: int | None = None,
     canonical_body: bytes | None = None,
+    target: str | None = None,
 ) -> tuple[bytes, int | None]:
     if canonical_body is not None:
         if scene.scene_type == 0:
@@ -250,11 +195,15 @@ def resolve_native_scene_body(
             if len(scene.diy_effect_codes) != 1:
                 raise ValueError("Native scene has no documented body family")
             _parse_native_scene_body(canonical_body, scene.diy_effect_codes[0])
-        elif scene.scene_type == int(H607cSceneBody.CatalogueType.layered_scene):
-            if canonical_body[:1] == b"\x51":
-                from .h60b0_effects import parse_combined_scene
-
-                parse_combined_scene(canonical_body)
+        elif (
+            target_codec := (
+                native_effect_codec_for_target(target)
+                if target is not None
+                else native_effect_codec_for_scene_speed(scene.scene_type, canonical_body)
+            )
+        ) is not None and target_codec.layered_scene_type == scene.scene_type:
+            if target_codec.validate_layered_payload is not None:
+                target_codec.validate_layered_payload(canonical_body)
             else:
                 parse_scene_body(canonical_body, scene_type=scene.scene_type)
         return canonical_body, speed_index
@@ -264,7 +213,13 @@ def resolve_native_scene_body(
         resolved_speed = scene.speed.default_index if speed_index is None else speed_index
         if not 0 <= resolved_speed < scene.speed.option_count:
             raise ValueError(f"scene speed index {resolved_speed} outside 0..{scene.speed.option_count - 1}")
-        return apply_scene_speed(payload, scene.speed, resolved_speed, scene_type=scene.scene_type), resolved_speed
+        return apply_scene_speed(
+            payload,
+            scene.speed,
+            resolved_speed,
+            scene_type=scene.scene_type,
+            target=target,
+        ), resolved_speed
     if speed_index is not None:
         raise ValueError("This scene does not expose a documented Speed control")
     return payload, None
@@ -283,20 +238,27 @@ def encode_authored_scene_body(
     if isinstance(content, NativeEffect):
         if scene.scene_type != 5 or scene.diy_effect_codes != (content.family,):
             raise ValueError("native content does not match the catalogue body family")
-        body = encode_native_body(content)
+        native_codec = native_effect_codec_for_content(content)
+        body = native_codec.encode(content)
     else:
-        if scene.scene_type not in {2, int(H607cSceneBody.CatalogueType.layered_scene)}:
+        layered_codec = native_effect_codec_for_target(content.template.sku)
+        if scene.scene_type != 2 and (layered_codec is None or layered_codec.layered_scene_type != scene.scene_type):
             raise ValueError("layered content does not match the native scene type")
         body = encode_layered_scene(content, scene_type=scene.scene_type)
     if scene.speed is None:
         if content.speed_index is not None:
             raise ValueError("this scene does not expose a documented Speed control")
         return body, None
-    if (
-        isinstance(content, NativeEffect) or isinstance(content, LayeredScene) and content.template.sku == "H60B0"
-    ) and content.speed_index is None:
+    target = content.model if isinstance(content, NativeEffect) else content.template.sku
+    target_codec = native_effect_codec_for_target(target)
+    if content.speed_index is None and (
+        isinstance(content, NativeEffect) or target_codec is not None and target_codec.preserves_unspecified_scene_speed
+    ):
         return body, None
     resolved_speed = scene.speed.default_index if content.speed_index is None else content.speed_index
     if not 0 <= resolved_speed < scene.speed.option_count:
         raise ValueError(f"scene speed index {resolved_speed} outside 0..{scene.speed.option_count - 1}")
-    return apply_scene_speed(body, scene.speed, resolved_speed, scene_type=scene.scene_type), resolved_speed
+    return (
+        apply_scene_speed(body, scene.speed, resolved_speed, scene_type=scene.scene_type, target=target),
+        resolved_speed,
+    )

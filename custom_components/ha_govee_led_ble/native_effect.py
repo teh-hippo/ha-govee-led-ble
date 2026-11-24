@@ -155,185 +155,31 @@ class NativeEffect:
     projector_layers: tuple[ProjectorLayer, ...] = ()
 
     def __post_init__(self) -> None:
+        from .native_effect_codecs import native_effect_codec_for_content
+
         _number(self.family, 65535, "native family")
         _number(self.revision, 3, "native revision")
-        if self.model != "H6093" and self.projector_layers:
-            raise LayeredSceneValidationError("projector layers require the exact model")
-        if self.model != "H60B0" and (
-            self.revision
-            or self.combined is not None
-            or any(isinstance(layer, NativeDiyLayer) and layer.temperatures for layer in self.layers)
-        ):
-            raise LayeredSceneValidationError("native revision and temperature records require the exact model")
-        if self.model == "H60B0":
-            expected_count = 0 if self.family == 81 else 3 if self.revision == 3 else 2 if self.family == 13 else 1
-            if (
-                (self.revision != 0 if self.family == 81 else self.revision not in (1, 3))
-                or (self.family not in (922, 923) if self.revision == 3 else self.family not in (*range(1, 14), 81))
-                or len(self.layers) != expected_count
-                or self.template is not None
-                or self.backgrounds
-                or self.background_flag
-                or self.background != (0, 0, 0)
-                or self.background_brightness != 100
-                or self.show_type != 1
-                or self.preset_id is not None
-                or self.speed_index is not None
-            ):
-                raise LayeredSceneValidationError("invalid revision-qualified native DIY")
-            if self.family == 81:
-                if (
-                    not isinstance(self.combined, LayeredScene)
-                    or self.combined.template.sku != "H60B0"
-                    or not self.combined.ripple_layers
-                    or self.combined.speed_index is not None
-                    or self.opaque
-                    or self.section_tail
-                ):
-                    raise LayeredSceneValidationError("native combination requires side and ripple content")
-            elif self.combined is not None:
-                raise LayeredSceneValidationError("combined content does not match the native family")
-        elif self.model == "H607C":
-            from .protocol_core import H607cDiyBody
-
-            families = H607cDiyBody.Family
-            expected_count = 2 if self.family == families.paired else 1
-            if (
-                self.family not in families
-                or len(self.layers) != expected_count
-                or any(not isinstance(layer, NativeDiyLayer | NativeOpaqueLayer) for layer in self.layers)
-            ):
-                raise LayeredSceneValidationError("invalid native zoned DIY structure")
-            if self.template is not None:
-                raise LayeredSceneValidationError("native zoned DIY is not a layered catalogue scene")
-            first = self.layers[0]
-            if (
-                self.family != families.paired
-                and isinstance(first, NativeDiyLayer | NativeOpaqueLayer)
-                and first.kind != self.family
-            ):
-                raise LayeredSceneValidationError("single native DIY must retain its body family")
-            if (
-                self.backgrounds
-                or self.background_flag
-                or self.background != (0, 0, 0)
-                or self.background_brightness != 100
-                or self.show_type != 1
-            ):
-                raise LayeredSceneValidationError("unrepresented native zone background fields")
-        elif self.model == "H1AB2":
-            from .protocol_core import H1ab2DiyBody
-
-            if (
-                self.family != H1ab2DiyBody.CatalogueFamily.accumulation
-                or len(self.layers) != 1
-                or not isinstance(self.layers[0], NativeDiyLayer)
-                or self.layers[0].kind != H1ab2DiyBody.Effect.accumulation
-                or self.layers[0].parameter not in H1ab2DiyBody.Variation
-                or self.layers[0].parameters
-                or self.layers[0].flag
-                or self.layers[0].points
-                or self.layers[0].direction
-                or self.layers[0].angle
-                or self.layers[0].opaque
-                or not self.layers[0].enabled
-                or self.layers[0].secondary_palette
-                or self.backgrounds
-                or self.background_flag
-                or self.background != (0, 0, 0)
-                or self.background_brightness != 100
-                or self.show_type != 1
-                or self.template is not None
-                or self.preset_id is not None
-                or self.speed_index is not None
-                or self.opaque
-            ):
-                raise LayeredSceneValidationError("invalid native Accumulation structure")
-        elif self.model == "H60B2":
-            if (
-                self.family != 803
-                or len(self.layers) != 1
-                or not isinstance(self.layers[0], NativeDiyLayer)
-                or self.backgrounds
-                or self.background_flag
-                or self.background != (0, 0, 0)
-                or self.background_brightness != 100
-                or self.show_type != 1
-                or self.template is not None
-                or self.preset_id is not None
-                or self.speed_index is not None
-                or self.opaque
-            ):
-                raise LayeredSceneValidationError("invalid single native palette structure")
-        elif self.model == "H7025":
-            if (
-                self.family != 767
-                or len(self.layers) != 1
-                or not isinstance(self.layers[0], NativeDiyLayer)
-                or self.preset_id not in range(16, 25)
-                or self.backgrounds
-                or self.background_flag
-                or self.background != (0, 0, 0)
-                or self.background_brightness != 100
-                or self.show_type != 1
-                or self.template is not None
-                or self.speed_index is not None
-                or self.opaque
-            ):
-                raise LayeredSceneValidationError("invalid H7025 native DIY structure")
-        elif self.model == "H1771":
-            if (
-                self.family != 957
-                or len(self.layers) != 2
-                or self.backgrounds
-                or self.background_flag
-                or self.background != (0, 0, 0)
-                or self.background_brightness != 100
-                or self.show_type != 1
-                or self.preset_id is not None
-            ):
-                raise LayeredSceneValidationError("invalid native dual-source DIY structure")
-        elif self.model == "H6093":
-            if (
-                self.family != 712
-                or self.layers
-                or not 1 <= len(self.projector_layers) <= 255
-                or any(not isinstance(layer, ProjectorLayer) for layer in self.projector_layers)
-                or self.backgrounds
-                or self.background_flag
-                or self.background != (0, 0, 0)
-                or self.background_brightness != 100
-                or self.show_type != 1
-                or self.section_tail
-            ):
-                raise LayeredSceneValidationError("invalid native projector effect")
-        elif self.model != "H60A6" or self.family not in (797, 798):
-            raise LayeredSceneValidationError("unsupported native effect model or family")
+        codec = native_effect_codec_for_content(self)
+        codec.validate_structure(self)
         if (
             not (0 if self.combined is not None or self.projector_layers else 1) <= len(self.layers) <= 255
             or len(self.backgrounds) > 255
         ):
             raise LayeredSceneValidationError("native effect exceeds its layer or background count field")
-        expected = (
-            NativeDiyLayer
-            if self.family == 797 or self.model in {"H1AB2", "H607C", "H1771", "H60B0", "H60B2", "H7025"}
-            else NativePaintLayer
-        )
-        if any(not isinstance(layer, expected | NativeOpaqueLayer) for layer in self.layers):
-            raise LayeredSceneValidationError("native layer does not match its effect family")
-        if self.model == "H60A6" and any(
-            isinstance(layer, NativeDiyLayer) and (not layer.enabled or layer.secondary_palette)
-            for layer in self.layers
-        ):
-            raise LayeredSceneValidationError("zone parameters do not match the native layered grammar")
         for name in ("background_flag", "background_brightness", "show_type"):
             _number(getattr(self, name), 255, name)
         for colour in (*self.backgrounds, self.background):
             _rgb(colour)
         if not isinstance(self.opaque, bytes) or not isinstance(self.section_tail, bytes):
             raise LayeredSceneValidationError("native extension field must be bytes")
-        if self.model not in {"H1771", "H60B0"} and self.section_tail:
+        if "section_tail" not in codec.serialised_fields and self.section_tail:
             raise LayeredSceneValidationError("native section extension does not match the model")
+        if "revision" not in codec.serialised_fields and self.revision:
+            raise LayeredSceneValidationError("native revision does not match the model")
+        if "temperatures" not in codec.serialised_fields and any(
+            isinstance(layer, NativeDiyLayer) and layer.temperatures for layer in self.layers
+        ):
+            raise LayeredSceneValidationError("native temperature records require a qualified format")
         if self.preset_id is not None:
             _number(self.preset_id, 255, "native preset")
         if self.template is not None and self.template.sku != self.model:
@@ -343,28 +189,15 @@ class NativeEffect:
 
     @property
     def workflow(self) -> str:
-        if self.template is not None:
-            return "layered_scenes"
-        if self.model == "H1771":
-            return "multi"
-        if self.model == "H6093":
-            return "advanced" if self.preset_id is None else "single"
-        if self.model == "H60B0":
-            return (
-                "advanced"
-                if self.family in (13, 923)
-                else "multi"
-                if self.family == 81 or self.revision == 3
-                else "single"
-            )
-        if self.model == "H607C":
-            from .protocol_core import H607cDiyBody
+        from .native_effect_codecs import native_effect_codec_for_content
 
-            return "multi" if self.family == H607cDiyBody.Family.paired else "single"
-        return "painted" if self.family == 798 else "advanced" if self.preset_id in (11, 12) else "single"
+        return native_effect_codec_for_content(self).workflow_for(self)
 
 
 def native_effect_to_value(content: NativeEffect) -> dict[str, Any]:
+    from .native_effect_codecs import native_effect_codec_for_content
+
+    codec = native_effect_codec_for_content(content)
     layers: list[dict[str, Any]] = []
     for layer in content.layers:
         if isinstance(layer, NativeDiyLayer):
@@ -386,10 +219,10 @@ def native_effect_to_value(content: NativeEffect) -> dict[str, Any]:
                             "enabled": layer.enabled,
                             "secondary_palette": [list(colour) for colour in layer.secondary_palette],
                         }
-                        if content.model in {"H607C", "H1771", "H60B0"}
+                        if "enabled" in codec.serialised_fields
                         else {}
                     ),
-                    **({"temperatures": list(layer.temperatures)} if content.model == "H60B0" else {}),
+                    **({"temperatures": list(layer.temperatures)} if "temperatures" in codec.serialised_fields else {}),
                 }
             )
         elif isinstance(layer, NativePaintLayer):
@@ -431,7 +264,7 @@ def native_effect_to_value(content: NativeEffect) -> dict[str, Any]:
                     for layer in content.projector_layers
                 ]
             }
-            if content.model == "H6093"
+            if "projector_layers" in codec.serialised_fields
             else {}
         ),
         "backgrounds": [list(colour) for colour in content.backgrounds],
@@ -440,8 +273,8 @@ def native_effect_to_value(content: NativeEffect) -> dict[str, Any]:
         "background_brightness": content.background_brightness,
         "show_type": content.show_type,
         "opaque": content.opaque.hex(),
-        **({"section_tail": content.section_tail.hex()} if content.model in {"H1771", "H60B0"} else {}),
-        **({"revision": content.revision} if content.model == "H60B0" else {}),
+        **({"section_tail": content.section_tail.hex()} if "section_tail" in codec.serialised_fields else {}),
+        **({"revision": content.revision} if "revision" in codec.serialised_fields else {}),
         **({"combined": layered_scene_to_value(content.combined)} if content.combined is not None else {}),
         "preset_id": content.preset_id,
         "template": None if content.template is None else _catalogue_ref_to_value(content.template),
