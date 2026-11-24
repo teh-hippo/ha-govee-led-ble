@@ -12,7 +12,7 @@ from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.update_coordinator import UpdateFailed
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.ha_govee_led_ble.ble_connection import mark_stale_gatt_recovery
 from custom_components.ha_govee_led_ble.ble_device_resolver import (

@@ -5,7 +5,7 @@ from unittest.mock import Mock
 
 import pytest
 from kaitaistruct import KaitaiStream
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.ha_govee_led_ble import diagnostics
 from custom_components.ha_govee_led_ble.const import DOMAIN

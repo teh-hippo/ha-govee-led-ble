@@ -84,7 +84,6 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_bluetooth_confirm(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         model = self._discovered[CONF_MODEL]
         if user_input is None:
-            self._set_confirm_only()
             return self.async_show_form(step_id="bluetooth_confirm", description_placeholders={"model": model})
         return await self._async_finish_new_device(self._discovered)
 
@@ -171,7 +170,6 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
             return await self.async_step_effect_studio()
         issue = MODEL_PROFILES[model].confirmation_issue
         assert issue is not None
-        self._set_confirm_only()
         return self.async_show_form(
             step_id="experimental",
             description_placeholders={
@@ -184,7 +182,6 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
         options = {}
         if supported_effect_categories(model):
             if user_input is None:
-                self.context.pop("confirm_only", None)
                 return self.async_show_form(
                     step_id="effect_studio",
                     data_schema=vol.Schema({vol.Required(CONF_REGISTER_EFFECT_STUDIO, default=True): bool}),

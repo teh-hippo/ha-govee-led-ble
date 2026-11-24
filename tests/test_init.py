@@ -7,9 +7,10 @@ from bleak import BleakClient, BleakError
 from homeassistant.config_entries import ConfigEntryDisabler, ConfigEntryState
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import CoreState, HomeAssistant
+from homeassistant.exceptions import ConfigEntryError
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.util import dt as dt_util
-from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
+from pytest_homeassistant.common import MockConfigEntry, async_fire_time_changed
 
 from custom_components.ha_govee_led_ble import (
     _async_cleanup_legacy_entities,
@@ -46,14 +47,23 @@ def mock_last_service_info():
 
 
 def _entry(**kw):
-    d = dict(
-        entry_id="test_entry_id",
-        unique_id="AA:BB:CC:DD:EE:FF",
-        data={CONF_MODEL: "H617A"},
-        options={},
-        disabled_by=None,
+    runtime_data = kw.pop("runtime_data", None)
+    entry = MockConfigEntry(
+        **(
+            {
+                "domain": DOMAIN,
+                "entry_id": "test_entry_id",
+                "unique_id": "AA:BB:CC:DD:EE:FF",
+                "data": {CONF_MODEL: "H617A"},
+                "options": {},
+                "disabled_by": None,
+                "state": ConfigEntryState.LOADED,
+            }
+            | kw
+        )
     )
-    return MagicMock(**({**d, "domain": DOMAIN, "state": ConfigEntryState.LOADED, "runtime_data": None} | kw))
+    entry.runtime_data = runtime_data
+    return entry
 
 
 def _reply_to_state_query(client, packet):
@@ -451,9 +461,17 @@ async def test_unload_retains_pending_recovery_but_entry_removal_clears_only_its
     with (
         patch("custom_components.ha_govee_led_ble.get_effect_backend", return_value=None),
         patch("custom_components.ha_govee_led_ble._async_update_editor_panel", new_callable=AsyncMock),
-        patch.object(hass.config_entries, "async_unload_platforms", return_value=unload_ok),
+        patch.object(
+            hass.config_entries,
+            "async_unload_platforms_or_raise",
+            side_effect=None if unload_ok else ConfigEntryError("unload failed"),
+        ),
     ):
-        assert await async_unload_entry(hass, entry) is unload_ok
+        if unload_ok:
+            await async_unload_entry(hass, entry)
+        else:
+            with pytest.raises(ConfigEntryError, match="unload failed"):
+                await async_unload_entry(hass, entry)
         assert stale_gatt_recovery_pending(hass, entry.unique_id)
         assert stale_gatt_recovery_pending(hass, other_address)
         await async_remove_entry(hass, entry)
@@ -468,9 +486,18 @@ async def test_unload_entry(hass: HomeAssistant, unload_ok, disc):
     entry = _entry(runtime_data=MagicMock(disconnect=AsyncMock()))
     with (
         patch("custom_components.ha_govee_led_ble._async_update_editor_panel", new_callable=AsyncMock) as update_panel,
-        patch.object(hass.config_entries, "async_unload_platforms", new_callable=AsyncMock, return_value=unload_ok),
+        patch.object(
+            hass.config_entries,
+            "async_unload_platforms_or_raise",
+            new_callable=AsyncMock,
+            side_effect=None if unload_ok else ConfigEntryError("unload failed"),
+        ),
     ):
-        assert await async_unload_entry(hass, entry) is unload_ok
+        if unload_ok:
+            await async_unload_entry(hass, entry)
+        else:
+            with pytest.raises(ConfigEntryError, match="unload failed"):
+                await async_unload_entry(hass, entry)
     getattr(entry.runtime_data.disconnect, disc)()
     if unload_ok:
         update_panel.assert_awaited_once_with(hass)
@@ -488,18 +515,33 @@ async def test_unload_entry_stops_preview_before_platforms_and_disconnect(hass: 
 
     async def unload_platforms(_entry, _platforms):
         order.append("platforms")
-        return True
 
     with (
         patch(
             "custom_components.ha_govee_led_ble.get_effect_backend",
             return_value=MagicMock(preview=preview),
         ),
-        patch.object(hass.config_entries, "async_unload_platforms", side_effect=unload_platforms),
+        patch.object(hass.config_entries, "async_unload_platforms_or_raise", side_effect=unload_platforms),
     ):
-        assert await async_unload_entry(hass, entry) is True
+        await async_unload_entry(hass, entry)
 
     assert order == ["preview", "platforms", "disconnect"]
+
+
+async def test_unload_entry_preserves_legacy_boolean_contract(hass: HomeAssistant):
+    entry = _entry(runtime_data=MagicMock(disconnect=AsyncMock()))
+    with (
+        patch.object(hass.config_entries, "async_unload_platforms_or_raise", None),
+        patch.object(
+            hass.config_entries,
+            "async_unload_platforms",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
+        patch("custom_components.ha_govee_led_ble._async_update_editor_panel", new_callable=AsyncMock),
+    ):
+        assert await async_unload_entry(hass, entry) is True
+    entry.runtime_data.disconnect.assert_awaited_once()
 
 
 async def test_remove_entry_purges_all_device_scoped_effect_state(hass: HomeAssistant):

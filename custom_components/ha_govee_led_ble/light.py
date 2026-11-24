@@ -10,7 +10,7 @@ from functools import partial
 from typing import Any
 from uuid import UUID, uuid4
 
-from homeassistant.components.light import (  # type: ignore[attr-defined]
+from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
     ATTR_COLOR_MODE,
     ATTR_COLOR_TEMP_KELVIN,

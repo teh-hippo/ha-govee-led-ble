@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from homeassistant.components.bluetooth import FALLBACK_MAXIMUM_STALE_ADVERTISEMENT_SECONDS
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.ha_govee_led_ble.const import CONF_H6102_APP_FIRMWARE, CONF_MODEL, DOMAIN, device_profile
 from custom_components.ha_govee_led_ble.coordinator import (

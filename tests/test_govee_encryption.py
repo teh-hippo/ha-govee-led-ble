@@ -21,7 +21,7 @@ from homeassistant.components.light import ColorMode
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_component import EntityComponent
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.ha_govee_led_ble import light as light_platform
 from custom_components.ha_govee_led_ble import select as select_platform
@@ -600,7 +600,7 @@ async def _register_h607c_entities(hass, coordinator):
     entry.runtime_data = coordinator
     for domain, module in (("light", light_platform), ("switch", switch_platform), ("select", select_platform)):
         component = EntityComponent(logging.getLogger(__name__), domain, hass)
-        platform = component._async_init_entity_platform(DOMAIN, module)
+        platform = component._async_init_entity_platform(DOMAIN, DOMAIN, module)
         assert await platform.async_setup_entry(entry)
     await hass.async_block_till_done()
     return entry

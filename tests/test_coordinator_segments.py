@@ -415,6 +415,11 @@ def segment_client(coord):
         yield client
 
 
+@pytest.fixture
+def segment_coordinator(request, coord, h6199):
+    return coord if request.param == "coord" else h6199
+
+
 async def test_async_paint_segments_updates_slots_and_sends(coord, segment_client):
     groups = [([1, 2, 2], (255, 0, 0)), ([2, 3], (0, 0, 255))]
     with (
@@ -891,10 +896,10 @@ async def test_cancelled_segment_write_leaves_uncertainty_without_recovery_task(
     assert not coord._lock.locked()
 
 
-@pytest.mark.parametrize("model_fixture", ["coord", "h6199"])
+@pytest.mark.parametrize("segment_coordinator", ["coord", "h6199"], indirect=True)
 @pytest.mark.parametrize("operation", ["paint", "brightness"])
-async def test_segment_failure_reconciles_real_complete_query_pages(request, model_fixture, operation):
-    coord = request.getfixturevalue(model_fixture)
+async def test_segment_failure_reconciles_real_complete_query_pages(segment_coordinator, operation):
+    coord = segment_coordinator
     _send_uniform_segment_replies(coord, (10, 20, 30))
     revision = coord._field_revisions["segment_colors"]
     group_size = coord.profile.segment_group_size
@@ -1044,12 +1049,12 @@ async def test_segment_recovery_cancellation_releases_operation(coord, segment_c
     assert not coord._lock.locked()
 
 
-@pytest.mark.parametrize("model_fixture", ["coord", "h6199"])
+@pytest.mark.parametrize("segment_coordinator", ["coord", "h6199"], indirect=True)
 @pytest.mark.parametrize("operation", ["paint", "brightness"])
 @pytest.mark.parametrize("source", ["observed", "initial", "restored", "optimistic"])
 @pytest.mark.parametrize("result", ["unchanged", "partial", "match", "unselected", "companion"])
-async def test_segment_confirmation_compares_complete_pages(request, model_fixture, operation, source, result):
-    coord = request.getfixturevalue(model_fixture)
+async def test_segment_confirmation_compares_complete_pages(segment_coordinator, operation, source, result):
+    coord = segment_coordinator
     _send_uniform_segment_replies(coord, (10, 20, 30))
     coord.segment_state_source = source
     if source != "observed":

@@ -5,7 +5,7 @@ from unittest.mock import patch
 import pytest
 from homeassistant.config_entries import current_entry
 from homeassistant.core import HomeAssistant
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.ha_govee_led_ble.const import (
     DOMAIN,

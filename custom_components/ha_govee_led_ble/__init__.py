@@ -352,17 +352,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> 
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> bool:
+async def async_unload_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> bool | None:
     effect_backend = get_effect_backend(hass)
     if effect_backend is not None:
         await effect_backend.preview.async_unload_device(entry.entry_id)
-    if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
-        if (coordinator := getattr(entry, "runtime_data", None)) is not None:
-            await coordinator.disconnect()
-        await _async_update_editor_panel(hass)
-    elif effect_backend is not None:
-        await effect_backend.preview.async_load_device(entry.entry_id)
-    return unload_ok
+    unload_or_raise = getattr(hass.config_entries, "async_unload_platforms_or_raise", None)
+    if unload_or_raise is not None:
+        try:
+            await unload_or_raise(entry, PLATFORMS)
+        except BaseException:
+            if effect_backend is not None:
+                await effect_backend.preview.async_load_device(entry.entry_id)
+            raise
+    else:
+        if not await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
+            if effect_backend is not None:
+                await effect_backend.preview.async_load_device(entry.entry_id)
+            return False
+    if (coordinator := getattr(entry, "runtime_data", None)) is not None:
+        await coordinator.disconnect()
+    await _async_update_editor_panel(hass)
+    return None if unload_or_raise is not None else True
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> None:

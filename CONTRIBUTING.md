@@ -246,6 +246,15 @@ Semantic-release commits use the lightweight path only after exact version-only 
   Do not repeatedly run the completion gate for unchanged files or package unless a distributable is requested.
 - Run independent pytest processes serially within a checkout; use the runner's workers for parallel tests.
   Use `PYTEST_WORKERS=1` to diagnose collisions, then fix resource ownership.
+- Use Home Assistant's published `pytest-homeassistant` package, including its `bluetooth` extra, as the test-framework authority.
+  Do not install `pytest-homeassistant-custom-component` alongside it or override pytest away from its supported version.
+  Upgrade Home Assistant and the test package together.
+- Prefer Core-owned fixtures and helpers for `HomeAssistant`, config entries, registries, storage, WebSocket/HTTP clients, time and Bluetooth manager state.
+  Keep a local fixture only for a Govee protocol, transport, recovery, storage-port or test-environment responsibility that Core does not provide.
+- Use `enable_bluetooth` with the published advertisement builders and injection helpers when scanner-manager behaviour matters.
+  Keep narrow unit tests direct, and retain native Bleak/ESPHome tests when they prove backend behaviour rather than Home Assistant fixture behaviour.
+- Declare fixture dependencies statically, including indirect parametrised fixtures.
+  Do not call `request.getfixturevalue` for async Home Assistant fixtures from inside a running async test.
 - Keep mutable storage test-local.
   The gate owns its browser server, exact build, OS-assigned port and readiness check.
   Virtual event-loop clocks belong only around simulated transport.

@@ -1,7 +1,7 @@
 """Config-entry migrations and replacement repair issues."""
 
 from homeassistant.core import HomeAssistant
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.ha_govee_led_ble import async_migrate_entry
 from custom_components.ha_govee_led_ble.const import (

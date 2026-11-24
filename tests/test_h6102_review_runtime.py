@@ -7,7 +7,7 @@ import pytest
 from bleak import BleakError
 from homeassistant.config_entries import current_entry
 from homeassistant.exceptions import HomeAssistantError
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.ha_govee_led_ble.const import DOMAIN, ReadDomain
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent

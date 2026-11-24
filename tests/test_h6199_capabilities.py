@@ -241,7 +241,7 @@ async def test_reconnect_invalidates_all_h6199_revision_authorization(hass, monk
 async def lifecycle(hass, monkeypatch, request, virtual_clock):
     """Only the radio is fake: connection, subscriptions, parsing, guards and polling are real."""
     from homeassistant.config_entries import current_entry
-    from pytest_homeassistant_custom_component.common import MockConfigEntry
+    from pytest_homeassistant.common import MockConfigEntry
 
     from custom_components.ha_govee_led_ble.const import DOMAIN
     from tests.test_h6199_native_controls import frame

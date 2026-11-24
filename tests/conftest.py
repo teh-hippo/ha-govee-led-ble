@@ -8,7 +8,7 @@ import pytest
 from aiotools import VirtualClock
 from homeassistant.config_entries import current_entry
 from pytest import ExitCode
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.ha_govee_led_ble.const import (
     DOMAIN,
@@ -42,8 +42,9 @@ def pytest_unconfigure(config: pytest.Config) -> None:
 
 
 @pytest.fixture
-def hass_config_dir(tmp_path: Path) -> str:
-    return str(tmp_path)
+def hass_config_dir(hass_tmp_config_dir: str) -> str:
+    (Path(hass_tmp_config_dir) / ".storage").mkdir()
+    return hass_tmp_config_dir
 
 
 @pytest.fixture
@@ -143,11 +144,6 @@ def effect_catalogue_targets(monkeypatch):
             ),
         )
     return "H9901", "H9902"
-
-
-@pytest.fixture(autouse=True)
-def auto_enable_custom_integrations(enable_custom_integrations):
-    yield
 
 
 @pytest.fixture(autouse=True)
