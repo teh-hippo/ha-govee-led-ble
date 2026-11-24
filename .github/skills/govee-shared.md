@@ -4,29 +4,70 @@ Read by `govee-add`, `govee-fix`, `govee-audit` and `govee-resolve`.
 
 ## What you have
 
-- **Device evidence:** private `.reference-material/` beside the main clone.
-  From a worktree, `git rev-parse --path-format=absolute --git-common-dir` locates that clone's `.git`.
-  Read the evidence README, start from `map/`, follow relevant evidence and update useful starting-point notes.
+- **Device evidence:** the maintainer-provided evidence workspace added to the session.
+  Read its README before repository-wide searching.
+  Use the exact-SKU starting brief named by that index when one exists.
+  If a workspace is not available, report the missing evidence source instead of treating source absence as evidence.
 - **Protocol and declarations:** `tools/ble/kaitai/`, `const.py`, `effect_catalogue.py` and `scene_catalogues/`.
 - **Public scene feed:** `tools/ble/refresh_scene_catalogues.py` reads it.
   Read-only fetching exposes additional fields, including per-scene command versions.
 - **Public product pages and manuals:** physical specifications.
 - **`CONTRIBUTING.md`:** architecture, scope, acceptance and release policy.
 
-## Rules
+## Model evidence workflow
+
+1. Normalise the exact SKU and read its evidence starting brief.
+   Record the brief's evidence date, covered revisions, contradictions and hardware gaps before tracing implementation.
+2. Follow the brief's references into the model index and the relevant control or effect index.
+   Confirm the active caller and command builder; do not stop at a shared configuration entry, registration or enum.
+3. Search the repository for the exact SKU only after the brief is understood.
+   Then trace the selected profile, grammar, catalogue, public control, runtime operation, observation and recovery paths.
+4. Continue beyond every starting point when the claim, caller, revision or operation is incomplete.
+   Starting briefs accelerate investigation; they are not a coverage boundary.
+5. Add durable exact-model navigation facts to the evidence starting brief when verified.
+   Update the index rather than burying new product facts in unrelated shared notes.
+6. Use the narrowest existing tests that cover the path, then expand to shared or completion checks when the change can affect other models.
+
+For a missing exact-model brief, build one from the evidence index, packaged model metadata, active vendor route and the relevant control/effect paths.
+Do not reproduce a previously indexed route unless the task's revision, operation or evidence differs.
+For a read-only audit, stop after every brief row and suspected finding has a targeted evidence/code/runtime check.
+Do not run the full completion gate for an audit that changes nothing.
+
+## Evidence classification
+
+Label conclusions by the strongest applicable basis:
+
+- **Captured:** a sanitised capture or owner observation demonstrates the exact revision and operation.
+- **Exact route:** the active exact-SKU or exact-device selector establishes the behaviour.
+- **Shared route:** an evidenced shared goods type or family path is selected for the exact SKU and revision.
+- **Public reference:** a public product page, manual or catalogue establishes the product fact, but not an unobserved wire contract.
+- **Conflict:** credible paths disagree, or no scope rule selects between them.
+- **Inference:** a candidate follows from adjacent evidence but is not independently established.
+- **Policy or non-goal:** a deliberate project constraint, not evidence that hardware lacks the capability.
+
+Do not promote registration, class presence, an available builder, example enumeration, missing reconstructed code or a shared sibling value into exact-model authority.
+A missing source path or capture is not proof that a behaviour is absent.
+
+## Finding threshold
 
 - Establish behaviour from evidence and architecture from `CONTRIBUTING.md`.
   Reconcile discrepancies by revision, operating mode and observation context.
-  Report both paths when evidence disagrees and ask the operator to resolve uncertainty.
+- Report a defect only when current behaviour violates established evidence for the same operation, revision and context.
+  Conflicting evidence is an explicit hardware question or policy decision, not a unilateral unsupported claim.
+  If the implementation follows one evidenced path, report that choice and the unqualified alternative.
+- Separate confirmed gaps, implementation-policy risks, hardware uncertainty and deliberate non-goals.
+- When a fix asks for broader confirmation, trace the shared cause and affected capability combinations without deleting exact-SKU evidence.
   Retain and flag capabilities the hardware still supports after Govee drops them.
 - Verify product values and enum maps independently.
   Shared codecs and sibling values require evidence of the shared contract.
   Preserve dynamic-service provenance and uncertainty when interpreting example lists.
-- Keep private references in the evidence folder's notes.
+- Keep private references in evidence notes.
   Repository content, commits and public posts describe behaviour in original wording and cite public sources only.
 - Cover every evidenced control, scene, music mode and effect within repository scope.
 - Report checks actually performed.
   A wire match requires comparing generated bytes for the exact model and revision with evidence.
+- Do not turn the absence of a live test or capture into a defect.
+  Record it in unchecked areas when implementation and evidence agree.
 - Follow canonical shared-fix and acceptance policy.
   Hardware confirmation determines promotion from **Experimental** to **Supported**.
 
@@ -35,8 +76,10 @@ Read by `govee-add`, `govee-fix`, `govee-audit` and `govee-resolve`.
 For `govee-add` and `govee-audit`, record each hardware/firmware revision's:
 
 - Identity: SKU, BLE name prefixes, Pact type/code, IC count and revisions.
-- Physical specifications: length, segments, white emitters, microphone and camera.
-- Complete capabilities and their BLE contracts.
+- Physical specifications: length, logical/physical segment geometry, white emitters, microphone and camera.
+- Active model, family and protocol routes, including every revision selector.
+- Complete in-scope capabilities, read/write contracts, catalogue and recovery requirements.
+- Evidence strength, conflicts, deliberately disabled capabilities and hardware checks still required.
 
 ## Workflow for skills that change code
 

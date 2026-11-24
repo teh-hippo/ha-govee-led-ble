@@ -16,11 +16,14 @@ Goal: complete Experimental support, merged and available in a master release ca
 
 Task list:
 
-1. Use the exact-SKU request for implementation and owner verification.
+1. Read the evidence workspace README and the exact-SKU starting brief.
+   Reuse it as the investigation baseline and preserve its revision conflicts; build the brief if it is absent.
+   Use the exact-SKU request for implementation and owner verification.
    Create a missing request with `.github/ISSUE_TEMPLATE/model-support.md`; consolidate existing threads under `CONTRIBUTING.md`.
    Set `confirmation_issue` and the README Experimental link to that request.
-2. Build the complete revision-aware device brief and map it onto existing declarations, codecs and shared operations.
+2. Complete the revision-aware device brief and map it onto existing declarations, codecs and shared operations.
    Cover each checklist row or explain its applicability.
+   Start from evidenced active callers, not sibling profiles or a nearby model's implementation.
    Extend shared machinery where evidence demonstrates a gap.
 3. Run `govee-audit` for completeness, special treatment and implementation correctness.
    Close coupled findings under canonical acceptance policy.
@@ -52,5 +55,6 @@ Repository files:
 - `README.md`: `[🚧 Experimental](<confirmation issue URL>)` device row.
 - Existing discovery, profile, catalogue, protocol and frontend suites: shared parametrisation for distinct capabilities, prefixes and wire shapes.
 
+Record durable exact-model navigation facts and unresolved hardware questions in the private evidence starting brief.
 Update `CONTRIBUTING.md` for contributor-wide invariants.
 Build `generated_protocol/` and `frontend/tests/fixtures/backend-contracts.json` locally; both remain gitignored.

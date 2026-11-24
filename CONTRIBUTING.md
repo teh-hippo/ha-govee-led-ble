@@ -61,6 +61,20 @@ Profiles own product facts, Kaitai owns wire structure, and shared runtime opera
 - Before registering a new profile, run `uv run python tools/ble/refresh_scene_catalogues.py <SKU>`.
   Model plans and findings live in their issue or PR.
 
+### Evidence-led model work
+
+- Start each add, fix or audit from the maintainer-provided exact-SKU evidence brief when one exists.
+  Treat it as a navigation baseline, not a coverage limit: confirm active callers, revision selectors, command builders and recovery paths for the requested behaviour.
+- Record each conclusion's strength and scope.
+  Direct exact-model observations and active exact-model routes support defects and behaviour.
+  Shared routes require a demonstrated selector; conflicts, inferences and absent evidence remain explicit uncertainty.
+- A conflict between evidence paths is not proof that either runtime choice is wrong.
+  Record both paths and the missing revision, operation or capture needed to resolve it.
+  Deliberate policy and non-goals must not be reported as hardware limitations.
+- Prefer the smallest existing test set that exercises the selected route.
+  Widen to shared suites when the investigated path or correction affects equivalent capability combinations.
+- Preserve useful exact-model navigation discoveries in the private evidence brief so later work starts from the known route rather than repeating it.
+
 ### Identity qualification
 
 - Evaluate revision prerequisites together.
