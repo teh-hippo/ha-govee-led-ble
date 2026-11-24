@@ -482,6 +482,15 @@ class GoveeBLECoordinator(
                 self._authorization_generation += 1
         if field in self.profile.scene_identity_fields | self.profile.effect_identity_fields:
             self._revalidate_upload_ack()
+        if (
+            self.profile.supports_compound_static_recovery
+            and self._tracks_pact_identity
+            and self._encryption is not None
+            and self._encryption.ready
+        ):
+            self._h607c_marker_pact = self._encryption.marker_pact
+            self._h607c_marker_seen |= self._h607c_marker_pact is not None
+            self._resolve_h607c_pact(preserve_state=True)
         return bool(previous != value)
 
     def identity_fields_confirmed(self, fields: frozenset[str] | None = None) -> bool:
@@ -574,7 +583,7 @@ class GoveeBLECoordinator(
         previous_pact = self.pact_type, self.pact_code
         was_present = self._present
         self._note_advertisement(_service_info)
-        if self._tracks_pact_identity:
+        if self._tracks_pact_identity and getattr(_service_info, "source", None) is not None:
             self._refresh_h607c_advertisements()
         self._set_present(True)
         if was_present and previous_pact != (self.pact_type, self.pact_code):
@@ -612,13 +621,19 @@ class GoveeBLECoordinator(
             if advertisement is not None:
                 if self._tracks_pact_identity:
                     self._h607c_invalid_pact_version_seen |= advertisement.invalid_version_seen
-                    source = service_info.source
-                    timestamp = service_info.time
+                    source = getattr(service_info, "source", "direct")
+                    timestamp = getattr(service_info, "time", time.monotonic())
                     previous = self._h607c_advertisement_observations.get(source)
                     if previous is None or timestamp > previous[0]:
                         self._h607c_advertisement_observations[source] = (timestamp, advertisement.pacts)
                     elif timestamp == previous[0] and not cached:
                         self._h607c_advertisement_observations[source] = (timestamp, previous[1] | advertisement.pacts)
+                    self._h607c_advertised_pacts = {
+                        pact
+                        for _observed_at, observed_pacts in self._h607c_advertisement_observations.values()
+                        for pact in observed_pacts
+                    }
+                    self._resolve_h607c_pact()
                 elif advertisement.pacts:
                     pact = next(iter(advertisement.pacts)) if len(advertisement.pacts) == 1 else (None, None)
                     identity_changed = pact != (self.pact_type, self.pact_code)
@@ -768,7 +783,13 @@ class GoveeBLECoordinator(
     def _tracks_pact_identity(self) -> bool:
         declared = get_profile(self.model)
         recovery_fields = declared.static_recovery_identity_fields or frozenset()
-        return self.identity_gated_controls or declared.reconciles_marker_pact or "pact" in recovery_fields
+        return (
+            self.identity_gated_controls
+            or declared.reconciles_marker_pact
+            or self.profile.supports_compound_static_recovery
+            and "pact" in recovery_fields
+            and self._notification_token is not None
+        )
 
     @property
     def h607c_pact_readiness(self) -> str:

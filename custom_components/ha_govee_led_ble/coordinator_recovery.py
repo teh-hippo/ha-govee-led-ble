@@ -656,6 +656,14 @@ class _RecoveryMixin(_CoordinatorBase):
 
     def _qualify_static_baseline(self, baseline: PriorControlState | None) -> PriorControlState:
         profile, transition = self.profile, self._mode_transition
+        if (
+            baseline is not None
+            and transition is not None
+            and transition.purpose is ModeTransitionPurpose.PREVIEW
+            and (has_segmented_sources(profile) or profile.configured_string_counts or profile.projector_grammar)
+            and not baseline.static_colour_observed
+        ):
+            raise HomeAssistantError(translation_domain=DOMAIN, translation_key="live_recovery_not_observed")
         prepared = self._prepare_static_colour(baseline) if baseline is not None else None
         if (
             baseline is None

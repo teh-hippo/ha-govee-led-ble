@@ -5413,12 +5413,8 @@ def _h618a_revision_policy(context: ModelRevisionContext) -> ModelProfile:
 def _h6199_revision_policy(context: ModelRevisionContext) -> ModelProfile:
     pact = (context.pact_type, context.pact_code)
     profile = H6199_PACT1_PROFILE if pact == (1, 1) else get_profile(context.model)
-    profile = replace(
-        profile,
-        supports_compound_static_recovery=(
-            pact == (2, 1) and context.hardware == "3.02.01" and context.firmware == "1.10.04"
-        ),
-    )
+    if pact == (2, 1) and context.hardware == "3.02.01" and context.firmware == "1.10.04":
+        profile = replace(profile, supports_compound_static_recovery=True)
     if pact not in _H6199_DREAMVIEW_PACTS:
         return replace(profile, dreamview_operations=frozenset(), dreamview_reads=frozenset())
     fw, hw = FirmwareVersion.parse(context.firmware), FirmwareVersion.parse(context.hardware)

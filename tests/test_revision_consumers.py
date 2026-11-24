@@ -22,7 +22,7 @@ from custom_components.ha_govee_led_ble.effect_template_defaults import Catalogu
 from custom_components.ha_govee_led_ble.effect_websocket import _device_payload
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_power
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
-from tests.coordinator_test_support import frame
+from tests.coordinator_test_support import approve_diy_destination_operation, frame
 from tests.storage_test_double import InMemoryVersionedDocumentStore
 
 
@@ -95,6 +95,9 @@ async def test_non_video_failure_restores_power_without_white_balance(coordinato
             config_entry_id="entry-a",
             updated_at="2026-09-16T00:00:00Z",
             **({"diy_code": 73} if kind == "custom" else {}),
+            **(
+                {"destination_consent": approve_diy_destination_operation(c, "entry-a", 73)} if kind == "custom" else {}
+            ),
         )
     record = repository.snapshot().records[0]
     assert record.phase is DeploymentPhase.UNCERTAIN

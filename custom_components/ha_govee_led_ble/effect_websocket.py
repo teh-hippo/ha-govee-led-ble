@@ -1642,17 +1642,22 @@ async def ws_apply(
                 intent=ControlIntent.BACKGROUND,
             )
             await backend.preview.async_supersede_device(entry.entry_id, reason="committed_apply")
+            apply_kwargs: dict[str, Any] = {
+                "config_entry_id": entry.entry_id,
+                "updated_at": msg["updated_at"],
+                "operation_id": operation_id,
+                "diy_code": diy_code,
+                "compiled": compiled,
+                "write_guard": partial(_ensure_entry_control, hass, connection, entry),
+            }
+            if destination_consent is not None:
+                apply_kwargs["destination_consent"] = destination_consent
+            if "live" in msg:
+                apply_kwargs["live"] = msg["live"]
             result = await backend.engine.async_apply_saved(
                 entry.runtime_data,
                 item,
-                config_entry_id=entry.entry_id,
-                updated_at=msg["updated_at"],
-                operation_id=operation_id,
-                diy_code=diy_code,
-                compiled=compiled,
-                write_guard=partial(_ensure_entry_control, hass, connection, entry),
-                destination_consent=destination_consent,
-                live=msg.get("live", False),
+                **apply_kwargs,
             )
     except EffectNotFoundError as exc:
         _send_error(hass, connection, msg, "not_found", exc)

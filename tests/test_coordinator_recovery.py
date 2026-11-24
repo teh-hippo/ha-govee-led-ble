@@ -1036,7 +1036,6 @@ async def test_compound_recovery_defaults_denied_and_rejects_incomplete_or_ambig
 
 def test_compound_recovery_requires_current_subscription_pact(hass):
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6199", configuration_url=None)
-    assert coordinator._tracks_pact_identity
     client = _c()
     coordinator._client = client
     coordinator._notification_token = object()
@@ -1047,6 +1046,7 @@ def test_compound_recovery_requires_current_subscription_pact(hass):
     coordinator._confirmed_identity_fields.update({"fw_version", "hw_version"})
 
     assert coordinator._observe_pact(2, 1)
+    assert coordinator._tracks_pact_identity
     assert coordinator.identity_fields_confirmed(coordinator.profile.static_recovery_identity_fields)
     assert coordinator.profile.supports_compound_static_recovery
 
