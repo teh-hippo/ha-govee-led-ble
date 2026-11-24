@@ -65,6 +65,7 @@ class _ModeTransition:
     captured: bool = False
     installed: bool = False
     snapshot: PriorControlState | None = None
+    static_recovery: PreparedStaticRecovery | None = None
     profile: ModelProfile | None = None
     foreground_generation: int = 0
     purpose: ModeTransitionPurpose | None = None
@@ -287,6 +288,8 @@ class _ActiveModeMixin(_CoordinatorBase):
                 and previous.purpose in (ModeTransitionPurpose.SELECTION, ModeTransitionPurpose.PREVIEW)
             ):
                 transition.superseded = previous.superseded
+                transition.snapshot = previous.snapshot
+                transition.static_recovery = previous.static_recovery
                 zones = self.profile.boolean_controls.intersection(NATIVE_ZONE_CONTROLS)
                 source_fields = (*native_source_fields(self.profile), *source_kelvin_hint_fields(self.profile))
 

@@ -6,12 +6,21 @@ import time
 from collections.abc import AsyncIterator, Callable, Iterator, Mapping
 from contextlib import asynccontextmanager, nullcontext
 from dataclasses import dataclass, replace
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any, cast
 
 from bleak.exc import BleakError
 from homeassistant.exceptions import HomeAssistantError
 
-from .const import DOMAIN, NATIVE_ZONE_CONTROLS, ModelProfile, ReadDomain, get_profile, same_control_profile
+from .const import (
+    DOMAIN,
+    KELVIN_RANGE_1000_10000,
+    NATIVE_ZONE_CONTROLS,
+    ModelProfile,
+    ReadDomain,
+    get_profile,
+    same_control_profile,
+)
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator_base import _CoordinatorBase
 from .coordinator_modes import ModeTransitionPurpose
@@ -35,6 +44,7 @@ from .generated_protocol_adapter import (
     build_power,
     require_profile_packet,
     table_kelvin_rgb,
+    table_rgb_kelvin,
 )
 from .light_commands import (
     build_color_rgb,
@@ -43,6 +53,7 @@ from .light_commands import (
     build_segment_color_temp,
     build_segment_kelvin_packets,
     build_segment_paint,
+    kelvin_rendering_matches,
     normalize_kelvin,
 )
 from .music_commands import MusicWriteSequence, prepare_music_profile_writes
@@ -90,38 +101,195 @@ _VIDEO_VALUE_FIELDS = (
 )
 
 
+def restorable_bar_white(state: PriorControlState, profile: ModelProfile) -> bool:
+    if not profile.setting_grammar_has("paired_bar_settings") or state.segment_colors is None:
+        return False
+    half = profile.segment_count // 2
+    if len(state.segment_colors) != profile.segment_count or not half:
+        return False
+    return all(
+        kelvin is not None
+        and KELVIN_RANGE_1000_10000[0] <= kelvin <= KELVIN_RANGE_1000_10000[1]
+        and state.segment_colors[start : start + half] == (table_kelvin_rgb(normalize_kelvin(kelvin)),) * half
+        for start, kelvin in ((0, state.left_bar_kelvin), (half, state.right_bar_kelvin))
+    )
+
+
+def source_segment_kelvin(state: PriorControlState, profile: ModelProfile) -> tuple[int, ...] | None:
+    if state.segment_colors is None or len(state.segment_colors) != profile.segment_count:
+        return None
+    intents = list(
+        state.segment_kelvin
+        if state.segment_kelvin is not None
+        else ((0 if state.static_rgb_known else None),) * profile.segment_count
+    )
+    covered: set[int] = set()
+    for source in profile.light_sources:
+        if not source.segments:
+            continue
+        native = getattr(state, f"{source.key}_kelvin", None)
+        legacy = (state.source_static_intents or {}).get(source.key)
+        for position in source.segments:
+            index = position - 1
+            if index >= len(intents):
+                return None
+            covered.add(index)
+            intent = intents[index]
+            if state.segment_kelvin is None and legacy is not None:
+                if isinstance(legacy, tuple) and state.segment_colors[index] != legacy:
+                    return None
+                intent = legacy if type(legacy) is int else 0
+            if intent is None:
+                intent = native
+            if intent is None and (source.palette_restore or not profile.supports_color_temperature):
+                intent = 0
+            if intent is None or native is not None and native != intent:
+                return None
+            if (
+                intent
+                and native != intent
+                and not kelvin_rendering_matches(
+                    state.segment_colors[index], normalize_kelvin(intent, profile), profile
+                )
+            ):
+                return None
+            intents[index] = normalize_kelvin(intent, profile) if intent else 0
+    if covered != set(range(profile.segment_count)) or any(value is None for value in intents):
+        return None
+    return tuple(value for value in intents if value is not None)
+
+
+def static_segment_kelvin(state: PriorControlState, profile: ModelProfile) -> tuple[int, ...] | None:
+    if has_segmented_sources(profile):
+        return source_segment_kelvin(state, profile)
+    if state.segment_colors is None or len(state.segment_colors) != profile.segment_count:
+        return None
+    if restorable_bar_white(state, profile):
+        assert state.left_bar_kelvin is not None and state.right_bar_kelvin is not None
+        half = profile.segment_count // 2
+        return (normalize_kelvin(state.left_bar_kelvin, profile),) * half + (
+            normalize_kelvin(state.right_bar_kelvin, profile),
+        ) * half
+    fallback = (
+        state.color_temp_kelvin
+        if state.color_temp_kelvin is not None and not profile.segment_colour_mode_ambiguous
+        else 0
+        if not profile.segment_colour_mode_ambiguous
+        else None
+    )
+    if state.segment_kelvin is not None:
+        intents = state.segment_kelvin
+        if len(intents) != profile.segment_count:
+            return None
+    elif state.color_temp_kelvin is not None and not profile.segment_colour_mode_ambiguous:
+        intents = (state.color_temp_kelvin,) * profile.segment_count
+    elif state.static_rgb_known or not profile.segment_colour_mode_ambiguous:
+        intents = (0,) * profile.segment_count
+    elif profile.static_palette_recovery and state.static_colour_observed:
+        recovered = tuple(table_rgb_kelvin(rgb) for rgb in state.segment_colors)
+        intents = tuple(
+            kelvin if kelvin is not None and normalize_kelvin(kelvin, profile) == kelvin else 0 for kelvin in recovered
+        )
+    else:
+        return None
+    result: list[int] = []
+    for rgb, raw_intent in zip(state.segment_colors, intents, strict=True):
+        if raw_intent is None:
+            if profile.static_palette_recovery and state.static_colour_observed:
+                raw_intent = table_rgb_kelvin(rgb)
+                if raw_intent is not None and normalize_kelvin(raw_intent, profile) != raw_intent:
+                    raw_intent = 0
+            elif state.segment_kelvin is not None and (
+                profile.segment_colour_mode_ambiguous or state.color_temp_kelvin is not None
+            ):
+                return None
+            elif fallback is not None:
+                raw_intent = fallback
+            else:
+                return None
+        if raw_intent is None:
+            raw_intent = 0
+        intent = normalize_kelvin(raw_intent, profile) if raw_intent else 0
+        if intent and (not profile.supports_color_temperature or not kelvin_rendering_matches(rgb, intent, profile)):
+            return None
+        result.append(intent)
+    return tuple(result)
+
+
+class StaticRecoveryStrategy(StrEnum):
+    PROJECTOR = "projector"
+    NATIVE_SOURCE = "native_source"
+    BAR_WHITE = "bar_white"
+    PALETTE = "palette"
+    PURE_RGB = "pure_rgb"
+    WHOLE_KELVIN = "whole_kelvin"
+    SEGMENT_KELVIN = "segment_kelvin"
+    COMPOUND_KELVIN_RGB = "compound_kelvin_rgb"
+    SCALAR_RGB = "scalar_rgb"
+    SCALAR_KELVIN = "scalar_kelvin"
+
+
+def compound_static_recovery_authorized(coordinator: _CoordinatorBase, profile: ModelProfile) -> bool:
+    identity_fields = profile.static_recovery_identity_fields
+    return (
+        profile.supports_compound_static_recovery
+        and coordinator.effect_authorization_profile.supports_compound_static_recovery
+        and (identity_fields is None or coordinator.identity_fields_confirmed(identity_fields))
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class StaticRecoveryVerification:
+    segment_colors: tuple[tuple[int, int, int], ...] | None = None
+    segment_brightness: tuple[int, ...] | None = None
+    segment_kelvin: tuple[int, ...] | None = None
+    rgb_color: tuple[int, int, int] | None = None
+    color_temp_kelvin: int | None = None
+    independently_observed: bool = False
+
+
 @dataclass(frozen=True)
 class PreparedStaticRecovery:
+    captured: PriorControlState
     state: PriorControlState
     packets: tuple[bytes, ...]
-    whole_kelvin: bool
+    strategy: StaticRecoveryStrategy
+    verification: StaticRecoveryVerification
     profile: ModelProfile
     generation: int
     subscription: object | None
     native_writes: tuple[PreparedSourceValue, ...] = ()
     off_guard: Callable[[], None] | None = None
 
+    @property
+    def whole_kelvin(self) -> bool:
+        return self.strategy in {
+            StaticRecoveryStrategy.WHOLE_KELVIN,
+            StaticRecoveryStrategy.COMPOUND_KELVIN_RGB,
+        }
+
     def check(self, coordinator: _CoordinatorBase) -> None:
         transition = coordinator._mode_transition
-        if (
-            not same_control_profile(coordinator.profile, self.profile)
-            or coordinator._profile_generation != self.generation
-            or self.subscription is not None
-            and coordinator._notification_token is not self.subscription
-            or self.off_guard is not None
-            and (
-                transition is None
-                or transition.owner is not asyncio.current_task()
-                or transition.purpose is not ModeTransitionPurpose.RECOVERY
-                or transition.snapshot is None
-            )
-            or transition is not None
-            and transition.owner is asyncio.current_task()
-            and transition.purpose is ModeTransitionPurpose.RECOVERY
-            and transition.snapshot is not None
-            and coordinator._pre_mode_snapshot is not transition.snapshot
+        coordinator._reconcile_authorization()
+        if not same_control_profile(coordinator.profile, self.profile):
+            raise ValueError("The colour restoration profile changed")
+        if coordinator._profile_generation != self.generation:
+            raise ValueError("The colour restoration generation changed")
+        if self.strategy is StaticRecoveryStrategy.COMPOUND_KELVIN_RGB and not compound_static_recovery_authorized(
+            coordinator, self.profile
         ):
-            raise ValueError("The colour restoration context changed")
+            raise ValueError("The compound colour restoration identity is no longer authorised")
+        if self.subscription is not None and coordinator._notification_token is not self.subscription:
+            raise ValueError("The colour restoration subscription changed")
+        if transition is not None and transition.owner is asyncio.current_task() and transition.superseded:
+            raise ValueError("The colour restoration was superseded")
+        if self.off_guard is not None and (
+            transition is None
+            or transition.owner is not asyncio.current_task()
+            or transition.purpose is not ModeTransitionPurpose.RECOVERY
+            or transition.snapshot is None
+        ):
+            raise ValueError("The colour restoration transition changed")
         if self.off_guard is not None:
             self.off_guard()
 
@@ -255,6 +423,7 @@ class _RecoveryMixin(_CoordinatorBase):
             and profile.static_readback_kelvin == current.static_readback_kelvin
             and profile.static_readback_zero_kelvin_is_rgb == current.static_readback_zero_kelvin_is_rgb
             and profile.static_palette_recovery == current.static_palette_recovery
+            and profile.supports_compound_static_recovery == current.supports_compound_static_recovery
             and profile.supports_color_temperature == current.supports_color_temperature
             and profile.supports_segments == current.supports_segments
             and profile.supports_segment_writes == current.supports_segment_writes
@@ -343,7 +512,12 @@ class _RecoveryMixin(_CoordinatorBase):
                 if brightness_pct is not None
                 else state
             )
-            prepared = self._prepare_static_colour(target)
+            inherited = transition.static_recovery
+            prepared = (
+                inherited
+                if brightness_pct is None and inherited is not None and inherited.captured == target
+                else self._prepare_static_colour(target)
+            )
             if prepared is None:
                 raise self._static_recovery_error()
             attempts = self.control_write_attempts
@@ -482,10 +656,20 @@ class _RecoveryMixin(_CoordinatorBase):
 
     def _qualify_static_baseline(self, baseline: PriorControlState | None) -> PriorControlState:
         profile, transition = self.profile, self._mode_transition
-        if baseline is None or self._prepare_static_colour(baseline) is None:
+        prepared = self._prepare_static_colour(baseline) if baseline is not None else None
+        if (
+            baseline is None
+            or prepared is None
+            or (
+                transition is not None
+                and transition.purpose is ModeTransitionPurpose.PREVIEW
+                and not prepared.verification.independently_observed
+            )
+        ):
             _LOGGER.debug(
                 "Static effect admission rejected model=%s mode=%s baseline_mode=%s power_known=%s "
-                "brightness_known=%s palette_source=%s captured_colours=%s captured_levels=%s missing_flags=%s",
+                "brightness_known=%s palette_source=%s captured_colours=%s captured_levels=%s "
+                "captured_kelvin=%s segment_intents=%s observed=%s rgb_known=%s missing_flags=%s",
                 self.model,
                 self.color_mode,
                 baseline.mode if baseline is not None else None,
@@ -494,6 +678,10 @@ class _RecoveryMixin(_CoordinatorBase):
                 self.segment_state_source,
                 baseline is not None and baseline.segment_colors is not None,
                 baseline is not None and baseline.segment_brightness is not None,
+                baseline.color_temp_kelvin if baseline is not None else None,
+                baseline.segment_kelvin if baseline is not None else None,
+                baseline.static_colour_observed if baseline is not None else None,
+                baseline.static_rgb_known if baseline is not None else None,
                 sorted(
                     name
                     for name in profile.boolean_controls.intersection(NATIVE_ZONE_CONTROLS)
@@ -501,21 +689,37 @@ class _RecoveryMixin(_CoordinatorBase):
                 ),
             )
             raise self._static_recovery_error()
+        if transition is not None:
+            transition.static_recovery = prepared
         if transition is not None and transition.purpose is not ModeTransitionPurpose.RECOVERY:
             selector_revision = self._selector_revision
             from_static = self.color_mode is ParsedMode.COLOUR
             transition.observations_match = lambda: (
                 self._selector_revision == selector_revision
                 and (
-                    self._same_static_appearance(baseline, self.capture_effect_control_state())
+                    self._same_static_appearance(
+                        baseline,
+                        self.capture_effect_control_state(),
+                        prepared=prepared,
+                    )
                     if from_static
                     else self._pre_mode_snapshot is baseline
                 )
             )
         return baseline
 
-    def _same_static_appearance(self, target: PriorControlState, current: PriorControlState) -> bool:
+    def _same_static_appearance(
+        self,
+        target: PriorControlState,
+        current: PriorControlState,
+        *,
+        prepared: PreparedStaticRecovery | None = None,
+    ) -> bool:
         profile = self.profile
+        target_plan = prepared or self._prepare_static_colour(target)
+        current_plan = self._prepare_static_colour(current)
+        if target_plan is None or current_plan is None:
+            return False
         if profile.projector_grammar is not None:
             return (
                 current.mode == target.mode == "colour"
@@ -532,16 +736,24 @@ class _RecoveryMixin(_CoordinatorBase):
             *source_kelvin_hint_fields(profile),
             *(("left_bar_kelvin", "right_bar_kelvin") if profile.setting_grammar_has("paired_bar_settings") else ()),
         )
-        target_intents = target.static_segment_kelvin(profile) if profile.supports_segments else None
+        target_verification = target_plan.verification
+        current_verification = current_plan.verification
         matching_palette = (
-            current.segment_colors is not None
-            and target.segment_colors is not None
-            and target_intents is not None
-            and len(current.segment_colors) == len(target.segment_colors) == len(target_intents)
+            current_verification.segment_colors is not None
+            and target_verification.segment_colors is not None
+            and current_verification.segment_kelvin is not None
+            and target_verification.segment_kelvin is not None
+            and current_verification.segment_kelvin == target_verification.segment_kelvin
+            and len(current_verification.segment_colors)
+            == len(target_verification.segment_colors)
+            == len(target_verification.segment_kelvin)
             and all(
                 not profile.static_palette_recovery and intent > 0 or actual == expected
                 for actual, expected, intent in zip(
-                    current.segment_colors, target.segment_colors, target_intents, strict=True
+                    current_verification.segment_colors,
+                    target_verification.segment_colors,
+                    target_verification.segment_kelvin,
+                    strict=True,
                 )
             )
         )
@@ -550,15 +762,12 @@ class _RecoveryMixin(_CoordinatorBase):
             and all(getattr(current, field) == getattr(target, field) for field in fields)
             and (target.static_gradual is None or current.static_gradual == target.static_gradual)
             and (
-                matching_palette
-                and current.segment_brightness == target.segment_brightness
-                and current.static_segment_kelvin(profile) == target_intents
+                matching_palette and current_verification.segment_brightness == target_verification.segment_brightness
                 if profile.supports_segments
-                else current.color_temp_kelvin == target.color_temp_kelvin
+                else current_verification.color_temp_kelvin == target_verification.color_temp_kelvin
                 and (
-                    target.color_temp_kelvin is not None
-                    or current.static_rgb_known
-                    and current.rgb_color == target.rgb_color
+                    target_verification.color_temp_kelvin is not None
+                    or current_verification.rgb_color == target_verification.rgb_color
                 )
             )
         )
@@ -719,6 +928,7 @@ class _RecoveryMixin(_CoordinatorBase):
             segment_brightness=tuple(self.segment_brightness)
             if known_segments and (self.segment_brightness_readable or all(self.segment_brightness_known))
             else None,
+            segment_brightness_observed=bool(known_segments and observed_segments and self.segment_brightness_readable),
             effect=self.effect,
             scene_code=self.scene_code,
             diy_code=self.diy_code,
@@ -883,7 +1093,14 @@ class _RecoveryMixin(_CoordinatorBase):
             target = state.state if isinstance(state, PreparedStaticRecovery) else state
             if target.mode == "colour" and get_profile(self.model).static_identity_fields:
                 await self._as_coordinator.async_prepare_identity_gated_control()
-            prepared = state if isinstance(state, PreparedStaticRecovery) else self._prepare_static_colour(target)
+            inherited = transition.static_recovery if transition is not None else None
+            prepared = (
+                state
+                if isinstance(state, PreparedStaticRecovery)
+                else inherited
+                if inherited is not None and inherited.captured == target
+                else self._prepare_static_colour(target)
+            )
             if prepared is not None:
                 prepared.check(self)
             elif target.mode == "colour":
@@ -1598,6 +1815,7 @@ class _RecoveryMixin(_CoordinatorBase):
     def _prepare_static_colour(self, state: PriorControlState) -> PreparedStaticRecovery | None:
         if state.mode != "colour":
             return None
+        captured = state
         if self.profile.projector_grammar is not None:
             if state.projector_appearance is None:
                 return None
@@ -1615,7 +1833,14 @@ class _RecoveryMixin(_CoordinatorBase):
             for packet in packets:
                 require_profile_packet(packet, self.profile)
             return PreparedStaticRecovery(
-                state, packets, False, self.profile, self._profile_generation, self._notification_token
+                captured=captured,
+                state=state,
+                packets=packets,
+                strategy=StaticRecoveryStrategy.PROJECTOR,
+                verification=StaticRecoveryVerification(independently_observed=state.static_colour_observed),
+                profile=self.profile,
+                generation=self._profile_generation,
+                subscription=self._notification_token,
             )
         zones = self.profile.boolean_controls.intersection(NATIVE_ZONE_CONTROLS)
         flags = {name: getattr(state, name) for name in zones}
@@ -1639,7 +1864,7 @@ class _RecoveryMixin(_CoordinatorBase):
                 bottom_kelvin=native_values.get("bottom_kelvin", state.bottom_kelvin),
             )
         if self.profile.supports_segments:
-            prepared = self._prepare_segmented_colour(state)
+            prepared = self._prepare_segmented_colour(state, captured=captured)
             return replace(prepared, native_writes=native_writes) if prepared is not None else None
         if not state.static_rgb_known and state.color_temp_kelvin is None:
             return None
@@ -1658,16 +1883,32 @@ class _RecoveryMixin(_CoordinatorBase):
         for packet in packets:
             require_profile_packet(packet, self.profile)
         return PreparedStaticRecovery(
-            state,
-            packets,
-            state.color_temp_kelvin is not None,
-            self.profile,
-            self._profile_generation,
-            self._notification_token,
-            native_writes,
+            captured=captured,
+            state=state,
+            packets=packets,
+            strategy=(
+                StaticRecoveryStrategy.SCALAR_KELVIN
+                if state.color_temp_kelvin is not None
+                else StaticRecoveryStrategy.SCALAR_RGB
+            ),
+            verification=StaticRecoveryVerification(
+                rgb_color=None if state.color_temp_kelvin is not None else state.rgb_color,
+                color_temp_kelvin=state.color_temp_kelvin,
+                independently_observed=state.static_colour_observed,
+            ),
+            profile=self.profile,
+            generation=self._profile_generation,
+            subscription=self._notification_token,
+            native_writes=native_writes,
         )
 
-    def _prepare_segmented_colour(self, state: PriorControlState) -> PreparedStaticRecovery | None:
+    def _prepare_segmented_colour(
+        self,
+        state: PriorControlState,
+        *,
+        captured: PriorControlState | None = None,
+    ) -> PreparedStaticRecovery | None:
+        captured = captured or state
         if (
             state.segment_colors is None
             or len(state.segment_colors) != self.profile.segment_count
@@ -1676,19 +1917,43 @@ class _RecoveryMixin(_CoordinatorBase):
         ):
             return None
         source_restore = has_segmented_sources(self.profile)
-        target_intents = state.static_segment_kelvin(self.profile)
+        target_intents = static_segment_kelvin(state, self.profile)
         if target_intents is None:
             return None
-        bar_restore = state.restorable_bar_white(self.profile)
-        kelvin_restore = (
-            not source_restore
-            and not bar_restore
-            and not self.profile.static_palette_recovery
-            and bool(target_intents)
-            and target_intents[0] > 0
-            and len(set(target_intents)) == 1
-            and self.profile.supports_color_temperature
+        complete_segment_intent = (
+            state.segment_kelvin is not None
+            and len(state.segment_kelvin) == self.profile.segment_count
+            and all(intent is not None for intent in state.segment_kelvin)
         )
+        bar_restore = restorable_bar_white(state, self.profile)
+        positive = {intent for intent in target_intents if intent}
+        if source_restore:
+            strategy = StaticRecoveryStrategy.NATIVE_SOURCE
+        elif bar_restore:
+            strategy = StaticRecoveryStrategy.BAR_WHITE
+        elif self.profile.static_palette_recovery:
+            strategy = StaticRecoveryStrategy.PALETTE
+        elif not positive:
+            strategy = StaticRecoveryStrategy.PURE_RGB
+        elif len(positive) == 1:
+            if len(set(target_intents)) == 1 and self.profile.supports_color_temperature:
+                strategy = StaticRecoveryStrategy.WHOLE_KELVIN
+            elif (
+                compound_static_recovery_authorized(self, self.profile)
+                and complete_segment_intent
+                and state.static_colour_observed
+                and state.segment_brightness_observed
+                and self.profile.can_read(ReadDomain.SEGMENTS)
+            ):
+                strategy = StaticRecoveryStrategy.COMPOUND_KELVIN_RGB
+            elif self.profile.supports_segment_color_temperature:
+                strategy = StaticRecoveryStrategy.SEGMENT_KELVIN
+            else:
+                return None
+        elif self.profile.supports_segment_color_temperature:
+            strategy = StaticRecoveryStrategy.SEGMENT_KELVIN
+        else:
+            return None
         target_colours = list(state.segment_colors)
         if not (self.profile.kelvin_renders_device_white or self.profile.static_palette_recovery):
             for index, kelvin in enumerate(target_intents):
@@ -1702,8 +1967,13 @@ class _RecoveryMixin(_CoordinatorBase):
             assert left is not None and right is not None
             half = self.profile.segment_count // 2
             target_colours = [table_kelvin_rgb(left)] * half + [table_kelvin_rgb(right)] * half
-        whole = target_intents[0] if kelvin_restore else state.color_temp_kelvin
-        if kelvin_restore and whole is not None:
+        whole = next(iter(positive)) if strategy is StaticRecoveryStrategy.WHOLE_KELVIN else state.color_temp_kelvin
+        if strategy is StaticRecoveryStrategy.COMPOUND_KELVIN_RGB:
+            whole = next(iter(positive))
+        if whole is not None and strategy in {
+            StaticRecoveryStrategy.WHOLE_KELVIN,
+            StaticRecoveryStrategy.COMPOUND_KELVIN_RGB,
+        }:
             whole = normalize_kelvin(whole, self.profile)
         state = replace(
             state,
@@ -1729,8 +1999,17 @@ class _RecoveryMixin(_CoordinatorBase):
                 for start, kelvin in ((0, state.left_bar_kelvin), (half, state.right_bar_kelvin))
                 if kelvin is not None
             ]
-        elif kelvin_restore and state.color_temp_kelvin is not None:
+        elif strategy is StaticRecoveryStrategy.WHOLE_KELVIN and state.color_temp_kelvin is not None:
             packets = [build_color_temp(state.color_temp_kelvin, self.model, profile=self.profile)]
+        elif strategy is StaticRecoveryStrategy.COMPOUND_KELVIN_RGB:
+            assert state.color_temp_kelvin is not None
+            packets = [build_color_temp(state.color_temp_kelvin, self.model, profile=self.profile)]
+            exceptions: dict[tuple[int, int, int], list[int]] = {}
+            for index, (intent, rgb) in enumerate(zip(target_intents, state.segment_colors, strict=True), 1):
+                if not intent:
+                    exceptions.setdefault(rgb, []).append(index)
+            for rgb, segments in exceptions.items():
+                packets.extend(build_segment_paint([(segments, rgb)], self.model, profile=self.profile))
         else:
             packets = []
             semantic_groups: dict[tuple[int, tuple[int, int, int]], list[int]] = {}
@@ -1762,7 +2041,20 @@ class _RecoveryMixin(_CoordinatorBase):
         for packet in prepared_packets:
             require_profile_packet(packet, self.profile)
         return PreparedStaticRecovery(
-            state, prepared_packets, kelvin_restore, self.profile, self._profile_generation, self._notification_token
+            captured=captured,
+            state=state,
+            packets=prepared_packets,
+            strategy=strategy,
+            verification=StaticRecoveryVerification(
+                segment_colors=state.segment_colors,
+                segment_brightness=state.segment_brightness,
+                segment_kelvin=target_intents,
+                independently_observed=state.static_colour_observed
+                and (not self.profile.supports_segment_brightness or state.segment_brightness_observed),
+            ),
+            profile=self.profile,
+            generation=self._profile_generation,
+            subscription=self._notification_token,
         )
 
     async def _restore_segmented_colour(
@@ -1772,11 +2064,15 @@ class _RecoveryMixin(_CoordinatorBase):
         if prepared is None:
             return False
         state = prepared.state
-        source_restore = has_segmented_sources(self.profile)
-        target_intents = state.static_segment_kelvin(self.profile)
-        assert target_intents is not None and state.segment_colors is not None
+        verification = prepared.verification
+        expected_colours = verification.segment_colors
+        expected_brightness = verification.segment_brightness
+        target_intents = verification.segment_kelvin
+        if expected_colours is None or target_intents is None:
+            return False
+        source_restore = prepared.strategy is StaticRecoveryStrategy.NATIVE_SOURCE
         kelvin_restore = prepared.whole_kelvin
-        bar_restore = state.restorable_bar_white(self.profile)
+        bar_restore = prepared.strategy is StaticRecoveryStrategy.BAR_WHITE
         prepared.check(self)
         subscription = await self._write_static_restore(prepared)
         mode_revision = self._field_revisions.get("color_mode", 0)
@@ -1803,12 +2099,16 @@ class _RecoveryMixin(_CoordinatorBase):
         basic_matches = await self.refresh_state(request)
         segments_match = await self.async_refresh_segments() if self.profile.can_read(ReadDomain.SEGMENTS) else True
 
-        expected_colours = state.segment_colors
         verify_gradual = False
 
         def matches_layout() -> bool:
             return (
-                (not self._recovery_brightness_known(state) or self.brightness_pct == state.brightness_pct)
+                (not self.profile.can_read(ReadDomain.SEGMENTS) or self.segment_state_source == "observed")
+                and (
+                    prepared.strategy is not StaticRecoveryStrategy.COMPOUND_KELVIN_RGB
+                    or self.segment_brightness_readable
+                )
+                and (not self._recovery_brightness_known(state) or self.brightness_pct == state.brightness_pct)
                 and len(self.segment_colors) == len(expected_colours)
                 and all(
                     segment_colour_matches(
@@ -1821,7 +2121,7 @@ class _RecoveryMixin(_CoordinatorBase):
                         zip(self.segment_colors, expected_colours, target_intents, strict=True)
                     )
                 )
-                and (state.segment_brightness is None or tuple(self.segment_brightness) == state.segment_brightness)
+                and (expected_brightness is None or tuple(self.segment_brightness) == expected_brightness)
                 and (not verify_gradual or self.static_gradual == state.static_gradual)
                 and (
                     not self.profile.setting_grammar_has("paired_bar_settings")
@@ -1829,7 +2129,22 @@ class _RecoveryMixin(_CoordinatorBase):
                 )
                 and (
                     (not source_restore or state.top_kelvin is None or self.top_kelvin == state.top_kelvin)
-                    and self.capture_effect_control_state().static_segment_kelvin(self.profile) == target_intents
+                    and (
+                        bar_restore
+                        or source_restore
+                        and all(
+                            getattr(self, f"{source.key}_kelvin", None) in (None, intent)
+                            for source in self.profile.light_sources
+                            for intent in {target_intents[position - 1] for position in source.segments}
+                        )
+                        or (
+                            len(self.segment_kelvin) == len(target_intents)
+                            and all(
+                                actual is not None and actual == expected
+                                for actual, expected in zip(self.segment_kelvin, target_intents, strict=True)
+                            )
+                        )
+                    )
                 )
             )
 

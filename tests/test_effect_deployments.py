@@ -455,6 +455,7 @@ def test_unsaved_apply_records_content_free_source_metadata() -> None:
         ("segment_brightness", [True]),
         ("segment_brightness", [101]),
         ("segment_brightness", [-1]),
+        ("segment_brightness_observed", 1),
         ("segment_kelvin", [True]),
         ("segment_kelvin", [-1]),
         ("segment_kelvin", [999]),
@@ -518,6 +519,28 @@ def test_prior_state_preserves_unknown_brightness_authority():
     restored = PriorControlState.from_dict(prior.to_dict())
     assert restored.brightness_pct_known is False
     assert restored.to_dict()["brightness_pct_known"] is False
+
+
+def test_prior_state_preserves_rendered_levels_and_unknown_native_segment_intent():
+    prior = PriorControlState(
+        "colour",
+        True,
+        51,
+        (1, 2, 3),
+        segment_colors=((255, 32, 16), (217, 225, 255), (4, 5, 6)),
+        segment_brightness=(20, 73, 41),
+        segment_brightness_observed=True,
+        segment_kelvin=(0, 9000, None),
+        static_colour_observed=True,
+    )
+
+    restored = PriorControlState.from_dict(prior.to_dict())
+
+    assert restored.segment_colors == prior.segment_colors
+    assert restored.segment_brightness == prior.segment_brightness
+    assert restored.segment_brightness_observed
+    assert restored.segment_kelvin == (0, 9000, None)
+    assert restored.static_colour_observed
 
 
 def test_prior_state_round_trips_thirty_segments():
