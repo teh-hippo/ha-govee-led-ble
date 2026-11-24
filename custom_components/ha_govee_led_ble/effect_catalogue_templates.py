@@ -159,6 +159,8 @@ def _video_template(model: str, mode: NativeModeOption, *, saturation: int = 50)
 def _h617a_catalogue_templates(
     model: str,
     music_modes: tuple[NativeModeOption, ...],
+    *,
+    retain_family_palette_limit: bool,
 ) -> tuple[CatalogueTemplate, ...]:
     return (
         CatalogueTemplate(
@@ -173,7 +175,10 @@ def _h617a_catalogue_templates(
             ),
         ),
         *(
-            _single_template(model, family if model == "H617A" else replace(family, palette_max=None))
+            _single_template(
+                model,
+                family if retain_family_palette_limit else replace(family, palette_max=None),
+            )
             for family in H617A_TYPE04_FAMILIES
         ),
         *(_music_template(model, mode) for mode in music_modes),
@@ -364,10 +369,18 @@ H61E5_NATIVE_DIY_TEMPLATES: Final = _rgbic_native_templates(36)
 H617C_NATIVE_DIY_TEMPLATES: Final = _rgbic_native_templates(30)
 H619A_NATIVE_DIY_TEMPLATES: Final = _rgbic_native_templates(20)
 H617A_CATALOGUE_TEMPLATES: Final = (
-    *_h617a_catalogue_templates("H617A", H617A_NATIVE_MUSIC_MODES),
+    *_h617a_catalogue_templates(
+        "H617A",
+        H617A_NATIVE_MUSIC_MODES,
+        retain_family_palette_limit=True,
+    ),
     *H617A_NATIVE_DIY_TEMPLATES,
 )
-H617E_CATALOGUE_TEMPLATES: Final = _h617a_catalogue_templates("H617E", H617E_NATIVE_MUSIC_MODES)
+H617E_CATALOGUE_TEMPLATES: Final = _h617a_catalogue_templates(
+    "H617E",
+    H617E_NATIVE_MUSIC_MODES,
+    retain_family_palette_limit=False,
+)
 
 H6179_CATALOGUE_TEMPLATES: Final = (
     *(_single_template("H6179", family) for family in H6179_DIY_FAMILIES),
@@ -604,7 +617,10 @@ def _h607c_templates() -> tuple[CatalogueTemplate, ...]:
 
 
 def _ceiling_catalogue(model: str) -> ModelEffectCatalogue:
-    native = model == "H60A6"
+    from .native_effect_codecs import native_effect_codec_for_target
+
+    codec = native_effect_codec_for_target(model)
+    native = codec is not None and codec.native_catalogue
     return ModelEffectCatalogue(
         sku=model,
         painted_effects=(),

@@ -36,7 +36,13 @@ from .effect_commands import (
 from .effect_contracts import (
     EFFECT_COMPILER_VERSION,
     CapabilityWorkflow,
+    ContentProjection,
+    SelectorPolicy,
+    release_capability,
+    release_content_reference_model,
+    release_selector_policy,
     require_effect_route,
+    require_upload_carrier,
 )
 from .effect_domain import (
     BuiltinScene,
@@ -60,16 +66,13 @@ from .effect_domain import (
     effect_content_workflow,
 )
 from .generated_protocol_adapter import build_diy_activation, build_scene_activation
-from .h60a6_effects import encode_native_body
-from .h60b0_effects import H60b0SceneBody
 from .layered_scene import CatalogueRef
 from .layered_scene_decoder import encode_layered_scene, encode_workshop_effect
 from .light_commands import scale_segment_groups
 from .music_commands import build_zoned_music_body, resolve_music_profile
 from .music_protocol import music_code_for
 from .music_semantics import music_parameters_depend_on_ic, music_variant
-from .native_effect import NativeDiyLayer
-from .native_effect_codecs import native_a3_codec_for_profile
+from .native_effect_codecs import native_effect_codec_for_profile
 from .native_scenes import (
     apply_scene_speed,
     build_native_scene_packets,
@@ -77,15 +80,6 @@ from .native_scenes import (
     native_scene_prefers_selector,
 )
 from .protocol_core import (
-    H1ab2DiyBody,
-    H60a6EffectFrame,
-    H60b0CommandAck,
-    H60b2DiyBody,
-    H607cDiyBody,
-    H607cPaintBody,
-    H607cSceneBody,
-    H1771EffectUpload,
-    H6093Projector,
     H6199EffectUpload,
     SceneBody,
 )
@@ -94,6 +88,13 @@ from .scenes import MODEL_SCENES, SceneEntry, scene_for_profile, scene_selector_
 from .transport import fragment_a3
 
 DIY_ACK_EVIDENCE = "native_diy_positive_ack_required"
+
+
+def encode_native_body(content: NativeEffect, *, profile: ModelProfile | None = None) -> bytes:
+    selected = native_effect_codec_for_profile(profile or get_profile(content.model))
+    if selected is None:
+        raise ValueError("native content has no selected codec")
+    return selected.encode(content)
 
 
 class CompatibilityState(StrEnum):
@@ -253,17 +254,14 @@ def validate_compiled_geometry(compiled: CompiledApplication, profile: ModelProf
             raise ValueError("Device no longer supports the compiled activation route")
         if compiled.upload_packets and not profile.command_operation_supported("effect_upload"):
             raise ValueError("Device no longer supports compiled effect uploads")
-        declared_native_subtype = get_profile(compiled.model).native_diy_upload_subtype
-        if (
-            compiled.content_kind == "native_effect"
-            and declared_native_subtype is not None
-            and (
-                compiled.upload_subtype != declared_native_subtype
-                or native_a3_codec_for_profile(profile) is None
-                or profile.native_diy_upload_subtype != compiled.upload_subtype
-            )
-        ):
-            raise ValueError("Device native effect upload subtype changed since compilation")
+        if compiled.content_kind == "native_effect":
+            declared_profile = get_profile(compiled.model)
+            codec = native_effect_codec_for_profile(profile)
+            if codec is None or codec.codec_id != declared_profile.native_effect_codec:
+                raise ValueError("Device native effect codec changed since compilation")
+            declared_native_subtype = declared_profile.native_diy_upload_subtype
+            if declared_native_subtype is not None and compiled.upload_subtype != declared_native_subtype:
+                raise ValueError("Device native effect upload subtype changed since compilation")
         profiled_layers = (compiled.rgbic_scene_v0 is not None or profile.rgbic_scene_v0 is not None) and (
             compiled.content_kind in {"advanced", "workshop", "shared_scene", "scene_layered"}
             or (compiled.scene_entry is not None and compiled.scene_entry.scene_type == 2)
@@ -456,14 +454,15 @@ def _target_compatibility(item: LibraryItem, model: str, *, profile: ModelProfil
             )
         return CompatibilityResult(CompatibilityState.COMPATIBLE)
     if isinstance(content, H6179SingleDiyEffect | H6179MixedDiyEffect):
-        if model != "H6179" or content.model != model:
+        capability = release_capability(model, _effect_workflow(content)) if content.model == model else None
+        if capability is None or capability.content_projection is not ContentProjection.TYPED_DIY:
             return CompatibilityResult(
                 CompatibilityState.INCOMPATIBLE,
-                (f"{model} cannot apply H6179 DIY content",),
+                (f"{model} cannot apply typed DIY content",),
             )
         workflow = _effect_workflow(content)
         try:
-            require_effect_route(model, workflow, ("H6179",), profile=profile)
+            require_effect_route(model, workflow, profile=profile)
         except ValueError as error:
             return CompatibilityResult(CompatibilityState.INCOMPATIBLE, (str(error),))
         return CompatibilityResult(CompatibilityState.COMPATIBLE)
@@ -501,7 +500,8 @@ def _target_compatibility(item: LibraryItem, model: str, *, profile: ModelProfil
             if content.speed_index is not None:
                 if (
                     entry.selector_only
-                    or profile.command_grammar == "H6179"
+                    or release_selector_policy(model, CapabilityWorkflow.NATIVE_SCENES)
+                    is SelectorPolicy.CATALOGUE_SELECTOR_ONLY
                     or profile.selector_only_scene_bits is not None
                 ):
                     raise ValueError(f"{model} selector-only native scenes do not accept speed_index")
@@ -532,7 +532,6 @@ def _target_compatibility(item: LibraryItem, model: str, *, profile: ModelProfil
                     else CapabilityWorkflow.MULTI
                     if isinstance(content, MultiEffect)
                     else CapabilityWorkflow.PALETTE_DIY,
-                    ("H6046", "H6053", "H617A", "H1AB2", "H6099", "H6181", "H6199"),
                     profile=profile,
                 )
             else:
@@ -560,9 +559,12 @@ def _target_compatibility(item: LibraryItem, model: str, *, profile: ModelProfil
                 content.template,
                 expected_scene_type=1
                 if isinstance(content, PaletteScene)
-                else int(H607cSceneBody.CatalogueType.layered_scene)
-                if profile.effect_grammar in {"H607C", "H60B0"}
-                else 2,
+                else (
+                    codec.layered_scene_type
+                    if (codec := native_effect_codec_for_profile(profile)) is not None
+                    and codec.layered_scene_type is not None
+                    else 2
+                ),
             )
             if isinstance(content, PaletteScene) and content.speed_index is not None:
                 raise ValueError("type-1 palette scenes do not expose a documented Speed control")
@@ -595,38 +597,23 @@ def _validate_native_effect(item: LibraryItem, model: str, profile: ModelProfile
     content = item.content
     if not isinstance(content, NativeEffect):
         raise ValueError("native compiler requires native content")
-    native_codec = native_a3_codec_for_profile(profile)
-    if native_codec is not None:
-        if not profile.command_operation_supported("effect_upload"):
-            raise ValueError(f"{model} effective profile does not support effect uploads")
-        require_effect_route(model, _effect_workflow(content), (native_codec.effect_grammar,), profile=profile)
-        validate_effect_eligibility(content, model, profile=profile)
-    elif profile.effect_grammar in {"H1AB2", "H60B0", "H60B2", "H607C", "H6093"}:
-        require_effect_route(model, _effect_workflow(content), (profile.effect_grammar,), profile=profile)
-        validate_effect_eligibility(content, model, profile=profile)
-    elif profile.effect_grammar == "H1771":
-        require_effect_route(model, _effect_workflow(content), ("H1771",), profile=profile)
-        validate_effect_eligibility(content, model, profile=profile)
-        if content.template is not None:
-            _key, entry = _resolve_scene(model, content.template, expected_scene_type=5)
-            if entry.diy_effect_codes != (content.family,):
-                raise ValueError("native scene family does not match its catalogue")
-    else:
-        require_effect_route(model, _effect_workflow(content), ("H60A6",), profile=profile)
-        if content.model != model or not profile.supports_custom_effects:
-            raise ValueError("native content does not match the target profile")
-        if content.family == 798 and profile.physical_ic_count != 133:
-            raise ValueError("native paint requires the exact 133-point geometry")
-        if content.template is not None:
-            _key, entry = _resolve_scene(model, content.template, expected_scene_type=5)
-            if entry.diy_effect_codes != (content.family,):
-                raise ValueError("native scene family does not match its catalogue")
-            if content.speed_index is not None and (
-                entry.speed is None or content.speed_index >= entry.speed.option_count
-            ):
-                raise ValueError("native scene speed index is not present in its catalogue")
-        elif any(isinstance(layer, NativeDiyLayer) and not 1 <= len(layer.palette) <= 8 for layer in content.layers):
-            raise ValueError("native DIY palette must contain 1 to 8 colours")
+    native_codec = native_effect_codec_for_profile(profile)
+    if native_codec is None or content.model != model or native_codec.canonical_target != model:
+        raise ValueError("Native grammar and activation route do not match the effective profile")
+    route = native_codec.route_for_content(content, scene=content.template is not None)
+    if not native_codec.qualifies_upload_subtype(profile, route.subtype):
+        raise ValueError("Native grammar and activation route do not match the effective profile")
+    uploadless_scene = content.template is not None and getattr(native_codec, "selector_only_native_scene", False)
+    if not profile.command_operation_supported("effect_upload") and not uploadless_scene:
+        raise ValueError(f"{model} effective profile does not support effect uploads")
+    require_effect_route(model, _effect_workflow(content), (native_codec.effect_grammar,), profile=profile)
+    validate_effect_eligibility(content, model, profile=profile)
+    if content.template is not None:
+        _key, entry = _resolve_scene(model, content.template, expected_scene_type=5)
+        if entry.diy_effect_codes != (content.family,):
+            raise ValueError("native scene family does not match its catalogue")
+        if content.speed_index is not None and (entry.speed is None or content.speed_index >= entry.speed.option_count):
+            raise ValueError("native scene speed index is not present in its catalogue")
     resolve_diy_code(item, model=model, profile=profile)
 
 
@@ -634,8 +621,9 @@ def _prepare_native_effect(item: LibraryItem, model: str, profile: ModelProfile)
     _validate_native_effect(item, model, profile)
     content = item.content
     assert isinstance(content, NativeEffect)
-    if native_a3_codec_for_profile(profile) is not None:
-        return encode_native_body(content, profile=profile)
+    codec = native_effect_codec_for_profile(profile)
+    if codec is None:
+        raise ValueError(f"{model} has no native effect codec")
     return encode_native_body(content)
 
 
@@ -651,8 +639,8 @@ def compile_effect(
     item = resolve_target_item(item, model, profile)
     if isinstance(item.content, H6179SingleDiyEffect | H6179MixedDiyEffect):
         if diy_code is None:
-            raise ValueError("H6179 DIY application requires an approved disposable DIY code")
-        return compile_h6179(item, diy_code, profile=profile)
+            raise ValueError("Typed DIY application requires an approved disposable DIY code")
+        return compile_h6179(item, diy_code, model, profile=profile)
     if isinstance(item.content, NativeEffect):
         return compile_native_effect(item, model, diy_code=diy_code, profile=profile)
     if isinstance(item.content, PaintedEffect | SingleEffect | MultiEffect):
@@ -685,7 +673,7 @@ def _has_fixed_diy_slot(model: str, *, profile: ModelProfile | None = None) -> b
     profile = get_profile(model) if profile is None else profile
     catalogue = MODEL_EFFECT_CATALOGUES.get(model)
     return (
-        profile.effect_grammar == "H6099"
+        profile.effect_grammar_has("fixed_diy_slot")
         or profile.diy_upload_transport == "single"
         or profile.a1_diy_selector is not None
         or catalogue is not None
@@ -701,13 +689,15 @@ def _retained_scene_upload_route(
     if application == "shared_scene":
         workflow = CapabilityWorkflow.NATIVE_SCENES if carrier == "rgb" else CapabilityWorkflow.LAYERED_SCENES
         require_effect_route(model, workflow, profile=profile)
+        require_upload_carrier(model, workflow, carrier)
         for name, subtype, selector in profile.shared_scene_carriers:
             if name == carrier:
                 return subtype, selector
         raise ValueError(f"{model} has no {carrier} shared-scene carrier")
     if application != "workshop":
         raise ValueError("Unknown retained scene application")
-    grammar = require_effect_route(model, CapabilityWorkflow.WORKSHOP, profile=profile)
+    require_effect_route(model, CapabilityWorkflow.WORKSHOP, profile=profile)
+    require_upload_carrier(model, CapabilityWorkflow.WORKSHOP, carrier)
     if profile.workshop_carriers:
         for name, subtype, selector in profile.workshop_carriers:
             if name == carrier:
@@ -715,10 +705,18 @@ def _retained_scene_upload_route(
         raise ValueError(f"{model} has no {carrier} Workshop carrier")
     if carrier != "rgbic_v1":
         raise ValueError(f"{model} has no {carrier} Workshop carrier")
-    subtype = int(H6199EffectUpload.BodyKind.scene) if grammar == "H6199" else int(SceneBody.SceneType.scene_v2)
+    subtype = (
+        int(H6199EffectUpload.BodyKind.scene)
+        if profile.effect_grammar_has("display_scene_body")
+        else int(SceneBody.SceneType.scene_v2)
+    )
     if profile.workshop_scene_selector is not None:
         return subtype, profile.workshop_scene_selector
-    return subtype, H617A_WORKSHOP_APPLY_CODE if grammar in {"H6046", "H617A"} else H6199_WORKSHOP_APPLY_CODE
+    return subtype, (
+        H617A_WORKSHOP_APPLY_CODE
+        if profile.effect_grammar_has("h617a_workshop_selector")
+        else H6199_WORKSHOP_APPLY_CODE
+    )
 
 
 def resolve_diy_code(
@@ -746,13 +744,17 @@ def resolve_diy_code(
         model = content.model if model is None else model
         if model != content.model:
             raise ValueError("native content targets another model")
-        if content.model == "H60B0" and content.family == 81:
-            if requested is not None and requested != 510:
+        effective_profile = get_profile(model) if profile is None else profile
+        codec = native_effect_codec_for_profile(effective_profile)
+        if codec is None:
+            raise ValueError("native DIY has no selected format codec")
+        route = codec.route_for_content(content)
+        if route.fixed_selector is not None:
+            if requested is not None and requested != route.fixed_selector:
                 raise ValueError("Native combination requires its temporary scene selector")
-            return int(H60b0SceneBody.ActivationSelector.temporary)
+            return route.fixed_selector
         from .effect_catalogue import MODEL_EFFECT_CATALOGUES
 
-        effective_profile = get_profile(model) if profile is None else profile
         catalogue = MODEL_EFFECT_CATALOGUES.get(model)
         selector = effective_profile.native_diy_selector
         if selector is None:
@@ -789,9 +791,12 @@ def resolve_diy_code(
         if content.model != model:
             raise ValueError(f"effect targets {content.model}, not {model}")
         workflow = _effect_workflow(content)
-        require_effect_route(model, workflow, ("H6179",), profile=profile)
+        require_effect_route(model, workflow, profile=profile)
+        capability = release_capability(model, workflow)
+        if capability is None or capability.content_projection is not ContentProjection.TYPED_DIY:
+            raise ValueError(f"{model} has no supported typed DIY route")
         if requested is None:
-            raise ValueError("H6179 DIY application requires an explicitly approved disposable DIY code")
+            raise ValueError("Typed DIY application requires an explicitly approved disposable DIY code")
         if not isinstance(requested, int) or isinstance(requested, bool) or not 0 <= requested <= 0xFFFF:
             raise ValueError("DIY code must be an integer from 0 to 65535")
         return requested
@@ -807,8 +812,8 @@ def resolve_diy_code(
         model = content.model if model is None else model
         if content.model != model:
             raise ValueError(f"effect targets {content.model}, not {model}")
-        require_effect_route(model, CapabilityWorkflow.PALETTE_DIY, ("H6199",), profile=profile)
-        if requires_approved_diy_slot(model):
+        require_effect_route(model, CapabilityWorkflow.PALETTE_DIY, profile=profile)
+        if release_selector_policy(model, CapabilityWorkflow.PALETTE_DIY) is SelectorPolicy.APPROVED_DISPOSABLE:
             if requested is None:
                 return None
             minimum, maximum = approved_diy_slot_range(model)
@@ -823,22 +828,34 @@ def resolve_diy_code(
         return H6199_PALETTE_DIY_APPLY_CODE
     if isinstance(content, PaintedEffect | SingleEffect | MultiEffect):
         workflow = _effect_workflow(content)
-        profile = get_profile("H617A" if model is None else model) if profile is None else profile
-        grammar = require_effect_route(
-            "H617A" if model is None else model,
+        content_kind = (
+            "h617a_painted"
+            if isinstance(content, PaintedEffect)
+            else "h617a_single"
+            if isinstance(content, SingleEffect)
+            else "h617a_multi"
+        )
+        route_model = model or release_content_reference_model(content_kind)
+        if route_model is None:
+            raise ValueError("generic DIY content has no declared authoring route")
+        profile = get_profile(route_model) if profile is None else profile
+        require_effect_route(
+            route_model,
             workflow,
-            ("H6022", "H6046", "H6053", "H617A", "H1AB2", "H6099", "H607C", "H6181"),
             profile=profile,
         )
-        if grammar == "H607C":
+        native_codec = native_effect_codec_for_profile(profile)
+        if native_codec is not None and native_codec.paint_selector is not None:
             if not isinstance(content, PaintedEffect):
                 raise ValueError("native DIY requires its independently bounded zone definition")
-            selector = int(H607cPaintBody.ActivationSelector.static_paint)
+            selector = native_codec.paint_selector
             if requested is not None and requested != selector:
                 raise ValueError("native paint requires its exact activation selector")
             return selector
         a1_selector = None if isinstance(content, PaintedEffect) else profile.a1_diy_selector
-        approved_slot = model is not None and requires_approved_diy_slot(model)
+        approved_slot = (
+            model is not None and release_selector_policy(model, workflow) is SelectorPolicy.APPROVED_DISPOSABLE
+        )
         if model is not None:
             from .effect_catalogue import MODEL_EFFECT_CATALOGUES
 
@@ -853,7 +870,7 @@ def resolve_diy_code(
         code = (
             (
                 H6099_DIY_APPLY_CODE
-                if grammar == "H6099"
+                if profile.effect_grammar_has("default_diy_selector_254")
                 else a1_selector
                 if a1_selector is not None
                 else 800
@@ -903,7 +920,7 @@ def _compile_retained_scene(
         scene_type=H617A_WORKSHOP_SCENE_TYPE
         if content.application == "workshop"
         and profile.workshop_scene_selector is None
-        and profile.command_grammar in {"H6072", "H6072-legacy", "H607C", "H617A", "H7020"}
+        and profile.command_grammar_has("workshop_scene_type")
         else 0,
         profile=profile,
     )
@@ -1020,9 +1037,12 @@ def compile_scene_effect(
             content.template,
             expected_scene_type=1
             if isinstance(content, PaletteScene)
-            else int(H607cSceneBody.CatalogueType.layered_scene)
-            if profile.effect_grammar in {"H607C", "H60B0"}
-            else 2,
+            else (
+                codec.layered_scene_type
+                if (codec := native_effect_codec_for_profile(profile)) is not None
+                and codec.layered_scene_type is not None
+                else 2
+            ),
         )
         payload, speed = encode_authored_scene_body(content, entry)
         packets = tuple(
@@ -1122,26 +1142,9 @@ def compile_native_effect(
     if not isinstance(content, NativeEffect):
         raise ValueError("native compiler requires native content")
     body = _prepare_native_effect(item, model, profile)
-    route = "a4" if content.family == 798 and profile.effect_grammar == "H60A6" else "a3"
-    subtype = (
-        profile.native_diy_upload_subtype
-        if profile.native_diy_upload_subtype is not None
-        else int(H6093Projector.UploadKind.diy)
-        if profile.effect_grammar == "H6093"
-        else int(H60b0SceneBody.UploadSubtype.combined)
-        if profile.effect_grammar == "H60B0" and content.family == 81
-        else int(H60b0CommandAck.UploadKind.native_diy)
-        if profile.effect_grammar == "H60B0"
-        else int(H60b2DiyBody.UploadSubtype.native_diy)
-        if profile.effect_grammar == "H60B2"
-        else int(H1ab2DiyBody.UploadSubtype.native_diy)
-        if profile.effect_grammar == "H1AB2"
-        else int(H607cDiyBody.UploadSubtype.native_diy)
-        if profile.effect_grammar == "H607C"
-        else int(H1771EffectUpload.UploadKind.native_diy)
-        if profile.effect_grammar == "H1771"
-        else int(H60a6EffectFrame.Subtype.native_effect)
-    )
+    codec = native_effect_codec_for_profile(profile)
+    if codec is None:
+        raise ValueError(f"{model} has no native effect codec")
     entry = None
     scene_key = None
     if content.template is not None:
@@ -1150,36 +1153,28 @@ def compile_native_effect(
         scene_key, entry = _resolve_scene(model, content.template, expected_scene_type=5)
         if content.speed_index is not None:
             assert entry.speed is not None
-            body = apply_scene_speed(body, entry.speed, content.speed_index)
+            body = apply_scene_speed(body, entry.speed, content.speed_index, target=model)
         if native_scene_prefers_selector(entry, body, profile):
             body = b""
-        elif profile.effect_grammar == "H1771":
-            from .native_scenes import _parse_native_scene_body
-            from .protocol_core import serialize_native_body
-
-            body = serialize_native_body(_parse_native_scene_body(body, content.family).body)
-        elif profile.effect_grammar == "H6093":
-            from .native_scenes import _parse_native_scene_body
-
-            parsed = _parse_native_scene_body(body, content.family)
-            body = body[len(parsed.marker) :]
-            subtype = int(H6093Projector.UploadKind.scene)
         selector = scene_selector_code(model, entry, profile=profile)
         activation = build_scene_activation(model, selector, entry.music_code, profile=profile)
     else:
         custom_selector = resolve_diy_code(item, diy_code, model=model, profile=profile)
         assert custom_selector is not None
         selector = custom_selector
+        upload_route = codec.route_for_content(content)
         activation = (
             build_scene_activation(model, selector, profile=profile)
-            if content.model == "H60B0" and content.family == 81
+            if upload_route.scene_activation
             else build_diy_activation(selector, model, profile=profile)
         )
-    if profile.effect_grammar == "H6093" and entry is None:
-        from .native_scenes import _parse_native_scene_body
-
-        parsed = _parse_native_scene_body(body, content.family)
-        body = body[len(parsed.marker) :]
+    upload_route = codec.route_for_content(content, scene=entry is not None)
+    if body:
+        body = codec.prepare_upload(body, content, scene=entry is not None)
+    route = upload_route.carrier.value
+    subtype = upload_route.subtype
+    if profile.native_diy_upload_subtype is not None and entry is None:
+        subtype = profile.native_diy_upload_subtype
     upload = tuple((fragment_a4 if route == "a4" else fragment_a3)(subtype, body)) if body else ()
     if upload and not profile.command_operation_supported("effect_upload"):
         raise ValueError(f"{model} effective profile does not support effect uploads")
@@ -1191,7 +1186,7 @@ def compile_native_effect(
         workflow=_effect_workflow(content),
         diy_code=selector,
         activation_mode=ActivationMode.SCENE if entry is not None else ActivationMode.CUSTOM,
-        selector_kind="scene" if entry is not None or content.model == "H60B0" and content.family == 81 else "diy",
+        selector_kind="scene" if entry is not None or upload_route.scene_activation else "diy",
         expected_effect=scene_key,
         upload_packets=upload,
         activation_packet=activation,
@@ -1203,10 +1198,10 @@ def compile_native_effect(
         ),
         upload_transport=route,
         upload_subtype=subtype if upload else None,
-        body_effect_code=content.family if profile.effect_grammar in {"H607C", "H60B0"} else None,
-        physical_ic_count=profile.physical_ic_count if content.family == 798 else None,
+        body_effect_code=content.family if codec.reports_body_effect_code else None,
+        physical_ic_count=profile.physical_ic_count if content.family == codec.physical_geometry_family else None,
         scene_entry=entry,
-        native_effect_revision=profile.native_effect_revision if profile.effect_grammar == "H60B0" else 0,
+        native_effect_revision=profile.native_effect_revision if "revision" in codec.serialised_fields else 0,
         scene_route=(profile.command_grammar, profile.effect_grammar, profile.selector_only_scene_bits)
         if entry is not None
         else None,
@@ -1217,11 +1212,23 @@ def compile_h617a(
     item: LibraryItem,
     diy_code: int,
     *,
-    model: str = "H617A",
+    model: str | None = None,
     profile: ModelProfile | None = None,
 ) -> CompiledEffect:
     from .effect_targets import resolve_target_item
 
+    if model is None:
+        content = item.content
+        kind = (
+            "h617a_painted"
+            if isinstance(content, PaintedEffect)
+            else "h617a_single"
+            if isinstance(content, SingleEffect)
+            else "h617a_multi"
+        )
+        model = release_content_reference_model(kind)
+        if model is None:
+            raise ValueError("generic DIY content has no declared authoring route")
     item = resolve_target_item(item, model, profile)
     profile = get_profile(model) if profile is None else profile
     result = compatibility(item, model, profile=profile)
@@ -1230,7 +1237,7 @@ def compile_h617a(
 
     content = item.content
     upload_prefix = profile.a1_diy_prefix if profile.a1_diy_prefix is not None else profile.a1_diy_selector
-    if profile.effect_grammar == "H6181" and isinstance(content, SingleEffect | MultiEffect):
+    if profile.effect_grammar_has("dedicated_a1_diy") and isinstance(content, SingleEffect | MultiEffect):
         from .h6181_effects import build_diy
 
         content_kind = "h617a_single" if isinstance(content, SingleEffect) else "h617a_multi"
@@ -1312,23 +1319,29 @@ def compile_h617a(
     )
 
 
-def compile_h6179(item: LibraryItem, diy_code: int, *, profile: ModelProfile | None = None) -> CompiledEffect:
+def compile_h6179(
+    item: LibraryItem,
+    diy_code: int,
+    model: str,
+    *,
+    profile: ModelProfile | None = None,
+) -> CompiledEffect:
     from .effect_targets import resolve_target_item
 
-    item = resolve_target_item(item, "H6179", profile)
-    profile = profile or get_profile("H6179")
-    result = compatibility(item, "H6179", profile=profile)
+    item = resolve_target_item(item, model, profile)
+    profile = profile or get_profile(model)
+    result = compatibility(item, model, profile=profile)
     if result.state is not CompatibilityState.COMPATIBLE:
         raise ValueError("; ".join(result.reasons))
     content = item.content
     if not isinstance(content, H6179SingleDiyEffect | H6179MixedDiyEffect):
-        raise ValueError("unsupported H6179 DIY content")
+        raise ValueError("unsupported typed DIY content")
     upload = tuple(build_h6179_diy(content, profile=profile))
-    activation = build_diy_activation(diy_code, "H6179", profile=profile)
+    activation = build_diy_activation(diy_code, model, profile=profile)
     return CompiledEffect(
         item_id=str(item.id),
         item_version=item.version,
-        model="H6179",
+        model=model,
         content_kind="h6179_single_diy" if isinstance(content, H6179SingleDiyEffect) else "h6179_mixed_diy",
         workflow=_effect_workflow(content),
         diy_code=diy_code,
@@ -1358,11 +1371,16 @@ def compile_h6199(
     item: LibraryItem,
     diy_code: int | None = None,
     *,
-    model: str = "H6199",
+    model: str | None = None,
     profile: ModelProfile | None = None,
 ) -> CompiledEffect:
     from .effect_targets import resolve_target_item
 
+    if model is None:
+        content = item.content
+        if not isinstance(content, PaletteDiyEffect):
+            raise ValueError("unsupported palette DIY content")
+        model = content.model
     item = resolve_target_item(item, model, profile)
     result = compatibility(item, model, profile=profile)
     if result.state is not CompatibilityState.COMPATIBLE:

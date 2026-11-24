@@ -12,7 +12,6 @@ from uuid import UUID
 from homeassistant.core import HomeAssistant
 
 from .const import DOMAIN, LegacyEffectSelectorDomain, ModelProfile, get_profile
-from .effect_catalogue_families import H6199_PALETTE_DIY_APPLY_CODE
 from .effect_deployments import DeploymentRecord, ObservationConfidence
 from .effect_domain import (
     EffectContent,
@@ -87,14 +86,16 @@ def migrate_legacy_workspace_effect_signature(
     if not isinstance(content, RetainedSceneEffect | PaletteDiyEffect) or content.model != model:
         return signature
     route = legacy_effect_content_route(content)
-    domain = None if route is None else legacy_effect_selector_domain(get_profile(model), route)
-    historical_h6199_palette = (
-        model == "H6199" and route == "palette_diy" and signature == f"custom:{H6199_PALETTE_DIY_APPLY_CODE}"
+    profile = get_profile(model)
+    domain = None if route is None else legacy_effect_selector_domain(profile, route)
+    historical_scene_signature = any(
+        route == historical_route and signature == f"custom:{selector}"
+        for historical_route, selector in profile.legacy_custom_to_scene_signatures
     )
     if (
         signature.startswith("custom:")
         and domain is LegacyEffectSelectorDomain.SCENE
-        and (not route == "palette_diy" or historical_h6199_palette)
+        and (not route == "palette_diy" or historical_scene_signature)
     ):
         return signature.replace("custom:", "scene-code:", 1)
     return signature

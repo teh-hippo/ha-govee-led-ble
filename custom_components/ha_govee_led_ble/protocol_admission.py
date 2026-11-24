@@ -9,7 +9,7 @@ from kaitaistruct import KaitaiStructError
 from .const import WHOLE_BULB_GRAMMARS, ModelProfile, ReadDomain
 from .music_protocol import music_slug_for
 from .music_semantics import music_variant
-from .native_effect_codecs import native_a3_codec_for_route
+from .native_effect_codecs import native_effect_codec_for_profile
 from .protocol_commands import (
     _TABLE_KELVIN_RGB,
     _extended_static_root,
@@ -22,17 +22,11 @@ from .protocol_core import (
     _MUSIC_WRITE_ROOTS,
     _STATUS_QUERY_ROOTS,
     CommandWrite,
-    H1ab2DiyBody,
     H60a6Control,
-    H60a6EffectFrame,
     H60aBulk,
-    H60b0CommandAck,
-    H60b2DiyBody,
     H605cVideoSettings,
     H607cControl,
-    H607cEffectUpload,
     H1771Bulk,
-    H1771EffectUpload,
     H6093Projector,
     H6181DiyBody,
     StatusQuery,
@@ -224,22 +218,23 @@ def _check_h60a6_setting_packet(frame: bytes, profile: ModelProfile) -> bool:
     return False
 
 
-def _check_h60a6_effect_frame(frame: bytes, profile: ModelProfile) -> bool:
-    """H60A6 native effect upload frames."""
+def _check_native_effect_frame(frame: bytes, profile: ModelProfile) -> bool:
+    """Native effect frames through their profile-selected carrier."""
+    codec = native_effect_codec_for_profile(profile)
     if (
-        profile.effect_grammar == "H60A6"
-        and profile.command_operations is not None
-        and "effect_upload" in profile.command_operations
+        codec is not None
+        and codec.a4_frame_type is not None
+        and profile.command_operation_supported("effect_upload")
         and frame[:1] == bytes((A4_PREFIX,))
     ):
         if not 4 <= len(frame) <= 500 or xor_checksum(frame[:-1]) != frame[-1]:
             raise ValueError("Invalid native effect frame")
         try:
-            native_frame = H60a6EffectFrame.from_bytes(frame)
+            native_frame = codec.a4_frame_type.from_bytes(frame)
             native_frame._read()
         except KaitaiStructError as error:
             raise ValueError("Invalid native effect frame") from error
-        if native_frame.index == 0 and native_frame.body.subtype != H60a6EffectFrame.Subtype.native_effect:
+        if native_frame.index == 0 and codec.admits_upload(profile, int(native_frame.body.subtype)) is not True:
             raise ValueError("Native effect subtype is outside profile capabilities")
         return True
     return False
@@ -605,75 +600,33 @@ def _check_upload_packet(frame: bytes, profile: ModelProfile) -> bool:
     ):
         return True
     if upload is not None and upload.index == 0:
-        native_codec = native_a3_codec_for_route(profile.effect_grammar, int(upload.body.subtype))
-        if native_codec is not None:
-            if not profile.command_operation_supported("effect_upload") or not profile.supports_custom_effects:
-                raise ValueError("Native effect upload is outside profile capabilities")
-            if profile.native_diy_upload_subtype != native_codec.upload_subtype:
-                raise ValueError("Native effect upload is outside profile capabilities")
-            return True
+        codec = native_effect_codec_for_profile(profile)
+        if codec is not None:
+            admitted = codec.admits_upload(profile, int(upload.body.subtype))
+            if admitted is not None:
+                if not admitted:
+                    raise ValueError("Native effect upload is outside profile capabilities")
+                return True
     if upload is not None and profile.command_operations is not None and "effect_upload" in profile.command_operations:
-        if upload is not None and profile.effect_grammar == "H6093":
-            if upload.index == 0:
-                kinds = H6093Projector.UploadKind
-                allowed = {
-                    int(kinds.scene): profile.supports_scenes,
-                    int(kinds.diy): profile.supports_custom_effects,
-                    int(kinds.appearance): profile.projector_control_revision is not None,
-                }
-                if not allowed.get(upload.body.subtype, False):
-                    raise ValueError("Projector upload command is outside profile capabilities")
-            return True
-        if upload is not None and profile.effect_grammar == "H60B0":
-            if upload.index == 0:
-                kinds = H60b0CommandAck.UploadKind
-                allowed = {
-                    int(kinds.combined_scene): profile.supports_scenes or profile.supports_custom_effects,
-                    int(kinds.native_diy): profile.supports_custom_effects,
-                }
-                if not allowed.get(upload.body.subtype, False):
-                    raise ValueError("Native upload is outside profile capabilities")
-            return True
-        if upload is not None and profile.effect_grammar == "H1771":
-            if upload.index == 0:
-                kinds = H1771EffectUpload.UploadKind
-                allowed = {
-                    int(kinds.rgb_scene): profile.supports_scenes,
-                    int(kinds.layered_scene): profile.supports_scenes,
-                    int(kinds.music): profile.command_operation_supported("music") and bool(profile.music_variants),
-                    int(kinds.native_diy): profile.supports_custom_effects or profile.supports_scenes,
-                }
-                if not allowed.get(upload.body.subtype, False):
+        codec = native_effect_codec_for_profile(profile)
+        if upload is not None and codec is not None and upload.index == 0:
+            admitted = codec.admits_upload(profile, int(upload.body.subtype))
+            if admitted is not None:
+                if not admitted:
                     raise ValueError("Native upload command is outside profile capabilities")
+                return True
+        if upload is not None and codec is not None and upload.index != 0:
             return True
-        if upload is not None and profile.effect_grammar == "H607C":
-            if upload.index == 0:
-                kinds = H607cEffectUpload.Kind
-                allowed = {
-                    int(kinds.layered_scene): profile.supports_scenes,
-                    int(kinds.native_diy): profile.supports_custom_effects,
-                    int(kinds.paint): profile.supports_custom_effects,
-                    int(kinds.dreamview_palette): "music" in profile.dreamview_operations,
-                    int(kinds.dreamview_protocols): "music" in profile.dreamview_operations,
-                    int(kinds.dreamview_scene): "scene" in profile.dreamview_operations,
-                    int(kinds.dreamview_group): "replace_group" in profile.dreamview_operations,
-                }
-                if not allowed.get(upload.body.subtype, False):
-                    raise ValueError("Native upload command is outside profile capabilities")
-            return True
-        if upload is not None and profile.effect_grammar == "H60A6":
-            if upload.index == 0 and upload.body.subtype != H60a6EffectFrame.Subtype.native_effect:
-                raise ValueError("Native effect subtype is outside profile capabilities")
-            return True
-        if upload is not None and profile.effect_grammar in {
-            "H6022",
-            "H6046",
-            "H6053",
-            "H617A",
-            "H1AB2",
-            "H6181",
-            "H60B2",
-        }:
+        if upload is not None and (
+            codec is not None
+            or profile.effect_grammar
+            in {
+                "H6046",
+                "H6053",
+                "H617A",
+                "H6181",
+            }
+        ):
             if upload.index == 0:
                 from .scenes import SCENE_ENTRIES, scene_supported
 
@@ -690,16 +643,6 @@ def _check_upload_packet(frame: bytes, profile: ModelProfile) -> bool:
                         if profile.native_diy_upload_subtype is not None
                         else {}
                     ),
-                    **(
-                        {int(H1ab2DiyBody.UploadSubtype.native_diy): profile.supports_custom_effects}
-                        if profile.effect_grammar == "H1AB2"
-                        else {}
-                    ),
-                    **(
-                        {int(H60b2DiyBody.UploadSubtype.native_diy): profile.supports_custom_effects}
-                        if profile.effect_grammar == "H60B2"
-                        else {}
-                    ),
                     **{subtype: profile.supports_advanced_effects for _, subtype, _ in profile.workshop_carriers},
                     1: profile.supports_scenes
                     and (1 in scene_types or any(subtype == 1 for _, subtype, _ in profile.shared_scene_carriers))
@@ -714,7 +657,6 @@ def _check_upload_packet(frame: bytes, profile: ModelProfile) -> bool:
                     and "painted" in profile.effect_workflows,
                     4: profile.supports_custom_effects
                     and (profile.effect_grammar != "H6181" or profile.diy_upload_transport == "a3"),
-                    0x58: profile.effect_grammar == "H6022" and profile.supports_scenes,
                 }
                 if not allowed.get(upload.body.subtype, False):
                     raise ValueError("effect upload subtype is outside profile capabilities")
@@ -736,7 +678,7 @@ def require_profile_packet(frame: bytes, profile: ModelProfile) -> None:
         _check_native_setting_packet,
         _check_bulk_query_packet,
         _check_h60a6_setting_packet,
-        _check_h60a6_effect_frame,
+        _check_native_effect_frame,
         _check_music_write_packet,
         _check_video_write_packet,
         _check_h8604_video_setting_packet,

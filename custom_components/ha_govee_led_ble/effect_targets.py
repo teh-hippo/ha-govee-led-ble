@@ -3,8 +3,14 @@
 from dataclasses import replace
 
 from .const import ModelProfile, get_profile
-from .effect_catalogue import LEGACY_CATALOGUE_SKU, MODEL_EFFECT_CATALOGUES
+from .effect_catalogue import MODEL_EFFECT_CATALOGUES
 from .effect_catalogue_models import ModelEffectCatalogue
+from .effect_contracts import (
+    ContentProjection,
+    release_content_capability,
+    release_content_reference_model,
+    release_projection_capability,
+)
 from .effect_domain import (
     EffectPair,
     H6179MixedDiyEffect,
@@ -114,18 +120,35 @@ def resolve_target_item(item: LibraryItem, model: str, profile: ModelProfile | N
     elif isinstance(
         content, SingleEffect | MultiEffect | PaletteDiyEffect | H6179SingleDiyEffect | H6179MixedDiyEffect
     ):
+        source_content_kind = (
+            "h617a_single"
+            if isinstance(content, SingleEffect)
+            else "h617a_multi"
+            if isinstance(content, MultiEffect)
+            else "h6179_single_diy"
+            if isinstance(content, H6179SingleDiyEffect)
+            else "h6179_mixed_diy"
+            if isinstance(content, H6179MixedDiyEffect)
+            else "palette_diy"
+        )
         source_model = (
             content.model
             if isinstance(content, PaletteDiyEffect | H6179SingleDiyEffect | H6179MixedDiyEffect)
-            else LEGACY_CATALOGUE_SKU
+            else release_content_reference_model(source_content_kind)
         )
-        cross_format = (
-            isinstance(content, SingleEffect | MultiEffect)
-            and profile.effect_grammar in {"H6199", "H6179"}
+        projection = (
+            release_content_capability(model, source_content_kind)
+            if source_model == model
+            else release_projection_capability(model, source_content_kind)
+        )
+        cross_format = projection is not None and (
+            projection.persistent_content_kind != source_content_kind
             or isinstance(content, PaletteDiyEffect | H6179SingleDiyEffect | H6179MixedDiyEffect)
             and source_model != model
         )
-        if cross_format:
+        if cross_format and projection is not None:
+            if source_model is None:
+                raise ValueError("The source effect has no declared catalogue identity")
             source_catalogue = MODEL_EFFECT_CATALOGUES.get(source_model)
             if source_catalogue is None:
                 raise ValueError("The source effect catalogue is unavailable")
@@ -143,13 +166,13 @@ def resolve_target_item(item: LibraryItem, model: str, profile: ModelProfile | N
                 _target_pair(pair.family, pair.variant, source_catalogue, target_catalogue, profile) for pair in pairs
             )
             multi = isinstance(content, MultiEffect | H6179MixedDiyEffect)
-            if profile.effect_grammar == "H6199":
+            if projection.content_projection is ContentProjection.PALETTE_DIY:
                 if multi:
                     raise ValueError("The target palette workflow does not support Multi")
                 projected = PaletteDiyEffect(
                     model, resolved[0].family, resolved[0].variant, content.speed, content.palette
                 )
-            elif profile.effect_grammar == "H6179":
+            elif projection.content_projection is ContentProjection.TYPED_DIY:
                 projected = (
                     H6179MixedDiyEffect(model, resolved, content.speed, content.palette)
                     if multi

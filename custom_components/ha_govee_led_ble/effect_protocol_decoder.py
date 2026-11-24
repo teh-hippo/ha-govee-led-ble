@@ -19,27 +19,22 @@ from .effect_domain import (
     SingleEffect,
 )
 from .generated_protocol_adapter import parse_a3_effect_envelope
-from .h60a6_effects import decode_native_body
-from .h607c_effects import decode_zoned_diy
-from .h1771_effects import decode_h1771_diy
 from .h6179_effect_codec import decode_h6179_effect
 from .layered_scene_decoder import decode_workshop_effect
-from .native_effect_codecs import native_a3_codec_for_profile, native_a3_codec_for_tree
+from .native_effect_codecs import (
+    NativeEffectCarrier,
+    native_effect_codec_for_profile,
+    native_effect_codec_for_tree,
+)
 from .protocol_core import (
     DiyType03,
     DiyType04,
-    H1ab2DiyBody,
     H1ab2PaintBody,
-    H60a6DiyBody,
-    H60a6EffectFrame,
-    H607cEffectUpload,
-    H1771EffectUpload,
     H6046EffectUpload,
     H6053EffectUpload,
     H6199EffectUpload,
     SceneBody,
     SceneType1Body,
-    serialize_native_body,
 )
 from .transport import reassemble_a1_02, reassemble_a3
 
@@ -96,9 +91,10 @@ def decode_effect_frames(
         from .transport import reassemble_a4
 
         subtype, body = reassemble_a4(frames)
-        if effective_profile.effect_grammar != "H60A6" or subtype != int(H60a6EffectFrame.Subtype.native_effect):
+        codec = native_effect_codec_for_profile(effective_profile)
+        if codec is None or codec.admits_upload(effective_profile, subtype) is not True:
             raise ValueError("unsupported native paint transport or subtype")
-        return decode_native_body(body, family=798)
+        return codec.decode(body, codec.family_for_carrier(NativeEffectCarrier.A4, subtype))
     raise ValueError(f"unsupported effect upload transport {transport!r}")
 
 
@@ -106,23 +102,18 @@ def decode_a3_effect(tree: Any, model: str, *, profile: ModelProfile | None = No
     """Decode a parsed generated A3 tree without assigning unevidenced semantics."""
     effective_profile = profile or get_profile(model)
     grammar = effective_profile.effect_grammar
-    wire_codec = native_a3_codec_for_tree(tree)
+    wire_codec = native_effect_codec_for_tree(tree)
     if wire_codec is not None:
-        if native_a3_codec_for_profile(effective_profile) is not wire_codec or model != wire_codec.canonical_model:
+        if (
+            native_effect_codec_for_profile(effective_profile) is not wire_codec
+            or model != wire_codec.canonical_model
+            or not wire_codec.qualifies_upload_subtype(effective_profile, wire_codec.upload_subtype)
+        ):
             raise UnsupportedA3EffectError("Native upload is not canonical for this effective profile and target")
-        return wire_codec.decode(serialize_native_body(tree.body))
-    if grammar == "H60B0":
-        raise UnsupportedA3EffectError("Native uploads require their qualified revision and retained source definition")
-    if grammar == "H1771":
-        if isinstance(tree, H1771EffectUpload) and tree.kind == H1771EffectUpload.UploadKind.native_diy:
-            if tree.body.unknown_tail:
-                raise UnsupportedA3EffectError("Native upload cannot distinguish extensions from transport fill")
-            return decode_h1771_diy(serialize_native_body(tree.body))
-        raise UnsupportedA3EffectError("Native scene upload requires catalogue identity")
-    if grammar == "H607C":
-        if tree.kind == H607cEffectUpload.Kind.native_diy:
-            return decode_zoned_diy(serialize_native_body(tree.content))
-        raise UnsupportedA3EffectError("Native upload requires source topology or catalogue identity")
+        try:
+            return wire_codec.decode_parsed(tree)
+        except ValueError as error:
+            raise UnsupportedA3EffectError(str(error)) from error
     if grammar == "H6179":
         if not isinstance(tree, DiyType04):
             raise TypeError("tree is not a generated H6179 type-04 DIY root")
@@ -138,30 +129,13 @@ def decode_a3_effect(tree: Any, model: str, *, profile: ModelProfile | None = No
         if grammar == "H6053" and tree.kind == H6053EffectUpload.BodyKind.scene_v2:
             raise UnsupportedA3EffectError("V2 Workshop upload requires its retained carrier identity")
         raise UnsupportedA3EffectError("H6046 built-in parameters require catalogue identity")
-    if grammar == "H60A6":
-        if isinstance(tree, H60a6DiyBody):
-            return decode_native_body(serialize_native_body(tree), family=797)
-        if isinstance(getattr(tree, "body", None), H60a6DiyBody):
-            return decode_native_body(serialize_native_body(tree.body), family=797)
-        payload = getattr(tree, "payload", None)
-        if isinstance(payload, bytes):
-            return decode_native_body(payload, family=797)
-        raise TypeError("tree is not a generated native DIY body")
     if grammar == "H6099":
         if int(tree.kind) == 4:
             return _decode_h617a_type04(tree.diy)
         # The upload omits total IC count; retain the already validated source
         # rather than infer topology from the highest painted index.
         raise UnsupportedA3EffectError("H6099 upload requires source topology or catalogue identity")
-    if grammar == "H6022":
-        raise UnsupportedA3EffectError("H6022 effect bodies require authored content or catalogue identity")
-    if grammar in {"H617A", "H6181", "H1AB2"}:
-        if isinstance(tree, H1ab2DiyBody.Upload):
-            from .h1ab2_effects import decode_accumulation
-
-            if any(tree.padding):
-                raise UnsupportedA3EffectError("Native upload has unrepresented trailing data")
-            return decode_accumulation(serialize_native_body(tree.body))
+    if grammar in {"H617A", "H6181", "H1AB2", "H60B2"}:
         if isinstance(tree, DiyType03 | H1ab2PaintBody):
             from .effect_catalogue import MODEL_EFFECT_CATALOGUES
 

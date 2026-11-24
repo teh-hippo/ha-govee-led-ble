@@ -2198,7 +2198,7 @@ def compiled_observation(
         if profile.music_readback_ambiguous:
             return None, ObservationConfidence.UNKNOWN
         expectations["music_mode"] = compiled.mode
-        if profile.music_grammar == "H6046":
+        if profile.music_grammar_has("music_selector_bar_parameters"):
             variant = music_variant(profile, music_code_for(compiled.model, compiled.mode, profile=profile))
             writes = prepare_music_profile_writes(
                 compiled.model,
@@ -2222,9 +2222,9 @@ def compiled_observation(
                 ObservationConfidence.MODE_MATCH if variant and variant.layout else ObservationConfidence.SETTINGS_MATCH
             )
         # H617A settings are not confirmed by the shipped readback evidence.
-        if profile.status_grammar == "H6097":
+        if profile.status_grammar_has("music_status_sensitivity"):
             expectations["music_sensitivity"] = compiled.sensitivity
-        elif profile.status_grammar in {"H605C", "H6099", "H6199", "H66A0", "H8604"}:
+        elif profile.status_grammar_has("music_status_settings"):
             expectations["music_sensitivity"] = compiled.sensitivity
             variant = music_variant(
                 profile,
@@ -2238,7 +2238,7 @@ def compiled_observation(
             return expectations, ObservationConfidence.MODE_MATCH
     else:
         expectations["video_mode"] = compiled.mode
-        if profile.video_grammar not in {"H6099", "H6199", "H66A0-video", "H605C-video"}:
+        if not profile.video_grammar_has("video_status_settings"):
             return None, ObservationConfidence.UNKNOWN
         complete = True
         for field in ("full_screen", "saturation", "sound_effects", "sound_effects_softness"):
