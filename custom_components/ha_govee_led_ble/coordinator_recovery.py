@@ -530,7 +530,7 @@ class _RecoveryMixin(_CoordinatorBase):
             *(("brightness_pct",) if self._recovery_brightness_known(target) else ()),
             *native_source_fields(profile),
             *source_kelvin_hint_fields(profile),
-            *(("left_bar_kelvin", "right_bar_kelvin") if profile.setting_grammar == "H6046" else ()),
+            *(("left_bar_kelvin", "right_bar_kelvin") if profile.setting_grammar_has("paired_bar_settings") else ()),
         )
         target_intents = target.static_segment_kelvin(profile) if profile.supports_segments else None
         matching_palette = (
@@ -795,7 +795,7 @@ class _RecoveryMixin(_CoordinatorBase):
                 state.diy_code is not None
                 and profile.supports_custom_effects
                 and profile.diy_upload_transport != "single"
-                and (profile.command_grammar != "H607C" or state.diy_companion is not None)
+                and (not profile.command_grammar_has("diy_companion_required") or state.diy_companion is not None)
                 and (not strict or authorization.supports_custom_effects)
             )
         if state.mode == "scene":
@@ -965,7 +965,7 @@ class _RecoveryMixin(_CoordinatorBase):
             return False
         async with self._lock:
             client = await self._ensure_connected()
-            if self.profile.setting_grammar == "H6046":
+            if self.profile.setting_grammar_has("paired_bar_settings"):
                 from .generated_protocol_adapter import build_boolean_control_query
 
                 if not await self._as_coordinator._async_read_bar_flags(
@@ -974,7 +974,7 @@ class _RecoveryMixin(_CoordinatorBase):
                     deadline=time.monotonic() + 4.0,
                 ):
                     return False
-            elif self.profile.setting_grammar in {"H607C", "H60B0", "H60B2", "H8604"}:
+            elif self.profile.setting_grammar_has("separate_native_setting_read"):
                 from .generated_protocol_adapter import build_boolean_control_query
 
                 if not await self._as_coordinator._async_read_setting_fields(
@@ -1123,7 +1123,11 @@ class _RecoveryMixin(_CoordinatorBase):
                 for spec in variant.selector_parameters
             ):
                 return None
-            if self.profile.music_grammar == "H6046" and variant and variant.supports_fixed_colour:
+            if (
+                self.profile.music_grammar_has("music_selector_bar_parameters")
+                and variant
+                and variant.supports_fixed_colour
+            ):
                 parameters = state.music_parameters or {}
                 if "fixed_colour" not in parameters or (
                     parameters["fixed_colour"] and not {"left_colour", "right_colour"} <= parameters.keys()
@@ -1365,19 +1369,19 @@ class _RecoveryMixin(_CoordinatorBase):
             or not self.profile.supports_custom_effects
         ):
             return False
-        if self.profile.command_grammar == "H607C" and state.diy_companion is None:
+        if self.profile.command_grammar_has("diy_companion_required") and state.diy_companion is None:
             return False
         activation = build_diy_activation(
             state.diy_code,
             self.model,
             profile=self.profile,
-            companion=state.diy_companion if self.profile.command_grammar == "H607C" else None,
+            companion=state.diy_companion if self.profile.command_grammar_has("diy_companion_required") else None,
         )
         await self.send_command(build_power(True, self.model))
         if self._recovery_brightness_known(state):
             await self.send_command(build_brightness(state.brightness_pct, self.model))
         expected: dict[str, Any] = {"is_on": True, "diy_code": state.diy_code}
-        if self.profile.command_grammar == "H607C":
+        if self.profile.command_grammar_has("diy_companion_required"):
             expected["diy_companion"] = state.diy_companion
         await self.send_command(activation, state_values={"diy_code": state.diy_code})
         return (
@@ -1476,14 +1480,17 @@ class _RecoveryMixin(_CoordinatorBase):
         physical_ic_count: int | None,
         complete: bool,
     ) -> bool:
-        observes_color = (variant is None or variant.layout is None) and self.profile.music_grammar != "H6046"
+        observes_color = (variant is None or variant.layout is None) and not self.profile.music_grammar_has(
+            "music_selector_bar_parameters"
+        )
         observes_style = bool(variant and variant.supports_style) and (
-            observes_color or self.profile.music_grammar == "H6046"
+            observes_color or self.profile.music_grammar_has("music_selector_bar_parameters")
         )
         selector_expectations = {
             spec.key: (state.music_parameters or {})[spec.profile_key]
             for spec in (() if variant is None else variant.selector_parameters)
-            if self.profile.music_grammar == "H6046" and spec.profile_key in (state.music_parameters or {})
+            if self.profile.music_grammar_has("music_selector_bar_parameters")
+            and spec.profile_key in (state.music_parameters or {})
         }
         selector_baselines = {field: self._field_revisions.get(field, 0) for field in selector_expectations}
 
@@ -1817,7 +1824,7 @@ class _RecoveryMixin(_CoordinatorBase):
                 and (state.segment_brightness is None or tuple(self.segment_brightness) == state.segment_brightness)
                 and (not verify_gradual or self.static_gradual == state.static_gradual)
                 and (
-                    self.profile.setting_grammar != "H6046"
+                    not self.profile.setting_grammar_has("paired_bar_settings")
                     or (self.left_bar_kelvin, self.right_bar_kelvin) == (state.left_bar_kelvin, state.right_bar_kelvin)
                 )
                 and (

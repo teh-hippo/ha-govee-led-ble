@@ -34,7 +34,7 @@ def expectations_from_packet(
     """Map an outgoing command to the optimistic fields its replies should confirm."""
     profile = profile or get_profile(model)
     parsed = parse_write_state(packet, model, profile=profile) if parsed is None else parsed
-    if profile.command_grammar == "H6179":
+    if profile.command_grammar_has("custom_command"):
         return _h6179_expectations(parsed, model, static_echoes_color=static_echoes_color, profile=profile)
     video = parse_video_command(packet, model, profile=profile)
     if video is not None:
@@ -76,7 +76,7 @@ def expectations_from_packet(
     operation = getattr(generated.opcode, "name", None)
     if operation is None:
         return {}
-    if profile.command_grammar == "H60B0":
+    if profile.command_grammar_has("special_static", "native_sources"):
         from .h60b0_controls import source_values
 
         if values := source_values(generated):
@@ -101,7 +101,7 @@ def expectations_from_packet(
             music_mode = music_slug_for(model, int(detail.mode), profile=profile)
             expectations["music_mode"] = music_mode
             expectations["music_sensitivity"] = int(detail.sensitivity)
-            if profile.music_grammar == "H6046":
+            if profile.music_grammar_has("music_selector_bar_parameters"):
                 if not detail.is_base:
                     return expectations
                 expectations["music_fixed_colour"] = bool(detail.has_fixed_colour)
@@ -149,11 +149,12 @@ def expectations_from_packet(
         if mode == "diy" and hasattr(detail, "companion"):
             expectations["diy_companion"] = int(detail.companion)
         if mode == "music":
-            mode_id = detail.mode if profile.command_grammar in {"H1771", "H60B0"} else detail.mode_id
+            native_selector = profile.command_grammar_has("multi_native_music")
+            mode_id = detail.mode if native_selector else detail.mode_id
             music_mode = music_slug_for(model, int(mode_id), profile=profile)
             expectations["music_mode"] = music_mode
             expectations["music_sensitivity"] = int(detail.sensitivity)
-            if profile.command_grammar in {"H1771", "H60B0"} or not getattr(detail, "is_legacy", True):
+            if native_selector or not getattr(detail, "is_legacy", True):
                 return expectations
             if music_mode == "rhythm" and hasattr(detail, "style"):
                 expectations["music_calm"] = bool(detail.style)

@@ -4,7 +4,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from .const import KELVIN_RANGE_1000_10000, KELVIN_STEP, WHOLE_BULB_GRAMMARS, ModelProfile, get_profile
+from .const import KELVIN_RANGE_1000_10000, KELVIN_STEP, ModelProfile, get_profile
 from .generated_protocol_adapter import (
     KELVIN_DIRECT_RGB,
     build_colour_temperature,
@@ -249,12 +249,12 @@ def parse_static_write(
 
 
 def static_write_from_command(generated: Any, profile: ModelProfile) -> ParsedStaticWrite | None:
-    if profile.projector_grammar == "H6093":
+    if profile.projector_grammar is not None:
         from .protocol_core import H6093Projector
 
         if isinstance(generated, H6093Projector.Activation):
             return ParsedStaticWrite(operation=int(generated.body.sub_mode), segment_mask=None, kind="projector")
-    if profile.command_grammar == "H6179":
+    if profile.command_grammar_has("custom_command"):
         command = h6179_command_from_generated(generated)
         if command is None or command.operation != "mode" or command.values.get("mode") != "static":
             return None
@@ -276,7 +276,7 @@ def static_write_from_command(generated: Any, profile: ModelProfile) -> ParsedSt
     if generated is None or not hasattr(getattr(generated, "opcode", None), "name"):
         return None
     whole_device_mask = profile.whole_device_mask
-    if profile.command_grammar == "H60B0":
+    if profile.command_grammar_has("special_static", "native_sources"):
         if generated.opcode.name != "multi":
             return None
         sub = generated.body.sub.name
@@ -317,9 +317,9 @@ def static_write_from_command(generated: Any, profile: ModelProfile) -> ParsedSt
                 operation=2, segment_mask=mask, whole_device_mask=whole_device_mask, brightness_pct=int(levels[0])
             )
         return None
-    if profile.command_grammar in {"H6072", "H6072-legacy"} and generated.is_static:
+    if profile.command_grammar_has("revision_static") and generated.is_static:
         legacy = generated.body.sub.name == "legacy_static"
-        if legacy != (profile.command_grammar == "H6072-legacy"):
+        if legacy != profile.command_grammar_has("legacy_static"):
             raise ValueError("Static format does not match the confirmed revision")
         if legacy:
             body = generated.body.sub_body
@@ -340,7 +340,7 @@ def static_write_from_command(generated: Any, profile: ModelProfile) -> ParsedSt
                 if kelvin
                 else None,
             )
-    if profile.command_grammar in WHOLE_BULB_GRAMMARS:
+    if profile.command_grammar_has("whole_bulb_static"):
         if generated.opcode.name != "mode" or not generated.is_static:
             return None
         detail = generated.body.detail
@@ -362,7 +362,7 @@ def static_write_from_command(generated: Any, profile: ModelProfile) -> ParsedSt
             if kelvin
             else None,
         )
-    if profile.command_grammar in {"H6046", "H6099", "H6199"}:
+    if profile.command_grammar_has("display_static"):
         if generated.opcode.name != "mode" or getattr(generated.body.sub_mode, "name", None) != "static_colour":
             return None
         detail = generated.body.detail

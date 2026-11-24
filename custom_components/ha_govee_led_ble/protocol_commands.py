@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from .const import WHOLE_BULB_GRAMMARS, ModelProfile, ReadDomain, get_profile
+from .const import VIDEO_GRAMMARS, ModelProfile, ReadDomain, get_profile, grammar_traits
 from .music_protocol import H60b0MusicBody, music_slug_for
 from .music_semantics import music_variant
 from .protocol_core import (
@@ -18,7 +18,6 @@ from .protocol_core import (
     GoveeCommon,
     H60b0CommandWrite,
     H60b2MusicBody,
-    H60b2MusicWrite,
     H61f5ExtendedStaticWrite,
     H66a0VideoCommand,
     H600aCommandWrite,
@@ -45,21 +44,14 @@ from .protocol_h6179 import _build_h6179_static_colour, encode_h6179_brightness
 
 
 def _command_types(model: str, profile: ModelProfile | None = None) -> tuple[Any, Any, Any]:
-    resolved = (profile or get_profile(model)).command_grammar
-    if resolved == "H60B0":
-        return H60b0CommandWrite, H60b0CommandWrite.PowerCmd, H60b0CommandWrite.BrightnessCmd
-    if resolved == "H1771":
-        return H1771CommandWrite, H1771CommandWrite.PowerCmd, H1771CommandWrite.BrightnessCmd
-    if resolved in {"H6072", "H6072-legacy", "H607C"}:
-        return _COMMAND_ROOTS[resolved][1], CommandWrite.PowerCmd, CommandWrite.BrightnessCmd
-    if resolved in {"H7020", "H705A"}:
-        return _COMMAND_ROOTS[resolved][1], CommandWrite.PowerCmd, CommandWrite.BrightnessCmd
-    if resolved in WHOLE_BULB_GRAMMARS | {"H6046", "H6099", "H6179", "H6199"}:
-        root_type = _COMMAND_ROOTS[resolved][1]
-        return root_type, root_type.PowerBody, root_type.BrightnessBody
-    if resolved != "H617A":
+    profile = profile or get_profile(model)
+    if profile.command_grammar not in _COMMAND_ROOTS:
         raise ValueError(f"{model} has no generated command grammar")
-    return CommandWrite, CommandWrite.PowerCmd, CommandWrite.BrightnessCmd
+    root_type = _COMMAND_ROOTS[profile.command_grammar][1]
+    if hasattr(root_type, "PowerBody"):
+        return root_type, root_type.PowerBody, root_type.BrightnessBody
+    component = root_type if hasattr(root_type, "PowerCmd") else CommandWrite
+    return root_type, component.PowerCmd, component.BrightnessCmd
 
 
 def _video_grammar(model: str, profile: ModelProfile | None = None) -> str:
@@ -71,12 +63,7 @@ def _video_grammar(model: str, profile: ModelProfile | None = None) -> str:
 
 def _video_command_grammar(model: str, profile: ModelProfile | None = None) -> str:
     profile = profile or get_profile(model)
-    grammar = _video_grammar(model, profile)
-    if grammar == "H605C-video":
-        return "H6199"
-    if grammar == "H66A0-video" and profile.command_grammar in {"H6099", "H6199"}:
-        return profile.command_grammar
-    return grammar
+    return profile.video_control_grammar or _video_grammar(model, profile)
 
 
 def build_power(on: bool, model: str = "H617A", *, profile: ModelProfile | None = None) -> bytes:
@@ -274,15 +261,17 @@ def build_segment_colour(
 ) -> bytes:
     profile = profile or get_profile(model)
     resolved = profile.command_grammar
-    if resolved == "H60B0":
+    if resolved is None:
+        raise ValueError(f"{model} has no generated static-colour grammar")
+    if profile.command_grammar_has("native_source_static"):
         from .h60b0_controls import build_static
 
         return build_static(mask, rgb=(red, green, blue))
-    if resolved == "H6072-legacy":
+    if profile.command_grammar_has("legacy_static"):
         return _build_h6072_legacy_colour(mask, (red, green, blue), 0, (0, 0, 0))
-    if resolved in WHOLE_BULB_GRAMMARS:
+    if profile.command_grammar_has("whole_bulb_static"):
         return _build_whole_bulb_static_colour(mask, (red, green, blue), 0, profile)
-    if resolved == "H6179":
+    if profile.command_grammar_has("custom_command", "special_static"):
         if mask != 0:
             raise ValueError("H6179 static colour is inherently whole-device and has no segment mask")
         return _build_h6179_static_colour(
@@ -290,7 +279,7 @@ def build_segment_colour(
             kelvin=0,
             preview=(0, 0, 0),
         )
-    if resolved in {"H6046", "H6099", "H6199"}:
+    if profile.command_grammar_has("display_static"):
         root_type = _COMMAND_ROOTS[resolved][1]
         root = root_type()
         root.header = b"\x33"
@@ -305,13 +294,13 @@ def build_segment_colour(
         detail.kelvin = 0
         detail.preview = _rgb(detail, 0, 0, 0)
         detail.segment_mask = mask
-        if resolved == "H6046":
+        if profile.command_grammar_has("segment_query_tail"):
             detail.unknown_tail = bytes(5)
         mode.detail = detail
         root.body = mode
         return _serialize_xor(root)
 
-    if resolved not in {"H1771", "H6072", "H607C", "H617A", "H7020", "H705A"}:
+    if not profile.command_grammar_has("common_static"):
         raise ValueError(f"{model} has no generated static-colour grammar")
     return _build_h617a_static_colour(
         mask,
@@ -336,15 +325,17 @@ def build_colour_temperature(
         raise ValueError("Invalid observed companion for colour-temperature recovery")
     preview = table_kelvin_rgb(value) if companion_rgb is None else companion_rgb
     resolved = profile.command_grammar
-    if resolved == "H60B0":
+    if resolved is None:
+        raise ValueError(f"{model} has no generated colour-temperature grammar")
+    if profile.command_grammar_has("native_source_static"):
         from .h60b0_controls import build_static
 
         return build_static(mask, rgb=preview, kelvin=value)
-    if resolved == "H6072-legacy":
+    if profile.command_grammar_has("legacy_static"):
         return _build_h6072_legacy_colour(mask, KELVIN_DIRECT_RGB, value, preview)
-    if resolved in WHOLE_BULB_GRAMMARS:
+    if profile.command_grammar_has("whole_bulb_static"):
         return _build_whole_bulb_static_colour(mask, KELVIN_DIRECT_RGB, value, profile)
-    if resolved == "H6179":
+    if profile.command_grammar_has("custom_command", "special_static"):
         if mask != 0:
             raise ValueError("H6179 colour temperature is inherently whole-device and has no segment mask")
         return _build_h6179_static_colour(
@@ -352,7 +343,7 @@ def build_colour_temperature(
             kelvin=value,
             preview=preview,
         )
-    if resolved in {"H6046", "H6099", "H6199"}:
+    if profile.command_grammar_has("display_static"):
         root_type = _COMMAND_ROOTS[resolved][1]
         root = root_type()
         root.header = b"\x33"
@@ -365,13 +356,13 @@ def build_colour_temperature(
         detail.kelvin = value
         detail.preview = _rgb(detail, *preview)
         detail.segment_mask = mask
-        if resolved == "H6046":
+        if profile.command_grammar_has("segment_query_tail"):
             detail.unknown_tail = bytes(5)
         mode.detail = detail
         root.body = mode
         return _serialize_xor(root)
 
-    if resolved not in {"H1771", "H6072", "H607C", "H617A", "H7020", "H705A"}:
+    if not profile.command_grammar_has("common_static"):
         raise ValueError(f"{model} has no generated colour-temperature grammar")
     return _build_h617a_static_colour(
         mask,
@@ -392,13 +383,15 @@ def build_segment_brightness(
     value = max(0, min(100, percent))
     profile = profile or get_profile(model)
     resolved = profile.command_grammar
-    if resolved == "H60B0":
+    if resolved is None:
+        raise ValueError(f"{model} has no generated segment-brightness grammar")
+    if profile.command_grammar_has("native_source_static"):
         from .h60b0_controls import build_level
 
         return build_level(mask, value)
-    if resolved == "H6179":
+    if profile.command_grammar_has("custom_command", "special_static"):
         raise ValueError("H6179 has no segment-brightness operation")
-    if resolved in {"H6046", "H6099", "H6199"}:
+    if profile.command_grammar_has("display_static"):
         root_type = _COMMAND_ROOTS[resolved][1]
         root = root_type()
         root.header = b"\x33"
@@ -409,13 +402,13 @@ def build_segment_brightness(
         detail.operation = root_type.StaticOperation.brightness
         detail.brightness_percent = value
         detail.brightness_segment_mask = mask
-        if resolved == "H6046":
+        if profile.command_grammar_has("segment_query_tail"):
             detail.unknown_tail = bytes(12)
         mode.detail = detail
         root.body = mode
         return _serialize_xor(root)
 
-    if resolved not in {"H1771", "H6072", "H607C", "H617A", "H7020", "H705A"}:
+    if not profile.command_grammar_has("common_static"):
         raise ValueError(f"{model} has no generated segment-brightness grammar")
     root_type = (_extended_static_root(profile) or _COMMAND_ROOTS[resolved])[1]
     root = root_type()
@@ -470,8 +463,10 @@ def build_video_mode(
         raise ValueError(f"{model} does not support video mode {video_mode}")
     profile.validate_video_saturation(saturation)
     grammar = profile.video_grammar
+    if grammar is None:
+        raise ValueError(f"{model} has no generated video-mode grammar")
     parameters = validate_video_parameters(grammar, values or {})
-    if grammar == "H605C-video":
+    if profile.video_grammar_has("video_embedded_parameters"):
         if type(full_screen) is not bool or type(sound_effects) is not bool:
             raise ValueError("video region and sound effects require booleans")
         if type(softness) is not int or not profile.video_softness_min <= softness <= profile.video_softness_max:
@@ -487,7 +482,7 @@ def build_video_mode(
             setattr(detail, field, value)
         root.detail = detail
         return _serialize_xor(root)
-    if grammar == "H66A0-video":
+    if profile.video_grammar_has("video_picture_preset"):
         if video_mode not in H66a0VideoCommand.VideoSource.__members__:
             raise ValueError("invalid video source")
         root = H66a0VideoCommand()
@@ -502,7 +497,7 @@ def build_video_mode(
         detail.sound_effects, detail.softness = int(sound_effects), softness
         root.detail = detail
         return _serialize_xor(root)
-    if grammar not in {"H6099", "H6199"}:
+    if not profile.video_grammar_has("display_video"):
         raise ValueError(f"{model} has no generated video-mode grammar")
     if (
         type(full_screen) is not bool
@@ -526,7 +521,7 @@ def build_video_mode(
     detail.saturation = saturation
     detail.sound_effects = int(sound_effects)
     detail.softness = softness if profile.video_softness_min == 0 else max(1, min(100, softness))
-    if grammar == "H6099":
+    if profile.video_grammar_has("video_sound_type"):
         detail.sound_type = b"\x02"
     else:
         detail.relative_brightness_percent = 0
@@ -537,13 +532,14 @@ def build_video_mode(
 
 def validate_video_parameters(grammar: str | None, values: Mapping[str, Any]) -> dict[str, Any]:
     """Validate complete grammar-specific values; unknown bytes have no defaults."""
-    if grammar == "H605C-video":
+    policy = grammar_traits(grammar)
+    if "video_embedded_parameters" in policy:
         fields = {"left_percent", "top_percent", "right_percent", "bottom_percent"}
         if set(values) != fields:
             raise ValueError("video requires complete edge brightness values; refresh the device first")
         if any(type(value) is not int or not 0 <= value <= 100 for value in values.values()):
             raise ValueError("video edge brightness must be from 0 to 100")
-    elif grammar == "H66A0-video":
+    elif "video_picture_preset" in policy:
         if set(values) != {"picture_preset", "opaque"}:
             raise ValueError("video requires picture_preset and opaque values; refresh the device first")
         if (
@@ -560,7 +556,8 @@ def validate_video_parameters(grammar: str | None, values: Mapping[str, Any]) ->
 
 def video_parameter_read_domain(grammar: str | None) -> ReadDomain | None:
     """The independent register that can recover mandatory inline values."""
-    return ReadDomain.RELATIVE_BRIGHTNESS if grammar == "H605C-video" else None
+    policy = grammar_traits(grammar)
+    return ReadDomain.RELATIVE_BRIGHTNESS if "video_embedded_parameters" in policy else None
 
 
 def video_parameters_from_brightness(grammar: str | None, values: tuple[int, ...]) -> dict[str, Any] | None:
@@ -571,12 +568,13 @@ def video_parameters_from_brightness(grammar: str | None, values: tuple[int, ...
 
 
 def video_parameters_from_detail(detail: Any, grammar: str | None) -> dict[str, Any] | None:
-    if grammar == "H605C-video":
+    policy = grammar_traits(grammar)
+    if "video_embedded_parameters" in policy:
         return validate_video_parameters(
             grammar,
             {f"{zone}_percent": int(getattr(detail, f"{zone}_percent")) for zone in ("left", "top", "right", "bottom")},
         )
-    if grammar != "H66A0-video":
+    if "video_picture_preset" not in policy:
         return None
     return validate_video_parameters(
         grammar, {"picture_preset": getattr(detail.picture_preset, "name", None), "opaque": int(detail.opaque)}
@@ -598,7 +596,7 @@ def build_white_balance(red: int, blue: int | None, model: str, *, flag: int = 1
     profile = get_profile(model)
     if not profile.supports_white_balance:
         raise ValueError(f"{model} does not support white balance")
-    if (grammar := _video_command_grammar(model, profile)) not in {"H6099", "H6199"}:
+    if (grammar := _video_command_grammar(model, profile)) not in VIDEO_GRAMMARS:
         raise ValueError(f"{model} has no generated white-balance grammar")
     root_type = _COMMAND_ROOTS[grammar][1]
     root = root_type()
@@ -647,7 +645,7 @@ def build_blank_screen(
         for value in (low_brightness_duration_seconds, same_tone_duration_seconds)
     ):
         raise ValueError("blank-screen durations must be integer seconds in 0..65535")
-    if (grammar := _video_command_grammar(model, profile)) not in {"H6099", "H6199"}:
+    if (grammar := _video_command_grammar(model, profile)) not in VIDEO_GRAMMARS:
         raise ValueError(f"{model} has no generated blank-screen grammar")
     root_type = _COMMAND_ROOTS[grammar][1]
     root = root_type()
@@ -675,7 +673,7 @@ def build_black_border(enabled: bool, model: str) -> bytes:
     if type(enabled) is not bool:
         raise ValueError("black-border removal requires a boolean")
     grammar = _video_command_grammar(model, profile)
-    if grammar != "H6099":
+    if "display_controls" not in grammar_traits(grammar):
         raise ValueError(f"{model} has no generated black-border grammar")
     root_type = _COMMAND_ROOTS[grammar][1]
     root = root_type()
@@ -705,7 +703,7 @@ def build_relative_brightness(
     profile = get_profile(model)
     if not profile.supports_relative_brightness:
         raise ValueError(f"{model} does not support relative brightness")
-    if (grammar := _video_command_grammar(model, profile)) not in {"H6099", "H6199"}:
+    if (grammar := _video_command_grammar(model, profile)) not in VIDEO_GRAMMARS:
         raise ValueError(f"{model} has no generated relative-brightness grammar")
     root_type = _COMMAND_ROOTS[grammar][1]
     root = root_type()
@@ -766,8 +764,10 @@ def build_music_mode(
     ):
         raise ValueError("fixed music colour is unsupported or invalid")
     resolved = profile.music_grammar or profile.command_grammar
+    if resolved is None:
+        raise ValueError(f"{model} has no generated music grammar")
     selector_parameters = selector_parameters or {}
-    if resolved == "H6181":
+    if profile.music_grammar_has("dedicated_palette_music"):
         if selector_parameters:
             raise ValueError("Unsupported music selector parameter")
         root, detail = _music_mode_command(H6181CommandWrite)
@@ -780,7 +780,7 @@ def build_music_mode(
                 detail.fixed_colour = _rgb(detail, *colour)
         detail.padding = bytes(detail.write_tail_size)
         return _serialize_xor(root)
-    if resolved == "H8604":
+    if profile.music_grammar_has("native_music_selector", "video_settings"):
         root = H8604MusicWrite()
         root.header = b"\x33\x05\x13"
         selector = _child(H8604MusicWrite.MusicSelector, root)
@@ -796,7 +796,7 @@ def build_music_mode(
             selector.unknown_tail = bytes(14)
         root.selector = selector
         return _serialize_xor(root)
-    if resolved in {"H1771", "H60B0"}:
+    if profile.music_grammar_has("multi_native_music"):
         if colour is not None or selector_parameters:
             raise ValueError("Native music selectors carry only mode and sensitivity")
         root_type = _COMMAND_ROOTS[resolved][1]
@@ -806,28 +806,33 @@ def build_music_mode(
         root.body = _child(root_type.MultiCmd, root)
         root.body.sub = root_type.MultiSub.music
         root.body.sub_body = _child(root_type.MusicSelector, root.body)
-        root.body.sub_body.mode = (H1771MusicBody if resolved == "H1771" else H60b0MusicBody).MusicMode(mode_id)
+        music_body = H1771MusicBody if root_type is H1771CommandWrite else H60b0MusicBody
+        root.body.sub_body.mode = music_body.MusicMode(mode_id)
         root.body.sub_body.sensitivity = sensitivity
         root.body.sub_body.unknown_tail = bytes(14)
         return _serialize_xor(root)
-    if resolved in {"H607C", "H60B2"}:
+    if profile.music_grammar_has("native_music_selector"):
         if colour is not None or selector_parameters:
             raise ValueError("Native music selectors carry only mode and sensitivity")
-        root_type = H607cMusicWrite if resolved == "H607C" else H60b2MusicWrite
+        root_type = _MUSIC_WRITE_ROOTS[resolved][1]
         root = root_type()
         root.header = b"\x33\x05\x13"
         root.selector = _child(root_type.MusicSelector, root)
-        root.selector.mode_id = (H607cMusicWrite if resolved == "H607C" else H60b2MusicBody).MusicMode(mode_id)
+        root.selector.mode_id = (H607cMusicWrite if root_type is H607cMusicWrite else H60b2MusicBody).MusicMode(mode_id)
         root.selector.sensitivity = sensitivity
         root.selector.unknown_tail = bytes(14)
         return _serialize_xor(root)
-    if resolved not in {"H7020", "H6046"} and selector_parameters:
+    if (
+        not profile.music_grammar_has("music_selector_bar_parameters")
+        and not profile.music_grammar_has("music_selector_parameters")
+        and selector_parameters
+    ):
         raise ValueError("Music selector parameters are unsupported by this grammar")
-    if resolved in {"H6072", "H6076"}:
+    if profile.music_grammar_has("legacy_music_selector"):
         return _build_h6076_music_selector(
             mode_id, sensitivity, colour, calm, root_type=_MUSIC_WRITE_ROOTS[resolved][1]
         )
-    if resolved == "H6046":
+    if profile.music_grammar_has("music_selector_bar_parameters"):
         if selector_parameters.keys() - {"bar_mask"}:
             raise ValueError("Unsupported music selector parameter")
         root_type = _COMMAND_ROOTS[resolved][1]
@@ -846,7 +851,7 @@ def build_music_mode(
                 detail.fixed_colour = _rgb(detail, *colour)
         detail.unknown_tail = bytes(detail.write_tail_size)
         return _serialize_xor(root)
-    if resolved == "H7020":
+    if profile.music_grammar_has("rhythm_selector_parameter"):
         allowed = {"rhythm_response"} if mode_id == 3 else set()
         if selector_parameters.keys() - allowed:
             raise ValueError("Unsupported music selector parameter")
@@ -868,24 +873,26 @@ def build_music_mode(
         multi.sub_body = selector
         root.body = multi
         return _serialize_xor(root)
-    if resolved in {"H6097", "H1A42", "H1AB2", "H61F5", "H66A0", "H7025", "H705A"}:
+    if profile.music_grammar_has("new_music_selector"):
         root_cls = _MUSIC_WRITE_ROOTS[resolved][1]
         root = root_cls()
         root.header, root.opcode, root.sub = b"\x33", b"\x05", b"\x13"
         selector = _child(root_cls.MusicSelector, root)
         selector.mode_id = root_cls.MusicMode(mode_id)
-        selector.sensitivity = max(0, min(100, sensitivity)) if resolved in {"H1A42", "H61F5", "H66A0"} else sensitivity
+        selector.sensitivity = (
+            max(0, min(100, sensitivity)) if profile.music_grammar_has("scaled_music_sensitivity") else sensitivity
+        )
         if selector.is_legacy:
             selector.style = int(calm)
             selector.has_fixed_colour = int(colour is not None)
             if colour is not None:
                 selector.rgb = _rgb(selector, *colour)
-        elif resolved in {"H6097", "H1A42", "H1AB2", "H61F5", "H66A0"} and colour is not None:
+        elif profile.music_grammar_has("new_music_omits_colour") and colour is not None:
             raise ValueError(f"new {resolved} music selectors omit fixed colour")
         selector.unknown_tail = bytes(selector.write_tail_size)
         root.selector = selector
         return _serialize_xor(root)
-    if resolved == "H6179":
+    if profile.music_grammar_has("custom_command", "custom_mode"):
         root = H6179CommandWrite()
         root.header = b"\x33"
         root.opcode = H6179CommandWrite.CommandOpcode.mode
@@ -901,12 +908,12 @@ def build_music_mode(
         mode.payload = detail
         root.body = mode
         return _serialize_xor(root)
-    if resolved in {"H6099", "H6199"}:
+    if profile.music_grammar_has("display_music", "mode_music"):
         root_type = _COMMAND_ROOTS[resolved][1]
         root, detail = _music_mode_command(root_type)
         detail.mode = root_type.MusicMode(mode_id)
         detail.sensitivity = max(0, min(100, sensitivity))
-        if resolved == "H6199" or detail.is_legacy:
+        if profile.music_grammar_has("always_fixed_music_state") or detail.is_legacy:
             detail.is_calm = int(calm)
             detail.has_fixed_colour = int(colour is not None)
             detail.fixed_colour = _rgb(detail, *(colour or (0, 0, 0)))
@@ -914,7 +921,7 @@ def build_music_mode(
             raise ValueError("new H6099 music selectors omit fixed colour")
         return _serialize_xor(root)
 
-    if resolved != "H617A":
+    if not profile.music_grammar_has("common_music_selector"):
         raise ValueError(f"{model} has no generated music grammar")
     root = CommandWrite()
     root.header = b"\x33"

@@ -26,14 +26,14 @@ class LowBlueLightState:
 
 
 def require_low_blue_light(profile: ModelProfile) -> None:
-    if profile.setting_grammar != "H6072" or not profile.supports_low_blue_light:
+    if not profile.setting_grammar_has("low_blue_light") or not profile.supports_low_blue_light:
         raise ValueError("Device profile does not support low-blue-light control")
 
 
 def parse_setting(frame: bytes, profile: ModelProfile, kind: str = "status") -> ProtocolParseResult:
     return _parse_xor_frame(
         frame,
-        kind if profile.setting_grammar == "H6072" else None,
+        kind if profile.setting_grammar_has("low_blue_light") else None,
         {
             "envelope": ("h6072_low_blue_light.envelope", Setting.Envelope),
             "status": ("h6072_low_blue_light", Setting),
