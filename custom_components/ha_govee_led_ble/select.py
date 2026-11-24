@@ -17,7 +17,7 @@ from .effect_setup import get_effect_backend
 from .entity import GoveeBLEEntity
 from .projector import ProjectorControl
 from .projector_runtime import control_value, set_control
-from .video_applicability import h6199_camera_controls_state
+from .video_applicability import camera_controls_state
 
 PARALLEL_UPDATES = 0
 _OPTIONS = {
@@ -51,11 +51,7 @@ async def async_setup_entry(
         if not strings_added and coordinator.profile.configured_string_counts:
             strings_added = True
             async_add_entities([GoveeBLEConfiguredStringsSelect(entry)])
-        if (
-            coordinator.model == "H6199"
-            and not added
-            and h6199_camera_controls_state(coordinator.model, coordinator) is CapabilityState.SUPPORTED
-        ):
+        if not added and camera_controls_state(coordinator.profile, coordinator) is CapabilityState.SUPPORTED:
             added = True
             async_add_entities([GoveeBLEControlSelect(entry, key) for key in _OPTIONS])
 
@@ -139,7 +135,7 @@ class GoveeBLEControlSelect(GoveeBLEEntity, SelectEntity):
     @property
     def available(self) -> bool:
         return (
-            h6199_camera_controls_state(self.coordinator.model, self.coordinator) is CapabilityState.SUPPORTED
+            camera_controls_state(self.coordinator.profile, self.coordinator) is CapabilityState.SUPPORTED
             and super().available
         )
 
@@ -155,7 +151,7 @@ class GoveeBLEControlSelect(GoveeBLEEntity, SelectEntity):
 
     async def _async_select_control(self, option: str) -> None:
         async with async_control_intent(self.coordinator, ControlIntent.USER):
-            if h6199_camera_controls_state(self.coordinator.model, self.coordinator) is not CapabilityState.SUPPORTED:
+            if camera_controls_state(self.coordinator.profile, self.coordinator) is not CapabilityState.SUPPORTED:
                 raise ServiceValidationError(translation_domain=DOMAIN, translation_key="invalid_control_request")
             if backend := get_effect_backend(self.hass):
                 await backend.preview.async_supersede_device(self._entry.entry_id, reason="home_assistant_control")

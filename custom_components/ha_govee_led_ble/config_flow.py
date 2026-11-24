@@ -25,9 +25,6 @@ from .const import (
     CONF_CONNECTION_MODE,
     CONF_EFFECT_CATEGORIES,
     CONF_EFFECT_FAMILIES,
-    CONF_H6102_APP_FIRMWARE,
-    CONF_H6102_APP_HARDWARE,
-    CONF_H6102_PACT,
     CONF_MODEL,
     CONF_PREFIX_EFFECT_NAMES,
     CONF_REGISTER_EFFECT_STUDIO,
@@ -36,6 +33,7 @@ from .const import (
     CONNECTION_MODE_RELEASE,
     DOMAIN,
     MODEL_PROFILES,
+    ConfiguredIdentityPolicy,
     SupportQuality,
     default_effect_categories,
     model_from_ble_name,
@@ -44,7 +42,6 @@ from .const import (
 )
 from .effect_setup import get_effect_backend
 from .firmware_version import FirmwareVersion
-from .h6102_protocol import H6102_PACTS
 from .schema_compat import vol
 
 _LOGGER = logging.getLogger(__name__)
@@ -64,6 +61,20 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
 
     _discovered: dict[str, str]
     _pending_device: dict[str, str]
+    _identity_model: str
+
+    def _identity_policy_for_model(self, model: str) -> ConfiguredIdentityPolicy | None:
+        return MODEL_PROFILES[model].configured_identity
+
+    def _identity_policy_for_step(self, step_id: str) -> tuple[str, ConfiguredIdentityPolicy]:
+        matches = [
+            (model, policy)
+            for model, profile in MODEL_PROFILES.items()
+            if (policy := profile.configured_identity) is not None and policy.step_id == step_id
+        ]
+        if len(matches) != 1:
+            raise ValueError(f"Configured identity step {step_id} is ambiguous")
+        return matches[0]
 
     @staticmethod
     @callback
@@ -85,6 +96,9 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
         model = self._discovered[CONF_MODEL]
         if user_input is None:
             return self.async_show_form(step_id="bluetooth_confirm", description_placeholders={"model": model})
+        if self._identity_policy_for_model(model) is not None:
+            self._identity_model = model
+            return await self._async_step_configured_identity()
         return await self._async_finish_new_device(self._discovered)
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
@@ -108,8 +122,9 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
                 _LOGGER.exception("Unexpected error validating a Govee BLE device")
                 return self._show_user_form(errors={"base": "unknown"})
             self._abort_if_unique_id_configured()
-            if selected_model == "H6102":
-                return await self.async_step_h6102_firmware()
+            if self._identity_policy_for_model(selected_model) is not None:
+                self._identity_model = selected_model
+                return await self._async_step_configured_identity()
             return await self._async_finish_new_device({CONF_MODEL: selected_model})
         return self._show_user_form()
 
@@ -122,38 +137,48 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
             advertised_model = model_from_ble_name(service_info.name) if service_info is not None else None
             if advertised_model is not None and advertised_model != selected_model:
                 return self._show_reconfigure_form(entry, errors={"base": "model_mismatch"})
-            if selected_model == "H6102":
-                return await self.async_step_h6102_firmware()
+            if self._identity_policy_for_model(selected_model) is not None:
+                self._identity_model = selected_model
+                return await self._async_step_configured_identity()
             return await self._finish_reconfigure(entry, selected_model)
         return self._show_reconfigure_form(entry)
 
-    async def async_step_h6102_firmware(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+    async def _async_step_configured_identity(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        if not hasattr(self, "_identity_model"):
+            self._identity_model, _ = self._identity_policy_for_step("h6102_firmware")
+        model = self._identity_model
+        policy = self._identity_policy_for_model(model)
+        assert policy is not None
         if user_input is None:
-            return self._show_h6102_firmware_form()
-        firmware = user_input.get(CONF_H6102_APP_FIRMWARE)
+            return self._show_configured_identity_form(policy)
+        firmware = user_input.get(policy.firmware_key)
         # Earlier candidates accepted short forms (3.2.2). Keep stored context
         # visible on reconfigure, but require device-format 3.02.02 before reuse.
         if firmware and FirmwareVersion.parse(firmware) is None:
-            return self._show_h6102_firmware_form(errors={CONF_H6102_APP_FIRMWARE: "invalid_firmware"})
-        hardware = user_input.get(CONF_H6102_APP_HARDWARE)
+            return self._show_configured_identity_form(policy, errors={policy.firmware_key: "invalid_firmware"})
+        hardware = user_input.get(policy.hardware_key)
         if hardware and FirmwareVersion.parse(hardware) is None:
-            return self._show_h6102_firmware_form(errors={CONF_H6102_APP_HARDWARE: "invalid_hardware"})
-        pact = user_input.get(CONF_H6102_PACT) or None
-        if pact is not None and pact not in H6102_PACTS:
-            return self._show_h6102_firmware_form(errors={CONF_H6102_PACT: "invalid_pact"})
-        if self.source == SOURCE_RECONFIGURE:
-            return await self._finish_reconfigure(
-                self._get_reconfigure_entry(), "H6102", firmware or None, pact, hardware or None
+            return self._show_configured_identity_form(policy, errors={policy.hardware_key: "invalid_hardware"})
+        pact = user_input.get(policy.pact_key) or None
+        if pact is not None and pact not in policy.pact_by_value:
+            return self._show_configured_identity_form(policy, errors={policy.pact_key: "invalid_pact"})
+        identity = {
+            key: value
+            for key, value in (
+                (policy.firmware_key, firmware or None),
+                (policy.hardware_key, hardware or None),
+                (policy.pact_key, pact),
             )
+            if value is not None
+        }
+        if self.source == SOURCE_RECONFIGURE:
+            return await self._finish_reconfigure(self._get_reconfigure_entry(), model, identity)
         self._abort_if_unique_id_configured()
-        data = {CONF_MODEL: "H6102"}
-        if firmware:
-            data[CONF_H6102_APP_FIRMWARE] = firmware
-        if hardware:
-            data[CONF_H6102_APP_HARDWARE] = hardware
-        if pact:
-            data[CONF_H6102_PACT] = pact
+        data = {CONF_MODEL: model, **identity}
         return await self._async_finish_new_device(data)
+
+    async def async_step_h6102_firmware(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        return await self._async_step_configured_identity(user_input)
 
     async def _async_finish_new_device(self, data: dict[str, str]) -> ConfigFlowResult:
         model = data[CONF_MODEL]
@@ -194,22 +219,16 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
         self,
         entry: ConfigEntry,
         selected_model: str,
-        firmware: str | None = None,
-        pact: str | None = None,
-        hardware: str | None = None,
+        identity: dict[str, str] | None = None,
     ) -> ConfigFlowResult:
         previous_model = entry.data.get(CONF_MODEL)
         data = dict(entry.data)
         data[CONF_MODEL] = selected_model
-        data.pop(CONF_H6102_APP_FIRMWARE, None)
-        data.pop(CONF_H6102_APP_HARDWARE, None)
-        data.pop(CONF_H6102_PACT, None)
-        if firmware is not None:
-            data[CONF_H6102_APP_FIRMWARE] = firmware
-        if hardware is not None:
-            data[CONF_H6102_APP_HARDWARE] = hardware
-        if pact is not None:
-            data[CONF_H6102_PACT] = pact
+        for profile in MODEL_PROFILES.values():
+            if profile.configured_identity is not None:
+                for key in profile.configured_identity.keys:
+                    data.pop(key, None)
+        data.update(identity or {})
         excluded = {
             CONF_EFFECT_CATEGORIES,
             CONF_EFFECT_FAMILIES,
@@ -258,7 +277,9 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
-    def _show_h6102_firmware_form(self, *, errors: dict[str, str] | None = None) -> ConfigFlowResult:
+    def _show_configured_identity_form(
+        self, policy: ConfiguredIdentityPolicy, *, errors: dict[str, str] | None = None
+    ) -> ConfigFlowResult:
         stored = self._get_reconfigure_entry().data if self.source == SOURCE_RECONFIGURE else {}
 
         def version_field(key: str) -> vol.Optional:
@@ -268,19 +289,13 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
             return vol.Optional(key)
 
         return self.async_show_form(
-            step_id="h6102_firmware",
+            step_id=policy.step_id,
             data_schema=vol.Schema(
                 {
-                    version_field(CONF_H6102_APP_FIRMWARE): str,
-                    version_field(CONF_H6102_APP_HARDWARE): str,
-                    vol.Optional(CONF_H6102_PACT, default=stored.get(CONF_H6102_PACT, "")): vol.In(
-                        {
-                            "": "Automatic / unknown",
-                            "10/1": "RGBIC Pact 10/1",
-                            "10/2": "RGBIC Pact 10/2",
-                            "1/1": "Legacy Pact 1/1",
-                            "1/2": "Legacy Pact 1/2",
-                        }
+                    version_field(policy.firmware_key): str,
+                    version_field(policy.hardware_key): str,
+                    vol.Optional(policy.pact_key, default=stored.get(policy.pact_key, "")): vol.In(
+                        {"": "Automatic / unknown", **{option.value: option.label for option in policy.pact_options}}
                     ),
                 }
             ),
