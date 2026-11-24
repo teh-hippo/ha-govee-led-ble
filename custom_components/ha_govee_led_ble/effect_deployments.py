@@ -303,8 +303,6 @@ class PriorControlState:
                 raise EffectStorageError("invalid prior music body") from error
 
     def _validate_segment_layout(self) -> None:
-        if self.segment_brightness_observed and self.segment_brightness is None:
-            raise EffectStorageError("observed prior segment brightness requires a level layout")
         if self.segment_kelvin is not None and (
             self.segment_colors is None
             or not isinstance(self.segment_kelvin, tuple)

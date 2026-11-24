@@ -1899,7 +1899,9 @@ async def saved_video_light(hass, monkeypatch, request):
         static_rgb_known=True,
         segment_colors=((10, 20, 30),) * coordinator.profile.segment_count,
         segment_brightness=(100,) * coordinator.profile.segment_count,
+        segment_brightness_observed=True,
         segment_kelvin=(0,) * coordinator.profile.segment_count,
+        static_colour_observed=True,
     )
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
     coordinator._client = client
