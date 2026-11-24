@@ -3048,6 +3048,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     "H6127": ModelProfile(
         "H6127 DreamColor LED Strip",
         confirmation_issue=634,
+        support_quality=SupportQuality.SUPPORTED,
         command_grammar="H617A",
         command_ack_grammar="H6125",
         status_grammar="H6125",
