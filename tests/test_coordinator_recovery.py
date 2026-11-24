@@ -14,6 +14,8 @@ from homeassistant.setup import async_setup_component
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, MUSIC_MODE_SLUGS, ReadDomain, device_profile
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent, async_control_intent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator_modes import ModeTransitionPurpose
+from custom_components.ha_govee_led_ble.coordinator_recovery import StaticRecoveryStrategy
 from custom_components.ha_govee_led_ble.coordinator_refresh import DEFAULT_REFRESH_REQUEST, RefreshRequest
 from custom_components.ha_govee_led_ble.coordinator_segments import SegmentPaintRequest
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode, StatusDomain
@@ -947,6 +949,247 @@ async def test_segmented_kelvin_recovery_normalises_writes_and_expectations_with
     ]
     assert [(write.segment_mask, write.kelvin) for write in writes] == [(0x001F, 2000), (0x03E0, 3100)]
     assert (state.left_bar_kelvin, state.right_bar_kelvin) == (1999, 3123)
+
+
+def _compound_h6199_state() -> PriorControlState:
+    kelvin = 9000
+    white = table_kelvin_rgb(kelvin)
+    exceptions = {1, 6, 13}
+    return PriorControlState(
+        "colour",
+        True,
+        51,
+        white,
+        color_temp_kelvin=kelvin,
+        static_colour_observed=True,
+        segment_colors=tuple((255, 32, 16) if index in exceptions else white for index in range(15)),
+        segment_brightness=(20,) * 14 + (73,),
+        segment_brightness_observed=True,
+        segment_kelvin=tuple(0 if index in exceptions else kelvin for index in range(15)),
+    )
+
+
+def _qualify_compound_h6199(coordinator: GoveeBLECoordinator) -> None:
+    coordinator.pact_type = 2
+    coordinator.pact_code = 1
+    coordinator.fw_version = "1.10.04"
+    coordinator.hw_version = "3.02.01"
+    coordinator._confirmed_identity_fields.update({"pact", "fw_version", "hw_version"})
+    coordinator._resolve_device_profile()
+
+
+async def test_compound_recovery_preserves_packet_order_and_separate_static_intent(hass):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6199", configuration_url=None)
+    _qualify_compound_h6199(coordinator)
+    profile = coordinator.profile
+    coordinator._notification_token = object()
+    state = _compound_h6199_state()
+
+    prepared = coordinator._prepare_static_colour(state)
+
+    assert prepared is not None
+    assert prepared.strategy is StaticRecoveryStrategy.COMPOUND_KELVIN_RGB
+    assert prepared.verification.segment_colors == state.segment_colors
+    assert prepared.verification.segment_brightness == state.segment_brightness
+    assert prepared.verification.segment_kelvin == state.segment_kelvin
+    writes = [
+        parsed
+        for packet in prepared.packets
+        if (parsed := parse_static_write(packet, "H6199", profile=profile)) is not None
+    ]
+    assert [(write.kelvin, write.rgb, write.brightness_pct) for write in writes] == [
+        (9000, None, None),
+        (None, (255, 32, 16), None),
+        (None, None, 20),
+        (None, None, 73),
+    ]
+    assert writes[1].segment_mask == (1 << 1) | (1 << 6) | (1 << 13)
+    assert coordinator._prepare_static_colour(replace(state, static_colour_observed=False)) is None
+
+
+async def test_compound_recovery_defaults_denied_and_rejects_incomplete_or_ambiguous_state(hass):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6199", configuration_url=None)
+    state = _compound_h6199_state()
+
+    assert not coordinator.profile.supports_compound_static_recovery
+    assert coordinator._prepare_static_colour(state) is None
+
+    _qualify_compound_h6199(coordinator)
+    incomplete = (
+        replace(
+            state,
+            segment_colors=state.segment_colors[:-1],
+            segment_brightness=state.segment_brightness[:-1],
+            segment_kelvin=state.segment_kelvin[:-1],
+        ),
+        replace(state, segment_brightness=None, segment_brightness_observed=False),
+        replace(state, segment_kelvin=(*state.segment_kelvin[:-1], None)),
+        replace(
+            state,
+            color_temp_kelvin=None,
+            segment_kelvin=(*state.segment_kelvin[:-1], None),
+        ),
+    )
+    for candidate in incomplete:
+        assert coordinator._prepare_static_colour(candidate) is None
+
+
+def test_compound_recovery_requires_current_subscription_pact(hass):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6199", configuration_url=None)
+    assert coordinator._tracks_pact_identity
+    client = _c()
+    coordinator._client = client
+    coordinator._notification_token = object()
+    coordinator._notify_started_monotonic = 1.0
+    coordinator._encryption = MagicMock(ready=True)
+    coordinator.fw_version = "1.10.04"
+    coordinator.hw_version = "3.02.01"
+    coordinator._confirmed_identity_fields.update({"fw_version", "hw_version"})
+
+    assert coordinator._observe_pact(2, 1)
+    assert coordinator.identity_fields_confirmed(coordinator.profile.static_recovery_identity_fields)
+    assert coordinator.profile.supports_compound_static_recovery
+
+    coordinator._confirmed_identity_fields.discard("pact")
+    assert coordinator._prepare_static_colour(_compound_h6199_state()) is None
+
+
+def test_compound_recovery_planned_release_preserves_presentation_but_revokes_pact(hass):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6199", configuration_url=None)
+    _qualify_compound_h6199(coordinator)
+    client = _c()
+    coordinator._client = client
+    coordinator._h607c_marker_pact = (2, 1)
+    profile = coordinator.profile
+
+    coordinator._clear_client_state(
+        client,
+        preserve_static_baseline=True,
+        preserve_static_rgb=True,
+        planned_release=True,
+    )
+
+    assert (coordinator.pact_type, coordinator.pact_code) == (2, 1)
+    assert coordinator.profile == profile
+    assert not coordinator.identity_fields_confirmed(frozenset({"pact"}))
+    coordinator._resolve_h607c_pact(preserve_state=True)
+    assert (coordinator.pact_type, coordinator.pact_code) == (2, 1)
+    assert coordinator.profile == profile
+    assert not coordinator.identity_fields_confirmed(frozenset({"pact"}))
+    assert coordinator._prepare_static_colour(_compound_h6199_state()) is None
+
+
+async def test_preview_requires_independent_static_observation_but_apply_keeps_delivery_boundary(hass):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H617A", configuration_url=None)
+    delivered = PriorControlState(
+        "colour",
+        True,
+        50,
+        (1, 2, 3),
+        static_rgb_known=True,
+        segment_colors=((1, 2, 3),) * coordinator.profile.segment_count,
+        segment_brightness=(40,) * coordinator.profile.segment_count,
+    )
+    prepared = coordinator._prepare_static_colour(delivered)
+    assert prepared is not None
+    assert not prepared.verification.independently_observed
+
+    async with coordinator.async_mode_transition(purpose=ModeTransitionPurpose.PREVIEW):
+        with pytest.raises(HomeAssistantError, match="recover"):
+            coordinator._qualify_static_baseline(delivered)
+        observed = replace(
+            delivered,
+            static_colour_observed=True,
+            segment_brightness_observed=True,
+        )
+        assert coordinator._qualify_static_baseline(observed) == observed
+
+
+@pytest.mark.parametrize("mismatch", [None, "colour", "brightness", "intent"])
+async def test_compound_recovery_verifies_exact_segments(hass, monkeypatch, mismatch):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6199", configuration_url=None)
+    _qualify_compound_h6199(coordinator)
+    coordinator._notification_token = object()
+    state = _compound_h6199_state()
+    prepared = coordinator._prepare_static_colour(state)
+    assert prepared is not None
+    monkeypatch.setattr(coordinator, "_write_static_restore", AsyncMock(return_value=prepared.subscription))
+
+    async def refresh(_request):
+        coordinator.is_on = True
+        coordinator.brightness_pct = state.brightness_pct
+        coordinator.color_mode = ParsedMode.COLOUR
+        coordinator._observed_color_mode = ParsedMode.COLOUR
+        coordinator.effect = coordinator.diy_code = None
+        coordinator._scene_code = None
+        coordinator.music_mode = coordinator.video_mode = "off"
+        coordinator._field_revisions["color_mode"] = coordinator._field_revisions.get("color_mode", 0) + 1
+        return True
+
+    async def segments():
+        coordinator.segment_colors = list(state.segment_colors)
+        coordinator.segment_brightness = list(state.segment_brightness)
+        coordinator.segment_kelvin = list(state.segment_kelvin)
+        coordinator.segment_state_source = "observed"
+        coordinator.segment_brightness_readable = True
+        if mismatch == "colour":
+            coordinator.segment_colors[1] = (1, 2, 3)
+        elif mismatch == "brightness":
+            coordinator.segment_brightness[-1] = 20
+        elif mismatch == "intent":
+            coordinator.segment_kelvin[1] = 9000
+        return True
+
+    monkeypatch.setattr(coordinator, "refresh_state", refresh)
+    monkeypatch.setattr(coordinator, "async_refresh_segments", segments)
+
+    assert await coordinator._restore_segmented_colour(state, True, prepared=prepared) is (mismatch is None)
+
+
+@pytest.mark.parametrize("change", ["disconnect", "generation", "identity", "superseded"])
+async def test_prepared_static_recovery_revalidates_authority(hass, change):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6199", configuration_url=None)
+    _qualify_compound_h6199(coordinator)
+    coordinator._notification_token = object()
+    prepared = coordinator._prepare_static_colour(_compound_h6199_state())
+    assert prepared is not None
+
+    if change == "disconnect":
+        coordinator._notification_token = None
+    elif change == "generation":
+        coordinator._profile_generation += 1
+    elif change == "identity":
+        coordinator._confirmed_identity_fields.discard("hw_version")
+    else:
+        async with coordinator.async_mode_transition(purpose=ModeTransitionPurpose.RECOVERY) as transition:
+            transition.superseded = True
+            with pytest.raises(ValueError, match="superseded"):
+                prepared.check(coordinator)
+            return
+
+    with pytest.raises(ValueError):
+        prepared.check(coordinator)
+
+
+async def test_prepared_static_recovery_preserves_failure_boundary(hass, monkeypatch):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6199", configuration_url=None)
+    _qualify_compound_h6199(coordinator)
+    coordinator._notification_token = object()
+    prepared = coordinator._prepare_static_colour(_compound_h6199_state())
+    assert prepared is not None
+
+    async def fail(packets, *, write_guard, packet_on_write, **_kwargs):
+        assert packets == prepared.packets
+        write_guard()
+        packet_on_write(0)
+        raise BleakError("mid-sequence disconnect")
+
+    write = AsyncMock(side_effect=fail)
+    monkeypatch.setattr(coordinator, "async_write_effect_sequence", write)
+
+    with pytest.raises(BleakError, match="disconnect"):
+        await coordinator._write_static_restore(prepared)
+    assert write.await_count == 1
 
 
 async def test_native_source_recovery_normalises_its_write_target_not_the_capture(hass, monkeypatch):

@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager, nullcontext
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import Any, cast
+from uuid import uuid4
 
 from bleak import BleakClient, BleakError  # type: ignore[attr-defined]
 from bleak_retry_connector import establish_connection
@@ -277,6 +278,7 @@ class GoveeBLECoordinator(
         self._observed_physical_ic_count: int | None = None
         self._physical_ic_count_confirmed = False
         self._authorization_generation = 0
+        self._physical_authority_id = uuid4().hex
         self._upload_ack: PendingUploadAck | None = None
         self._setting_ack: tuple[BleakClient, object | None, int, asyncio.Future[bool]] | None = None
         self._lock = asyncio.Lock()
@@ -659,7 +661,9 @@ class GoveeBLECoordinator(
         pacts = set(self._h607c_advertised_pacts)
         subscription = self._notify_started_monotonic
         strict = get_profile(self.model).requires_pact_confirmation
-        fresh = strict or get_profile(self.model).reconciles_marker_pact
+        declared = get_profile(self.model)
+        recovery_fields = declared.static_recovery_identity_fields or frozenset()
+        fresh = strict or declared.reconciles_marker_pact or "pact" in recovery_fields
         if fresh and self._client is not None and self._client.is_connected:
             pacts = {
                 pact
@@ -687,7 +691,8 @@ class GoveeBLECoordinator(
         if qualified_subscription and len(pacts) == 1 and pacts == advertised_pacts:
             self._subscription_advertised_pact = next(iter(pacts))
         pact: tuple[int | None, int | None] = next(iter(pacts)) if len(pacts) == 1 else (None, None)
-        if (strict or self.profile.projector_grammar is not None) and not pacts:
+        retains_cached_recovery_pact = "pact" in recovery_fields
+        if (strict or self.profile.projector_grammar is not None or retains_cached_recovery_pact) and not pacts:
             pact = self.pact_type, self.pact_code
         if pact != (self.pact_type, self.pact_code) or conflict != self._h607c_pact_conflict:
             self.pact_type, self.pact_code = pact
@@ -761,7 +766,9 @@ class GoveeBLECoordinator(
 
     @property
     def _tracks_pact_identity(self) -> bool:
-        return self.identity_gated_controls or get_profile(self.model).reconciles_marker_pact
+        declared = get_profile(self.model)
+        recovery_fields = declared.static_recovery_identity_fields or frozenset()
+        return self.identity_gated_controls or declared.reconciles_marker_pact or "pact" in recovery_fields
 
     @property
     def h607c_pact_readiness(self) -> str:
@@ -1386,9 +1393,12 @@ class GoveeBLECoordinator(
         ):
             self._h607c_marker_pact = None
             self._subscription_advertised_pact = None
+            declared = get_profile(self.model)
+            recovery_fields = declared.static_recovery_identity_fields or frozenset()
             if (
-                not get_profile(self.model).requires_pact_confirmation
-                and not get_profile(self.model).reconciles_marker_pact
+                not declared.requires_pact_confirmation
+                and not declared.reconciles_marker_pact
+                and "pact" not in recovery_fields
             ):
                 self._resolve_h607c_pact(preserve_state=True)
         if client is not None:
@@ -1441,6 +1451,7 @@ class GoveeBLECoordinator(
         self._authorization_generation += 1
         self._notify_started_monotonic = None
         token = self._notification_token = object()
+        self._physical_authority_id = uuid4().hex
         self._reply_gate.reset()
 
         def receive(sender: Any, data: bytearray) -> None:

@@ -207,6 +207,7 @@ class PriorControlState:
     # Missing legacy/unobserved layouts cannot be reconstructed from aggregate RGB.
     segment_colors: tuple[tuple[int, int, int], ...] | None = None
     segment_brightness: tuple[int, ...] | None = None
+    segment_brightness_observed: bool = False
     music_body: bytes | None = None
     static_colour_observed: bool = False
     brightness_pct_known: bool | None = None
@@ -236,6 +237,8 @@ class PriorControlState:
             raise EffectStorageError("prior brightness knowledge must be a boolean or null")
         if type(self.static_colour_observed) is not bool:
             raise EffectStorageError("prior static colour observation must be a boolean")
+        if type(self.segment_brightness_observed) is not bool:
+            raise EffectStorageError("prior segment brightness observation must be a boolean")
         if self.static_gradual is not None and type(self.static_gradual) is not bool:
             raise EffectStorageError("prior static gradual must be a boolean or null")
         for zone_enabled in (getattr(self, name) for name in NATIVE_ZONE_CONTROLS):
@@ -300,6 +303,8 @@ class PriorControlState:
                 raise EffectStorageError("invalid prior music body") from error
 
     def _validate_segment_layout(self) -> None:
+        if self.segment_brightness_observed and self.segment_brightness is None:
+            raise EffectStorageError("observed prior segment brightness requires a level layout")
         if self.segment_kelvin is not None and (
             self.segment_colors is None
             or not isinstance(self.segment_kelvin, tuple)
@@ -506,102 +511,19 @@ class PriorControlState:
             raise EffectStorageError("prior black-border state must be a boolean or null")
 
     def restorable_bar_white(self, profile: ModelProfile) -> bool:
-        from .generated_protocol_adapter import table_kelvin_rgb
-        from .light_commands import normalize_kelvin
+        from .coordinator_recovery import restorable_bar_white
 
-        if not profile.setting_grammar_has("paired_bar_settings") or self.segment_colors is None:
-            return False
-        half = profile.segment_count // 2
-        if len(self.segment_colors) != profile.segment_count or not half:
-            return False
-        return all(
-            kelvin is not None
-            and KELVIN_RANGE_1000_10000[0] <= kelvin <= KELVIN_RANGE_1000_10000[1]
-            and self.segment_colors[start : start + half] == (table_kelvin_rgb(normalize_kelvin(kelvin)),) * half
-            for start, kelvin in ((0, self.left_bar_kelvin), (half, self.right_bar_kelvin))
-        )
+        return restorable_bar_white(self, profile)
 
     def source_segment_kelvin(self, profile: ModelProfile) -> tuple[int, ...] | None:
-        from .light_commands import kelvin_rendering_matches, normalize_kelvin
+        from .coordinator_recovery import source_segment_kelvin
 
-        if self.segment_colors is None or len(self.segment_colors) != profile.segment_count:
-            return None
-        intents = list(self.segment_kelvin or ((0 if self.static_rgb_known else None),) * profile.segment_count)
-        covered: set[int] = set()
-        for source in profile.light_sources:
-            if not source.segments:
-                continue
-            native = getattr(self, f"{source.key}_kelvin", None)
-            legacy = (self.source_static_intents or {}).get(source.key)
-            for position in source.segments:
-                index = position - 1
-                if index >= len(intents):
-                    return None
-                covered.add(index)
-                intent = intents[index]
-                if self.segment_kelvin is None and legacy is not None:
-                    if isinstance(legacy, tuple) and self.segment_colors[index] != legacy:
-                        return None
-                    intent = legacy if type(legacy) is int else 0
-                if intent is None:
-                    intent = native
-                if intent is None and (source.palette_restore or not profile.supports_color_temperature):
-                    intent = 0
-                if intent is None or native is not None and native != intent:
-                    return None
-                if (
-                    intent
-                    and native != intent
-                    and not kelvin_rendering_matches(
-                        self.segment_colors[index], normalize_kelvin(intent, profile), profile
-                    )
-                ):
-                    return None
-                intents[index] = normalize_kelvin(intent, profile) if intent else 0
-        if covered != set(range(profile.segment_count)) or any(value is None for value in intents):
-            return None
-        return tuple(value for value in intents if value is not None)
+        return source_segment_kelvin(self, profile)
 
     def static_segment_kelvin(self, profile: ModelProfile) -> tuple[int, ...] | None:
-        from .coordinator_sources import has_segmented_sources
-        from .generated_protocol_adapter import table_rgb_kelvin
-        from .light_commands import kelvin_rendering_matches, normalize_kelvin
+        from .coordinator_recovery import static_segment_kelvin
 
-        if has_segmented_sources(profile):
-            return self.source_segment_kelvin(profile)
-        if self.segment_colors is None or len(self.segment_colors) != profile.segment_count:
-            return None
-        if self.restorable_bar_white(profile):
-            assert self.left_bar_kelvin is not None and self.right_bar_kelvin is not None
-            half = profile.segment_count // 2
-            return (normalize_kelvin(self.left_bar_kelvin, profile),) * half + (
-                normalize_kelvin(self.right_bar_kelvin, profile),
-            ) * half
-        fallback = (
-            self.color_temp_kelvin
-            if self.color_temp_kelvin is not None and not profile.segment_colour_mode_ambiguous
-            else (0 if self.static_rgb_known or not profile.segment_colour_mode_ambiguous else None)
-        )
-        intents = self.segment_kelvin or (fallback,) * profile.segment_count
-        result = []
-        for rgb, intent in zip(self.segment_colors, intents, strict=True):
-            intent = fallback if intent is None else intent
-            if intent is None and profile.static_palette_recovery and self.static_colour_observed:
-                # The palette is restorable even when it does not identify the original emitter intent.
-                kelvin = table_rgb_kelvin(rgb)
-                intent = kelvin if kelvin is not None and normalize_kelvin(kelvin, profile) == kelvin else 0
-            if intent is None:
-                return None
-            if intent:
-                if not profile.supports_color_temperature:
-                    return None
-                intent = normalize_kelvin(intent, profile)
-                if not kelvin_rendering_matches(rgb, intent, profile):
-                    return None
-            result.append(intent)
-        if any(result) and not profile.supports_segment_color_temperature and (len(set(result)) != 1 or result[0] == 0):
-            return None
-        return tuple(result)
+        return static_segment_kelvin(self, profile)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -667,6 +589,7 @@ class PriorControlState:
                         if self.segment_brightness is not None
                         else {}
                     ),
+                    **({"segment_brightness_observed": True} if self.segment_brightness_observed else {}),
                 }
                 if self.segment_colors is not None
                 else {}
@@ -836,6 +759,7 @@ class PriorControlState:
             right_bar_kelvin=_optional_int(raw, "right_bar_kelvin"),
             segment_colors=segment_colors,
             segment_brightness=segment_brightness,
+            segment_brightness_observed=_optional_bool(raw, "segment_brightness_observed", default=False),
             effect=_optional_str(raw, "effect"),
             scene_code=_optional_int(raw, "scene_code"),
             diy_code=_optional_int(raw, "diy_code"),
