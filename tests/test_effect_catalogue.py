@@ -51,6 +51,7 @@ from custom_components.ha_govee_led_ble.effect_contracts import (
     workflow_capability_state,
 )
 from custom_components.ha_govee_led_ble.effect_domain import (
+    BuiltinScene,
     EffectPair,
     JsonValue,
     LayeredEffect,
@@ -66,6 +67,7 @@ from custom_components.ha_govee_led_ble.effect_domain import (
 from custom_components.ha_govee_led_ble.effect_websocket_payloads import item_summary
 from custom_components.ha_govee_led_ble.generated_protocol.diy_type03 import DiyType03
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_h617a_scene
+from custom_components.ha_govee_led_ble.layered_scene import CatalogueRef
 from custom_components.ha_govee_led_ble.layered_scene_decoder import encode_workshop_effect
 from custom_components.ha_govee_led_ble.protocol_h6199 import build_h6199_scene
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES
@@ -104,6 +106,74 @@ def test_revision_catalogue_projects_family_bounds_without_mutating_the_ceiling(
             with pytest.raises(ValueError, match="does not support"):
                 resolve_catalogue_template("H6127", "template:single:4:8", profile=profile)
     assert catalogue.to_dict() == ceiling
+
+
+def test_h61e5_exact_catalogue_and_release_routes_admit_complete_scope():
+    profile = MODEL_PROFILES["H61E5"]
+    catalogue = MODEL_EFFECT_CATALOGUES["H61E5"]
+    workflows = {capability.workflow for capability in release_capabilities_for_model("H61E5")}
+
+    assert not catalogue.advanced_create
+    assert workflows == {
+        CapabilityWorkflow.NATIVE_SCENES,
+        CapabilityWorkflow.PAINTED,
+        CapabilityWorkflow.SINGLE,
+        CapabilityWorkflow.MULTI,
+        CapabilityWorkflow.NATIVE_MUSIC,
+        CapabilityWorkflow.ADVANCED,
+    }
+    assert tuple(family.family for family in catalogue.effects) == (0, 1, 2, 3, 8, 9, 10, 4)
+    native_templates = {
+        template.content.native_diy for template in catalogue.templates if isinstance(template.content, LayeredEffect)
+    }
+    assert native_templates == {
+        501,
+        502,
+        503,
+        504,
+        505,
+        506,
+        507,
+    }
+
+    scene = MODEL_SCENES["H61E5"]["rainbow"]
+    compile_application(
+        LibraryItem.new(scene.name, BuiltinScene(CatalogueRef("H61E5", scene.scene_id, scene.effect_id))),
+        "H61E5",
+        profile=profile,
+    )
+    compile_application(
+        LibraryItem.new("Paint", resolve_catalogue_template("H61E5", "template:paint").content),
+        "H61E5",
+        diy_code=321,
+        profile=profile,
+    )
+    for family in catalogue.effects:
+        compile_application(
+            LibraryItem.new(
+                family.label,
+                SingleEffect(family.family, family.variations[0].variant, 50, ((255, 0, 0),) * 2),
+            ),
+            "H61E5",
+            diy_code=321,
+            profile=profile,
+        )
+    compile_application(
+        LibraryItem.new(
+            "Mixed",
+            MultiEffect(
+                (EffectPair(0, 0), EffectPair(1, 0)),
+                50,
+                ((255, 0, 0), (0, 255, 0)),
+            ),
+        ),
+        "H61E5",
+        diy_code=321,
+        profile=profile,
+    )
+    for selector in (501, 502, 503, 504, 505, 506, 507):
+        template = resolve_catalogue_template("H61E5", f"template:native-diy:{selector}")
+        compile_application(LibraryItem.new(template.label, template.content), "H61E5", profile=profile)
 
 
 def test_native_summaries_classify_every_model_and_scene():
@@ -230,6 +300,7 @@ def test_model_aware_catalogue_includes_supported_models_and_legacy_h617a_view()
         "H617E",
         "H619A",
         "H6199",
+        "H61E5",
         "H61F5",
         "H66A0",
         "H8604",

@@ -738,6 +738,25 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
             (_W.MULTI, "Mixed", "h617a_multi"),
         )
     ),
+    *(
+        _capability(
+            "H61E5",
+            workflow,
+            label,
+            kind,
+            route,
+            strategy,
+            _V.UNVERIFIED,
+        )
+        for workflow, label, kind, route, strategy in (
+            (_W.NATIVE_SCENES, "Scenes", "scene_builtin", _R.STUDIO_SCENE_APPLY, _S.NATIVE_EFFECT_SELECTION),
+            (_W.PAINTED, "Graffiti", "h617a_painted", _R.HOME_ASSISTANT_CONTROL, _S.A3_EFFECT_UPLOAD),
+            (_W.SINGLE, "Basic", "h617a_single", _R.HOME_ASSISTANT_CONTROL, _S.A3_EFFECT_UPLOAD),
+            (_W.MULTI, "Mixed", "h617a_multi", _R.HOME_ASSISTANT_CONTROL, _S.A3_EFFECT_UPLOAD),
+            (_W.NATIVE_MUSIC, "Music", "music_profile", _R.HOME_ASSISTANT_CONTROL, _S.COORDINATOR_WRITER),
+            (_W.ADVANCED, "Advanced", "advanced", _R.HOME_ASSISTANT_CONTROL, _S.MODEL_SCENE_ENGINE),
+        )
+    ),
     _capability(
         "H61F5",
         _W.NATIVE_SCENES,

@@ -15,6 +15,7 @@ from custom_components.ha_govee_led_ble.const import (
     CONF_EFFECT_FAMILIES,
     CONF_PREFIX_EFFECT_NAMES,
     KELVIN_RANGE_2000_9000,
+    KELVIN_RANGE_2700_6500,
     MODEL_PROFILES,
     UNSUPPORTED_PROFILE,
     LegacyEffectSelectorDomain,
@@ -229,6 +230,7 @@ def test_support_quality_has_only_supported_and_experimental_states():
         "H6139",
         "H6179",
         "H619A",
+        "H61E5",
         "H705A",
         "H8604",
     }
@@ -262,6 +264,61 @@ def test_h6125_is_an_exact_supported_profile_on_the_shared_dreamcolor_route():
     assert profile.supports_advanced_effects and not profile.supports_video_mode
     assert profile.brightness_wire_range is None and profile.outbound_transform is None
     assert supported_effect_categories("H6125") == ("scenes", "effects", "multi_layered", "reactive", "advanced")
+
+
+def test_h61e5_is_an_exact_experimental_profile_on_the_h61d3_route():
+    pacts = (
+        device_profile("H61E5", 1, 1, firmware="1.00.10", hardware="3.05.00"),
+        device_profile("H61E5", 2, 1),
+    )
+
+    assert pacts[0] == pacts[1] == MODEL_PROFILES["H61E5"]
+    profile = pacts[0]
+    assert profile.support_quality is SupportQuality.EXPERIMENTAL and profile.confirmation_issue == 731
+    assert (profile.command_grammar, profile.status_grammar, profile.effect_grammar) == (
+        "H617A",
+        "H61F5",
+        "H617A",
+    )
+    assert profile.music_grammar == "H61F5"
+    assert (profile.physical_ic_count, profile.physical_ic_capacity) == (36, 36)
+    assert (profile.segment_count, profile.segment_count_ic_divisor, profile.segment_count_capacity) == (12, 3, 12)
+    assert (profile.segment_group_size, profile.color_temp_range) == (4, KELVIN_RANGE_2700_6500)
+    assert profile.music_modes == (
+        "energetic",
+        "rhythm",
+        "spectrum",
+        "rolling",
+        "separation",
+        "hopping",
+        "piano_keys",
+        "fountain",
+        "day_and_night",
+        "bloom",
+        "shiny",
+    )
+    assert len(profile.music_variants) == 11
+    assert profile.scene_catalogue_sku == "H61E5" and "H61E5" in BLE_DISCOVERABLE_MODELS
+    assert supported_effect_categories("H61E5") == (
+        "scenes",
+        "effects",
+        "multi_layered",
+        "reactive",
+        "advanced",
+    )
+
+
+@pytest.mark.parametrize("pact", [(None, None), (1, 2), (2, 2), (3, 1)])
+def test_h61e5_unknown_pacts_keep_only_basic_controls(pact):
+    profile = device_profile("H61E5", *pact)
+
+    assert profile.basic_controls_only
+    assert not profile.supports_rgb
+    assert not profile.supports_color_temperature
+    assert not profile.supports_segments
+    assert not profile.supports_scenes
+    assert not profile.supports_music_mode
+    assert not profile.effect_workflows
 
 
 def test_h612a_has_exact_experimental_product_and_revision_contracts():

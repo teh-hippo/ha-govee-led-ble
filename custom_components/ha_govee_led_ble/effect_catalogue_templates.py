@@ -360,6 +360,7 @@ def _rgbic_native_templates(preset_ic_count: int) -> tuple[CatalogueTemplate, ..
 H6102_NATIVE_DIY_TEMPLATES: Final = _rgbic_native_templates(60)
 H6125_NATIVE_DIY_TEMPLATES: Final = _rgbic_native_templates(50)
 H6117_NATIVE_DIY_TEMPLATES: Final = _rgbic_native_templates(50)
+H61E5_NATIVE_DIY_TEMPLATES: Final = _rgbic_native_templates(36)
 H617C_NATIVE_DIY_TEMPLATES: Final = _rgbic_native_templates(30)
 H619A_NATIVE_DIY_TEMPLATES: Final = _rgbic_native_templates(20)
 H617A_CATALOGUE_TEMPLATES: Final = (

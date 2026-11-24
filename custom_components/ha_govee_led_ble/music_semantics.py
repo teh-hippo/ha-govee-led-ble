@@ -1113,6 +1113,10 @@ H61F5_MUSIC_VARIANTS = (
     ),
 )
 
+H61E5_MUSIC_VARIANTS = tuple(
+    replace(variant, evidence=variant.evidence.replace("H61F5 ", "H61E5 ")) for variant in H61F5_MUSIC_VARIANTS[:11]
+)
+
 # The RGBIC music modes share these named palette/tail encodings;
 # its Day/Night indices and Piano defaults differ from H6099 and are explicit.
 H6102_MUSIC_VARIANTS = (

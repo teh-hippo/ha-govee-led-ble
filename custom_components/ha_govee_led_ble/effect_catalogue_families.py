@@ -385,6 +385,14 @@ H1AB2_DIY_FAMILIES: Final = (
 )
 
 # H61F6 DIY lists.
+H61E5_DIY_FAMILIES: Final = tuple(
+    replace(
+        family,
+        source_reference="H61E5 basic and mixed DIY lists",
+    )
+    for family in H1A42_DIY_FAMILIES
+)
+
 H61F5_DIY_FAMILIES: Final = tuple(
     replace(
         family,
