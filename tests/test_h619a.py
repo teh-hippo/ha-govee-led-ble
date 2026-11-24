@@ -10,6 +10,7 @@ import pytest
 
 from custom_components.ha_govee_led_ble.const import device_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator_status import decode_status_frame
 from custom_components.ha_govee_led_ble.effect_catalogue import MODEL_EFFECT_CATALOGUES
 from custom_components.ha_govee_led_ble.effect_compiler import compile_application, validate_compiled_geometry
 from custom_components.ha_govee_led_ble.effect_deployments import PriorControlState
@@ -30,8 +31,10 @@ from custom_components.ha_govee_led_ble.light_commands import (
 )
 from custom_components.ha_govee_led_ble.music_commands import prepare_music_request
 from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_packets
+from custom_components.ha_govee_led_ble.protocol_commands import build_power
+from custom_components.ha_govee_led_ble.protocol_settings import build_segment_query
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES, scene_supported
-from custom_components.ha_govee_led_ble.transport import reassemble_a3
+from custom_components.ha_govee_led_ble.transport import WRITE_UUID, reassemble_a3
 from tests.coordinator_test_support import frame as _frame
 
 
@@ -59,6 +62,103 @@ def test_static_writes_select_logical_segments_not_physical_ics(model, count, wh
     assert build_segment_brightness([count], 37, model) == _frame(f"3305150225{last_mask}")
     with pytest.raises(ValueError):
         build_segment_color_temp([count + 1], 4000, model)
+
+
+@pytest.mark.parametrize(
+    ("firmware", "hardware", "domain", "group_size", "last_count"),
+    [
+        ("1.05.99", "1.00.02", 0xA2, 4, 2),
+        ("1.06.00", "1.00.02", 0xA5, 3, 1),
+    ],
+)
+def test_segment_readback_uses_revision_query_and_opaque_page_parser(
+    firmware, hardware, domain, group_size, last_count
+):
+    profile = device_profile("H619A", 2, 1, firmware=firmware, hardware=hardware)
+    first_query = build_segment_query(1, "H619A", profile=profile)
+    if profile.status_query_transform is not None:
+        first_query = profile.status_query_transform(first_query)
+    assert first_query == _frame(f"aa{domain:02x}01")
+
+    last_group = (10 + group_size - 1) // group_size
+    record_size = 3 if domain == 0xA2 else 4
+    records = bytes(range(1, last_count * record_size + 1))
+    suffix = bytes.fromhex("deadbeefcafebabe")
+    body = bytes((domain, last_group)) + records + suffix
+    decoded = decode_status_frame(_frame("aa" + body.hex()), "H619A", profile=profile)
+
+    assert decoded is not None
+    assert decoded.generated.body.group == last_group
+    assert len(decoded.generated.body.segments) == last_count
+    assert all(not hasattr(record, "brightness") for record in decoded.generated.body.segments) is (domain == 0xA2)
+
+
+@pytest.mark.parametrize("identity_order", [("fw_version", "hw_version"), ("hw_version", "fw_version")])
+async def test_legacy_identity_qualification_does_not_invalidate_power_during_reply_pacing(
+    hass, monkeypatch, identity_order
+):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H619A", configuration_url=None)
+    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
+    coordinator._client = client
+    generation = coordinator._profile_generation
+
+    async def qualify_identity():
+        values = {"fw_version": "1.05.99", "hw_version": "1.00.02"}
+        for field in identity_order:
+            coordinator._observe_identity_field(field, values[field])
+
+    monkeypatch.setattr(coordinator._reply_gate, "wait", qualify_identity)
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
+    packet = build_power(False, "H619A")
+
+    await coordinator.send_command(packet)
+
+    assert coordinator._profile_generation == generation
+    client.write_gatt_char.assert_awaited_once_with(WRITE_UUID, packet, response=False)
+
+
+def test_planned_release_preserves_static_history_while_readback_identity_is_pending(hass, static_baseline):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H619A", configuration_url=None)
+    coordinator.fw_version, coordinator.hw_version = "1.06.00", "1.00.02"
+    coordinator._resolve_device_profile()
+    coordinator._confirmed_identity_fields.update({"fw_version", "hw_version"})
+    coordinator._pre_mode_snapshot = static_baseline
+    coordinator._pre_mode_profile = coordinator.profile
+    client = MagicMock(is_connected=True)
+    coordinator._client = client
+
+    coordinator._clear_client_state(client, preserve_static_baseline=True, planned_release=True)
+
+    assert not coordinator._confirmed_identity_fields
+    assert coordinator.profile.status_grammar == "H619A"
+    assert coordinator._authorization_profile().status_grammar == "H619A-legacy"
+    assert coordinator._static_history_profile_current()
+    assert coordinator._pre_mode_snapshot is static_baseline
+
+
+def test_qualified_segment_format_change_invalidates_active_generation(hass):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H619A", configuration_url=None)
+    coordinator.fw_version, coordinator.hw_version = "1.05.99", "1.00.02"
+    coordinator._resolve_device_profile()
+    generation = coordinator._profile_generation
+
+    coordinator._note_identity(fw_version="1.06.00", hw_version="1.00.02")
+
+    assert coordinator.profile.status_grammar == "H619A"
+    assert coordinator._profile_generation == generation + 1
+
+
+def test_invalidated_segment_collection_rejects_late_legacy_page(hass):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H619A", configuration_url=None)
+    coordinator.fw_version, coordinator.hw_version = "1.05.99", "1.00.02"
+    coordinator._resolve_device_profile()
+    coordinator._segment_query_incomplete = True
+    coordinator._segment_query_generation = coordinator._profile_generation - 1
+    decoded = decode_status_frame(_frame("aaa2010102030405060708090a0b0c"), "H619A", profile=coordinator.profile)
+
+    assert decoded is not None
+    with pytest.raises(ValueError, match="invalidated profile"):
+        coordinator._apply_segment_group(decoded.generated)
 
 
 @pytest.mark.parametrize(

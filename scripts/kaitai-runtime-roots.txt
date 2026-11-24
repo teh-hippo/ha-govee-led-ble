@@ -29,6 +29,7 @@ speculative/h60b2_music_write
 speculative/h60b2_diy_body
 speculative/h60b2_effect_upload
 speculative/h619a_status_reply
+speculative/h619a_legacy_status_reply
 speculative/h618a_status_reply
 speculative/h618a_pact3_status_reply
 speculative/h618a_legacy_status_reply

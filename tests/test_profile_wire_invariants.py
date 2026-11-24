@@ -156,6 +156,7 @@ _QUALIFIED_CONTEXTS: tuple[tuple[str, str, int | None, int | None, str | None, s
     ("H6093-original", "H6093", 1, 1, "1.00.16", "3.03.02"),
     ("H6093-expanded-pact1", "H6093", 1, 2, "1.00.16", "3.03.02"),
     ("H619A-bootstrap", "H619A", None, None, None, None),
+    ("H619A-legacy", "H619A", 2, 1, "1.05.99", "1.00.02"),
     ("H60B0-bootstrap", "H60B0", None, None, None, None),
     ("H60B0-pact1", "H60B0", 1, 1, "1.00.12", "3.05.01"),
     ("H60B0-pact2", "H60B0", 1, 2, "1.00.12", "3.05.01"),
@@ -752,8 +753,13 @@ def test_every_claimed_read_domain_can_actually_be_asked_for(model: str, profile
                     and domain_name == "colour_mode"
                 )
             )
-            if profile.outbound_transform is not None:
-                wire = profile.outbound_transform(query)
+            transform = (
+                profile.status_query_transform or profile.outbound_transform
+                if query[:1] == b"\xaa"
+                else profile.outbound_transform
+            )
+            if transform is not None:
+                wire = transform(query)
                 assert len(wire) == 20 and xor_checksum(wire) == 0
                 if wire != query and domain is ReadDomain.SEGMENTS and _segment_domain_byte(profile) == 0xA2:
                     legacy_query = protocol_core.H6125LegacySegmentQuery.from_bytes(wire)
