@@ -179,6 +179,43 @@ def test_h618a_pact3_hardware_uses_complete_readback_without_modern_scene_conver
     assert profile.scene_command_versions == {0}
 
 
+@pytest.mark.parametrize(
+    ("firmware", "hardware", "modern", "readable"),
+    [
+        (None, None, False, False),
+        ("1.06.00", None, False, False),
+        (None, "1.00.02", False, False),
+        ("1.05.99", "1.00.02", False, True),
+        ("1.06.00", "1.00.01", False, True),
+        ("1.06.00", "1.00.02", True, True),
+        ("3.01.00", "3.01.01", True, True),
+    ],
+)
+def test_h619a_segment_readback_uses_revision_correct_page_grammar(firmware, hardware, modern, readable):
+    profile = device_profile("H619A", 2, 1, firmware=firmware, hardware=hardware)
+
+    assert profile.status_grammar == ("H619A" if modern else "H619A-legacy")
+    assert profile.segment_group_size == (3 if modern else 4)
+    assert profile.rgbic_scene_v0 is not modern
+    assert profile.can_read(ReadDomain.SEGMENTS) is readable
+    assert profile.outbound_transform is None
+    assert (profile.status_query_transform is None) is modern
+    assert profile.supports_rgb and profile.supports_color_temperature
+    assert profile.supports_segment_writes and profile.supports_segment_brightness
+    assert profile.supports_scenes and profile.supports_custom_effects and profile.music_modes
+
+
+def test_h619a_control_compatibility_is_limited_to_segment_readback():
+    modern = device_profile("H619A", 2, 1, firmware="1.06.00", hardware="1.00.02")
+    legacy = device_profile("H619A", 2, 1, firmware="1.05.99", hardware="1.00.02")
+
+    assert const.same_control_profile(modern, legacy)
+    assert not const.same_control_profile(modern, replace(legacy, segment_count=9))
+    assert not const.same_control_profile(modern, replace(legacy, supports_rgb=False))
+    assert not const.same_control_profile(modern, replace(legacy, outbound_transform=lambda packet: packet))
+    assert not const.same_control_profile(modern, replace(legacy, read_domains=legacy.read_domains | {ReadDomain.MODE}))
+
+
 def test_support_quality_has_only_supported_and_experimental_states():
     assert set(SupportQuality) == {SupportQuality.EXPERIMENTAL, SupportQuality.SUPPORTED}
     assert const.H6199_PACT1_PROFILE.support_quality is SupportQuality.SUPPORTED

@@ -52,6 +52,7 @@ from .const import (
     model_from_ble_name,
     profile_with_physical_ic_count,
     same_control_profile,
+    same_profile_except_segment_readback,
     supported_effect_categories,
 )
 from .control_arbiter import BLEControlArbiter, ControlIntent, LatestRequests, PreviewAdmission, async_control_intent
@@ -883,10 +884,26 @@ class GoveeBLECoordinator(
                 self._apply_brightness_profile_transition(self.profile, profile)
             return
         previous_profile = self.profile
+        previous_format = (
+            previous_profile.status_grammar,
+            previous_profile.segment_group_size,
+            previous_profile.status_query_transform,
+        )
+        target_format = (
+            profile.status_grammar,
+            profile.segment_group_size,
+            profile.status_query_transform,
+        )
+        qualified_readback_change = (
+            previous_profile.can_read(ReadDomain.SEGMENTS)
+            and profile.can_read(ReadDomain.SEGMENTS)
+            and previous_format != target_format
+        )
         optional_effect_change = bool(
             (profile.scene_identity_fields or profile.effect_identity_fields)
             and not context_changed
             and not reset_equal_identity
+            and not qualified_readback_change
             and same_control_profile(profile, self.profile)
         )
         self.profile = profile
@@ -1689,8 +1706,14 @@ class GoveeBLECoordinator(
         static_identity_fields = self.profile.static_identity_fields if parsed.static is not None else frozenset()
         subscription = self._notification_token
         wire_packet = packet
-        transform = self.profile.static_outbound_transform if parsed.static is not None else None
-        if (transform := transform or self.profile.outbound_transform) is not None:
+        transform = (
+            self.profile.status_query_transform or self.profile.outbound_transform
+            if packet[:1] == b"\xaa"
+            else self.profile.static_outbound_transform or self.profile.outbound_transform
+            if parsed.static is not None
+            else self.profile.outbound_transform
+        )
+        if transform is not None:
             wire_packet = transform(packet)
             if not isinstance(wire_packet, bytes) or not wire_packet:
                 raise ValueError("Outbound transform must return non-empty bytes")
@@ -4464,7 +4487,11 @@ class GoveeBLECoordinator(
                                 raise ValueError("Device control authority changed during effect upload")
                             if write_guard is not None:
                                 write_guard()
-                            elif self.effect_authorization_profile != prepared_profile:
+                            elif self.effect_authorization_profile != prepared_profile and not (
+                                same_profile_except_segment_readback(
+                                    self.effect_authorization_profile, prepared_profile
+                                )
+                            ):
                                 raise ValueError("Device profile changed during effect upload")
 
                         def check_connection(

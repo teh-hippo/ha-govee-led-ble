@@ -261,6 +261,7 @@ class ModelProfile:
     bulk_status_grammar: str | None = None
     setting_grammar: str | None = None
     outbound_transform: Callable[[bytes], bytes] | None = None
+    status_query_transform: Callable[[bytes], bytes] | None = None
     static_outbound_transform: Callable[[bytes], bytes] | None = None
     # Device register range for the brightness byte; None means the wire carries percent.
     brightness_wire_range: tuple[int, int] | None = None
@@ -4312,19 +4313,51 @@ def _h6076_profile(pact_type: int | None, pact_code: int | None, firmware: str |
     )
 
 
-def same_control_profile(first: ModelProfile, second: ModelProfile) -> bool:
-    if first == second:
-        return True
+def same_profile_except_segment_readback(first: ModelProfile, second: ModelProfile) -> bool:
+    from .protocol_transforms import rgb_only_segment_query_transform
+
+    formats = {
+        "H619A": ("H619A", 3, None),
+        "H619A-legacy": ("H619A", 4, rgb_only_segment_query_transform),
+        "H618A": ("H618A", 3, None),
+        "H618A-legacy": ("H618A", 4, rgb_only_segment_query_transform),
+        "H618A-pact3": ("H618A", 4, None),
+    }
+    first_format = formats.get(first.status_grammar or "")
+    second_format = formats.get(second.status_grammar or "")
     if (
-        first.scene_identity_fields
-        and replace(
+        first_format is None
+        or second_format is None
+        or first.segment_group_size != first_format[1]
+        or first.status_query_transform is not first_format[2]
+        or second.segment_group_size != second_format[1]
+        or second.status_query_transform is not second_format[2]
+        or first_format[0] != second_format[0]
+    ):
+        return False
+    return (
+        replace(
+            first,
+            status_grammar=second.status_grammar,
+            status_query_transform=second.status_query_transform,
+            read_domains=(first.read_domains - {ReadDomain.SEGMENTS}) | (second.read_domains & {ReadDomain.SEGMENTS}),
+            segment_group_size=second.segment_group_size,
+        )
+        == second
+    )
+
+
+def same_control_profile(first: ModelProfile, second: ModelProfile) -> bool:
+    if first == second or same_profile_except_segment_readback(first, second):
+        return True
+    if first.scene_identity_fields:
+        scene_normalized = replace(
             first,
             rgbic_scene_v0=second.rgbic_scene_v0,
             scene_command_versions=second.scene_command_versions,
         )
-        == second
-    ):
-        return True
+        if scene_normalized == second or same_profile_except_segment_readback(scene_normalized, second):
+            return True
     if (
         not first.effect_identity_fields
         or first.static_outbound_transform is None
@@ -4834,10 +4867,22 @@ def device_profile(
             else frozenset({0}),
         )
     if model == "H619A":
+        from .protocol_transforms import rgb_only_segment_query_transform
+
         fw, hw = FirmwareVersion.parse(firmware), FirmwareVersion.parse(hardware)
+        modern = (
+            fw is not None and hw is not None and fw >= FirmwareVersion((1, 6)) and hw >= FirmwareVersion((1, 0, 2))
+        )
+        profile = get_profile(model)
         return replace(
-            get_profile(model),
-            rgbic_scene_v0=fw is None or hw is None or fw < FirmwareVersion((1, 6)) or hw < FirmwareVersion((1, 0, 2)),
+            profile,
+            status_grammar="H619A" if modern else "H619A-legacy",
+            segment_group_size=3 if modern else 4,
+            status_query_transform=None if modern else rgb_only_segment_query_transform,
+            rgbic_scene_v0=not modern,
+            read_domains=profile.read_domains
+            if fw is not None and hw is not None
+            else profile.read_domains - {ReadDomain.SEGMENTS},
         )
     if model == "H618A":
         from .protocol_transforms import rgb_only_segment_query_transform
@@ -4852,7 +4897,7 @@ def device_profile(
             get_profile(model),
             status_grammar="H618A-pact3" if pact3_readback else "H618A" if modern else "H618A-legacy",
             segment_group_size=4 if pact3_readback or not modern_readback else 3,
-            outbound_transform=None if modern_readback else rgb_only_segment_query_transform,
+            status_query_transform=None if modern_readback else rgb_only_segment_query_transform,
             rgbic_scene_v0=not modern,
             scene_command_versions=frozenset({0, 1}) if modern else frozenset({0}),
             read_domains=get_profile(model).read_domains

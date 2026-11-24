@@ -237,7 +237,7 @@ class _RecoveryMixin(_CoordinatorBase):
         version_qualified_static_wire = get_profile(self.model).requires_pact_confirmation and bool(
             profile.static_identity_fields
         )
-        static_continuity = (
+        original_static_continuity = (
             profile.command_grammar == current.command_grammar
             and profile.status_grammar == current.status_grammar
             and (
@@ -261,6 +261,7 @@ class _RecoveryMixin(_CoordinatorBase):
             and profile.supports_segment_brightness == current.supports_segment_brightness
             and profile.supports_segment_color_temperature == current.supports_segment_color_temperature
         )
+        static_continuity = same_control_profile(profile, current) or original_static_continuity
         if not static_continuity:
             self._discard_static_baseline()
             return False
