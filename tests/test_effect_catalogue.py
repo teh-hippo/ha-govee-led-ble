@@ -42,11 +42,16 @@ from custom_components.ha_govee_led_ble.effect_contracts import (
     CapabilityState,
     CapabilityWorkflow,
     CompilerDeployerStrategy,
+    ContentProjection,
     FrontendVisibility,
+    SelectorPolicy,
     VerificationConfidence,
     frontend_release_capabilities,
     release_capabilities_for_model,
     release_capability,
+    release_content_reference_model,
+    release_projection_capability,
+    release_selector_policy,
     studio_apply_capability_state,
     workflow_capability_state,
 )
@@ -721,6 +726,54 @@ def test_release_capability_contract_covers_every_preview_workflow() -> None:
         declared = {capability.workflow for capability in model_contract}
         assert declared == workflows
         assert len(model_contract) == len(workflows)
+
+
+def test_release_capability_contract_declares_routes_for_every_registered_model() -> None:
+    assert {capability.model for capability in RELEASE_CAPABILITY_CONTRACT} == set(MODEL_PROFILES) - {
+        "H612A",
+        "H8604",
+    }
+
+    approved = {
+        "H600A",
+        "H6046",
+        "H6053",
+        "H605C",
+        "H6072",
+        "H6179",
+        "H6181",
+        "H6182",
+        "H6199",
+        "H7020",
+        "H7025",
+    }
+    assert approved == {
+        model
+        for model, catalogue in MODEL_EFFECT_CATALOGUES.items()
+        if catalogue.diy_slot_policy == "approved_observed"
+    }
+    for model, catalogue in MODEL_EFFECT_CATALOGUES.items():
+        expected = (
+            SelectorPolicy.APPROVED_DISPOSABLE
+            if catalogue.diy_slot_policy == "approved_observed"
+            else SelectorPolicy.FIXED
+        )
+        assert release_selector_policy(model) is expected
+
+    assert release_content_reference_model("h617a_single") == LEGACY_CATALOGUE_SKU
+    h6179 = release_projection_capability("H6179", "h617a_single")
+    h6199 = release_projection_capability("H6199", "h617a_single")
+    shared = release_projection_capability("H6053", "h617a_single")
+    assert h6179 is not None and h6179.content_projection is ContentProjection.TYPED_DIY
+    assert h6199 is not None and h6199.content_projection is ContentProjection.PALETTE_DIY
+    assert shared is not None and shared.content_projection is ContentProjection.GENERIC_DIY
+    assert release_selector_policy("H6179", CapabilityWorkflow.NATIVE_SCENES) is (
+        SelectorPolicy.CATALOGUE_SELECTOR_ONLY
+    )
+    retained = release_capability("H6053", CapabilityWorkflow.WORKSHOP)
+    assert retained is not None and retained.upload_carriers == frozenset({"rgb", "rgbic_v1", "rgbic_v2"})
+    assert not release_capabilities_for_model("H612A")
+    assert not release_capabilities_for_model("H8604")
 
 
 def test_model_visible_capabilities_declare_application_and_evidence_strategies() -> None:

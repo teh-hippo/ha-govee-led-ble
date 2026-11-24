@@ -40,16 +40,18 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     parse_scene_body,
     parse_scene_body_param,
 )
-from custom_components.ha_govee_led_ble.h60a6_effects import decode_native_scene, encode_native_body, native_diy_preset
+from custom_components.ha_govee_led_ble.h60a6_effects import encode_native_body, native_diy_preset
 from custom_components.ha_govee_led_ble.layered_scene_decoder import (
     decode_catalogue_layered_scene,
     decode_layered_scene,
     encode_layered_scene,
 )
 from custom_components.ha_govee_led_ble.native_effect import NativeDiyLayer, NativePaintLayer
+from custom_components.ha_govee_led_ble.native_effect_codecs import native_effect_codec_for_target
 from custom_components.ha_govee_led_ble.native_scenes import (
     apply_scene_speed,
     build_native_scene_packets,
+    encode_authored_scene_body,
     resolve_native_scene_body,
 )
 from custom_components.ha_govee_led_ble.palette_scene_decoder import decode_catalogue_palette_scene
@@ -67,6 +69,12 @@ from custom_components.ha_govee_led_ble.scenes import (
 from custom_components.ha_govee_led_ble.transport import fragment_a3, reassemble_a3, xor_checksum
 
 _LAYERED_SCENE_TYPE = int(SceneBody.SceneType.scene_v2)
+
+
+def _decode_native_scene(scene_ref: CatalogueRef, payload: bytes, *, family: int) -> NativeEffect:
+    codec = native_effect_codec_for_target(scene_ref.sku)
+    assert codec is not None
+    return codec.decode_scene_content(scene_ref, payload, family)
 
 
 @pytest.fixture
@@ -196,7 +204,7 @@ def test_all_h60a6_native_catalogue_bodies_round_trip_through_saved_semantics() 
         if entry.diy_effect_codes not in ((797,), (798,)):
             continue
         raw = _raw_param(entry)
-        content = decode_native_scene(_reference("H60A6", entry), raw, family=entry.diy_effect_codes[0])
+        content = _decode_native_scene(_reference("H60A6", entry), raw, family=entry.diy_effect_codes[0])
         restored = effect_content_from_dict(effect_content_to_dict(content))
         assert restored == content
         item = LibraryItem.new("Native saved scene", content)
@@ -208,7 +216,7 @@ def test_all_h60a6_native_catalogue_bodies_round_trip_through_saved_semantics() 
                 layers = list(content.layers)
                 layers[index] = replace(layer, speed=(layer.speed + 1) % 101)
                 edited = replace(content, layers=tuple(layers))
-                reparsed = decode_native_scene(content.template, encode_native_body(edited), family=content.family)
+                reparsed = _decode_native_scene(content.template, encode_native_body(edited), family=content.family)
                 assert reparsed == edited
     assert counts == {797: 15, 798: 60}
 
@@ -217,7 +225,7 @@ def test_all_h60a6_native_catalogue_bodies_round_trip_through_saved_semantics() 
 def test_native_presets_are_structured_and_round_trip(preset: int) -> None:
     content = native_diy_preset(preset, ((255, 0, 0), (0, 0, 255)))
     raw = encode_native_body(content)
-    decoded = decode_native_scene(CatalogueRef("H60A6", 1, 1), raw, family=content.family)
+    decoded = _decode_native_scene(CatalogueRef("H60A6", 1, 1), raw, family=content.family)
     assert decoded.layers == content.layers
     assert decoded.backgrounds == content.backgrounds
     if content.family == 797:
@@ -243,7 +251,7 @@ def test_native_scene_compilation_preserves_its_catalogue_selector_and_route(fam
     raw = _raw_param(entry)
     if entry.speed is not None:
         raw = apply_scene_speed(raw, entry.speed, entry.speed.default_index)
-    content = decode_native_scene(_reference("H60A6", entry), raw, family=family)
+    content = _decode_native_scene(_reference("H60A6", entry), raw, family=family)
     compiled = compile_effect(LibraryItem.new("Edited native scene", content), "H60A6")
     builtin = compile_effect(LibraryItem.new("Native scene", BuiltinScene(content.template)), "H60A6")
     assert compiled.upload_packets == builtin.upload_packets
@@ -256,7 +264,7 @@ def test_native_scene_metadata_speed_applies_only_when_explicitly_selected() -> 
     entry = next(scene for scene in SCENE_ENTRIES["H60A6"] if scene.speed is not None and scene.speed.layer_speeds)
     assert entry.speed is not None
     raw = _raw_param(entry)
-    content = decode_native_scene(_reference("H60A6", entry), raw, family=797)
+    content = _decode_native_scene(_reference("H60A6", entry), raw, family=797)
     selected = replace(content, speed_index=0)
     compiled = compile_effect(LibraryItem.new("Native speed choice", selected), "H60A6")
     assert compiled.upload_packets == tuple(fragment_a3(0x58, apply_scene_speed(raw, entry.speed, 0)))
@@ -264,15 +272,38 @@ def test_native_scene_metadata_speed_applies_only_when_explicitly_selected() -> 
     assert manual.upload_packets == tuple(fragment_a3(0x58, raw))
 
 
+def test_authored_native_scene_without_speed_preserves_catalogue_bytes() -> None:
+    entry = next(scene for scene in SCENE_ENTRIES["H60A6"] if scene.scene_id == 18445)
+    raw = _raw_param(entry)
+    content = _decode_native_scene(_reference("H60A6", entry), raw, family=797)
+
+    body, speed_index = encode_authored_scene_body(content, entry)
+
+    assert body == raw
+    assert speed_index is None
+
+
+def test_projector_diy_upload_round_trips_compiled_transport_body() -> None:
+    from custom_components.ha_govee_led_ble.projector_templates import projector_templates
+
+    content = projector_templates()[9].content
+    assert isinstance(content, NativeEffect)
+    compiled = compile_effect(LibraryItem.new("Projector DIY", content), "H6093")
+
+    decoded = decode_effect_frames(compiled.upload_packets, "H6093", "a3")
+    assert isinstance(decoded, NativeEffect)
+    assert decoded.projector_layers == content.projector_layers
+
+
 def test_native_paint_edit_preserves_groups_order_and_unknown_fields() -> None:
     raw = bytes.fromhex("50201020304002011700030a0001000300aabbcc000c84013264013412deadbeef")
-    content = decode_native_scene(CatalogueRef("H60A6", 1, 1), raw, family=798)
+    content = _decode_native_scene(CatalogueRef("H60A6", 1, 1), raw, family=798)
     layer = content.layers[0]
     assert isinstance(layer, NativePaintLayer)
     assert layer.groups[0].indices == (0, 12, 132)
     for action in range(1, 8):
         edited = replace(content, layers=(replace(layer, action=action, priority=9),))
-        decoded = decode_native_scene(content.template, encode_native_body(edited), family=798)
+        decoded = _decode_native_scene(content.template, encode_native_body(edited), family=798)
         assert decoded == edited
         decoded_layer = decoded.layers[0]
         assert isinstance(decoded_layer, NativePaintLayer)

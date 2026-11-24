@@ -44,7 +44,6 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     require_profile_packet,
     upload_ack_success,
 )
-from custom_components.ha_govee_led_ble.h60a6_effects import decode_native_scene
 from custom_components.ha_govee_led_ble.h1771_effects import decode_h1771_diy, encode_h1771_diy
 from custom_components.ha_govee_led_ble.layered_scene import CatalogueRef
 from custom_components.ha_govee_led_ble.light_commands import (
@@ -67,6 +66,7 @@ from custom_components.ha_govee_led_ble.native_effect import (
     native_effect_from_value,
     native_effect_to_value,
 )
+from custom_components.ha_govee_led_ble.native_effect_codecs import native_effect_codec_for_target
 from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_packets, encode_authored_scene_body
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES, SceneEntry, _load_speed
 from custom_components.ha_govee_led_ble.transport import reassemble_a3
@@ -443,7 +443,9 @@ def test_candidate_authored_native_scene_retains_catalogue_wrapper_for_upload():
     entry = next(item for item in json.loads(path.read_text(encoding="utf-8"))["effects"] if item["scene_type"] == 5)
     original = base64.b64decode(entry["param"])
     reference = CatalogueRef("H1771", entry["scene_id"], entry["effect_id"])
-    content = decode_native_scene(reference, original, family=957)
+    codec = native_effect_codec_for_target("H1771")
+    assert codec is not None
+    content = codec.decode_scene_content(reference, original, 957)
     scene = SceneEntry(code=entry["code"], param=entry["param"], scene_type=5, diy_effect_codes=(957,))
     body, speed = encode_authored_scene_body(content, scene)
     assert body == original and speed is None

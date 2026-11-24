@@ -186,6 +186,9 @@ async def test_bluetooth_discovery_newly_discoverable_models(
     assert result["step_id"] == "bluetooth_confirm"
     assert result["description_placeholders"] == {"model": expected_model}
     created = await _confirm(hass, result)
+    if identity_policy := MODEL_PROFILES[expected_model].configured_identity:
+        assert created["type"] is FlowResultType.FORM and created["step_id"] == identity_policy.step_id
+        created = await _confirm(hass, created)
     if MODEL_PROFILES[expected_model].support_quality is SupportQuality.EXPERIMENTAL:
         assert created["type"] is FlowResultType.FORM and created["step_id"] == "experimental"
         created = await _confirm(hass, created)

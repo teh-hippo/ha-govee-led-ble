@@ -319,6 +319,23 @@ def test_native_uploads_keep_transport_commands_separate_from_body_families(prof
         adapter.require_profile_packet(packets[0], denied)
 
 
+@pytest.mark.parametrize(("subtype", "operation"), [(0x51, "music"), (0x55, "music"), (0x58, "scene")])
+def test_dreamview_uploads_require_their_exact_operation(profile, subtype, operation):
+    packet = fragment_a3(subtype, bytes.fromhex("01"))[0]
+    narrowed = replace(profile, dreamview_operations=profile.dreamview_operations - {operation})
+
+    with pytest.raises(ValueError, match="outside profile capabilities"):
+        adapter.require_profile_packet(packet, narrowed)
+
+
+def test_dreamview_upload_requires_physical_upload_permission(profile):
+    packet = fragment_a3(0x60, bytes.fromhex("01"))[0]
+    narrowed = replace(profile, command_operations=frozenset({"power", "brightness"}))
+
+    with pytest.raises(ValueError, match="outside profile capabilities"):
+        adapter.require_profile_packet(packet, narrowed)
+
+
 def test_music_dreamview_commands_do_not_inherit_camera_discriminators(profile):
     assert build_dreamview_command("switch_group", {"enabled": True}, profile) == frame("33600101")
     assert build_dreamview_command("delete_group", {}, profile) == frame("336007ff")

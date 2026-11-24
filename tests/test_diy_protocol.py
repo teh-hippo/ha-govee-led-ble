@@ -480,6 +480,14 @@ def test_compiled_basic_effect_packets_round_trip_to_canonical_content(
     assert decode_a3_effect(parsed, model) == content
 
 
+@pytest.mark.parametrize("model", ["H1AB2", "H60B2"])
+def test_shared_native_grammar_decodes_generic_diy_without_losing_canonical_content(model: str) -> None:
+    compiled = compile_h617a(LibraryItem.new("Round trip", SINGLE_CONTENT), H617A_TYPE04_APPLY_CODE)
+    parsed = parse_a3_effect_envelope(reassemble_a3(compiled.upload_packets), model)
+
+    assert decode_a3_effect(parsed, model) == SINGLE_CONTENT
+
+
 def test_basic_effect_decoder_preserves_uncatalogued_pairs_but_rejects_reserved_values() -> None:
     single = parse_a3_effect_envelope(
         reassemble_a3(compile_h617a(LibraryItem.new("Single", SINGLE_CONTENT), H617A_TYPE04_APPLY_CODE).upload_packets),

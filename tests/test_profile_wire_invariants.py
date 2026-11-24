@@ -68,7 +68,7 @@ from custom_components.ha_govee_led_ble.scenes import (
     scene_selector_code,
     scene_supported,
 )
-from custom_components.ha_govee_led_ble.transport import reassemble_a3, xor_checksum
+from custom_components.ha_govee_led_ble.transport import fragment_a3, reassemble_a3, xor_checksum
 
 
 def _xor(frame: bytes) -> bytes:
@@ -287,6 +287,14 @@ def _effective_profiles() -> tuple[tuple[str, str, ModelProfile], ...]:
 
 
 _EFFECTIVE_PROFILES = _effective_profiles()
+
+
+@pytest.mark.parametrize("model", ["H6093", "H60A6", "H60B0"])
+@pytest.mark.parametrize("subtype", [0x02, 0x04])
+def test_native_codec_rejects_unregistered_upload_subtypes(model: str, subtype: int) -> None:
+    with pytest.raises(ValueError, match="does not support this operation|outside profile"):
+        a.require_profile_packet(fragment_a3(subtype, b"\0")[0], MODEL_PROFILES[model])
+
 
 _STATUS_PROFILES = tuple(
     pytest.param(model, profile, id=case_id)

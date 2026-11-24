@@ -1,5 +1,6 @@
 import ast
 import itertools
+import re
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -38,6 +39,158 @@ from custom_components.ha_govee_led_ble.effect_compiler import CompatibilityStat
 from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, MusicProfile
 from custom_components.ha_govee_led_ble.effect_selector import effect_selector_entries
 from custom_components.ha_govee_led_ble.music_protocol import music_code_for, music_slug_for
+
+_MODEL_LITERAL = re.compile(r"H[0-9A-Z]{4}(?:[-_][A-Za-z0-9-]+)?\Z")
+_DEDICATED_MODEL_ADAPTERS = frozenset(
+    {
+        "h1771_effects.py",
+        "h1ab2_effects.py",
+        "h607c_effects.py",
+        "h60a6_effects.py",
+        "h60b0_controls.py",
+        "h60b0_diy.py",
+        "h60b0_effects.py",
+        "h60b2_effects.py",
+        "h7025_effects.py",
+        "projector_protocol.py",
+    }
+)
+_SEMANTIC_GRAMMAR_FILES = frozenset(
+    {
+        "effect_catalogue.py",
+        "effect_compiler.py",
+        "effect_deployments.py",
+        "effect_runtime.py",
+        "light_services.py",
+        "native_scenes.py",
+    }
+)
+
+
+def _model_literals(value: ast.AST) -> tuple[str, ...]:
+    if isinstance(value, ast.Constant) and isinstance(value.value, str) and _MODEL_LITERAL.fullmatch(value.value):
+        return (value.value,)
+    if isinstance(value, (ast.List, ast.Set, ast.Tuple)):
+        return tuple(literal for item in value.elts for literal in _model_literals(item))
+    return ()
+
+
+def _is_model_reference(value: ast.AST) -> bool:
+    return (
+        isinstance(value, ast.Name)
+        and value.id in {"model", "target_model"}
+        or isinstance(value, ast.Attribute)
+        and value.attr == "model"
+    )
+
+
+def _is_grammar_reference(value: ast.AST) -> bool:
+    return isinstance(value, ast.Attribute) and value.attr.endswith("_grammar")
+
+
+def _forbidden_model_dispatches(source: str, filename: str) -> tuple[int, ...]:
+    if filename in _DEDICATED_MODEL_ADAPTERS:
+        return ()
+    tree = ast.parse(source)
+    parents = {child: parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)}
+    sites: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Compare):
+            values = (node.left, *node.comparators)
+            if any(_is_model_reference(value) for value in values) and any(_model_literals(value) for value in values):
+                sites.add(node.lineno)
+        elif isinstance(node, ast.MatchValue):
+            match = parents.get(node)
+            while match is not None and not isinstance(match, ast.Match):
+                match = parents.get(match)
+            if match is not None and _is_model_reference(match.subject) and _model_literals(node.value):
+                sites.add(node.lineno)
+    return tuple(sorted(sites))
+
+
+def _forbidden_semantic_grammar_dispatches(source: str) -> tuple[int, ...]:
+    tree = ast.parse(source)
+    grammar_names: set[str] = set()
+    changed = True
+    while changed:
+        changed = False
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+                continue
+            value = node.value
+            if value is None or not (
+                _is_grammar_reference(value) or isinstance(value, ast.Name) and value.id in grammar_names
+            ):
+                continue
+            targets = node.targets if isinstance(node, ast.Assign) else (node.target,)
+            for target in targets:
+                if isinstance(target, ast.Name) and target.id not in grammar_names:
+                    grammar_names.add(target.id)
+                    changed = True
+    sites: set[int] = set()
+    parents = {child: parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Compare):
+            values = (node.left, *node.comparators)
+            if any(
+                _is_grammar_reference(value) or isinstance(value, ast.Name) and value.id in grammar_names
+                for value in values
+            ) and any(_model_literals(value) for value in values):
+                sites.add(node.lineno)
+        elif isinstance(node, ast.MatchValue):
+            match = parents.get(node)
+            while match is not None and not isinstance(match, ast.Match):
+                match = parents.get(match)
+            if (
+                match is not None
+                and (
+                    _is_grammar_reference(match.subject)
+                    or isinstance(match.subject, ast.Name)
+                    and match.subject.id in grammar_names
+                )
+                and _model_literals(node.value)
+            ):
+                sites.add(node.lineno)
+    return tuple(sorted(sites))
+
+
+def test_shared_model_special_policy_guard_rejects_runtime_dispatch() -> None:
+    root = Path(const.__file__).parent
+    for path in root.rglob("*.py"):
+        if "generated_protocol" in path.parts:
+            continue
+        source = path.read_text()
+        assert "# Model-specific:" not in source
+        assert not _forbidden_model_dispatches(source, path.name), path
+        if path.name in _SEMANTIC_GRAMMAR_FILES:
+            assert not _forbidden_semantic_grammar_dispatches(source), path
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'def injected(model):\n    return model == "H617A"\n',
+        'def injected(model):\n    return model in {"H617A", "H6199"}\n',
+        'def injected(model):\n    match model:\n        case "H617A":\n            return True\n    return False\n',
+    ],
+)
+def test_shared_model_policy_guard_detects_mutation(source: str) -> None:
+    assert _forbidden_model_dispatches(source, "protocol_commands.py")
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'def injected(profile):\n    grammar = profile.effect_grammar\n    return grammar == "H6199"\n',
+        (
+            "def injected(profile):\n    grammar = profile.effect_grammar\n"
+            '    match grammar:\n        case "H6199":\n            return True\n'
+            "    return False\n"
+        ),
+    ],
+)
+def test_shared_model_policy_guard_detects_grammar_mutation(source: str) -> None:
+    assert _forbidden_semantic_grammar_dispatches(source)
 
 
 def test_segment_count_and_supports_segments():

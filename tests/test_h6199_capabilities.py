@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
 
-from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ReadDomain
+from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ReadDomain, get_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
 from custom_components.ha_govee_led_ble.effect_catalogue import MODEL_EFFECT_CATALOGUES
@@ -28,7 +28,7 @@ from custom_components.ha_govee_led_ble.music_commands import resolve_music_prof
 from custom_components.ha_govee_led_ble.protocol_h6199 import build_h6199_control_query
 from custom_components.ha_govee_led_ble.transport import xor_checksum
 from custom_components.ha_govee_led_ble.video_applicability import (
-    h6199_camera_controls_state,
+    camera_controls_state,
     video_control_states,
     video_identity_fields,
 )
@@ -112,15 +112,15 @@ def test_revision_gates(changes, control, expected):
 def test_unknown_and_exact_camera_qualification():
     profile = MODEL_PROFILES["H6199"]
     assert video_control_states(profile, SimpleNamespace())["blank_screen"] is CapabilityState.EVIDENCE_GAP
-    assert h6199_camera_controls_state("H6199", SimpleNamespace(**QUALIFIED)) is CapabilityState.SUPPORTED
-    assert h6199_camera_controls_state("H6199", SimpleNamespace()) is CapabilityState.EVIDENCE_GAP
-    assert h6199_camera_controls_state("H6099", SimpleNamespace(**QUALIFIED)) is CapabilityState.UNSUPPORTED
+    assert camera_controls_state(profile, SimpleNamespace(**QUALIFIED)) is CapabilityState.SUPPORTED
+    assert camera_controls_state(profile, SimpleNamespace()) is CapabilityState.EVIDENCE_GAP
+    assert camera_controls_state(get_profile("H6099"), SimpleNamespace(**QUALIFIED)) is CapabilityState.UNSUPPORTED
     assert (
-        h6199_camera_controls_state("H6199", SimpleNamespace(**(QUALIFIED | {"fw_version": "1.11.00"})))
+        camera_controls_state(profile, SimpleNamespace(**(QUALIFIED | {"fw_version": "1.11.00"})))
         is CapabilityState.EVIDENCE_GAP
     )
     assert (
-        h6199_camera_controls_state("H6199", SimpleNamespace(**(QUALIFIED | {"fw_version": "1.00.01"})))
+        camera_controls_state(profile, SimpleNamespace(**(QUALIFIED | {"fw_version": "1.00.01"})))
         is CapabilityState.EVIDENCE_GAP
     )
     assert set(QUALIFIED) - {"pact_type", "pact_code"} == video_identity_fields(profile)
@@ -223,7 +223,7 @@ async def test_reconnect_invalidates_all_h6199_revision_authorization(hass, monk
             getattr(coordinator, field) == QUALIFIED[field] for field in video_identity_fields(coordinator.profile)
         )
         assert not coordinator.identity_fields_confirmed()
-        assert h6199_camera_controls_state(coordinator.model, coordinator) is CapabilityState.SUPPORTED
+        assert camera_controls_state(coordinator.profile, coordinator) is CapabilityState.SUPPORTED
         return client
 
     monkeypatch.setattr("custom_components.ha_govee_led_ble.coordinator.async_establish_ble_connection", connect)
@@ -380,7 +380,7 @@ async def test_basic_setup_with_missing_identity_uses_real_lifecycle(lifecycle):
     await c._async_update_data()
     assert c.is_on and c.available and c.camera_status == "unknown"
     assert c._client is None and clients[-1].disconnect.await_count == 1
-    assert h6199_camera_controls_state(c.model, c) is CapabilityState.EVIDENCE_GAP
+    assert camera_controls_state(c.profile, c) is CapabilityState.EVIDENCE_GAP
 
 
 @pytest.mark.parametrize("revision", ["reported", "modern"])
