@@ -32,6 +32,7 @@ from custom_components.ha_govee_led_ble.effect_catalogue import (
     WORKSHOP_PROTOCOL_FIXTURES,
     _single_template,
     custom_effect_catalogue_payload,
+    requires_diy_destination_consent,
     resolve_catalogue_template,
     validate_catalogue_template_identity,
 )
@@ -76,6 +77,26 @@ from custom_components.ha_govee_led_ble.layered_scene import CatalogueRef
 from custom_components.ha_govee_led_ble.layered_scene_decoder import encode_workshop_effect
 from custom_components.ha_govee_led_ble.protocol_h6199 import build_h6199_scene
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES
+
+
+def test_explicit_diy_destination_policy_is_limited_to_qualified_catalogues():
+    expected = {
+        "H605C",
+        "H6046",
+        "H6053",
+        "H6181",
+        "H6182",
+        "H6179",
+        "H6199",
+        "H6072",
+        "H7020",
+        "H7025",
+        "H600A",
+    }
+    actual = {model for model in MODEL_EFFECT_CATALOGUES if requires_diy_destination_consent(model)}
+
+    assert actual == expected
+    assert not requires_diy_destination_consent("H617A")
 
 
 def test_revision_catalogue_projects_family_bounds_without_mutating_the_ceiling():

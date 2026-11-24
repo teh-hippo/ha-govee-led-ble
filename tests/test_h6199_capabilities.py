@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
 
-from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ReadDomain, get_profile
+from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ReadDomain, device_profile, get_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
 from custom_components.ha_govee_led_ble.effect_catalogue import MODEL_EFFECT_CATALOGUES
@@ -51,6 +51,49 @@ def set_qualified_identity(coordinator):
     confirmed.update(video_identity_fields(coordinator.profile))
     if not callable(getattr(coordinator, "identity_fields_confirmed", None)):
         coordinator.identity_fields_confirmed = lambda fields: fields <= confirmed
+
+
+def test_compound_static_recovery_is_limited_to_the_captured_h6199_revision():
+    assert device_profile(
+        "H6199",
+        pact_type=QUALIFIED["pact_type"],
+        pact_code=QUALIFIED["pact_code"],
+        hardware=QUALIFIED["hw_version"],
+        firmware=QUALIFIED["fw_version"],
+    ).supports_compound_static_recovery
+
+    for pact, hardware, firmware in (
+        ((1, 1), QUALIFIED["hw_version"], QUALIFIED["fw_version"]),
+        ((2, 1), "3.02.02", QUALIFIED["fw_version"]),
+        ((2, 1), QUALIFIED["hw_version"], "1.10.05"),
+        ((2, 2), QUALIFIED["hw_version"], QUALIFIED["fw_version"]),
+        ((None, None), None, None),
+    ):
+        assert not device_profile(
+            "H6199",
+            pact_type=pact[0],
+            pact_code=pact[1],
+            hardware=hardware,
+            firmware=firmware,
+        ).supports_compound_static_recovery
+
+
+def test_compound_static_recovery_remains_default_gated_for_neighbouring_profiles():
+    models = {
+        "H6022",
+        "H60A1",
+        "H617C",
+        "H617E",
+        "H617F",
+        "H6072",
+        "H6076",
+        "H6102",
+        "H612A",
+        "H6125",
+        "H7020",
+        "H7025",
+    }
+    assert all(not MODEL_PROFILES[model].supports_compound_static_recovery for model in models)
 
 
 @pytest.mark.parametrize("mode,colour", [("energetic", False), ("rhythm", True), ("spectrum", True), ("rolling", True)])
