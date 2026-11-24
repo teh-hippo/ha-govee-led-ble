@@ -619,10 +619,22 @@ class GoveeBLECoordinator(
         if isinstance(service_info.manufacturer_data, Mapping):
             advertisement = parse_govee_advertisement(service_info.manufacturer_data)
             if advertisement is not None:
-                if self._tracks_pact_identity:
+                if self._tracks_pact_identity or self._monitors_recovery_pact:
                     self._h607c_invalid_pact_version_seen |= advertisement.invalid_version_seen
                     source = getattr(service_info, "source", "direct")
-                    timestamp = getattr(service_info, "time", time.monotonic())
+                    timestamp = getattr(service_info, "time", None)
+                    if timestamp is None:
+                        timestamp = max(
+                            time.monotonic(),
+                            max(
+                                (
+                                    observed_at
+                                    for observed_at, _observed_pacts in self._h607c_advertisement_observations.values()
+                                ),
+                                default=0.0,
+                            )
+                            + 1,
+                        )
                     previous = self._h607c_advertisement_observations.get(source)
                     if previous is None or timestamp > previous[0]:
                         self._h607c_advertisement_observations[source] = (timestamp, advertisement.pacts)
@@ -633,7 +645,26 @@ class GoveeBLECoordinator(
                         for _observed_at, observed_pacts in self._h607c_advertisement_observations.values()
                         for pact in observed_pacts
                     }
-                    self._resolve_h607c_pact()
+                    if self._tracks_pact_identity:
+                        self._resolve_h607c_pact()
+                    else:
+                        latest_timestamp = max(
+                            observed_at
+                            for observed_at, _observed_pacts in self._h607c_advertisement_observations.values()
+                        )
+                        latest_pacts = {
+                            pact
+                            for observed_at, observed_pacts in self._h607c_advertisement_observations.values()
+                            if observed_at == latest_timestamp
+                            for pact in observed_pacts
+                        }
+                        if latest_pacts:
+                            pact = next(iter(latest_pacts)) if len(latest_pacts) == 1 else (None, None)
+                            identity_changed = pact != (self.pact_type, self.pact_code)
+                            if identity_changed:
+                                self.pact_type, self.pact_code = pact
+                                self._authorization_generation += 1
+                            self._resolve_device_profile(identity_changed=identity_changed)
                 elif advertisement.pacts:
                     pact = next(iter(advertisement.pacts)) if len(advertisement.pacts) == 1 else (None, None)
                     identity_changed = pact != (self.pact_type, self.pact_code)
@@ -666,9 +697,19 @@ class GoveeBLECoordinator(
             for source, observation in self._h607c_advertisement_observations.items()
             if observation[0] >= cutoff
         }
-        self._h607c_advertised_pacts = {
-            pact for _, pacts in self._h607c_advertisement_observations.values() for pact in pacts
-        }
+        observations = self._h607c_advertisement_observations.values()
+        if self._monitors_recovery_pact and not self._tracks_pact_identity and observations:
+            latest_timestamp = max(observed_at for observed_at, _pacts in observations)
+            self._h607c_advertised_pacts = {
+                pact
+                for observed_at, pacts in self._h607c_advertisement_observations.values()
+                if observed_at == latest_timestamp
+                for pact in pacts
+            }
+        else:
+            self._h607c_advertised_pacts = {
+                pact for _, pacts in self._h607c_advertisement_observations.values() for pact in pacts
+            }
         self._resolve_h607c_pact(preserve_state=preserve_state)
 
     def _resolve_h607c_pact(self, *, preserve_state: bool = False) -> None:
@@ -680,12 +721,26 @@ class GoveeBLECoordinator(
         recovery_fields = declared.static_recovery_identity_fields or frozenset()
         fresh = strict or declared.reconciles_marker_pact or "pact" in recovery_fields
         if fresh and self._client is not None and self._client.is_connected:
-            pacts = {
+            fresh_observations = {
                 pact
                 for timestamp, observed in self._h607c_advertisement_observations.values()
                 if subscription is not None and timestamp >= subscription
                 for pact in observed
             }
+            if self._monitors_recovery_pact and not self._tracks_pact_identity:
+                observation_timestamps = [
+                    timestamp
+                    for timestamp, _observed in self._h607c_advertisement_observations.values()
+                    if subscription is not None and timestamp >= subscription
+                ]
+                latest_timestamp = max(observation_timestamps, default=None)
+                fresh_observations = {
+                    pact
+                    for timestamp, observed in self._h607c_advertisement_observations.values()
+                    if timestamp == latest_timestamp
+                    for pact in observed
+                }
+            pacts = fresh_observations
         elif strict and self.pact_type is not None and self.pact_code is not None:
             pacts = {(self.pact_type, self.pact_code)}
         advertised_pacts = pacts.copy()
@@ -778,6 +833,12 @@ class GoveeBLECoordinator(
     @property
     def identity_gated_controls(self) -> bool:
         return get_profile(self.model).requires_qualified_identity
+
+    @property
+    def _monitors_recovery_pact(self) -> bool:
+        declared = get_profile(self.model)
+        recovery_fields = declared.static_recovery_identity_fields or frozenset()
+        return "pact" in recovery_fields
 
     @property
     def _monitors_pact_identity(self) -> bool:
@@ -1415,7 +1476,7 @@ class GoveeBLECoordinator(
         self._segment_query_generation = None
         if self._encryption is not None:
             self._encryption.reset()
-        if self._tracks_pact_identity and (
+        if self._monitors_pact_identity and (
             self._h607c_marker_pact is not None or self._subscription_advertised_pact is not None
         ):
             self._h607c_marker_pact = None
@@ -5055,6 +5116,14 @@ class GoveeBLECoordinator(
         self._music_palette = self._music_body = None
         self.video_parameters = None
         self._notification_token = None
+        declared = get_profile(self.model)
+        if (
+            self._monitors_recovery_pact
+            and not declared.requires_pact_confirmation
+            and not declared.reconciles_marker_pact
+        ):
+            self._h607c_marker_pact = None
+            self._subscription_advertised_pact = None
         self._invalidate_upload_ack(BleakError("Device disconnected during effect upload"))
         if self._encryption is not None:
             self._encryption.reset()
