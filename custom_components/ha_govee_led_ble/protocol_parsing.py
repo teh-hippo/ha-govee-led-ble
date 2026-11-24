@@ -63,12 +63,12 @@ def parse_command_result(
         setting = _parse_xor_frame(frame, effective_profile.setting_grammar, _ORDINARY_SETTING_ROOTS)
         if setting.parsed is not None and getattr(setting.parsed.opcode, "name", None) is not None:
             return setting
-    if effective_profile.setting_grammar == "H6093":
+    if effective_profile.setting_grammar_has("projector_audio"):
         for kind, root in (("setting_write", H6093Projector.SettingWrite), ("audio_write", H6093Projector.AudioWrite)):
             setting = _parse_xor_frame(frame, kind, {kind: (f"h6093_projector.{kind}", root)})
             if setting.parsed is not None:
                 return setting
-    if effective_profile.projector_grammar == "H6093":
+    if effective_profile.projector_grammar is not None:
         activation = _parse_xor_frame(
             frame, "projector", {"projector": ("h6093_projector.activation", H6093Projector.Activation)}
         )
@@ -83,7 +83,7 @@ def parse_command_result(
             ):
                 return ProtocolParseResult(None, setting.parser, ProtocolParseRejection.SEMANTIC_REJECTED)
             return setting
-    if effective_profile.setting_grammar == "H8604" and frame[:2] == b"\x33\xa9":
+    if effective_profile.setting_grammar_has("video_settings") and frame[:2] == b"\x33\xa9":
         setting = _parse_xor_frame(frame, "H8604-video", _H8604_VIDEO_ROOTS)
         if setting.parsed is not None:
             operation = getattr(setting.parsed.body.setting, "name", None)
@@ -95,7 +95,7 @@ def parse_command_result(
                 return setting
             return ProtocolParseResult(None, setting.parser, ProtocolParseRejection.SEMANTIC_REJECTED)
     if (
-        effective_profile.video_grammar in {"H66A0-video", "H605C-video"}
+        effective_profile.video_grammar_has("video_v3")
         and effective_profile.supports_video_mode
         and frame[:3] == b"\x33\x05\x00"
     ):
@@ -161,7 +161,7 @@ def parse_command_ack_result(frame: bytes, model: str, *, profile: ModelProfile 
             return video
     if profile.music_grammar in _H6076_ACK_ROOTS:
         music = _parse_xor_frame(frame, profile.music_grammar, _H6076_ACK_ROOTS)
-        if music.parsed is not None and (profile.music_grammar != "H1771" or music.parsed.is_upload):
+        if music.parsed is not None and (not profile.music_grammar_has("music_upload_ack") or music.parsed.is_upload):
             return music
     return _parse_xor_frame(frame, profile.command_ack_grammar or profile.command_grammar, _COMMAND_ACK_ROOTS)
 

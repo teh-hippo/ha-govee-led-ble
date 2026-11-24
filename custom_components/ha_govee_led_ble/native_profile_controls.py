@@ -6,7 +6,7 @@ from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
 
-from .const import ReadDomain
+from .const import ReadDomain, VideoRevisionPolicy
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator_control import async_send_guarded_command
 from .coordinator_refresh import RefreshRequest
@@ -153,7 +153,7 @@ async def async_require_video_controls(
     async with async_control_intent(coordinator, intent if current_intent is None else current_intent):
         profile = coordinator.profile
         identity_fields = video_identity_fields(
-            profile, None if profile.video_revision_policy == "H6199" else requested
+            profile, None if profile.video_revision_policy is VideoRevisionPolicy.QUALIFIED_CAMERA else requested
         )
         if identity_fields and not coordinator.identity_fields_confirmed(identity_fields):
             async with coordinator._lock:

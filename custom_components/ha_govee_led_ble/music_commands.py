@@ -72,7 +72,7 @@ class MusicWriteSequence(Sequence[MusicWrite]):
 def _music_selector_targets(
     colour: tuple[int, int, int] | None, parameters: Mapping[str, int], profile: ModelProfile
 ) -> tuple[tuple[tuple[int, int, int] | None, dict[str, int]], ...]:
-    if profile.music_grammar != "H6046":
+    if not profile.music_grammar_has("music_selector_bar_parameters"):
         return ((colour, dict(parameters)),)
     if parameters.get("fixed_colour") == 0:
         return ((None, {}),)
@@ -310,11 +310,15 @@ def resolve_music_profile(
 
 def default_music_zones(profile: ModelProfile, mode: str) -> tuple[MusicZone, ...] | None:
     variant = music_variant(profile, music_codebook(profile).get(mode, -1))
-    if profile.music_grammar == "H60B0" and variant is not None and variant.mode_code == 130:
+    if profile.music_grammar_has("multi_native_music") and variant is not None and variant.mode_code == 130:
         from .h60b0_effects import h60b0_music_zones
 
         return h60b0_music_zones(variant.template)
-    if profile.music_grammar != "H607C" or variant is None or variant.mode_code != H607cMusicWrite.MusicMode.paired:
+    if (
+        not profile.music_grammar_has("native_music_selector", "deferred_native_settings")
+        or variant is None
+        or variant.mode_code != H607cMusicWrite.MusicMode.paired
+    ):
         return None
     root = parse_music_parameters(variant, variant.template)
     names = {code: slug for slug, code in music_codebook(profile).items()}
@@ -325,13 +329,13 @@ def default_music_zones(profile: ModelProfile, mode: str) -> tuple[MusicZone, ..
 
 
 def build_zoned_music_body(profile: ModelProfile, mode: str, zones: tuple[MusicZone, ...]) -> bytes:
-    if profile.music_grammar == "H60B0" and mode == "combined":
+    if profile.music_grammar_has("multi_native_music") and mode == "combined":
         from .h60b0_effects import encode_h60b0_music_zones
 
         return encode_h60b0_music_zones(profile, zones)
     variant = music_variant(profile, music_codebook(profile).get(mode, -1))
     if (
-        profile.music_grammar != "H607C"
+        not profile.music_grammar_has("native_music_selector", "deferred_native_settings")
         or variant is None
         or variant.mode_code != H607cMusicWrite.MusicMode.paired
         or len(zones) != 2
@@ -426,7 +430,7 @@ def prepare_music_profile_writes(
     }
     for offset, (target_colour, target_parameters) in enumerate(targets):
         state = dict(selector_state)
-        if profile.music_grammar == "H6046" and variant and variant.supports_fixed_colour:
+        if profile.music_grammar_has("music_selector_bar_parameters") and variant and variant.supports_fixed_colour:
             left, right = int(H6046CommandWrite.BarFlag.left), int(H6046CommandWrite.BarFlag.right)
             state["music_color"] = (
                 target_colour if target_parameters.get("bar_mask", left | right) == left | right else None

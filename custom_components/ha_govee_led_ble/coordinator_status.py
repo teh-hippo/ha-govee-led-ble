@@ -7,8 +7,6 @@ from typing import Any, Literal, cast
 from .const import (
     KELVIN_RANGE_1000_10000,
     PERCENT_BRIGHTNESS_STATUS_GRAMMARS,
-    VIDEO_GRAMMARS,
-    WHOLE_BULB_GRAMMARS,
     ModelProfile,
     ReadDomain,
     get_profile,
@@ -66,7 +64,7 @@ def decode_status_frame_result(
     effective_profile = profile or get_profile(model)
     result = (
         parse_h6179_status_result(frame)
-        if effective_profile.status_grammar == "H6179"
+        if effective_profile.status_grammar_has("custom_status")
         else parse_status_result(frame, model, profile=effective_profile)
     )
     if result.parsed is None:
@@ -98,18 +96,18 @@ def status_is_authorized(decoded: ParsedStatusEnvelope, profile: ModelProfile) -
     domain = decoded.generated.domain
     domain_name = domain if isinstance(domain, str) else getattr(domain, "name", "")
     if getattr(decoded.generated, "is_device_info", False):
-        return profile.setting_grammar == "H607C" and bool(profile.boolean_controls)
+        return profile.setting_grammar_has("device_info_status") and bool(profile.boolean_controls)
     if domain_name == "bar_enable":
-        return profile.setting_grammar == "H6046" and bool(profile.boolean_controls)
+        return profile.setting_grammar_has("paired_bar_settings") and bool(profile.boolean_controls)
     if domain_name == "zone_enable":
-        return profile.setting_grammar == "H60B2" and bool(profile.light_sources)
+        return profile.setting_grammar_has("native_sources", "source_status") and bool(profile.light_sources)
     if domain_name == "source_info":
-        return profile.setting_grammar == "H60B0" and bool(profile.boolean_controls)
-    if domain_name == "power_off_memory" and profile.setting_grammar == "H6046":
+        return profile.setting_grammar_has("source_status") and bool(profile.boolean_controls)
+    if domain_name == "power_off_memory" and profile.setting_grammar_has("paired_bar_settings"):
         return False
     if domain_name == "power_on_behaviour":
         return profile.supports_power_on_behaviour
-    if decoded.domain is ReadDomain.DISPLAY_SETTING and profile.status_grammar == "H8604":
+    if decoded.domain is ReadDomain.DISPLAY_SETTING and profile.status_grammar_has("display_settings"):
         setting = getattr(decoded.generated.body.setting, "name", None)
         if setting == "sensitivity":
             return profile.supports_video_sensitivity
@@ -119,7 +117,7 @@ def status_is_authorized(decoded: ParsedStatusEnvelope, profile: ModelProfile) -
             return profile.supports_video_color_calibration
         return setting in {"blank_screen", "black_border"}
     if decoded.domain is ReadDomain.LOW_BLUE_LIGHT:
-        return profile.setting_grammar == "H6072" and profile.supports_low_blue_light
+        return profile.setting_grammar_has("low_blue_light") and profile.supports_low_blue_light
     control = boolean_control_name(domain_name)
     if control is not None:
         return boolean_control_is_authorized(control, profile)
@@ -185,7 +183,7 @@ def _readback_kelvin(reported: int) -> int:
 
 def parse_color_mode(generated: Any, model: str, *, profile: ModelProfile | None = None) -> ParsedColorModeResponse:
     profile = profile or get_profile(model)
-    if profile.projector_grammar == "H6093":
+    if profile.projector_grammar is not None:
         from .protocol_core import H6093Projector
 
         if (
@@ -198,7 +196,7 @@ def parse_color_mode(generated: Any, model: str, *, profile: ModelProfile | None
                 static_fields=frozenset(),
                 native_projector=True,
             )
-    if profile.status_grammar == "H6179":
+    if profile.status_grammar_has("custom_status"):
         if not isinstance(generated, ParsedH6179Status) or generated.domain != "mode":
             return ParsedColorModeResponse()
         values = generated.values
@@ -247,7 +245,7 @@ def parse_color_mode(generated: Any, model: str, *, profile: ModelProfile | None
     detail = getattr(body, "detail", None)
     if detail is None:
         detail = getattr(body, "mode_body", None)
-    if profile.status_grammar == "H60B0" and mode_name == "source_control":
+    if profile.status_grammar_has("source_status") and mode_name == "source_control":
         from .h60b0_controls import source_readback
 
         return ParsedColorModeResponse(mode=ParsedMode.COLOUR, source_values=source_readback(detail))
@@ -255,7 +253,7 @@ def parse_color_mode(generated: Any, model: str, *, profile: ModelProfile | None
         mode_name = "static"
     elif mode_name in {"legacy_music", "modern_music"}:
         mode_name = "music"
-    if profile.bulk_status_grammar == "H60A" and mode_name == "music":
+    if profile.bulk_status_grammar_has("bulk_compact") and mode_name == "music":
         return ParsedColorModeResponse(mode=ParsedMode.MUSIC)
     if mode_name == "music":
         return _parse_music_mode(detail, model, profile)
@@ -295,7 +293,7 @@ def _parse_music_mode(detail: Any, model: str, profile: ModelProfile) -> ParsedC
         if profile.music_sensitivity_min <= reported_sensitivity <= profile.music_sensitivity_max
         else None
     )
-    if profile.status_grammar == "H60B0":
+    if profile.status_grammar_has("native_music_status"):
         from .music_protocol import music_slug_for
 
         mode = music_slug_for(model, int(detail.mode), profile=profile)
@@ -340,7 +338,9 @@ def _parse_music_mode(detail: Any, model: str, profile: ModelProfile) -> ParsedC
             music_sensitivity=sensitivity,
             music_color_present=False,
         )
-    percent = profile.status_grammar in PERCENT_BRIGHTNESS_STATUS_GRAMMARS | {"H605C"}
+    percent = profile.status_grammar in PERCENT_BRIGHTNESS_STATUS_GRAMMARS or profile.status_grammar_has(
+        "percent_brightness"
+    )
     colour = None
     if getattr(detail, "has_fixed_colour", False):
         colour = detail.fixed_colour if percent else detail.rgb
@@ -355,7 +355,7 @@ def _parse_music_mode(detail: Any, model: str, profile: ModelProfile) -> ParsedC
 
 
 def _parse_static_mode(detail: Any, profile: ModelProfile) -> ParsedColorModeResponse:
-    if profile.status_grammar == "H605C":
+    if profile.status_grammar_has("source_only_static"):
         return ParsedColorModeResponse(mode=ParsedMode.COLOUR)
     if detail is None:
         raise ValueError("Static status has no details")
@@ -406,28 +406,25 @@ def _parse_static_mode(detail: Any, profile: ModelProfile) -> ParsedColorModeRes
     return ParsedColorModeResponse(
         mode=ParsedMode.COLOUR,
         rgb_color=_rgb_values(rgb)
-        if rgb is not None
-        and not (
-            profile.status_grammar
-            in WHOLE_BULB_GRAMMARS | {"H6093", "H6139", "H6159", "H6181-modern", "H6182-modern", "H60B0"}
-            and kelvin is not None
-        )
+        if rgb is not None and not (profile.status_grammar_has("kelvin_status_omits_rgb") and kelvin is not None)
         else None,
         color_temp_kelvin=kelvin,
         zero_kelvin_reported=reported == 0,
         multi_effect_flag=getattr(detail, "sub", None),
-        gradient=int(detail.gradient) if profile.status_grammar == "H6199" and detail.gradient in (0, 1) else None,
+        gradient=int(detail.gradient)
+        if profile.status_grammar_has("gradient_status") and detail.gradient in (0, 1)
+        else None,
     )
 
 
 def _parse_video_mode(detail: Any, profile: ModelProfile) -> ParsedColorModeResponse:
-    if profile.video_grammar not in VIDEO_GRAMMARS | {"H605C-video", "H66A0-video"}:
+    if not profile.video_modes:
         return ParsedColorModeResponse()
     source = getattr(detail.source, "name", None)
     if source not in profile.video_modes:
         return ParsedColorModeResponse()
     full_screen = None
-    if profile.video_grammar == "H66A0-video":
+    if profile.video_grammar_has("video_picture_preset"):
         if detail.sound_effects not in (0, 1) or not 0 <= detail.softness <= 100:
             raise ValueError("invalid video sound effects or softness")
     else:

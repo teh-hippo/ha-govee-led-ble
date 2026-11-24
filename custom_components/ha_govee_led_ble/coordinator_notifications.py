@@ -131,7 +131,7 @@ class _NotificationMixin(_CoordinatorBase):
             )
         )
         if "color_mode" in expectations:
-            if self.profile.setting_grammar == "H607C":
+            if self.profile.setting_grammar_has("deferred_native_settings"):
                 self._field_received_at.pop("diy_companion", None)
             if expectations["color_mode"][0] is not ParsedMode.COLOUR:
                 self.projector_appearance = None
@@ -357,7 +357,7 @@ class _NotificationMixin(_CoordinatorBase):
                     and self._field_revisions.get("segment_colors", 0) > self._kelvin_observed_segment_revision
                 ):
                     observed.extend(self._project_segment_palette())
-            if self.profile.status_grammar == "H6199":
+            if self.profile.status_grammar_has("gradient_status"):
                 self.gradient = parsed.gradient
                 observed.append("gradient")
             static_values: dict[str, Any] = {}
@@ -477,7 +477,7 @@ class _NotificationMixin(_CoordinatorBase):
             return True
         try:
             records = result.parsed.records
-            if self.profile.bulk_status_grammar == "H1771":
+            if self.profile.bulk_status_grammar_has("bulk_identity"):
                 power = next((record for record in records if getattr(record.domain, "name", None) == "power"), None)
                 zones = next(
                     (record for record in records if getattr(record.domain, "name", None) == "zone_enable"), None
@@ -499,7 +499,7 @@ class _NotificationMixin(_CoordinatorBase):
                     raise ValueError("Bulk gradual flag is invalid")
                 elif domain == "power_on_behaviour" and getattr(record.body.state, "name", None) is None:
                     raise ValueError("Bulk power-on behaviour is unknown")
-            independent_mode = self.profile.bulk_status_grammar != "H60A" and self.profile.can_read(
+            independent_mode = not self.profile.bulk_status_grammar_has("bulk_compact") and self.profile.can_read(
                 ReadDomain.COLOUR_MODE
             )
             opaque_mode = independent_mode and any(mode.mode is ParsedMode.UNKNOWN for mode in parsed_modes.values())
@@ -529,7 +529,7 @@ class _NotificationMixin(_CoordinatorBase):
                     if self._accept_expected("brightness_pct", percent):
                         self.brightness_pct = percent
                         self._mark_received(StatusDomain.BRIGHTNESS, "brightness_pct")
-                elif domain == "identity" and self.profile.bulk_status_grammar == "H1771":
+                elif domain == "identity" and self.profile.bulk_status_grammar_has("bulk_identity"):
                     identity = record.body
                     selector = getattr(identity.selector, "name", None)
                     fields = (
@@ -557,7 +557,7 @@ class _NotificationMixin(_CoordinatorBase):
                     }
                     self.boolean_control_state.update(zone_values)
                     self._mark_received(StatusDomain.OTHER, *(f"boolean_{name}" for name in zone_values))
-                    if self.profile.bulk_status_grammar == "H1771":
+                    if self.profile.bulk_status_grammar_has("bulk_identity"):
                         value = bool(record.body.master_enabled)
                         if self.profile.can_read(ReadDomain.POWER) and self._accept_expected("is_on", value):
                             self.is_on = value
@@ -814,7 +814,7 @@ class _NotificationMixin(_CoordinatorBase):
                 policy_accepted = False
                 # Legacy H6199 toggle writes retain live policy, even when the
                 # enable echo is stale. Full policy writes remain atomic.
-                if self.profile.status_grammar == "H6199" and not any(
+                if self.profile.status_grammar_has("blank_screen_legacy_echo") and not any(
                     field in self._expected_state for field in values if field != "blank_screen"
                 ):
                     for field, setting_value in values.items():
@@ -888,7 +888,7 @@ class _NotificationMixin(_CoordinatorBase):
             self._static_history_profile_current()
 
     def _handle_low_blue_light_notification(self, frame: bytes) -> bool:
-        if self.profile.setting_grammar != "H6072":
+        if not self.profile.setting_grammar_has("low_blue_light"):
             return False
         low_blue_light = parse_low_blue_light_setting(frame, self.profile)
         if low_blue_light.parsed is not None:
@@ -1057,7 +1057,7 @@ class _NotificationMixin(_CoordinatorBase):
             observed: tuple[str, ...] = ()
             domain_name = getattr(generated.domain, "name", None)
             h8604_device_info = (
-                self.profile.status_grammar == "H8604"
+                self.profile.status_grammar_has("video_device_info_status")
                 and domain is StatusDomain.HARDWARE
                 and (
                     getattr(generated.body.selector, "name", None) == "device_info" or int(generated.body.selector) == 8
@@ -1070,11 +1070,11 @@ class _NotificationMixin(_CoordinatorBase):
                     self._reply_gate.observe(frame)
                     self._record_parsed_status(frame, decoded, parser)
                     return
-                if self.profile.setting_grammar == "H6046" and boolean_values:
+                if self.profile.setting_grammar_has("paired_bar_settings") and boolean_values:
                     self.bar_enable_mask = int(generated.body.mask)
                 self.boolean_control_state.update(boolean_values)
                 observed = tuple(boolean_expectations)
-            if self.profile.status_grammar == "H6199" and domain is not StatusDomain.COLOUR_MODE:
+            if self.profile.status_grammar_has("gradient_status") and domain is not StatusDomain.COLOUR_MODE:
                 values = parse_h6199_control(generated)
                 if "gradient" in values:
                     # AA05 is a display observation, not confirmation of an A3 register write.
@@ -1117,7 +1117,7 @@ class _NotificationMixin(_CoordinatorBase):
                 if self._accept_expected("is_on", value):
                     self.is_on = value
                     observed += ("is_on",)
-                if self.profile.setting_grammar == "H6093" and hasattr(generated.body, "sound_code"):
+                if self.profile.setting_grammar_has("projector_audio") and hasattr(generated.body, "sound_code"):
                     sound, volume = int(generated.body.sound_code), int(generated.body.volume)
                     self.local_sound = sound if 1 <= sound <= len(self.profile.local_sound_options) else None
                     bounds = self.profile.local_volume_range
@@ -1132,7 +1132,8 @@ class _NotificationMixin(_CoordinatorBase):
                     int(generated.values["brightness_pct"])
                     if isinstance(generated, ParsedH6179Status)
                     else int(generated.body.percent)
-                    if self.profile.status_grammar in PERCENT_BRIGHTNESS_STATUS_GRAMMARS | {"H605C"}
+                    if self.profile.status_grammar in PERCENT_BRIGHTNESS_STATUS_GRAMMARS
+                    or self.profile.status_grammar_has("percent_brightness")
                     else int(generated.body.register)
                     if hasattr(generated.body, "register")
                     else int(generated.body.brightness_pct)
@@ -1186,7 +1187,10 @@ class _NotificationMixin(_CoordinatorBase):
                     return
                 observed = ("pact",)
             elif domain is StatusDomain.HARDWARE:
-                if self.profile.status_grammar == "H8604" and int(generated.body.selector) not in {3, 8}:
+                if self.profile.status_grammar_has("video_device_info_status") and int(generated.body.selector) not in {
+                    3,
+                    8,
+                }:
                     raise ValueError("H8604 hardware selector is unsupported")
                 version = (
                     generated.values["version"]

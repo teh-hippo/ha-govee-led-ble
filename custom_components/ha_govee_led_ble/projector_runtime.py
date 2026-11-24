@@ -120,7 +120,7 @@ def presented_appearance(coordinator: GoveeBLECoordinator) -> ProjectorAppearanc
 def qualified_profile(coordinator: GoveeBLECoordinator) -> ModelProfile:
     coordinator._reconcile_authorization()
     if (
-        coordinator.profile.projector_grammar != "H6093"
+        coordinator.profile.projector_grammar is None
         or coordinator.profile.projector_control_revision is None
         or coordinator._h607c_pact_conflict
         or not coordinator.identity_fields_confirmed(frozenset({"pact"}))

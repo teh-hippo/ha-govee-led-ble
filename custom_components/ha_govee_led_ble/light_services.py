@@ -205,7 +205,7 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
         self._require_support(
             "swap_light_bars",
             supported=(
-                self.coordinator.profile.setting_grammar == "H6046"
+                self.coordinator.profile.setting_grammar_has("paired_bar_settings")
                 and self.coordinator.profile.command_operation_supported("swap_bars")
             ),
         )
