@@ -20,7 +20,7 @@ from custom_components.ha_govee_led_ble.effect_protocol_decoder import (
     decode_a3_effect,
     decode_effect_frames,
 )
-from custom_components.ha_govee_led_ble.effect_runtime import _validate_diy_slot_approval
+from custom_components.ha_govee_led_ble.effect_runtime import _active_workspace_content, _validate_diy_slot_approval
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_diy_activation,
     parse_command_ack_result,
@@ -28,6 +28,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
 )
 from custom_components.ha_govee_led_ble.h7025_effects import encode_h7025_diy, validate_h7025_diy
 from custom_components.ha_govee_led_ble.native_effect import NativeDiyLayer
+from custom_components.ha_govee_led_ble.native_effect_codecs import native_effect_codec_for_profile
 from custom_components.ha_govee_led_ble.protocol_admission import require_profile_packet
 from custom_components.ha_govee_led_ble.protocol_core import H7025DiyBody
 from custom_components.ha_govee_led_ble.protocol_effect_bodies import (
@@ -142,6 +143,14 @@ def test_native_a3_profile_selects_wire_parser_without_granting_canonical_semant
         decode_a3_effect(parsed, "H7025", profile=narrowed)
 
 
+def test_native_codec_requires_an_explicit_profile_selection() -> None:
+    h7025 = native_effect_codec_for_profile(get_profile("H7025"))
+    assert h7025 is not None
+    assert h7025.canonical_model == "H7025"
+    assert native_effect_codec_for_profile(get_profile("H617A")) is None
+    assert native_effect_codec_for_profile(get_profile("H617C")) is None
+
+
 @pytest.mark.parametrize(
     ("change", "message"),
     [
@@ -231,6 +240,18 @@ def test_h7025_native_diy_preserves_evidenced_edit_bounds() -> None:
         validate_h7025_diy(replace(pile_up, layers=(replace(pile_layer, palette=pile_layer.palette[:1]),)))
 
 
+def test_h7025_codec_validation_does_not_reenter_native_effect_initialisation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _template, content = _templates()[0]
+
+    def reject_reentry(_content: NativeEffect) -> None:
+        raise AssertionError("structural validation re-entered through __post_init__")
+
+    monkeypatch.setattr(NativeEffect, "__post_init__", reject_reentry)
+    validate_h7025_diy(content)
+
+
 @pytest.mark.parametrize(("status", "success"), [(0, True), (1, False)])
 def test_h7025_native_diy_ack_uses_byte_two_result(status: int, success: bool) -> None:
     body = bytes((0xA3, 0x58, status)) + bytes(16)
@@ -240,14 +261,12 @@ def test_h7025_native_diy_ack_uses_byte_two_result(status: int, success: bool) -
 
 
 def test_h7025_fixed_native_selector_does_not_replace_generic_approved_slot_policy() -> None:
-    generic = compile_application(
-        LibraryItem.new("Generic", SingleEffect(0, 0, 50, ((255, 0, 0),))),
-        "H7025",
-        diy_code=1234,
-    )
+    authored = SingleEffect(0, 0, 50, ((255, 0, 0),))
+    generic = compile_application(LibraryItem.new("Generic", authored), "H7025", diy_code=1234)
     assert isinstance(generic, CompiledEffect)
     assert generic.diy_code == 1234
     assert decode_effect_frames(generic.upload_packets, "H7025", generic.upload_transport) == generic.authored_diy
+    assert _active_workspace_content(authored, generic) == authored
 
     template, content = next(item for item in _templates() if item[1].preset_id == 16)
     native = compile_application(LibraryItem.new(template.label, content), "H7025")

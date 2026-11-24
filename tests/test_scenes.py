@@ -23,9 +23,9 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     require_profile_packet,
     serialize_scene_type1_body_param,
 )
-from custom_components.ha_govee_led_ble.h60a6_effects import decode_native_scene, encode_native_body
 from custom_components.ha_govee_led_ble.layered_scene import CatalogueRef
 from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_layered_scene
+from custom_components.ha_govee_led_ble.native_effect_codecs import native_effect_codec_for_target
 from custom_components.ha_govee_led_ble.native_scenes import (
     apply_scene_speed,
     build_native_scene_packets,
@@ -55,12 +55,14 @@ def test_projector_catalogue_round_trips_native_optics_and_uses_its_own_scene_se
     for scene in SCENE_ENTRIES["H6093"]:
         if scene.param:
             raw = base64.b64decode(scene.param, validate=True)
-            content = decode_native_scene(
-                CatalogueRef("H6093", scene.scene_id, scene.effect_id), raw, family=scene.diy_effect_codes[0]
+            codec = native_effect_codec_for_target("H6093")
+            assert codec is not None
+            content = codec.decode_scene_content(
+                CatalogueRef("H6093", scene.scene_id, scene.effect_id), raw, scene.diy_effect_codes[0]
             )
             decoded = effect_content_from_dict(effect_content_to_dict(content))
             assert isinstance(decoded, NativeEffect)
-            assert encode_native_body(decoded) == raw
+            assert codec.encode(decoded) == raw
         packets = build_native_scene_packets("H6093", scene)
         for packet in packets:
             require_profile_packet(packet, profile)
