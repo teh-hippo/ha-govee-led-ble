@@ -69,7 +69,6 @@ from .effect_catalogue_models import NativeModeOption as NativeModeOption
 from .effect_catalogue_models import WorkshopTemplate as WorkshopTemplate
 from .effect_catalogue_models import _template_for_profile
 from .effect_catalogue_registry import MODEL_EFFECT_CATALOGUES as MODEL_EFFECT_CATALOGUES
-from .effect_catalogue_templates import _H1771_SECTIONS, _h1771_rate_min
 from .effect_catalogue_templates import H617A_CATALOGUE_TEMPLATES as H617A_CATALOGUE_TEMPLATES
 from .effect_catalogue_templates import H617A_NATIVE_DIY_SEEDS as H617A_NATIVE_DIY_SEEDS
 from .effect_catalogue_templates import H617A_NATIVE_DIY_TEMPLATES as H617A_NATIVE_DIY_TEMPLATES
@@ -88,6 +87,11 @@ from .effect_catalogue_templates import H7020_NATIVE_DIY_TEMPLATES as H7020_NATI
 from .effect_catalogue_templates import H7025_CATALOGUE_TEMPLATES as H7025_CATALOGUE_TEMPLATES
 from .effect_catalogue_templates import WORKSHOP_PROTOCOL_FIXTURES as WORKSHOP_PROTOCOL_FIXTURES
 from .effect_catalogue_templates import _single_template as _single_template
+from .effect_contracts import (
+    SelectorPolicy,
+    release_content_reference_model,
+    release_selector_policy,
+)
 from .effect_domain import (
     EffectContent,
     EffectValidationError,
@@ -103,10 +107,42 @@ from .effect_domain import (
     VideoProfile,
 )
 from .native_effect import NativeDiyLayer, NativeOpaqueLayer
-from .native_effect_codecs import native_a3_codec_for_profile
+from .native_effect_codecs import native_effect_codec_for_profile
 
 EFFECT_STUDIO_CATALOGUE_SCHEMA_VERSION: Final = 12
-LEGACY_CATALOGUE_SKU: Final = "H617A"
+_legacy_catalogue_sku = release_content_reference_model("h617a_single")
+if _legacy_catalogue_sku is None:
+    raise RuntimeError("generic DIY content has no declared catalogue identity")
+LEGACY_CATALOGUE_SKU: Final = _legacy_catalogue_sku
+
+
+def _validate_native_zone_eligibility(
+    content: NativeEffect,
+    model: str,
+    profile: ModelProfile,
+    catalogue: ModelEffectCatalogue,
+) -> None:
+    if content.model != model:
+        raise ValueError("native zone content does not match the effective profile")
+    if not any(isinstance(layer, NativeDiyLayer) and layer.enabled for layer in content.layers):
+        raise ValueError("select at least one native effect section")
+    for layer in content.layers:
+        if isinstance(layer, NativeOpaqueLayer) or not isinstance(layer, NativeDiyLayer):
+            raise ValueError("unqualified native zone parameters cannot be authored")
+        if not layer.enabled:
+            continue
+        family = next((family for family in catalogue.effects if family.family == layer.kind), None)
+        if family is None or layer.parameter not in {variation.variant for variation in family.variations}:
+            raise ValueError("native DIY family or variation is unsupported")
+        if not (family.palette_min or 1) <= len(layer.palette) <= (family.palette_max or catalogue.palette_max):
+            raise ValueError("native DIY palette is outside its variant bounds")
+        if family.secondary_palette_min is None:
+            if layer.secondary_palette:
+                raise ValueError("this native effect has no secondary palette")
+        elif not family.secondary_palette_min <= len(layer.secondary_palette) <= (family.secondary_palette_max or 0):
+            raise ValueError("native secondary palette is outside its variant bounds")
+        if not family.rate_min <= layer.speed <= family.rate_max:
+            raise ValueError("native DIY rate is outside its variant bounds")
 
 
 def validate_effect_eligibility(
@@ -123,76 +159,11 @@ def validate_effect_eligibility(
     if catalogue is None:
         raise ValueError(f"{model} has no custom-effect catalogue")
     if isinstance(content, NativeEffect):
-        native_codec = native_a3_codec_for_profile(profile)
-        if native_codec is not None:
-            if model != native_codec.canonical_model:
-                raise ValueError("native content target does not match the selected codec")
-            native_codec.validate(content)
-            return
-        if model == "H6093" and content.model == model and profile.effect_grammar == "H6093":
-            content.__post_init__()
-            if not any(
-                layer.coarse.enabled or layer.fine is not None and layer.fine.enabled or layer.stars.enabled
-                for layer in content.projector_layers
-            ):
-                raise ValueError("Select at least one projector light source")
-            return
-        if model == "H60B0":
-            from .h60b0_diy import validate_h60b0_diy
-
-            validate_h60b0_diy(content, profile.native_effect_revision)
-            return
-        if model == "H1771" and content.model == model and profile.effect_grammar == "H1771":
-            if not any(isinstance(layer, NativeDiyLayer) and layer.enabled for layer in content.layers):
-                raise ValueError("select at least one native effect section")
-            for index, layer in enumerate(content.layers):
-                if isinstance(layer, NativeOpaqueLayer):
-                    if content.template is None:
-                        raise ValueError("unqualified native section cannot be authored")
-                    continue
-                if not isinstance(layer, NativeDiyLayer):
-                    raise ValueError("unsupported native effect section")
-                if not layer.enabled:
-                    continue
-                matches = [seed for _label, seed in _H1771_SECTIONS[index] if seed.kind == layer.kind]
-                if not matches:
-                    raise ValueError("native effect is not available in this section")
-                temperature = not matches[0].palette
-                if temperature:
-                    if not 1000 <= layer.angle <= 10000 or not 0 <= layer.parameter <= 100:
-                        raise ValueError("native colour temperature or brightness is outside the supported range")
-                elif not 1 <= len(layer.palette) <= 8 or not any(
-                    (layer.parameter, layer.flag) == (seed.parameter, seed.flag) for seed in matches
-                ):
-                    if content.template is None:
-                        raise ValueError("native effect palette or variation is unsupported")
-                if layer.speed < _h1771_rate_min(index, layer.kind):
-                    if content.template is None:
-                        raise ValueError("native effect speed must be at least one")
-            return
-        if content.model != model or profile.effect_grammar not in {"H1AB2", "H607C", "H60B2"}:
-            raise ValueError("native zone content does not match the effective profile")
-        if not any(isinstance(layer, NativeDiyLayer) and layer.enabled for layer in content.layers):
-            raise ValueError("select at least one native effect section")
-        for layer in content.layers:
-            if isinstance(layer, NativeOpaqueLayer) or not isinstance(layer, NativeDiyLayer):
-                raise ValueError("unqualified native zone parameters cannot be authored")
-            if not layer.enabled:
-                continue
-            family = next((family for family in catalogue.effects if family.family == layer.kind), None)
-            if family is None or layer.parameter not in {variation.variant for variation in family.variations}:
-                raise ValueError("native DIY family or variation is unsupported")
-            if not (family.palette_min or 1) <= len(layer.palette) <= (family.palette_max or catalogue.palette_max):
-                raise ValueError("native DIY palette is outside its variant bounds")
-            if family.secondary_palette_min is None:
-                if layer.secondary_palette:
-                    raise ValueError("this native effect has no secondary palette")
-            elif (
-                not family.secondary_palette_min <= len(layer.secondary_palette) <= (family.secondary_palette_max or 0)
-            ):
-                raise ValueError("native secondary palette is outside its variant bounds")
-            if not family.rate_min <= layer.speed <= family.rate_max:
-                raise ValueError("native DIY rate is outside its variant bounds")
+        native_codec = native_effect_codec_for_profile(profile)
+        if native_codec is None or model != native_codec.canonical_target or content.model != model:
+            raise ValueError("native content target does not match the selected codec")
+        if native_codec.validate_authored is not None:
+            native_codec.validate_authored(content, model, profile, catalogue)
         return
     if isinstance(content, PaintedEffect):
         if content.model is not None and content.model != model:
@@ -213,7 +184,8 @@ def validate_effect_eligibility(
         if not catalogue.brightness_min <= content.brightness <= catalogue.brightness_max:
             raise ValueError(f"{model} painted brightness is outside catalogue limits")
     else:
-        if profile.effect_grammar == "H607C":
+        codec = native_effect_codec_for_profile(profile)
+        if codec is not None and codec.native_only_diy:
             raise ValueError("native DIY requires its independently bounded zone definition")
         if not catalogue.palette_min <= len(content.palette) <= (profile.diy_palette_max or catalogue.palette_max):
             raise ValueError(f"{model} palette is outside catalogue limits")
@@ -248,7 +220,7 @@ def validate_effect_eligibility(
 def validate_native_diy(content: LayeredEffect, model: str, profile: ModelProfile) -> bool:
     """Only geometry-dependent edits need IC metadata; native seeds remain presets."""
     catalogue = MODEL_EFFECT_CATALOGUES.get(model)
-    if catalogue is None or profile.effect_grammar != "H617A":
+    if catalogue is None or not profile.effect_grammar_has("generic_native_diy"):
         raise ValueError("native DIY templates require an exact compatible catalogue")
     contract = next(
         (contract for contract in catalogue.native_diy_templates if contract.template_id == content.native_diy),
@@ -453,8 +425,7 @@ def native_diy_template_contract(model: str, template_id: int | None) -> NativeD
 
 
 def requires_approved_diy_slot(model: str) -> bool:
-    catalogue = MODEL_EFFECT_CATALOGUES.get(model)
-    return catalogue is not None and catalogue.diy_slot_policy == "approved_observed"
+    return release_selector_policy(model) is SelectorPolicy.APPROVED_DISPOSABLE
 
 
 def approved_diy_slot_range(model: str) -> tuple[int, int]:

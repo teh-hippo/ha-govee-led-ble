@@ -242,7 +242,7 @@ class ModelEffectCatalogue:
         return tuple(
             _template_for_profile(template, profile)
             for template in self.templates
-            if profile is None or _template_available(template, profile)
+            if profile is None or _template_available(template, profile, self.sku)
         )
 
     def to_dict(self, *, profile: ModelProfile | None = None) -> dict[str, JsonValue]:
@@ -284,7 +284,10 @@ class ModelEffectCatalogue:
                 dict(effect)
                 for effect in self.painted_effects
                 if effects_enabled
-                and (device_profile is None or profile_supports_workflow(profile, CapabilityWorkflow.PAINTED))
+                and (
+                    device_profile is None
+                    or profile_supports_workflow(profile, CapabilityWorkflow.PAINTED, model=self.sku)
+                )
             ],
             **(
                 {"painted_addressing": self.painted_addressing, "painted_background": list(self.painted_background)}
@@ -295,7 +298,10 @@ class ModelEffectCatalogue:
                 effect.to_dict()
                 for effect in self.effects_for_profile(profile)
                 if effects_enabled
-                and (device_profile is None or profile_supports_workflow(profile, CapabilityWorkflow.SINGLE))
+                and (
+                    device_profile is None
+                    or profile_supports_workflow(profile, CapabilityWorkflow.SINGLE, model=self.sku)
+                )
             ],
             "music_modes": [
                 mode.to_dict() for mode in self.music_modes if effects_enabled and mode.id in profile.music_modes
@@ -339,7 +345,10 @@ class ModelEffectCatalogue:
                 template.to_dict(self.sku)
                 for template in self.workshop_templates
                 if effects_enabled
-                and (device_profile is None or profile_supports_workflow(profile, CapabilityWorkflow.WORKSHOP))
+                and (
+                    device_profile is None
+                    or profile_supports_workflow(profile, CapabilityWorkflow.WORKSHOP, model=self.sku)
+                )
             ],
             "workflows": frontend_release_capabilities(self.sku, profile=device_profile) if effects_enabled else [],
             "supports": {
@@ -444,7 +453,7 @@ def _video_profile_settings(profile: ModelProfile) -> tuple[str, ...]:
     )
 
 
-def _template_available(template: CatalogueTemplate, profile: ModelProfile) -> bool:
+def _template_available(template: CatalogueTemplate, profile: ModelProfile, model: str) -> bool:
     content = template.content
     if isinstance(content, SingleEffect) and profile.diy_family_variants is not None:
         if content.variant not in dict(profile.diy_family_variants).get(content.family, ()):
@@ -458,15 +467,10 @@ def _template_available(template: CatalogueTemplate, profile: ModelProfile) -> b
     elif isinstance(content, LayeredEffect):
         workflow = CapabilityWorkflow.ADVANCED
     elif isinstance(content, NativeEffect):
-        if (
-            content.model == "H60B0"
-            and content.family != 81
-            and (
-                profile.native_effect_revision not in (1, 2)
-                if content.revision == 1
-                else profile.native_effect_revision != 3
-            )
-        ):
+        from .native_effect_codecs import native_effect_codec_for_profile
+
+        codec = native_effect_codec_for_profile(profile)
+        if codec is None or not codec.content_available_for_profile(content, profile):
             return False
         workflow = CapabilityWorkflow(content.workflow)
     elif isinstance(content, SingleEffect | H6179SingleDiyEffect):
@@ -479,7 +483,7 @@ def _template_available(template: CatalogueTemplate, profile: ModelProfile) -> b
         workflow = CapabilityWorkflow.WORKSHOP
     else:
         raise ValueError("unsupported catalogue template content")
-    return profile_supports_workflow(profile, workflow)
+    return profile_supports_workflow(profile, workflow, model=model)
 
 
 def _template_for_profile(template: CatalogueTemplate, profile: ModelProfile | None) -> CatalogueTemplate:

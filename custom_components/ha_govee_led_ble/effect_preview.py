@@ -721,6 +721,7 @@ class EffectPreviewManager:
             canonical_body=canonical_body or None,
             default_action=(
                 _scene_default_action(
+                    coordinator.model,
                     resolved.entry,
                     canonical_body,
                     resolved_speed,
@@ -1710,7 +1711,8 @@ class EffectPreviewManager:
                 item.content,
                 scene.entry,
             )
-        catalogue_body, catalogue_speed = resolve_native_scene_body(scene.entry)
+        model = self._loaded_coordinator(request.config_entry_id).model
+        catalogue_body, catalogue_speed = resolve_native_scene_body(scene.entry, target=model)
         if canonical_body == catalogue_body and speed_index == catalogue_speed:
             await async_delete_scene_defaults(
                 self._scene_defaults,
@@ -2154,13 +2156,14 @@ def _preview_scene_identity(
 
 
 def _scene_default_action(
+    model: str,
     scene: Any,
     canonical_body: bytes,
     speed_index: int | None,
 ) -> str | None:
     if scene.scene_type == 0 or not canonical_body:
         return None
-    catalogue_body, catalogue_speed = resolve_native_scene_body(scene)
+    catalogue_body, catalogue_speed = resolve_native_scene_body(scene, target=model)
     return "reset" if canonical_body == catalogue_body and speed_index == catalogue_speed else "set"
 
 
@@ -2176,6 +2179,7 @@ def _snapshot_default_action(item: LibraryItem, model: str, *, profile: ModelPro
             scene.entry,
         )
         return _scene_default_action(
+            model,
             scene.entry,
             canonical_body,
             speed_index,

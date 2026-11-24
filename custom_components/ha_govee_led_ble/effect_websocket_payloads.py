@@ -4,6 +4,7 @@ from typing import Any
 
 from .const import ModelProfile, resolve_model
 from .effect_catalogue import MODEL_EFFECT_CATALOGUES
+from .effect_contracts import release_content_reference_model
 from .effect_deployments import DeploymentSnapshot
 from .effect_domain import (
     BuiltinScene,
@@ -98,7 +99,9 @@ def item_summary(item: LibraryItem) -> dict[str, Any]:
         and kind in {"h617a_painted", "h617a_single", "h617a_multi"}
         and not (isinstance(item.content, PaintedEffect) and item.content.addressing == "physical_ic")
     ):
-        summary["model"] = "H617A"
+        reference_model = release_content_reference_model(kind)
+        if reference_model is not None:
+            summary["model"] = reference_model
     if isinstance(item.content, BuiltinScene | PaletteScene | LayeredScene):
         summary["template"] = content["template"]
     elif isinstance(item.content, NativeEffect) and item.content.template is not None:

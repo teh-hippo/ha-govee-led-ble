@@ -246,9 +246,12 @@ class MusicProfile:
         )
         object.__setattr__(self, "parameters", MappingProxyType(parameters))
         if self.zones is not None:
+            from .native_effect_codecs import native_effect_codec_for_target
+
+            codec = native_effect_codec_for_target(self.model)
             zone_geometry = (
-                (("side", 8, 0), ("ripple", 1, 0))
-                if self.model == "H60B0" and self.mode == "combined"
+                tuple((name, 0, 0) for name in codec.combined_music_zones[0])
+                if codec is not None and self.mode == "combined" and codec.combined_music_zones
                 else profile.native_zones
             )
             if not isinstance(self.zones, tuple) or not zone_geometry or len(self.zones) != len(zone_geometry):
@@ -258,7 +261,7 @@ class MusicProfile:
                     raise EffectValidationError("music zone identity or order is invalid")
                 if zone.calm is not None and type(zone.calm) is not bool:
                     raise EffectValidationError("music zone style must be a boolean")
-                if zone.calm is not None and self.model != "H60B0":
+                if zone.calm is not None and (codec is None or not codec.allows_zone_style):
                     raise EffectValidationError("music source style is not qualified for this model")
                 _validate_identifier(zone.mode, "music zone mode")
                 if not isinstance(zone.parameters, Mapping):
@@ -491,8 +494,14 @@ class EffectPair:
 
 def _validate_h6179_diy_model(model: str) -> None:
     _validate_identifier(model, "H6179 DIY model")
-    if model != "H6179":
-        raise EffectValidationError("H6179 DIY content must target model 'H6179'")
+    from .effect_contracts import CapabilityWorkflow, ContentProjection, release_capability
+
+    if not any(
+        (capability := release_capability(model, workflow)) is not None
+        and capability.content_projection is ContentProjection.TYPED_DIY
+        for workflow in (CapabilityWorkflow.SINGLE, CapabilityWorkflow.MULTI)
+    ):
+        raise EffectValidationError("typed DIY content requires an admitted release capability")
 
 
 def _validate_h6179_diy_effect(family: int, variant: int) -> None:

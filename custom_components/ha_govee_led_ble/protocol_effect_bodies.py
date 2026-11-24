@@ -10,7 +10,11 @@ from typing import Any
 from kaitaistruct import KaitaiStream, KaitaiStructError
 
 from .const import WHOLE_BULB_GRAMMARS, ModelProfile, get_profile
-from .native_effect_codecs import native_a3_codec_for_profile
+from .native_effect_codecs import (
+    NativeEffectCarrier,
+    native_effect_codec_for_grammar,
+    native_effect_codec_for_profile,
+)
 from .protocol_core import (
     _COMMAND_ACK_ROOTS,
     _COMMAND_ROOTS,
@@ -19,22 +23,14 @@ from .protocol_core import (
     DiyType03,
     DiyType04,
     GoveeCommon,
-    H1ab2DiyBody,
-    H1ab2PaintBody,
-    H60a6EffectFrame,
     H60b0CommandAck,
     H60b0CommandWrite,
     H60b0EffectUpload,
-    H60b2DiyBody,
-    H60b2EffectUpload,
     H607cCommandAck,
     H607cCommandWrite,
-    H607cEffectUpload,
     H607cMusicBody,
     H607cSceneBody,
     H1771CommandWrite,
-    H1771EffectUpload,
-    H6022EffectUpload,
     H6046CommandAck,
     H6046EffectUpload,
     H6046MusicBody,
@@ -163,10 +159,13 @@ def upload_ack_subtype(packets: Sequence[bytes], index: int, model: str, *, prof
     """Validate a complete upload ending at index, returning its ACK command."""
     profile = profile or get_profile(model)
     if packets[index][0] == A4_PREFIX:
-        if profile.effect_grammar != "H60A6":
+        codec = native_effect_codec_for_profile(profile)
+        if codec is None:
             raise ValueError("A4 upload acknowledgement is not qualified for this profile")
         subtype, _body = reassemble_a4_upload(packets, index)
-        if subtype != int(H60a6EffectFrame.Subtype.native_effect):
+        if codec.admits_upload(profile, subtype) is not True or not any(
+            route.carrier is NativeEffectCarrier.A4 and route.subtype == subtype for route in codec.routes
+        ):
             raise ValueError("A4 upload subtype is outside profile capabilities")
         return subtype
     if packets[index][0] == A1_02_PREFIX:
@@ -255,26 +254,25 @@ def parse_a3_effect_envelope(envelope: bytes, model: str, *, profile: ModelProfi
 
     effective_profile = profile or get_profile(model)
     grammar = effective_profile.effect_grammar
-    native_codec = native_a3_codec_for_profile(effective_profile)
-    if grammar == "H6022":
-        root_type = H6022EffectUpload
-    elif grammar == "H6093":
-        from .protocol_core import H6093Projector
-
-        root_type = H6093Projector.Upload
+    native_codec = native_effect_codec_for_profile(effective_profile)
+    native_root = (
+        native_codec.a3_root_for_subtype(envelope[2])
+        if native_codec is not None and native_codec.qualifies_upload_subtype(effective_profile, envelope[2])
+        else None
+    )
+    root_type: type[Any] | None
+    if native_root is not None:
+        root_type = native_root
     elif grammar == "H6179":
         if envelope[2] != 0x04:
             raise ValueError("H6179 A3 uploads require a type-04 DIY body")
         root_type = DiyType04
-    elif grammar in {"H617A", "H6181", "H60B2", "H1AB2"}:
+    elif grammar in {"H617A", "H6181"}:
         root_type = {
             0x01: SceneType1Body,
             0x02: SceneBody,
-            0x03: H1ab2PaintBody if grammar == "H1AB2" else DiyType03,
+            0x03: DiyType03,
             0x04: DiyType04,
-            **({int(H60b2DiyBody.UploadSubtype.native_diy): H60b2EffectUpload} if grammar == "H60B2" else {}),
-            **({int(H1ab2DiyBody.UploadSubtype.native_diy): H1ab2DiyBody.Upload} if grammar == "H1AB2" else {}),
-            **({native_codec.upload_subtype: native_codec.root_type} if native_codec is not None else {}),
         }.get(envelope[2])
         if root_type is None:
             raise ValueError(f"H617A A3 body type 0x{envelope[2]:02x} is not supported")
@@ -286,62 +284,28 @@ def parse_a3_effect_envelope(envelope: bytes, model: str, *, profile: ModelProfi
         root_type = H6046EffectUpload
     elif grammar == "H6053":
         root_type = H6053EffectUpload
-    elif grammar == "H60A6":
-        root_type = H60a6EffectFrame.A3Envelope
-    elif grammar == "H607C":
-        root_type = H607cEffectUpload
-    elif grammar == "H60B0":
-        root_type = H60b0EffectUpload
-    elif grammar == "H1771":
-        root_type = {
-            int(H1771EffectUpload.UploadKind.rgb_scene): SceneType1Body,
-            int(H1771EffectUpload.UploadKind.layered_scene): SceneBody,
-            int(H1771EffectUpload.UploadKind.native_diy): H1771EffectUpload,
-        }.get(envelope[2])
-        if root_type is None:
-            raise ValueError("H1771 A3 body type is not supported")
     else:
         raise ValueError(f"{model} has no generated A3 effect grammar")
+    assert root_type is not None
 
     try:
         parsed = root_type(KaitaiStream(io.BytesIO(envelope)))
         parsed._read()
-        if grammar == "H6093" and parsed.kind not in (
-            H6093Projector.UploadKind.scene,
-            H6093Projector.UploadKind.diy,
-            H6093Projector.UploadKind.appearance,
-        ):
-            raise ValueError("Unknown projector upload command")
-        if grammar == "H6093" and parsed.kind == H6093Projector.UploadKind.appearance:
-            from .projector_protocol import decode_appearance
-
-            if effective_profile.projector_control_revision is None:
-                raise ValueError("Projector appearance requires its qualified revision")
-            appearance = H6093Projector.Appearance(
-                effective_profile.projector_control_revision == 1,
-                KaitaiStream(io.BytesIO(parsed.body)),
-            )
-            appearance._read()
-            decode_appearance(appearance)
-        if grammar == "H60B0" and getattr(parsed.kind, "name", None) is None:
-            raise ValueError("Unknown native upload command")
+        if native_codec is not None and native_codec.validate_tree is not None and native_root is not None:
+            native_codec.validate_tree(parsed, effective_profile)
         if grammar == "H6099" and int(parsed.kind) in (3, 4):
             _ = parsed.diy
-        if grammar == "H607C":
-            if getattr(parsed.kind, "name", None) is None:
-                raise ValueError("Unknown native upload command")
-            if parsed.kind == H607cEffectUpload.Kind.layered_scene:
-                for record in parsed.content.records:
-                    trailer = H607cSceneBody.LayerTrailer.from_bytes(record.body.excess)
-                    trailer._read()
         if grammar == "H6053" and parsed.kind == H6053EffectUpload.BodyKind.scene_v2:
             validate_h6053_workshop_v2(parsed.content)
     except KaitaiStructError as error:
         raise ValueError(f"invalid {model} A3 effect envelope") from error
     if not parsed._io.is_eof():
         raise ValueError(f"{model} A3 effect grammar did not consume the envelope")
-    if (grammar == "H60A6" or native_codec is not None and isinstance(parsed, native_codec.root_type)) and any(
-        parsed.padding
+    if (
+        native_codec is not None
+        and native_root is not None
+        and native_codec.requires_zero_padding_for(envelope[2], root_type)
+        and any(parsed.padding)
     ):
         raise ValueError("Native A3 effect envelope contains non-zero transport fill")
     return parsed
@@ -474,7 +438,10 @@ def build_h617a_diy_painted_body(
     grammar: str = "H617A",
 ) -> bytes:
     """Serialize the diy_type03 fields after its A3 type byte."""
-    root_type = H1ab2PaintBody if grammar == "H1AB2" else DiyType03
+    codec = native_effect_codec_for_grammar(grammar)
+    root_type = codec.a3_root_for_subtype(3) if codec is not None else DiyType03
+    if root_type is None:
+        root_type = DiyType03
     root = root_type()
     root.header = _a3_header(root)
     root.body_type = b"\x03"

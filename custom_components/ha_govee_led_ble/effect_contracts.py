@@ -72,10 +72,45 @@ class VerificationConfidence(StrEnum):
     UNVERIFIED = "unverified"
 
 
+class ContentProjection(StrEnum):
+    DIRECT = "direct"
+    GENERIC_DIY = "generic_diy"
+    PALETTE_DIY = "palette_diy"
+    TYPED_DIY = "typed_diy"
+
+
+class SelectorPolicy(StrEnum):
+    FIXED = "fixed"
+    APPROVED_DISPOSABLE = "approved_disposable"
+    CATALOGUE_SELECTOR_ONLY = "catalogue_selector_only"
+
+
 class FrontendApplicationState(StrEnum):
     STUDIO = "studio"
     HOME_ASSISTANT = "home_assistant"
     PLANNED = "planned"
+
+
+_RETAINED_CONTENT_GRAMMARS: Final = frozenset(
+    {
+        "H6022",
+        "H6046",
+        "H6053",
+        "H607C",
+        "H6093",
+        "H6099",
+        "H60A6",
+        "H60B0",
+        "H60B2",
+        "H6179",
+        "H617A",
+        "H6181",
+        "H6199",
+        "H1771",
+        "H1AB2",
+    }
+)
+_SHARED_SCENE_CONTENT_GRAMMARS: Final = frozenset({"H617A", "H6199"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,6 +124,11 @@ class ReleaseCapability:
     compiler_deployer_strategy: CompilerDeployerStrategy
     verification_confidence: VerificationConfidence
     activation_operations: frozenset[str]
+    content_grammars: frozenset[str]
+    content_projection: ContentProjection
+    selector_policy: SelectorPolicy
+    upload_carriers: frozenset[str]
+    content_reference: bool = False
 
     @property
     def frontend_application(self) -> FrontendApplicationState:
@@ -130,7 +170,22 @@ def _capability(
     verification_confidence: VerificationConfidence,
     *,
     activation_operations: frozenset[str] | None = None,
+    selector_policy: SelectorPolicy = SelectorPolicy.FIXED,
+    upload_carriers: frozenset[str] = frozenset(),
+    content_reference: bool = False,
 ) -> ReleaseCapability:
+    projection = (
+        ContentProjection.PALETTE_DIY
+        if persistent_content_kind == "palette_diy"
+        else ContentProjection.TYPED_DIY
+        if persistent_content_kind in {"h6179_single_diy", "h6179_mixed_diy"}
+        else ContentProjection.GENERIC_DIY
+        if persistent_content_kind in {"h617a_painted", "h617a_single", "h617a_multi"}
+        else ContentProjection.DIRECT
+    )
+    upload_carriers = (
+        frozenset({"rgbic_v1"}) if not upload_carriers and persistent_content_kind == "workshop" else upload_carriers
+    )
     return ReleaseCapability(
         model=model,
         workflow=workflow,
@@ -149,15 +204,178 @@ def _capability(
             and workflow is CapabilityWorkflow.ADVANCED
             else {"scene"}
         ),
+        content_grammars=(
+            _RETAINED_CONTENT_GRAMMARS
+            if persistent_content_kind == "workshop"
+            else _SHARED_SCENE_CONTENT_GRAMMARS
+            if workflow
+            in {
+                CapabilityWorkflow.NATIVE_SCENES,
+                CapabilityWorkflow.EDITED_PALETTE_SCENES,
+                CapabilityWorkflow.LAYERED_SCENES,
+                CapabilityWorkflow.ADVANCED,
+            }
+            and get_profile(model).effect_grammar in _SHARED_SCENE_CONTENT_GRAMMARS
+            else frozenset(grammar for grammar in (get_profile(model).effect_grammar,) if grammar is not None)
+        ),
+        content_projection=projection,
+        selector_policy=(
+            selector_policy
+            if workflow in _DIY_SELECTOR_WORKFLOWS or selector_policy is _P.CATALOGUE_SELECTOR_ONLY
+            else _P.FIXED
+        ),
+        upload_carriers=upload_carriers,
+        content_reference=content_reference,
     )
 
 
+def _accepted_content_kinds(target_kind: str) -> frozenset[str]:
+    return {
+        "h617a_single": frozenset({"h617a_single", "h6179_single_diy", "palette_diy"}),
+        "h617a_multi": frozenset({"h617a_multi", "h6179_mixed_diy"}),
+        "h6179_single_diy": frozenset({"h617a_single", "h6179_single_diy", "palette_diy"}),
+        "h6179_mixed_diy": frozenset({"h617a_multi", "h6179_mixed_diy"}),
+        "palette_diy": frozenset({"h617a_single", "h6179_single_diy", "palette_diy"}),
+    }.get(target_kind, frozenset({target_kind}))
+
+
 # Short aliases keep the capability table one row per line.
-_W, _R, _S, _V = (
+_W, _R, _S, _V, _P = (
     CapabilityWorkflow,
     ApplicationRoute,
     CompilerDeployerStrategy,
     VerificationConfidence,
+    SelectorPolicy,
+)
+
+
+@dataclass(frozen=True, slots=True)
+class CapabilityDeclaration:
+    workflow: CapabilityWorkflow
+    label: str
+    persistent_content_kind: str
+    application_route: ApplicationRoute
+    compiler_deployer_strategy: CompilerDeployerStrategy
+    verification_confidence: VerificationConfidence
+    selector_policy: SelectorPolicy = SelectorPolicy.FIXED
+    upload_carriers: frozenset[str] = frozenset()
+
+
+_DIY_SELECTOR_WORKFLOWS: Final = frozenset(
+    {
+        CapabilityWorkflow.PAINTED,
+        CapabilityWorkflow.SINGLE,
+        CapabilityWorkflow.MULTI,
+        CapabilityWorkflow.PALETTE_DIY,
+        CapabilityWorkflow.ADVANCED,
+    }
+)
+
+
+def _declared_capabilities(
+    model: str,
+    declarations: tuple[CapabilityDeclaration, ...],
+    *,
+    confidence: VerificationConfidence | None = None,
+    selector_policy: SelectorPolicy | None = None,
+) -> tuple[ReleaseCapability, ...]:
+    return tuple(
+        _capability(
+            model,
+            declaration.workflow,
+            declaration.label,
+            declaration.persistent_content_kind,
+            declaration.application_route,
+            declaration.compiler_deployer_strategy,
+            confidence or declaration.verification_confidence,
+            selector_policy=(
+                selector_policy
+                if selector_policy is not None and declaration.workflow in _DIY_SELECTOR_WORKFLOWS
+                else declaration.selector_policy
+            ),
+            upload_carriers=declaration.upload_carriers,
+        )
+        for declaration in declarations
+    )
+
+
+_RGBIC_WORKFLOW_DECLARATIONS: Final = (
+    CapabilityDeclaration(
+        _W.NATIVE_SCENES,
+        "Scenes",
+        "scene_builtin",
+        _R.STUDIO_SCENE_APPLY,
+        _S.NATIVE_EFFECT_SELECTION,
+        _V.STATE_CONFIRMED,
+        upload_carriers=frozenset({"rgb"}),
+    ),
+    CapabilityDeclaration(
+        _W.EDITED_PALETTE_SCENES,
+        "Edited palette scenes",
+        "scene_palette",
+        _R.HOME_ASSISTANT_CONTROL,
+        _S.MODEL_SCENE_ENGINE,
+        _V.SELECTION_ONLY,
+        upload_carriers=frozenset({"rgbic_v1"}),
+    ),
+    CapabilityDeclaration(
+        _W.LAYERED_SCENES,
+        "Layered scenes",
+        "scene_layered",
+        _R.HOME_ASSISTANT_CONTROL,
+        _S.MODEL_SCENE_ENGINE,
+        _V.SELECTION_ONLY,
+        upload_carriers=frozenset({"rgbic_v1"}),
+    ),
+    CapabilityDeclaration(
+        _W.PAINTED,
+        "Painted",
+        "h617a_painted",
+        _R.HOME_ASSISTANT_CONTROL,
+        _S.H617A_CUSTOM_ENGINE,
+        _V.SELECTION_ONLY,
+    ),
+    CapabilityDeclaration(
+        _W.SINGLE,
+        "Single",
+        "h617a_single",
+        _R.HOME_ASSISTANT_CONTROL,
+        _S.H617A_CUSTOM_ENGINE,
+        _V.SELECTION_ONLY,
+    ),
+    CapabilityDeclaration(
+        _W.MULTI,
+        "Multi",
+        "h617a_multi",
+        _R.HOME_ASSISTANT_CONTROL,
+        _S.H617A_CUSTOM_ENGINE,
+        _V.SELECTION_ONLY,
+    ),
+    CapabilityDeclaration(
+        _W.NATIVE_MUSIC,
+        "Music",
+        "music_profile",
+        _R.HOME_ASSISTANT_CONTROL,
+        _S.COORDINATOR_WRITER,
+        _V.SELECTION_ONLY,
+    ),
+    CapabilityDeclaration(
+        _W.ADVANCED,
+        "Advanced",
+        "advanced",
+        _R.HOME_ASSISTANT_CONTROL,
+        _S.MODEL_SCENE_ENGINE,
+        _V.SELECTION_ONLY,
+    ),
+    CapabilityDeclaration(
+        _W.WORKSHOP,
+        "Workshop",
+        "workshop",
+        _R.HOME_ASSISTANT_CONTROL,
+        _S.A3_EFFECT_UPLOAD,
+        _V.SELECTION_ONLY,
+        upload_carriers=frozenset({"rgbic_v1"}),
+    ),
 )
 
 
@@ -187,6 +405,14 @@ _RELEASE_CAPABILITY_BASE: Final = (
             route,
             strategy,
             _V.SELECTION_ONLY,
+            selector_policy=_P.APPROVED_DISPOSABLE,
+            upload_carriers=(
+                frozenset({"rgb"})
+                if workflow is _W.NATIVE_SCENES
+                else frozenset({"rgbic_v1"})
+                if workflow in {_W.LAYERED_SCENES, _W.WORKSHOP}
+                else frozenset()
+            ),
         )
         for workflow, label, kind, route, strategy in (
             (_W.NATIVE_SCENES, "Scenes", "scene_builtin", _R.STUDIO_SCENE_APPLY, _S.NATIVE_EFFECT_SELECTION),
@@ -206,7 +432,25 @@ _RELEASE_CAPABILITY_BASE: Final = (
         )
     ),
     *(
-        _capability("H6053", workflow, label, kind, route, strategy, _V.SELECTION_ONLY)
+        _capability(
+            "H6053",
+            workflow,
+            label,
+            kind,
+            route,
+            strategy,
+            _V.SELECTION_ONLY,
+            selector_policy=_P.APPROVED_DISPOSABLE,
+            upload_carriers=(
+                frozenset({"rgb"})
+                if workflow is _W.NATIVE_SCENES
+                else frozenset({"rgbic_v1"})
+                if workflow is _W.LAYERED_SCENES
+                else frozenset({"rgb", "rgbic_v1", "rgbic_v2"})
+                if workflow is _W.WORKSHOP
+                else frozenset()
+            ),
+        )
         for workflow, label, kind, route, strategy in (
             (_W.NATIVE_SCENES, "Scenes", "scene_builtin", _R.STUDIO_SCENE_APPLY, _S.NATIVE_EFFECT_SELECTION),
             (
@@ -232,6 +476,7 @@ _RELEASE_CAPABILITY_BASE: Final = (
         _R.STUDIO_SCENE_APPLY,
         _S.NATIVE_EFFECT_SELECTION,
         _V.STATE_CONFIRMED,
+        upload_carriers=frozenset({"rgb"}),
     ),
     _capability(
         "H617A",
@@ -241,6 +486,7 @@ _RELEASE_CAPABILITY_BASE: Final = (
         _R.HOME_ASSISTANT_CONTROL,
         _S.MODEL_SCENE_ENGINE,
         _V.SELECTION_ONLY,
+        upload_carriers=frozenset({"rgbic_v1"}),
     ),
     _capability(
         "H617A",
@@ -250,6 +496,7 @@ _RELEASE_CAPABILITY_BASE: Final = (
         _R.HOME_ASSISTANT_CONTROL,
         _S.MODEL_SCENE_ENGINE,
         _V.SELECTION_ONLY,
+        upload_carriers=frozenset({"rgbic_v1"}),
     ),
     _capability(
         "H617A",
@@ -259,6 +506,7 @@ _RELEASE_CAPABILITY_BASE: Final = (
         _R.HOME_ASSISTANT_CONTROL,
         _S.H617A_CUSTOM_ENGINE,
         _V.SELECTION_ONLY,
+        content_reference=True,
     ),
     _capability(
         "H617A",
@@ -268,6 +516,7 @@ _RELEASE_CAPABILITY_BASE: Final = (
         _R.HOME_ASSISTANT_CONTROL,
         _S.H617A_CUSTOM_ENGINE,
         _V.SELECTION_ONLY,
+        content_reference=True,
     ),
     _capability(
         "H617A",
@@ -277,6 +526,7 @@ _RELEASE_CAPABILITY_BASE: Final = (
         _R.HOME_ASSISTANT_CONTROL,
         _S.H617A_CUSTOM_ENGINE,
         _V.SELECTION_ONLY,
+        content_reference=True,
     ),
     _capability(
         "H617A",
@@ -304,6 +554,7 @@ _RELEASE_CAPABILITY_BASE: Final = (
         _R.HOME_ASSISTANT_CONTROL,
         _S.A3_EFFECT_UPLOAD,
         _V.SELECTION_ONLY,
+        upload_carriers=frozenset({"rgbic_v1"}),
     ),
     _capability(
         "H6179",
@@ -313,6 +564,7 @@ _RELEASE_CAPABILITY_BASE: Final = (
         _R.STUDIO_SCENE_APPLY,
         _S.NATIVE_EFFECT_SELECTION,
         _V.SELECTION_ONLY,
+        selector_policy=_P.CATALOGUE_SELECTOR_ONLY,
     ),
     _capability(
         "H6179",
@@ -322,6 +574,7 @@ _RELEASE_CAPABILITY_BASE: Final = (
         _R.HOME_ASSISTANT_CONTROL,
         _S.H6179_EFFECT_UPLOAD,
         _V.SELECTION_ONLY,
+        selector_policy=_P.APPROVED_DISPOSABLE,
     ),
     _capability(
         "H6179",
@@ -331,6 +584,7 @@ _RELEASE_CAPABILITY_BASE: Final = (
         _R.HOME_ASSISTANT_CONTROL,
         _S.H6179_EFFECT_UPLOAD,
         _V.SELECTION_ONLY,
+        selector_policy=_P.APPROVED_DISPOSABLE,
     ),
     _capability(
         "H6179",
@@ -349,6 +603,7 @@ _RELEASE_CAPABILITY_BASE: Final = (
         _R.STUDIO_SCENE_APPLY,
         _S.NATIVE_EFFECT_SELECTION,
         _V.STATE_CONFIRMED,
+        upload_carriers=frozenset({"rgb"}),
     ),
     _capability(
         "H6199",
@@ -358,6 +613,7 @@ _RELEASE_CAPABILITY_BASE: Final = (
         _R.HOME_ASSISTANT_CONTROL,
         _S.MODEL_SCENE_ENGINE,
         _V.SELECTION_ONLY,
+        upload_carriers=frozenset({"rgbic_v1"}),
     ),
     _capability(
         "H6199",
@@ -367,6 +623,7 @@ _RELEASE_CAPABILITY_BASE: Final = (
         _R.HOME_ASSISTANT_CONTROL,
         _S.MODEL_SCENE_ENGINE,
         _V.SELECTION_ONLY,
+        upload_carriers=frozenset({"rgbic_v1"}),
     ),
     _capability(
         "H6199",
@@ -377,6 +634,7 @@ _RELEASE_CAPABILITY_BASE: Final = (
         _S.H6199_CUSTOM_ENGINE,
         _V.SELECTION_ONLY,
         activation_operations=frozenset({"diy"}),
+        selector_policy=_P.APPROVED_DISPOSABLE,
     ),
     _capability(
         "H6199",
@@ -413,11 +671,13 @@ _RELEASE_CAPABILITY_BASE: Final = (
         _R.HOME_ASSISTANT_CONTROL,
         _S.A3_EFFECT_UPLOAD,
         _V.SELECTION_ONLY,
+        upload_carriers=frozenset({"rgbic_v1"}),
     ),
 )
 
 
 RELEASE_CAPABILITY_CONTRACT: Final = (
+    *_RELEASE_CAPABILITY_BASE,
     *(
         _capability(
             "H60B0",
@@ -493,7 +753,6 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
             (_W.NATIVE_MUSIC, "Music", "music_profile", _R.STUDIO_CUSTOM_APPLY, _S.COORDINATOR_WRITER),
         )
     ),
-    *(capability for capability in _RELEASE_CAPABILITY_BASE if capability.model in {"H6022", "H6046", "H6053"}),
     *(
         _capability(
             model,
@@ -527,7 +786,16 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         )
     ),
     *(
-        _capability("H600A", workflow, label, kind, route, strategy, _V.SELECTION_ONLY)
+        _capability(
+            "H600A",
+            workflow,
+            label,
+            kind,
+            route,
+            strategy,
+            _V.SELECTION_ONLY,
+            selector_policy=(_P.APPROVED_DISPOSABLE if workflow in _DIY_SELECTOR_WORKFLOWS else _P.FIXED),
+        )
         for workflow, label, kind, route, strategy in (
             (_W.NATIVE_SCENES, "Scenes", "scene_builtin", _R.STUDIO_SCENE_APPLY, _S.NATIVE_EFFECT_SELECTION),
             (
@@ -789,7 +1057,16 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         )
     ),
     *(
-        _capability("H7025", workflow, label, kind, route, strategy, _V.SELECTION_ONLY)
+        _capability(
+            "H7025",
+            workflow,
+            label,
+            kind,
+            route,
+            strategy,
+            _V.SELECTION_ONLY,
+            selector_policy=(_P.APPROVED_DISPOSABLE if workflow in _DIY_SELECTOR_WORKFLOWS else _P.FIXED),
+        )
         for workflow, label, kind, route, strategy in (
             (_W.NATIVE_SCENES, "Scenes", "scene_builtin", _R.STUDIO_SCENE_APPLY, _S.NATIVE_EFFECT_SELECTION),
             (_W.LAYERED_SCENES, "Layered scenes", "scene_layered", _R.HOME_ASSISTANT_CONTROL, _S.MODEL_SCENE_ENGINE),
@@ -798,83 +1075,45 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
             (_W.NATIVE_MUSIC, "Music", "music_profile", _R.HOME_ASSISTANT_CONTROL, _S.COORDINATOR_WRITER),
         )
     ),
-    *(
-        replace(
-            capability,
-            model=model,
-            verification_confidence=_V.SELECTION_ONLY,
-        )
+    *tuple(
+        capability
         for model in ("H6117", "H6125", "H6127", "H618A", "H619A", "H705A")
-        for capability in _RELEASE_CAPABILITY_BASE
-        if capability.model == "H617A"
-        and capability.workflow
-        in {
-            _W.NATIVE_SCENES,
-            _W.EDITED_PALETTE_SCENES,
-            _W.LAYERED_SCENES,
-            _W.PAINTED,
-            _W.SINGLE,
-            _W.MULTI,
-            _W.NATIVE_MUSIC,
-            _W.ADVANCED,
-            _W.WORKSHOP,
-        }
+        for capability in _declared_capabilities(model, _RGBIC_WORKFLOW_DECLARATIONS, confidence=_V.SELECTION_ONLY)
     ),
+    *_declared_capabilities(
+        "H6076",
+        tuple(
+            declaration
+            for declaration in _RGBIC_WORKFLOW_DECLARATIONS
+            if declaration.workflow is not _W.EDITED_PALETTE_SCENES
+        ),
+        confidence=_V.SELECTION_ONLY,
+    ),
+    *_declared_capabilities(
+        "H6072",
+        tuple(declaration for declaration in _RGBIC_WORKFLOW_DECLARATIONS if declaration.workflow is not _W.WORKSHOP),
+        confidence=_V.SELECTION_ONLY,
+        selector_policy=_P.APPROVED_DISPOSABLE,
+    ),
+    *_declared_capabilities("H617C", _RGBIC_WORKFLOW_DECLARATIONS, confidence=_V.SELECTION_ONLY),
+    *_declared_capabilities("H617E", _RGBIC_WORKFLOW_DECLARATIONS),
     *(
-        replace(
-            capability,
-            model="H6076",
-            verification_confidence=_V.SELECTION_ONLY,
+        _capability(
+            model,
+            workflow,
+            label,
+            kind,
+            route,
+            strategy,
+            _V.UNVERIFIED,
+            selector_policy=selector_policy if workflow in _DIY_SELECTOR_WORKFLOWS else _P.FIXED,
         )
-        for capability in _RELEASE_CAPABILITY_BASE
-        if capability.model == "H617A"
-        and capability.workflow
-        in {
-            _W.NATIVE_SCENES,
-            _W.LAYERED_SCENES,
-            _W.PAINTED,
-            _W.SINGLE,
-            _W.MULTI,
-            _W.NATIVE_MUSIC,
-            _W.ADVANCED,
-            _W.WORKSHOP,
-        }
-    ),
-    *(
-        replace(
-            capability,
-            model="H6072",
-            verification_confidence=_V.SELECTION_ONLY,
+        for model, selector_policy in (
+            ("H6139", _P.FIXED),
+            ("H6159", _P.FIXED),
+            ("H6181", _P.APPROVED_DISPOSABLE),
+            ("H6182", _P.APPROVED_DISPOSABLE),
         )
-        for capability in _RELEASE_CAPABILITY_BASE
-        if capability.model == "H617A"
-        and capability.workflow
-        in {
-            _W.NATIVE_SCENES,
-            _W.EDITED_PALETTE_SCENES,
-            _W.LAYERED_SCENES,
-            _W.PAINTED,
-            _W.SINGLE,
-            _W.MULTI,
-            _W.NATIVE_MUSIC,
-            _W.ADVANCED,
-        }
-    ),
-    *(capability for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H617A"),
-    *(
-        replace(
-            capability,
-            model="H617C",
-            verification_confidence=_V.SELECTION_ONLY,
-        )
-        for capability in _RELEASE_CAPABILITY_BASE
-        if capability.model == "H617A"
-    ),
-    *(replace(capability, model="H617E") for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H617A"),
-    *(capability for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H6179"),
-    *(
-        _capability(model, workflow, label, kind, route, strategy, _V.UNVERIFIED)
-        for model in ("H6139", "H6159", "H6181", "H6182")
         for workflow, label, kind, route, strategy in (
             (_W.NATIVE_SCENES, "Scenes", "scene_builtin", _R.STUDIO_SCENE_APPLY, _S.NATIVE_EFFECT_SELECTION),
             (
@@ -889,9 +1128,18 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
             (_W.NATIVE_MUSIC, "Music", "music_profile", _R.HOME_ASSISTANT_CONTROL, _S.COORDINATOR_WRITER),
         )
     ),
-    *(replace(capability, model="H617F") for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H617A"),
+    *_declared_capabilities("H617F", _RGBIC_WORKFLOW_DECLARATIONS),
     *(
-        _capability("H605C", workflow, label, kind, route, strategy, _V.UNVERIFIED)
+        _capability(
+            "H605C",
+            workflow,
+            label,
+            kind,
+            route,
+            strategy,
+            _V.UNVERIFIED,
+            selector_policy=(_P.APPROVED_DISPOSABLE if workflow in _DIY_SELECTOR_WORKFLOWS else _P.FIXED),
+        )
         for workflow, label, kind, route, strategy in (
             (_W.NATIVE_SCENES, "Scenes", "scene_builtin", _R.STUDIO_SCENE_APPLY, _S.NATIVE_EFFECT_SELECTION),
             (
@@ -911,7 +1159,6 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
             (_W.WORKSHOP, "Workshop", "workshop", _R.HOME_ASSISTANT_CONTROL, _S.MODEL_SCENE_ENGINE),
         )
     ),
-    *(capability for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H6199"),
     *(
         _capability(
             "H7020",
@@ -922,6 +1169,7 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
             strategy,
             _V.SELECTION_ONLY,
             activation_operations=frozenset({"diy"}) if workflow is _W.ADVANCED else None,
+            selector_policy=(_P.APPROVED_DISPOSABLE if workflow in _DIY_SELECTOR_WORKFLOWS else _P.FIXED),
         )
         for workflow, label, kind, route, strategy in (
             (_W.NATIVE_SCENES, "Scenes", "scene_builtin", _R.STUDIO_SCENE_APPLY, _S.NATIVE_EFFECT_SELECTION),
@@ -950,20 +1198,75 @@ def release_capability(model: str, workflow: CapabilityWorkflow) -> ReleaseCapab
     )
 
 
+def release_projection_capability(model: str, source_content_kind: str) -> ReleaseCapability | None:
+    capabilities = release_capabilities_for_model(model)
+    return next(
+        (capability for capability in capabilities if capability.persistent_content_kind == source_content_kind),
+        next(
+            (
+                capability
+                for capability in capabilities
+                if source_content_kind in _accepted_content_kinds(capability.persistent_content_kind)
+            ),
+            None,
+        ),
+    )
+
+
+def release_content_capability(model: str, content_kind: str) -> ReleaseCapability | None:
+    return next(
+        (
+            capability
+            for capability in release_capabilities_for_model(model)
+            if capability.persistent_content_kind == content_kind
+        ),
+        None,
+    )
+
+
+def release_content_reference_model(content_kind: str) -> str | None:
+    return next(
+        (
+            capability.model
+            for capability in RELEASE_CAPABILITY_CONTRACT
+            if capability.content_reference and capability.persistent_content_kind == content_kind
+        ),
+        None,
+    )
+
+
+def release_selector_policy(model: str, workflow: CapabilityWorkflow | None = None) -> SelectorPolicy:
+    if workflow is None:
+        capabilities = release_capabilities_for_model(model)
+    else:
+        capability = release_capability(model, workflow)
+        return SelectorPolicy.FIXED if capability is None else capability.selector_policy
+    return (
+        SelectorPolicy.APPROVED_DISPOSABLE
+        if any(
+            capability.selector_policy is SelectorPolicy.APPROVED_DISPOSABLE
+            and capability.content_projection is not ContentProjection.DIRECT
+            for capability in capabilities
+        )
+        else SelectorPolicy.FIXED
+    )
+
+
+def require_upload_carrier(model: str, workflow: CapabilityWorkflow, carrier: str) -> None:
+    capability = release_capability(model, workflow)
+    if capability is None or carrier not in capability.upload_carriers:
+        raise ValueError(f"{model} has no {carrier} upload carrier for {workflow.value}")
+
+
 def profile_supports_workflow(profile: ModelProfile, workflow: CapabilityWorkflow, *, model: str | None = None) -> bool:
     """Apply device restrictions without promoting its exact-SKU workflow ceiling."""
     if profile.effect_workflows is not None and workflow.value not in profile.effect_workflows:
         return False
     advanced_supported = profile.supports_advanced_effects or (
         profile.supports_custom_effects
-        and (
-            (
-                model is not None
-                and not get_profile(model).supports_advanced_effects
-                and release_capability(model, CapabilityWorkflow.ADVANCED) is not None
-            )
-            or (model is None and profile.command_grammar == "H7020")
-        )
+        and model is not None
+        and not get_profile(model).supports_advanced_effects
+        and release_capability(model, CapabilityWorkflow.ADVANCED) is not None
     )
     return {
         CapabilityWorkflow.NATIVE_SCENES: profile.supports_scenes,
@@ -983,23 +1286,7 @@ def profile_supports_workflow(profile: ModelProfile, workflow: CapabilityWorkflo
 def require_effect_route(
     model: str,
     workflow: CapabilityWorkflow,
-    grammars: tuple[str, ...] = (
-        "H6022",
-        "H6046",
-        "H6053",
-        "H617A",
-        "H1AB2",
-        "H6199",
-        "H6099",
-        "H6179",
-        "H6181",
-        "H60A6",
-        "H60B0",
-        "H60B2",
-        "H607C",
-        "H1771",
-        "H6093",
-    ),
+    grammars: tuple[str, ...] | None = None,
     *,
     profile: ModelProfile | None = None,
 ) -> str:
@@ -1018,12 +1305,17 @@ def require_effect_route(
         profile != get_profile(model) and not profile_supports_workflow(profile, workflow, model=model)
     ):
         raise ValueError(f"{model} effective profile does not support {label}")
-    if profile.effect_grammar is None or profile.effect_grammar not in grammars or profile.command_grammar is None:
-        raise ValueError(f"{model} has no supported {label} grammar and activation route")
     if (
-        workflow is CapabilityWorkflow.PALETTE_DIY
-        and profile.effect_grammar == "H6199"
-        and profile.command_grammar != "H6199"
+        profile.effect_grammar is None
+        or grammars is not None
+        and profile.effect_grammar not in grammars
+        or profile.effect_grammar not in capability.content_grammars
+        or profile.command_grammar is None
+        or (
+            workflow is CapabilityWorkflow.PALETTE_DIY
+            and profile.effect_grammar_has("exact_palette_diy_activation")
+            and not profile.command_grammar_has("exact_palette_diy_activation")
+        )
     ):
         raise ValueError(f"{model} has no supported {label} grammar and activation route")
     if not profile.effect_activation_operations & capability.activation_operations:

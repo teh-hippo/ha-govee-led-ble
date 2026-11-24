@@ -509,7 +509,7 @@ class PriorControlState:
         from .generated_protocol_adapter import table_kelvin_rgb
         from .light_commands import normalize_kelvin
 
-        if profile.setting_grammar != "H6046" or self.segment_colors is None:
+        if not profile.setting_grammar_has("paired_bar_settings") or self.segment_colors is None:
             return False
         half = profile.segment_count // 2
         if len(self.segment_colors) != profile.segment_count or not half:
