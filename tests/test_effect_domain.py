@@ -41,6 +41,7 @@ from custom_components.ha_govee_led_ble.effect_contracts import (
     CapabilityWorkflow,
     EditorApiInfo,
     device_effect_capabilities,
+    profile_supports_workflow,
     require_effect_route,
 )
 from custom_components.ha_govee_led_ble.effect_domain import (
@@ -241,6 +242,11 @@ def test_length_prefixed_native_palette_rejects_unqualified_authoring(changes):
 def test_effect_route_uses_declared_activation_operations(model, workflow, operation):
     profile = replace(MODEL_PROFILES[model], command_operations=frozenset({operation, "effect_upload"}))
     assert require_effect_route(model, workflow, profile=profile) == profile.effect_grammar
+
+
+def test_advanced_effect_support_does_not_depend_on_command_grammar():
+    profile = replace(MODEL_PROFILES["H7020"], command_grammar="synthetic")
+    assert profile_supports_workflow(profile, CapabilityWorkflow.ADVANCED)
 
 
 @pytest.mark.parametrize("grammar", ["unknown"])
