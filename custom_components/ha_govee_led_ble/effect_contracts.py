@@ -17,6 +17,7 @@ from .effect_limits import (
     MAX_PREVIEW_SEQUENCE,
     MAX_SCENE_CATALOGUE_ENTRIES,
 )
+from .layered_scene_decoder import RETAINED_WORKSHOP_GRAMMARS
 
 EDITOR_API_VERSION: Final = 23
 EDITOR_ASSET_VERSION: Final = 50
@@ -91,25 +92,6 @@ class FrontendApplicationState(StrEnum):
     PLANNED = "planned"
 
 
-_RETAINED_CONTENT_GRAMMARS: Final = frozenset(
-    {
-        "H6022",
-        "H6046",
-        "H6053",
-        "H607C",
-        "H6093",
-        "H6099",
-        "H60A6",
-        "H60B0",
-        "H60B2",
-        "H6179",
-        "H617A",
-        "H6181",
-        "H6199",
-        "H1771",
-        "H1AB2",
-    }
-)
 _SHARED_SCENE_CONTENT_GRAMMARS: Final = frozenset({"H617A", "H6199"})
 
 
@@ -205,7 +187,7 @@ def _capability(
             else {"scene"}
         ),
         content_grammars=(
-            _RETAINED_CONTENT_GRAMMARS
+            RETAINED_WORKSHOP_GRAMMARS
             if persistent_content_kind == "workshop"
             else _SHARED_SCENE_CONTENT_GRAMMARS
             if workflow

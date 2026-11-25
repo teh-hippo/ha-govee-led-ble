@@ -76,6 +76,14 @@ from .transport import (
 )
 
 
+def build_dedicated_diy(content: Any, code: int, profile: ModelProfile) -> list[bytes]:
+    if profile.effect_grammar == "H6181":
+        from .h6181_effects import build_diy
+
+        return build_diy(content, code, profile)
+    raise ValueError("No dedicated palette DIY codec is available")
+
+
 class A3Sequence:
     """Own complete upload framing and the header authorising each physical chunk."""
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 from collections.abc import Callable
 from dataclasses import replace
-from typing import Any, Literal, overload
+from typing import Any, Final, Literal, overload
 
 from .const import ModelProfile, get_profile
 from .generated_protocol_adapter import (
@@ -50,7 +50,28 @@ __all__ = [
     "decode_workshop_effect",
     "encode_layered_scene",
     "encode_workshop_effect",
+    "RETAINED_WORKSHOP_GRAMMARS",
 ]
+
+RETAINED_WORKSHOP_GRAMMARS: Final = frozenset(
+    {
+        "H6022",
+        "H6046",
+        "H6053",
+        "H607C",
+        "H6093",
+        "H6099",
+        "H60A6",
+        "H60B0",
+        "H60B2",
+        "H6179",
+        "H617A",
+        "H6181",
+        "H6199",
+        "H1771",
+        "H1AB2",
+    }
+)
 
 
 def decode_layered_scene(
