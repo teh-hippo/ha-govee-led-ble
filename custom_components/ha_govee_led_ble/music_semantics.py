@@ -1562,7 +1562,7 @@ def music_variant(profile: ModelProfile, mode_code: int) -> MusicVariant | None:
         )
     if (
         variant
-        and (variant.layout in {"music_body", "h6072_music_body"} or variant.uses_physical_ic_geometry)
+        and (variant.layout == "music_body" or variant.uses_physical_ic_geometry)
         and ic is not None
         and any(spec.requires_physical_ic_count for spec in variant.parameters)
     ):
