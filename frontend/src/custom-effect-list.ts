@@ -10,6 +10,12 @@ import type {
   ModelSku,
 } from "./types";
 import { compareLabels } from "./ui-utils";
+import {
+  MULTI_EFFECT_KIND,
+  PAINTED_EFFECT_KIND,
+  SINGLE_EFFECT_KIND,
+  isPortableLibraryEffectKind,
+} from "./custom-effect-policies";
 
 export interface CustomEffectListContext {
   compatibilities?: import("./types").DeviceCapabilities["effect_compatibilities"];
@@ -136,17 +142,10 @@ export function libraryItemAvailable(
 ): boolean {
   const resolved = context.compatibilities?.[item.id];
   if (resolved?.version === item.version && resolved.state === "compatible") return true;
-  const modelIndependentContent = [
-    "static_rgb",
-    "advanced",
-    "h617a_painted",
-    "h617a_single",
-    "h617a_multi",
-  ].includes(item.kind);
   if (
     item.model !== undefined &&
     item.model !== context.model &&
-    !modelIndependentContent
+    !isPortableLibraryEffectKind(item.kind)
   ) {
     return false;
   }
@@ -170,8 +169,8 @@ export function customEffectCategoryAvailable(
     case "single-layer":
       return (
         customEffectKindAvailable(context, "native_effect") ||
-        customEffectKindAvailable(context, "h617a_painted") ||
-        customEffectKindAvailable(context, "h617a_single") ||
+        customEffectKindAvailable(context, PAINTED_EFFECT_KIND) ||
+        customEffectKindAvailable(context, SINGLE_EFFECT_KIND) ||
         customEffectKindAvailable(context, "h6179_single_diy") ||
         customEffectKindAvailable(context, "palette_diy")
       );
@@ -179,7 +178,7 @@ export function customEffectCategoryAvailable(
       return (
         Boolean(context.catalogue?.templates?.some(template => template.category === "multi-layer" &&
           template.content.kind === "native_effect")) && context.catalogue?.apply.multi === "supported" ||
-        customEffectKindAvailable(context, "h617a_multi") ||
+        customEffectKindAvailable(context, MULTI_EFFECT_KIND) ||
         customEffectKindAvailable(context, "h6179_mixed_diy")
       );
     case "advanced":
@@ -205,13 +204,13 @@ export function customEffectKindAvailable(
     return catalogue.workflows.some((workflow) => workflow.content_kind === kind) &&
       (catalogue.apply.single !== "unsupported" || catalogue.apply.painted !== "unsupported");
   }
-  if (kind === "h617a_painted") {
+  if (kind === PAINTED_EFFECT_KIND) {
     return (
       Boolean(catalogue.painted_effects.length) &&
       catalogue.apply.painted !== "unsupported"
     );
   }
-  if (kind === "h617a_single") {
+  if (kind === SINGLE_EFFECT_KIND) {
     return (
       !catalogue.workflows.some(
         (workflow) => workflow.content_kind === "h6179_single_diy",
@@ -233,7 +232,7 @@ export function customEffectKindAvailable(
       catalogue.apply.palette_diy !== "unsupported"
     );
   }
-  if (kind === "h617a_multi") {
+  if (kind === MULTI_EFFECT_KIND) {
     return (
       !catalogue.workflows.some(
         (workflow) => workflow.content_kind === "h6179_mixed_diy" ||
@@ -274,8 +273,8 @@ export function newEffectKindForCategory(
     return undefined;
   }
   if (category === "single-layer") {
-    if (customEffectKindAvailable(context, "h617a_single")) {
-      return "h617a_single";
+    if (customEffectKindAvailable(context, SINGLE_EFFECT_KIND)) {
+      return SINGLE_EFFECT_KIND;
     }
     if (customEffectKindAvailable(context, "h6179_single_diy")) {
       return "h6179_single_diy";
@@ -283,13 +282,13 @@ export function newEffectKindForCategory(
     if (customEffectKindAvailable(context, "palette_diy")) {
       return "palette_diy";
     }
-    return customEffectKindAvailable(context, "h617a_painted")
-      ? "h617a_painted"
+    return customEffectKindAvailable(context, PAINTED_EFFECT_KIND)
+      ? PAINTED_EFFECT_KIND
       : undefined;
   }
   if (category === "multi-layer") {
-    if (customEffectKindAvailable(context, "h617a_multi")) {
-      return "h617a_multi";
+    if (customEffectKindAvailable(context, MULTI_EFFECT_KIND)) {
+      return MULTI_EFFECT_KIND;
     }
     return customEffectKindAvailable(context, "h6179_mixed_diy")
       ? "h6179_mixed_diy"
@@ -312,12 +311,12 @@ function customEffectEntryAvailable(
     case "native-diy":
       return customEffectCategoryAvailable(context, entry.category);
     case "paint":
-      return customEffectKindAvailable(context, "h617a_painted");
+      return customEffectKindAvailable(context, PAINTED_EFFECT_KIND);
     case "single":
       return customEffectKindAvailable(
         context,
-        customEffectKindAvailable(context, "h617a_single")
-          ? "h617a_single"
+        customEffectKindAvailable(context, SINGLE_EFFECT_KIND)
+          ? SINGLE_EFFECT_KIND
           : customEffectKindAvailable(context, "h6179_single_diy")
             ? "h6179_single_diy"
             : "palette_diy",

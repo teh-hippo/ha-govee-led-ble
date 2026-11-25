@@ -35,6 +35,13 @@ import type {
   LibrarySummary, HomeAssistant, ModelEffectCatalogue, ModelSku, PreviewStatus, RGB,
   DiyDestinationConsent,
 } from "./types";
+import {
+  MULTI_EFFECT_KIND,
+  PAINTED_EFFECT_KIND,
+  SINGLE_EFFECT_KIND,
+  isSinglePaletteEffectContent,
+  normaliseCustomEffectKind,
+} from "./custom-effect-policies";
 
 const LIVE_APPLY_STORAGE_KEY = "ha_govee_led_ble/effect_studio/live_apply";
 
@@ -321,13 +328,7 @@ export class PanelModel {
     return (
       this.modelCatalogue?.diy_destination_policy === "explicit_destination" &&
       (
-        (
-          (this.content.kind === "h6179_single_diy" ||
-            this.content.kind === "h6179_mixed_diy")
-        ) ||
-        this.content.kind === "h617a_single" ||
-        this.content.kind === "h617a_multi" ||
-        this.content.kind === "palette_diy" ||
+        ["single", "multi"].includes(normaliseCustomEffectKind(this.content.kind) ?? "") ||
         (this.content.kind === "advanced" && this.content.native_diy !== undefined)
       )
     );
@@ -647,11 +648,11 @@ export class PanelModel {
     switch (this.content.kind) {
       case "static_rgb":
         return device.static_composition ? "supported" : "unsupported";
-      case "h617a_painted":
+      case PAINTED_EFFECT_KIND:
         return device.custom_effects.painted;
-      case "h617a_single":
+      case SINGLE_EFFECT_KIND:
         return device.custom_effects.single;
-      case "h617a_multi":
+      case MULTI_EFFECT_KIND:
         return device.custom_effects.multi;
       case "h6179_single_diy":
         return device.custom_effects.single;
@@ -711,9 +712,7 @@ export class PanelModel {
 
   public get selectedSingleEffectFamily(): DiyEffectFamily | undefined {
     if (
-      this.content.kind !== "h617a_single" &&
-      this.content.kind !== "h6179_single_diy" &&
-      this.content.kind !== "palette_diy"
+      !isSinglePaletteEffectContent(this.content)
     ) {
       return undefined;
     }

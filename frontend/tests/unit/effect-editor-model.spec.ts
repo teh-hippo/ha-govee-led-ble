@@ -139,7 +139,7 @@ test("H6099 graffiti uses physical topology and retains background through edits
     painted_background: [255, 255, 255], physical_ic_count: 60,
     painted_effects: [{ id: "clockwise", label: "Clockwise" }],
   };
-  const content = blankCustomEffect("h617a_painted", target);
+  const content = blankCustomEffect("h617a_painted", target, 14);
   expect(content.segments).toHaveLength(60);
   expect(content.segments[59]).toBeNull();
   expect(content.background).toEqual([255, 255, 255]);
@@ -200,7 +200,7 @@ test("target eligibility preserves imports and isolates catalogue extensions", (
   expect(effectContentEligible(blankCustomEffect("h617a_single", narrow), narrow, narrow.sku, 15)).toBe(true);
   narrow.painted_effects = [{ id: "clockwise", label: "Clockwise" }];
   narrow.limits.brightness_max = 60;
-  const paint = blankCustomEffect("h617a_painted", narrow);
+  const paint = blankCustomEffect("h617a_painted", narrow, 15);
   expect(effectContentEligible(paint, narrow, narrow.sku, 15)).toBe(true);
   expect(effectContentEligible({ ...paint, effect: "cycle" }, narrow, narrow.sku, 15)).toBe(false);
   expect(effectContentEligible({ ...paint, brightness: 61 }, narrow, narrow.sku, 15)).toBe(false);

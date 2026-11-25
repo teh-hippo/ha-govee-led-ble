@@ -34,6 +34,24 @@ import type {
 import { isNativeEffectModel, nativeEffectPolicy } from "./native-effect-policies";
 import { clonePalette, cloneRgb, sameRgb } from "./ui-utils";
 import { LEGACY_CUSTOM_CATALOGUE_SKU } from "./validation-constants";
+import {
+  MULTI_EFFECT_KIND,
+  PAINTED_EFFECT_KIND,
+  SINGLE_EFFECT_KIND,
+  customEffectCategoryForKind,
+  isCustomEffectKind,
+  isMultiEffectContent,
+  isPaintedEffectContent,
+  isPaintedEffectKind,
+  isMultiEffectKind,
+  isSingleEffectContent,
+  isSingleEffectKind,
+  normaliseCustomEffectKind,
+  type CustomEffectCategory,
+} from "./custom-effect-policies";
+
+export { customEffectCategoryForKind };
+export type { CustomEffectCategory } from "./custom-effect-policies";
 
 type AdvancedEditableContent =
   | AdvancedContent
@@ -68,14 +86,6 @@ export type NewEffectKind =
   | PaletteDiyEffectContent["kind"]
   | MusicProfileContent["kind"]
   | AdvancedContent["kind"];
-export type CustomEffectCategory =
-  | "all"
-  | "static"
-  | "music"
-  | "single-layer"
-  | "multi-layer"
-  | "advanced"
-  | "my-effects";
 export type LibraryItemSyncResult =
   | { action: "none" }
   | { action: "removed" }
@@ -119,13 +129,13 @@ export function effectOriginDescription(
   }
 }
 
-export function blankPainted(): PaintedContent {
+export function blankPainted(segmentCount = PAINTED_SEGMENT_COUNT): PaintedContent {
   return {
-    kind: "h617a_painted",
+    kind: PAINTED_EFFECT_KIND,
     effect: "clockwise",
     speed: 50,
     brightness: 100,
-    segments: blankPaintedSegments(),
+    segments: blankPaintedSegments(segmentCount),
   };
 }
 
@@ -209,12 +219,14 @@ export function effectContentEligible(
     });
   }
   if (
-    content.kind !== "h617a_painted" && content.kind !== "h617a_single" &&
-    content.kind !== "h617a_multi" && content.kind !== "palette_diy"
+    !isPaintedEffectContent(content) &&
+    !isSingleEffectContent(content) &&
+    !isMultiEffectContent(content) &&
+    content.kind !== "palette_diy"
   ) return true;
   if (!catalogue || catalogue.sku !== model) return false;
   const limits = catalogue.limits;
-  if (content.kind === "h617a_painted") {
+  if (isPaintedEffectContent(content)) {
     return (
       (content.model === undefined || content.model === model) &&
       catalogue.apply.painted === "supported" &&
@@ -226,47 +238,49 @@ export function effectContentEligible(
     );
   }
   if (content.kind === "palette_diy" && (content.model !== model || catalogue.apply.palette_diy !== "supported")) return false;
-  if (content.kind === "h617a_single" && catalogue.apply.single !== "supported") return false;
+  if (isSingleEffectContent(content) && catalogue.apply.single !== "supported") return false;
   if (content.palette.length < limits.palette_min || content.palette.length > limits.palette_max) return false;
   if (
-    content.kind === "h617a_multi" && (
+    isMultiEffectContent(content) && (
       catalogue.apply.multi !== "supported" || content.effects.length < 1 ||
       content.effects.length > limits.multi_max || content.speed < limits.speed_min ||
       content.speed > limits.speed_max
     )
   ) return false;
-  const pairs = content.kind === "h617a_multi" ? content.effects : [content];
+  const multi = isMultiEffectContent(content);
+  const pairs = multi ? content.effects : [content];
   return pairs.every((pair) => {
     const family = catalogue.effects.find((effect) => effect.family === pair.family);
     return (
       family !== undefined &&
       family.category === "single_layer" &&
       family.variations.some((variation) => variation.variant === pair.variant) &&
-      (content.kind !== "h617a_multi" || family.supports_multi) &&
+      (!multi || family.supports_multi) &&
       content.palette.length <= (family.palette_max ?? limits.palette_max) &&
-      content.speed >= (content.kind === "h617a_multi" ? family.multi_rate_min ?? family.rate_min : family.rate_min) && content.speed <= family.rate_max
+      content.speed >= (multi ? family.multi_rate_min ?? family.rate_min : family.rate_min) && content.speed <= family.rate_max
     );
   });
 }
 
-export function blankPaintedSegments(): PaintedSegmentDraft[] {
-  return Array.from({ length: PAINTED_SEGMENT_COUNT }, () => null);
+export function blankPaintedSegments(segmentCount = PAINTED_SEGMENT_COUNT): PaintedSegmentDraft[] {
+  return Array.from({ length: segmentCount }, () => null);
 }
 
 export function blankCustomEffect(
-  kind: "h617a_painted",
+  kind: typeof PAINTED_EFFECT_KIND,
   catalogue: ModelEffectCatalogue,
+  segmentCount: number,
 ): PaintedContent;
 export function blankCustomEffect(
-  kind: "h617a_single",
+  kind: typeof SINGLE_EFFECT_KIND,
   catalogue: ModelEffectCatalogue,
   family?: number,
   variant?: number,
-): Extract<CustomEffectContent, { kind: "h617a_single" }>;
+): Extract<CustomEffectContent, { kind: typeof SINGLE_EFFECT_KIND }>;
 export function blankCustomEffect(
-  kind: "h617a_multi",
+  kind: typeof MULTI_EFFECT_KIND,
   catalogue: ModelEffectCatalogue,
-): Extract<CustomEffectContent, { kind: "h617a_multi" }>;
+): Extract<CustomEffectContent, { kind: typeof MULTI_EFFECT_KIND }>;
 export function blankCustomEffect(
   kind: "h6179_single_diy",
   catalogue: ModelEffectCatalogue,
@@ -276,8 +290,10 @@ export function blankCustomEffect(
   catalogue: ModelEffectCatalogue,
 ): Extract<CustomEffectContent, { kind: "h6179_mixed_diy" }>;
 export function blankCustomEffect(
-  kind: CustomEffectContent["kind"],
+  kind: Exclude<CustomEffectContent["kind"], typeof PAINTED_EFFECT_KIND>,
   catalogue: ModelEffectCatalogue,
+  family?: number,
+  variant?: number,
 ): CustomEffectContent;
 export function blankCustomEffect(
   kind: CustomEffectContent["kind"],
@@ -285,11 +301,14 @@ export function blankCustomEffect(
   family?: number,
   variant?: number,
 ): CustomEffectContent {
-  if (kind === "h617a_painted") {
+  if (isPaintedEffectKind(kind)) {
+    if (family === undefined) {
+      throw new Error("The target segment count is required for painted effects.");
+    }
     const effect = catalogue.painted_effects.find((effect) => effect.id === "clockwise") ?? catalogue.painted_effects[0];
     if (!effect) throw new Error("The target catalogue has no painted effects.");
     return {
-      ...blankPainted(), effect: effect.id,
+      ...blankPainted(family), effect: effect.id,
       ...(catalogue.painted_addressing === "physical_ic" ? {
         addressing: "physical_ic" as const,
         background: cloneRgb(catalogue.painted_background ?? [255, 255, 255]),
@@ -300,9 +319,9 @@ export function blankCustomEffect(
       ...(catalogue.native_zones ? {model: catalogue.sku} : {}),
     };
   }
-  const mixed = kind === "h617a_multi" || kind === "h6179_mixed_diy";
+  const mixed = normaliseCustomEffectKind(kind) === "multi";
   const preferred =
-    kind === "h617a_multi"
+    isMultiEffectKind(kind)
       ? catalogue.effects.find(
           (effect) =>
             effect.supports_multi &&
@@ -334,7 +353,7 @@ export function blankCustomEffect(
     family: first.family,
     variant: variation.variant,
   };
-  if (kind === "h617a_single") {
+  if (isSingleEffectKind(kind)) {
     return {
       kind,
       ...pair,
@@ -408,13 +427,10 @@ function clonePainted(content: PaintedContent): PaintedContent {
 export function cloneCustomEffect(
   content: CustomEffectContent,
 ): CustomEffectContent {
-  if (content.kind === "h617a_painted") {
+  if (isPaintedEffectContent(content)) {
     return clonePainted(content);
   }
-  if (
-    content.kind === "h617a_single" ||
-    content.kind === "h6179_single_diy"
-  ) {
+  if (isSingleEffectContent(content) || content.kind === "h6179_single_diy") {
     return {
       ...content,
       palette: clonePalette(content.palette),
@@ -594,18 +610,6 @@ export function installLibraryItemEditorMetadata(
   return item;
 }
 
-function isCustomEffectKind(
-  kind: unknown,
-): kind is CustomEffectContent["kind"] {
-  return (
-    kind === "h617a_painted" ||
-    kind === "h617a_single" ||
-    kind === "h617a_multi" ||
-    kind === "h6179_single_diy" ||
-    kind === "h6179_mixed_diy"
-  );
-}
-
 export function isCustomEffectContent(
   content: unknown,
 ): content is CustomEffectContent {
@@ -674,11 +678,11 @@ export function customKindLabel(kind: unknown): string {
   switch (kind) {
     case "static_rgb":
       return "Canvas";
-    case "h617a_painted":
+    case PAINTED_EFFECT_KIND:
       return "Paint";
-    case "h617a_single":
+    case SINGLE_EFFECT_KIND:
       return "Single";
-    case "h617a_multi":
+    case MULTI_EFFECT_KIND:
       return "Multi";
     case "h6179_single_diy":
       return "Single DIY";
@@ -714,27 +718,6 @@ export function isMyEffectKind(kind: string): boolean {
     kind === "music_profile" ||
     !isKnownEffectKind(kind)
   );
-}
-
-export function customEffectCategoryForKind(
-  kind: string,
-): Exclude<CustomEffectCategory, "all" | "my-effects"> {
-  if (kind === "static_rgb") return "static";
-  if (kind === "h617a_multi" || kind === "h6179_mixed_diy") {
-    return "multi-layer";
-  }
-  if (kind === "music_profile") {
-    return "music";
-  }
-  if (
-    kind === "h617a_painted" ||
-    kind === "h617a_single" ||
-    kind === "h6179_single_diy" ||
-    kind === "palette_diy"
-  ) {
-    return "single-layer";
-  }
-  return "advanced";
 }
 
 export function nativeEffectWorkflow(content: NativeEffectContent): NonNullable<LibrarySummary["native_workflow"]> {
@@ -817,7 +800,7 @@ export function upsertSummary(
 
 export function libraryItemModel(item: LibraryItem): ModelSku | undefined {
   const content = item.content;
-  if (content.kind === "h617a_painted" && content.model !== undefined) return content.model;
+  if (isPaintedEffectContent(content) && content.model !== undefined) return content.model;
   if (
     content.kind === "h6179_single_diy" ||
     content.kind === "h6179_mixed_diy" ||
@@ -834,9 +817,9 @@ export function libraryItemModel(item: LibraryItem): ModelSku | undefined {
     return content.model;
   }
   if (
-    content.kind === "h617a_painted" ||
-    content.kind === "h617a_single" ||
-    content.kind === "h617a_multi"
+    isPaintedEffectKind(content.kind) ||
+    isSingleEffectKind(content.kind) ||
+    isMultiEffectKind(content.kind)
   ) {
     return item.target_hint?.model ?? LEGACY_CUSTOM_CATALOGUE_SKU;
   }

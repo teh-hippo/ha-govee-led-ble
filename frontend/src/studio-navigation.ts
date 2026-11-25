@@ -9,6 +9,10 @@ import type {
   VideoProfileContent,
 } from "./types";
 import type { CustomEffectCategory } from "./effect-editor-model";
+import {
+  customEffectCategoryForKind,
+  normaliseCustomEffectKind,
+} from "./custom-effect-policies";
 
 const PANEL_PATH = "/ha-govee-led-ble";
 const DEVICE_ROUTE = `${PANEL_PATH}/editor`;
@@ -266,19 +270,11 @@ function workspaceStudioLocation(
     return { section: "custom", category: "music" };
   }
   if (content.kind === "static_rgb") return { section: "custom", category: "static" };
-  if (
-    content.kind === "h617a_painted" ||
-    content.kind === "h617a_single" ||
-    content.kind === "h6179_single_diy" ||
-    content.kind === "palette_diy"
-  ) {
-    return { section: "custom", category: "single-layer" };
-  }
-  if (
-    content.kind === "h617a_multi" ||
-    content.kind === "h6179_mixed_diy"
-  ) {
-    return { section: "custom", category: "multi-layer" };
+  if (normaliseCustomEffectKind(content.kind) !== undefined) {
+    return {
+      section: "custom",
+      category: customEffectCategoryForKind(content.kind),
+    };
   }
   if (content.kind === "advanced" || content.kind === "workshop" || content.kind === "workshop_rgb" || content.kind === "workshop_rgbic_v2" ||
       content.kind === "shared_scene_rgb" || content.kind === "shared_scene_rgbic_v1") {

@@ -13,6 +13,17 @@ import {
   defaultCustomEffectCategory,
 } from "../../src/custom-effect-workflow";
 import type { LibrarySummary, ModelEffectCatalogue } from "../../src/types";
+import {
+  MULTI_EFFECT_KIND,
+  PAINTED_EFFECT_KIND,
+  SINGLE_EFFECT_KIND,
+  customEffectEditorForKind,
+  isMultiEffectKind,
+  isPaintedEffectKind,
+  isPortableLibraryEffectKind,
+  isSingleEffectKind,
+  normaliseCustomEffectKind,
+} from "../../src/custom-effect-policies";
 
 const catalogue = {
   sku: "H617A",
@@ -89,6 +100,27 @@ test("effect kinds remain unavailable without a model catalogue", () => {
 
   expect(customEffectKindAvailable(unavailable, "h617a_multi")).toBe(false);
   expect(customEffectKindAvailable(unavailable, "advanced")).toBe(false);
+});
+
+test("stable kinds retain distinct identities while semantic policies share editing behaviour", () => {
+  expect([PAINTED_EFFECT_KIND, SINGLE_EFFECT_KIND, MULTI_EFFECT_KIND]).toEqual([
+    "h617a_painted",
+    "h617a_single",
+    "h617a_multi",
+  ]);
+  expect(isPaintedEffectKind(PAINTED_EFFECT_KIND)).toBe(true);
+  expect(isSingleEffectKind(PAINTED_EFFECT_KIND)).toBe(false);
+  expect(isMultiEffectKind(PAINTED_EFFECT_KIND)).toBe(false);
+  expect(isSingleEffectKind(SINGLE_EFFECT_KIND)).toBe(true);
+  expect(isMultiEffectKind(MULTI_EFFECT_KIND)).toBe(true);
+
+  expect(normaliseCustomEffectKind("h6179_single_diy")).toBe("single");
+  expect(normaliseCustomEffectKind("h6179_mixed_diy")).toBe("multi");
+  expect(customEffectEditorForKind("h6179_mixed_diy")).toBe("palette");
+  expect(isMultiEffectKind("h6179_mixed_diy")).toBe(false);
+
+  expect(isPortableLibraryEffectKind(SINGLE_EFFECT_KIND)).toBe(true);
+  expect(isPortableLibraryEffectKind("h6179_single_diy")).toBe(false);
 });
 
 test("starter lists expose product choices but not protocol evidence fixtures", () => {
