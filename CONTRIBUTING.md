@@ -19,6 +19,19 @@ Keep Bluetooth addresses, serial numbers, account details and other unique ident
 One shared Home Assistant light core serves explicit product declarations.
 Profiles own product facts, Kaitai owns wire structure, and shared runtime operations own execution.
 
+### Shared core and product boundaries
+
+- Kaitai schemas are the source of truth for BLE wire structure.  Generated protocol types carry wire differences into codecs; shared Python must not reconstruct or select raw structures by exact SKU.
+- Exact models are expected to expose distinct product facts and wire or semantic formats.
+  Keep those differences in profiles, catalogues and narrow codecs selected through declared grammars or typed semantics, never as exact-model patches in shared execution.
+- Common code owns behaviour that has one contract across models.
+  A shared capability must mean the same thing to every caller; adjacent facts with different consequences require separate fields rather than inferred compatibility.
+- Adding a new SKU should normally require only explicit product declarations, Kaitai evidence and the narrowest new codec needed to join existing shared capability paths.
+  If support requires scattered exact-model branches, fix the missing shared boundary instead of treating the product as a snowflake.
+- Model-specific exceptions can remain when evidence requires them.
+  Trace the active declaration through preparation, transport, observation and recovery, name the preserved contract and keep the exception at its owning boundary.
+- The Home Assistant integration is the public product.  Expose stable entities and controls first, then keep protocol and product details below that boundary.
+
 ### Shared behaviour and product differences
 
 - Trace declarations, public controls, preparation, transport, observations and recovery across equivalent entry points and capability combinations.

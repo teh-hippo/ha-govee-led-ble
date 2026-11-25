@@ -231,8 +231,8 @@ _GRAMMAR_TRAITS: Mapping[str, frozenset[str]] = {
             "power_on_custom",
         }
     ),
-    "H600A": frozenset({"kelvin_status_omits_rgb", "whole_bulb_static", "whole_bulb_music"}),
-    "H601C": frozenset({"kelvin_status_omits_rgb", "whole_bulb_static", "whole_bulb_music"}),
+    "H600A": frozenset({"whole_bulb_static", "whole_bulb_music"}),
+    "H601C": frozenset({"whole_bulb_static", "whole_bulb_music"}),
     "H6022": frozenset({"opaque_scene_grammar"}),
     "H6046": frozenset(
         {
@@ -289,7 +289,6 @@ _GRAMMAR_TRAITS: Mapping[str, frozenset[str]] = {
     ),
     "H6093": frozenset(
         {
-            "kelvin_status_omits_rgb",
             "projector",
             "projector_audio",
             "projector_status",
@@ -325,7 +324,6 @@ _GRAMMAR_TRAITS: Mapping[str, frozenset[str]] = {
             "native_source_static",
             "native_sources",
             "separate_native_setting_read",
-            "kelvin_status_omits_rgb",
             "source_status",
             "special_static",
             "native_music_status",
@@ -372,14 +370,9 @@ _GRAMMAR_TRAITS: Mapping[str, frozenset[str]] = {
             "dedicated_palette_music",
             "whole_bulb_music",
             "whole_bulb_static",
-            "kelvin_status_omits_rgb",
             "dedicated_a1_diy",
         }
     ),
-    "H6181-modern": frozenset({"kelvin_status_omits_rgb"}),
-    "H6182-modern": frozenset({"kelvin_status_omits_rgb"}),
-    "H6139": frozenset({"kelvin_status_omits_rgb"}),
-    "H6159": frozenset({"kelvin_status_omits_rgb"}),
     "H6199": frozenset(
         {
             "blank_screen_legacy_echo",
@@ -679,6 +672,7 @@ class ModelProfile:
     supports_white_brightness: bool = False
     static_readback_echoes_color: bool = False
     static_readback_kelvin: bool = False
+    static_readback_kelvin_suppresses_rgb: bool = False
     static_readback_nonzero_kelvin: bool = False
     static_readback_zero_kelvin_is_rgb: bool = False
     static_readback_gradual: bool = False
@@ -1514,6 +1508,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         color_temp_range=KELVIN_RANGE_2000_9000,
         static_readback_echoes_color=True,
         static_readback_kelvin=True,
+        static_readback_kelvin_suppresses_rgb=True,
         static_readback_zero_kelvin_is_rgb=True,
         supports_custom_effects=True,
         supports_scenes=True,
@@ -1545,6 +1540,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         color_temp_range=KELVIN_RANGE_2700_6500,
         static_readback_echoes_color=True,
         static_readback_kelvin=True,
+        static_readback_kelvin_suppresses_rgb=True,
         static_readback_zero_kelvin_is_rgb=True,
         supports_custom_effects=True,
         supports_scenes=True,
@@ -1996,6 +1992,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         segment_colour_mode_ambiguous=True,
         static_readback_echoes_color=True,
         static_readback_kelvin=True,
+        static_readback_kelvin_suppresses_rgb=True,
         static_readback_zero_kelvin_is_rgb=True,
         light_sources=(
             LightSource("top", "top_enabled", (9,)),
@@ -2023,6 +2020,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         "H601C Recessed Downlight",
         support_quality=SupportQuality.SUPPORTED,
         command_grammar="H601C",
+        static_readback_kelvin_suppresses_rgb=True,
         effect_grammar="H617A",
         command_operations=frozenset({"power", "brightness", "static", "scene", "diy", "effect_upload"}),
         colour_mode_query_selector=1,
@@ -3585,6 +3583,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         color_temp_range=KELVIN_RANGE_2000_9000,
         static_readback_echoes_color=True,
         static_readback_kelvin=True,
+        static_readback_kelvin_suppresses_rgb=True,
         static_readback_zero_kelvin_is_rgb=True,
         supports_scenes=True,
         scene_catalogue_sku="H6139",
@@ -3637,6 +3636,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         color_temp_range=KELVIN_RANGE_2000_9000,
         static_readback_echoes_color=True,
         static_readback_kelvin=True,
+        static_readback_kelvin_suppresses_rgb=True,
         static_readback_zero_kelvin_is_rgb=True,
         supports_scenes=True,
         scene_catalogue_sku="H6159",
@@ -3745,6 +3745,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_scenes=True,
         static_readback_echoes_color=True,
         static_readback_kelvin=True,
+        static_readback_kelvin_suppresses_rgb=True,
         static_readback_zero_kelvin_is_rgb=True,
         scene_catalogue_sku="H6181",
         local_scenes=(
@@ -3790,6 +3791,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         color_temp_range=KELVIN_RANGE_2000_9000,
         static_readback_echoes_color=True,
         static_readback_kelvin=True,
+        static_readback_kelvin_suppresses_rgb=True,
         static_readback_zero_kelvin_is_rgb=True,
         supports_scenes=True,
         scene_catalogue_sku="H6182",
