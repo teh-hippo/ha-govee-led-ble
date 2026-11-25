@@ -301,9 +301,7 @@ def native_diy_preset(preset_id: int, palette: tuple[tuple[int, int, int], ...])
     elif preset_id == 14:
         layers = (NativeDiyLayer(kind.fade, 50, palette, parameter=1),)
     elif preset_id == 15:
-        return NativeEffect(
-            model="H60A6", family=798, layers=(NativePaintLayer(groups=()),), preset_id=preset_id
-        )
+        return NativeEffect(model="H60A6", family=798, layers=(NativePaintLayer(groups=()),), preset_id=preset_id)
     else:
         raise ValueError("unknown native DIY preset")
     return NativeEffect(
