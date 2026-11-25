@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from typing import Any
+
+from .const import ModelProfile
 from .h60b0_controls import source_readback as source_readback
 from .h60b0_controls import source_values as source_values
 from .protocol_admission import require_profile_packet as require_profile_packet
@@ -24,6 +27,7 @@ from .protocol_commands import validate_video_parameters as validate_video_param
 from .protocol_commands import video_parameter_read_domain as video_parameter_read_domain
 from .protocol_commands import video_parameters_from_brightness as video_parameters_from_brightness
 from .protocol_commands import video_parameters_from_detail as video_parameters_from_detail
+from .protocol_core import ProtocolParseResult
 from .protocol_effect_bodies import A3Sequence as A3Sequence
 from .protocol_effect_bodies import build_diy_activation as build_diy_activation
 from .protocol_effect_bodies import build_h617a_diy_activation as build_h617a_diy_activation
@@ -51,6 +55,7 @@ from .protocol_parsing import parse_command_ack_result as parse_command_ack_resu
 from .protocol_parsing import parse_command_result as parse_command_result
 from .protocol_parsing import parse_status as parse_status
 from .protocol_parsing import parse_status_result as parse_status_result
+from .protocol_semantics import ParsedProtocolCommand
 from .protocol_settings import BulkStatusCollector as BulkStatusCollector
 from .protocol_settings import StripCalibrationRequest as StripCalibrationRequest
 from .protocol_settings import boolean_control_is_authorized as boolean_control_is_authorized
@@ -95,3 +100,27 @@ from .protocol_settings import parse_boolean_control as parse_boolean_control
 from .protocol_settings import parse_physical_ic_count as parse_physical_ic_count
 from .protocol_settings import parse_video_device_info_status as parse_video_device_info_status
 from .protocol_settings import parse_zone_notification as parse_zone_notification
+
+
+def parse_semantic_status_result(
+    frame: bytes,
+    model: str,
+    *,
+    profile: ModelProfile,
+) -> ProtocolParseResult:
+    if profile.status_grammar_has("custom_status"):
+        from .protocol_h6179 import parse_h6179_status_result
+
+        return parse_h6179_status_result(frame)
+    return parse_status_result(frame, model, profile=profile)
+
+
+def command_semantics_from_generated(
+    generated: Any,
+    profile: ModelProfile,
+) -> ParsedProtocolCommand | None:
+    if profile.command_grammar_has("custom_command"):
+        from .protocol_h6179 import h6179_command_from_generated
+
+        return h6179_command_from_generated(generated)
+    return None

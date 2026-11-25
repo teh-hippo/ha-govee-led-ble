@@ -14,12 +14,12 @@ from .const import (
 from .generated_protocol_adapter import (
     boolean_control_is_authorized,
     boolean_control_name,
-    parse_status_result,
+    parse_semantic_status_result,
     table_rgb_kelvin,
     video_parameters_from_detail,
 )
 from .protocol_core import ProtocolParseResult
-from .protocol_h6179 import ParsedH6179Status, parse_h6179_status_result
+from .protocol_semantics import ParsedProtocolStatus
 from .scenes import scene_key_for_code
 
 StatusDomain = ReadDomain
@@ -60,11 +60,7 @@ class ParsedStatusEnvelope:
 
 def decode_status_frame_result(frame: bytes, model: str, *, profile: ModelProfile | None = None) -> ProtocolParseResult:
     effective_profile = profile or get_profile(model)
-    result = (
-        parse_h6179_status_result(frame)
-        if effective_profile.status_grammar_has("custom_status")
-        else parse_status_result(frame, model, profile=effective_profile)
-    )
+    result = parse_semantic_status_result(frame, model, profile=effective_profile)
     if result.parsed is None:
         return result
     generated = result.parsed
@@ -192,7 +188,7 @@ def parse_color_mode(generated: Any, model: str, *, profile: ModelProfile | None
                 native_projector=True,
             )
     if profile.status_grammar_has("custom_status"):
-        if not isinstance(generated, ParsedH6179Status) or generated.domain != "mode":
+        if not isinstance(generated, ParsedProtocolStatus) or generated.domain != "mode":
             return ParsedColorModeResponse()
         values = generated.values
         mode_name = values.get("mode")
