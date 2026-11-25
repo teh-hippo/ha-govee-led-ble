@@ -198,9 +198,14 @@ def validate_effect_eligibility(
         if not catalogue.palette_min <= len(content.palette) <= (profile.diy_palette_max or catalogue.palette_max):
             raise ValueError(f"{model} palette is outside catalogue limits")
         multi = isinstance(content, MultiEffect | TypedMixedDiyEffect)
-        if multi:
-            component_count = len(content.effects) if isinstance(content, MultiEffect) else len(content.components)
-        if multi and component_count > catalogue.multi_max:
+        component_count = (
+            len(content.effects)
+            if isinstance(content, MultiEffect)
+            else len(content.components)
+            if isinstance(content, TypedMixedDiyEffect)
+            else None
+        )
+        if component_count is not None and component_count > catalogue.multi_max:
             raise ValueError(f"{model} Multi count is outside catalogue limits")
         pairs = (
             content.effects
