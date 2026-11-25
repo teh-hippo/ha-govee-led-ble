@@ -170,6 +170,34 @@ def test_unknown_and_exact_camera_qualification():
     assert profile.dreamview_max_sub_devices == 5
 
 
+def test_shared_video_control_grammar_does_not_grant_h6199_revision_policy():
+    identity = SimpleNamespace(
+        **(
+            QUALIFIED
+            | {
+                "fw_version": "1.00.01",
+                "hw_version": "1.00.01",
+                "subordinate_20_version": "1.00.01",
+                "subordinate_21_version": "1.00.01",
+            }
+        )
+    )
+    h6199 = video_control_states(get_profile("H6199"), identity)
+    h605c = video_control_states(get_profile("H605C"), identity)
+
+    assert get_profile("H6199").video_control_grammar is None
+    assert get_profile("H605C").video_control_grammar == "H6199"
+    assert h6199["white_balance"] is CapabilityState.UNSUPPORTED
+    assert h605c["white_balance"] is CapabilityState.SUPPORTED
+    assert camera_controls_state(get_profile("H605C"), identity) is CapabilityState.UNSUPPORTED
+
+
+def test_pact1_profile_does_not_grant_native_camera_controls():
+    from custom_components.ha_govee_led_ble.const import H6199_PACT1_PROFILE
+
+    assert camera_controls_state(H6199_PACT1_PROFILE, SimpleNamespace(**QUALIFIED)) is CapabilityState.UNSUPPORTED
+
+
 @pytest.mark.parametrize("revision", ["old", "qualified", "unknown"])
 async def test_basic_setup_survives_optional_silence(hass, monkeypatch, revision, virtual_clock):
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url="test")

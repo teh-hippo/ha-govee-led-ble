@@ -51,49 +51,6 @@ def camera_controls_state(profile: ModelProfile, identity: object) -> Capability
     )
 
 
-def _qualified_camera_video_states(identity: object) -> dict[str, CapabilityState]:
-    # 0x20 is Wi-Fi hardware, 0x21 Wi-Fi firmware; the minimum is 1.00.30.
-    fw, hw, wifi_hw, wifi_fw = (
-        identity_version(getattr(identity, field, None))
-        for field in ("fw_version", "hw_version", "subordinate_20_version", "subordinate_21_version")
-    )
-    pact = (getattr(identity, "pact_type", None), getattr(identity, "pact_code", None))
-
-    def state(*checks: bool | None) -> CapabilityState:
-        if False in checks:
-            return CapabilityState.UNSUPPORTED
-        return CapabilityState.EVIDENCE_GAP if None in checks else CapabilityState.SUPPORTED
-
-    white_balance = state(
-        None if fw is None else fw >= 10811,
-        None if hw is None else hw >= 30201,
-        None if wifi_fw is None else wifi_fw >= 10023,
-        None if wifi_hw is None else wifi_hw >= 10300,
-    )
-    relative = state(
-        None if fw is None else fw >= 11002,
-        None if hw is None else hw in (30201, 30210),
-        None if wifi_fw is None else wifi_fw >= 10030,
-        None if wifi_hw is None else wifi_hw == 10300,
-    )
-    if pact in ((3, 1), (4, 1)):
-        sound = CapabilityState.SUPPORTED
-    else:
-        # Hardware major 1 is Telink; major 3 except 3.04 is FRK V1.
-        sound = state(
-            None if hw is None else hw // 10000 in (1, 3) and hw // 100 != 304,
-            None if fw is None or hw is None else fw >= (10601 if hw // 10000 == 1 else 10702),
-        )
-        if sound is CapabilityState.UNSUPPORTED and None in pact:
-            sound = CapabilityState.EVIDENCE_GAP
-    return {
-        "white_balance": white_balance,
-        "relative_brightness": relative,
-        "blank_screen": relative,
-        "sound_effects": sound,
-    }
-
-
 def video_control_states(profile: ModelProfile, identity: object) -> dict[str, CapabilityState]:
     states = {
         control: CapabilityState.SUPPORTED if profile.supports_video_mode and supported else CapabilityState.UNSUPPORTED
@@ -136,9 +93,10 @@ def _apply_video_conditions(
     profile: ModelProfile, identity: object, states: dict[str, CapabilityState]
 ) -> dict[str, CapabilityState]:
     if profile.video_revision_policy is VideoRevisionPolicy.QUALIFIED_CAMERA:
-        for control, state in _qualified_camera_video_states(identity).items():
+        assert profile.video_control_state_resolver is not None
+        for control, state_name in profile.video_control_state_resolver(identity).items():
             if states.get(control) is CapabilityState.SUPPORTED:
-                states[control] = state
+                states[control] = CapabilityState(state_name)
     for control, initial in tuple(states.items()):
         if initial is CapabilityState.UNSUPPORTED:
             continue
