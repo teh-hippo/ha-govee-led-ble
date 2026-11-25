@@ -122,7 +122,7 @@ class GoveeBLESourceLight(GoveeBLEEntity, LightEntity):
         if self.coordinator.profile.projector_grammar is not None:
             return ColorMode.RGB if ColorMode.RGB in modes else next(iter(modes))
         source = self._source(self.coordinator.profile)
-        if f"source_colour_{self._key}" in self.coordinator._h607c_uncertain_state_fields:
+        if f"source_colour_{self._key}" in self.coordinator._unconfirmed_state_fields:
             return ColorMode.UNKNOWN
         if source is not None and source.native_control:
             return (

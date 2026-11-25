@@ -369,7 +369,7 @@ async def test_h607c_revocation_during_colour_turn_on_sends_no_user_write(hass, 
     assert error.value.translation_key == "identity_not_ready"
     device.write_gatt_char.assert_not_awaited()
     assert not coordinator.is_on
-    assert not coordinator._h607c_uncertain_state_fields
+    assert not coordinator._unconfirmed_state_fields
     assert "may have partially changed" not in caplog.text
 
 
@@ -443,9 +443,9 @@ async def test_h607c_interrupted_power_reports_or_reconciles_uncertainty(
         assert light.is_on is None and light.state is None and light.assumed_state
         assert light.extra_state_attributes["unconfirmed_state_fields"] == ["is_on"]
         observe(1, 0)
-        assert light.is_on is False and not coordinator._h607c_uncertain_state_fields
+        assert light.is_on is False and not coordinator._unconfirmed_state_fields
     else:
-        assert light.is_on is True and not coordinator._h607c_uncertain_state_fields
+        assert light.is_on is True and not coordinator._unconfirmed_state_fields
         if confirmation == "reconcile":
             assert coordinator.brightness_pct == 37
 
@@ -475,13 +475,13 @@ async def test_h607c_interrupted_brightness_preserves_only_fresh_observations(
     assert "brightness request was interrupted" in caplog.text
     if fresh_notification:
         assert coordinator.brightness_pct == 50 and light.brightness == round(50 * 255 / 100)
-        assert not coordinator._h607c_uncertain_state_fields
+        assert not coordinator._unconfirmed_state_fields
     else:
         assert light.brightness is None
-        assert coordinator._h607c_uncertain_state_fields == {"brightness_pct"}
+        assert coordinator._unconfirmed_state_fields == {"brightness_pct"}
         coordinator._notify_callback(None, bytearray(_packet(0xAA, 4, [37])))
         assert light.brightness == round(37 * 255 / 100)
-        assert not coordinator._h607c_uncertain_state_fields
+        assert not coordinator._unconfirmed_state_fields
 
 
 @pytest.mark.parametrize(
@@ -512,7 +512,7 @@ async def test_h607c_prewrite_notification_does_not_confirm_failed_write(
         await light.async_turn_on(**kwargs)
 
     assert error.value.translation_key == "partial_command"
-    assert coordinator._h607c_uncertain_state_fields == {field}
+    assert coordinator._unconfirmed_state_fields == {field}
     assert (light.is_on if field == "is_on" else light.brightness) is None
 
 
@@ -535,7 +535,7 @@ async def test_h607c_transport_failure_does_not_replay_colour_write(h607c_light,
     assert error.value.translation_key == "partial_command"
     first.write_gatt_char.assert_awaited_once()
     second.write_gatt_char.assert_not_awaited()
-    assert coordinator._h607c_uncertain_state_fields == {"color", "color_mode"}
+    assert coordinator._unconfirmed_state_fields == {"color", "color_mode"}
 
 
 @pytest.mark.parametrize("kwargs", [{"rgb_color": (12, 34, 56)}, {"color_temp_kelvin": 3200}])

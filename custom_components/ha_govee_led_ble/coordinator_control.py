@@ -181,7 +181,7 @@ class ControlWriteRequest:
         coordinator = self._coordinator
         return (
             not coordinator.is_on
-            or "is_on" in coordinator._h607c_uncertain_state_fields
+            or "is_on" in coordinator._unconfirmed_state_fields
             or not coordinator.profile.can_read(ReadDomain.POWER)
             and not coordinator._power_known
         )
@@ -222,9 +222,9 @@ class ControlWriteRequest:
                 ("rgb_color", "color_temp_kelvin", "color_mode", "segment_colors") if uncertain == "color" else (field,)
             )
             if all(coordinator._field_revisions.get(key, 0) <= revisions.get(key, 0) for key in observed):
-                coordinator._h607c_uncertain_state_fields.add(uncertain)
+                coordinator._unconfirmed_state_fields.add(uncertain)
                 if uncertain == "color":
-                    coordinator._h607c_failed_color_write = True
+                    coordinator._failed_static_color_write = True
                 for expected in ("color_mode", "rgb_color", "color_temp_kelvin") if uncertain == "color" else (field,):
                     coordinator._expected_state.pop(expected, None)
 
@@ -237,7 +237,7 @@ class ControlWriteRequest:
                 ("brightness_pct", ReadDomain.BRIGHTNESS, build_brightness_query),
             )
             if field in self._attempted_fields
-            and field in coordinator._h607c_uncertain_state_fields
+            and field in coordinator._unconfirmed_state_fields
             and coordinator.profile.can_read(domain)
         ]
         if not queries or client is None:
@@ -271,7 +271,7 @@ class ControlWriteRequest:
 
     def complete(self, *, colour_requested: bool) -> None:
         if colour_requested:
-            self._coordinator._h607c_failed_color_write = False
+            self._coordinator._failed_static_color_write = False
 
 
 async def async_send_guarded_command(

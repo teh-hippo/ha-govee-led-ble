@@ -236,7 +236,7 @@ async def async_get_config_entry_diagnostics(
             "native_supports_gradual": "gradual" in coordinator.native_presentation_profile.boolean_controls,
             "effective_supports_gradual": "gradual" in coordinator.profile.boolean_controls,
             "last_optional_read_failure_since_reload": coordinator._h607c_last_optional_read_failure,
-            "unconfirmed_state_fields": sorted(coordinator._h607c_uncertain_state_fields),
+            "unconfirmed_state_fields": sorted(coordinator._unconfirmed_state_fields),
         }
         if coordinator.profile.can_read(ReadDomain.PACT):
             resolution["identity_sources"]["query"] = bool(coordinator._pact_identity.connection_pacts)

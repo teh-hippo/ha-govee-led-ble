@@ -631,7 +631,7 @@ async def test_zero_scale_does_not_restore_over_newer_ownership(coord, segment_c
     segment_client.write_gatt_char.assert_awaited_once()
     assert coord.is_on is True
     assert coord._power_known is True
-    assert "is_on" not in coord._h607c_uncertain_state_fields
+    assert "is_on" not in coord._unconfirmed_state_fields
     assert not coord._control_arbiter.locked()
     assert not coord._lock.locked()
 

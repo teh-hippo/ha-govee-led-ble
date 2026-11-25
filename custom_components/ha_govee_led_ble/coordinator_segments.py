@@ -96,10 +96,10 @@ class _SegmentMixin(_CoordinatorBase):
                 continue
             affected = True
             self._expected_state.pop(f"source_kelvin_{source.key}", None)
-            if self.segment_state_source != "observed" and not self._h607c_uncertain_state_fields.intersection(
+            if self.segment_state_source != "observed" and not self._unconfirmed_state_fields.intersection(
                 {"color", "color_mode"}
             ):
-                self._h607c_uncertain_state_fields.add(f"source_colour_{source.key}")
+                self._unconfirmed_state_fields.add(f"source_colour_{source.key}")
         return affected
 
     @property
@@ -238,7 +238,7 @@ class _SegmentMixin(_CoordinatorBase):
         self.segment_brightness_readable = brightness is not None
         self.segment_state_source = "observed"
         for source in self.profile.light_sources:
-            self._h607c_uncertain_state_fields.discard(f"source_colour_{source.key}")
+            self._unconfirmed_state_fields.discard(f"source_colour_{source.key}")
         self.segment_state_observed_at = datetime.now().astimezone().isoformat()
         observed = ["segment_colors"]
         if brightness is not None:
@@ -565,7 +565,7 @@ class _SegmentMixin(_CoordinatorBase):
 
         def uncertain_power() -> None:
             if power_owned(allow_retired=True):
-                self._h607c_uncertain_state_fields.add("is_on")
+                self._unconfirmed_state_fields.add("is_on")
                 self._power_known = False
 
         def on_batch_write() -> None:

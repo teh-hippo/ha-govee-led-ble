@@ -204,8 +204,8 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     _dreamview_private_write: bool
     _upload_ack: PendingUploadAck | None
     _domain_revisions: dict[StatusDomain, int]
-    _h607c_uncertain_state_fields: set[str]
-    _h607c_failed_color_write: bool
+    _unconfirmed_state_fields: set[str]
+    _failed_static_color_write: bool
     _setting_ack: tuple[BleakClient, object | None, int, asyncio.Future[bool]] | None
 
     @contextmanager
