@@ -14,7 +14,6 @@ from .coordinator import PACKET_LOG_LIMIT, PACKET_LOG_RAW_BYTES_LIMIT
 from .coordinator_status import decode_status_frame
 from .effect_contracts import diagnostics_release_capabilities
 from .effect_diagnostics import empty_effect_diagnostic_snapshot
-from .h6199_calibration import WHITE_BALANCE_POSITIONS
 from .protocol_core import StatusReply
 from .video_applicability import camera_controls_state, video_control_states
 
@@ -42,6 +41,7 @@ async def async_get_config_entry_diagnostics(
     lock = coordinator._lock
     expected_brightness = coordinator._expected_state.get("brightness_pct")
     white_balance = coordinator.white_balance
+    white_balance_positions = coordinator.profile.video_white_balance_calibration
     coordinator_data = {
         "address": coordinator.address,
         "model": coordinator.model,
@@ -172,8 +172,8 @@ async def async_get_config_entry_diagnostics(
             "blue": coordinator.white_balance_default_blue,
         },
         "white_balance_position": (
-            WHITE_BALANCE_POSITIONS.index(white_balance) + 1
-            if white_balance is not None and white_balance in WHITE_BALANCE_POSITIONS
+            white_balance_positions.index(white_balance) + 1
+            if white_balance is not None and white_balance in white_balance_positions
             else None
         ),
         "relative_brightness": coordinator.relative_brightness,
