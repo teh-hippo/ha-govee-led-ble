@@ -4,7 +4,11 @@ from typing import Any
 
 from .const import ModelProfile, resolve_model
 from .effect_catalogue import MODEL_EFFECT_CATALOGUES
-from .effect_content_ids import GENERIC_DIY_CONTENT_KINDS, PAINTED_EFFECT_CONTENT_KIND
+from .effect_content_ids import (
+    GENERIC_DIY_CONTENT_KINDS,
+    PAINTED_EFFECT_CONTENT_KIND,
+    TYPED_DIY_CONTENT_KINDS,
+)
 from .effect_contracts import release_content_reference_model
 from .effect_deployments import DeploymentSnapshot
 from .effect_domain import (
@@ -76,8 +80,7 @@ def item_summary(item: LibraryItem) -> dict[str, Any]:
         if kind
         in {
             PAINTED_EFFECT_CONTENT_KIND,
-            "h6179_single_diy",
-            "h6179_mixed_diy",
+            *TYPED_DIY_CONTENT_KINDS,
             "palette_diy",
             "music_profile",
             "video_profile",

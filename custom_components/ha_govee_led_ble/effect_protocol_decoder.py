@@ -10,12 +10,12 @@ from .const import ModelProfile, get_profile
 from .effect_domain import (
     EffectContent,
     EffectPair,
-    H6179MixedDiyEffect,
-    H6179SingleDiyEffect,
     MultiEffect,
     PaintedEffect,
     PaletteDiyEffect,
     SingleEffect,
+    TypedMixedDiyEffect,
+    TypedSingleDiyEffect,
 )
 from .generated_protocol_adapter import parse_a3_effect_envelope
 from .h6179_effect_codec import decode_h6179_effect
@@ -118,8 +118,8 @@ def decode_a3_effect(tree: Any, model: str, *, profile: ModelProfile | None = No
             raise TypeError("tree is not a generated H6179 type-04 DIY root")
         content = _decode_h617a_type04(tree)
         if isinstance(content, SingleEffect):
-            return H6179SingleDiyEffect(model, content.family, content.variant, content.speed, content.palette)
-        return H6179MixedDiyEffect(model, content.effects, content.speed, content.palette)
+            return TypedSingleDiyEffect(model, content.family, content.variant, content.speed, content.palette)
+        return TypedMixedDiyEffect(model, content.effects, content.speed, content.palette)
     if grammar in {"H6046", "H6053"}:
         if tree.kind == H6046EffectUpload.BodyKind.scene:
             return _decode_layered_tree(tree, model)

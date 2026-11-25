@@ -11,6 +11,9 @@ from .effect_content_ids import (
     MULTI_EFFECT_CONTENT_KIND,
     PAINTED_EFFECT_CONTENT_KIND,
     SINGLE_EFFECT_CONTENT_KIND,
+    TYPED_DIY_COMPILER_STRATEGY,
+    TYPED_MIXED_DIY_CONTENT_KIND,
+    TYPED_SINGLE_DIY_CONTENT_KIND,
 )
 from .effect_domain import EFFECT_SCHEMA_VERSION, JsonValue
 from .effect_limits import (
@@ -69,7 +72,7 @@ class CompilerDeployerStrategy(StrEnum):
     MODEL_SCENE_ENGINE = "model_scene_engine"
     COORDINATOR_WRITER = "coordinator_writer"
     A3_EFFECT_UPLOAD = "a3_effect_upload"
-    H6179_EFFECT_UPLOAD = "h6179_effect_upload"
+    TYPED_DIY_UPLOAD = TYPED_DIY_COMPILER_STRATEGY
 
 
 class VerificationConfidence(StrEnum):
@@ -115,6 +118,7 @@ class ReleaseCapability:
     content_projection: ContentProjection
     selector_policy: SelectorPolicy
     upload_carriers: frozenset[str]
+    typed_diy_pairs: frozenset[tuple[int, int]] = frozenset()
     content_reference: bool = False
 
     @property
@@ -159,13 +163,14 @@ def _capability(
     activation_operations: frozenset[str] | None = None,
     selector_policy: SelectorPolicy = SelectorPolicy.FIXED,
     upload_carriers: frozenset[str] = frozenset(),
+    typed_diy_pairs: frozenset[tuple[int, int]] = frozenset(),
     content_reference: bool = False,
 ) -> ReleaseCapability:
     projection = (
         ContentProjection.PALETTE_DIY
         if persistent_content_kind == "palette_diy"
         else ContentProjection.TYPED_DIY
-        if persistent_content_kind in {"h6179_single_diy", "h6179_mixed_diy"}
+        if persistent_content_kind in {TYPED_SINGLE_DIY_CONTENT_KIND, TYPED_MIXED_DIY_CONTENT_KIND}
         else ContentProjection.GENERIC_DIY
         if persistent_content_kind
         in {PAINTED_EFFECT_CONTENT_KIND, SINGLE_EFFECT_CONTENT_KIND, MULTI_EFFECT_CONTENT_KIND}
@@ -213,17 +218,22 @@ def _capability(
             else _P.FIXED
         ),
         upload_carriers=upload_carriers,
+        typed_diy_pairs=typed_diy_pairs,
         content_reference=content_reference,
     )
 
 
 def _accepted_content_kinds(target_kind: str) -> frozenset[str]:
     return {
-        SINGLE_EFFECT_CONTENT_KIND: frozenset({SINGLE_EFFECT_CONTENT_KIND, "h6179_single_diy", "palette_diy"}),
-        MULTI_EFFECT_CONTENT_KIND: frozenset({MULTI_EFFECT_CONTENT_KIND, "h6179_mixed_diy"}),
-        "h6179_single_diy": frozenset({SINGLE_EFFECT_CONTENT_KIND, "h6179_single_diy", "palette_diy"}),
-        "h6179_mixed_diy": frozenset({MULTI_EFFECT_CONTENT_KIND, "h6179_mixed_diy"}),
-        "palette_diy": frozenset({SINGLE_EFFECT_CONTENT_KIND, "h6179_single_diy", "palette_diy"}),
+        SINGLE_EFFECT_CONTENT_KIND: frozenset(
+            {SINGLE_EFFECT_CONTENT_KIND, TYPED_SINGLE_DIY_CONTENT_KIND, "palette_diy"}
+        ),
+        MULTI_EFFECT_CONTENT_KIND: frozenset({MULTI_EFFECT_CONTENT_KIND, TYPED_MIXED_DIY_CONTENT_KIND}),
+        TYPED_SINGLE_DIY_CONTENT_KIND: frozenset(
+            {SINGLE_EFFECT_CONTENT_KIND, TYPED_SINGLE_DIY_CONTENT_KIND, "palette_diy"}
+        ),
+        TYPED_MIXED_DIY_CONTENT_KIND: frozenset({MULTI_EFFECT_CONTENT_KIND, TYPED_MIXED_DIY_CONTENT_KIND}),
+        "palette_diy": frozenset({SINGLE_EFFECT_CONTENT_KIND, TYPED_SINGLE_DIY_CONTENT_KIND, "palette_diy"}),
     }.get(target_kind, frozenset({target_kind}))
 
 
@@ -558,21 +568,23 @@ _RELEASE_CAPABILITY_BASE: Final = (
         "H6179",
         _W.SINGLE,
         "Single DIY",
-        "h6179_single_diy",
+        TYPED_SINGLE_DIY_CONTENT_KIND,
         _R.HOME_ASSISTANT_CONTROL,
-        _S.H6179_EFFECT_UPLOAD,
+        _S.TYPED_DIY_UPLOAD,
         _V.SELECTION_ONLY,
         selector_policy=_P.APPROVED_DISPOSABLE,
+        typed_diy_pairs=frozenset({(0, 0), (1, 0), (2, 0)}),
     ),
     _capability(
         "H6179",
         _W.MULTI,
         "Mixed DIY",
-        "h6179_mixed_diy",
+        TYPED_MIXED_DIY_CONTENT_KIND,
         _R.HOME_ASSISTANT_CONTROL,
-        _S.H6179_EFFECT_UPLOAD,
+        _S.TYPED_DIY_UPLOAD,
         _V.SELECTION_ONLY,
         selector_policy=_P.APPROVED_DISPOSABLE,
+        typed_diy_pairs=frozenset({(0, 0), (1, 0), (2, 0)}),
     ),
     _capability(
         "H6179",

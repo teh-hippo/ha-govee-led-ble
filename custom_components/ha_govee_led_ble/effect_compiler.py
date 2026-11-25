@@ -19,7 +19,8 @@ from .effect_catalogue import (
     validate_effect_eligibility,
     validate_native_diy,
 )
-from .effect_commands import build_h6179_diy, build_h6199_palette_diy
+from .effect_commands import build_h6199_palette_diy
+from .effect_content_ids import TYPED_DIY_CONTENT_KINDS
 from .effect_contracts import (
     EFFECT_COMPILER_VERSION,
     CapabilityWorkflow,
@@ -37,13 +38,12 @@ from .effect_diy_codec import (
     generic_diy_content_kind,
     is_single_or_multi_diy_kind,
     prepare_generic_diy,
+    prepare_typed_diy,
     retained_scene_activation_packet,
 )
 from .effect_domain import (
     BuiltinScene,
     EffectContent,
-    H6179MixedDiyEffect,
-    H6179SingleDiyEffect,
     LayeredEffect,
     LayeredScene,
     LibraryItem,
@@ -57,6 +57,8 @@ from .effect_domain import (
     RetainedSceneEffect,
     SingleEffect,
     StaticRgbComposition,
+    TypedMixedDiyEffect,
+    TypedSingleDiyEffect,
     VideoProfile,
     effect_content_workflow,
 )
@@ -336,7 +338,7 @@ def validate_compiled_geometry(compiled: CompiledApplication, profile: ModelProf
                 or compiled.upload_prefix != profile.a1_diy_prefix
             ):
                 raise ValueError("Device upload transport or selector changed since compilation")
-        if compiled.content_kind in {"h6179_single_diy", "h6179_mixed_diy"}:
+        if compiled.content_kind in TYPED_DIY_CONTENT_KINDS:
             if compiled.upload_transport != profile.diy_upload_transport:
                 raise ValueError("Device DIY transport changed since compilation")
         if profile.effect_workflows is not None and compiled.workflow.value not in profile.effect_workflows:
@@ -444,7 +446,7 @@ def _target_compatibility(item: LibraryItem, model: str, *, profile: ModelProfil
                 (f"{model} does not support video mode {content.mode}",),
             )
         return CompatibilityResult(CompatibilityState.COMPATIBLE)
-    if isinstance(content, H6179SingleDiyEffect | H6179MixedDiyEffect):
+    if isinstance(content, TypedSingleDiyEffect | TypedMixedDiyEffect):
         capability = release_capability(model, _effect_workflow(content)) if content.model == model else None
         if capability is None or capability.content_projection is not ContentProjection.TYPED_DIY:
             return CompatibilityResult(
@@ -454,6 +456,7 @@ def _target_compatibility(item: LibraryItem, model: str, *, profile: ModelProfil
         workflow = _effect_workflow(content)
         try:
             require_effect_route(model, workflow, profile=profile)
+            validate_effect_eligibility(content, model, profile=profile)
         except ValueError as error:
             return CompatibilityResult(CompatibilityState.INCOMPATIBLE, (str(error),))
         return CompatibilityResult(CompatibilityState.COMPATIBLE)
@@ -628,10 +631,10 @@ def compile_effect(
     from .effect_targets import resolve_target_item
 
     item = resolve_target_item(item, model, profile)
-    if isinstance(item.content, H6179SingleDiyEffect | H6179MixedDiyEffect):
+    if isinstance(item.content, TypedSingleDiyEffect | TypedMixedDiyEffect):
         if diy_code is None:
             raise ValueError("Typed DIY application requires an explicit DIY destination")
-        return compile_h6179(item, diy_code, model, profile=profile)
+        return compile_typed_diy(item, diy_code, model, profile=profile)
     if isinstance(item.content, NativeEffect):
         return compile_native_effect(item, model, diy_code=diy_code, profile=profile)
     if isinstance(item.content, PaintedEffect | SingleEffect | MultiEffect):
@@ -766,7 +769,7 @@ def resolve_diy_code(
         if requested is not None:
             raise ValueError("profiles do not use a DIY code")
         return None
-    if isinstance(content, H6179SingleDiyEffect | H6179MixedDiyEffect):
+    if isinstance(content, TypedSingleDiyEffect | TypedMixedDiyEffect):
         model = content.model if model is None else model
         if content.model != model:
             raise ValueError(f"effect targets {content.model}, not {model}")
@@ -1210,7 +1213,7 @@ def compile_generic_diy(
     )
 
 
-def compile_h6179(
+def compile_typed_diy(
     item: LibraryItem,
     diy_code: int,
     model: str,
@@ -1225,25 +1228,24 @@ def compile_h6179(
     if result.state is not CompatibilityState.COMPATIBLE:
         raise ValueError("; ".join(result.reasons))
     content = item.content
-    if not isinstance(content, H6179SingleDiyEffect | H6179MixedDiyEffect):
+    if not isinstance(content, TypedSingleDiyEffect | TypedMixedDiyEffect):
         raise ValueError("unsupported typed DIY content")
-    upload = tuple(build_h6179_diy(content, profile=profile))
-    activation = build_diy_activation(diy_code, model, profile=profile)
+    prepared = prepare_typed_diy(content, diy_code, model, profile)
     return CompiledEffect(
         item_id=str(item.id),
         item_version=item.version,
         model=model,
-        content_kind="h6179_single_diy" if isinstance(content, H6179SingleDiyEffect) else "h6179_mixed_diy",
+        content_kind=prepared.content_kind,
         workflow=_effect_workflow(content),
         diy_code=diy_code,
         activation_mode=ActivationMode.CUSTOM,
         expected_effect=None,
-        upload_packets=upload,
-        activation_packet=activation,
-        artifact_sha256=sha256(b"".join((*upload, activation))).hexdigest(),
+        upload_packets=prepared.upload_packets,
+        activation_packet=prepared.activation_packet,
+        artifact_sha256=sha256(b"".join((*prepared.upload_packets, prepared.activation_packet))).hexdigest(),
         evidence_codes=("effect_content_readback_unavailable",),
-        upload_transport="a3" if profile.diy_upload_transport == "a3" else "a1_02",
-        upload_subtype=4 if profile.diy_upload_transport == "a3" else None,
+        upload_transport=prepared.upload_transport,
+        upload_subtype=prepared.upload_subtype,
     )
 
 
@@ -1351,7 +1353,7 @@ def compile_application(
         return compile_music_profile(item, model, profile=profile)
     if isinstance(item.content, VideoProfile):
         return compile_video_profile(item, model, profile=profile)
-    if isinstance(item.content, H6179SingleDiyEffect | H6179MixedDiyEffect):
+    if isinstance(item.content, TypedSingleDiyEffect | TypedMixedDiyEffect):
         resolve_diy_code(item, diy_code, model=model, profile=profile)
     elif isinstance(item.content, PaintedEffect | SingleEffect | MultiEffect):
         resolved = resolve_diy_code(item, diy_code, model=model, profile=profile)

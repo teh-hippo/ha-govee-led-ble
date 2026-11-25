@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from hashlib import sha256
 from types import MappingProxyType
-from typing import Any, Self, assert_never, cast
+from typing import TYPE_CHECKING, Any, Self, assert_never, cast
 from uuid import UUID, uuid4
 
 from .const import MODEL_PROFILES
@@ -18,6 +18,8 @@ from .effect_content_ids import (
     MULTI_EFFECT_CONTENT_KIND,
     PAINTED_EFFECT_CONTENT_KIND,
     SINGLE_EFFECT_CONTENT_KIND,
+    TYPED_MIXED_DIY_CONTENT_KIND,
+    TYPED_SINGLE_DIY_CONTENT_KIND,
 )
 from .effect_limits import (
     MAX_EFFECT_DOCUMENT_BYTES,
@@ -68,11 +70,13 @@ from .native_effect import NativeEffect as NativeEffect
 from .native_effect import native_effect_from_value, native_effect_to_value
 from .protocol_core import MAX_SCENE_PARAM_BYTES
 
+if TYPE_CHECKING:
+    from .effect_contracts import ReleaseCapability
+
 EFFECT_SCHEMA_VERSION = 2
 MAX_PALETTE_COLOURS = 0xFF // 3  # DIY palettes encode their RGB byte length in one byte.
 MAX_MULTI_EFFECTS = 4
 PALETTE_CONFIG_RESERVED_MASK = 0x08
-H6179_DIY_EFFECT_PAIRS = frozenset({(0, 0), (1, 0), (2, 0)})
 
 type RGB = tuple[int, int, int]
 type JsonValue = str | int | float | bool | None | list["JsonValue"] | dict[str, "JsonValue"]
@@ -493,27 +497,26 @@ class EffectPair:
         _validate_byte(self.variant, "effect variant")
 
 
-def _validate_h6179_diy_model(model: str) -> None:
-    _validate_identifier(model, "H6179 DIY model")
+def _typed_diy_capability(model: str, workflow: str) -> ReleaseCapability:
+    _validate_identifier(model, "typed DIY model")
     from .effect_contracts import CapabilityWorkflow, ContentProjection, release_capability
 
-    if not any(
-        (capability := release_capability(model, workflow)) is not None
-        and capability.content_projection is ContentProjection.TYPED_DIY
-        for workflow in (CapabilityWorkflow.SINGLE, CapabilityWorkflow.MULTI)
-    ):
+    capability_workflow = CapabilityWorkflow(workflow)
+    capability = release_capability(model, capability_workflow)
+    if capability is None or capability.content_projection is not ContentProjection.TYPED_DIY:
         raise EffectValidationError("typed DIY content requires an admitted release capability")
+    return capability
 
 
-def _validate_h6179_diy_effect(family: int, variant: int) -> None:
+def _validate_typed_diy_pair(model: str, workflow: str, family: int, variant: int) -> None:
     _validate_byte(family, "family")
     _validate_byte(variant, "variant")
-    if (family, variant) not in H6179_DIY_EFFECT_PAIRS:
-        raise EffectValidationError(f"unsupported H6179 DIY family/variant pair ({family}, {variant})")
+    if (family, variant) not in _typed_diy_capability(model, workflow).typed_diy_pairs:
+        raise EffectValidationError(f"unsupported {model} typed DIY family/variant pair ({family}, {variant})")
 
 
 @dataclass(frozen=True, slots=True)
-class H6179SingleDiyEffect:
+class TypedSingleDiyEffect:
     model: str
     family: int
     variant: int
@@ -521,27 +524,26 @@ class H6179SingleDiyEffect:
     palette: tuple[RGB, ...]
 
     def __post_init__(self) -> None:
-        _validate_h6179_diy_model(self.model)
-        _validate_h6179_diy_effect(self.family, self.variant)
+        _validate_typed_diy_pair(self.model, "single", self.family, self.variant)
         _validate_percent(self.speed, "speed")
         _validate_palette(self.palette)
 
 
 @dataclass(frozen=True, slots=True)
-class H6179MixedDiyEffect:
+class TypedMixedDiyEffect:
     model: str
     components: tuple[EffectPair, ...]
     speed: int
     palette: tuple[RGB, ...]
 
     def __post_init__(self) -> None:
-        _validate_h6179_diy_model(self.model)
+        _typed_diy_capability(self.model, "multi")
         if not 1 <= len(self.components) <= MAX_MULTI_EFFECTS:
             raise EffectValidationError(f"mixed DIY must contain 1 to {MAX_MULTI_EFFECTS} components")
         if any(not isinstance(component, EffectPair) for component in self.components):
             raise EffectValidationError("mixed DIY components must be effect pairs")
         for component in self.components:
-            _validate_h6179_diy_effect(component.family, component.variant)
+            _validate_typed_diy_pair(self.model, "multi", component.family, component.variant)
         _validate_percent(self.speed, "speed")
         _validate_palette(self.palette)
 
@@ -701,8 +703,8 @@ type EffectContent = (
     | PaletteDiyEffect
     | MusicProfile
     | VideoProfile
-    | H6179SingleDiyEffect
-    | H6179MixedDiyEffect
+    | TypedSingleDiyEffect
+    | TypedMixedDiyEffect
     | MultiEffect
     | LayeredEffect
     | RetainedSceneEffect
@@ -719,9 +721,9 @@ def effect_content_workflow(content: EffectContent) -> str | None:
             return content.workflow
         case PaintedEffect():
             return "painted"
-        case SingleEffect() | H6179SingleDiyEffect():
+        case SingleEffect() | TypedSingleDiyEffect():
             return "single"
-        case MultiEffect() | H6179MixedDiyEffect():
+        case MultiEffect() | TypedMixedDiyEffect():
             return "multi"
         case PaletteDiyEffect():
             return "palette_diy"
@@ -999,18 +1001,18 @@ def _content_to_dict(content: EffectContent) -> dict[str, JsonValue]:
             "speed": content.speed,
             "palette": [list(colour) for colour in content.palette],
         }
-    if isinstance(content, H6179SingleDiyEffect):
+    if isinstance(content, TypedSingleDiyEffect):
         return {
-            "kind": "h6179_single_diy",
+            "kind": TYPED_SINGLE_DIY_CONTENT_KIND,
             "model": content.model,
             "family": content.family,
             "variant": content.variant,
             "speed": content.speed,
             "palette": [list(colour) for colour in content.palette],
         }
-    if isinstance(content, H6179MixedDiyEffect):
+    if isinstance(content, TypedMixedDiyEffect):
         return {
-            "kind": "h6179_mixed_diy",
+            "kind": TYPED_MIXED_DIY_CONTENT_KIND,
             "model": content.model,
             "components": [
                 {"family": component.family, "variant": component.variant} for component in content.components
@@ -1171,16 +1173,16 @@ def _content_from_dict(raw: Mapping[str, Any]) -> EffectContent:
             speed=_required_int(raw, "speed"),
             palette=_palette_from_value(raw.get("palette")),
         )
-    if kind == "h6179_single_diy":
-        return H6179SingleDiyEffect(
+    if kind == TYPED_SINGLE_DIY_CONTENT_KIND:
+        return TypedSingleDiyEffect(
             model=_required_str(raw, "model"),
             family=_required_int(raw, "family"),
             variant=_required_int(raw, "variant"),
             speed=_required_int(raw, "speed"),
             palette=_palette_from_value(raw.get("palette")),
         )
-    if kind == "h6179_mixed_diy":
-        return H6179MixedDiyEffect(
+    if kind == TYPED_MIXED_DIY_CONTENT_KIND:
+        return TypedMixedDiyEffect(
             model=_required_str(raw, "model"),
             components=tuple(
                 EffectPair(

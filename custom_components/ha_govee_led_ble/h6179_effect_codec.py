@@ -7,7 +7,7 @@ from typing import Any, cast
 
 from kaitaistruct import KaitaiStream, KaitaiStructError
 
-from .effect_domain import EffectContent, EffectPair, H6179MixedDiyEffect, H6179SingleDiyEffect
+from .effect_domain import EffectContent, EffectPair, TypedMixedDiyEffect, TypedSingleDiyEffect
 from .protocol_core import GoveeShared, H6179DiyBody, check_generated_tree, new_child
 
 
@@ -15,30 +15,30 @@ class H6179EffectCodecError(ValueError):
     """An H6179 DIY body cannot be encoded or represented canonically."""
 
 
-def encode_h6179_effect(content: H6179SingleDiyEffect | H6179MixedDiyEffect) -> bytes:
+def encode_h6179_effect(content: TypedSingleDiyEffect | TypedMixedDiyEffect) -> bytes:
     root = H6179DiyBody()
     root.marker = b"\xfe"
     root.opaque = b""
 
-    if isinstance(content, H6179SingleDiyEffect):
+    if isinstance(content, TypedSingleDiyEffect):
         root.family = H6179DiyBody.EffectFamily(content.family)
         body = new_child(H6179DiyBody.SingleBody, root)
     else:
         root.family = H6179DiyBody.EffectFamily.mixed
         body = new_child(H6179DiyBody.MixedBody, root)
 
-    body.variant = 0 if isinstance(content, H6179MixedDiyEffect) else content.variant
+    body.variant = 0 if isinstance(content, TypedMixedDiyEffect) else content.variant
     body.speed = content.speed
     body.len_palette = len(content.palette) * 3
     body.palette = _palette(body, content.palette)
-    if isinstance(content, H6179MixedDiyEffect):
+    if isinstance(content, TypedMixedDiyEffect):
         body.mix_bytes = len(content.components) * 2
         body.pairs = [_effect_pair(body, component) for component in content.components]
     root.body = body
 
     check_generated_tree(root)
     length = 5 + body.len_palette
-    if isinstance(content, H6179MixedDiyEffect):
+    if isinstance(content, TypedMixedDiyEffect):
         length += 1 + body.mix_bytes
     stream = KaitaiStream(io.BytesIO(bytes(length)))
     root._write(stream)
@@ -61,7 +61,7 @@ def decode_h6179_effect(body: bytes) -> EffectContent:
         if root.family == H6179DiyBody.EffectFamily.mixed:
             if root.body.variant != 0 or root.body.mix_bytes != len(root.body.pairs) * 2:
                 raise ValueError("H6179 mixed DIY lengths are not canonical")
-            return H6179MixedDiyEffect(
+            return TypedMixedDiyEffect(
                 model="H6179",
                 components=tuple(EffectPair(int(pair.family), pair.variant) for pair in root.body.pairs),
                 speed=root.body.speed,
@@ -69,7 +69,7 @@ def decode_h6179_effect(body: bytes) -> EffectContent:
             )
         if getattr(root.family, "name", None) not in {"fade", "jumping", "twinkle"}:
             raise ValueError(f"unsupported H6179 DIY family {root.family}")
-        return H6179SingleDiyEffect(
+        return TypedSingleDiyEffect(
             model="H6179",
             family=int(root.family),
             variant=root.body.variant,

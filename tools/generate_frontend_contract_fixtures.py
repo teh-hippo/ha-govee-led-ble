@@ -28,8 +28,6 @@ from custom_components.ha_govee_led_ble.effect_deployments import (
 )
 from custom_components.ha_govee_led_ble.effect_domain import (
     EffectPair,
-    H6179MixedDiyEffect,
-    H6179SingleDiyEffect,
     LibraryItem,
     MultiEffect,
     MusicProfile,
@@ -41,6 +39,8 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     SingleEffect,
     StaticRgbComposition,
     TargetHint,
+    TypedMixedDiyEffect,
+    TypedSingleDiyEffect,
     VideoProfile,
     effect_content_from_dict,
     effect_content_to_dict,
@@ -195,9 +195,9 @@ def _content_samples(
                 ((255, 0, 0), (0, 255, 0)),
             )
         ),
-        "h6179_single_diy": effect_content_to_dict(H6179SingleDiyEffect("H6179", 0, 0, 50, ((255, 0, 0),))),
+        "h6179_single_diy": effect_content_to_dict(TypedSingleDiyEffect("H6179", 0, 0, 50, ((255, 0, 0),))),
         "h6179_mixed_diy": effect_content_to_dict(
-            H6179MixedDiyEffect(
+            TypedMixedDiyEffect(
                 "H6179",
                 (EffectPair(0, 0), EffectPair(2, 0)),
                 50,
@@ -292,7 +292,7 @@ def rendered_data() -> str:
         version=1,
         updated_at=TIMESTAMP,
         name="Canonical H6179 DIY",
-        content=H6179SingleDiyEffect("H6179", 0, 0, 50, ((255, 0, 0),)),
+        content=TypedSingleDiyEffect("H6179", 0, 0, 50, ((255, 0, 0),)),
     )
     h6179_music_item = LibraryItem(
         id=UUID("00000000-0000-4000-8000-000000000006"),

@@ -22,6 +22,7 @@ from .const import (
     get_profile,
 )
 from .effect_compiler import CompatibilityState, compatibility
+from .effect_content_ids import TYPED_DIY_CONTENT_KINDS
 from .effect_domain import EffectValidationError, LibraryItem, effect_content_to_dict
 from .scenes import MODEL_SCENE_LABELS, MODEL_SCENES, scene_aliases, scene_supported
 
@@ -277,8 +278,7 @@ def _selector_candidates(
             item=item,
         )
         for item in compatible_saved_effects(items, model, profile=profile)
-        if (kind := str(effect_content_to_dict(item.content).get("kind")))
-        not in {"h6179_single_diy", "h6179_mixed_diy"}
+        if (kind := str(effect_content_to_dict(item.content).get("kind"))) not in TYPED_DIY_CONTENT_KINDS
         and (category := effect_category_for_content_kind(kind)) is not None
         and (category in categories or always_include_custom_effects)
     )

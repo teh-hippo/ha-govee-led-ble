@@ -175,15 +175,15 @@ def test_h6179_newer_diy_synthetic_bytes(mixed, first):
     from custom_components.ha_govee_led_ble.effect_compiler import compile_effect
     from custom_components.ha_govee_led_ble.effect_domain import (
         EffectPair,
-        H6179MixedDiyEffect,
-        H6179SingleDiyEffect,
         LibraryItem,
+        TypedMixedDiyEffect,
+        TypedSingleDiyEffect,
     )
 
     content = (
-        H6179MixedDiyEffect("H6179", (EffectPair(0, 0), EffectPair(2, 0)), 50, ((255, 0, 0), (0, 0, 255)))
+        TypedMixedDiyEffect("H6179", (EffectPair(0, 0), EffectPair(2, 0)), 50, ((255, 0, 0), (0, 0, 255)))
         if mixed
-        else H6179SingleDiyEffect("H6179", 0, 0, 100, ((255, 0, 0),))
+        else TypedSingleDiyEffect("H6179", 0, 0, 100, ((255, 0, 0),))
     )
     compiled = compile_effect(
         LibraryItem.new("Synthetic revision fixture", content),
