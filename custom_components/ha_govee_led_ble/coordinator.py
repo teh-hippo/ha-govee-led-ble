@@ -2016,6 +2016,7 @@ class GoveeBLECoordinator(
                 self._pre_mode_profile = self.profile
                 self._pre_mode_needs_qualification = False
             self._pre_mode_snapshot = pre_mode_snapshot
+            self._static_history_invalidated = False
         if mode_change and transition is not None:
             transition.installed = True
         if on_write is not None:

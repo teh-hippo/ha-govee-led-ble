@@ -116,6 +116,7 @@ class _ActiveModeMixin(_CoordinatorBase):
         self._source_power_observation_generation: dict[str, tuple[int, int]] = {}
         self._scene_code = None
         self._pre_mode_snapshot: PriorControlState | None = None
+        self._static_history_invalidated = False
         self._incomplete_static_exit: PriorControlState | None = None
         self._pre_mode_profile: ModelProfile | None = None
         self._pre_mode_needs_qualification = False
@@ -144,7 +145,12 @@ class _ActiveModeMixin(_CoordinatorBase):
             for spec in variant.selector_parameters:
                 setattr(self, spec.key, None)
 
-    def _discard_static_baseline(self, *, keep_incomplete_exit: bool = False) -> None:
+    def _discard_static_baseline(self, *, keep_incomplete_exit: bool = False, restored: bool = False) -> None:
+        self._static_history_invalidated = not restored and (
+            self._static_history_invalidated
+            or self._pre_mode_snapshot is not None
+            or self._incomplete_static_exit is not None
+        )
         self._pre_mode_snapshot = None
         if keep_incomplete_exit and self._incomplete_static_exit is not None:
             return
@@ -762,6 +768,6 @@ class _ActiveModeMixin(_CoordinatorBase):
         elif not await self.async_restore_effect_control_state(prepared, overwritten_diy_code=None):
             raise ValueError("No complete static state is available to restore")
         elif self.profile.supports_color_mode_readback:
-            self._discard_static_baseline()
+            self._discard_static_baseline(restored=True)
         else:
             self._pre_mode_snapshot = prepared.state

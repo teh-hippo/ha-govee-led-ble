@@ -677,6 +677,7 @@ class ModelProfile:
     segment_group_size: int = 0
     segment_colour_mode_ambiguous: bool = False
     static_palette_recovery: bool = False
+    static_palette_readback_in_effects: bool = False
     supports_compound_static_recovery: bool = False
     configured_string_counts: tuple[int, ...] = ()
     bulbs_per_string: int = 0
@@ -1218,6 +1219,8 @@ _H617A_PROFILE = ModelProfile(
     # Segment writes ACK normally but do not publish updated groups without those queries.
     segment_count=15,
     segment_group_size=3,
+    static_palette_recovery=True,
+    static_palette_readback_in_effects=True,
     supports_segment_writes=True,
     # Preserve the existing qualified segment operations independently of RGB writes.
     supports_segment_brightness=True,
@@ -3109,6 +3112,8 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         physical_ic_count=15,
         segment_count=15,
         segment_group_size=3,
+        static_palette_recovery=True,
+        static_palette_readback_in_effects=True,
         supports_scenes=True,
         scene_catalogue_sku="H618A",
         rgbic_scene_v0=False,
