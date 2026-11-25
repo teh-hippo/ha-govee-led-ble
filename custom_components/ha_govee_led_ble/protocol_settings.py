@@ -689,6 +689,14 @@ def is_bulk_status_frame(frame: bytes, profile: ModelProfile) -> bool:
     return profile.bulk_status_grammar_has("bulk_settings") and frame[:1] == b"\xac"
 
 
+@dataclass(frozen=True, slots=True)
+class ParsedVideoDeviceInfo:
+    is_device_info: bool
+    hardware_version: str | None
+    values: dict[str, bool | int]
+    boolean_values: dict[str, bool]
+
+
 class BulkStatusCollector:
     """Collect one bounded subscription-local response before interpreting any records."""
 
@@ -756,6 +764,41 @@ class BulkStatusCollector:
         except KaitaiStructError, ValueError, EOFError:
             self.failed = True
             return ProtocolParseResult(None, result.parser, ProtocolParseRejection.SCHEMA_REJECTED)
+
+
+def parse_video_device_info_status(
+    generated: Any, model: str, *, profile: ModelProfile
+) -> ParsedVideoDeviceInfo | None:
+    domain = getattr(generated, "domain", None)
+    domain_name = domain if isinstance(domain, str) else getattr(domain, "name", None)
+    if domain_name != "hardware" or not profile.status_grammar_has("video_device_info_status"):
+        return None
+    body = generated.body
+    selector = body.selector
+    selector_name = getattr(selector, "name", None)
+    if selector_name == "version" or int(selector) == 3:
+        detail = body.detail
+        return ParsedVideoDeviceInfo(False, str(detail.text), {}, {})
+    if selector_name != "device_info" and int(selector) != 8:
+        raise ValueError("Video hardware selector is unsupported")
+    detail = body.detail
+    if not profile.supports_hdmi_box_light:
+        return ParsedVideoDeviceInfo(True, None, {}, {})
+    brightness = int(detail.box_brightness)
+    box_effect = int(detail.box_effect)
+    if not 0 <= brightness <= 100 or not 0 <= box_effect <= profile.hdmi_box_effect_max:
+        raise ValueError("HDMI box light state is outside profile limits")
+    return ParsedVideoDeviceInfo(
+        True,
+        None,
+        {
+            "hdmi_box_light": bool(detail.box_light_enabled),
+            "hdmi_box_brightness": max(1, brightness),
+            "hdmi_box_automatic": not bool(detail.box_auto),
+            "hdmi_box_effect": box_effect,
+        },
+        parse_boolean_control(generated, model, profile=profile),
+    )
 
 
 def parse_boolean_control(generated: Any, model: str, *, profile: ModelProfile | None = None) -> dict[str, bool]:

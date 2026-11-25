@@ -34,6 +34,7 @@ from .generated_protocol_adapter import (
     parse_command_ack_result,
     parse_command_result,
     parse_physical_ic_count,
+    parse_video_device_info_status,
     parse_zone_notification,
     table_kelvin_rgb,
     upload_ack_success,
@@ -1056,14 +1057,12 @@ class _NotificationMixin(_CoordinatorBase):
         try:
             observed: tuple[str, ...] = ()
             domain_name = getattr(generated.domain, "name", None)
-            h8604_device_info = (
-                self.profile.status_grammar_has("video_device_info_status")
-                and domain is StatusDomain.HARDWARE
-                and (
-                    getattr(generated.body.selector, "name", None) == "device_info" or int(generated.body.selector) == 8
-                )
-            )
-            if self.profile.boolean_controls and domain_name != "source_info" and not h8604_device_info:
+            video_device_info = parse_video_device_info_status(generated, self.model, profile=self.profile)
+            if (
+                self.profile.boolean_controls
+                and domain_name != "source_info"
+                and not (video_device_info and video_device_info.is_device_info)
+            ):
                 boolean_values = parse_boolean_control(generated, self.model, profile=self.profile)
                 boolean_expectations = {f"boolean_{key}": value for key, value in boolean_values.items()}
                 if not self._accept_expected_values(boolean_expectations):
@@ -1187,42 +1186,29 @@ class _NotificationMixin(_CoordinatorBase):
                     return
                 observed = ("pact",)
             elif domain is StatusDomain.HARDWARE:
-                if self.profile.status_grammar_has("video_device_info_status") and int(generated.body.selector) not in {
-                    3,
-                    8,
-                }:
-                    raise ValueError("H8604 hardware selector is unsupported")
                 version = (
-                    generated.values["version"]
+                    video_device_info.hardware_version
+                    if video_device_info is not None
+                    else generated.values["version"]
                     if isinstance(generated, ParsedH6179Status)
                     else getattr(getattr(generated.body, "detail", None), "text", getattr(generated.body, "text", None))
                 )
                 if version is not None and self._observe_identity_field("hw_version", version):
                     observed = observed + ("hw_version",)
-                detail = getattr(getattr(generated, "body", None), "detail", None)
-                if h8604_device_info and self.profile.supports_hdmi_box_light and detail is not None:
-                    box_values = {
-                        "hdmi_box_light": bool(detail.box_light_enabled),
-                        "hdmi_box_brightness": max(1, int(detail.box_brightness)),
-                        "hdmi_box_automatic": not bool(detail.box_auto),
-                        "hdmi_box_effect": int(detail.box_effect),
-                    }
-                    if (
-                        not 0 <= detail.box_brightness <= 100
-                        or not 0 <= box_values["hdmi_box_effect"] <= self.profile.hdmi_box_effect_max
-                    ):
-                        raise ValueError("HDMI box light state is outside profile limits")
-                    boolean_values = parse_boolean_control(generated, self.model, profile=self.profile)
+                if video_device_info and video_device_info.is_device_info and video_device_info.values:
                     values = {
-                        **box_values,
-                        **{f"boolean_{control}": enabled for control, enabled in boolean_values.items()},
+                        **video_device_info.values,
+                        **{
+                            f"boolean_{control}": enabled
+                            for control, enabled in video_device_info.boolean_values.items()
+                        },
                     }
                     if not self._accept_expected_values(values):
                         self._reply_gate.observe(frame)
                         self._record_parsed_status(frame, decoded, parser)
                         return
-                    self.boolean_control_state.update(boolean_values)
-                    for field, value in box_values.items():
+                    self.boolean_control_state.update(video_device_info.boolean_values)
+                    for field, value in video_device_info.values.items():
                         setattr(self, field, value)
                     observed += tuple(values)
             elif domain is StatusDomain.SUBORDINATE_20:
