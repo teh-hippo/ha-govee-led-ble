@@ -31,6 +31,7 @@ import type {
   LayeredRetainedSceneContent,
   RgbRetainedSceneContent,
 } from "./types";
+import { isNativeEffectModel, nativeEffectPolicy } from "./native-effect-policies";
 import { clonePalette, cloneRgb, sameRgb } from "./ui-utils";
 import { LEGACY_CUSTOM_CATALOGUE_SKU } from "./validation-constants";
 
@@ -749,12 +750,7 @@ export function customEffectCategoryForKind(
 
 export function nativeEffectWorkflow(content: NativeEffectContent): NonNullable<LibrarySummary["native_workflow"]> {
   if (content.template !== null) return "layered_scenes";
-  if (content.projector_layers) return content.preset_id === null ? "advanced" : "single";
-  if (content.model === "H1771") return "multi";
-  if (content.model === "H60B0") {
-    return [13, 923].includes(content.family) ? "advanced" : content.family === 81 || content.revision === 3 ? "multi" : "single";
-  }
-  if (content.model === "H607C") return content.family === 153 ? "multi" : "single";
+  if (isNativeEffectModel(content.model)) return nativeEffectPolicy(content.model).workflow(content);
   return content.family === 798 ? "painted" : [11, 12].includes(content.preset_id ?? -1) ? "advanced" : "single";
 }
 

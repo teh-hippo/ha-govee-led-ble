@@ -1,7 +1,7 @@
 import type { LivePreviewInteraction } from "./live-preview-controller";
 import { renderH60B0Editor } from "./h60b0-native-editor";
 import { renderH7025Editor } from "./h7025-native-editor";
-import { renderH1771SectionEditor, renderNativeZoneEditor } from "./native-zone-editor";
+import { renderDualSourceSectionEditor, renderNativeZoneEditor } from "./native-zone-editor";
 import { isNativeEffectModel, nativeEffectPolicy } from "./native-effect-policies";
 import { renderProjectorEditor } from "./projector-editor";
 import type { ModelEffectCatalogue, NativeDiyLayer, NativeEffectContent } from "./types";
@@ -31,7 +31,7 @@ export function renderNativeEffectEditor(
     case "single-palette":
       return renderH7025Editor(content, disabled, change);
     case "dual-source":
-      return renderH1771SectionEditor(content, catalogue, disabled, zoneChange);
+      return renderDualSourceSectionEditor(content, catalogue, disabled, zoneChange);
     case "zones":
       return renderNativeZoneEditor(content, catalogue, disabled, zoneChange);
     case "generic":

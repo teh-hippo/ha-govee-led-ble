@@ -1,3 +1,5 @@
+import type { LibrarySummary, NativeEffectContent } from "./types";
+
 type NativeEffectLayout = {
   family: number;
   revision: number | undefined;
@@ -5,6 +7,7 @@ type NativeEffectLayout = {
 };
 
 type NativeEffectEditor = "generic" | "projector" | "revisioned" | "single-palette" | "dual-source" | "zones";
+type NativeEffectWorkflow = NonNullable<LibrarySummary["native_workflow"]>;
 
 export type NativeEffectPolicy = {
   acceptsFamily: (family: number) => boolean;
@@ -16,9 +19,11 @@ export type NativeEffectPolicy = {
   sectionTail: boolean;
   temperatures: boolean;
   editor: NativeEffectEditor;
+  workflow: (content: NativeEffectContent) => NativeEffectWorkflow;
   combinedFamily?: number;
   diyFamily?: number;
   paintFamily?: number;
+  sectionTemplatePrefix?: (index: number) => string;
 };
 
 export const NATIVE_EFFECT_MODELS = [
@@ -45,6 +50,9 @@ const POLICIES = {
     sectionTail: false,
     temperatures: false,
     editor: "generic",
+    workflow: content => content.family === 798
+      ? "painted"
+      : content.preset_id === 11 || content.preset_id === 12 ? "advanced" : "single",
     diyFamily: 797,
     paintFamily: 798,
   },
@@ -58,6 +66,7 @@ const POLICIES = {
     sectionTail: false,
     temperatures: false,
     editor: "zones",
+    workflow: content => content.family === 153 ? "multi" : "single",
   },
   H1771: {
     acceptsFamily: family => family === 957,
@@ -69,6 +78,8 @@ const POLICIES = {
     sectionTail: true,
     temperatures: false,
     editor: "dual-source",
+    workflow: () => "multi",
+    sectionTemplatePrefix: index => `template:h1771:${index}:`,
   },
   H60B0: {
     acceptsFamily: () => true,
@@ -85,6 +96,9 @@ const POLICIES = {
     sectionTail: true,
     temperatures: true,
     editor: "revisioned",
+    workflow: content => [13, 923].includes(content.family)
+      ? "advanced"
+      : content.family === 81 || content.revision === 3 ? "multi" : "single",
     combinedFamily: 81,
   },
   H60B2: {
@@ -97,6 +111,7 @@ const POLICIES = {
     sectionTail: false,
     temperatures: false,
     editor: "zones",
+    workflow: () => "single",
   },
   H1AB2: {
     acceptsFamily: family => family === 948,
@@ -108,6 +123,7 @@ const POLICIES = {
     sectionTail: false,
     temperatures: false,
     editor: "zones",
+    workflow: () => "single",
   },
   H6093: {
     acceptsFamily: family => family === 712,
@@ -119,6 +135,7 @@ const POLICIES = {
     sectionTail: false,
     temperatures: false,
     editor: "projector",
+    workflow: content => content.preset_id === null ? "advanced" : "single",
   },
   H7025: {
     acceptsFamily: family => family === 767,
@@ -130,6 +147,7 @@ const POLICIES = {
     sectionTail: false,
     temperatures: false,
     editor: "single-palette",
+    workflow: () => "single",
   },
 } satisfies Record<NativeEffectModel, NativeEffectPolicy>;
 
