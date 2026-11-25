@@ -696,7 +696,7 @@ async def test_h607c_registered_settings_survive_identity_expiry(hass, identity_
     "control", ["pole_enabled", "base_enabled", "power_on_behaviour", "pole_light_on", "pole_light_off"]
 )
 @pytest.mark.parametrize("identity", ["ready", "unsupported", "conflicting", "revoked"])
-async def test_h607c_settings_requalify_after_release(hass, monkeypatch, control, identity):
+async def test_deferred_settings_requalify_after_release(hass, monkeypatch, control, identity):
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H607C", configuration_url=None)
     coordinator._pact_identity.marker_pact = (1, 1)
     coordinator._resolve_pact_identity()
