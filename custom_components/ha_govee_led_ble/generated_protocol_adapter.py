@@ -78,6 +78,8 @@ from .protocol_settings import build_hdmi_input as build_hdmi_input
 from .protocol_settings import build_ic_refresh as build_ic_refresh
 from .protocol_settings import build_installation_direction as build_installation_direction
 from .protocol_settings import build_installation_direction_query as build_installation_direction_query
+from .protocol_settings import build_native_camera_control as build_native_camera_control
+from .protocol_settings import build_native_camera_control_query as build_native_camera_control_query
 from .protocol_settings import build_pact_query as build_pact_query
 from .protocol_settings import build_physical_ic_count_query as build_physical_ic_count_query
 from .protocol_settings import build_power_on_behaviour as build_power_on_behaviour
@@ -96,7 +98,9 @@ from .protocol_settings import build_white_balance_query as build_white_balance_
 from .protocol_settings import build_whole_relative_brightness as build_whole_relative_brightness
 from .protocol_settings import bulk_status_domains as bulk_status_domains
 from .protocol_settings import is_bulk_status_frame as is_bulk_status_frame
+from .protocol_settings import native_camera_control_fields as native_camera_control_fields
 from .protocol_settings import parse_boolean_control as parse_boolean_control
+from .protocol_settings import parse_native_camera_control as parse_native_camera_control
 from .protocol_settings import parse_physical_ic_count as parse_physical_ic_count
 from .protocol_settings import parse_video_device_info_status as parse_video_device_info_status
 from .protocol_settings import parse_zone_notification as parse_zone_notification

@@ -144,7 +144,7 @@ async def test_background_reconnect_admission(static_recovery_ready, hass, monke
             monkeypatch.setattr("custom_components.ha_govee_led_ble.select.get_effect_backend", lambda _: None)
             await entity.async_select_option("bottom")
         elif route == "register":
-            await c.async_set_h6199_control("camera_position", 1)
+            await c.async_set_native_camera_control("camera_position", 1)
         elif route == "mode":
             await apply_active_video_mode(
                 c, mode="movie", requested_values={"sound_effects": True}, writer=writer, verify=False
@@ -246,7 +246,7 @@ async def test_qualification_wait_cancels_without_writes_or_stale_fallback(recon
 async def test_structurally_invalid_register_fails_without_waiting(reconnect_lifecycle):  # noqa: F811
     c, _, _, packets = reconnect_lifecycle
     async with async_control_intent(c, ControlIntent.BACKGROUND):
-        task = asyncio.create_task(c.async_set_h6199_control("gradient", 2))
+        task = asyncio.create_task(c.async_set_native_camera_control("gradient", 2))
         with pytest.raises(ValueError, match="integer 0 or 1"):
             await asyncio.wait_for(task, 0.1)
         task = asyncio.create_task(apply_white_balance(c, (21, 5), flag=255))

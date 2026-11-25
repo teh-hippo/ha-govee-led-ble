@@ -156,7 +156,7 @@ class GoveeBLEControlSelect(GoveeBLEEntity, SelectEntity):
             if backend := get_effect_backend(self.hass):
                 await backend.preview.async_supersede_device(self._entry.entry_id, reason="home_assistant_control")
             try:
-                await self.coordinator.async_set_h6199_control(self._control, self.options.index(option))
+                await self.coordinator.async_set_native_camera_control(self._control, self.options.index(option))
             except (BleakError, ValueError, TimeoutError) as err:
                 raise HomeAssistantError(translation_domain=DOMAIN, translation_key="device_command_failed") from err
 

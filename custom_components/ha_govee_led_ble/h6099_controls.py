@@ -17,7 +17,7 @@ from .generated_protocol_adapter import (
     build_installation_direction,
     build_installation_direction_query,
 )
-from .protocol_h6199 import INSTALLATION_DIRECTIONS
+from .protocol_settings import INSTALLATION_DIRECTIONS
 
 if TYPE_CHECKING:
     from .coordinator import GoveeBLECoordinator

@@ -25,9 +25,6 @@ from .transport import (
     A3_CHUNK_SIZE,
 )
 
-INSTALLATION_DIRECTIONS = (2, 3, 4, 5)
-
-
 H6199_NATIVE_CONTROLS = ("strip_direction", "camera_position", "gradient", "camera_status")
 
 

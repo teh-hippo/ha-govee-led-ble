@@ -186,6 +186,7 @@ class ConfiguredIdentityPolicy:
 
 @dataclass(frozen=True, slots=True)
 class CameraControlPolicy:
+    control_grammar: str
     identity_fields: tuple[str, ...]
     qualified_versions: tuple[int, ...]
     qualified_pact: tuple[int, int]
@@ -4004,6 +4005,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         video_revision_policy=VideoRevisionPolicy.QUALIFIED_CAMERA,
         video_control_state_resolver=_h6199_video_control_revision_states,
         camera_control_policy=CameraControlPolicy(
+            control_grammar="H6199",
             identity_fields=("fw_version", "hw_version", "subordinate_20_version", "subordinate_21_version"),
             qualified_versions=(11004, 30201, 10300, 10033),
             qualified_pact=(2, 1),
