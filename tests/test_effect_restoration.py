@@ -4,9 +4,11 @@ import asyncio
 import io
 import time
 from dataclasses import replace
-from unittest.mock import AsyncMock, MagicMock
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from aiotools import VirtualClock
 from bleak.exc import BleakError
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.setup import async_setup_component
@@ -146,7 +148,17 @@ def resident_video(hass, monkeypatch, request):
     refresh = coordinator.refresh_state
 
     async def bounded_refresh(request=None):
-        return await refresh(replace(request or RefreshRequest(), timeout=0.01))
+        clock = VirtualClock()
+        clock.vtime = asyncio.get_running_loop().time()
+        clock_time = SimpleNamespace(monotonic=clock.virtual_time)
+        with (
+            clock.patch_loop(),
+            patch.object(coordinator_module, "time", clock_time),
+            patch("custom_components.ha_govee_led_ble.coordinator_notifications.time", clock_time),
+            patch("custom_components.ha_govee_led_ble.coordinator_recovery.time", clock_time),
+            patch("custom_components.ha_govee_led_ble.coordinator_segments.time", clock_time),
+        ):
+            return await refresh(replace(request or RefreshRequest(), timeout=0.01))
 
     monkeypatch.setattr(coordinator, "refresh_state", bounded_refresh)
     return coordinator, state
