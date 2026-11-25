@@ -5,10 +5,14 @@ from typing import Any
 
 from .const import MODE_COMMAND_GRAMMARS, VIDEO_GRAMMARS, ModelProfile, get_profile
 from .coordinator_status import ParsedMode
-from .generated_protocol_adapter import parse_command, parse_video_command, video_parameters_from_detail
+from .generated_protocol_adapter import (
+    command_semantics_from_generated,
+    parse_command,
+    parse_video_command,
+    video_parameters_from_detail,
+)
 from .light_commands import ParsedStaticWrite, static_write_from_command
 from .music_protocol import music_slug_for
-from .protocol_h6179 import h6179_command_from_generated
 from .scenes import scene_key_for_code
 
 
@@ -35,7 +39,7 @@ def expectations_from_packet(
     profile = profile or get_profile(model)
     parsed = parse_write_state(packet, model, profile=profile) if parsed is None else parsed
     if profile.command_grammar_has("custom_command"):
-        return _h6179_expectations(parsed, model, static_echoes_color=static_echoes_color, profile=profile)
+        return _custom_command_expectations(parsed, model, static_echoes_color=static_echoes_color, profile=profile)
     video = parse_video_command(packet, model, profile=profile)
     if video is not None:
         detail = video.detail
@@ -180,14 +184,14 @@ def expectations_from_packet(
     return expectations
 
 
-def _h6179_expectations(
+def _custom_command_expectations(
     parsed: ParsedWriteState,
     model: str,
     *,
     static_echoes_color: bool,
     profile: ModelProfile,
 ) -> dict[str, Any]:
-    command = h6179_command_from_generated(parsed.command)
+    command = command_semantics_from_generated(parsed.command, profile)
     if command is None:
         return {}
     if command.operation == "power":

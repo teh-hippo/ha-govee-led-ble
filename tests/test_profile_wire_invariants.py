@@ -29,7 +29,6 @@ from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_expectations import expectations_from_packet
 from custom_components.ha_govee_led_ble.coordinator_status import (
     _STATUS_DOMAIN_NAMES,
-    ParsedH6179Status,
     ParsedMode,
     ParsedStatusEnvelope,
     parse_color_mode,
@@ -61,6 +60,7 @@ from custom_components.ha_govee_led_ble.music_semantics import (
     music_variant,
 )
 from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_packets
+from custom_components.ha_govee_led_ble.protocol_semantics import ParsedProtocolStatus
 from custom_components.ha_govee_led_ble.scenes import (
     MODEL_SCENES,
     SceneEntry,
@@ -600,7 +600,7 @@ def test_every_claimed_read_domain_has_a_typed_body(model: str, profile: ModelPr
                 int(raw.parsed.domain) if a.is_bulk_status_frame(frame, profile) else frame[1]
             )
             if profile.status_grammar == "H6179":
-                assert isinstance(decoded.generated, ParsedH6179Status) and decoded.generated.values
+                assert isinstance(decoded.generated, ParsedProtocolStatus) and decoded.generated.values
             elif domain is ReadDomain.FIRMWARE:
                 assert decoded.generated.body.text == "3.02.24"
             elif domain is ReadDomain.HARDWARE:

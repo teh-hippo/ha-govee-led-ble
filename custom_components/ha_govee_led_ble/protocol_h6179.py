@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any
 
@@ -18,18 +17,7 @@ from .protocol_core import (
     decode_wire_brightness,
     encode_wire_brightness,
 )
-
-
-@dataclass(frozen=True, slots=True)
-class ParsedH6179Command:
-    operation: str
-    values: Mapping[str, Any]
-
-
-@dataclass(frozen=True, slots=True)
-class ParsedH6179Status:
-    domain: str
-    values: Mapping[str, Any]
+from .protocol_semantics import ParsedProtocolCommand, ParsedProtocolStatus
 
 
 def _values(**values: Any) -> Mapping[str, Any]:
@@ -93,7 +81,7 @@ def _h6179_mode_values(body: Any, *, command: bool) -> Mapping[str, Any] | None:
     return None
 
 
-def parse_h6179_command(frame: bytes) -> ParsedH6179Command | None:
+def parse_h6179_command(frame: bytes) -> ParsedProtocolCommand | None:
     """Parse an H6179 command into semantic values without exposing generated classes."""
 
     from .generated_protocol_adapter import parse_command
@@ -101,7 +89,7 @@ def parse_h6179_command(frame: bytes) -> ParsedH6179Command | None:
     return h6179_command_from_generated(parse_command(frame, "H6179"))
 
 
-def h6179_command_from_generated(parsed: Any) -> ParsedH6179Command | None:
+def h6179_command_from_generated(parsed: Any) -> ParsedProtocolCommand | None:
     if parsed is None:
         return None
     operation = getattr(parsed.opcode, "name", None)
@@ -128,10 +116,10 @@ def h6179_command_from_generated(parsed: Any) -> ParsedH6179Command | None:
         values = _values(flag=int(parsed.body.value))
     else:
         return None
-    return ParsedH6179Command(operation=operation, values=values)
+    return ParsedProtocolCommand(operation=operation, values=values)
 
 
-def _parse_h6179_status(parsed: Any) -> ParsedH6179Status | None:
+def _parse_h6179_status(parsed: Any) -> ParsedProtocolStatus | None:
     domain = getattr(parsed.domain, "name", None)
     if domain is None:
         return None
@@ -159,7 +147,7 @@ def _parse_h6179_status(parsed: Any) -> ParsedH6179Status | None:
         values = mode_values
     else:
         return None
-    return ParsedH6179Status(domain=domain, values=values)
+    return ParsedProtocolStatus(domain=domain, values=values)
 
 
 def parse_h6179_status_result(frame: bytes) -> ProtocolParseResult:

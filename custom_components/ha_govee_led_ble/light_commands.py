@@ -9,6 +9,7 @@ from .generated_protocol_adapter import (
     KELVIN_DIRECT_RGB,
     build_colour_temperature,
     build_segment_colour,
+    command_semantics_from_generated,
     parse_command,
     table_kelvin_rgb,
     table_rgb_kelvin,
@@ -16,7 +17,6 @@ from .generated_protocol_adapter import (
 from .generated_protocol_adapter import (
     build_segment_brightness as build_segment_brightness_mask,
 )
-from .protocol_h6179 import h6179_command_from_generated
 
 SEGMENT_COUNT = 15
 ALL_SEGMENTS: tuple[int, ...] = tuple(range(1, SEGMENT_COUNT + 1))
@@ -255,7 +255,7 @@ def static_write_from_command(generated: Any, profile: ModelProfile) -> ParsedSt
         if isinstance(generated, H6093Projector.Activation):
             return ParsedStaticWrite(operation=int(generated.body.sub_mode), segment_mask=None, kind="projector")
     if profile.command_grammar_has("custom_command"):
-        command = h6179_command_from_generated(generated)
+        command = command_semantics_from_generated(generated, profile)
         if command is None or command.operation != "mode" or command.values.get("mode") != "static":
             return None
         kelvin = int(command.values["kelvin"])

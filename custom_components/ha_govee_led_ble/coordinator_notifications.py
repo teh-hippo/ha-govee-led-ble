@@ -48,8 +48,8 @@ from .music_semantics import (
     music_body_params_for_mode,
 )
 from .protocol_core import decode_wire_brightness
-from .protocol_h6179 import ParsedH6179Status
 from .protocol_h6199 import parse_h6199_control
+from .protocol_semantics import ParsedProtocolStatus
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -1110,7 +1110,7 @@ class _NotificationMixin(_CoordinatorBase):
             elif domain is StatusDomain.POWER:
                 value = (
                     bool(generated.values["is_on"])
-                    if isinstance(generated, ParsedH6179Status)
+                    if isinstance(generated, ParsedProtocolStatus)
                     else bool(generated.body.is_on)
                 )
                 if self._accept_expected("is_on", value):
@@ -1129,7 +1129,7 @@ class _NotificationMixin(_CoordinatorBase):
                     return
                 brightness_value = (
                     int(generated.values["brightness_pct"])
-                    if isinstance(generated, ParsedH6179Status)
+                    if isinstance(generated, ParsedProtocolStatus)
                     else int(generated.body.percent)
                     if self.profile.status_grammar in PERCENT_BRIGHTNESS_STATUS_GRAMMARS
                     or self.profile.status_grammar_has("percent_brightness")
@@ -1177,7 +1177,7 @@ class _NotificationMixin(_CoordinatorBase):
                 observed = self._apply_segment_group(generated)
             elif domain is StatusDomain.FIRMWARE:
                 version = (
-                    generated.values["version"] if isinstance(generated, ParsedH6179Status) else generated.body.text
+                    generated.values["version"] if isinstance(generated, ParsedProtocolStatus) else generated.body.text
                 )
                 if self._observe_identity_field("fw_version", version):
                     observed = ("fw_version",)
@@ -1190,7 +1190,7 @@ class _NotificationMixin(_CoordinatorBase):
                     video_device_info.hardware_version
                     if video_device_info is not None
                     else generated.values["version"]
-                    if isinstance(generated, ParsedH6179Status)
+                    if isinstance(generated, ParsedProtocolStatus)
                     else getattr(getattr(generated.body, "detail", None), "text", getattr(generated.body, "text", None))
                 )
                 if version is not None and self._observe_identity_field("hw_version", version):
