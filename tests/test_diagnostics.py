@@ -155,7 +155,7 @@ async def test_h607c_capability_diagnostics_distinguish_sources_without_private_
     coordinator._resolve_pact_identity()
     coordinator._pact_identity.invalid_version_seen = True
     coordinator._h607c_last_optional_read_failure = "TimeoutError"
-    coordinator._h607c_uncertain_state_fields = {"is_on", "color"}
+    coordinator._unconfirmed_state_fields = {"is_on", "color"}
     coordinator.packet_log = [{"dir": "rx", "outcome": "parsed", "raw": "aa05deadbeef"}]
 
     resolution = (await _run(coordinator, entry, hass))["coordinator"]["capability_resolution"]

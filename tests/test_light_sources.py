@@ -332,7 +332,7 @@ def test_source_reports_valid_unknown_colour_mode_during_effects(source_coordina
 
 def test_unconfirmed_colour_marks_only_colour_capable_sources_assumed(source_coordinator):
     coordinator = source_coordinator
-    coordinator._h607c_uncertain_state_fields.add("color")
+    coordinator._unconfirmed_state_fields.add("color")
     assert GoveeBLESourceLight(coordinator, "left_bar").assumed_state
     coordinator.profile = MODEL_PROFILES["H1771"]
     coordinator.boolean_control_state = {"source_0_enabled": True}
@@ -658,12 +658,12 @@ async def test_failed_master_confirmation_does_not_suppress_a_retry(source_coord
         if request.refresh_all:
             coordinator.is_on = False
             coordinator._field_revisions["is_on"] += 1
-            coordinator._h607c_uncertain_state_fields.discard("is_on")
+            coordinator._unconfirmed_state_fields.discard("is_on")
             return True
         if coordinator.control_write_attempts == 1:
             return False
         coordinator._field_revisions["is_on"] += 1
-        coordinator._h607c_uncertain_state_fields.discard("is_on")
+        coordinator._unconfirmed_state_fields.discard("is_on")
         return True
 
     coordinator.send_command = AsyncMock(side_effect=send)
@@ -893,7 +893,7 @@ async def test_expired_mode_guard_does_not_confirm_optimistic_static_mode(hass):
     with pytest.raises(TimeoutError):
         await coordinator._async_write_packet(client, second, arm_expected=True)
     assert coordinator.color_mode is None
-    assert "color_mode" in coordinator._h607c_uncertain_state_fields
+    assert "color_mode" in coordinator._unconfirmed_state_fields
 
 
 @pytest.mark.parametrize("failure", [TimeoutError, asyncio.CancelledError])
@@ -923,7 +923,7 @@ async def test_failed_scene_to_static_write_stays_unknown_until_mode_reply(hass,
     payload = bytes.fromhex("aa05040100").ljust(19, b"\x00")
     coordinator._notify_callback(None, bytearray(payload + bytes((xor_checksum(payload),))))
     assert coordinator.color_mode is ParsedMode.SCENE
-    assert "color_mode" not in coordinator._h607c_uncertain_state_fields
+    assert "color_mode" not in coordinator._unconfirmed_state_fields
 
 
 async def test_failed_segment_brightness_keeps_source_colour_intents(hass):
@@ -952,8 +952,8 @@ async def test_successful_retry_after_failed_source_write_is_optimistic(hass):
         await coordinator._async_write_packet(client, packet, arm_expected=True)
     await coordinator._async_write_packet(client, packet, arm_expected=True)
     assert coordinator.color_mode is ParsedMode.COLOUR
-    assert "color_mode" not in coordinator._h607c_uncertain_state_fields
-    assert "color" in coordinator._h607c_uncertain_state_fields
+    assert "color_mode" not in coordinator._unconfirmed_state_fields
+    assert "color" in coordinator._unconfirmed_state_fields
     assert GoveeBLELight(coordinator).assumed_state
 
 

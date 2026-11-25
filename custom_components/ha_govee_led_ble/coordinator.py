@@ -324,8 +324,8 @@ class GoveeBLECoordinator(
         self.pact_code = identity.pact_code
         self._pact_identity = PactIdentityState()
         self._h607c_last_optional_read_failure: str | None = None
-        self._h607c_uncertain_state_fields: set[str] = set()
-        self._h607c_failed_color_write = False
+        self._unconfirmed_state_fields: set[str] = set()
+        self._failed_static_color_write = False
         self.boolean_control_state: dict[str, bool] = {}
         self.local_sound: int | None = None
         self.local_volume: int | None = None
@@ -365,16 +365,16 @@ class GoveeBLECoordinator(
 
     def control_state_uncertain(self, *fields: str) -> bool:
         return (
-            bool(self._h607c_uncertain_state_fields.intersection(fields))
+            bool(self._unconfirmed_state_fields.intersection(fields))
             if fields
-            else bool(self._h607c_uncertain_state_fields)
+            else bool(self._unconfirmed_state_fields)
         )
 
     def static_color_unknown(self) -> bool:
-        return "color" in self._h607c_uncertain_state_fields and self._h607c_failed_color_write
+        return "color" in self._unconfirmed_state_fields and self._failed_static_color_write
 
     def unconfirmed_state_fields(self) -> frozenset[str]:
-        return frozenset(self._h607c_uncertain_state_fields)
+        return frozenset(self._unconfirmed_state_fields)
 
     def source_field_fresh(self, field: str) -> bool:
         return coordinator_sources.source_field_fresh(self, field)
@@ -1571,7 +1571,7 @@ class GoveeBLECoordinator(
         for field in fields:
             self._field_revisions[field] = self._field_revisions.get(field, 0) + 1
             self._field_received_at[field] = received_at
-            self._h607c_uncertain_state_fields.discard(field)
+            self._unconfirmed_state_fields.discard(field)
             if field == "is_on":
                 self._power_known = True
                 self._observed_power_write_generation = self._power_write_generation
@@ -1586,8 +1586,8 @@ class GoveeBLECoordinator(
         if ("rgb_color" in fields and self.rgb_color_source == "observed") or (
             "color_temp_kelvin" in fields and self.color_temp_kelvin_source == "observed"
         ):
-            self._h607c_uncertain_state_fields.discard("color")
-            self._h607c_failed_color_write = False
+            self._unconfirmed_state_fields.discard("color")
+            self._failed_static_color_write = False
         transition = self._mode_transition
         if "color_mode" in fields:
             if self._observed_color_mode not in (None, ParsedMode.UNKNOWN):
@@ -2004,9 +2004,9 @@ class GoveeBLECoordinator(
                 and self._field_revisions.get("color_mode", 0) <= mode_revision
             ):
                 self.color_mode = None
-                self._h607c_uncertain_state_fields.add("color_mode")
+                self._unconfirmed_state_fields.add("color_mode")
                 for source in self.profile.light_sources:
-                    self._h607c_uncertain_state_fields.discard(f"source_colour_{source.key}")
+                    self._unconfirmed_state_fields.discard(f"source_colour_{source.key}")
                 for field in ("color_mode", "rgb_color", "color_temp_kelvin"):
                     self._expected_state.pop(field, None)
                 self.async_set_updated_data(self.data or {})
@@ -2121,15 +2121,10 @@ class GoveeBLECoordinator(
         if arm_expected:
             for field, domain in (("is_on", ReadDomain.POWER), ("brightness_pct", ReadDomain.BRIGHTNESS)):
                 if field in requested and not self.profile.can_read(domain):
-                    self._h607c_uncertain_state_fields.discard(field)
-        if (
-            arm_expected
-            and static is not None
-            and intent.sources
-            and "color_mode" in self._h607c_uncertain_state_fields
-        ):
-            self._h607c_uncertain_state_fields.discard("color_mode")
-            self._h607c_uncertain_state_fields.add("color")
+                    self._unconfirmed_state_fields.discard(field)
+        if arm_expected and static is not None and intent.sources and "color_mode" in self._unconfirmed_state_fields:
+            self._unconfirmed_state_fields.discard("color_mode")
+            self._unconfirmed_state_fields.add("color")
         if (
             intent.rgb is not None
             and self._client is client

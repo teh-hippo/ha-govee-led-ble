@@ -240,7 +240,7 @@ def main_source_colours(coordinator: GoveeBLECoordinator) -> tuple[int | tuple[i
             return None
         if not enabled:
             continue
-        if f"source_colour_{key}" in coordinator._h607c_uncertain_state_fields:
+        if f"source_colour_{key}" in coordinator._unconfirmed_state_fields:
             return None
         if source.native_control:
             kelvin = getattr(coordinator, f"{key}_kelvin", None)
@@ -349,7 +349,7 @@ def source_power_state(coordinator: GoveeBLECoordinator, key: str) -> bool | Non
     if (
         source is None
         or coordinator.is_on is None
-        or "is_on" in coordinator._h607c_uncertain_state_fields
+        or "is_on" in coordinator._unconfirmed_state_fields
         or coordinator._field_revisions.get("is_on", 0) == 0
         and "is_on" not in coordinator._expected_state
     ):
@@ -527,7 +527,7 @@ class SourceTurnOnTransaction:
                 coordinator.control_write_attempts != attempts
                 and coordinator._field_revisions.get(field, 0) <= revision
             ):
-                coordinator._h607c_uncertain_state_fields.add(field)
+                coordinator._unconfirmed_state_fields.add(field)
                 coordinator._expected_state.pop(field, None)
                 coordinator.async_set_updated_data(coordinator.data or {})
             raise
@@ -535,7 +535,7 @@ class SourceTurnOnTransaction:
     async def _ensure_power(self, prepared: _PreparedSourceRequest, guard: Callable[[], None]) -> None:
         coordinator, profile, source = self._coordinator, prepared.profile, prepared.source
         if profile.can_read(ReadDomain.POWER) and (
-            not source_field_fresh(coordinator, "is_on") or "is_on" in coordinator._h607c_uncertain_state_fields
+            not source_field_fresh(coordinator, "is_on") or "is_on" in coordinator._unconfirmed_state_fields
         ):
             revision = coordinator._field_revisions.get("is_on", 0)
             if not await coordinator.refresh_state(
@@ -543,11 +543,11 @@ class SourceTurnOnTransaction:
             ) or (
                 not source_field_fresh(coordinator, "is_on")
                 or coordinator._field_revisions.get("is_on", 0) <= revision
-                or "is_on" in coordinator._h607c_uncertain_state_fields
+                or "is_on" in coordinator._unconfirmed_state_fields
             ):
                 raise ValueError("The device did not provide fresh master power")
             guard()
-        master_off = coordinator.is_on is not True or "is_on" in coordinator._h607c_uncertain_state_fields
+        master_off = coordinator.is_on is not True or "is_on" in coordinator._unconfirmed_state_fields
         await coordinator.async_validate_source_power(source.control, True)
         if master_off:
             for sibling in profile.light_sources:
