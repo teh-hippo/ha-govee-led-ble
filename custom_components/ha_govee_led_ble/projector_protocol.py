@@ -22,6 +22,15 @@ from .scenes import SceneSpeed
 from .transport import fragment_a3
 
 
+def projector_appearance_mode(generated: Any) -> int | None:
+    if (
+        getattr(getattr(generated, "domain", None), "name", None) == "colour_mode"
+        and getattr(generated.body, "mode", None) == Wire.UploadKind.appearance
+    ):
+        return int(Wire.UploadKind.appearance)
+    return None
+
+
 def _boolean(value: int) -> bool:
     if value not in (0, 1):
         raise ValueError("Invalid projector switch")

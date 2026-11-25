@@ -184,15 +184,12 @@ def _readback_kelvin(reported: int) -> int:
 def parse_color_mode(generated: Any, model: str, *, profile: ModelProfile | None = None) -> ParsedColorModeResponse:
     profile = profile or get_profile(model)
     if profile.projector_grammar is not None:
-        from .protocol_core import H6093Projector
+        from .projector_protocol import projector_appearance_mode
 
-        if (
-            getattr(getattr(generated, "domain", None), "name", None) == "colour_mode"
-            and getattr(generated.body, "mode", None) == H6093Projector.UploadKind.appearance
-        ):
+        if (raw_mode := projector_appearance_mode(generated)) is not None:
             return ParsedColorModeResponse(
                 mode=ParsedMode.COLOUR,
-                raw_mode=int(H6093Projector.UploadKind.appearance),
+                raw_mode=raw_mode,
                 static_fields=frozenset(),
                 native_projector=True,
             )
