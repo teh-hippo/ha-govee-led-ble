@@ -8,8 +8,8 @@ import { PanelPreviewController } from "../../src/panel-preview-controller";
 import { serialiseEditable } from "../../src/effect-editor-model";
 import { blankAdvancedContent } from "../../src/advanced-effect-model";
 import { decodeCustomCatalogue } from "../../src/validation";
-import type { LibraryItem, PaintedContent } from "../../src/types";
-import { device, painted, videoProfile, installH6199Catalogue, item, panelModal, panelControllerHarness } from "./panel-test-support";
+import type { BuiltinSceneContent, LibraryItem, PaintedContent } from "../../src/types";
+import { device, painted, videoProfile, installH6199Catalogue, item, panelModal, panelControllerHarness, flowWorkspaceDevice } from "./panel-test-support";
 
 function installPaintCatalogue(model: PanelModel): void {
   installH6199Catalogue(model);
@@ -496,16 +496,17 @@ test("busy pending-transition saves ignore cancellation until persistence finish
   expect(model.pendingTransitionDialog).toBeUndefined();
 });
 
-test("pending-transition navigation preserves a standalone Live apply error", async () => {
+test("navigation after a committed save ignores an obsolete Live request rejection", async () => {
   const model = new PanelModel(() => undefined);
   model.isAdmin = true;
   model.liveApplyEnabled = false;
   const selected = device("entry-a", "H617A");
   selected.custom_effects.advanced = "supported";
+  selected.effect_compatibilities = {};
   model.devices = [selected];
   model.selectedDeviceId = selected.config_entry_id;
   installH6199Catalogue(model);
-  const { controller, editorController } = panelControllerHarness(model);
+  const { controller, editorController, preview } = panelControllerHarness(model);
   editorController.newEffect("advanced");
   model.name = "Named Advanced effect";
   const execute = vi.fn(() => {
@@ -519,23 +520,25 @@ test("pending-transition navigation preserves a standalone Live apply error", as
     name: model.name,
     content: blankAdvancedContent(),
   };
-  controller.api = {
+  const api = {
     createItem: vi.fn().mockResolvedValue(created),
-    applySavedEffect: vi.fn().mockRejectedValue(new Error("offline")),
+    previewSnapshot: vi.fn().mockRejectedValue(new Error("offline")),
+    subscribePreview: vi.fn().mockResolvedValue(vi.fn()),
+    onConnectionReady: vi.fn().mockReturnValue(vi.fn()),
+    closePreviewSession: vi.fn().mockResolvedValue(undefined),
+    cancelPreview: vi.fn().mockResolvedValue(undefined),
   } as unknown as EffectStudioApi;
+  controller.api = api;
+  await preview.open(api, vi.fn());
 
   await controller.savePendingTransition();
 
   expect(execute).toHaveBeenCalledOnce();
-  expect(model.modalState).toMatchObject({
-    kind: "error",
-    message: expect.stringContaining("offline"),
-  });
-  expect(
-    model.modalState?.kind === "error"
-      ? model.modalState.resume
-      : undefined,
-  ).toBeUndefined();
+  expect(model.currentItem?.id).toBe(created.id);
+  expect(api.previewSnapshot).toHaveBeenCalledOnce();
+  expect(api.cancelPreview).toHaveBeenCalledOnce();
+  expect(model.modalState).toBeUndefined();
+  preview.dispose();
 });
 
 test("auto-save restores only an explicit true preference", () => {
@@ -647,7 +650,7 @@ test("auto-save overwrite retains pending navigation ownership", async () => {
   expect(model.currentItem?.id).toBe("target");
 });
 
-test("saved item selection applies identity only while Live is enabled", async () => {
+test("saved item selection previews content only while Live is enabled", async () => {
   const model = new PanelModel(() => undefined);
   model.isAdmin = true;
   model.devices = [device("entry-a", "H617A")];
@@ -676,6 +679,7 @@ test("saved item selection applies identity only while Live is enabled", async (
     },
   );
   const saved = item(painted());
+  const submit = vi.spyOn(preview, "submit");
   const applySavedEffect = vi.fn().mockResolvedValue(undefined);
   controller.api = {
     item: vi.fn().mockResolvedValue(saved),
@@ -690,22 +694,29 @@ test("saved item selection applies identity only while Live is enabled", async (
     itemId: saved.id,
   });
   expect(applySavedEffect).not.toHaveBeenCalled();
+  expect(submit).not.toHaveBeenCalled();
 
   model.liveApplyEnabled = true;
   await expect(controller.selectItem(saved.id)).resolves.toBe(true);
-  expect(applySavedEffect).toHaveBeenCalledWith(
-    "entry-a",
-    saved,
-    undefined,
-    true,
-  );
+  expect(submit).toHaveBeenCalledWith(expect.objectContaining({
+    configEntryId: "entry-a",
+    name: saved.name,
+    content: saved.content,
+  }));
+  expect(applySavedEffect).not.toHaveBeenCalled();
 });
 
-test("saved Live validation does not apply an earlier document after an intervening edit", async () => {
+test("saved scene callbacks cannot enqueue older content after a newer Live edit", async () => {
   const model = new PanelModel(() => undefined);
   model.isAdmin = true;
   model.liveApplyEnabled = true;
-  const saved = item(painted());
+  model.section = "scenes";
+  const content: BuiltinSceneContent = {
+    kind: "scene_builtin",
+    template: { sku: "H617A", scene_id: 1, effect_id: 2, catalogue_schema_version: 1 },
+    speed_index: 0,
+  };
+  const saved: LibraryItem = { ...item(painted()), content };
   model.devices = [{
     ...device("entry-a", "H617A"), effect_compatibilities: {
       [saved.id]: {version: saved.version, state: "compatible", reasons: []},
@@ -713,52 +724,80 @@ test("saved Live validation does not apply an earlier document after an interven
   }];
   model.selectedDeviceId = "entry-a";
   installPaintCatalogue(model);
-  const {controller, editorController} = panelControllerHarness(model);
-  let entered!: () => void;
+  const {controller, preview} = panelControllerHarness(model);
+  const submit = vi.spyOn(preview, "submit");
   let finish!: (result: unknown) => void;
-  const waiting = new Promise<void>(resolve => {entered = resolve;});
   const validation = new Promise(resolve => {finish = resolve;});
-  const applySavedEffect = vi.fn().mockResolvedValue(undefined);
   controller.api = {
-    item: vi.fn().mockResolvedValue(saved),
-    contentCompatibility: vi.fn(() => {entered(); return validation;}),
-    applySavedEffect,
+    contentCompatibility: vi.fn().mockReturnValue(validation),
   } as unknown as EffectStudioApi;
-  const selection = controller.selectItem(saved.id);
-  await waiting;
-  editorController.customContentChanged({...model.content, speed: 21} as PaintedContent);
+  const notification = controller.sceneItemSaved(saved, "entry-a", true, model.editorTransitionEpoch);
+  const newerContent = { ...content, speed_index: 1 };
+  preview.scheduleScene({ kind: "snapshot", name: saved.name, content: newerContent });
   finish({state: "compatible", reasons: []});
-  await selection;
-  expect(applySavedEffect).not.toHaveBeenCalled();
-  expect((model.content as PaintedContent).speed).toBe(21);
+  await notification;
+
+  expect(submit.mock.calls.map(([request]) => request.kind === "snapshot" && request.content)).toEqual([
+    saved.content,
+    newerContent,
+  ]);
+  expect(model.library.items).toEqual([expect.objectContaining({ id: saved.id, version: saved.version })]);
 });
 
-test("enabling Live on a clean saved item applies its stable identity", async () => {
-  const selected = device("entry-a", "H617A");
+test.each(["H617A", "H6199"] as const)("clean saved %s Live uses the cancellable preview session", async (sku) => {
+  const selected = sku === "H6199" ? flowWorkspaceDevice("entry-a") : device("entry-a", sku);
   const model = new PanelModel(() => undefined);
   model.isAdmin = true;
   model.devices = [selected];
   model.selectedDeviceId = selected.config_entry_id;
   installPaintCatalogue(model);
   model.liveApplyEnabled = false;
-  const { controller, editorController } = panelControllerHarness(model);
-  const saved = item(painted());
+  model.h6179ApprovedDiyCode = 73;
+  const { controller, editorController, preview } = panelControllerHarness(model);
+  const saved: LibraryItem = {
+    ...item(painted()),
+    content: sku === "H6199"
+      ? { kind: "palette_diy", model: sku, family: 1, variant: 0, speed: 50, palette: [[255, 0, 0], [0, 0, 255]] }
+      : painted(),
+  };
   editorController.applyLibraryItem(saved);
   const applySavedEffect = vi.fn().mockResolvedValue(undefined);
-  controller.api = {
+  const previewSnapshot = vi.fn().mockResolvedValue(undefined);
+  const cancelPreview = vi.fn().mockResolvedValue(undefined);
+  const api = {
     applySavedEffect,
+    previewSnapshot,
+    cancelPreview,
+    subscribePreview: vi.fn().mockResolvedValue(vi.fn()),
+    onConnectionReady: vi.fn().mockReturnValue(vi.fn()),
+    closePreviewSession: vi.fn().mockResolvedValue(undefined),
     device: vi.fn().mockResolvedValue(selected),
   } as unknown as EffectStudioApi;
+  controller.api = api;
+  await preview.open(api, vi.fn());
 
   await controller.toggleLive();
 
   expect(model.liveApplyEnabled).toBe(true);
-  expect(applySavedEffect).toHaveBeenCalledWith(
+  await vi.waitFor(() => expect(previewSnapshot).toHaveBeenCalledOnce());
+  expect(previewSnapshot).toHaveBeenCalledWith(
+    expect.any(String),
+    1,
     selected.config_entry_id,
-    saved,
+    saved.name,
+    saved.content,
+    false,
     undefined,
-    true,
+    ...(sku === "H6199" ? [73] : []),
   );
+  expect(applySavedEffect).not.toHaveBeenCalled();
+
+  await controller.toggleLive();
+  await preview.cancel();
+
+  expect(model.liveApplyEnabled).toBe(false);
+  expect(cancelPreview).toHaveBeenCalledWith(previewSnapshot.mock.calls[0][0], selected.config_entry_id);
+  preview.dispose();
 });
 
 test("enabling Live while browsing Scenes does not apply a retained hidden editor item", async () => {
@@ -784,7 +823,7 @@ test("enabling Live while browsing Scenes does not apply a retained hidden edito
   expect(applySavedEffect).not.toHaveBeenCalled();
 });
 
-test("new saves promote stable identity only while Live remains enabled", async () => {
+test("new saves preview saved content only while Live remains enabled", async () => {
   const selected = device("entry-a", "H617A");
   selected.custom_effects.advanced = "supported";
   const model = new PanelModel(() => undefined);
@@ -798,7 +837,8 @@ test("new saves promote stable identity only while Live remains enabled", async 
   };
   model.name = "BugToFix";
   model.content = blankAdvancedContent();
-  const { controller } = panelControllerHarness(model);
+  const { controller, preview } = panelControllerHarness(model);
+  const submit = vi.spyOn(preview, "submit");
   const created: LibraryItem = {
     ...item(painted()),
     id: "bug-to-fix",
@@ -815,12 +855,12 @@ test("new saves promote stable identity only while Live remains enabled", async 
 
   await expect(controller.save()).resolves.toBe(true);
 
-  expect(applySavedEffect).toHaveBeenCalledWith(
-    selected.config_entry_id,
-    created,
-    undefined,
-    true,
-  );
+  expect(submit).toHaveBeenCalledWith(expect.objectContaining({
+    configEntryId: selected.config_entry_id,
+    name: created.name,
+    content: created.content,
+  }));
+  expect(applySavedEffect).not.toHaveBeenCalled();
 
   model.liveApplyEnabled = false;
   model.editorSource = {
@@ -832,16 +872,18 @@ test("new saves promote stable identity only while Live remains enabled", async 
   model.content = blankAdvancedContent();
   const stored = { ...created, id: "stored-only", name: model.name };
   controller.api.createItem = vi.fn().mockResolvedValue(stored);
-  applySavedEffect.mockClear();
+  submit.mockClear();
 
   await expect(controller.save()).resolves.toBe(true);
 
   expect(applySavedEffect).not.toHaveBeenCalled();
+  expect(submit).not.toHaveBeenCalled();
 });
 
-test("a failed Live apply does not turn a committed save into a persistence failure", async () => {
+test("a rejected Live request does not turn a committed save into a persistence failure", async () => {
   const selected = device("entry-a", "H617A");
   selected.custom_effects.advanced = "supported";
+  selected.effect_compatibilities = {};
   const model = new PanelModel(() => undefined);
   model.isAdmin = true;
   model.devices = [selected];
@@ -853,7 +895,7 @@ test("a failed Live apply does not turn a committed save into a persistence fail
   };
   model.name = "Stored";
   model.content = blankAdvancedContent();
-  const { controller } = panelControllerHarness(model);
+  const { controller, preview } = panelControllerHarness(model);
   const created: LibraryItem = {
     ...item(painted()),
     id: "stored",
@@ -861,22 +903,29 @@ test("a failed Live apply does not turn a committed save into a persistence fail
     name: model.name,
     content: blankAdvancedContent(),
   };
-  controller.api = {
+  const api = {
     createItem: vi.fn().mockResolvedValue(created),
-    applySavedEffect: vi.fn().mockRejectedValue(new Error("offline")),
+    previewSnapshot: vi.fn().mockRejectedValue(new Error("offline")),
+    subscribePreview: vi.fn().mockResolvedValue(vi.fn()),
+    onConnectionReady: vi.fn().mockReturnValue(vi.fn()),
+    closePreviewSession: vi.fn().mockResolvedValue(undefined),
+    cancelPreview: vi.fn().mockResolvedValue(undefined),
   } as unknown as EffectStudioApi;
+  controller.api = api;
+  await preview.open(api, vi.fn());
 
   await expect(controller.save()).resolves.toBe(true);
 
   expect(model.currentItem?.id).toBe(created.id);
   expect(model.dirty).toBe(false);
-  expect(model.modalState).toMatchObject({
+  await vi.waitFor(() => expect(model.modalState).toMatchObject({
     kind: "error",
     message: expect.stringContaining("offline"),
-  });
+  }));
+  preview.dispose();
 });
 
-test("disabling Live while a new save is pending suppresses saved identity application", async () => {
+test("disabling Live while a new save is pending suppresses its preview", async () => {
   const selected = device("entry-a", "H617A");
   const model = new PanelModel(() => undefined);
   model.isAdmin = true;
@@ -889,7 +938,8 @@ test("disabling Live while a new save is pending suppresses saved identity appli
   };
   model.name = "Delayed";
   model.content = blankAdvancedContent();
-  const { controller } = panelControllerHarness(model);
+  const { controller, preview } = panelControllerHarness(model);
+  const submit = vi.spyOn(preview, "submit");
   let resolveCreate!: (item: LibraryItem) => void;
   const create = new Promise<LibraryItem>((resolve) => {
     resolveCreate = resolve;
@@ -913,6 +963,7 @@ test("disabling Live while a new save is pending suppresses saved identity appli
 
   await expect(save).resolves.toBe(true);
   expect(applySavedEffect).not.toHaveBeenCalled();
+  expect(submit).not.toHaveBeenCalled();
 });
 
 test("scene saves follow strict Live semantics", async () => {
@@ -921,7 +972,8 @@ test("scene saves follow strict Live semantics", async () => {
   model.devices = [selected];
   model.selectedDeviceId = selected.config_entry_id;
   installPaintCatalogue(model);
-  const { controller } = panelControllerHarness(model);
+  const { controller, preview } = panelControllerHarness(model);
+  const submit = vi.spyOn(preview, "submit");
   const saved = item(painted());
   const applySavedEffect = vi.fn().mockResolvedValue(undefined);
   controller.api = {
@@ -937,6 +989,7 @@ test("scene saves follow strict Live semantics", async () => {
     model.editorTransitionEpoch,
   );
   expect(applySavedEffect).not.toHaveBeenCalled();
+  expect(submit).not.toHaveBeenCalled();
 
   model.liveApplyEnabled = true;
   model.section = "scenes";
@@ -946,14 +999,14 @@ test("scene saves follow strict Live semantics", async () => {
     true,
     model.editorTransitionEpoch,
   );
-  expect(applySavedEffect).toHaveBeenCalledWith(
-    selected.config_entry_id,
-    saved,
-    undefined,
-    true,
-  );
+  expect(submit).toHaveBeenCalledWith(expect.objectContaining({
+    configEntryId: selected.config_entry_id,
+    name: saved.name,
+    content: saved.content,
+  }));
+  expect(applySavedEffect).not.toHaveBeenCalled();
 
-  applySavedEffect.mockClear();
+  submit.mockClear();
   await controller.sceneItemSaved(
     saved,
     "entry-b",
@@ -961,6 +1014,7 @@ test("scene saves follow strict Live semantics", async () => {
     model.editorTransitionEpoch,
   );
   expect(applySavedEffect).not.toHaveBeenCalled();
+  expect(submit).not.toHaveBeenCalled();
 
   await controller.sceneItemSaved(
     saved,
@@ -969,6 +1023,7 @@ test("scene saves follow strict Live semantics", async () => {
     model.editorTransitionEpoch - 1,
   );
   expect(applySavedEffect).not.toHaveBeenCalled();
+  expect(submit).not.toHaveBeenCalled();
 });
 
 test("manual Save adopts the saved content as the next Reset baseline", async () => {
@@ -1239,7 +1294,8 @@ test("automatic save flushes before navigation and exposes failures to the trans
     { id: "cycle", label: "Cycle" },
   ];
   model.customCatalogue!.models.H617A.apply.painted = "supported";
-  const { controller, editorController, modal } = panelControllerHarness(model);
+  const { controller, editorController, modal, preview } = panelControllerHarness(model);
+  const submit = vi.spyOn(preview, "submit");
   const saved = item(painted());
   editorController.applyLibraryItem(saved);
   let resolveSave!: (value: LibraryItem) => void;
@@ -1270,16 +1326,13 @@ test("automatic save flushes before navigation and exposes failures to the trans
   expect(model.autoSaveInProgress).toBe(false);
   expect(model.pendingTransitionDialog).toBeUndefined();
   expect(model.currentItem).toMatchObject({ id: saved.id, version: 3 });
-  expect(applySavedEffect).toHaveBeenCalledWith(
-    selected.config_entry_id,
-    expect.objectContaining({
-      id: saved.id,
-      version: 3,
-    }),
-    undefined,
-    true,
-  );
-  expect(loadDevice).toHaveBeenCalledWith(selected.config_entry_id);
+  expect(submit).toHaveBeenCalledWith(expect.objectContaining({
+    configEntryId: selected.config_entry_id,
+    name: saved.name,
+    content: { ...painted(), speed: 62 },
+  }));
+  expect(applySavedEffect).not.toHaveBeenCalled();
+  expect(loadDevice).not.toHaveBeenCalled();
 
   await controller.selectSection("custom", "single-layer");
   model.liveApplyEnabled = false;

@@ -13,6 +13,7 @@ import { PanelEditorController } from "./panel-editor-controller";
 import { PanelModalController } from "./panel-modal-controller";
 import { PanelModel } from "./panel-model";
 import { PanelPreviewController } from "./panel-preview-controller";
+import { snapshotPreviewRequest } from "./panel-preview";
 import {
   activeStudioContext,
   editorDevicePath,
@@ -1234,7 +1235,7 @@ export class PanelController {
       this.model.section === "scenes" &&
       this.model.editorTransitionEpoch === panelTransitionEpoch
     ) {
-      await this.applySavedIdentity(item, this.model.editorTransitionEpoch);
+      this.previewSavedItem(item, this.model.editorTransitionEpoch);
     }
   }
 
@@ -1280,7 +1281,7 @@ export class PanelController {
     ) {
       this.model.patch({ liveApplyEnabled: true });
       this.model.rememberLiveApplyChoice();
-      await this.applySavedIdentity(currentItem, this.model.editorTransitionEpoch);
+      this.previewSavedItem(currentItem, this.model.editorTransitionEpoch);
       return;
     }
     this.preview.toggle(scene);
@@ -1413,7 +1414,7 @@ export class PanelController {
         return false;
       }
       if (applyLive && this.model.liveApplyEnabled) {
-        await this.applySavedIdentity(item, transitionEpoch);
+        this.previewSavedItem(item, transitionEpoch);
       }
       return transitionEpoch === this.model.editorTransitionEpoch;
     } catch (error) {
@@ -1550,7 +1551,7 @@ export class PanelController {
         if (savingScene) this.remember();
         if (
           this.model.liveApplyEnabled &&
-          !(await this.applySavedIdentity(result, transitionEpoch))
+          !this.previewSavedItem(result, transitionEpoch)
         ) {
           return true;
         }
@@ -1737,7 +1738,7 @@ export class PanelController {
         this.remember();
         if (
           this.model.liveApplyEnabled &&
-          !(await this.applySavedIdentity(result, transitionEpoch))
+          !this.previewSavedItem(result, transitionEpoch)
         ) {
           return true;
         }
@@ -1962,7 +1963,7 @@ export class PanelController {
           serialiseEditable(this.model.name, this.model.content) ===
             savedBaseline
         ) {
-          if (!(await this.applySavedIdentity(result, target.epoch))) {
+          if (!this.previewSavedItem(result, target.epoch)) {
             return true;
           }
         }
@@ -2073,23 +2074,18 @@ export class PanelController {
       : this.model.defaultCustomEffectCategory();
   }
 
-  private async applySavedIdentity(
+  private previewSavedItem(
     item: LibraryItem,
     transitionEpoch: number,
-  ): Promise<boolean> {
+  ): boolean {
     const device = this.model.selectedDevice;
-    const api = this.api;
-    const document = this.currentEditorDocument();
-    const selectedItem = this.model.currentItem;
-    if (!api || !device || !this.model.canControlSelectedDevice) {
+    if (!this.api || !device || !this.model.canControlSelectedDevice ||
+        !this.model.liveApplyEnabled || transitionEpoch !== this.model.editorTransitionEpoch) {
       return false;
     }
     if (device.effect_compatibilities === undefined &&
         !effectContentEligible(item.content, this.model.modelCatalogue, device.model, device.segment_count)) return false;
     const configEntryId = device.config_entry_id;
-    if (!this.model.liveApplyEnabled) {
-      return false;
-    }
     const diyCode = this.model.h6179DiyCode;
     if (this.model.h6179DiyCodeRequired && diyCode === undefined) {
       this.model.patch({
@@ -2097,31 +2093,8 @@ export class PanelController {
       });
       return false;
     }
-    try {
-      if (device.effect_compatibilities !== undefined) {
-        const result = await api.contentCompatibility(configEntryId, item.content);
-        if (result.state !== "compatible" || this.model.selectedDeviceId !== configEntryId ||
-            transitionEpoch !== this.model.editorTransitionEpoch || !this.model.liveApplyEnabled || this.api !== api ||
-            this.currentEditorDocument() !== document || this.model.currentItem !== selectedItem) return false;
-      }
-      await api.applySavedEffect(configEntryId, item, diyCode, true);
-      if (
-        !this.model.liveApplyEnabled ||
-        this.model.selectedDeviceId !== configEntryId ||
-        transitionEpoch !== this.model.editorTransitionEpoch
-      ) {
-        return false;
-      }
-      await this.refreshSelectedDevice(transitionEpoch);
-      return transitionEpoch === this.model.editorTransitionEpoch;
-    } catch (error) {
-      if (transitionEpoch === this.model.editorTransitionEpoch) {
-        this.model.patch({
-          notice: `Apply failed: ${errorMessage(error)}`,
-        });
-      }
-      return false;
-    }
+    this.preview.submit(snapshotPreviewRequest(configEntryId, item.name, item.content, false, undefined, diyCode));
+    return true;
   }
 
   private async refreshSelectedDevice(
