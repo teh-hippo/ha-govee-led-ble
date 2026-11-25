@@ -29,7 +29,7 @@ from custom_components.ha_govee_led_ble.effect_compiler import (
     compatibility,
     compile_application,
     compile_effect,
-    compile_h617a,
+    compile_generic_diy,
     compile_music_profile,
     compile_video_profile,
     resolve_diy_code,
@@ -735,7 +735,7 @@ def test_h617a_compiler_emits_upload_then_activation() -> None:
         ),
     )
 
-    compiled = compile_h617a(item, 800)
+    compiled = compile_generic_diy(item, 800)
 
     assert compiled.upload_packets == tuple(
         effect_commands.build_h617a_diy_painted(
@@ -768,8 +768,8 @@ def test_h617a_painted_compiler_preserves_off_and_explicit_black_deterministical
         ),
     )
 
-    first = compile_h617a(item, 800)
-    second = compile_h617a(item, 800)
+    first = compile_generic_diy(item, 800)
+    second = compile_generic_diy(item, 800)
     expected = tuple(
         effect_commands.build_h617a_diy_painted(
             "clockwise",
@@ -802,7 +802,7 @@ def test_h617a_painted_compiler_preserves_off_and_explicit_black_deterministical
 def test_h617a_compiler_covers_palette_effects(content) -> None:
     item = LibraryItem.new("Palette", content)
 
-    compiled = compile_h617a(item, 123)
+    compiled = compile_generic_diy(item, 123)
 
     assert compiled.diy_code == 123
     assert compiled.activation_packet == effect_commands.build_h617a_diy_activation(123)

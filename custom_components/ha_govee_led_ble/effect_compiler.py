@@ -12,32 +12,14 @@ from typing import Any, Literal, assert_never, cast
 
 from .const import ModelProfile, get_profile, supported_effect_categories
 from .effect_catalogue import (
-    H617A_TYPE04_APPLY_CODE,
-    H617A_WORKSHOP_APPLY_CODE,
-    H617A_WORKSHOP_SCENE_TYPE,
-    H6099_DIY_APPLY_CODE,
     H6199_PALETTE_DIY_APPLY_CODE,
-    H6199_WORKSHOP_APPLY_CODE,
-    H6199_WORKSHOP_APPLY_MUSIC_CODE,
     diy_destination_range,
     native_diy_template_contract,
     requires_diy_destination_consent,
     validate_effect_eligibility,
     validate_native_diy,
 )
-from .effect_commands import (
-    DiyPaintGroup,
-    build_h617a_diy_multi,
-    build_h617a_diy_painted,
-    build_h617a_diy_single,
-    build_h6179_diy,
-    build_h6199_palette_diy,
-)
-from .effect_content_ids import (
-    MULTI_EFFECT_CONTENT_KIND,
-    PAINTED_EFFECT_CONTENT_KIND,
-    SINGLE_EFFECT_CONTENT_KIND,
-)
+from .effect_commands import build_h6179_diy, build_h6199_palette_diy
 from .effect_contracts import (
     EFFECT_COMPILER_VERSION,
     CapabilityWorkflow,
@@ -48,6 +30,14 @@ from .effect_contracts import (
     release_selector_policy,
     require_effect_route,
     require_upload_carrier,
+)
+from .effect_diy_codec import (
+    default_generic_diy_selector,
+    default_workshop_upload,
+    generic_diy_content_kind,
+    is_single_or_multi_diy_kind,
+    prepare_generic_diy,
+    retained_scene_activation_packet,
 )
 from .effect_domain import (
     BuiltinScene,
@@ -84,11 +74,7 @@ from .native_scenes import (
     encode_authored_scene_body,
     native_scene_prefers_selector,
 )
-from .protocol_core import (
-    H6199EffectUpload,
-    SceneBody,
-)
-from .protocol_effect_bodies import build_dedicated_diy, build_inline_diy
+from .protocol_core import H6199EffectUpload, SceneBody
 from .scenes import MODEL_SCENES, SceneEntry, scene_for_profile, scene_selector_code
 from .transport import fragment_a3
 
@@ -340,7 +326,7 @@ def validate_compiled_geometry(compiled: CompiledApplication, profile: ModelProf
                 )
             if not packets_match or compiled.diy_code != selector:
                 raise ValueError("Device scene route changed since compilation; refresh and retry")
-        if compiled.content_kind in {SINGLE_EFFECT_CONTENT_KIND, MULTI_EFFECT_CONTENT_KIND}:
+        if is_single_or_multi_diy_kind(compiled.content_kind):
             if compiled.authored_diy is not None:
                 validate_effect_eligibility(compiled.authored_diy, compiled.model, profile=profile)
             transport = profile.diy_upload_transport or ("a1_02" if profile.a1_diy_selector is not None else "a3")
@@ -710,18 +696,7 @@ def _retained_scene_upload_route(
         raise ValueError(f"{model} has no {carrier} Workshop carrier")
     if carrier != "rgbic_v1":
         raise ValueError(f"{model} has no {carrier} Workshop carrier")
-    subtype = (
-        int(H6199EffectUpload.BodyKind.scene)
-        if profile.effect_grammar_has("display_scene_body")
-        else int(SceneBody.SceneType.scene_v2)
-    )
-    if profile.workshop_scene_selector is not None:
-        return subtype, profile.workshop_scene_selector
-    return subtype, (
-        H617A_WORKSHOP_APPLY_CODE
-        if profile.effect_grammar_has("h617a_workshop_selector")
-        else H6199_WORKSHOP_APPLY_CODE
-    )
+    return default_workshop_upload(profile)
 
 
 def resolve_diy_code(
@@ -833,13 +808,7 @@ def resolve_diy_code(
         return H6199_PALETTE_DIY_APPLY_CODE
     if isinstance(content, PaintedEffect | SingleEffect | MultiEffect):
         workflow = _effect_workflow(content)
-        content_kind = (
-            PAINTED_EFFECT_CONTENT_KIND
-            if isinstance(content, PaintedEffect)
-            else SINGLE_EFFECT_CONTENT_KIND
-            if isinstance(content, SingleEffect)
-            else MULTI_EFFECT_CONTENT_KIND
-        )
+        content_kind = generic_diy_content_kind(content)
         route_model = model or release_content_reference_model(content_kind)
         if route_model is None:
             raise ValueError("generic DIY content has no declared authoring route")
@@ -872,19 +841,7 @@ def resolve_diy_code(
                 return fixed_selector
         if explicit_destination and requested is None:
             raise ValueError(f"{model} custom-effect application requires an explicit DIY destination")
-        code = (
-            (
-                H6099_DIY_APPLY_CODE
-                if profile.effect_grammar_has("default_diy_selector_254")
-                else a1_selector
-                if a1_selector is not None
-                else 800
-                if isinstance(content, PaintedEffect)
-                else H617A_TYPE04_APPLY_CODE
-            )
-            if requested is None
-            else requested
-        )
+        code = default_generic_diy_selector(content, profile) if requested is None else requested
         if not isinstance(code, int) or isinstance(code, bool) or not 0 <= code <= 0xFFFF:
             raise ValueError("DIY code must be an integer from 0 to 65535")
         if a1_selector is not None and code != a1_selector:
@@ -918,17 +875,7 @@ def _compile_retained_scene(
     else:
         raise ValueError("content is not an upload-only effect")
 
-    activation = build_scene_activation(
-        model,
-        diy_code,
-        H6199_WORKSHOP_APPLY_MUSIC_CODE,
-        scene_type=H617A_WORKSHOP_SCENE_TYPE
-        if content.application == "workshop"
-        and profile.workshop_scene_selector is None
-        and profile.command_grammar_has("workshop_scene_type")
-        else 0,
-        profile=profile,
-    )
+    activation = retained_scene_activation_packet(model, diy_code, content.application, profile)
     packets = (*upload, activation)
     return CompiledEffect(
         item_id=str(item.id),
@@ -1223,14 +1170,7 @@ def compile_generic_diy(
     from .effect_targets import resolve_target_item
 
     if model is None:
-        content = item.content
-        kind = (
-            PAINTED_EFFECT_CONTENT_KIND
-            if isinstance(content, PaintedEffect)
-            else SINGLE_EFFECT_CONTENT_KIND
-            if isinstance(content, SingleEffect)
-            else MULTI_EFFECT_CONTENT_KIND
-        )
+        kind = generic_diy_content_kind(item.content)
         model = release_content_reference_model(kind)
         if model is None:
             raise ValueError("generic DIY content has no declared authoring route")
@@ -1241,95 +1181,33 @@ def compile_generic_diy(
         raise ValueError("; ".join(result.reasons))
 
     content = item.content
-    upload_prefix = profile.a1_diy_prefix if profile.a1_diy_prefix is not None else profile.a1_diy_selector
-    if profile.effect_grammar_has("dedicated_a1_diy") and isinstance(content, SingleEffect | MultiEffect):
-        content_kind = SINGLE_EFFECT_CONTENT_KIND if isinstance(content, SingleEffect) else MULTI_EFFECT_CONTENT_KIND
-        upload = build_dedicated_diy(content, diy_code, profile)
-    elif isinstance(content, PaintedEffect):
-        content_kind = PAINTED_EFFECT_CONTENT_KIND
-        upload = build_h617a_diy_painted(
-            content.effect,
-            content.speed,
-            content.brightness,
-            content.background,
-            _paint_groups(content.segments),
-            segment_count=len(content.segments),
-            grammar=profile.effect_grammar or "",
-        )
-    elif isinstance(content, SingleEffect):
-        content_kind = SINGLE_EFFECT_CONTENT_KIND
-        upload = (
-            []
-            if profile.diy_upload_transport == "single"
-            else build_h617a_diy_single(
-                content.family,
-                content.variant,
-                content.speed,
-                content.palette,
-                a1_selector=upload_prefix,
-            )
-        )
-    elif isinstance(content, MultiEffect):
-        content_kind = MULTI_EFFECT_CONTENT_KIND
-        upload = build_h617a_diy_multi(
-            tuple((effect.family, effect.variant) for effect in content.effects),
-            content.speed,
-            content.palette,
-            a1_selector=upload_prefix,
-        )
-    else:
+    if not isinstance(content, PaintedEffect | SingleEffect | MultiEffect):
         raise ValueError("unsupported generic DIY effect content")
-
     resolve_diy_code(item, diy_code, model=model, profile=profile)
-    activation = (
-        build_inline_diy(diy_code, content.family, content.variant, content.speed, content.palette)
-        if profile.diy_upload_transport == "single" and isinstance(content, SingleEffect)
-        else build_diy_activation(diy_code, model, profile=profile)
-    )
-    digest = sha256(b"".join((*upload, activation))).hexdigest()
+    prepared = prepare_generic_diy(content, diy_code, model, profile)
+    digest = sha256(b"".join((*prepared.upload_packets, prepared.activation_packet))).hexdigest()
     return CompiledEffect(
         item_id=str(item.id),
         item_version=item.version,
         model=model,
-        content_kind=content_kind,
+        content_kind=prepared.content_kind,
         workflow=_effect_workflow(content),
         diy_code=diy_code,
         activation_mode=ActivationMode.CUSTOM,
         selector_kind="diy",
         expected_effect=None,
-        upload_packets=tuple(upload),
-        activation_packet=activation,
+        upload_packets=prepared.upload_packets,
+        activation_packet=prepared.activation_packet,
         artifact_sha256=digest,
         evidence_codes=(DIY_ACK_EVIDENCE,) if profile.diy_requires_upload_ack else (),
         physical_ic_count=profile.physical_ic_count
         if isinstance(content, PaintedEffect) and content.addressing == "physical_ic"
         else None,
-        upload_transport=profile.diy_upload_transport
-        or (
-            "a1_02" if profile.a1_diy_selector is not None and isinstance(content, SingleEffect | MultiEffect) else "a3"
-        ),
-        upload_subtype=(
-            None
-            if profile.diy_upload_transport in {"a1_02", "single"}
-            else 3
-            if isinstance(content, PaintedEffect)
-            else 4
-            if profile.a1_diy_selector is None
-            else None
-        ),
+        upload_transport=prepared.upload_transport,
+        upload_subtype=prepared.upload_subtype,
         authored_diy=content if isinstance(content, SingleEffect | MultiEffect) else None,
-        upload_prefix=profile.a1_diy_prefix,
+        upload_prefix=prepared.upload_prefix,
     )
-
-
-def compile_h617a(
-    item: LibraryItem,
-    diy_code: int,
-    *,
-    model: str | None = None,
-    profile: ModelProfile | None = None,
-) -> CompiledEffect:
-    return compile_generic_diy(item, diy_code, model=model, profile=profile)
 
 
 def compile_h6179(
@@ -1366,17 +1244,6 @@ def compile_h6179(
         evidence_codes=("effect_content_readback_unavailable",),
         upload_transport="a3" if profile.diy_upload_transport == "a3" else "a1_02",
         upload_subtype=4 if profile.diy_upload_transport == "a3" else None,
-    )
-
-
-def _paint_groups(segments: tuple[tuple[int, int, int] | None, ...]) -> tuple[DiyPaintGroup, ...]:
-    grouped: dict[tuple[int, int, int], list[int]] = {}
-    for index, colour in enumerate(segments):
-        if colour is not None:
-            grouped.setdefault(colour, []).append(index)
-    return tuple(
-        DiyPaintGroup(colour, tuple(indices))
-        for colour, indices in sorted(grouped.items(), key=lambda item: item[1][0])
     )
 
 

@@ -22,7 +22,7 @@ from custom_components.ha_govee_led_ble.effect_compiler import (
     compatibility,
     compile_application,
     compile_effect,
-    compile_h617a,
+    compile_generic_diy,
     compile_h6199,
     resolve_diy_code,
     validate_compiled_geometry,
@@ -174,7 +174,7 @@ def test_target_catalogue_limits_do_not_follow_shared_grammar(effect_catalogue_t
             with pytest.raises(ValueError):
                 compiler(item, narrow, diy_code=24)
         with pytest.raises(ValueError):
-            compile_h617a(item, 24, model=narrow)
+            compile_generic_diy(item, 24, model=narrow)
     # A structurally valid, unknown pair round-trips without granting permission.
     frames = proto.build_h617a_diy_single(42, 7, 50, palette)
     decoded = decode_a3_effect(parse_a3_effect_envelope(reassemble_a3(frames), broad), broad)
@@ -197,7 +197,7 @@ def test_direct_compilers_cannot_bypass_target_route():
     with pytest.raises(ValueError):
         compile_h6199(LibraryItem.new("Single", SINGLE_CONTENT), model="H617A")
     with pytest.raises(ValueError):
-        compile_h617a(LibraryItem.new("Palette", H6199_CONTENT), 401, model="H6199")
+        compile_generic_diy(LibraryItem.new("Palette", H6199_CONTENT), 401, model="H6199")
 
 
 def test_palette_diy_uses_target_catalogue_not_global_encoding_roster(monkeypatch):
@@ -472,7 +472,7 @@ def test_compiled_basic_effect_packets_round_trip_to_canonical_content(
     expected_packets: tuple[bytes, ...],
 ) -> None:
     item = LibraryItem.new("Round trip", content)
-    compiled = compile_h617a(item, diy_code) if model == "H617A" else compile_h6199(item, diy_code)
+    compiled = compile_generic_diy(item, diy_code) if model == "H617A" else compile_h6199(item, diy_code)
 
     assert compiled.upload_packets == expected_packets
     envelope = reassemble_a3(compiled.upload_packets)
@@ -482,7 +482,7 @@ def test_compiled_basic_effect_packets_round_trip_to_canonical_content(
 
 @pytest.mark.parametrize("model", ["H1AB2", "H60B2"])
 def test_shared_native_grammar_decodes_generic_diy_without_losing_canonical_content(model: str) -> None:
-    compiled = compile_h617a(LibraryItem.new("Round trip", SINGLE_CONTENT), H617A_TYPE04_APPLY_CODE)
+    compiled = compile_generic_diy(LibraryItem.new("Round trip", SINGLE_CONTENT), H617A_TYPE04_APPLY_CODE)
     parsed = parse_a3_effect_envelope(reassemble_a3(compiled.upload_packets), model)
 
     assert decode_a3_effect(parsed, model) == SINGLE_CONTENT
@@ -490,7 +490,9 @@ def test_shared_native_grammar_decodes_generic_diy_without_losing_canonical_cont
 
 def test_basic_effect_decoder_preserves_uncatalogued_pairs_but_rejects_reserved_values() -> None:
     single = parse_a3_effect_envelope(
-        reassemble_a3(compile_h617a(LibraryItem.new("Single", SINGLE_CONTENT), H617A_TYPE04_APPLY_CODE).upload_packets),
+        reassemble_a3(
+            compile_generic_diy(LibraryItem.new("Single", SINGLE_CONTENT), H617A_TYPE04_APPLY_CODE).upload_packets
+        ),
         "H617A",
     )
     single.family = 7
@@ -499,7 +501,9 @@ def test_basic_effect_decoder_preserves_uncatalogued_pairs_but_rejects_reserved_
     assert compatibility(LibraryItem.new("Unknown", decoded), "H617A").state is CompatibilityState.INCOMPATIBLE
 
     multi = parse_a3_effect_envelope(
-        reassemble_a3(compile_h617a(LibraryItem.new("Multi", MULTI_CONTENT), H617A_TYPE04_APPLY_CODE).upload_packets),
+        reassemble_a3(
+            compile_generic_diy(LibraryItem.new("Multi", MULTI_CONTENT), H617A_TYPE04_APPLY_CODE).upload_packets
+        ),
         "H617A",
     )
     multi.body.variant = 1
@@ -512,7 +516,7 @@ def test_basic_effect_decoder_preserves_uncatalogued_pairs_but_rejects_reserved_
     assert isinstance(decoded, MultiEffect)
     assert decoded.effects[0] == EffectPair(4, 8)
     with pytest.raises(ValueError, match="does not support Multi"):
-        compile_h617a(LibraryItem.new("Imported Multi", decoded), 24)
+        compile_generic_diy(LibraryItem.new("Imported Multi", decoded), 24)
 
     h6199 = parse_a3_effect_envelope(
         reassemble_a3(
