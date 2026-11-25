@@ -55,6 +55,8 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     EffectLayer,
     EffectPair,
     EffectValidationError,
+    H6179MixedDiyEffect,
+    H6179SingleDiyEffect,
     LayeredEffect,
     LayeredScene,
     LibraryItem,
@@ -1438,6 +1440,62 @@ def test_origin_hash_and_extensions_round_trip() -> None:
 
     assert LibraryItem.from_dict(item.to_dict()) == item
     assert len(item.content_hash) == 64
+
+
+@pytest.mark.parametrize(
+    ("content", "expected", "content_hash"),
+    [
+        (
+            H6179SingleDiyEffect("H6179", 0, 0, 100, ((255, 0, 0),)),
+            {
+                "kind": "h6179_single_diy",
+                "model": "H6179",
+                "family": 0,
+                "variant": 0,
+                "speed": 100,
+                "palette": [[255, 0, 0]],
+            },
+            "6fbf936f07ee355ddcce9586e929a3e2b9e8c384ed594680eb4efadaa454e2ef",
+        ),
+        (
+            H6179MixedDiyEffect(
+                "H6179",
+                (EffectPair(0, 0), EffectPair(2, 0)),
+                50,
+                ((255, 0, 0), (0, 0, 255)),
+            ),
+            {
+                "kind": "h6179_mixed_diy",
+                "model": "H6179",
+                "components": [{"family": 0, "variant": 0}, {"family": 2, "variant": 0}],
+                "speed": 50,
+                "palette": [[255, 0, 0], [0, 0, 255]],
+            },
+            "524a6210140e36946827d316382b29c3fce3900b19bd0c1ba0efb573897e37c4",
+        ),
+    ],
+)
+def test_typed_diy_saved_content_preserves_literal_format_and_hash(content, expected, content_hash) -> None:
+    assert effect_content_to_dict(content) == expected
+    assert LibraryItem.new("Typed DIY", content).content_hash == content_hash
+    assert effect_content_to_dict(effect_content_from_dict(expected)) == expected
+
+
+@pytest.mark.parametrize("kind", ["h6179_single_diy", "h6179_mixed_diy"])
+def test_typed_diy_saved_content_rejects_unsupported_source_pairs(kind: str) -> None:
+    raw = {
+        "kind": kind,
+        "model": "H6179",
+        "speed": 50,
+        "palette": [[255, 0, 0]],
+        **(
+            {"family": 3, "variant": 0}
+            if kind == "h6179_single_diy"
+            else {"components": [{"family": 3, "variant": 0}]}
+        ),
+    }
+    with pytest.raises(EffectValidationError, match="unsupported H6179 DIY family/variant"):
+        effect_content_from_dict(raw)
 
 
 @pytest.mark.parametrize(
