@@ -248,9 +248,7 @@ _GRAMMAR_TRAITS: Mapping[str, frozenset[str]] = {
         }
     ),
     "H6053-legacy": frozenset({"legacy_source_segments", "percent_brightness"}),
-    "H605C": frozenset(
-        {"music_status_settings", "percent_brightness", "source_only_static", "video_embedded_settings"}
-    ),
+    "H605C": frozenset({"percent_brightness", "source_only_static", "video_embedded_settings"}),
     "H605C-video": frozenset(
         {"video_embedded_parameters", "video_inline_relative_brightness", "video_status_settings", "video_v3"}
     ),
@@ -303,7 +301,6 @@ _GRAMMAR_TRAITS: Mapping[str, frozenset[str]] = {
             "display_static",
             "display_video",
             "installation_direction",
-            "music_status_settings",
             "mode_music",
             "video_status_settings",
             "video_sound_type",
@@ -383,7 +380,6 @@ _GRAMMAR_TRAITS: Mapping[str, frozenset[str]] = {
             "display_static",
             "display_video",
             "gradient_status",
-            "music_status_settings",
             "mode_music",
             "display_scene_body",
             "exact_palette_diy_activation",
@@ -395,7 +391,6 @@ _GRAMMAR_TRAITS: Mapping[str, frozenset[str]] = {
         {
             "new_music_omits_colour",
             "new_music_selector",
-            "music_status_settings",
             "scaled_music_sensitivity",
             "video_picture_preset",
         }
@@ -418,7 +413,6 @@ _GRAMMAR_TRAITS: Mapping[str, frozenset[str]] = {
             "device_info_status",
             "video_device_info_status",
             "native_music_selector",
-            "music_status_settings",
             "native_sources",
             "separate_native_setting_read",
             "power_on_query_selector",
@@ -437,7 +431,6 @@ _GRAMMAR_TRAITS: Mapping[str, frozenset[str]] = {
     ),
     "H6097": frozenset(
         {
-            "music_status_sensitivity",
             "new_music_omits_colour",
             "new_music_selector",
             "ordinary_settings",
@@ -652,6 +645,7 @@ class ModelProfile:
     music_modes: tuple[str, ...] = ()
     readback_music_modes: tuple[str, ...] = ()
     music_readback_ambiguous: bool = False
+    music_readback_fields: frozenset[str] = frozenset()
     music_variants: tuple[MusicVariant, ...] = ()
     music_upload_before_selector: bool = False
     music_requires_upload_ack: bool = False
@@ -796,6 +790,8 @@ class ModelProfile:
         return operations if self.command_operations is None else operations & self.command_operations
 
     def __post_init__(self) -> None:
+        if not self.music_readback_fields <= {"sensitivity", "color", "style"}:
+            raise ValueError("Music readback fields must be sensitivity, color or style")
         selector_routes = [route for route, _domain in self.legacy_effect_selector_domains]
         if len(set(selector_routes)) != len(selector_routes):
             raise ValueError("Legacy effect selector routes must be unique")
@@ -2119,6 +2115,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         diy_requires_upload_ack=True,
         effect_retry_after_upload=False,
         supports_music_color=True,
+        music_readback_fields=frozenset({"sensitivity"}),
         music_modes=(
             "energetic",
             "rhythm",
@@ -2229,6 +2226,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         ),
         music_sensitivity_max=99,
         supports_music_color=True,
+        music_readback_fields=frozenset({"sensitivity", "color", "style"}),
         supports_video_mode=True,
         video_modes=("movie", "game"),
         supports_video_capture_region=True,
@@ -2364,6 +2362,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         music_variants=H6099_MUSIC_VARIANTS,
         music_upload_before_selector=True,
         supports_music_color=True,
+        music_readback_fields=frozenset({"sensitivity", "color", "style"}),
         music_modes=(
             "energetic",
             "rhythm",
@@ -2468,6 +2467,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         music_variants=H66A0_MUSIC_VARIANTS,
         music_upload_before_selector=True,
         supports_music_color=True,
+        music_readback_fields=frozenset({"sensitivity", "color", "style"}),
         music_modes=(
             "energetic",
             "rhythm",
@@ -2579,6 +2579,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
             MusicVariant(0x06, "Rolling selector with colour"),
         ),
         supports_music_color=True,
+        music_readback_fields=frozenset({"sensitivity", "color", "style"}),
         supports_video_mode=True,
         video_modes=("movie",),
         supports_video_capture_region=True,
@@ -4011,6 +4012,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         music_sensitivity_min=0,
         music_sensitivity_max=100,
         supports_music_color=True,
+        music_readback_fields=frozenset({"sensitivity", "color", "style"}),
         supports_advanced_effects=True,
         # Static readback identifies the mode but exposes rendered colour only through segment
         # queries. Kelvin remains last-known while its RGB companion matches.

@@ -2221,18 +2221,22 @@ def compiled_observation(
             return expectations, (
                 ObservationConfidence.MODE_MATCH if variant and variant.layout else ObservationConfidence.SETTINGS_MATCH
             )
-        # H617A settings are not confirmed by the shipped readback evidence.
-        if profile.status_grammar_has("music_status_sensitivity"):
+        readback_fields = profile.music_readback_fields
+        if "sensitivity" in readback_fields:
             expectations["music_sensitivity"] = compiled.sensitivity
-        elif profile.status_grammar_has("music_status_settings"):
-            expectations["music_sensitivity"] = compiled.sensitivity
-            variant = music_variant(
+        variant = (
+            music_variant(
                 profile,
                 music_code_for(compiled.model, compiled.mode, profile=profile),
             )
+            if readback_fields & {"color", "style"}
+            else None
+        )
+        if "color" in readback_fields:
             if profile.supports_music_color and (variant is None or variant.supports_fixed_colour):
                 expectations["music_color"] = compiled.colour
-            if compiled.mode == "rhythm" and variant and variant.supports_style:
+        if "style" in readback_fields and compiled.mode == "rhythm":
+            if variant and variant.supports_style:
                 expectations["music_calm"] = compiled.calm
         if len(compiled.packets) > 2:
             return expectations, ObservationConfidence.MODE_MATCH

@@ -300,13 +300,15 @@ def _video_item() -> LibraryItem:
     )
 
 
-def test_compiled_observation_uses_read_domains_and_status_grammar() -> None:
+def test_compiled_observation_uses_read_domains_and_explicit_music_readback() -> None:
     music = compile_application(_music_item("H6199"), "H6199")
     music = replace(music, colour=None)
     expectations, confidence = compiled_observation(music)
     assert expectations == {"is_on": True, "music_mode": "rolling", "music_sensitivity": 50, "music_color": None}
     assert confidence is ObservationConfidence.SETTINGS_MATCH
     profile = replace(get_profile("H6199"), status_grammar="H617A")
+    assert compiled_observation(music, profile=profile) == (expectations, confidence)
+    profile = replace(profile, music_readback_fields=frozenset())
     assert compiled_observation(music, profile=profile) == (
         {"is_on": True, "music_mode": "rolling"},
         ObservationConfidence.MODE_MATCH,
@@ -328,6 +330,15 @@ def test_compiled_observation_uses_read_domains_and_status_grammar() -> None:
     expectations, _ = compiled_observation(video, profile=profile)
     assert expectations is not None
     assert not any(key.startswith(("white_balance", "relative_brightness", "blank_screen")) for key in expectations)
+
+
+def test_h6097_music_observation_claims_only_declared_readback_fields() -> None:
+    music = compile_application(_music_item("H6097"), "H6097")
+    profile = replace(get_profile("H6097"), status_grammar="synthetic")
+
+    expectations, _ = compiled_observation(music, profile=profile)
+
+    assert expectations == {"is_on": True, "music_mode": "rolling", "music_sensitivity": 50}
 
 
 @pytest.mark.parametrize("mode", ["colour", "scene", "custom", "music", "video", "off"])
