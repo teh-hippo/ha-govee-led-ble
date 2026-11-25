@@ -240,7 +240,7 @@ async def test_h6053_source_colour_uses_version_identity_without_pact(hass, monk
                 coordinator._power_write_generation,
                 coordinator._profile_generation,
             )
-    monkeypatch.setattr(coordinator, "_refresh_h607c_advertisements", MagicMock())
+    monkeypatch.setattr(coordinator, "_refresh_pact_advertisements", MagicMock())
     monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
     monkeypatch.setattr(coordinator, "_renew_foreground_lease", MagicMock())
     monkeypatch.setattr(coordinator, "_async_supersede_effect_preview", AsyncMock())
@@ -784,7 +784,7 @@ async def test_native_kelvin_survives_non_table_palette_and_recovery_projection(
     coordinator._observe_pact(2 if modern else 1, 1)
     coordinator._observe_identity_field("fw_version", coordinator.fw_version)
     coordinator._observe_identity_field("hw_version", coordinator.hw_version)
-    monkeypatch.setattr(coordinator, "_refresh_h607c_advertisements", MagicMock())
+    monkeypatch.setattr(coordinator, "_refresh_pact_advertisements", MagicMock())
     monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
     monkeypatch.setattr(coordinator, "_renew_foreground_lease", MagicMock())
 

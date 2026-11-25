@@ -206,26 +206,28 @@ async def async_get_config_entry_diagnostics(
         cutoff = time.monotonic() - FALLBACK_MAXIMUM_STALE_ADVERTISEMENT_SECONDS
         fresh_pacts = {
             pact
-            for timestamp, pacts in coordinator._h607c_advertisement_observations.values()
+            for timestamp, pacts in coordinator._pact_identity.advertisement_observations.values()
             if timestamp >= cutoff
             for pact in pacts
         }
-        marker_pact = coordinator._h607c_marker_pact
+        marker_pact = coordinator._pact_identity.marker_pact
         resolution: dict[str, Any] = {
-            "pact_readiness": coordinator.h607c_pact_readiness,
+            "pact_readiness": coordinator.pact_readiness,
             "pact_source": "marker"
             if marker_pact is not None
             else "advertisement"
-            if coordinator._h607c_advertised_pacts
+            if coordinator._pact_identity.advertised_pacts
             else None,
             "identity_sources": {
-                "advertisement": bool(coordinator._h607c_advertised_pacts),
+                "advertisement": bool(coordinator._pact_identity.advertised_pacts),
                 "marker": marker_pact is not None,
             },
-            "retained_advertisement_pacts": [list(pact) for pact in sorted(coordinator._h607c_advertised_pacts)],
+            "retained_advertisement_pacts": [
+                list(pact) for pact in sorted(coordinator._pact_identity.advertised_pacts)
+            ],
             "fresh_advertisement_pacts": [list(pact) for pact in sorted(fresh_pacts)],
             "marker_pact": list(marker_pact) if marker_pact is not None else None,
-            "broadcast_version_zero_seen_since_reload": coordinator._h607c_invalid_pact_version_seen,
+            "broadcast_version_zero_seen_since_reload": coordinator._pact_identity.invalid_version_seen,
             "native_supports_rgb": coordinator.native_presentation_profile.supports_rgb,
             "native_supports_color_temperature": coordinator.native_presentation_profile.supports_color_temperature,
             "effective_supports_rgb": coordinator.profile.supports_rgb,
@@ -237,12 +239,12 @@ async def async_get_config_entry_diagnostics(
             "unconfirmed_state_fields": sorted(coordinator._h607c_uncertain_state_fields),
         }
         if coordinator.profile.can_read(ReadDomain.PACT):
-            resolution["identity_sources"]["query"] = bool(coordinator._connection_pacts)
-            if coordinator._connection_pacts and marker_pact is None:
+            resolution["identity_sources"]["query"] = bool(coordinator._pact_identity.connection_pacts)
+            if coordinator._pact_identity.connection_pacts and marker_pact is None:
                 resolution["pact_source"] = "query"
             resolution.update(
-                connection_pacts=[list(pact) for pact in sorted(coordinator._connection_pacts)],
-                pact_query_result=coordinator._pact_query_result,
+                connection_pacts=[list(pact) for pact in sorted(coordinator._pact_identity.connection_pacts)],
+                pact_query_result=coordinator._pact_identity.query_result,
                 identity_confirmed=coordinator.identity_fields_confirmed(),
                 authorised_supports_rgb=coordinator._authorization_profile().supports_rgb,
             )

@@ -61,7 +61,7 @@ from .coordinator_control import ControlWriteRequest
 from .coordinator_dreamview import DreamviewClaimedError, _DreamviewMixin, is_dreamview_claimed
 from .coordinator_expectations import expectations_from_packet, parse_write_state
 from .coordinator_h6102 import _H6102Mixin
-from .coordinator_identity import InitialDeviceIdentity
+from .coordinator_identity import InitialDeviceIdentity, PactIdentityState
 from .coordinator_modes import ModeTransitionPurpose, ModeTransitionSupersededError, _ActiveModeMixin
 from .coordinator_notifications import _OPTIONAL_CONTROL_DOMAINS, _NotificationMixin
 from .coordinator_recovery import _RecoveryMixin
@@ -322,16 +322,7 @@ class GoveeBLECoordinator(
         self.wireless_hardware_version: str | None = None
         self.pact_type = identity.pact_type
         self.pact_code = identity.pact_code
-        self._h607c_advertised_pacts: set[tuple[int, int]] = set()
-        self._h607c_advertisement_observations: dict[str, tuple[float, frozenset[tuple[int, int]]]] = {}
-        self._h607c_marker_pact: tuple[int, int] | None = None
-        self._h607c_last_marker_pact: tuple[int, int] | None = None
-        self._connection_pacts: set[tuple[int, int]] = set()
-        self._subscription_advertised_pact: tuple[int, int] | None = None
-        self._pact_query_result: str | None = None
-        self._h607c_marker_seen = False
-        self._h607c_pact_conflict = False
-        self._h607c_invalid_pact_version_seen = False
+        self._pact_identity = PactIdentityState()
         self._h607c_last_optional_read_failure: str | None = None
         self._h607c_uncertain_state_fields: set[str] = set()
         self._h607c_failed_color_write = False
@@ -488,9 +479,9 @@ class GoveeBLECoordinator(
             and self._encryption is not None
             and self._encryption.ready
         ):
-            self._h607c_marker_pact = self._encryption.marker_pact
-            self._h607c_marker_seen |= self._h607c_marker_pact is not None
-            self._resolve_h607c_pact(preserve_state=True)
+            self._pact_identity.marker_pact = self._encryption.marker_pact
+            self._pact_identity.marker_seen |= self._pact_identity.marker_pact is not None
+            self._resolve_pact_identity(preserve_state=True)
         return bool(previous != value)
 
     def identity_fields_confirmed(self, fields: frozenset[str] | None = None) -> bool:
@@ -549,7 +540,7 @@ class GoveeBLECoordinator(
         self._present = bluetooth.async_address_present(self.hass, self.address, connectable=True)
         self._note_advertisement(bluetooth.async_last_service_info(self.hass, self.address, connectable=True))
         if self._monitors_pact_identity:
-            self._refresh_h607c_advertisements()
+            self._refresh_pact_advertisements()
         unsubs = [
             bluetooth.async_register_callback(
                 self.hass,
@@ -562,12 +553,12 @@ class GoveeBLECoordinator(
         if self._monitors_pact_identity:
             register_all = getattr(bluetooth, "async_register_advertisement_callback", None)
             if register_all is not None:
-                unsubs.append(register_all(self.hass, self._async_on_h607c_advertisement, self.address))
+                unsubs.append(register_all(self.hass, self._async_on_pact_advertisement, self.address))
             else:
                 unsubs.append(
                     bluetooth.async_register_callback(
                         self.hass,
-                        self._async_on_h607c_advertisement_change,
+                        self._async_on_pact_advertisement_change,
                         bluetooth.BluetoothCallbackMatcher(address=self.address, connectable=False),
                         bluetooth.BluetoothScanningMode.PASSIVE,
                     )
@@ -584,21 +575,21 @@ class GoveeBLECoordinator(
         was_present = self._present
         self._note_advertisement(_service_info)
         if self._monitors_pact_identity and getattr(_service_info, "source", None) is not None:
-            self._refresh_h607c_advertisements()
+            self._refresh_pact_advertisements()
         self._set_present(True)
         if was_present and previous_pact != (self.pact_type, self.pact_code):
             self.async_update_listeners()
 
     @callback
-    def _async_on_h607c_advertisement(self, service_info: bluetooth.BluetoothServiceInfoBleak) -> None:
+    def _async_on_pact_advertisement(self, service_info: bluetooth.BluetoothServiceInfoBleak) -> None:
         self._note_advertisement(service_info)
-        self._refresh_h607c_advertisements()
+        self._refresh_pact_advertisements()
 
     @callback
-    def _async_on_h607c_advertisement_change(
+    def _async_on_pact_advertisement_change(
         self, service_info: bluetooth.BluetoothServiceInfoBleak, _change: bluetooth.BluetoothChange
     ) -> None:
-        self._async_on_h607c_advertisement(service_info)
+        self._async_on_pact_advertisement(service_info)
 
     def _note_advertisement(
         self, service_info: bluetooth.BluetoothServiceInfoBleak | None, *, cached: bool = False
@@ -620,7 +611,7 @@ class GoveeBLECoordinator(
             advertisement = parse_govee_advertisement(service_info.manufacturer_data)
             if advertisement is not None:
                 if self._tracks_pact_identity or self._monitors_recovery_pact:
-                    self._h607c_invalid_pact_version_seen |= advertisement.invalid_version_seen
+                    self._pact_identity.invalid_version_seen |= advertisement.invalid_version_seen
                     source = getattr(service_info, "source", "direct")
                     timestamp = getattr(service_info, "time", None)
                     if timestamp is None:
@@ -629,32 +620,37 @@ class GoveeBLECoordinator(
                             max(
                                 (
                                     observed_at
-                                    for observed_at, _observed_pacts in self._h607c_advertisement_observations.values()
+                                    for observed_at, _observed_pacts in (
+                                        self._pact_identity.advertisement_observations.values()
+                                    )
                                 ),
                                 default=0.0,
                             )
                             + 1,
                         )
-                    previous = self._h607c_advertisement_observations.get(source)
+                    previous = self._pact_identity.advertisement_observations.get(source)
                     if previous is None or timestamp > previous[0]:
-                        self._h607c_advertisement_observations[source] = (timestamp, advertisement.pacts)
+                        self._pact_identity.advertisement_observations[source] = (timestamp, advertisement.pacts)
                     elif timestamp == previous[0] and not cached:
-                        self._h607c_advertisement_observations[source] = (timestamp, previous[1] | advertisement.pacts)
-                    self._h607c_advertised_pacts = {
+                        self._pact_identity.advertisement_observations[source] = (
+                            timestamp,
+                            previous[1] | advertisement.pacts,
+                        )
+                    self._pact_identity.advertised_pacts = {
                         pact
-                        for _observed_at, observed_pacts in self._h607c_advertisement_observations.values()
+                        for _observed_at, observed_pacts in self._pact_identity.advertisement_observations.values()
                         for pact in observed_pacts
                     }
                     if self._tracks_pact_identity:
-                        self._resolve_h607c_pact()
+                        self._resolve_pact_identity()
                     else:
                         latest_timestamp = max(
                             observed_at
-                            for observed_at, _observed_pacts in self._h607c_advertisement_observations.values()
+                            for observed_at, _observed_pacts in self._pact_identity.advertisement_observations.values()
                         )
                         latest_pacts = {
                             pact
-                            for observed_at, observed_pacts in self._h607c_advertisement_observations.values()
+                            for observed_at, observed_pacts in self._pact_identity.advertisement_observations.values()
                             if observed_at == latest_timestamp
                             for pact in observed_pacts
                         }
@@ -677,44 +673,44 @@ class GoveeBLECoordinator(
                     if self._encryption is not None and self._encryption.version == 0:
                         self._encryption.reset()
                         if self._tracks_pact_identity:
-                            self._subscription_advertised_pact = None
-                            self._h607c_marker_pact = None
-                            self._resolve_h607c_pact()
+                            self._pact_identity.subscription_advertised_pact = None
+                            self._pact_identity.marker_pact = None
+                            self._resolve_pact_identity()
                 if advertisement.supports_plaintext:
                     self._advertised_plaintext = True
 
-    def _refresh_h607c_advertisements(self) -> None:
+    def _refresh_pact_advertisements(self) -> None:
         for connectable in (True, False):
             service_info = bluetooth.async_last_service_info(self.hass, self.address, connectable=connectable)
             if service_info is not None:
                 self._note_advertisement(service_info, cached=True)
-        self._prune_h607c_advertisements()
+        self._prune_pact_advertisements()
 
-    def _prune_h607c_advertisements(self, *, preserve_state: bool = False) -> None:
+    def _prune_pact_advertisements(self, *, preserve_state: bool = False) -> None:
         cutoff = time.monotonic() - bluetooth.FALLBACK_MAXIMUM_STALE_ADVERTISEMENT_SECONDS
-        self._h607c_advertisement_observations = {
+        self._pact_identity.advertisement_observations = {
             source: observation
-            for source, observation in self._h607c_advertisement_observations.items()
+            for source, observation in self._pact_identity.advertisement_observations.items()
             if observation[0] >= cutoff
         }
-        observations = self._h607c_advertisement_observations.values()
+        observations = self._pact_identity.advertisement_observations.values()
         if self._monitors_recovery_pact and not self._tracks_pact_identity and observations:
             latest_timestamp = max(observed_at for observed_at, _pacts in observations)
-            self._h607c_advertised_pacts = {
+            self._pact_identity.advertised_pacts = {
                 pact
-                for observed_at, pacts in self._h607c_advertisement_observations.values()
+                for observed_at, pacts in self._pact_identity.advertisement_observations.values()
                 if observed_at == latest_timestamp
                 for pact in pacts
             }
         else:
-            self._h607c_advertised_pacts = {
-                pact for _, pacts in self._h607c_advertisement_observations.values() for pact in pacts
+            self._pact_identity.advertised_pacts = {
+                pact for _, pacts in self._pact_identity.advertisement_observations.values() for pact in pacts
             }
-        self._resolve_h607c_pact(preserve_state=preserve_state)
+        self._resolve_pact_identity(preserve_state=preserve_state)
 
-    def _resolve_h607c_pact(self, *, preserve_state: bool = False) -> None:
+    def _resolve_pact_identity(self, *, preserve_state: bool = False) -> None:
         authorization_generation = self._authorization_generation
-        pacts = set(self._h607c_advertised_pacts)
+        pacts = set(self._pact_identity.advertised_pacts)
         subscription = self._notify_started_monotonic
         strict = get_profile(self.model).requires_pact_confirmation
         declared = get_profile(self.model)
@@ -723,20 +719,20 @@ class GoveeBLECoordinator(
         if fresh and self._client is not None and self._client.is_connected:
             fresh_observations = {
                 pact
-                for timestamp, observed in self._h607c_advertisement_observations.values()
+                for timestamp, observed in self._pact_identity.advertisement_observations.values()
                 if subscription is not None and timestamp >= subscription
                 for pact in observed
             }
             if self._monitors_recovery_pact and not self._tracks_pact_identity:
                 observation_timestamps = [
                     timestamp
-                    for timestamp, _observed in self._h607c_advertisement_observations.values()
+                    for timestamp, _observed in self._pact_identity.advertisement_observations.values()
                     if subscription is not None and timestamp >= subscription
                 ]
                 latest_timestamp = max(observation_timestamps, default=None)
                 fresh_observations = {
                     pact
-                    for timestamp, observed in self._h607c_advertisement_observations.values()
+                    for timestamp, observed in self._pact_identity.advertisement_observations.values()
                     if timestamp == latest_timestamp
                     for pact in observed
                 }
@@ -752,21 +748,21 @@ class GoveeBLECoordinator(
             and self._encryption is not None
             and self._encryption.ready
         )
-        if qualified_subscription and self._subscription_advertised_pact is not None:
-            pacts.add(self._subscription_advertised_pact)
-        if self._h607c_marker_pact is not None:
-            pacts.add(self._h607c_marker_pact)
-        pacts.update(self._connection_pacts)
+        if qualified_subscription and self._pact_identity.subscription_advertised_pact is not None:
+            pacts.add(self._pact_identity.subscription_advertised_pact)
+        if self._pact_identity.marker_pact is not None:
+            pacts.add(self._pact_identity.marker_pact)
+        pacts.update(self._pact_identity.connection_pacts)
         conflict = len(pacts) > 1
         if qualified_subscription and len(pacts) == 1 and pacts == advertised_pacts:
-            self._subscription_advertised_pact = next(iter(pacts))
+            self._pact_identity.subscription_advertised_pact = next(iter(pacts))
         pact: tuple[int | None, int | None] = next(iter(pacts)) if len(pacts) == 1 else (None, None)
         retains_cached_recovery_pact = "pact" in recovery_fields
         if (strict or self.profile.projector_grammar is not None or retains_cached_recovery_pact) and not pacts:
             pact = self.pact_type, self.pact_code
-        if pact != (self.pact_type, self.pact_code) or conflict != self._h607c_pact_conflict:
+        if pact != (self.pact_type, self.pact_code) or conflict != self._pact_identity.conflict:
             self.pact_type, self.pact_code = pact
-            self._h607c_pact_conflict = conflict
+            self._pact_identity.conflict = conflict
             self._authorization_generation += 1
             self._resolve_device_profile(preserve_state=preserve_state, identity_changed=True)
             self.async_update_listeners()
@@ -798,10 +794,14 @@ class GoveeBLECoordinator(
             or self._notify_started_monotonic is None
         ):
             return False
-        self._connection_pacts.add((pact_type, pact_code))
-        self._resolve_h607c_pact(preserve_state=True)
-        self._pact_query_result = (
-            "conflicting" if self._h607c_pact_conflict else "confirmed" if self.profile.supports_rgb else "unsupported"
+        self._pact_identity.connection_pacts.add((pact_type, pact_code))
+        self._resolve_pact_identity(preserve_state=True)
+        self._pact_identity.query_result = (
+            "conflicting"
+            if self._pact_identity.conflict
+            else "confirmed"
+            if self.profile.supports_rgb
+            else "unsupported"
         )
         return True
 
@@ -810,23 +810,23 @@ class GoveeBLECoordinator(
             return
         baseline = {ReadDomain.PACT: self._domain_revisions.get(ReadDomain.PACT, 0)}
         deadline = time.monotonic() + IDENTITY_QUERY_TIMEOUT
-        self._pact_query_result = "pending"
+        self._pact_identity.query_result = "pending"
         try:
             async with asyncio.timeout_at(deadline):
                 await self._async_write_packet(client, build_pact_query(self.profile), cleanup_deadline=deadline)
                 if not await self._wait_for_revisions({}, baseline, deadline):
-                    self._pact_query_result = "timeout"
+                    self._pact_identity.query_result = "timeout"
         except TimeoutError:
-            self._pact_query_result = "timeout"
+            self._pact_identity.query_result = "timeout"
         except BleakError:
             if self._client is not client or not client.is_connected:
                 raise
-            self._pact_query_result = "write_failed"
+            self._pact_identity.query_result = "write_failed"
 
     @property
     def native_presentation_profile(self) -> ModelProfile:
         """Profile used to present controls; equals the effective profile unless identity gating shows more."""
-        if self.identity_gated_controls and self.pact_type is None and not self._h607c_pact_conflict:
+        if self.identity_gated_controls and self.pact_type is None and not self._pact_identity.conflict:
             return get_profile(self.model)
         return self.profile
 
@@ -859,15 +859,15 @@ class GoveeBLECoordinator(
         )
 
     @property
-    def h607c_pact_readiness(self) -> str:
-        if self._h607c_pact_conflict:
+    def pact_readiness(self) -> str:
+        if self._pact_identity.conflict:
             return "conflicting"
         if get_profile(self.model).requires_pact_confirmation and not self.identity_fields_confirmed(
             frozenset({"pact"})
         ):
             return "stale" if self.pact_type is not None else "missing"
         if self.pact_type is None or self.pact_code is None:
-            return "stale" if self._h607c_marker_seen else "missing"
+            return "stale" if self._pact_identity.marker_seen else "missing"
         return "ready" if self.profile.supports_rgb else "unsupported"
 
     async def async_prepare_identity_gated_control(self) -> Callable[[], None]:
@@ -877,14 +877,14 @@ class GoveeBLECoordinator(
         if not self.identity_gated_controls and not get_profile(self.model).static_identity_fields and not fields:
             return lambda: None
         if self._tracks_pact_identity:
-            self._refresh_h607c_advertisements()
+            self._refresh_pact_advertisements()
         async with async_control_intent(self, ControlIntent.BACKGROUND):
             async with self._lock:
                 client = await self._ensure_connected()
                 fields |= self.profile.static_identity_fields
                 await self._async_require_identity(client, fields)
                 self._reconcile_authorization()
-                if not self._authorization_profile().supports_rgb or self._h607c_pact_conflict:
+                if not self._authorization_profile().supports_rgb or self._pact_identity.conflict:
                     await self._disconnect_if_current_locked(client)
                     raise HomeAssistantError(translation_domain=DOMAIN, translation_key="identity_not_ready")
                 token = self._notification_token
@@ -902,7 +902,7 @@ class GoveeBLECoordinator(
                 or not self.identity_fields_confirmed(fields)
                 or (self._encryption is not None and not self._encryption.ready)
                 or not self._authorization_profile().supports_rgb
-                or self._h607c_pact_conflict
+                or self._pact_identity.conflict
             ):
                 raise HomeAssistantError(translation_domain=DOMAIN, translation_key="identity_not_ready")
 
@@ -1255,9 +1255,9 @@ class GoveeBLECoordinator(
             _LOGGER.debug("Reconnecting stale notification stream for %s", self.address)
         # Cached identity remains presentation data; only current-connection confirmation is revoked.
         self._confirmed_identity_fields.clear()
-        self._connection_pacts.clear()
-        self._subscription_advertised_pact = None
-        self._pact_query_result = None
+        self._pact_identity.connection_pacts.clear()
+        self._pact_identity.subscription_advertised_pact = None
+        self._pact_identity.query_result = None
         self._physical_ic_count_confirmed = False
         self._authorization_generation += 1
         self._music_palette = self._music_body = None
@@ -1315,13 +1315,14 @@ class GoveeBLECoordinator(
             if self._client is not client or not client.is_connected:
                 raise GoveeTransportError("disconnected_during_setup")
             if self._tracks_pact_identity:
-                self._h607c_marker_pact = self._encryption.marker_pact
-                self._h607c_marker_seen |= self._h607c_marker_pact is not None
+                self._pact_identity.marker_pact = self._encryption.marker_pact
+                self._pact_identity.marker_seen |= self._pact_identity.marker_pact is not None
                 same_marker = (
-                    self._h607c_marker_pact is not None and self._h607c_marker_pact == self._h607c_last_marker_pact
+                    self._pact_identity.marker_pact is not None
+                    and self._pact_identity.marker_pact == self._pact_identity.last_marker_pact
                 )
-                self._prune_h607c_advertisements(preserve_state=same_marker)
-                self._h607c_last_marker_pact = self._h607c_marker_pact
+                self._prune_pact_advertisements(preserve_state=same_marker)
+                self._pact_identity.last_marker_pact = self._pact_identity.marker_pact
             await self._async_confirm_pact(client)
             self._require_not_shutdown()
             self._require_not_dreamview_claimed()
@@ -1470,17 +1471,17 @@ class GoveeBLECoordinator(
         self.video_parameters = None
         self.video_hdmi_inputs_connected = None
         self._confirmed_identity_fields.clear()
-        self._connection_pacts.clear()
+        self._pact_identity.connection_pacts.clear()
         self._authorization_generation += 1
         self._configured_strings_confirmed = False
         self._segment_query_generation = None
         if self._encryption is not None:
             self._encryption.reset()
         if self._monitors_pact_identity and (
-            self._h607c_marker_pact is not None or self._subscription_advertised_pact is not None
+            self._pact_identity.marker_pact is not None or self._pact_identity.subscription_advertised_pact is not None
         ):
-            self._h607c_marker_pact = None
-            self._subscription_advertised_pact = None
+            self._pact_identity.marker_pact = None
+            self._pact_identity.subscription_advertised_pact = None
             declared = get_profile(self.model)
             recovery_fields = declared.static_recovery_identity_fields or frozenset()
             if (
@@ -1488,7 +1489,7 @@ class GoveeBLECoordinator(
                 and not declared.reconciles_marker_pact
                 and "pact" not in recovery_fields
             ):
-                self._resolve_h607c_pact(preserve_state=True)
+                self._resolve_pact_identity(preserve_state=True)
         if client is not None:
             self.last_disconnected_at = datetime.now().astimezone().isoformat(timespec="seconds")
         self._notify_started_monotonic = None
@@ -1532,9 +1533,9 @@ class GoveeBLECoordinator(
         if self._notification_token is not None or not self._pre_mode_needs_qualification:
             self._discard_static_baseline()
         self._invalidate_upload_ack(BleakError("Device subscription changed during effect upload"))
-        self._subscription_advertised_pact = None
-        self._h607c_marker_pact = None
-        self._connection_pacts.clear()
+        self._pact_identity.subscription_advertised_pact = None
+        self._pact_identity.marker_pact = None
+        self._pact_identity.connection_pacts.clear()
         self._confirmed_identity_fields.clear()
         self._authorization_generation += 1
         self._notify_started_monotonic = None
@@ -1552,7 +1553,7 @@ class GoveeBLECoordinator(
         self._notify_started_monotonic = time.monotonic()
         self._last_rx_monotonic = None
         if self._tracks_pact_identity:
-            self._prune_h607c_advertisements(preserve_state=True)
+            self._prune_pact_advertisements(preserve_state=True)
 
     def _receive_is_stale(self) -> bool:
         baseline = self._last_rx_monotonic
@@ -2905,8 +2906,8 @@ class GoveeBLECoordinator(
 
     def _reconcile_authorization(self) -> None:
         """Apply expiring identity before taking operation-generation snapshots."""
-        if self._tracks_pact_identity and self._h607c_advertisement_observations:
-            self._prune_h607c_advertisements()
+        if self._tracks_pact_identity and self._pact_identity.advertisement_observations:
+            self._prune_pact_advertisements()
 
     def _authorization_profile(self) -> ModelProfile:
         """Read the last reconciled capabilities without changing coordinator state."""
@@ -2916,7 +2917,7 @@ class GoveeBLECoordinator(
                 return replace(profile, physical_ic_count=None)
             return profile
 
-        if get_profile(self.model).reconciles_marker_pact and self._h607c_pact_conflict:
+        if get_profile(self.model).reconciles_marker_pact and self._pact_identity.conflict:
             return qualify_geometry(replace(self.profile, command_operations=frozenset()))
         if self.profile.projector_grammar is not None and not self.identity_fields_confirmed(frozenset({"pact"})):
             return qualify_geometry(
@@ -5123,8 +5124,8 @@ class GoveeBLECoordinator(
             and not declared.requires_pact_confirmation
             and not declared.reconciles_marker_pact
         ):
-            self._h607c_marker_pact = None
-            self._subscription_advertised_pact = None
+            self._pact_identity.marker_pact = None
+            self._pact_identity.subscription_advertised_pact = None
         self._invalidate_upload_ack(BleakError("Device disconnected during effect upload"))
         if self._encryption is not None:
             self._encryption.reset()

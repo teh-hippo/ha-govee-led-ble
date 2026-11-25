@@ -1,9 +1,10 @@
 """Product-neutral identity context used while constructing a coordinator."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 type DeviceIdentitySource = Literal["ble", "configured"]
+type PactIdentity = tuple[int, int]
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,3 +46,17 @@ class InitialDeviceIdentity:
             or self.pact_code < 0
         ):
             raise ValueError("Pact identity must be non-negative integers")
+
+
+@dataclass(slots=True)
+class PactIdentityState:
+    advertised_pacts: set[PactIdentity] = field(default_factory=set)
+    advertisement_observations: dict[str, tuple[float, frozenset[PactIdentity]]] = field(default_factory=dict)
+    marker_pact: PactIdentity | None = None
+    last_marker_pact: PactIdentity | None = None
+    connection_pacts: set[PactIdentity] = field(default_factory=set)
+    subscription_advertised_pact: PactIdentity | None = None
+    query_result: str | None = None
+    marker_seen: bool = False
+    conflict: bool = False
+    invalid_version_seen: bool = False

@@ -94,8 +94,8 @@ def h607c_subscription(hass, monkeypatch):
             return client
         c._client = client
         await c._start_notify()
-        c._h607c_marker_pact = (1, 1)
-        c._resolve_h607c_pact(preserve_state=True)
+        c._pact_identity.marker_pact = (1, 1)
+        c._resolve_pact_identity(preserve_state=True)
         return client
 
     async def disconnect(*, planned_release=False):
@@ -162,8 +162,8 @@ async def test_h607c_setup_cleans_up_after_optional_exception(h607c_subscription
     async def read_after_change(client, query, fields, **kwargs):
         if failure == "unexpected":
             raise RuntimeError("unexpected failure")
-        c._h607c_advertised_pacts = {(3, 1)}
-        c._resolve_h607c_pact()
+        c._pact_identity.advertised_pacts = {(3, 1)}
+        c._resolve_pact_identity()
         return await read_setting(client, query, fields, **kwargs)
 
     client.write_gatt_char = AsyncMock(side_effect=write)
@@ -207,8 +207,8 @@ async def test_h607c_hold_optional_failure_keeps_basic_read_and_quarantines_repl
     client.disconnect = AsyncMock(side_effect=disconnect)
     c._client = client
     await c._start_notify()
-    c._h607c_marker_pact = (1, 1)
-    c._resolve_h607c_pact(preserve_state=True)
+    c._pact_identity.marker_pact = (1, 1)
+    c._resolve_pact_identity(preserve_state=True)
     monkeypatch.setattr(c, "_identity_incomplete", lambda: False)
     monkeypatch.setattr(c, "_receive_is_stale", lambda: False)
     monkeypatch.setattr(f"{M}.asyncio.sleep", AsyncMock())
@@ -247,7 +247,7 @@ async def test_h607c_marker_only_poll_preserves_brightness_after_optional_timeou
     snapshot = await c._async_update_data()
     assert snapshot["is_on"] and snapshot["brightness_pct"] == 37
     assert c._state_read_available and c._client is None
-    assert c.h607c_pact_readiness == "stale" and not c.profile.supports_rgb
+    assert c.pact_readiness == "stale" and not c.profile.supports_rgb
 
 
 @pytest.mark.parametrize(("poll", "reply_brightness"), [(False, True), (True, True), (False, False)])

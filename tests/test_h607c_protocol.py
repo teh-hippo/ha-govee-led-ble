@@ -479,8 +479,8 @@ async def test_h607c_settings_verify_only_their_own_fresh_register(
 ):
     c = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H607C", configuration_url=None)
     c.pact_type, c.pact_code = pact_type, pact_code
-    c._h607c_marker_seen = True
-    c._h607c_marker_pact = pact_type, pact_code
+    c._pact_identity.marker_seen = True
+    c._pact_identity.marker_pact = pact_type, pact_code
     c._resolve_device_profile()
     c._notification_token = object()
     c._notify_started_monotonic = time.monotonic()
@@ -489,7 +489,7 @@ async def test_h607c_settings_verify_only_their_own_fresh_register(
     c._client = device
     monkeypatch.setattr(c, "_ensure_connected", AsyncMock(return_value=device))
     monkeypatch.setattr(c, "_renew_foreground_lease", lambda: None)
-    monkeypatch.setattr(c, "_refresh_h607c_advertisements", lambda: None)
+    monkeypatch.setattr(c, "_refresh_pact_advertisements", lambda: None)
 
     async def write(_uuid, packet, **_kwargs):
         if packet == adapter.build_boolean_control(control, True, "H607C", profile=c.profile):

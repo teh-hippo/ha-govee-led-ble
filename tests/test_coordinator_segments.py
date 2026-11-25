@@ -196,7 +196,7 @@ async def test_native_write_only_controls_do_not_require_unavailable_segment_rep
     client = SimpleNamespace(is_connected=True, write_gatt_char=AsyncMock())
     c._client = client
     c._ensure_connected = AsyncMock(return_value=client)
-    c._refresh_h607c_advertisements = MagicMock()
+    c._refresh_pact_advertisements = MagicMock()
     c._renew_foreground_lease = MagicMock()
     c.async_refresh_segments = AsyncMock(return_value=False)
     c.refresh_state = AsyncMock(return_value=True)
@@ -975,7 +975,7 @@ async def test_multipart_segment_recovery_tracks_physical_attempts(hass, operati
     coord.is_on = True
     coord._client = client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
     coord._ensure_connected = AsyncMock(return_value=client)
-    coord._refresh_h607c_advertisements = MagicMock()
+    coord._refresh_pact_advertisements = MagicMock()
     coord._renew_foreground_lease = MagicMock()
     groups = [([1, 9], (1, 2, 3))]
     packets = (
