@@ -76,6 +76,7 @@ import {
   PAINTED_EFFECT_IDS,
   SCENE_TRAILING_PADDING_MAX,
 } from "./validation-constants";
+import { NATIVE_EFFECT_MODELS, nativeEffectPolicy } from "./native-effect-policies";
 
 const VERIFICATION_CONFIDENCE = [
   "exact_session",
@@ -1328,37 +1329,20 @@ function projectorLayer(value: unknown): NonNullable<NativeEffectContent["projec
 }
 
 function nativeEffectContent(content: Record<string, unknown>): NativeEffectContent {
-  const model = enumString(
-    content.model,
-    ["H60A6", "H607C", "H1771", "H60B0", "H60B2", "H1AB2", "H6093", "H7025"],
-    "native model",
-  );
-  const zoned = model !== "H60A6";
+  const model = enumString(content.model, NATIVE_EFFECT_MODELS, "native model");
+  const policy = nativeEffectPolicy(model);
   const family = integerValue(content.family, "native family", 0, 65535);
-  const revision = model === "H60B0" ? integerValue(content.revision, "native revision", 0, 3) : undefined;
-  const combined = model === "H60B0" && family === 81;
-  if ((model === "H60A6" && family !== 797 && family !== 798) ||
-      (model === "H607C" && family > 255) || (model === "H1771" && family !== 957) ||
-      (model === "H60B2" && family !== 803) || (model === "H1AB2" && family !== 948) ||
-      (model === "H6093" && family !== 712) || (model === "H7025" && family !== 767)) invalid("unsupported native family");
+  const revision = policy.revisioned ? integerValue(content.revision, "native revision", 0, 3) : undefined;
+  const combined = policy.combinedFamily === family;
+  if (!policy.acceptsFamily(family)) invalid("unsupported native family");
   const layerValues = arrayValue(content.layers, "native layers", 255);
-  if (!layerValues.length && !combined && model !== "H6093") invalid("native effects require at least one layer");
-  if (model === "H6093" && layerValues.length) invalid("projector content cannot contain other layer kinds");
-  if (model === "H7025" && layerValues.length !== 1) invalid("H7025 native DIY requires one layer");
-  if (model !== "H6093" && content.projector_layers !== undefined) invalid("projector layers require their native model");
-  if (zoned && layerValues.length > (model === "H60B0" ? 3 : 2)) invalid("native zoned effects cannot add layers");
-  if (model === "H60B0" && (
-    combined ? revision !== 0 || layerValues.length !== 0
-      : revision === 1 ? !((family >= 1 && family <= 10 && layerValues.length === 1) || (family === 13 && layerValues.length === 2))
-        : revision !== 3 || ![922, 923].includes(family) || layerValues.length !== 3
-  )) invalid("native family does not match its revision");
-  if (model === "H1771" && layerValues.length !== 2) invalid("native dual-source effects require two sections");
-  if ((model === "H60B2" || model === "H1AB2") && layerValues.length !== 1) invalid("native palette effects require one section");
+  if (!policy.acceptsLayout({ family, revision, layerCount: layerValues.length })) invalid(policy.layoutError);
+  if (!policy.projector && content.projector_layers !== undefined) invalid("projector layers require their native model");
   return {
     kind: "native_effect",
     model,
     family,
-    ...(model === "H6093" ? {
+    ...(policy.projector ? {
       projector_layers: (() => {
         const layers = arrayValue(content.projector_layers, "projector layers", 255).map(projectorLayer);
         if (!layers.length) invalid("projector effects require at least one layer");
@@ -1370,7 +1354,7 @@ function nativeEffectContent(content: Record<string, unknown>): NativeEffectCont
       const type = enumString(layer.type, ["diy", "paint", "opaque"], "native layer type");
       if (type === "opaque") return { type, kind: byteValue(layer.kind, "native kind"), data: hexString(layer.data, "native data") };
       if (type === "diy") {
-        if (!zoned && family !== 797) invalid("DIY layer does not match native family");
+        if (policy.diyFamily !== undefined && family !== policy.diyFamily) invalid("DIY layer does not match native family");
         return {
           type, kind: byteValue(layer.kind, "native kind"), speed: integerValue(layer.speed, "native speed", 0, 100),
           palette: arrayValue(layer.palette, "native palette", 255).map(value => rgbValue(value, "native colour")),
@@ -1379,17 +1363,17 @@ function nativeEffectContent(content: Record<string, unknown>): NativeEffectCont
           points: arrayValue(layer.points, "native points", 255).map(value => byteValue(value, "native point")),
           direction: byteValue(layer.direction, "native direction"), angle: integerValue(layer.angle, "native angle", 0, 65535),
           opaque: hexString(layer.opaque, "native opaque"),
-          ...(zoned ? {
+          ...(policy.zoned ? {
             enabled: booleanValue(layer.enabled ?? true, "native effect section"),
             secondary_palette: arrayValue(layer.secondary_palette ?? [], "native secondary palette", 255).map(value => rgbValue(value, "native colour")),
-            ...(model === "H60B0" ? {
+            ...(policy.temperatures ? {
               temperatures: arrayValue(layer.temperatures ?? [], "native temperatures", 8)
                 .map(value => integerValue(value, "native temperature", 2700, 6500)),
             } : {}),
           } : {}),
         };
       }
-      if (family !== 798) invalid("paint layer does not match native family");
+      if (policy.paintFamily !== family) invalid("paint layer does not match native family");
       const opaque = hexString(layer.opaque, "native paint opaque");
       if (opaque.length !== 8) invalid("native paint opaque must contain four bytes");
       return {
@@ -1411,7 +1395,7 @@ function nativeEffectContent(content: Record<string, unknown>): NativeEffectCont
     background: rgbValue(content.background, "native background"),
     background_brightness: byteValue(content.background_brightness, "native background brightness"),
     show_type: byteValue(content.show_type, "native show type"), opaque: hexString(content.opaque, "native opaque"),
-    ...(model === "H1771" || model === "H60B0" ? { section_tail: hexString(content.section_tail ?? "", "native section tail") } : {}),
+    ...(policy.sectionTail ? { section_tail: hexString(content.section_tail ?? "", "native section tail") } : {}),
     ...(revision === undefined ? {} : { revision }),
     ...(combined ? {
       combined: (() => {
