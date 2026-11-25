@@ -1522,6 +1522,29 @@ def test_typed_diy_saved_content_rejects_unsupported_source_pairs(raw: dict[str,
 
 
 @pytest.mark.parametrize(
+    "content",
+    [
+        H6179SingleDiyEffect("H6179", 0, 0, 50, ((255, 0, 0),)),
+        H6179MixedDiyEffect("H6179", (EffectPair(0, 0),), 50, ((255, 0, 0),)),
+    ],
+)
+def test_typed_diy_requires_admitted_source_model(content) -> None:
+    with pytest.raises(EffectValidationError, match="typed DIY content requires"):
+        replace(content, model="H617A")
+
+
+@pytest.mark.parametrize("components", [(), (EffectPair(0, 0),) * 5])
+def test_typed_mixed_diy_rejects_invalid_component_counts(components) -> None:
+    with pytest.raises(EffectValidationError, match="mixed DIY must contain 1 to 4"):
+        H6179MixedDiyEffect("H6179", components, 50, ((255, 0, 0),))
+
+
+def test_typed_mixed_diy_admits_four_components() -> None:
+    components = (EffectPair(0, 0),) * 4
+    assert H6179MixedDiyEffect("H6179", components, 50, ((255, 0, 0),)).components == components
+
+
+@pytest.mark.parametrize(
     ("field", "value", "message"),
     [
         ("id", "not-a-uuid", "UUID"),
