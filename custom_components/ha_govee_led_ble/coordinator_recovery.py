@@ -183,13 +183,15 @@ def static_segment_kelvin(state: PriorControlState, profile: ModelProfile) -> tu
             return None
     elif state.color_temp_kelvin is not None and not profile.segment_colour_mode_ambiguous:
         intents = (state.color_temp_kelvin,) * profile.segment_count
-    elif state.static_rgb_known or not profile.segment_colour_mode_ambiguous:
+    elif state.static_rgb_known:
         intents = (0,) * profile.segment_count
     elif profile.static_palette_recovery and state.static_colour_observed:
         recovered = tuple(table_rgb_kelvin(rgb) for rgb in state.segment_colors)
         intents = tuple(
             kelvin if kelvin is not None and normalize_kelvin(kelvin, profile) == kelvin else 0 for kelvin in recovered
         )
+    elif not profile.segment_colour_mode_ambiguous:
+        intents = (0,) * profile.segment_count
     else:
         return None
     result: list[int] = []
@@ -227,6 +229,15 @@ class StaticRecoveryStrategy(StrEnum):
     COMPOUND_KELVIN_RGB = "compound_kelvin_rgb"
     SCALAR_RGB = "scalar_rgb"
     SCALAR_KELVIN = "scalar_kelvin"
+
+
+@dataclass(frozen=True, slots=True)
+class StaticOffGuard:
+    check: Callable[[], None]
+    baseline: PriorControlState | None = None
+
+    def __call__(self) -> None:
+        self.check()
 
 
 def compound_static_recovery_authorized(coordinator: _CoordinatorBase, profile: ModelProfile) -> bool:
@@ -329,7 +340,7 @@ class _RecoveryMixin(_CoordinatorBase):
         )
 
     async def async_preflight_static_off(self) -> Callable[[], None] | None:
-        async with async_control_intent(self, ControlIntent.BACKGROUND):
+        async with async_control_intent(self, ControlIntent.BACKGROUND), self.async_mode_transition():
             if not self.profile.supports_color_mode_readback:
                 self.require_static_baseline()
                 return None
@@ -351,7 +362,8 @@ class _RecoveryMixin(_CoordinatorBase):
             ):
                 raise self._static_recovery_error()
             static = self.static_mode_confirmed()
-            snapshot = None if static else self.require_static_baseline()
+            history = self._pre_mode_snapshot
+            snapshot = None if static else history or await self.async_prepare_static_baseline()
             if not static and self._observed_color_mode in (None, ParsedMode.UNKNOWN, ParsedMode.COLOUR):
                 raise self._static_recovery_error()
             selector_revision = self._selector_revision
@@ -366,12 +378,21 @@ class _RecoveryMixin(_CoordinatorBase):
                     or (
                         not self.static_mode_confirmed()
                         if static
-                        else self._selector_revision != selector_revision or self._pre_mode_snapshot is not snapshot
+                        else self._selector_revision != selector_revision
+                        or self._pre_mode_snapshot is not history
+                        or (
+                            history is None
+                            and (
+                                (current := self._capture_retained_static_palette()) is None
+                                or snapshot is None
+                                or not self._same_static_appearance(snapshot, current)
+                            )
+                        )
                     )
                 ):
                     raise self._static_recovery_error()
 
-            return check
+            return StaticOffGuard(check, snapshot if history is None else None)
 
     def _static_history_profile_current(self, *, require_identity: bool = True) -> bool:
         profile = self._pre_mode_profile
@@ -501,10 +522,12 @@ class _RecoveryMixin(_CoordinatorBase):
                 yield None
                 if incomplete is not None and not transition.current():
                     raise HomeAssistantError(translation_domain=DOMAIN, translation_key="partial_command")
-                self._discard_static_baseline()
+                self._discard_static_baseline(restored=True)
                 return
         async with self._async_qualified_static_history():
-            state = self.require_static_baseline()
+            state = self._pre_mode_snapshot or (off_guard.baseline if isinstance(off_guard, StaticOffGuard) else None)
+            if state is None:
+                raise self._static_recovery_error()
             if brightness_pct is not None and not self._recovery_brightness_supported():
                 raise HomeAssistantError(translation_domain=DOMAIN, translation_key="identity_not_ready")
             target = (
@@ -581,7 +604,13 @@ class _RecoveryMixin(_CoordinatorBase):
             if projector_baseline.projector_appearance is None:
                 raise self._static_recovery_error()
             return self._qualify_static_baseline(projector_baseline)
-        if self.color_mode is not ParsedMode.COLOUR:
+        retained_palette = (
+            profile.static_palette_readback_in_effects
+            and self._pre_mode_snapshot is None
+            and self._incomplete_static_exit is None
+            and not self._static_history_invalidated
+        )
+        if self.color_mode is not ParsedMode.COLOUR and not retained_palette:
             baseline = self._pre_mode_snapshot
         else:
             fields = {
@@ -652,7 +681,53 @@ class _RecoveryMixin(_CoordinatorBase):
                     and (not self._static_colour_known or scalar_field is not None and not fresh(scalar_field))
                 ):
                     baseline = None
-        return self._qualify_static_baseline(baseline)
+            elif retained_palette:
+                baseline = self._capture_retained_static_palette()
+        qualified = self._qualify_static_baseline(baseline)
+        if self.color_mode is ParsedMode.COLOUR:
+            self._static_history_invalidated = False
+        return qualified
+
+    def _capture_retained_static_palette(self) -> PriorControlState | None:
+        profile = self.profile
+        if (
+            not profile.static_palette_readback_in_effects
+            or not profile.static_palette_recovery
+            or not profile.can_read(ReadDomain.SEGMENTS)
+            or self.color_mode not in (ParsedMode.SCENE, ParsedMode.DIY, ParsedMode.MUSIC)
+            or self._observed_color_mode is not self.color_mode
+            or self._pre_mode_snapshot is not None
+            or self._incomplete_static_exit is not None
+            or self._static_history_invalidated
+            or self._notify_started_monotonic is None
+            or any(
+                not self.source_field_fresh(field)
+                or self._field_received_at.get(field, -1) < self._notify_started_monotonic
+                for field in ("is_on", "brightness_pct", "color_mode", "segment_colors", "segment_brightness")
+            )
+        ):
+            return None
+        state = self.capture_effect_control_state()
+        if (
+            not self._power_known
+            or not self._recovery_brightness_known(state)
+            or state.segment_colors is None
+            or not state.segment_brightness_observed
+        ):
+            return None
+        return replace(
+            state,
+            mode="colour",
+            color_temp_kelvin=None,
+            static_rgb_known=False,
+            static_colour_observed=True,
+            segment_kelvin=None,
+            effect=None,
+            scene_code=None,
+            diy_code=None,
+            music_mode="off",
+            video_mode="off",
+        )
 
     def _qualify_static_baseline(self, baseline: PriorControlState | None) -> PriorControlState:
         profile, transition = self.profile, self._mode_transition
@@ -712,6 +787,11 @@ class _RecoveryMixin(_CoordinatorBase):
                     )
                     if from_static
                     else self._pre_mode_snapshot is baseline
+                    or (
+                        self._pre_mode_snapshot is None
+                        and (current := self._capture_retained_static_palette()) is not None
+                        and self._same_static_appearance(baseline, current, prepared=prepared)
+                    )
                 )
             )
         return baseline

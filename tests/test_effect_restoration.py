@@ -50,6 +50,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_power,
     build_scene_activation,
     require_profile_packet,
+    table_kelvin_rgb,
 )
 from custom_components.ha_govee_led_ble.layered_scene import CatalogueRef
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
@@ -699,7 +700,7 @@ def physical(hass, monkeypatch, request):
                         None, frame(f"a3{pending.subtype:02x}{int(fault == 'upload_ack'):02x}")
                     )
             return
-        if model == "H1AB2" and packet[0] == 0xA3:
+        if model in {"H1AB2", "H617A", "H618A"} and packet[0] == 0xA3:
             pending = coordinator._upload_ack
             if packet[1] == 255 and pending is not None:
                 coordinator._notify_callback(
@@ -737,8 +738,10 @@ def physical(hass, monkeypatch, request):
                 state["brightness"] = packet[2]
             elif packet[1:3] == b"\x05\x04":
                 state["scene"] = list(packet[3:5])
-                state["colours"] = [(255, 0, 0)] * count
-                state["relative"] = [100] * count
+                state["mode_body"] = None
+                if not state.get("retained_palette"):
+                    state["colours"] = [(255, 0, 0)] * count
+                    state["relative"] = [100] * count
                 if model == "H6093":
                     state["projector"] = replace(
                         state["projector"],
@@ -748,6 +751,9 @@ def physical(hass, monkeypatch, request):
                 if model == "H1771":
                     state["sources"] = [True, True]
                     state["gradual"] = False
+            elif packet[:3] in {b"\x33\x05\x13", b"\x33\x05\x11", b"\x33\x05\x16", b"\x33\x05\x0a"}:
+                state["scene"] = None
+                state["mode_body"] = list(packet[2:19])
             elif packet[1] == 0x36 and model == "H1771":
                 state["sources"][packet[2]] = bool(packet[3])
             elif packet[1] == 0xA3:
@@ -755,6 +761,7 @@ def physical(hass, monkeypatch, request):
             static = parse_static_write(packet, coordinator.model, profile=coordinator.profile)
             if static is not None:
                 state["scene"] = None
+                state["mode_body"] = None
                 if model == "H6093":
                     state["native"] = static.kind == "projector"
                 for index in range(count):
@@ -805,6 +812,8 @@ def physical(hass, monkeypatch, request):
                         5,
                         [0x13, 0x04, 50, 0, 0, 0, 0, 0]
                         if fault == "mode"
+                        else state["mode_body"]
+                        if state.get("mode_body") is not None
                         else [0x04, *state["scene"]]
                         if state["scene"] is not None
                         else [0x0C]
@@ -820,7 +829,12 @@ def physical(hass, monkeypatch, request):
                 coordinator._notify_callback(None, reply(0xA3, [int(state.get("gradual", False))]))
             elif domain == 0x41:
                 coordinator._notify_callback(None, reply(0x41, [2, 0] if model == "H1AB2" else [1]))
-            elif domain == 0xA5 and packet[2] == coordinator.profile.segment_group_count:
+            elif domain in {0xA2, 0xA5} and packet[2] == coordinator.profile.segment_group_count:
+                if fault == "optimistic":
+                    coordinator.mark_segment_state_optimistic(
+                        colours=list(state["colours"]), brightness=list(state["relative"])
+                    )
+                    return
                 pages = (
                     [5, 2, 4, 1, 3] if fault == "reordered" else range(1, coordinator.profile.segment_group_count + 1)
                 )
@@ -830,8 +844,12 @@ def physical(hass, monkeypatch, request):
                         continue
                     body = [page]
                     for index in range((page - 1) * size, min(page * size, count)):
-                        body.extend([state["relative"][index], *state["colours"][index]])
-                    coordinator._notify_callback(None, reply(0xA5, body))
+                        body.extend(
+                            [state["relative"][index], *state["colours"][index]]
+                            if domain == 0xA5
+                            else state["colours"][index]
+                        )
+                    coordinator._notify_callback(None, reply(domain, body))
         elif packet[:4] == b"\xac\x03\x05\x0c" and model == "H6093":
             value = state["projector"]
             stars = value.stars
@@ -891,6 +909,8 @@ def physical(hass, monkeypatch, request):
     coordinator._notify_started_monotonic = time.monotonic() - 1
     if model == "H6093":
         coordinator._observe_pact(*pact)
+    elif model == "H618A" and pact is not None:
+        coordinator._observe_pact(*pact)
 
     async def reconnect():
         if coordinator._client is not client or not client.is_connected:
@@ -908,6 +928,174 @@ def physical(hass, monkeypatch, request):
     monkeypatch.setattr(coordinator, "refresh_state", lambda request: refresh(replace(request, timeout=0.02)))
     monkeypatch.setattr(coordinator, "async_refresh_segments", lambda: segments(timeout=0.02))
     return coordinator, state
+
+
+@pytest.mark.parametrize(
+    ("physical", "resident", "entry", "initially_on"),
+    [
+        ("H617A", "scene", "light", True),
+        ("H617A", "music", "scene", False),
+        ("H617A", "custom", "music", True),
+        ("H617A", "scene", "off", True),
+        ("H617A", "scene", "apply", True),
+        ("H617A", "scene", "live", True),
+        ("H618A", "scene", "light", True),
+        (("H618A", (3, 1)), "music", "light", True),
+    ],
+    indirect=["physical"],
+)
+async def test_public_cold_effect_recovers_retained_static_bank(physical, virtual_clock, resident, entry, initially_on):
+    coordinator, state = physical
+    if coordinator.model == "H618A":
+        pact3 = coordinator.pact_type == 3
+        coordinator._observe_pact(3 if pact3 else 2, 1)
+        coordinator._observe_identity_field("fw_version", "1.00.11" if pact3 else "1.06.00")
+        coordinator._observe_identity_field("hw_version", "3.08.01" if pact3 else "1.00.02")
+    state.update(
+        on=initially_on,
+        retained_palette=True,
+        colours=[table_kelvin_rgb(4000), table_kelvin_rgb(6000), *state["colours"][2:]],
+        relative=[0, 100, *state["relative"][2:]],
+        mode_body={"scene": [4, 22, 0], "music": [0x13, 5, 50, 0, 0, 0, 0, 0], "custom": [0x0A, 24]}[resident],
+    )
+    original = list(state["colours"]), list(state["relative"])
+    light = GoveeBLELight(coordinator)
+    light.async_write_ha_state = MagicMock()
+    assert coordinator._pre_mode_snapshot is None
+
+    if entry == "off":
+        await light.async_turn_on(effect="off")
+    else:
+        if entry == "scene":
+            await coordinator.async_apply_native_scene("rainbow")
+        elif entry == "music":
+            await coordinator.async_select_music_slug("energetic")
+        elif entry in {"apply", "live"}:
+            scene = next(scene for scene in SCENE_ENTRIES[coordinator.model] if scene.name == "Rainbow")
+            repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
+            await repository.async_load()
+            record = await EffectDeploymentEngine(repository).async_apply_saved(
+                coordinator,
+                LibraryItem.new(
+                    "Cold scene", BuiltinScene(CatalogueRef(coordinator.model, scene.scene_id, scene.effect_id))
+                ),
+                config_entry_id="entry",
+                updated_at="2026-11-25T00:00:00Z",
+                live=entry == "live",
+            )
+            assert record.phase is DeploymentPhase.CONFIRMED
+        else:
+            await light.async_turn_on(effect="Rainbow", brightness=140)
+        baseline = coordinator.require_static_baseline()
+        assert baseline.mode == "colour" and baseline.static_colour_observed
+        assert baseline.segment_colors == tuple(original[0])
+        assert baseline.segment_brightness == tuple(original[1])
+        assert baseline.is_on is initially_on and baseline.brightness_pct == 37
+        await light.async_turn_on(effect="off")
+
+    first_write = next(index for index, packet in enumerate(state["packets"]) if packet[0] == 0x33)
+    assert any(packet[:2] == b"\xaa\x05" for packet in state["packets"][:first_write])
+    assert (
+        sum(packet[:2] == b"\xaa\xa5" for packet in state["packets"][:first_write])
+        == coordinator.profile.segment_group_count
+    )
+    assert state["on"] is initially_on and state["brightness"] == 37
+    assert (state["colours"], state["relative"]) == original
+    assert state["colour_modes"][:2] == ["kelvin", "kelvin"]
+    assert state["scene"] is None and state["mode_body"] is None
+
+
+@pytest.mark.parametrize("physical", ["H617A"], indirect=True)
+@pytest.mark.parametrize(
+    "fault", ["missing_power", "missing_brightness", "missing_mode", "partial", "stale", "optimistic"]
+)
+async def test_cold_static_bank_requires_complete_independent_current_fields(physical, virtual_clock, fault):
+    coordinator, state = physical
+    state.update(on=False, retained_palette=True, mode_body=[4, 22, 0], fault=fault)
+    light = GoveeBLELight(coordinator)
+    light.async_write_ha_state = MagicMock()
+    with pytest.raises(HomeAssistantError):
+        await light.async_turn_on(effect="Rainbow", brightness=140)
+    assert coordinator.control_write_attempts == 0
+    assert coordinator._pre_mode_snapshot is None
+    assert not state["on"] and state["brightness"] == 37
+
+
+@pytest.mark.parametrize("physical", ["H618A"], indirect=True)
+async def test_cold_rgb_only_bank_cannot_invent_relative_levels(physical, virtual_clock):
+    coordinator, state = physical
+    coordinator._observe_pact(2, 1)
+    coordinator._observe_identity_field("fw_version", "1.00.11")
+    coordinator._observe_identity_field("hw_version", "1.00.02")
+    state.update(retained_palette=True, mode_body=[4, 22, 0])
+    light = GoveeBLELight(coordinator)
+    light.async_write_ha_state = MagicMock()
+    with pytest.raises(HomeAssistantError):
+        await light.async_turn_on(effect="Rainbow")
+    assert coordinator.control_write_attempts == 0
+    assert coordinator._pre_mode_snapshot is None
+
+
+@pytest.mark.parametrize("physical", ["H617A"], indirect=True)
+@pytest.mark.parametrize("restored", [False, True])
+async def test_retained_bank_distinguishes_retired_and_invalidated_history(physical, virtual_clock, restored):
+    coordinator, state = physical
+    state["retained_palette"] = True
+    light = GoveeBLELight(coordinator)
+    light.async_write_ha_state = MagicMock()
+    await light.async_turn_on(effect="Rainbow")
+    if restored:
+        await light.async_turn_on(effect="off")
+        state["mode_body"] = [4, 22, 0]
+        report_scene(coordinator, virtual_clock, 22)
+    else:
+        coordinator._discard_static_baseline()
+    attempts = coordinator.control_write_attempts
+    if restored:
+        await light.async_turn_on(effect="Sunrise")
+        assert coordinator.control_write_attempts > attempts
+        await light.async_turn_on(effect="off")
+    else:
+        with pytest.raises(HomeAssistantError):
+            await light.async_turn_on(effect="Sunrise")
+        assert coordinator.control_write_attempts == attempts
+        assert coordinator._pre_mode_snapshot is None
+
+
+@pytest.mark.parametrize("physical", ["H617A"], indirect=True)
+@pytest.mark.parametrize("change", ["selector", "palette"])
+async def test_cold_bank_rechecks_selection_and_palette_before_leading_writes(physical, virtual_clock, change):
+    coordinator, state = physical
+    state.update(on=False, retained_palette=True, mode_body=[4, 22, 0])
+    connect = coordinator._ensure_connected.side_effect
+    changed = False
+
+    async def change_before_write():
+        nonlocal changed
+        client = await connect()
+        transition = coordinator._mode_transition
+        if not changed and transition is not None and transition.captured:
+            changed = True
+            if change == "selector":
+                coordinator._notify_callback(None, reply(5, [4, 23, 0]))
+            else:
+                state["colours"][-1] = (1, 2, 3)
+                size = coordinator.profile.segment_group_size
+                for page in range(1, coordinator.profile.segment_group_count + 1):
+                    body = [page]
+                    for index in range((page - 1) * size, min(page * size, coordinator.profile.segment_count)):
+                        body.extend([state["relative"][index], *state["colours"][index]])
+                    coordinator._notify_callback(None, reply(0xA5, body))
+        return client
+
+    coordinator._ensure_connected.side_effect = change_before_write
+    light = GoveeBLELight(coordinator)
+    light.async_write_ha_state = MagicMock()
+    with pytest.raises(HomeAssistantError) as error:
+        await light.async_turn_on(effect="Rainbow", brightness=140)
+    assert isinstance(error.value.__cause__, ModeTransitionSupersededError)
+    assert changed and coordinator.control_write_attempts == 0
+    assert coordinator._pre_mode_snapshot is None
 
 
 @pytest.mark.parametrize("physical", [("H6093", (1, 1)), ("H6093", (1, 2)), ("H6093", (2, 1))], indirect=True)
@@ -2256,8 +2444,9 @@ async def test_fresh_palette_revokes_kelvin_without_assuming_zero_means_rgb(phys
     assert light.color_temp_kelvin is None and light.rgb_color == (0, 0, 255)
 
 
+@pytest.mark.parametrize("physical", ["H1771"], indirect=True)
 @pytest.mark.parametrize("entry", ["light", "music"])
-async def test_effect_off_rechecks_cached_static_mode(physical, virtual_clock, entry):
+async def test_effect_off_rechecks_cached_static_mode_without_retained_bank(physical, virtual_clock, entry):
     coordinator, state = physical
     light = GoveeBLELight(coordinator)
     light.async_write_ha_state = MagicMock()

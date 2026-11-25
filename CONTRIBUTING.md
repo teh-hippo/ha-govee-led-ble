@@ -133,6 +133,10 @@ Profiles own product facts, Kaitai owns wire structure, and shared runtime opera
 - Ordinary effects require a complete executable static baseline before leading writes.
   Validate content, acquire readable fields under ownership and reuse that operation's observations.
   Capture intent before the first attempt; publish it at the physical mode transition.
+  Models explicitly declaring retained static palette readback may acquire a cold baseline while a scene, DIY or music mode is active.
+  Require fresh, complete independent colours and relative levels, plus current power and brightness, and use the declared palette restoration semantics.
+  This recovers the retained static bank, not an animation frame or an unknown effect body.
+  Never replace original or incomplete recovery history, or downgrade invalidated history to a newly read bank.
 - Without recovery history, an exact already-resident native video selector may resume with power and brightness only.
   Require fresh independent current-subscription mode and complete applicable settings, including requested template defaults; conservatively exclude unqualified supplementary parameters.
   Recheck evidence and ownership at every physical boundary, never rewrite the mode or invent a restoration target.
