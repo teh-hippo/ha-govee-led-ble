@@ -39,6 +39,7 @@ from custom_components.ha_govee_led_ble.light_commands import (
 )
 from custom_components.ha_govee_led_ble.music_commands import prepare_music_request
 from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_packets
+from custom_components.ha_govee_led_ble.protocol_settings import parse_zone_notification
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
 from custom_components.ha_govee_led_ble.transport import reassemble_a3
 from tests.coordinator_test_support import frame
@@ -67,6 +68,13 @@ def test_gradual_uses_shared_register_without_granting_native_zones(model, enabl
         require_profile_packet(packet, replace(profile, boolean_controls=frozenset()))
     with pytest.raises(ValueError):
         build_boolean_control("pole_enabled", enabled, model)
+
+
+def test_h605c_shared_setting_grammar_does_not_grant_h607c_zone_state(hass):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H605C", configuration_url=None)
+
+    assert coordinator._setting_queries(coordinator.profile) == [(frame("aaa3"), ("boolean_gradual",))]
+    assert parse_zone_notification(frame("ee302585"), coordinator.profile).parsed is None
 
 
 @pytest.mark.parametrize(
