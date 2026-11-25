@@ -37,8 +37,6 @@ from .protocol_core import (
 )
 from .transport import reassemble_a1_02, reassemble_a3
 
-_H617A_PAINTED_SEGMENT_COUNT = 15
-
 __all__ = [
     "UnsupportedA3EffectError",
     "decode_a3_effect",
@@ -143,7 +141,7 @@ def decode_a3_effect(tree: Any, model: str, *, profile: ModelProfile | None = No
             catalogue = MODEL_EFFECT_CATALOGUES.get(model)
             if catalogue is not None and catalogue.painted_addressing == "physical_ic":
                 raise UnsupportedA3EffectError("Painted upload omits total physical IC count; retain source topology")
-            return _decode_h617a_painted(tree)
+            return _decode_h617a_painted(tree, effective_profile.segment_count)
         if isinstance(tree, DiyType04):
             return _decode_h617a_type04(tree)
         if isinstance(tree, SceneBody):
@@ -184,7 +182,9 @@ def _decode_flat_diy(body: Any) -> SingleEffect | MultiEffect:
     return SingleEffect(family=int(body.family), variant=body.variant, speed=body.speed, palette=palette)
 
 
-def _decode_h617a_painted(tree: Any) -> PaintedEffect:
+def _decode_h617a_painted(tree: Any, segment_count: int | None) -> PaintedEffect:
+    if segment_count is None or not 1 <= segment_count <= 255:
+        raise UnsupportedA3EffectError("Painted upload requires a bounded logical segment count")
     effect = getattr(tree.effect, "name", None)
     if not isinstance(effect, str):
         raise UnsupportedA3EffectError(f"H617A painted effect {int(tree.effect)} has no canonical name")
@@ -192,13 +192,13 @@ def _decode_h617a_painted(tree: Any) -> PaintedEffect:
         raise UnsupportedA3EffectError("H617A painted group count does not match its generated tree")
     _require_zero_padding(tree.padding, "H617A painted")
 
-    segments: list[tuple[int, int, int] | None] = [None] * _H617A_PAINTED_SEGMENT_COUNT
+    segments: list[tuple[int, int, int] | None] = [None] * segment_count
     for group in tree.groups:
         if group.num_segment_indices != len(group.segment_indices) or not group.segment_indices:
             raise UnsupportedA3EffectError("H617A painted groups must contain their declared segments")
         fill = _rgb(group.fill)
         for index in group.segment_indices:
-            if not 0 <= index < _H617A_PAINTED_SEGMENT_COUNT:
+            if not 0 <= index < segment_count:
                 raise UnsupportedA3EffectError(f"H617A painted segment {index} is out of range")
             if segments[index] is not None:
                 raise UnsupportedA3EffectError(f"H617A painted segment {index} appears more than once")

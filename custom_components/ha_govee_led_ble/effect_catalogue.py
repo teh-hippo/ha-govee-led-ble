@@ -521,6 +521,8 @@ def validate_catalogue_template_identity(
         raise EffectValidationError(
             f"content does not match the structural identity of {model} template {template_id!r}"
         )
+    if profile is not None and isinstance(content, PaintedEffect):
+        validate_effect_eligibility(content, model, profile=profile)
     return resolve_catalogue_template(model, template_id, profile=profile) if profile is not None else template
 
 
