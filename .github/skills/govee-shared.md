@@ -14,6 +14,16 @@ Read by `govee-add`, `govee-fix`, `govee-audit` and `govee-resolve`.
 - **Public product pages and manuals:** physical specifications.
 - **`CONTRIBUTING.md`:** architecture, scope, acceptance and release policy.
 
+## Product and shared boundaries
+
+- The public product is the Home Assistant integration.  Prefer native Home Assistant entities, controls and lifecycle where they preserve the evidenced device contract.
+- Kaitai owns BLE wire structure.  Profiles own product facts, declared grammars select narrow codecs, and shared runtime code owns execution.
+- Exact models are expected to need product-specific declarations and may need narrow codecs.  Keep both at their owning boundary, not as exact-SKU patches in shared runtime code.
+- Common code is the default path.  If a SKU needs scattered branches, identify the missing capability or semantic boundary and fix it instead of preserving a snowflake path.
+- A new SKU should require minimal bootstrapping onto existing shared paths: explicit product facts, evidenced Kaitai wire shape and only the codecs needed for distinct semantics.
+- Do not infer one capability or observation rule from a nearby profile field.  Each shared flag must have one exact contract across every caller and product.
+- When removing or adding a model exception, trace declaration, preparation, transport, observation and recovery.  Preserve the exception only when the evidence demonstrates a distinct requirement.
+
 ## Model evidence workflow
 
 1. Normalise the exact SKU and read its evidence starting brief.
