@@ -33,6 +33,11 @@ from .effect_commands import (
     build_h6179_diy,
     build_h6199_palette_diy,
 )
+from .effect_content_ids import (
+    MULTI_EFFECT_CONTENT_KIND,
+    PAINTED_EFFECT_CONTENT_KIND,
+    SINGLE_EFFECT_CONTENT_KIND,
+)
 from .effect_contracts import (
     EFFECT_COMPILER_VERSION,
     CapabilityWorkflow,
@@ -335,7 +340,7 @@ def validate_compiled_geometry(compiled: CompiledApplication, profile: ModelProf
                 )
             if not packets_match or compiled.diy_code != selector:
                 raise ValueError("Device scene route changed since compilation; refresh and retry")
-        if compiled.content_kind in {"h617a_single", "h617a_multi"}:
+        if compiled.content_kind in {SINGLE_EFFECT_CONTENT_KIND, MULTI_EFFECT_CONTENT_KIND}:
             if compiled.authored_diy is not None:
                 validate_effect_eligibility(compiled.authored_diy, compiled.model, profile=profile)
             transport = profile.diy_upload_transport or ("a1_02" if profile.a1_diy_selector is not None else "a3")
@@ -829,11 +834,11 @@ def resolve_diy_code(
     if isinstance(content, PaintedEffect | SingleEffect | MultiEffect):
         workflow = _effect_workflow(content)
         content_kind = (
-            "h617a_painted"
+            PAINTED_EFFECT_CONTENT_KIND
             if isinstance(content, PaintedEffect)
-            else "h617a_single"
+            else SINGLE_EFFECT_CONTENT_KIND
             if isinstance(content, SingleEffect)
-            else "h617a_multi"
+            else MULTI_EFFECT_CONTENT_KIND
         )
         route_model = model or release_content_reference_model(content_kind)
         if route_model is None:
@@ -1220,11 +1225,11 @@ def compile_h617a(
     if model is None:
         content = item.content
         kind = (
-            "h617a_painted"
+            PAINTED_EFFECT_CONTENT_KIND
             if isinstance(content, PaintedEffect)
-            else "h617a_single"
+            else SINGLE_EFFECT_CONTENT_KIND
             if isinstance(content, SingleEffect)
-            else "h617a_multi"
+            else MULTI_EFFECT_CONTENT_KIND
         )
         model = release_content_reference_model(kind)
         if model is None:
@@ -1238,10 +1243,10 @@ def compile_h617a(
     content = item.content
     upload_prefix = profile.a1_diy_prefix if profile.a1_diy_prefix is not None else profile.a1_diy_selector
     if profile.effect_grammar_has("dedicated_a1_diy") and isinstance(content, SingleEffect | MultiEffect):
-        content_kind = "h617a_single" if isinstance(content, SingleEffect) else "h617a_multi"
+        content_kind = SINGLE_EFFECT_CONTENT_KIND if isinstance(content, SingleEffect) else MULTI_EFFECT_CONTENT_KIND
         upload = build_dedicated_diy(content, diy_code, profile)
     elif isinstance(content, PaintedEffect):
-        content_kind = "h617a_painted"
+        content_kind = PAINTED_EFFECT_CONTENT_KIND
         upload = build_h617a_diy_painted(
             content.effect,
             content.speed,
@@ -1252,7 +1257,7 @@ def compile_h617a(
             grammar=profile.effect_grammar or "",
         )
     elif isinstance(content, SingleEffect):
-        content_kind = "h617a_single"
+        content_kind = SINGLE_EFFECT_CONTENT_KIND
         upload = (
             []
             if profile.diy_upload_transport == "single"
@@ -1265,7 +1270,7 @@ def compile_h617a(
             )
         )
     elif isinstance(content, MultiEffect):
-        content_kind = "h617a_multi"
+        content_kind = MULTI_EFFECT_CONTENT_KIND
         upload = build_h617a_diy_multi(
             tuple((effect.family, effect.variant) for effect in content.effects),
             content.speed,

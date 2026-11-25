@@ -4,6 +4,7 @@ from typing import Any
 
 from .const import ModelProfile, resolve_model
 from .effect_catalogue import MODEL_EFFECT_CATALOGUES
+from .effect_content_ids import GENERIC_DIY_CONTENT_KINDS, PAINTED_EFFECT_CONTENT_KIND
 from .effect_contracts import release_content_reference_model
 from .effect_deployments import DeploymentSnapshot
 from .effect_domain import (
@@ -74,7 +75,7 @@ def item_summary(item: LibraryItem) -> dict[str, Any]:
         content.get("model")
         if kind
         in {
-            "h617a_painted",
+            PAINTED_EFFECT_CONTENT_KIND,
             "h6179_single_diy",
             "h6179_mixed_diy",
             "palette_diy",
@@ -96,7 +97,7 @@ def item_summary(item: LibraryItem) -> dict[str, Any]:
         summary["model"] = item.target_hint.model
     elif (
         item.target_hint is None
-        and kind in {"h617a_painted", "h617a_single", "h617a_multi"}
+        and kind in GENERIC_DIY_CONTENT_KINDS
         and not (isinstance(item.content, PaintedEffect) and item.content.addressing == "physical_ic")
     ):
         reference_model = release_content_reference_model(kind)
