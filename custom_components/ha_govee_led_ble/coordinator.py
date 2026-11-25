@@ -94,6 +94,8 @@ from .generated_protocol_adapter import (
     build_hdmi_box_light_query,
     build_hdmi_input,
     build_ic_refresh,
+    build_native_camera_control,
+    build_native_camera_control_query,
     build_pact_query,
     build_physical_ic_count_query,
     build_power_on_behaviour,
@@ -108,6 +110,7 @@ from .generated_protocol_adapter import (
     build_white_balance_query,
     build_whole_relative_brightness,
     is_bulk_status_frame,
+    native_camera_control_fields,
     parse_command_result,
     require_a3_sequence_frame,
     require_profile_packet,
@@ -124,7 +127,6 @@ from .low_blue_light import LowBlueLightState
 from .native_profile_controls import (
     ProfileWriter,
 )
-from .protocol_h6199 import H6199_NATIVE_CONTROLS, build_h6199_control, build_h6199_control_query
 from .reply_pacing import ReplyGate
 from .scenes import (
     scene_code_is_ambiguous,
@@ -2433,8 +2435,8 @@ class GoveeBLECoordinator(
         if full_query and video_identity_ready:
             if camera_controls_state(self.profile, self) is CapabilityState.SUPPORTED:
                 queries.extend(
-                    (build_h6199_control_query(control), ReadDomain.OTHER, (control,))
-                    for control in H6199_NATIVE_CONTROLS
+                    (build_native_camera_control_query(control, profile=profile), ReadDomain.OTHER, (control,))
+                    for control in native_camera_control_fields(profile)
                 )
         if query_native_settings and (full_query or isinstance(query_native_settings, frozenset)):
             for query, fields in self._setting_queries(profile, query_native_settings):
@@ -2686,16 +2688,18 @@ class GoveeBLECoordinator(
         except BleakError:
             return False
 
-    async def async_set_h6199_control(self, control: str, value: int, *, timeout: float = STATE_QUERY_TIMEOUT) -> None:
+    async def async_set_native_camera_control(
+        self, control: str, value: int, *, timeout: float = STATE_QUERY_TIMEOUT
+    ) -> None:
         """Write one register and require a fresh reply, never an ACK or cached value."""
-        packet = build_h6199_control(control, value)
+        packet = build_native_camera_control(control, value, profile=self.profile)
 
         def qualified() -> None:
             if (
                 not self.identity_fields_confirmed(video_identity_fields(self.profile))
                 or camera_controls_state(self.profile, self) is not CapabilityState.SUPPORTED
             ):
-                raise ValueError("H6199 control is not qualified for this device revision")
+                raise ValueError("Native camera control is not qualified for this device revision")
 
         async with async_control_intent(self, ControlIntent.USER):
             try:
@@ -2723,13 +2727,15 @@ class GoveeBLECoordinator(
                 try:
                     async with asyncio.timeout_at(deadline):
                         await self._async_write_packet(
-                            client, build_h6199_control_query(control), cleanup_deadline=deadline
+                            client,
+                            build_native_camera_control_query(control, profile=self.profile),
+                            cleanup_deadline=deadline,
                         )
                         fresh = await self._wait_for_revisions(baseline, {}, deadline)
                 finally:
                     self.async_set_updated_data(self.data or {})
                 if not fresh or getattr(self, observation, None) != value:
-                    raise ValueError("Device did not confirm the requested H6199 control")
+                    raise ValueError("Device did not confirm the requested native camera control")
 
     async def _async_read_identity(
         self, required_fields: frozenset[str] | None = None, *, ready: Callable[[], bool] | None = None

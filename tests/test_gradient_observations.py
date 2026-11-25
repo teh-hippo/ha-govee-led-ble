@@ -56,10 +56,10 @@ async def test_gradient_write_requires_matching_direct_register_reply(hass, monk
     monkeypatch.setattr(c, "_ensure_connected", AsyncMock(return_value=client))
     monkeypatch.setattr(c, "_renew_foreground_lease", MagicMock())
     if direct == 1:
-        await c.async_set_h6199_control("gradient", 1, timeout=0.01)
+        await c.async_set_native_camera_control("gradient", 1, timeout=0.01)
     else:
         with pytest.raises((ValueError, TimeoutError)):
-            await c.async_set_h6199_control("gradient", 1, timeout=0.01)
+            await c.async_set_native_camera_control("gradient", 1, timeout=0.01)
     assert c.gradient == 1
     assert c._field_revisions["gradient_register"] == baseline + (direct is not None)
     assert client.write_gatt_char.await_count == 2

@@ -33,6 +33,7 @@ from .generated_protocol_adapter import (
     parse_boolean_control,
     parse_command_ack_result,
     parse_command_result,
+    parse_native_camera_control,
     parse_physical_ic_count,
     parse_video_device_info_status,
     parse_zone_notification,
@@ -48,7 +49,6 @@ from .music_semantics import (
     music_body_params_for_mode,
 )
 from .protocol_core import decode_wire_brightness
-from .protocol_h6199 import parse_h6199_control
 from .protocol_semantics import ParsedProtocolStatus
 
 _LOGGER = logging.getLogger(__name__)
@@ -813,7 +813,7 @@ class _NotificationMixin(_CoordinatorBase):
                 # A filtered reply is not fresh state, but still invalidates recovery's write guard.
                 self._blank_screen_notification_revision += 1
                 policy_accepted = False
-                # Legacy H6199 toggle writes retain live policy, even when the
+                # Legacy toggle writes retain live policy, even when the
                 # enable echo is stale. Full policy writes remain atomic.
                 if self.profile.status_grammar_has("blank_screen_legacy_echo") and not any(
                     field in self._expected_state for field in values if field != "blank_screen"
@@ -1074,7 +1074,7 @@ class _NotificationMixin(_CoordinatorBase):
                 self.boolean_control_state.update(boolean_values)
                 observed = tuple(boolean_expectations)
             if self.profile.status_grammar_has("gradient_status") and domain is not StatusDomain.COLOUR_MODE:
-                values = parse_h6199_control(generated)
+                values = parse_native_camera_control(generated, profile=self.profile)
                 if "gradient" in values:
                     # AA05 is a display observation, not confirmation of an A3 register write.
                     values["gradient_register"] = values["gradient"]

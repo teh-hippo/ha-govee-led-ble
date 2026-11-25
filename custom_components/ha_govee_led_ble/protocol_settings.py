@@ -42,7 +42,8 @@ from .protocol_core import (
     _parse_xor_frame,
     _serialize_xor,
 )
-from .protocol_h6199 import INSTALLATION_DIRECTIONS
+
+INSTALLATION_DIRECTIONS = (2, 3, 4, 5)
 
 _NATIVE_SETTING_ROOTS = {
     "H607C": ("h607c_control", H607cControl),
@@ -59,6 +60,50 @@ _POWER_ON_QUERY_ROOTS = {
     "H1AB2": ("h1ab2_settings.power_on_query", H1ab2Settings.PowerOnQuery),
     "H612A": ("h612a_settings.power_on_query", H612aSettings.PowerOnQuery),
 }
+
+
+def native_camera_control_fields(profile: ModelProfile) -> tuple[str, ...]:
+    policy = profile.camera_control_policy
+    if policy is None:
+        return ()
+    if policy.control_grammar == "H6199":
+        from .protocol_h6199 import H6199_NATIVE_CONTROLS
+
+        return H6199_NATIVE_CONTROLS
+    raise ValueError("No generated camera-control grammar is selected")
+
+
+def build_native_camera_control_query(control: str, *, profile: ModelProfile) -> bytes:
+    policy = profile.camera_control_policy
+    if policy is None:
+        raise ValueError("Camera controls are not declared for this profile")
+    if policy.control_grammar == "H6199":
+        from .protocol_h6199 import build_h6199_control_query
+
+        return build_h6199_control_query(control)
+    raise ValueError("No generated camera-control grammar is selected")
+
+
+def build_native_camera_control(control: str, value: int, *, profile: ModelProfile) -> bytes:
+    policy = profile.camera_control_policy
+    if policy is None:
+        raise ValueError("Camera controls are not declared for this profile")
+    if policy.control_grammar == "H6199":
+        from .protocol_h6199 import build_h6199_control
+
+        return build_h6199_control(control, value)
+    raise ValueError("No generated camera-control grammar is selected")
+
+
+def parse_native_camera_control(generated: Any, *, profile: ModelProfile) -> dict[str, int | str | None]:
+    policy = profile.camera_control_policy
+    if policy is None:
+        return {}
+    if policy.control_grammar == "H6199":
+        from .protocol_h6199 import parse_h6199_control
+
+        return parse_h6199_control(generated)
+    raise ValueError("No generated camera-control grammar is selected")
 
 
 @dataclass(frozen=True)

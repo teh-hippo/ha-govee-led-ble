@@ -10,12 +10,17 @@ from homeassistant.const import EntityCategory, Platform
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 
 from custom_components.ha_govee_led_ble import PLATFORMS, select, sensor
+from custom_components.ha_govee_led_ble.const import H6199_PACT1_PROFILE, get_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
+    build_native_camera_control,
+    build_native_camera_control_query,
+    native_camera_control_fields,
     parse_command,
     parse_command_ack_result,
+    parse_native_camera_control,
     parse_status,
 )
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
@@ -77,6 +82,23 @@ def test_generated_builders_replies_acks(control, opcode):
     assert ack.parsed.opcode.name == control
     assert parse_status(query[:-1], "H6199") is None
     assert parse_status(query[:-1] + bytes((query[-1] ^ 1,)), "H6199") is None
+
+
+def test_native_camera_codec_requires_explicit_product_authorization():
+    profile = get_profile("H6199")
+    assert native_camera_control_fields(profile) == H6199_NATIVE_CONTROLS
+    assert build_native_camera_control("gradient", 1, profile=profile) == build_h6199_control("gradient", 1)
+    query = build_h6199_control_query("gradient")
+    assert build_native_camera_control_query("gradient", profile=profile) == query
+    assert parse_native_camera_control(parse_status(frame("aaa301"), "H6199"), profile=profile) == {"gradient": 1}
+
+    for unqualified in (get_profile("H605C"), H6199_PACT1_PROFILE):
+        assert native_camera_control_fields(unqualified) == ()
+        assert parse_native_camera_control(parse_status(frame("aaa301"), "H6199"), profile=unqualified) == {}
+        with pytest.raises(ValueError, match="not declared"):
+            build_native_camera_control_query("gradient", profile=unqualified)
+        with pytest.raises(ValueError, match="not declared"):
+            build_native_camera_control("gradient", 1, profile=unqualified)
 
 
 @pytest.mark.parametrize("value", [True, False, -1, 2, 1.0, "1", None])
@@ -190,11 +212,11 @@ async def test_native_write_requires_fresh_matching_readback(coordinator, virtua
 
     c._client.write_gatt_char.side_effect = respond
     if reply == "fresh":
-        await c.async_set_h6199_control(control, 1, timeout=0.01)
+        await c.async_set_native_camera_control(control, 1, timeout=0.01)
         assert getattr(c, control) == 1
     else:
         with pytest.raises((ValueError, TimeoutError)):
-            await c.async_set_h6199_control(control, 1, timeout=0.01)
+            await c.async_set_native_camera_control(control, 1, timeout=0.01)
         assert getattr(c, control) == (0 if reply == "wrong" else None)
     assert [call.args[1] for call in c._client.write_gatt_char.await_args_list] == [
         build_h6199_control(control, 1),
@@ -215,12 +237,12 @@ async def test_query_timeout_and_revision_change_fail_closed(coordinator, virtua
 
     c._client.write_gatt_char.side_effect = hang
     with pytest.raises(TimeoutError):
-        await c.async_set_h6199_control("gradient", 1, timeout=0.01)
+        await c.async_set_native_camera_control("gradient", 1, timeout=0.01)
     assert c.gradient is None
     c._client.write_gatt_char.reset_mock()
     c.hw_version = None
     with pytest.raises(ValueError, match="not qualified"):
-        await c.async_set_h6199_control("gradient", 1)
+        await c.async_set_native_camera_control("gradient", 1)
     c._client.write_gatt_char.assert_not_awaited()
     await c._send_state_queries()
     packets = [call.args[1] for call in c._client.write_gatt_char.await_args_list]
@@ -237,7 +259,7 @@ async def test_reconnect_identity_guard_blocks_physical_write(coordinator, monke
 
     monkeypatch.setattr(c, "_ensure_connected", reconnect)
     with pytest.raises(ValueError, match="not qualified"):
-        await c.async_set_h6199_control("gradient", 0)
+        await c.async_set_native_camera_control("gradient", 0)
     c._client.write_gatt_char.assert_not_awaited()
     assert c.gradient == 1
 
@@ -329,10 +351,10 @@ async def test_platform_setup_late_identity_and_native_dispatch(coordinator, has
     assert entity.current_option == "clockwise"
     backend = SimpleNamespace(preview=SimpleNamespace(async_supersede_device=AsyncMock()))
     monkeypatch.setattr(select, "get_effect_backend", lambda hass: backend)
-    monkeypatch.setattr(c, "async_set_h6199_control", AsyncMock())
+    monkeypatch.setattr(c, "async_set_native_camera_control", AsyncMock())
     await entity.async_select_option("anticlockwise")
-    c.async_set_h6199_control.assert_awaited_once_with("strip_direction", 1)
-    c.async_set_h6199_control.side_effect = ValueError("missing readback")
+    c.async_set_native_camera_control.assert_awaited_once_with("strip_direction", 1)
+    c.async_set_native_camera_control.side_effect = ValueError("missing readback")
     with pytest.raises(HomeAssistantError):
         await entity.async_select_option("clockwise")
     backend.preview.async_supersede_device.reset_mock()
