@@ -132,7 +132,7 @@ class _NotificationMixin(_CoordinatorBase):
             )
         )
         if "color_mode" in expectations:
-            if self.profile.setting_grammar_has("deferred_native_settings"):
+            if self.profile.command_grammar_has("diy_companion_required"):
                 self._field_received_at.pop("diy_companion", None)
             if expectations["color_mode"][0] is not ParsedMode.COLOUR:
                 self.projector_appearance = None

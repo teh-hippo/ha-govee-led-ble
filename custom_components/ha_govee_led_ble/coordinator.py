@@ -323,7 +323,7 @@ class GoveeBLECoordinator(
         self.pact_type = identity.pact_type
         self.pact_code = identity.pact_code
         self._pact_identity = PactIdentityState()
-        self._h607c_last_optional_read_failure: str | None = None
+        self._last_deferred_setting_read_failure: str | None = None
         self._unconfirmed_state_fields: set[str] = set()
         self._failed_static_color_write = False
         self.boolean_control_state: dict[str, bool] = {}
@@ -1181,7 +1181,7 @@ class GoveeBLECoordinator(
                             raise BleakError(f"State query failed for {self.address}")
                         read_succeeded = True
                         if self.profile.setting_grammar_has("deferred_native_settings"):
-                            await self._async_read_optional_h607c_settings(client)
+                            await self._async_read_deferred_native_settings(client)
                         if self.profile.supports_low_blue_light and self.identity_fields_confirmed(
                             frozenset({"fw_version"})
                         ):
@@ -2450,23 +2450,23 @@ class GoveeBLECoordinator(
                     queries.append((query, ReadDomain.OTHER, fields))
         return queries
 
-    async def _async_read_optional_h607c_settings(self, client: BleakClient) -> None:
+    async def _async_read_deferred_native_settings(self, client: BleakClient) -> None:
         try:
             async with self._lock:
                 deadline = time.monotonic() + 2.0
                 self._reconcile_authorization()
                 for query, fields in self._setting_queries(self._authorization_profile()):
                     if self._client is not client or not client.is_connected:
-                        self._h607c_last_optional_read_failure = "disconnected"
+                        self._last_deferred_setting_read_failure = "disconnected"
                         break
                     if time.monotonic() >= deadline:
-                        self._h607c_last_optional_read_failure = "deadline"
+                        self._last_deferred_setting_read_failure = "deadline"
                         break
                     if not await self._async_read_setting_fields(client, query, fields, deadline=deadline):
-                        self._h607c_last_optional_read_failure = "incomplete"
+                        self._last_deferred_setting_read_failure = "incomplete"
                         break
         except (BleakError, ValueError, TimeoutError) as err:
-            self._h607c_last_optional_read_failure = type(err).__name__
+            self._last_deferred_setting_read_failure = type(err).__name__
             _LOGGER.debug("Optional native setting query failed for Govee %s", self.model, exc_info=True)
 
     async def _send_state_queries(
@@ -3639,12 +3639,17 @@ class GoveeBLECoordinator(
                         if control == "power_on_behaviour"
                         else build_boolean_control_query(control, self.model, profile=self.profile)
                     )
+                    source_controls = {
+                        source.control
+                        for source in self.profile.light_sources
+                        if source.control in self.profile.boolean_controls
+                    }
                     fields = (
                         ("power_on_behaviour", "power_on_open_flag")
                         if control == "power_on_behaviour"
+                        else tuple(f"boolean_{name}" for name in sorted(source_controls))
+                        if control in source_controls
                         else (field,)
-                        if control == "gradual"
-                        else ("boolean_pole_enabled", "boolean_base_enabled")
                     )
                     if not await self._async_read_setting_fields(client, query, fields, deadline=deadline):
                         raise ValueError("Device did not provide complete native setting readback")
@@ -4946,17 +4951,17 @@ class GoveeBLECoordinator(
                     generation = self._profile_generation
                     authorization_generation = self._authorization_generation
                     if self.connection_mode == CONNECTION_MODE_HOLD and full:
-                        h607c_settings = self.profile.setting_grammar_has("deferred_native_settings")
+                        deferred_settings = self.profile.setting_grammar_has("deferred_native_settings")
                         ok = await self._refresh_connected_state(
                             RefreshRequest(
                                 refresh_all=True,
                                 query_segments=False,
                                 required_domains=self.profile.setup_required_read_domains,
-                                query_native_settings=not h607c_settings,
+                                query_native_settings=not deferred_settings,
                             ),
                         )
-                        if ok and h607c_settings and client is not None:
-                            await self._async_read_optional_h607c_settings(client)
+                        if ok and deferred_settings and client is not None:
+                            await self._async_read_deferred_native_settings(client)
                     else:
                         async with self._lock:
                             ok = await self._send_state_queries(

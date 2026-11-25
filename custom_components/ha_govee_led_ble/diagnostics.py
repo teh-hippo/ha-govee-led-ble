@@ -235,7 +235,7 @@ async def async_get_config_entry_diagnostics(
             "candidate_supports_gradual": "gradual" in get_profile(coordinator.model).boolean_controls,
             "native_supports_gradual": "gradual" in coordinator.native_presentation_profile.boolean_controls,
             "effective_supports_gradual": "gradual" in coordinator.profile.boolean_controls,
-            "last_optional_read_failure_since_reload": coordinator._h607c_last_optional_read_failure,
+            "last_optional_read_failure_since_reload": coordinator._last_deferred_setting_read_failure,
             "unconfirmed_state_fields": sorted(coordinator._unconfirmed_state_fields),
         }
         if coordinator.profile.can_read(ReadDomain.PACT):

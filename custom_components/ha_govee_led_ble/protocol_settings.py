@@ -671,7 +671,7 @@ def parse_zone_notification(frame: bytes, profile: ModelProfile) -> ProtocolPars
         if result.parsed is not None and result.parsed.kind != 1:
             return ProtocolParseResult(None, result.parser, ProtocolParseRejection.SEMANTIC_REJECTED)
         return result
-    if profile.setting_grammar_has("deferred_native_settings"):
+    if profile.setting_grammar == "H607C":
         if not profile.boolean_controls.intersection(H607cControl.Zone.__members__):
             return ProtocolParseResult(
                 None, "h607c_control.zone_notification", ProtocolParseRejection.UNSUPPORTED_MODEL
@@ -840,7 +840,7 @@ def parse_boolean_control(generated: Any, model: str, *, profile: ModelProfile |
             )
             if name in profile.boolean_controls
         }
-    if profile.setting_grammar_has("deferred_native_settings") and domain in {"zone_enable", "hw_version"}:
+    if profile.setting_grammar == "H607C" and domain in {"zone_enable", "hw_version"}:
         flags = (
             generated.body.flags
             if domain == "zone_enable"

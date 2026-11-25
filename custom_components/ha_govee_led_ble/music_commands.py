@@ -315,7 +315,7 @@ def default_music_zones(profile: ModelProfile, mode: str) -> tuple[MusicZone, ..
 
         return h60b0_music_zones(variant.template)
     if (
-        not profile.music_grammar_has("native_music_selector", "deferred_native_settings")
+        not profile.music_grammar_has("native_music_selector", "native_sources")
         or variant is None
         or variant.mode_code != H607cMusicWrite.MusicMode.paired
     ):
@@ -335,7 +335,7 @@ def build_zoned_music_body(profile: ModelProfile, mode: str, zones: tuple[MusicZ
         return encode_h60b0_music_zones(profile, zones)
     variant = music_variant(profile, music_codebook(profile).get(mode, -1))
     if (
-        not profile.music_grammar_has("native_music_selector", "deferred_native_settings")
+        not profile.music_grammar_has("native_music_selector", "native_sources")
         or variant is None
         or variant.mode_code != H607cMusicWrite.MusicMode.paired
         or len(zones) != 2

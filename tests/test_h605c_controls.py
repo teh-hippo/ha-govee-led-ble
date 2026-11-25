@@ -8,6 +8,7 @@ import pytest
 
 from custom_components.ha_govee_led_ble.const import device_profile, get_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.dreamview import (
     build_dreamview_command,
     build_dreamview_query,
@@ -75,6 +76,16 @@ def test_h605c_shared_setting_grammar_does_not_grant_h607c_zone_state(hass):
 
     assert coordinator._setting_queries(coordinator.profile) == [(frame("aaa3"), ("boolean_gradual",))]
     assert parse_zone_notification(frame("ee302585"), coordinator.profile).parsed is None
+
+
+@pytest.mark.parametrize(("model", "expires"), [("H605C", False), ("H607C", True)])
+def test_colour_mode_expiry_uses_diy_companion_semantics(hass, model, expires):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url=None)
+    coordinator._field_received_at["diy_companion"] = 1.0
+
+    coordinator._arm_expected(b"", expectations={"color_mode": (ParsedMode.COLOUR,)})
+
+    assert ("diy_companion" not in coordinator._field_received_at) is expires
 
 
 @pytest.mark.parametrize(

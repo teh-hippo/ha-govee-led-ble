@@ -135,7 +135,7 @@ async def test_h607c_optional_setting_timeout_preserves_required_setup(
     assert c._state_read_available
     assert c._client is None and not client.is_connected
     assert c._notification_token is None
-    assert c._h607c_last_optional_read_failure == (error.__name__ if error is not None else "incomplete")
+    assert c._last_deferred_setting_read_failure == (error.__name__ if error is not None else "incomplete")
     expected_query = b"\xaa\x07\x08" if missing == "zone" else b"\xaa\x41\x00"
     assert client.write_gatt_char.await_args.args[1].startswith(expected_query)
     client.start_notify.await_args.args[1](None, bytearray(_packet(0xAA, 7, [8, 37, 0])))
@@ -174,7 +174,7 @@ async def test_h607c_setup_cleans_up_after_optional_exception(h607c_subscription
     else:
         snapshot = await c._async_update_data()
         assert snapshot["is_on"] and snapshot["brightness_pct"] == 37
-        assert c._h607c_last_optional_read_failure == "ValueError"
+        assert c._last_deferred_setting_read_failure == "ValueError"
         assert not c.boolean_control_state and not c.profile.supports_rgb
         assert c.power_on_behaviour is None and c.power_on_open_flag is None
     assert c.is_on and c.brightness_pct == 37 and c._state_read_available
@@ -215,7 +215,7 @@ async def test_h607c_hold_optional_failure_keeps_basic_read_and_quarantines_repl
     await c._keep_alive_loop()
 
     assert c.is_on and c.brightness_pct == 37 and c._state_read_available
-    assert c._h607c_last_optional_read_failure == "TimeoutError"
+    assert c._last_deferred_setting_read_failure == "TimeoutError"
     assert c._client is None and not client.is_connected and c._notification_token is None
     client.start_notify.await_args.args[1](None, bytearray(_packet(0xAA, 7, [8, 37, 7])))
     assert not c.boolean_control_state

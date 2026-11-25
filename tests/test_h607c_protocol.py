@@ -474,7 +474,7 @@ async def test_music_dreamview_service_admits_only_the_exact_member_form_before_
     ("control", "reply", "succeeds"), [("gradual", True, True), ("gradual", False, False), ("pole_enabled", True, True)]
 )
 @pytest.mark.parametrize("pact_type,pact_code", [(1, 1), (2, 2)])
-async def test_h607c_settings_verify_only_their_own_fresh_register(
+async def test_deferred_settings_verify_only_their_own_fresh_register(
     hass, monkeypatch, control, reply, succeeds, pact_type, pact_code
 ):
     c = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H607C", configuration_url=None)

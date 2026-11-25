@@ -154,7 +154,7 @@ async def test_h607c_capability_diagnostics_distinguish_sources_without_private_
     coordinator._pact_identity.marker_pact = (2, 1)
     coordinator._resolve_pact_identity()
     coordinator._pact_identity.invalid_version_seen = True
-    coordinator._h607c_last_optional_read_failure = "TimeoutError"
+    coordinator._last_deferred_setting_read_failure = "TimeoutError"
     coordinator._unconfirmed_state_fields = {"is_on", "color"}
     coordinator.packet_log = [{"dir": "rx", "outcome": "parsed", "raw": "aa05deadbeef"}]
 
