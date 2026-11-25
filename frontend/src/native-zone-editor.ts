@@ -8,6 +8,7 @@ import type { SliderControlChange } from "./slider-control";
 import "./slider-control";
 import type { ModelEffectCatalogue, NativeDiyLayer, NativeEffectContent, RGB } from "./types";
 import { clonePalette } from "./ui-utils";
+import { isNativeEffectModel, nativeEffectPolicy } from "./native-effect-policies";
 
 type ZoneChange = (
   index: number,
@@ -17,7 +18,7 @@ type ZoneChange = (
   interaction?: LivePreviewInteraction,
 ) => void;
 
-export function renderH1771SectionEditor(
+export function renderDualSourceSectionEditor(
   content: NativeEffectContent,
   catalogue: ModelEffectCatalogue,
   disabled: boolean,
@@ -25,8 +26,11 @@ export function renderH1771SectionEditor(
 ) {
   return html`${content.layers.map((layer, index) => {
     if (layer.type === "paint") return nothing;
+    const templatePrefix = isNativeEffectModel(content.model)
+      ? nativeEffectPolicy(content.model).sectionTemplatePrefix?.(index)
+      : undefined;
     const choices = (catalogue.templates ?? []).flatMap(template => {
-      if (!template.id.startsWith(`template:h1771:${index}:`) || template.content.kind !== "native_effect") return [];
+      if (!templatePrefix || !template.id.startsWith(templatePrefix) || template.content.kind !== "native_effect") return [];
       const seed = template.content.layers[index];
       return seed?.type === "diy" ? [{ template, seed }] : [];
     });
