@@ -771,12 +771,12 @@ def test_release_capability_contract_declares_routes_for_every_registered_model(
     assert approved == {
         model
         for model, catalogue in MODEL_EFFECT_CATALOGUES.items()
-        if catalogue.diy_slot_policy == "approved_observed"
+        if catalogue.diy_destination_policy == "explicit_destination"
     }
     for model, catalogue in MODEL_EFFECT_CATALOGUES.items():
         expected = (
             SelectorPolicy.APPROVED_DISPOSABLE
-            if catalogue.diy_slot_policy == "approved_observed"
+            if catalogue.diy_destination_policy == "explicit_destination"
             else SelectorPolicy.FIXED
         )
         assert release_selector_policy(model) is expected
