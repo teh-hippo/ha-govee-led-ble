@@ -17,8 +17,6 @@ from .effect_contracts import (
 from .effect_domain import (
     MAX_MULTI_EFFECTS,
     EffectContent,
-    H6179MixedDiyEffect,
-    H6179SingleDiyEffect,
     JsonValue,
     LayeredEffect,
     MultiEffect,
@@ -28,6 +26,8 @@ from .effect_domain import (
     PaletteDiyEffect,
     RetainedSceneEffect,
     SingleEffect,
+    TypedMixedDiyEffect,
+    TypedSingleDiyEffect,
     VideoProfile,
     effect_content_to_dict,
 )
@@ -491,9 +491,9 @@ def _template_available(template: CatalogueTemplate, profile: ModelProfile, mode
         if codec is None or not codec.content_available_for_profile(content, profile):
             return False
         workflow = CapabilityWorkflow(content.workflow)
-    elif isinstance(content, SingleEffect | H6179SingleDiyEffect):
+    elif isinstance(content, SingleEffect | TypedSingleDiyEffect):
         workflow = CapabilityWorkflow.SINGLE
-    elif isinstance(content, MultiEffect | H6179MixedDiyEffect):
+    elif isinstance(content, MultiEffect | TypedMixedDiyEffect):
         workflow = CapabilityWorkflow.MULTI
     elif isinstance(content, PaletteDiyEffect):
         workflow = CapabilityWorkflow.PALETTE_DIY

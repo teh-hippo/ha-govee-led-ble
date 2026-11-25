@@ -17,7 +17,7 @@ from homeassistant.exceptions import ServiceValidationError
 from custom_components.ha_govee_led_ble.const import DOMAIN, get_profile
 from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
 from custom_components.ha_govee_led_ble.effect_catalogue import WORKSHOP_PROTOCOL_FIXTURES
-from custom_components.ha_govee_led_ble.effect_domain import H6179SingleDiyEffect, LibraryItem, StaticRgbComposition
+from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, StaticRgbComposition, TypedSingleDiyEffect
 from custom_components.ha_govee_led_ble.effect_services import (
     APPLY_CUSTOM_EFFECT_SCHEMA,
     ATTR_DIY_CODE,
@@ -66,7 +66,7 @@ async def test_entity_action_applies_saved_effect_and_returns_deployment(
         "Paint",
         StaticRgbComposition(((255, 0, 0),) * mock_coordinator.profile.segment_count)
         if static
-        else H6179SingleDiyEffect("H6179", 0, 0, 50, ((255, 0, 0),)),
+        else TypedSingleDiyEffect("H6179", 0, 0, 50, ((255, 0, 0),)),
     )
     deployment = SimpleNamespace(
         to_public_dict=MagicMock(

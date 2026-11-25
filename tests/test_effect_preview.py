@@ -43,7 +43,6 @@ from custom_components.ha_govee_led_ble.effect_diagnostics import EffectDiagnost
 from custom_components.ha_govee_led_ble.effect_domain import (
     BuiltinScene,
     CatalogueRef,
-    H6179SingleDiyEffect,
     LibraryItem,
     MusicProfile,
     NativeEffect,
@@ -53,6 +52,7 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     SingleEffect,
     SourceKind,
     StaticRgbComposition,
+    TypedSingleDiyEffect,
     VideoProfile,
 )
 from custom_components.ha_govee_led_ble.effect_identity import EffectDeviceCache, ObservedDeviceState
@@ -97,7 +97,7 @@ def _item(name: str, speed: int = 50) -> LibraryItem:
 def _h6179_item(name: str = "H6179 DIY") -> LibraryItem:
     return LibraryItem.new(
         name,
-        H6179SingleDiyEffect("H6179", 0, 0, 50, ((255, 0, 0),)),
+        TypedSingleDiyEffect("H6179", 0, 0, 50, ((255, 0, 0),)),
     )
 
 

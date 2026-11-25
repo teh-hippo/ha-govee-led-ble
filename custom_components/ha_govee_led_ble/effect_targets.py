@@ -5,7 +5,12 @@ from dataclasses import replace
 from .const import ModelProfile, get_profile
 from .effect_catalogue import MODEL_EFFECT_CATALOGUES
 from .effect_catalogue_models import ModelEffectCatalogue
-from .effect_content_ids import MULTI_EFFECT_CONTENT_KIND, SINGLE_EFFECT_CONTENT_KIND
+from .effect_content_ids import (
+    MULTI_EFFECT_CONTENT_KIND,
+    SINGLE_EFFECT_CONTENT_KIND,
+    TYPED_MIXED_DIY_CONTENT_KIND,
+    TYPED_SINGLE_DIY_CONTENT_KIND,
+)
 from .effect_contracts import (
     ContentProjection,
     release_content_capability,
@@ -14,8 +19,6 @@ from .effect_contracts import (
 )
 from .effect_domain import (
     EffectPair,
-    H6179MixedDiyEffect,
-    H6179SingleDiyEffect,
     LibraryItem,
     MultiEffect,
     MusicProfile,
@@ -23,6 +26,8 @@ from .effect_domain import (
     PaletteDiyEffect,
     RetainedSceneEffect,
     SingleEffect,
+    TypedMixedDiyEffect,
+    TypedSingleDiyEffect,
     VideoProfile,
 )
 from .music_protocol import music_code_for
@@ -119,22 +124,22 @@ def resolve_target_item(item: LibraryItem, model: str, profile: ModelProfile | N
             raise ValueError("Video profiles require equivalent capture, calibration and zone contracts")
         projected = replace(content, model=model)
     elif isinstance(
-        content, SingleEffect | MultiEffect | PaletteDiyEffect | H6179SingleDiyEffect | H6179MixedDiyEffect
+        content, SingleEffect | MultiEffect | PaletteDiyEffect | TypedSingleDiyEffect | TypedMixedDiyEffect
     ):
         source_content_kind = (
             SINGLE_EFFECT_CONTENT_KIND
             if isinstance(content, SingleEffect)
             else MULTI_EFFECT_CONTENT_KIND
             if isinstance(content, MultiEffect)
-            else "h6179_single_diy"
-            if isinstance(content, H6179SingleDiyEffect)
-            else "h6179_mixed_diy"
-            if isinstance(content, H6179MixedDiyEffect)
+            else TYPED_SINGLE_DIY_CONTENT_KIND
+            if isinstance(content, TypedSingleDiyEffect)
+            else TYPED_MIXED_DIY_CONTENT_KIND
+            if isinstance(content, TypedMixedDiyEffect)
             else "palette_diy"
         )
         source_model = (
             content.model
-            if isinstance(content, PaletteDiyEffect | H6179SingleDiyEffect | H6179MixedDiyEffect)
+            if isinstance(content, PaletteDiyEffect | TypedSingleDiyEffect | TypedMixedDiyEffect)
             else release_content_reference_model(source_content_kind)
         )
         projection = (
@@ -144,7 +149,7 @@ def resolve_target_item(item: LibraryItem, model: str, profile: ModelProfile | N
         )
         cross_format = projection is not None and (
             projection.persistent_content_kind != source_content_kind
-            or isinstance(content, PaletteDiyEffect | H6179SingleDiyEffect | H6179MixedDiyEffect)
+            or isinstance(content, PaletteDiyEffect | TypedSingleDiyEffect | TypedMixedDiyEffect)
             and source_model != model
         )
         if cross_format and projection is not None:
@@ -160,13 +165,13 @@ def resolve_target_item(item: LibraryItem, model: str, profile: ModelProfile | N
                 content.effects
                 if isinstance(content, MultiEffect)
                 else content.components
-                if isinstance(content, H6179MixedDiyEffect)
+                if isinstance(content, TypedMixedDiyEffect)
                 else (content,)
             )
             resolved = tuple(
                 _target_pair(pair.family, pair.variant, source_catalogue, target_catalogue, profile) for pair in pairs
             )
-            multi = isinstance(content, MultiEffect | H6179MixedDiyEffect)
+            multi = isinstance(content, MultiEffect | TypedMixedDiyEffect)
             if projection.content_projection is ContentProjection.PALETTE_DIY:
                 if multi:
                     raise ValueError("The target palette workflow does not support Multi")
@@ -175,9 +180,9 @@ def resolve_target_item(item: LibraryItem, model: str, profile: ModelProfile | N
                 )
             elif projection.content_projection is ContentProjection.TYPED_DIY:
                 projected = (
-                    H6179MixedDiyEffect(model, resolved, content.speed, content.palette)
+                    TypedMixedDiyEffect(model, resolved, content.speed, content.palette)
                     if multi
-                    else H6179SingleDiyEffect(
+                    else TypedSingleDiyEffect(
                         model, resolved[0].family, resolved[0].variant, content.speed, content.palette
                     )
                 )

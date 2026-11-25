@@ -96,7 +96,6 @@ from .effect_contracts import (
 from .effect_domain import (
     EffectContent,
     EffectValidationError,
-    H6179SingleDiyEffect,
     JsonValue,
     LayeredEffect,
     MultiEffect,
@@ -105,6 +104,8 @@ from .effect_domain import (
     PaintedEffect,
     PaletteDiyEffect,
     SingleEffect,
+    TypedMixedDiyEffect,
+    TypedSingleDiyEffect,
     VideoProfile,
 )
 from .native_effect import NativeDiyLayer, NativeOpaqueLayer
@@ -147,7 +148,13 @@ def _validate_native_zone_eligibility(
 
 
 def validate_effect_eligibility(
-    content: PaintedEffect | SingleEffect | MultiEffect | PaletteDiyEffect | NativeEffect,
+    content: PaintedEffect
+    | SingleEffect
+    | MultiEffect
+    | PaletteDiyEffect
+    | NativeEffect
+    | TypedSingleDiyEffect
+    | TypedMixedDiyEffect,
     model: str,
     *,
     profile: ModelProfile | None = None,
@@ -190,10 +197,18 @@ def validate_effect_eligibility(
             raise ValueError("native DIY requires its independently bounded zone definition")
         if not catalogue.palette_min <= len(content.palette) <= (profile.diy_palette_max or catalogue.palette_max):
             raise ValueError(f"{model} palette is outside catalogue limits")
-        multi = isinstance(content, MultiEffect)
-        if isinstance(content, MultiEffect) and len(content.effects) > catalogue.multi_max:
+        multi = isinstance(content, MultiEffect | TypedMixedDiyEffect)
+        if multi:
+            component_count = len(content.effects) if isinstance(content, MultiEffect) else len(content.components)
+        if multi and component_count > catalogue.multi_max:
             raise ValueError(f"{model} Multi count is outside catalogue limits")
-        pairs = content.effects if isinstance(content, MultiEffect) else (content,)
+        pairs = (
+            content.effects
+            if isinstance(content, MultiEffect)
+            else content.components
+            if isinstance(content, TypedMixedDiyEffect)
+            else (content,)
+        )
         for pair in pairs:
             family = next(
                 (family for family in catalogue.effects_for_profile(profile) if family.family == pair.family), None
@@ -212,7 +227,7 @@ def validate_effect_eligibility(
             if not rate_min <= content.speed <= family.rate_max:
                 raise ValueError(f"{model} family {pair.family} {family.rate} is outside catalogue limits")
     if (
-        isinstance(content, PaintedEffect | MultiEffect)
+        isinstance(content, PaintedEffect | MultiEffect | TypedMixedDiyEffect)
         and not catalogue.speed_min <= content.speed <= catalogue.speed_max
     ):
         raise ValueError(f"{model} speed is outside catalogue limits")
@@ -501,8 +516,8 @@ def validate_catalogue_template_identity(
         or isinstance(canonical, SingleEffect)
         and isinstance(content, SingleEffect)
         and (content.family, content.variant) == (canonical.family, canonical.variant)
-        or isinstance(canonical, H6179SingleDiyEffect)
-        and isinstance(content, H6179SingleDiyEffect)
+        or isinstance(canonical, TypedSingleDiyEffect)
+        and isinstance(content, TypedSingleDiyEffect)
         and (content.model, content.family, content.variant) == (canonical.model, canonical.family, canonical.variant)
         or isinstance(canonical, PaletteDiyEffect)
         and isinstance(content, PaletteDiyEffect)

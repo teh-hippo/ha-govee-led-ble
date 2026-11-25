@@ -35,7 +35,6 @@ from .effect_catalogue_models import (
 )
 from .effect_domain import (
     EffectContent,
-    H6179SingleDiyEffect,
     LayeredEffect,
     MusicProfile,
     NativeEffect,
@@ -43,6 +42,7 @@ from .effect_domain import (
     PaletteDiyEffect,
     RelativeBrightness,
     SingleEffect,
+    TypedSingleDiyEffect,
     VideoProfile,
 )
 from .h60a6_effects import native_diy_preset
@@ -72,7 +72,7 @@ def _single_template(
             palette=((255, 0, 0), (0, 255, 0), (0, 0, 255)) if family.palette_max == 3 else DEFAULT_PALETTE,
         )
     elif grammar == "H6179":
-        content = H6179SingleDiyEffect(
+        content = TypedSingleDiyEffect(
             model=model,
             family=family.family,
             variant=variation.variant,

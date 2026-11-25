@@ -34,8 +34,6 @@ from custom_components.ha_govee_led_ble.effect_contracts import (
 )
 from custom_components.ha_govee_led_ble.effect_domain import (
     EffectPair,
-    H6179MixedDiyEffect,
-    H6179SingleDiyEffect,
     LayeredEffect,
     LibraryItem,
     MultiEffect,
@@ -43,6 +41,8 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     PaletteDiyEffect,
     RetainedSceneEffect,
     SingleEffect,
+    TypedMixedDiyEffect,
+    TypedSingleDiyEffect,
     effect_content_from_dict,
     effect_content_to_dict,
 )
@@ -108,7 +108,7 @@ def h7020_effect_profile(monkeypatch: pytest.MonkeyPatch):
     return profile
 
 
-H6179_CONTENT = H6179MixedDiyEffect(
+H6179_CONTENT = TypedMixedDiyEffect(
     "H6179",
     (EffectPair(0, 0), EffectPair(2, 0)),
     50,
@@ -324,7 +324,7 @@ def test_h6179_compiler_uses_a1_transport_and_approved_activation_code() -> None
 
 
 def test_h6179_single_diy_round_trips_through_semantic_codec() -> None:
-    content = H6179SingleDiyEffect("H6179", 0, 0, 100, ((255, 0, 0),))
+    content = TypedSingleDiyEffect("H6179", 0, 0, 100, ((255, 0, 0),))
     compiled = compile_effect(
         LibraryItem.new("H6179 single", content),
         "H6179",
@@ -344,7 +344,7 @@ def test_h6179_single_diy_round_trips_through_semantic_codec() -> None:
 @pytest.mark.parametrize(
     "pact_type,pact_code,transport", [(1, 1, "a1_02"), (9, 1, "a1_02"), (10, 0, "a1_02"), (10, 1, "a3"), (10, 2, "a3")]
 )
-@pytest.mark.parametrize("content", [H6179_CONTENT, H6179SingleDiyEffect("H6179", 0, 0, 100, ((255, 0, 0),))])
+@pytest.mark.parametrize("content", [H6179_CONTENT, TypedSingleDiyEffect("H6179", 0, 0, 100, ((255, 0, 0),))])
 def test_h6179_diy_transport_follows_pact_without_changing_content(pact_type, pact_code, transport, content):
     profile = device_profile("H6179", pact_type, pact_code)
     compiled = compile_effect(LibraryItem.new("Revision DIY", content), "H6179", diy_code=0x1234, profile=profile)
@@ -364,6 +364,44 @@ def test_h6179_unknown_pact_does_not_guess_diy_transport():
             diy_code=0x1234,
             profile=device_profile("H6179", None, None),
         )
+
+
+@pytest.mark.parametrize("pact_type,pact_code", [(1, 1), (10, 1)])
+@pytest.mark.parametrize(
+    "factory",
+    [
+        lambda palette: TypedSingleDiyEffect("H6179", 0, 0, 50, palette),
+        lambda palette: TypedMixedDiyEffect("H6179", (EffectPair(0, 0),), 50, palette),
+    ],
+)
+def test_typed_diy_compilation_enforces_target_palette_limit(pact_type, pact_code, factory) -> None:
+    profile = device_profile("H6179", pact_type, pact_code)
+    maximum = tuple((index, index, index) for index in range(8))
+    accepted = compile_effect(
+        LibraryItem.new("Accepted", factory(maximum)),
+        "H6179",
+        diy_code=0x1234,
+        profile=profile,
+    )
+    assert accepted.upload_packets
+
+    rejected = LibraryItem.new("Rejected", factory((*maximum, (9, 9, 9))))
+    assert compatibility(rejected, "H6179", profile=profile).state is CompatibilityState.INCOMPATIBLE
+    with pytest.raises(ValueError, match="palette is outside catalogue limits"):
+        compile_effect(rejected, "H6179", diy_code=0x1234, profile=profile)
+
+
+def test_generic_diy_projection_obeys_typed_target_palette_limit() -> None:
+    accepted = LibraryItem.new(
+        "Accepted projection",
+        SingleEffect(0, 0, 50, tuple((index, index, index) for index in range(8))),
+    )
+    rejected = LibraryItem.new(
+        "Rejected projection",
+        SingleEffect(0, 0, 50, tuple((index, index, index) for index in range(9))),
+    )
+    assert compatibility(accepted, "H6179").state is CompatibilityState.COMPATIBLE
+    assert compatibility(rejected, "H6179").state is CompatibilityState.INCOMPATIBLE
 
 
 def test_h6199_fixed_diy_envelope_accepts_the_largest_structurally_fitting_palette(monkeypatch) -> None:

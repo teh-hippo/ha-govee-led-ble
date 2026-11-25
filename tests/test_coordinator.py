@@ -190,10 +190,10 @@ async def test_h6125_writes_the_register_while_expectations_stay_in_percent(h612
 
 async def test_h6179_advertised_pact_rejects_stale_diy_at_physical_write(hass):
     from custom_components.ha_govee_led_ble.effect_compiler import compile_effect, validate_compiled_geometry
-    from custom_components.ha_govee_led_ble.effect_domain import H6179SingleDiyEffect, LibraryItem
+    from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, TypedSingleDiyEffect
 
     coordinator = GoveeBLECoordinator(hass, "55:66:77:88:99:AA", "H6179", configuration_url=_CONFIGURATION_URL)
-    item = LibraryItem.new("Disposable DIY", H6179SingleDiyEffect("H6179", 0, 0, 50, ((255, 0, 0),)))
+    item = LibraryItem.new("Disposable DIY", TypedSingleDiyEffect("H6179", 0, 0, 50, ((255, 0, 0),)))
     coordinator._resolve_device_profile()
     with pytest.raises(ValueError):
         compile_effect(item, "H6179", diy_code=0x1234, profile=coordinator.profile)

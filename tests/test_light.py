@@ -43,7 +43,6 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     BuiltinScene,
     CatalogueRef,
     EffectValidationError,
-    H6179SingleDiyEffect,
     LayeredEffect,
     LibraryItem,
     MusicProfile,
@@ -53,6 +52,7 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     SingleEffect,
     SourceKind,
     StaticRgbComposition,
+    TypedSingleDiyEffect,
     VideoProfile,
 )
 from custom_components.ha_govee_led_ble.effect_identity import EffectDeviceCache
@@ -880,7 +880,7 @@ def test_saved_categories_remain_visible_when_native_families_are_narrower(
 def test_h6179_selector_excludes_diy_items_that_require_explicit_approval():
     diy = LibraryItem.new(
         "Disposable DIY",
-        H6179SingleDiyEffect("H6179", 0, 0, 50, ((255, 0, 0),)),
+        TypedSingleDiyEffect("H6179", 0, 0, 50, ((255, 0, 0),)),
     )
     music = LibraryItem.new(
         "Saved music",

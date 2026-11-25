@@ -21,13 +21,23 @@ from .effect_content_ids import (
     MULTI_EFFECT_CONTENT_KIND,
     PAINTED_EFFECT_CONTENT_KIND,
     SINGLE_EFFECT_CONTENT_KIND,
+    TYPED_MIXED_DIY_CONTENT_KIND,
+    TYPED_SINGLE_DIY_CONTENT_KIND,
 )
-from .effect_domain import EffectContent, MultiEffect, PaintedEffect, SingleEffect
+from .effect_domain import (
+    EffectContent,
+    MultiEffect,
+    PaintedEffect,
+    SingleEffect,
+    TypedMixedDiyEffect,
+    TypedSingleDiyEffect,
+)
 from .generated_protocol_adapter import build_diy_activation, build_scene_activation
 from .protocol_core import H6199EffectUpload, SceneBody
 from .protocol_effect_bodies import build_dedicated_diy, build_inline_diy
 
 GenericDiyContent = PaintedEffect | SingleEffect | MultiEffect
+TypedDiyContent = TypedSingleDiyEffect | TypedMixedDiyEffect
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,6 +62,31 @@ def generic_diy_content_kind(content: EffectContent) -> str:
 
 def is_single_or_multi_diy_kind(content_kind: str) -> bool:
     return content_kind in {SINGLE_EFFECT_CONTENT_KIND, MULTI_EFFECT_CONTENT_KIND}
+
+
+def typed_diy_content_kind(content: TypedDiyContent) -> str:
+    return TYPED_SINGLE_DIY_CONTENT_KIND if isinstance(content, TypedSingleDiyEffect) else TYPED_MIXED_DIY_CONTENT_KIND
+
+
+def prepare_typed_diy(
+    content: TypedDiyContent,
+    diy_code: int,
+    model: str,
+    profile: ModelProfile,
+) -> GenericDiyPreparation:
+    if profile.effect_grammar != "H6179":
+        raise ValueError(f"{model} has no selected typed DIY codec")
+    from .effect_commands import build_h6179_diy
+
+    transport = profile.diy_upload_transport
+    return GenericDiyPreparation(
+        content_kind=typed_diy_content_kind(content),
+        upload_packets=tuple(build_h6179_diy(content, profile=profile)),
+        activation_packet=build_diy_activation(diy_code, model, profile=profile),
+        upload_transport="a3" if transport == "a3" else "a1_02",
+        upload_subtype=4 if transport == "a3" else None,
+        upload_prefix=None,
+    )
 
 
 def default_generic_diy_selector(content: GenericDiyContent, profile: ModelProfile) -> int:
