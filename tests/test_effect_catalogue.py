@@ -861,7 +861,7 @@ def test_release_capability_contract_routes_saved_effects_through_home_assistant
     )
     assert h6199_diy is not None
     assert h6199_diy.application_route is ApplicationRoute.HOME_ASSISTANT_CONTROL
-    assert h6199_diy.compiler_deployer_strategy is CompilerDeployerStrategy.H6199_CUSTOM_ENGINE
+    assert h6199_diy.compiler_deployer_strategy is CompilerDeployerStrategy.PALETTE_DIY_ENGINE
     assert h6199_diy.verification_confidence is VerificationConfidence.SELECTION_ONLY
 
 
