@@ -77,7 +77,7 @@ def expectations_from_packet(
     if operation is None:
         return {}
     if profile.command_grammar_has("special_static", "native_sources"):
-        from .h60b0_controls import source_values
+        from .generated_protocol_adapter import source_values
 
         if values := source_values(generated):
             return {"color_mode": (ParsedMode.COLOUR, None), **values}

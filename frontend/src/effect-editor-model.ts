@@ -151,19 +151,8 @@ export function effectContentEligible(
         catalogue.workflows.some(candidate => candidate.id === workflow && candidate.content_kind === "native_effect") &&
         content.projector_layers.some(layer => layer.coarse.enabled || layer.fine?.enabled || layer.stars.enabled);
     }
-    if (content.model === "H60B0") {
-      if (catalogue?.sku !== model || model !== content.model) return false;
-      if (content.layers.some(layer => layer.type !== "diy")) return false;
-      if (content.revision === 3) {
-        const [top, side, bottom] = content.layers;
-        if (top?.type !== "diy" || side?.type !== "diy" || bottom?.type !== "diy") return false;
-        if (side.kind !== 1 && bottom.kind !== 1 && (top.enabled === false || top.kind !== 1)) return false;
-      }
-      const workflow = nativeEffectWorkflow(content);
-      return catalogue.workflows.some(candidate => candidate.id === workflow && candidate.content_kind === "native_effect") &&
-        (content.family === 81 || catalogue.templates?.some(candidate =>
-          candidate.content.kind === "native_effect" && candidate.content.model === model && candidate.content.revision === content.revision) === true);
-    }
+    const policy = isNativeEffectModel(content.model) ? nativeEffectPolicy(content.model) : undefined;
+    if (policy?.acceptsCatalogueContent) return policy.acceptsCatalogueContent(content, catalogue, model);
     return catalogue?.sku === model && content.model === model &&
       (content.layers.length > 1 && catalogue.native_zones?.length === content.layers.length
         ? catalogue.apply.multi === "supported"

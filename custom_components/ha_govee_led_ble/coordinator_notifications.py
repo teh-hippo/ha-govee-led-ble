@@ -36,11 +36,11 @@ from .generated_protocol_adapter import (
     parse_physical_ic_count,
     parse_video_device_info_status,
     parse_zone_notification,
+    source_readback,
     table_kelvin_rgb,
     upload_ack_success,
     video_parameters_from_brightness,
 )
-from .h60b0_controls import source_readback
 from .h6099_controls import h6099_control_status
 from .low_blue_light import parse_setting as parse_low_blue_light_setting
 from .low_blue_light import setting_state as low_blue_light_state

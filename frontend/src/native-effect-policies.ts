@@ -1,4 +1,4 @@
-import type { LibrarySummary, NativeEffectContent } from "./types";
+import type { LibrarySummary, ModelEffectCatalogue, NativeEffectContent } from "./types";
 
 type NativeEffectLayout = {
   family: number;
@@ -20,6 +20,11 @@ export type NativeEffectPolicy = {
   temperatures: boolean;
   editor: NativeEffectEditor;
   workflow: (content: NativeEffectContent) => NativeEffectWorkflow;
+  acceptsCatalogueContent?: (
+    content: NativeEffectContent,
+    catalogue: ModelEffectCatalogue | undefined,
+    model: string,
+  ) => boolean;
   combinedFamily?: number;
   diyFamily?: number;
   paintFamily?: number;
@@ -38,6 +43,31 @@ export const NATIVE_EFFECT_MODELS = [
 ] as const;
 
 export type NativeEffectModel = typeof NATIVE_EFFECT_MODELS[number];
+
+function h60b0Workflow(content: NativeEffectContent): NativeEffectWorkflow {
+  return [13, 923].includes(content.family)
+    ? "advanced"
+    : content.family === 81 || content.revision === 3 ? "multi" : "single";
+}
+
+function h60b0AcceptsCatalogueContent(
+  content: NativeEffectContent,
+  catalogue: ModelEffectCatalogue | undefined,
+  model: string,
+): boolean {
+  if (catalogue?.sku !== model || model !== content.model) return false;
+  if (content.layers.some(layer => layer.type !== "diy")) return false;
+  if (content.revision === 3) {
+    const [top, side, bottom] = content.layers;
+    if (top?.type !== "diy" || side?.type !== "diy" || bottom?.type !== "diy") return false;
+    if (side.kind !== 1 && bottom.kind !== 1 && (top.enabled === false || top.kind !== 1)) return false;
+  }
+  const workflow = h60b0Workflow(content);
+  return catalogue.workflows.some(candidate => candidate.id === workflow && candidate.content_kind === "native_effect") &&
+    (content.family === 81 || catalogue.templates?.some(candidate =>
+      candidate.content.kind === "native_effect" && candidate.content.model === model &&
+      candidate.content.revision === content.revision) === true);
+}
 
 const POLICIES = {
   H60A6: {
@@ -96,9 +126,8 @@ const POLICIES = {
     sectionTail: true,
     temperatures: true,
     editor: "revisioned",
-    workflow: content => [13, 923].includes(content.family)
-      ? "advanced"
-      : content.family === 81 || content.revision === 3 ? "multi" : "single",
+    workflow: h60b0Workflow,
+    acceptsCatalogueContent: h60b0AcceptsCatalogueContent,
     combinedFamily: 81,
   },
   H60B2: {
