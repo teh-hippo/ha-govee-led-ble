@@ -122,7 +122,7 @@ def qualified_profile(coordinator: GoveeBLECoordinator) -> ModelProfile:
     if (
         coordinator.profile.projector_grammar is None
         or coordinator.profile.projector_control_revision is None
-        or coordinator._h607c_pact_conflict
+        or coordinator._pact_identity.conflict
         or not coordinator.identity_fields_confirmed(frozenset({"pact"}))
     ):
         raise HomeAssistantError(translation_domain=DOMAIN, translation_key="identity_not_ready")

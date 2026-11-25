@@ -143,17 +143,17 @@ async def test_h607c_capability_diagnostics_distinguish_sources_without_private_
     entry = MockConfigEntry(domain=DOMAIN, unique_id="11:22:33:44:55:66", data={CONF_MODEL: "H607C"})
     coordinator = GoveeBLECoordinator(hass, entry.unique_id, "H607C", configuration_url=None)
     now = time.monotonic()
-    coordinator._h607c_advertisement_observations = {
+    coordinator._pact_identity.advertisement_observations = {
         "private-proxy-address": (now, frozenset({(1, 1)})),
         "old-scanner-address": (
             now - FALLBACK_MAXIMUM_STALE_ADVERTISEMENT_SECONDS - 1,
             frozenset({(9, 1)}),
         ),
     }
-    coordinator._h607c_advertised_pacts = {(1, 1), (9, 1)}
-    coordinator._h607c_marker_pact = (2, 1)
-    coordinator._resolve_h607c_pact()
-    coordinator._h607c_invalid_pact_version_seen = True
+    coordinator._pact_identity.advertised_pacts = {(1, 1), (9, 1)}
+    coordinator._pact_identity.marker_pact = (2, 1)
+    coordinator._resolve_pact_identity()
+    coordinator._pact_identity.invalid_version_seen = True
     coordinator._h607c_last_optional_read_failure = "TimeoutError"
     coordinator._h607c_uncertain_state_fields = {"is_on", "color"}
     coordinator.packet_log = [{"dir": "rx", "outcome": "parsed", "raw": "aa05deadbeef"}]
@@ -191,7 +191,7 @@ async def test_h60b0_diagnostics_distinguish_cached_presentation_from_live_query
     coordinator._client = MagicMock(is_connected=True)
     coordinator._notification_token = object()
     coordinator._notify_started_monotonic = time.monotonic()
-    coordinator._pact_query_result = "timeout"
+    coordinator._pact_identity.query_result = "timeout"
     cached = (await _run(coordinator, entry, hass))["coordinator"]["capability_resolution"]
     assert cached["pact_query_result"] == "timeout"
     assert cached["effective_supports_rgb"] is True

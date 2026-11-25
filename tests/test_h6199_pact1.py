@@ -80,13 +80,13 @@ def test_passive_replay_cannot_replace_a_newer_h6199_pact(hass):
 
     assert (coordinator.pact_type, coordinator.pact_code) == (1, 1)
     assert coordinator.profile is H6199_PACT1_PROFILE
-    coordinator._prune_h607c_advertisements()
+    coordinator._prune_pact_advertisements()
     assert (coordinator.pact_type, coordinator.pact_code) == (1, 1)
     assert coordinator.profile is H6199_PACT1_PROFILE
     coordinator._client = MagicMock(is_connected=True)
     coordinator._notification_token = object()
     coordinator._notify_started_monotonic = now - 2
-    coordinator._resolve_h607c_pact()
+    coordinator._resolve_pact_identity()
     assert (coordinator.pact_type, coordinator.pact_code) == (1, 1)
     assert coordinator.profile is H6199_PACT1_PROFILE
 

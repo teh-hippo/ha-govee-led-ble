@@ -867,7 +867,7 @@ async def test_invalid_native_sensitivity_does_not_poison_observation_or_mode_se
 ):
     c, client = selection_ready
     later_pact = 2 if c.model == "H6159" and pact == 10 else pact
-    c._connection_pacts.clear()
+    c._pact_identity.connection_pacts.clear()
     c._observe_pact(later_pact, 1)
     c._observe_identity_field("fw_version", firmware)
     c._observe_identity_field("hw_version", hardware)

@@ -406,7 +406,7 @@ def native_sources(hass):
     coordinator.profile = PROFILE
     coordinator.pact_type, coordinator.pact_code = 1, 2
     coordinator._confirmed_identity_fields.add("pact")
-    coordinator._refresh_h607c_advertisements = lambda: None
+    coordinator._refresh_pact_advertisements = lambda: None
     client = MagicMock(is_connected=True, disconnect=AsyncMock())
     coordinator._client = client
     coordinator._notification_token = object()
@@ -1447,8 +1447,8 @@ async def test_reconnect_revokes_cached_pact_and_qualifies_the_current_marker(ha
     old_client = MagicMock(is_connected=True)
     coordinator._client = old_client
     coordinator._confirmed_identity_fields.add("pact")
-    coordinator._h607c_marker_pact = (1, 2)
-    coordinator._h607c_advertisement_observations = {"cached": (time.monotonic() - 10, frozenset({(1, 2)}))}
+    coordinator._pact_identity.marker_pact = (1, 2)
+    coordinator._pact_identity.advertisement_observations = {"cached": (time.monotonic() - 10, frozenset({(1, 2)}))}
     template = next(
         template
         for template in MODEL_EFFECT_CATALOGUES["H60B0"].templates
@@ -1459,7 +1459,7 @@ async def test_reconnect_revokes_cached_pact_and_qualifies_the_current_marker(ha
     coordinator._clear_client_state(old_client)
     assert coordinator.profile.native_effect_revision == 2
     assert not coordinator.identity_fields_confirmed()
-    assert coordinator.h607c_pact_readiness == "stale"
+    assert coordinator.pact_readiness == "stale"
     with pytest.raises(HomeAssistantError) as error:
         coordinator._validate_authorized_packet(source_packet)
     assert error.value.translation_key == "identity_not_ready"
@@ -1480,7 +1480,7 @@ async def test_reconnect_revokes_cached_pact_and_qualifies_the_current_marker(ha
         await coordinator._ensure_connected()
         assert coordinator.profile.native_effect_revision == 3
         assert coordinator.identity_fields_confirmed()
-        assert coordinator.h607c_pact_readiness == "ready"
+        assert coordinator.pact_readiness == "ready"
         coordinator._validate_authorized_packet(source_packet)
         with pytest.raises(ValueError, match="revision"):
             validate_compiled_geometry(compiled, coordinator.profile)
@@ -1498,22 +1498,22 @@ async def test_only_current_subscription_advertisements_can_confirm_pact(hass):
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H60B0", configuration_url=None)
     coordinator._client = MagicMock(is_connected=True)
     coordinator._notify_started_monotonic = time.monotonic()
-    coordinator._h607c_advertisement_observations = {
+    coordinator._pact_identity.advertisement_observations = {
         "proxy": (coordinator._notify_started_monotonic - 1, frozenset({(1, 2)}))
     }
-    coordinator._resolve_h607c_pact()
+    coordinator._resolve_pact_identity()
     assert not coordinator.identity_fields_confirmed()
-    coordinator._h607c_advertisement_observations["proxy"] = (
+    coordinator._pact_identity.advertisement_observations["proxy"] = (
         coordinator._notify_started_monotonic + 1,
         frozenset({(1, 2)}),
     )
-    coordinator._resolve_h607c_pact()
+    coordinator._resolve_pact_identity()
     assert not coordinator.identity_fields_confirmed()
     coordinator._notification_token = object()
-    coordinator._resolve_h607c_pact()
+    coordinator._resolve_pact_identity()
     assert coordinator.identity_fields_confirmed()
-    coordinator._h607c_marker_pact = (1, 3)
-    coordinator._resolve_h607c_pact()
+    coordinator._pact_identity.marker_pact = (1, 3)
+    coordinator._resolve_pact_identity()
     assert not coordinator.identity_fields_confirmed()
     assert not coordinator._authorization_profile().supports_custom_effects
 
@@ -1541,7 +1541,7 @@ def pact_connection(hass, monkeypatch):
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H60B0", configuration_url=None)
     coordinator.pact_type, coordinator.pact_code = 1, 2
     coordinator.profile = PROFILE
-    coordinator._h607c_advertisement_observations = {"cached": (time.monotonic() - 10, frozenset({(1, 2)}))}
+    coordinator._pact_identity.advertisement_observations = {"cached": (time.monotonic() - 10, frozenset({(1, 2)}))}
     client = MagicMock(is_connected=True, start_notify=AsyncMock(), write_gatt_char=AsyncMock(), disconnect=AsyncMock())
     coordinator._encryption = MagicMock(
         ready=True,
@@ -1566,7 +1566,7 @@ async def test_live_pact_read_qualifies_without_marker_or_connected_advertisemen
     if not cached:
         coordinator.pact_type = coordinator.pact_code = None
         coordinator.profile = device_profile("H60B0", None, None)
-        coordinator._h607c_advertisement_observations.clear()
+        coordinator._pact_identity.advertisement_observations.clear()
     initial_profile = coordinator.profile
     source = GoveeBLESourceLight(coordinator, "top")
     packet = build_source_value("bottom", "brightness", 40, PROFILE)
@@ -1599,7 +1599,7 @@ async def test_live_pact_read_qualifies_without_marker_or_connected_advertisemen
             coordinator._validate_authorized_packet(packet)
         else:
             assert not source.available
-            assert coordinator._pact_query_result == "unsupported"
+            assert coordinator._pact_identity.query_result == "unsupported"
             with pytest.raises(ValueError):
                 await coordinator._async_write_packet(client, packet, arm_expected=True)
             client.write_gatt_char.assert_awaited_once()
@@ -1613,7 +1613,7 @@ async def test_pact_timeout_preserves_presentation_but_not_write_authority(pact_
     packet = build_source_value("bottom", "brightness", 40, PROFILE)
     try:
         assert await coordinator._ensure_connected() is client
-        assert coordinator._pact_query_result == "timeout"
+        assert coordinator._pact_identity.query_result == "timeout"
         assert coordinator.profile == PROFILE and source.available
         assert not coordinator.identity_fields_confirmed()
         assert not coordinator._authorization_profile().supports_rgb
@@ -1631,11 +1631,11 @@ async def test_pact_timeout_preserves_presentation_but_not_write_authority(pact_
         coordinator._clear_client_state(client)
         assert not coordinator.identity_fields_confirmed()
         receive(None, bytearray(frame("aaef000103")))
-        assert not coordinator._connection_pacts
+        assert not coordinator._pact_identity.connection_pacts
         client.write_gatt_char.side_effect = lambda *args, **kwargs: receive(None, bytearray(frame("aaef000103")))
         assert await coordinator._ensure_connected() is client
         assert not coordinator.identity_fields_confirmed()
-        assert coordinator._pact_query_result == "timeout"
+        assert coordinator._pact_identity.query_result == "timeout"
         assert coordinator.profile == PROFILE
     finally:
         await coordinator.disconnect()
@@ -1653,12 +1653,12 @@ async def test_live_pact_conflicts_revoke_write_authority(pact_connection, confl
         if conflict == "query":
             client.start_notify.await_args.args[1](None, bytearray(frame("aaef000103")))
         elif conflict == "marker":
-            coordinator._h607c_marker_pact = (1, 3)
-            coordinator._resolve_h607c_pact()
+            coordinator._pact_identity.marker_pact = (1, 3)
+            coordinator._resolve_pact_identity()
         else:
-            coordinator._h607c_advertisement_observations["current"] = (time.monotonic(), frozenset({(1, 3)}))
-            coordinator._resolve_h607c_pact()
-        assert coordinator.h607c_pact_readiness == "conflicting"
+            coordinator._pact_identity.advertisement_observations["current"] = (time.monotonic(), frozenset({(1, 3)}))
+            coordinator._resolve_pact_identity()
+        assert coordinator.pact_readiness == "conflicting"
         assert not coordinator.identity_fields_confirmed()
         assert not coordinator._authorization_profile().supports_rgb
         with pytest.raises(ValueError):

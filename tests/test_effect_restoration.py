@@ -411,7 +411,7 @@ async def test_h6053_native_scene_without_pact_uses_version_qualified_baseline(
 
     monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
     monkeypatch.setattr(coordinator, "_renew_foreground_lease", MagicMock())
-    monkeypatch.setattr(coordinator, "_refresh_h607c_advertisements", MagicMock())
+    monkeypatch.setattr(coordinator, "_refresh_pact_advertisements", MagicMock())
     monkeypatch.setattr(coordinator, "refresh_state", AsyncMock(side_effect=refresh))
     monkeypatch.setattr(coordinator, "async_refresh_segments", AsyncMock(side_effect=refresh_segments))
     observe_static()
@@ -1309,9 +1309,9 @@ async def test_native_appearance_read_is_completed_when_its_profile_authority_ch
 @pytest.mark.parametrize("mode", ["static", "scene"])
 async def test_planned_release_requalifies_delivered_native_appearance_before_effect_selection(physical, mode):
     coordinator, state = physical
-    coordinator._connection_pacts.clear()
-    coordinator._h607c_marker_pact = coordinator.pact_type, coordinator.pact_code
-    coordinator._resolve_h607c_pact(preserve_state=True)
+    coordinator._pact_identity.connection_pacts.clear()
+    coordinator._pact_identity.marker_pact = coordinator.pact_type, coordinator.pact_code
+    coordinator._resolve_pact_identity(preserve_state=True)
     prior = state["projector"]
     await apply_appearance(coordinator, prior)
     light = GoveeBLELight(coordinator)
@@ -1480,12 +1480,14 @@ async def test_native_attribute_edits_qualify_and_guard_historical_appearance(
 @pytest.mark.parametrize("physical", ["H6093"], indirect=True)
 async def test_cached_pact_does_not_authorise_native_writes_but_keeps_bootstrap_power_available(physical):
     coordinator, state = physical
-    coordinator._connection_pacts.clear()
+    coordinator._pact_identity.connection_pacts.clear()
     coordinator._confirmed_identity_fields.clear()
-    coordinator._h607c_marker_pact = None
-    coordinator._subscription_advertised_pact = None
-    coordinator._h607c_advertisement_observations = {"cached": (coordinator._notify_started_monotonic - 1, {(2, 1)})}
-    coordinator._h607c_advertised_pacts = {(2, 1)}
+    coordinator._pact_identity.marker_pact = None
+    coordinator._pact_identity.subscription_advertised_pact = None
+    coordinator._pact_identity.advertisement_observations = {
+        "cached": (coordinator._notify_started_monotonic - 1, {(2, 1)})
+    }
+    coordinator._pact_identity.advertised_pacts = {(2, 1)}
     with pytest.raises(HomeAssistantError) as caught:
         qualified_profile(coordinator)
     assert caught.value.translation_key == "identity_not_ready"
@@ -1746,7 +1748,7 @@ async def test_dreamview_laser_setting_requires_fresh_exact_revision(physical):
     coordinator, state = physical
     permitted = (coordinator.pact_type, coordinator.pact_code) == (2, 1)
     packet = frame("33300701")
-    coordinator._connection_pacts.clear()
+    coordinator._pact_identity.connection_pacts.clear()
     coordinator._confirmed_identity_fields.clear()
     with pytest.raises(HomeAssistantError):
         coordinator._validate_authorized_packet(packet)

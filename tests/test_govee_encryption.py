@@ -88,7 +88,7 @@ async def test_h607c_marker_qualifies_rgb_only_for_current_connection(hass, monk
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H607C", configuration_url=None)
     device = client(bytes((2, 0, 0, 0, pact_type, 1)))
     coordinator.is_on = True
-    monkeypatch.setattr(coordinator, "_refresh_h607c_advertisements", lambda: None)
+    monkeypatch.setattr(coordinator, "_refresh_pact_advertisements", lambda: None)
     monkeypatch.setattr(f"{M}.async_establish_ble_connection", AsyncMock(return_value=device))
     monkeypatch.setattr(coordinator, "_start_keep_alive", lambda: None)
     light = GoveeBLELight(coordinator)
@@ -105,7 +105,7 @@ async def test_h607c_marker_qualifies_rgb_only_for_current_connection(hass, monk
     assert lighting[-1] == build_segment_color([13], 90, 120, 200, "H607C", profile=coordinator.profile)
     coordinator._clear_client_state(device)
     assert coordinator.pact_type is None and not coordinator.profile.supports_rgb
-    assert coordinator.h607c_pact_readiness == "stale"
+    assert coordinator.pact_readiness == "stale"
     assert coordinator.native_presentation_profile.supports_rgb
     assert ColorMode.RGB in light.supported_color_modes
 
@@ -127,24 +127,24 @@ async def test_h607c_scanner_pact_conflict_fails_closed(hass, monkeypatch):
     monkeypatch.setattr(
         f"{M}.bluetooth.async_last_service_info", lambda *args, **kwargs: records[0] if records else None
     )
-    coordinator._refresh_h607c_advertisements()
-    assert coordinator.profile.supports_rgb and coordinator.h607c_pact_readiness == "ready"
+    coordinator._refresh_pact_advertisements()
+    assert coordinator.profile.supports_rgb and coordinator.pact_readiness == "ready"
     coordinator._note_advertisement(record("ec00020100", "scanner-b", now))
-    coordinator._refresh_h607c_advertisements()
-    assert coordinator.h607c_pact_readiness == "conflicting"
+    coordinator._refresh_pact_advertisements()
+    assert coordinator.pact_readiness == "conflicting"
     assert not coordinator.profile.supports_rgb and not coordinator.native_presentation_profile.supports_rgb
     generation = coordinator._profile_generation
     coordinator.brightness_pct = 37
     coordinator._async_on_advertisement(records[0], None)
     assert coordinator._profile_generation == generation and coordinator.brightness_pct == 37
-    coordinator._h607c_advertisement_observations["scanner-b"] = (now - 1000, frozenset({(2, 1)}))
-    coordinator._refresh_h607c_advertisements()
-    assert coordinator.profile.supports_rgb and coordinator.h607c_pact_readiness == "ready"
+    coordinator._pact_identity.advertisement_observations["scanner-b"] = (now - 1000, frozenset({(2, 1)}))
+    coordinator._refresh_pact_advertisements()
+    assert coordinator.profile.supports_rgb and coordinator.pact_readiness == "ready"
     records[0].time = now - 1000
-    coordinator._h607c_advertisement_observations["scanner-a"] = (now - 1000, frozenset({(1, 1)}))
+    coordinator._pact_identity.advertisement_observations["scanner-a"] = (now - 1000, frozenset({(1, 1)}))
     records.clear()
-    coordinator._refresh_h607c_advertisements()
-    assert not coordinator.profile.supports_rgb and coordinator.h607c_pact_readiness == "missing"
+    coordinator._refresh_pact_advertisements()
+    assert not coordinator.profile.supports_rgb and coordinator.pact_readiness == "missing"
 
 
 async def test_h607c_live_equal_timestamp_cannot_be_overwritten_by_cached_pact(hass, monkeypatch):
@@ -165,10 +165,10 @@ async def test_h607c_live_equal_timestamp_cannot_be_overwritten_by_cached_pact(h
         manufacturer_data={0x8843: bytes.fromhex("ec00030100")},
     )
     monkeypatch.setattr(f"{M}.bluetooth.async_last_service_info", lambda *args, **kwargs: cached)
-    coordinator._refresh_h607c_advertisements()
+    coordinator._refresh_pact_advertisements()
     assert coordinator.profile.supports_rgb
-    coordinator._async_on_h607c_advertisement(incoming)
-    assert coordinator.h607c_pact_readiness == "conflicting"
+    coordinator._async_on_pact_advertisement(incoming)
+    assert coordinator.pact_readiness == "conflicting"
     assert not coordinator.profile.supports_rgb
 
 
@@ -217,10 +217,10 @@ async def test_authorization_reads_are_pure_and_operations_reconcile_expired_ide
             manufacturer_data={0x8843: bytes.fromhex("ec00010100")},
         )
     )
-    coordinator._prune_h607c_advertisements()
+    coordinator._prune_pact_advertisements()
     profile, generation = coordinator.profile, coordinator._authorization_generation
     assert profile.supports_rgb
-    coordinator._h607c_advertisement_observations["scanner"] = (now - 1000, frozenset({(1, 1)}))
+    coordinator._pact_identity.advertisement_observations["scanner"] = (now - 1000, frozenset({(1, 1)}))
     listeners = MagicMock()
     monkeypatch.setattr(coordinator, "async_update_listeners", listeners)
 
@@ -259,7 +259,7 @@ async def test_advertisement_qualified_subscription_survives_scanner_expiry(
         manufacturer_data={0x8801: bytes.fromhex("ec00010100")},
     )
     monkeypatch.setattr(f"{M}.bluetooth.async_last_service_info", lambda *args, **kwargs: info)
-    coordinator._refresh_h607c_advertisements()
+    coordinator._refresh_pact_advertisements()
     profile = coordinator.profile
     device = client(b"\x01\x00")
     monkeypatch.setattr(f"{M}.async_establish_ble_connection", AsyncMock(return_value=device))
@@ -308,7 +308,7 @@ async def test_advertisement_qualified_subscription_survives_scanner_expiry(
     else:
         info.time = virtual_clock.virtual_time()
         info.manufacturer_data = {0x8801: bytes.fromhex("ec00030100")}
-        coordinator._async_on_h607c_advertisement(info)
+        coordinator._async_on_pact_advertisement(info)
     with pytest.raises(HomeAssistantError):
         guard()
     assert not coordinator._authorization_profile().supports_rgb
@@ -342,13 +342,13 @@ async def test_h607c_registers_supported_advertisement_callback(hass, monkeypatc
 
 async def test_h607c_revocation_during_colour_turn_on_sends_no_user_write(hass, monkeypatch, caplog):
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H607C", configuration_url=None)
-    coordinator._h607c_advertised_pacts = {(1, 1)}
-    coordinator._resolve_h607c_pact()
+    coordinator._pact_identity.advertised_pacts = {(1, 1)}
+    coordinator._resolve_pact_identity()
     device = client()
     coordinator._client = device
     coordinator._notification_token = object()
     coordinator._notify_started_monotonic = 1.0
-    monkeypatch.setattr(coordinator, "_refresh_h607c_advertisements", lambda: None)
+    monkeypatch.setattr(coordinator, "_refresh_pact_advertisements", lambda: None)
     monkeypatch.setattr(coordinator, "_renew_foreground_lease", lambda: None)
     calls = 0
 
@@ -356,8 +356,8 @@ async def test_h607c_revocation_during_colour_turn_on_sends_no_user_write(hass, 
         nonlocal calls
         calls += 1
         if calls == 2:
-            coordinator._h607c_advertised_pacts = {(3, 1)}
-            coordinator._resolve_h607c_pact()
+            coordinator._pact_identity.advertised_pacts = {(3, 1)}
+            coordinator._resolve_pact_identity()
         return device
 
     monkeypatch.setattr(coordinator, "_ensure_connected", ensure_connected)
@@ -376,14 +376,14 @@ async def test_h607c_revocation_during_colour_turn_on_sends_no_user_write(hass, 
 @pytest.fixture
 def h607c_light(hass, monkeypatch):
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H607C", configuration_url=None)
-    coordinator._h607c_advertised_pacts = {(1, 1)}
-    coordinator._resolve_h607c_pact()
+    coordinator._pact_identity.advertised_pacts = {(1, 1)}
+    coordinator._resolve_pact_identity()
     coordinator._present = True
     device = client()
     coordinator._client = device
     coordinator._notification_token = object()
     coordinator._notify_started_monotonic = time.monotonic()
-    monkeypatch.setattr(coordinator, "_refresh_h607c_advertisements", lambda: None)
+    monkeypatch.setattr(coordinator, "_refresh_pact_advertisements", lambda: None)
     monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=device))
     monkeypatch.setattr(coordinator, "_renew_foreground_lease", lambda: None)
     light = GoveeBLELight(coordinator)
@@ -403,8 +403,8 @@ async def test_h607c_interrupted_power_reports_or_reconciles_uncertainty(
 
     async def write(_uuid, packet, **_kwargs):
         if packet == build_power(True, coordinator.model):
-            coordinator._h607c_advertised_pacts = {(3, 1)}
-            coordinator._resolve_h607c_pact()
+            coordinator._pact_identity.advertised_pacts = {(3, 1)}
+            coordinator._resolve_pact_identity()
             if confirmation == "notification":
                 observe(1, 1)
         elif confirmation == "reconcile" and packet == build_power_query(
@@ -460,8 +460,8 @@ async def test_h607c_interrupted_brightness_preserves_only_fresh_observations(
     monkeypatch.setattr(coordinator, "_refresh_connected_state", AsyncMock(return_value=False))
 
     async def write(_uuid, packet, **_kwargs):
-        coordinator._h607c_advertised_pacts = {(3, 1)}
-        coordinator._resolve_h607c_pact()
+        coordinator._pact_identity.advertised_pacts = {(3, 1)}
+        coordinator._resolve_pact_identity()
         if fresh_notification:
             coordinator._notify_callback(None, bytearray(_packet(0xAA, 4, [50])))
 
@@ -574,7 +574,7 @@ async def test_h607c_missing_pact_presents_colour_but_does_not_cancel_preview(ha
     device = client(b"\x01\x00")
     coordinator._client = device
     coordinator._notification_token = object()
-    monkeypatch.setattr(coordinator, "_refresh_h607c_advertisements", lambda: None)
+    monkeypatch.setattr(coordinator, "_refresh_pact_advertisements", lambda: None)
     monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=device))
 
     async def disconnect(_client):
@@ -620,13 +620,13 @@ async def test_h607c_registered_entities_present_identity_states(hass, identity,
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H607C", configuration_url=None)
     coordinator._present = coordinator.is_on = True
     if identity in {"missing", "stale"}:
-        coordinator._h607c_marker_seen = identity == "stale"
+        coordinator._pact_identity.marker_seen = identity == "stale"
         coordinator._resolve_device_profile()
     else:
-        coordinator._h607c_advertised_pacts = (
+        coordinator._pact_identity.advertised_pacts = (
             {(1, 1), (2, 1)} if identity == "conflicting" else {(1, 1)} if identity == "supported" else {(3, 1)}
         )
-        coordinator._resolve_h607c_pact()
+        coordinator._resolve_pact_identity()
     if identity == "supported":
         coordinator.boolean_control_state["gradual"] = True
     entry = await _register_h607c_entities(hass, coordinator)
@@ -658,12 +658,12 @@ async def test_h607c_registered_settings_survive_identity_expiry(hass, identity_
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H607C", configuration_url=None)
     coordinator._state_read_available = coordinator.is_on = True
     if identity_loss == "advertisement_expiry":
-        coordinator._h607c_advertisement_observations = {"scanner": (time.monotonic(), frozenset({(1, 1)}))}
-        coordinator._prune_h607c_advertisements()
+        coordinator._pact_identity.advertisement_observations = {"scanner": (time.monotonic(), frozenset({(1, 1)}))}
+        coordinator._prune_pact_advertisements()
     else:
-        coordinator._h607c_marker_pact = (1, 1)
-        coordinator._h607c_marker_seen = True
-        coordinator._resolve_h607c_pact()
+        coordinator._pact_identity.marker_pact = (1, 1)
+        coordinator._pact_identity.marker_seen = True
+        coordinator._resolve_pact_identity()
     entry = await _register_h607c_entities(hass, coordinator)
     settings = [
         item
@@ -672,8 +672,11 @@ async def test_h607c_registered_settings_survive_identity_expiry(hass, identity_
     ]
     assert len(settings) == 6
     if identity_loss == "advertisement_expiry":
-        coordinator._h607c_advertisement_observations["scanner"] = (time.monotonic() - 1000, frozenset({(1, 1)}))
-        coordinator._prune_h607c_advertisements()
+        coordinator._pact_identity.advertisement_observations["scanner"] = (
+            time.monotonic() - 1000,
+            frozenset({(1, 1)}),
+        )
+        coordinator._prune_pact_advertisements()
     else:
         device = client()
         coordinator._client = device
@@ -695,8 +698,8 @@ async def test_h607c_registered_settings_survive_identity_expiry(hass, identity_
 @pytest.mark.parametrize("identity", ["ready", "unsupported", "conflicting", "revoked"])
 async def test_h607c_settings_requalify_after_release(hass, monkeypatch, control, identity):
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H607C", configuration_url=None)
-    coordinator._h607c_marker_pact = (1, 1)
-    coordinator._resolve_h607c_pact()
+    coordinator._pact_identity.marker_pact = (1, 1)
+    coordinator._resolve_pact_identity()
     previous = client()
     coordinator._client = previous
     coordinator._clear_client_state(previous)
@@ -704,11 +707,11 @@ async def test_h607c_settings_requalify_after_release(hass, monkeypatch, control
     zone_query = build_boolean_control_query("pole_enabled", "H607C", profile=coordinator.native_presentation_profile)
     power_on_query = build_power_on_behaviour_query(coordinator.native_presentation_profile)
     device = client(bytes((2, 0, 0, 0, 3 if identity == "unsupported" else 1, 1)))
-    monkeypatch.setattr(coordinator, "_refresh_h607c_advertisements", lambda: None)
+    monkeypatch.setattr(coordinator, "_refresh_pact_advertisements", lambda: None)
     monkeypatch.setattr(f"{M}.async_establish_ble_connection", AsyncMock(return_value=device))
     monkeypatch.setattr(coordinator, "_start_keep_alive", lambda: None)
     if identity == "conflicting":
-        coordinator._h607c_advertisement_observations["scanner"] = (time.monotonic(), frozenset({(2, 1)}))
+        coordinator._pact_identity.advertisement_observations["scanner"] = (time.monotonic(), frozenset({(2, 1)}))
     elif identity == "revoked":
 
         async def revoke():
@@ -778,16 +781,16 @@ async def test_h607c_settings_requalify_after_release(hass, monkeypatch, control
 async def test_h607c_registered_gradual_tracks_identity_and_release_reconnect(hass):
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H607C", configuration_url=None)
     coordinator._present = coordinator.is_on = True
-    coordinator._h607c_advertised_pacts = {(3, 1)}
-    coordinator._resolve_h607c_pact()
+    coordinator._pact_identity.advertised_pacts = {(3, 1)}
+    coordinator._resolve_pact_identity()
     entry = await _register_h607c_entities(hass, coordinator)
     registry = er.async_get(hass)
     assert not any(
         item.unique_id.endswith("_gradual") for item in er.async_entries_for_config_entry(registry, entry.entry_id)
     )
 
-    coordinator._h607c_advertised_pacts = {(1, 1)}
-    coordinator._resolve_h607c_pact()
+    coordinator._pact_identity.advertised_pacts = {(1, 1)}
+    coordinator._resolve_pact_identity()
     await hass.async_block_till_done()
     gradual = next(
         item
@@ -796,27 +799,27 @@ async def test_h607c_registered_gradual_tracks_identity_and_release_reconnect(ha
     )
     assert hass.states.get(gradual.entity_id).state == "unknown"
 
-    coordinator._h607c_advertised_pacts = {(1, 1), (2, 1)}
-    coordinator._resolve_h607c_pact()
+    coordinator._pact_identity.advertised_pacts = {(1, 1), (2, 1)}
+    coordinator._resolve_pact_identity()
     await hass.async_block_till_done()
     assert hass.states.get(gradual.entity_id).state == "unavailable"
 
-    coordinator._h607c_advertised_pacts.clear()
-    coordinator._h607c_marker_seen = True
-    coordinator._h607c_marker_pact = (1, 1)
-    coordinator._resolve_h607c_pact()
+    coordinator._pact_identity.advertised_pacts.clear()
+    coordinator._pact_identity.marker_seen = True
+    coordinator._pact_identity.marker_pact = (1, 1)
+    coordinator._resolve_pact_identity()
     first = client()
     coordinator._client = first
     coordinator._clear_client_state(first)
     await hass.async_block_till_done()
-    assert coordinator.h607c_pact_readiness == "stale"
+    assert coordinator.pact_readiness == "stale"
     assert hass.states.get(gradual.entity_id).state == "unknown"
 
     coordinator._client = client()
-    coordinator._h607c_marker_pact = (1, 1)
-    coordinator._resolve_h607c_pact(preserve_state=True)
+    coordinator._pact_identity.marker_pact = (1, 1)
+    coordinator._resolve_pact_identity(preserve_state=True)
     await hass.async_block_till_done()
-    assert coordinator.h607c_pact_readiness == "ready"
+    assert coordinator.pact_readiness == "ready"
     assert hass.states.get(gradual.entity_id).state == "unknown"
 
 
@@ -871,9 +874,9 @@ async def test_h607c_marker_requalification_preserves_release_state_without_fres
 
 async def test_h607c_unsupported_identity_invalidates_state_preserved_during_release(hass):
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H607C", configuration_url=None)
-    coordinator._h607c_marker_seen = True
-    coordinator._h607c_marker_pact = (1, 1)
-    coordinator._resolve_h607c_pact()
+    coordinator._pact_identity.marker_seen = True
+    coordinator._pact_identity.marker_pact = (1, 1)
+    coordinator._resolve_pact_identity()
     coordinator._notify_callback(None, bytearray(_packet(0xAA, 4, [37])))
     coordinator.color_temp_kelvin = 3200
     coordinator.boolean_control_state["gradual"] = True
@@ -882,12 +885,12 @@ async def test_h607c_unsupported_identity_invalidates_state_preserved_during_rel
     coordinator._client = coordinator._intentional_disconnect_client = device
     coordinator._clear_client_state(device)
     coordinator._intentional_disconnect_client = None
-    assert coordinator.h607c_pact_readiness == "stale"
+    assert coordinator.pact_readiness == "stale"
     assert coordinator.boolean_control_state["gradual"] and coordinator.color_temp_kelvin == 3200
 
-    coordinator._h607c_advertised_pacts = {(3, 1)}
-    coordinator._resolve_h607c_pact()
-    assert coordinator.h607c_pact_readiness == "unsupported"
+    coordinator._pact_identity.advertised_pacts = {(3, 1)}
+    coordinator._resolve_pact_identity()
+    assert coordinator.pact_readiness == "unsupported"
     assert coordinator.brightness_pct == 37
     assert coordinator.color_temp_kelvin is None and not coordinator.boolean_control_state
     assert coordinator.power_on_behaviour is None and coordinator.power_on_open_flag is None
@@ -1377,12 +1380,12 @@ async def test_h607c_invalid_advertisement_cannot_mask_valid_identity_or_encrypt
         records.reverse()
     info = SimpleNamespace(name="Govee_H607C", source="scanner", time=time.monotonic(), manufacturer_data=dict(records))
     coordinator._note_advertisement(info)
-    coordinator._prune_h607c_advertisements()
+    coordinator._prune_pact_advertisements()
 
     assert (coordinator.pact_type, coordinator.pact_code) == (1, 1)
-    assert coordinator.h607c_pact_readiness == "ready"
+    assert coordinator.pact_readiness == "ready"
     assert coordinator._advertised_encryption and coordinator._advertised_plaintext
-    assert coordinator._h607c_invalid_pact_version_seen
+    assert coordinator._pact_identity.invalid_version_seen
 
 
 async def test_h607c_newer_invalid_version_revokes_old_scanner_pact(hass):
@@ -1401,13 +1404,13 @@ async def test_h607c_newer_invalid_version_revokes_old_scanner_pact(hass):
         manufacturer_data={0x8840: bytes.fromhex("ec00010100")},
     )
     coordinator._note_advertisement(valid)
-    coordinator._prune_h607c_advertisements()
-    assert coordinator.h607c_pact_readiness == "ready"
+    coordinator._prune_pact_advertisements()
+    assert coordinator.pact_readiness == "ready"
 
     coordinator._note_advertisement(invalid)
     coordinator._note_advertisement(valid, cached=True)
-    coordinator._prune_h607c_advertisements()
-    assert coordinator.h607c_pact_readiness == "missing"
+    coordinator._prune_pact_advertisements()
+    assert coordinator.pact_readiness == "missing"
     assert not coordinator._authorization_profile().supports_rgb
     assert coordinator._advertised_encryption and not coordinator._advertised_plaintext
 
@@ -1421,8 +1424,8 @@ async def test_h607c_conflicting_valid_pacts_in_one_advertisement_fail_closed(ha
         manufacturer_data={0x8801: bytes.fromhex("ec00010100"), 0x8802: bytes.fromhex("ec00020100")},
     )
     coordinator._note_advertisement(info)
-    coordinator._prune_h607c_advertisements()
-    assert coordinator.h607c_pact_readiness == "conflicting"
+    coordinator._prune_pact_advertisements()
+    assert coordinator.pact_readiness == "conflicting"
     assert not coordinator._authorization_profile().supports_rgb
 
 
@@ -1486,14 +1489,14 @@ async def test_h6181_marker_pact_is_reconciled_again_on_reconnect(hass, monkeypa
     monkeypatch.setattr(coordinator, "_send_identity_queries", AsyncMock())
     monkeypatch.setattr(coordinator, "_wait_for_revisions", AsyncMock(return_value=False))
     monkeypatch.setattr(coordinator, "_start_keep_alive", lambda: None)
-    monkeypatch.setattr(coordinator, "_refresh_h607c_advertisements", lambda: None)
+    monkeypatch.setattr(coordinator, "_refresh_pact_advertisements", lambda: None)
     monkeypatch.setattr(f"{M}.async_establish_ble_connection", AsyncMock(return_value=device))
     await coordinator.send_command(build_power(True, "H6181"))
     assert (coordinator.pact_type, coordinator.pact_code) == (10, 2)
     assert coordinator.profile.brightness_wire_range is None
     assert coordinator.profile.diy_upload_transport == "a3"
     coordinator._clear_client_state(device)
-    assert coordinator._h607c_marker_pact is None
+    assert coordinator._pact_identity.marker_pact is None
     assert (coordinator.pact_type, coordinator.pact_code) == (10, 2)
     device.read_gatt_char.return_value = b"\0"
     await coordinator.send_command(build_power(True, "H6181"))
@@ -1509,7 +1512,7 @@ async def test_h6181_marker_only_conflicts_with_current_subscription_advertiseme
     coordinator._client = client()
     now = time.monotonic()
     coordinator._notify_started_monotonic = now
-    coordinator._h607c_marker_pact = (10, 2)
+    coordinator._pact_identity.marker_pact = (10, 2)
     coordinator._note_advertisement(
         SimpleNamespace(
             name="Govee_H6181",
@@ -1518,8 +1521,8 @@ async def test_h6181_marker_only_conflicts_with_current_subscription_advertiseme
             manufacturer_data={0x8801: bytes.fromhex("ec000101")},
         )
     )
-    coordinator._prune_h607c_advertisements()
-    assert coordinator._h607c_pact_conflict is fresh
+    coordinator._prune_pact_advertisements()
+    assert coordinator._pact_identity.conflict is fresh
     if fresh:
         with pytest.raises(HomeAssistantError) as error:
             coordinator._validate_authorized_packet(build_power(True, "H6181"))

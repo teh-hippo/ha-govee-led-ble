@@ -476,9 +476,9 @@ def source_recovery_wire(hass, monkeypatch, model):
     coord.pact_type, coord.pact_code = 1, 2 if model == "H60A6" else 1
     coord._confirmed_identity_fields.add("pact")
     if model == "H607C":
-        coord._h607c_marker_seen = True
-        coord._h607c_marker_pact = (1, 1)
-        monkeypatch.setattr(coord, "_refresh_h607c_advertisements", lambda: None)
+        coord._pact_identity.marker_seen = True
+        coord._pact_identity.marker_pact = (1, 1)
+        monkeypatch.setattr(coord, "_refresh_pact_advertisements", lambda: None)
     coord._resolve_device_profile()
     coord._notification_token = object()
     coord._notify_started_monotonic = time.monotonic() - 1
@@ -1059,7 +1059,7 @@ def test_compound_recovery_planned_release_preserves_presentation_but_revokes_pa
     _qualify_compound_h6199(coordinator)
     client = _c()
     coordinator._client = client
-    coordinator._h607c_marker_pact = (2, 1)
+    coordinator._pact_identity.marker_pact = (2, 1)
     profile = coordinator.profile
 
     coordinator._clear_client_state(
@@ -1071,10 +1071,10 @@ def test_compound_recovery_planned_release_preserves_presentation_but_revokes_pa
 
     assert (coordinator.pact_type, coordinator.pact_code) == (2, 1)
     assert coordinator.profile == profile
-    assert coordinator._h607c_marker_pact is None
-    assert coordinator._subscription_advertised_pact is None
+    assert coordinator._pact_identity.marker_pact is None
+    assert coordinator._pact_identity.subscription_advertised_pact is None
     assert not coordinator.identity_fields_confirmed(frozenset({"pact"}))
-    coordinator._resolve_h607c_pact(preserve_state=True)
+    coordinator._resolve_pact_identity(preserve_state=True)
     assert (coordinator.pact_type, coordinator.pact_code) == (2, 1)
     assert coordinator.profile == profile
     assert not coordinator.identity_fields_confirmed(frozenset({"pact"}))
@@ -1085,12 +1085,12 @@ async def test_pending_disconnect_cannot_merge_retired_h6199_pact_marker(hass):
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6199", configuration_url=None)
     _qualify_compound_h6199(coordinator)
     coordinator._notification_token = object()
-    coordinator._h607c_marker_pact = (2, 1)
+    coordinator._pact_identity.marker_pact = (2, 1)
     client = _c()
 
     async def disconnect():
         assert coordinator._notification_token is None
-        assert coordinator._h607c_marker_pact is None
+        assert coordinator._pact_identity.marker_pact is None
         coordinator._note_advertisement(SimpleNamespace(manufacturer_data={34818: bytes((0xEC, 0, 1, 1, 0))}))
         client.is_connected = False
 
