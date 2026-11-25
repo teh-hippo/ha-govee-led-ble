@@ -137,6 +137,7 @@ type NativeLayer = NativeDiyLayer | NativePaintLayer | NativeOpaqueLayer
 
 @dataclass(frozen=True, slots=True)
 class NativeEffect:
+    model: str
     family: int
     layers: tuple[NativeLayer, ...]
     backgrounds: tuple[RGB, ...] = ()
@@ -149,7 +150,6 @@ class NativeEffect:
     preset_id: int | None = None
     template: CatalogueRef | None = None
     speed_index: int | None = None
-    model: str = "H60A6"
     revision: int = 0
     combined: LayeredScene | None = None
     projector_layers: tuple[ProjectorLayer, ...] = ()
