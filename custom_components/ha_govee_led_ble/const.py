@@ -8,6 +8,11 @@ from math import ceil
 from typing import Any
 
 from .coordinator_identity import DeviceIdentitySource
+from .effect_content_ids import (
+    MULTI_EFFECT_CONTENT_KIND,
+    PAINTED_EFFECT_CONTENT_KIND,
+    SINGLE_EFFECT_CONTENT_KIND,
+)
 from .firmware_version import FirmwareVersion
 from .h6199_calibration import WHITE_BALANCE_POSITIONS
 from .music_semantics import (
@@ -83,9 +88,9 @@ EFFECT_CATEGORY_CONTENT_KINDS = {
     EFFECT_CATEGORY_SCENES: frozenset({"scene_builtin", "scene_palette", "scene_layered"}),
     EFFECT_CATEGORY_VIDEO: frozenset({"video_profile"}),
     EFFECT_CATEGORY_EFFECTS: frozenset(
-        {"static_rgb", "h617a_painted", "h617a_single", "h6179_single_diy", "palette_diy"}
+        {"static_rgb", PAINTED_EFFECT_CONTENT_KIND, SINGLE_EFFECT_CONTENT_KIND, "h6179_single_diy", "palette_diy"}
     ),
-    EFFECT_CATEGORY_MULTI_LAYERED: frozenset({"h617a_multi", "h6179_mixed_diy"}),
+    EFFECT_CATEGORY_MULTI_LAYERED: frozenset({MULTI_EFFECT_CONTENT_KIND, "h6179_mixed_diy"}),
     EFFECT_CATEGORY_REACTIVE: frozenset({"music_profile"}),
     EFFECT_CATEGORY_ADVANCED: frozenset({"advanced", "workshop"}),
 }
@@ -1236,9 +1241,9 @@ _H617A_PROFILE = ModelProfile(
     advanced_scene_carrier=(1013, 11836),
     effect_readback="diy_code_only",
     legacy_effect_selector_domains=(
-        ("h617a_painted", LegacyEffectSelectorDomain.DIY),
-        ("h617a_single", LegacyEffectSelectorDomain.DIY),
-        ("h617a_multi", LegacyEffectSelectorDomain.DIY),
+        (PAINTED_EFFECT_CONTENT_KIND, LegacyEffectSelectorDomain.DIY),
+        (SINGLE_EFFECT_CONTENT_KIND, LegacyEffectSelectorDomain.DIY),
+        (MULTI_EFFECT_CONTENT_KIND, LegacyEffectSelectorDomain.DIY),
         ("workshop", LegacyEffectSelectorDomain.SCENE),
         ("shared_scene", LegacyEffectSelectorDomain.SCENE),
     ),
@@ -2955,9 +2960,9 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         advanced_scene_carrier=(29884, 41599),
         effect_readback="diy_code_only",
         legacy_effect_selector_domains=(
-            ("h617a_painted", LegacyEffectSelectorDomain.DIY),
-            ("h617a_single", LegacyEffectSelectorDomain.DIY),
-            ("h617a_multi", LegacyEffectSelectorDomain.DIY),
+            (PAINTED_EFFECT_CONTENT_KIND, LegacyEffectSelectorDomain.DIY),
+            (SINGLE_EFFECT_CONTENT_KIND, LegacyEffectSelectorDomain.DIY),
+            (MULTI_EFFECT_CONTENT_KIND, LegacyEffectSelectorDomain.DIY),
             ("workshop", LegacyEffectSelectorDomain.SCENE),
             ("shared_scene", LegacyEffectSelectorDomain.SCENE),
         ),

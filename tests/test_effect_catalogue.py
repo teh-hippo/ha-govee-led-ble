@@ -833,7 +833,7 @@ def test_release_capability_contract_routes_saved_effects_through_home_assistant
     assert all(
         capability is not None
         and capability.application_route is ApplicationRoute.HOME_ASSISTANT_CONTROL
-        and capability.compiler_deployer_strategy is CompilerDeployerStrategy.H617A_CUSTOM_ENGINE
+        and capability.compiler_deployer_strategy is CompilerDeployerStrategy.GENERIC_DIY_ENGINE
         and capability.verification_confidence is VerificationConfidence.SELECTION_ONLY
         for capability in (h617a_painted, h617a_single, h617a_multi)
     )

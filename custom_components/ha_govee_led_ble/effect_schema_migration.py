@@ -7,6 +7,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from .const import MODEL_PROFILES
+from .effect_content_ids import PAINTED_EFFECT_CONTENT_KIND
 
 type RGB = tuple[int, int, int]
 
@@ -21,7 +22,7 @@ def migrate_effect_content_v1(value: object) -> dict[str, Any]:
     if not isinstance(value, Mapping):
         raise LegacyEffectMigrationError("legacy effect content must be a mapping")
     raw = dict(value)
-    if raw.get("kind") != "h617a_painted":
+    if raw.get("kind") != PAINTED_EFFECT_CONTENT_KIND:
         return copy.deepcopy(raw)
     background = _rgb(raw.get("background"), "legacy painted background")
     segments: list[list[int] | None] = [
@@ -47,7 +48,7 @@ def migrate_effect_content_v1(value: object) -> dict[str, Any]:
             claimed.add(segment)
             segments[segment] = list(fill)
     return {
-        "kind": "h617a_painted",
+        "kind": PAINTED_EFFECT_CONTENT_KIND,
         "effect": raw.get("effect"),
         "speed": raw.get("speed"),
         "brightness": raw.get("brightness"),

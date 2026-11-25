@@ -87,6 +87,7 @@ from .effect_catalogue_templates import H7020_NATIVE_DIY_TEMPLATES as H7020_NATI
 from .effect_catalogue_templates import H7025_CATALOGUE_TEMPLATES as H7025_CATALOGUE_TEMPLATES
 from .effect_catalogue_templates import WORKSHOP_PROTOCOL_FIXTURES as WORKSHOP_PROTOCOL_FIXTURES
 from .effect_catalogue_templates import _single_template as _single_template
+from .effect_content_ids import SINGLE_EFFECT_CONTENT_KIND
 from .effect_contracts import (
     SelectorPolicy,
     release_content_reference_model,
@@ -110,7 +111,7 @@ from .native_effect import NativeDiyLayer, NativeOpaqueLayer
 from .native_effect_codecs import native_effect_codec_for_profile
 
 EFFECT_STUDIO_CATALOGUE_SCHEMA_VERSION: Final = 12
-_legacy_catalogue_sku = release_content_reference_model("h617a_single")
+_legacy_catalogue_sku = release_content_reference_model(SINGLE_EFFECT_CONTENT_KIND)
 if _legacy_catalogue_sku is None:
     raise RuntimeError("generic DIY content has no declared catalogue identity")
 LEGACY_CATALOGUE_SKU: Final = _legacy_catalogue_sku

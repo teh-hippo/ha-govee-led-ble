@@ -5,6 +5,7 @@ from dataclasses import replace
 from .const import ModelProfile, get_profile
 from .effect_catalogue import MODEL_EFFECT_CATALOGUES
 from .effect_catalogue_models import ModelEffectCatalogue
+from .effect_content_ids import MULTI_EFFECT_CONTENT_KIND, SINGLE_EFFECT_CONTENT_KIND
 from .effect_contracts import (
     ContentProjection,
     release_content_capability,
@@ -121,9 +122,9 @@ def resolve_target_item(item: LibraryItem, model: str, profile: ModelProfile | N
         content, SingleEffect | MultiEffect | PaletteDiyEffect | H6179SingleDiyEffect | H6179MixedDiyEffect
     ):
         source_content_kind = (
-            "h617a_single"
+            SINGLE_EFFECT_CONTENT_KIND
             if isinstance(content, SingleEffect)
-            else "h617a_multi"
+            else MULTI_EFFECT_CONTENT_KIND
             if isinstance(content, MultiEffect)
             else "h6179_single_diy"
             if isinstance(content, H6179SingleDiyEffect)

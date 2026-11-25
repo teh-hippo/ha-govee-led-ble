@@ -7,6 +7,11 @@ from enum import StrEnum
 from typing import Final
 
 from .const import ModelProfile, default_effect_categories, get_profile, supported_effect_categories
+from .effect_content_ids import (
+    MULTI_EFFECT_CONTENT_KIND,
+    PAINTED_EFFECT_CONTENT_KIND,
+    SINGLE_EFFECT_CONTENT_KIND,
+)
 from .effect_domain import EFFECT_SCHEMA_VERSION, JsonValue
 from .effect_limits import (
     MAX_DEPLOYMENT_RECORDS,
@@ -59,7 +64,7 @@ class ApplicationRoute(StrEnum):
 
 class CompilerDeployerStrategy(StrEnum):
     NATIVE_EFFECT_SELECTION = "native_effect_selection"
-    H617A_CUSTOM_ENGINE = "h617a_custom_engine"
+    GENERIC_DIY_ENGINE = "generic_diy_engine"
     H6199_CUSTOM_ENGINE = "h6199_custom_engine"
     MODEL_SCENE_ENGINE = "model_scene_engine"
     COORDINATOR_WRITER = "coordinator_writer"
@@ -162,7 +167,8 @@ def _capability(
         else ContentProjection.TYPED_DIY
         if persistent_content_kind in {"h6179_single_diy", "h6179_mixed_diy"}
         else ContentProjection.GENERIC_DIY
-        if persistent_content_kind in {"h617a_painted", "h617a_single", "h617a_multi"}
+        if persistent_content_kind
+        in {PAINTED_EFFECT_CONTENT_KIND, SINGLE_EFFECT_CONTENT_KIND, MULTI_EFFECT_CONTENT_KIND}
         else ContentProjection.DIRECT
     )
     upload_carriers = (
@@ -213,11 +219,11 @@ def _capability(
 
 def _accepted_content_kinds(target_kind: str) -> frozenset[str]:
     return {
-        "h617a_single": frozenset({"h617a_single", "h6179_single_diy", "palette_diy"}),
-        "h617a_multi": frozenset({"h617a_multi", "h6179_mixed_diy"}),
-        "h6179_single_diy": frozenset({"h617a_single", "h6179_single_diy", "palette_diy"}),
-        "h6179_mixed_diy": frozenset({"h617a_multi", "h6179_mixed_diy"}),
-        "palette_diy": frozenset({"h617a_single", "h6179_single_diy", "palette_diy"}),
+        SINGLE_EFFECT_CONTENT_KIND: frozenset({SINGLE_EFFECT_CONTENT_KIND, "h6179_single_diy", "palette_diy"}),
+        MULTI_EFFECT_CONTENT_KIND: frozenset({MULTI_EFFECT_CONTENT_KIND, "h6179_mixed_diy"}),
+        "h6179_single_diy": frozenset({SINGLE_EFFECT_CONTENT_KIND, "h6179_single_diy", "palette_diy"}),
+        "h6179_mixed_diy": frozenset({MULTI_EFFECT_CONTENT_KIND, "h6179_mixed_diy"}),
+        "palette_diy": frozenset({SINGLE_EFFECT_CONTENT_KIND, "h6179_single_diy", "palette_diy"}),
     }.get(target_kind, frozenset({target_kind}))
 
 
@@ -312,25 +318,25 @@ _RGBIC_WORKFLOW_DECLARATIONS: Final = (
     CapabilityDeclaration(
         _W.PAINTED,
         "Painted",
-        "h617a_painted",
+        PAINTED_EFFECT_CONTENT_KIND,
         _R.HOME_ASSISTANT_CONTROL,
-        _S.H617A_CUSTOM_ENGINE,
+        _S.GENERIC_DIY_ENGINE,
         _V.SELECTION_ONLY,
     ),
     CapabilityDeclaration(
         _W.SINGLE,
         "Single",
-        "h617a_single",
+        SINGLE_EFFECT_CONTENT_KIND,
         _R.HOME_ASSISTANT_CONTROL,
-        _S.H617A_CUSTOM_ENGINE,
+        _S.GENERIC_DIY_ENGINE,
         _V.SELECTION_ONLY,
     ),
     CapabilityDeclaration(
         _W.MULTI,
         "Multi",
-        "h617a_multi",
+        MULTI_EFFECT_CONTENT_KIND,
         _R.HOME_ASSISTANT_CONTROL,
-        _S.H617A_CUSTOM_ENGINE,
+        _S.GENERIC_DIY_ENGINE,
         _V.SELECTION_ONLY,
     ),
     CapabilityDeclaration(
@@ -374,7 +380,7 @@ _RELEASE_CAPABILITY_BASE: Final = (
         )
         for workflow, label, kind, route, strategy in (
             (_W.NATIVE_SCENES, "Scenes", "scene_builtin", _R.STUDIO_SCENE_APPLY, _S.NATIVE_EFFECT_SELECTION),
-            (_W.SINGLE, "Single DIY", "h617a_single", _R.HOME_ASSISTANT_CONTROL, _S.H617A_CUSTOM_ENGINE),
+            (_W.SINGLE, "Single DIY", SINGLE_EFFECT_CONTENT_KIND, _R.HOME_ASSISTANT_CONTROL, _S.GENERIC_DIY_ENGINE),
             (_W.NATIVE_MUSIC, "Music", "music_profile", _R.HOME_ASSISTANT_CONTROL, _S.COORDINATOR_WRITER),
         )
     ),
@@ -406,8 +412,8 @@ _RELEASE_CAPABILITY_BASE: Final = (
                 _S.MODEL_SCENE_ENGINE,
             ),
             (_W.LAYERED_SCENES, "Layered scenes", "scene_layered", _R.HOME_ASSISTANT_CONTROL, _S.MODEL_SCENE_ENGINE),
-            (_W.SINGLE, "Basic DIY", "h617a_single", _R.HOME_ASSISTANT_CONTROL, _S.H617A_CUSTOM_ENGINE),
-            (_W.MULTI, "Mixed DIY", "h617a_multi", _R.HOME_ASSISTANT_CONTROL, _S.H617A_CUSTOM_ENGINE),
+            (_W.SINGLE, "Basic DIY", SINGLE_EFFECT_CONTENT_KIND, _R.HOME_ASSISTANT_CONTROL, _S.GENERIC_DIY_ENGINE),
+            (_W.MULTI, "Mixed DIY", MULTI_EFFECT_CONTENT_KIND, _R.HOME_ASSISTANT_CONTROL, _S.GENERIC_DIY_ENGINE),
             (_W.NATIVE_MUSIC, "Music", "music_profile", _R.HOME_ASSISTANT_CONTROL, _S.COORDINATOR_WRITER),
             (_W.ADVANCED, "Advanced", "advanced", _R.HOME_ASSISTANT_CONTROL, _S.MODEL_SCENE_ENGINE),
             (_W.WORKSHOP, "Workshop", "workshop", _R.HOME_ASSISTANT_CONTROL, _S.MODEL_SCENE_ENGINE),
@@ -443,8 +449,8 @@ _RELEASE_CAPABILITY_BASE: Final = (
                 _S.MODEL_SCENE_ENGINE,
             ),
             (_W.LAYERED_SCENES, "Layered scenes", "scene_layered", _R.HOME_ASSISTANT_CONTROL, _S.MODEL_SCENE_ENGINE),
-            (_W.SINGLE, "Basic DIY", "h617a_single", _R.HOME_ASSISTANT_CONTROL, _S.H617A_CUSTOM_ENGINE),
-            (_W.MULTI, "Mixed DIY", "h617a_multi", _R.HOME_ASSISTANT_CONTROL, _S.H617A_CUSTOM_ENGINE),
+            (_W.SINGLE, "Basic DIY", SINGLE_EFFECT_CONTENT_KIND, _R.HOME_ASSISTANT_CONTROL, _S.GENERIC_DIY_ENGINE),
+            (_W.MULTI, "Mixed DIY", MULTI_EFFECT_CONTENT_KIND, _R.HOME_ASSISTANT_CONTROL, _S.GENERIC_DIY_ENGINE),
             (_W.NATIVE_MUSIC, "Music", "music_profile", _R.HOME_ASSISTANT_CONTROL, _S.COORDINATOR_WRITER),
             (_W.ADVANCED, "Layered effects", "advanced", _R.HOME_ASSISTANT_CONTROL, _S.MODEL_SCENE_ENGINE),
             (_W.WORKSHOP, "Workshop", "workshop", _R.HOME_ASSISTANT_CONTROL, _S.MODEL_SCENE_ENGINE),
@@ -484,9 +490,9 @@ _RELEASE_CAPABILITY_BASE: Final = (
         "H617A",
         _W.PAINTED,
         "Painted",
-        "h617a_painted",
+        PAINTED_EFFECT_CONTENT_KIND,
         _R.HOME_ASSISTANT_CONTROL,
-        _S.H617A_CUSTOM_ENGINE,
+        _S.GENERIC_DIY_ENGINE,
         _V.SELECTION_ONLY,
         content_reference=True,
     ),
@@ -494,9 +500,9 @@ _RELEASE_CAPABILITY_BASE: Final = (
         "H617A",
         _W.SINGLE,
         "Single",
-        "h617a_single",
+        SINGLE_EFFECT_CONTENT_KIND,
         _R.HOME_ASSISTANT_CONTROL,
-        _S.H617A_CUSTOM_ENGINE,
+        _S.GENERIC_DIY_ENGINE,
         _V.SELECTION_ONLY,
         content_reference=True,
     ),
@@ -504,9 +510,9 @@ _RELEASE_CAPABILITY_BASE: Final = (
         "H617A",
         _W.MULTI,
         "Multi",
-        "h617a_multi",
+        MULTI_EFFECT_CONTENT_KIND,
         _R.HOME_ASSISTANT_CONTROL,
-        _S.H617A_CUSTOM_ENGINE,
+        _S.GENERIC_DIY_ENGINE,
         _V.SELECTION_ONLY,
         content_reference=True,
     ),
@@ -731,7 +737,7 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
             (_W.LAYERED_SCENES, "Layered scenes", "scene_layered", _R.STUDIO_CUSTOM_APPLY, _S.MODEL_SCENE_ENGINE),
             (_W.SINGLE, "Native DIY", "native_effect", _R.STUDIO_CUSTOM_APPLY, _S.A3_EFFECT_UPLOAD),
             (_W.MULTI, "Pole and base DIY", "native_effect", _R.STUDIO_CUSTOM_APPLY, _S.A3_EFFECT_UPLOAD),
-            (_W.PAINTED, "Paint", "h617a_painted", _R.STUDIO_CUSTOM_APPLY, _S.A3_EFFECT_UPLOAD),
+            (_W.PAINTED, "Paint", PAINTED_EFFECT_CONTENT_KIND, _R.STUDIO_CUSTOM_APPLY, _S.A3_EFFECT_UPLOAD),
             (_W.NATIVE_MUSIC, "Music", "music_profile", _R.STUDIO_CUSTOM_APPLY, _S.COORDINATOR_WRITER),
         )
     ),
@@ -748,8 +754,8 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         for model, workflow, label, kind in (
             ("H60A1", _W.NATIVE_SCENES, "Scenes", "scene_builtin"),
             ("H60A1", _W.LAYERED_SCENES, "Layered scenes", "scene_layered"),
-            ("H60A1", _W.SINGLE, "Single DIY", "h617a_single"),
-            ("H60A1", _W.MULTI, "Mixed DIY", "h617a_multi"),
+            ("H60A1", _W.SINGLE, "Single DIY", SINGLE_EFFECT_CONTENT_KIND),
+            ("H60A1", _W.MULTI, "Mixed DIY", MULTI_EFFECT_CONTENT_KIND),
             ("H60A6", _W.NATIVE_SCENES, "Scenes", "scene_builtin"),
             ("H60A6", _W.LAYERED_SCENES, "Native scenes", "native_effect"),
             ("H60A6", _W.SINGLE, "Native DIY", "native_effect"),
@@ -787,8 +793,8 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
                 _R.HOME_ASSISTANT_CONTROL,
                 _S.MODEL_SCENE_ENGINE,
             ),
-            (_W.SINGLE, "Basic DIY", "h617a_single", _R.HOME_ASSISTANT_CONTROL, _S.H617A_CUSTOM_ENGINE),
-            (_W.MULTI, "Mixed DIY", "h617a_multi", _R.HOME_ASSISTANT_CONTROL, _S.H617A_CUSTOM_ENGINE),
+            (_W.SINGLE, "Basic DIY", SINGLE_EFFECT_CONTENT_KIND, _R.HOME_ASSISTANT_CONTROL, _S.GENERIC_DIY_ENGINE),
+            (_W.MULTI, "Mixed DIY", MULTI_EFFECT_CONTENT_KIND, _R.HOME_ASSISTANT_CONTROL, _S.GENERIC_DIY_ENGINE),
         )
     ),
     *(
@@ -802,17 +808,17 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
                 _R.HOME_ASSISTANT_CONTROL,
                 _S.MODEL_SCENE_ENGINE,
             ),
-            (_W.SINGLE, "Basic DIY", "h617a_single", _R.HOME_ASSISTANT_CONTROL, _S.H617A_CUSTOM_ENGINE),
-            (_W.MULTI, "Mixed DIY", "h617a_multi", _R.HOME_ASSISTANT_CONTROL, _S.H617A_CUSTOM_ENGINE),
+            (_W.SINGLE, "Basic DIY", SINGLE_EFFECT_CONTENT_KIND, _R.HOME_ASSISTANT_CONTROL, _S.GENERIC_DIY_ENGINE),
+            (_W.MULTI, "Mixed DIY", MULTI_EFFECT_CONTENT_KIND, _R.HOME_ASSISTANT_CONTROL, _S.GENERIC_DIY_ENGINE),
         )
     ),
     *(
         _capability("H6102", workflow, label, kind, route, strategy, _V.SELECTION_ONLY)
         for workflow, label, kind, route, strategy in (
             (_W.NATIVE_SCENES, "Scenes", "scene_builtin", _R.STUDIO_SCENE_APPLY, _S.NATIVE_EFFECT_SELECTION),
-            (_W.SINGLE, "Single", "h617a_single", _R.HOME_ASSISTANT_CONTROL, _S.H617A_CUSTOM_ENGINE),
-            (_W.MULTI, "Mixed", "h617a_multi", _R.HOME_ASSISTANT_CONTROL, _S.H617A_CUSTOM_ENGINE),
-            (_W.PAINTED, "Painted", "h617a_painted", _R.HOME_ASSISTANT_CONTROL, _S.H617A_CUSTOM_ENGINE),
+            (_W.SINGLE, "Single", SINGLE_EFFECT_CONTENT_KIND, _R.HOME_ASSISTANT_CONTROL, _S.GENERIC_DIY_ENGINE),
+            (_W.MULTI, "Mixed", MULTI_EFFECT_CONTENT_KIND, _R.HOME_ASSISTANT_CONTROL, _S.GENERIC_DIY_ENGINE),
+            (_W.PAINTED, "Painted", PAINTED_EFFECT_CONTENT_KIND, _R.HOME_ASSISTANT_CONTROL, _S.GENERIC_DIY_ENGINE),
             (_W.NATIVE_MUSIC, "Music", "music_profile", _R.HOME_ASSISTANT_CONTROL, _S.COORDINATOR_WRITER),
             (
                 _W.EDITED_PALETTE_SCENES,
@@ -836,9 +842,9 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
             _V.UNVERIFIED,
         )
         for workflow, label, kind, route, strategy in (
-            (_W.PAINTED, "Graffiti", "h617a_painted", _R.HOME_ASSISTANT_CONTROL, _S.A3_EFFECT_UPLOAD),
-            (_W.SINGLE, "Basic", "h617a_single", _R.HOME_ASSISTANT_CONTROL, _S.A3_EFFECT_UPLOAD),
-            (_W.MULTI, "Mixed", "h617a_multi", _R.HOME_ASSISTANT_CONTROL, _S.A3_EFFECT_UPLOAD),
+            (_W.PAINTED, "Graffiti", PAINTED_EFFECT_CONTENT_KIND, _R.HOME_ASSISTANT_CONTROL, _S.A3_EFFECT_UPLOAD),
+            (_W.SINGLE, "Basic", SINGLE_EFFECT_CONTENT_KIND, _R.HOME_ASSISTANT_CONTROL, _S.A3_EFFECT_UPLOAD),
+            (_W.MULTI, "Mixed", MULTI_EFFECT_CONTENT_KIND, _R.HOME_ASSISTANT_CONTROL, _S.A3_EFFECT_UPLOAD),
             (_W.NATIVE_SCENES, "Scenes", "scene_builtin", _R.STUDIO_SCENE_APPLY, _S.NATIVE_EFFECT_SELECTION),
             (
                 _W.EDITED_PALETTE_SCENES,
@@ -863,9 +869,9 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
             _V.UNVERIFIED,
         )
         for workflow, label, kind in (
-            (_W.PAINTED, "Graffiti", "h617a_painted"),
-            (_W.SINGLE, "Basic", "h617a_single"),
-            (_W.MULTI, "Mixed", "h617a_multi"),
+            (_W.PAINTED, "Graffiti", PAINTED_EFFECT_CONTENT_KIND),
+            (_W.SINGLE, "Basic", SINGLE_EFFECT_CONTENT_KIND),
+            (_W.MULTI, "Mixed", MULTI_EFFECT_CONTENT_KIND),
         )
     ),
     _capability(
@@ -906,9 +912,9 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
             _V.UNVERIFIED,
         )
         for workflow, label, kind in (
-            (_W.PAINTED, "Graffiti", "h617a_painted"),
-            (_W.SINGLE, "Basic", "h617a_single"),
-            (_W.MULTI, "Mixed", "h617a_multi"),
+            (_W.PAINTED, "Graffiti", PAINTED_EFFECT_CONTENT_KIND),
+            (_W.SINGLE, "Basic", SINGLE_EFFECT_CONTENT_KIND),
+            (_W.MULTI, "Mixed", MULTI_EFFECT_CONTENT_KIND),
         )
     ),
     _capability(
@@ -949,9 +955,9 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
             _V.UNVERIFIED,
         )
         for workflow, label, kind in (
-            (_W.PAINTED, "Graffiti", "h617a_painted"),
-            (_W.SINGLE, "Basic", "h617a_single"),
-            (_W.MULTI, "Mixed", "h617a_multi"),
+            (_W.PAINTED, "Graffiti", PAINTED_EFFECT_CONTENT_KIND),
+            (_W.SINGLE, "Basic", SINGLE_EFFECT_CONTENT_KIND),
+            (_W.MULTI, "Mixed", MULTI_EFFECT_CONTENT_KIND),
         )
     ),
     _capability(
@@ -983,9 +989,9 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
             _V.UNVERIFIED,
         )
         for workflow, label, kind in (
-            (_W.PAINTED, "Graffiti", "h617a_painted"),
-            (_W.SINGLE, "Basic", "h617a_single"),
-            (_W.MULTI, "Mixed", "h617a_multi"),
+            (_W.PAINTED, "Graffiti", PAINTED_EFFECT_CONTENT_KIND),
+            (_W.SINGLE, "Basic", SINGLE_EFFECT_CONTENT_KIND),
+            (_W.MULTI, "Mixed", MULTI_EFFECT_CONTENT_KIND),
         )
     ),
     *(
@@ -1000,9 +1006,9 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         )
         for workflow, label, kind, route, strategy in (
             (_W.NATIVE_SCENES, "Scenes", "scene_builtin", _R.STUDIO_SCENE_APPLY, _S.NATIVE_EFFECT_SELECTION),
-            (_W.PAINTED, "Graffiti", "h617a_painted", _R.HOME_ASSISTANT_CONTROL, _S.A3_EFFECT_UPLOAD),
-            (_W.SINGLE, "Basic", "h617a_single", _R.HOME_ASSISTANT_CONTROL, _S.A3_EFFECT_UPLOAD),
-            (_W.MULTI, "Mixed", "h617a_multi", _R.HOME_ASSISTANT_CONTROL, _S.A3_EFFECT_UPLOAD),
+            (_W.PAINTED, "Graffiti", PAINTED_EFFECT_CONTENT_KIND, _R.HOME_ASSISTANT_CONTROL, _S.A3_EFFECT_UPLOAD),
+            (_W.SINGLE, "Basic", SINGLE_EFFECT_CONTENT_KIND, _R.HOME_ASSISTANT_CONTROL, _S.A3_EFFECT_UPLOAD),
+            (_W.MULTI, "Mixed", MULTI_EFFECT_CONTENT_KIND, _R.HOME_ASSISTANT_CONTROL, _S.A3_EFFECT_UPLOAD),
             (_W.NATIVE_MUSIC, "Music", "music_profile", _R.HOME_ASSISTANT_CONTROL, _S.COORDINATOR_WRITER),
             (_W.ADVANCED, "Advanced", "advanced", _R.HOME_ASSISTANT_CONTROL, _S.MODEL_SCENE_ENGINE),
         )
@@ -1030,9 +1036,9 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         for workflow, label, kind, route, strategy in (
             (_W.NATIVE_SCENES, "Scenes", "scene_builtin", _R.STUDIO_SCENE_APPLY, _S.NATIVE_EFFECT_SELECTION),
             (_W.LAYERED_SCENES, "Layered scenes", "scene_layered", _R.HOME_ASSISTANT_CONTROL, _S.MODEL_SCENE_ENGINE),
-            (_W.PAINTED, "Paint", "h617a_painted", _R.HOME_ASSISTANT_CONTROL, _S.A3_EFFECT_UPLOAD),
+            (_W.PAINTED, "Paint", PAINTED_EFFECT_CONTENT_KIND, _R.HOME_ASSISTANT_CONTROL, _S.A3_EFFECT_UPLOAD),
             (_W.SINGLE, "Basic", "native_effect", _R.HOME_ASSISTANT_CONTROL, _S.A3_EFFECT_UPLOAD),
-            (_W.MULTI, "Mixed", "h617a_multi", _R.HOME_ASSISTANT_CONTROL, _S.A3_EFFECT_UPLOAD),
+            (_W.MULTI, "Mixed", MULTI_EFFECT_CONTENT_KIND, _R.HOME_ASSISTANT_CONTROL, _S.A3_EFFECT_UPLOAD),
             (_W.ADVANCED, "Advanced", "advanced", _R.HOME_ASSISTANT_CONTROL, _S.MODEL_SCENE_ENGINE),
             (_W.WORKSHOP, "Workshop", "workshop", _R.HOME_ASSISTANT_CONTROL, _S.MODEL_SCENE_ENGINE),
             (_W.NATIVE_MUSIC, "Music", "music_profile", _R.HOME_ASSISTANT_CONTROL, _S.COORDINATOR_WRITER),
@@ -1052,8 +1058,8 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         for workflow, label, kind, route, strategy in (
             (_W.NATIVE_SCENES, "Scenes", "scene_builtin", _R.STUDIO_SCENE_APPLY, _S.NATIVE_EFFECT_SELECTION),
             (_W.LAYERED_SCENES, "Layered scenes", "scene_layered", _R.HOME_ASSISTANT_CONTROL, _S.MODEL_SCENE_ENGINE),
-            (_W.SINGLE, "Basic DIY", "h617a_single", _R.HOME_ASSISTANT_CONTROL, _S.H617A_CUSTOM_ENGINE),
-            (_W.MULTI, "Mixed DIY", "h617a_multi", _R.HOME_ASSISTANT_CONTROL, _S.H617A_CUSTOM_ENGINE),
+            (_W.SINGLE, "Basic DIY", SINGLE_EFFECT_CONTENT_KIND, _R.HOME_ASSISTANT_CONTROL, _S.GENERIC_DIY_ENGINE),
+            (_W.MULTI, "Mixed DIY", MULTI_EFFECT_CONTENT_KIND, _R.HOME_ASSISTANT_CONTROL, _S.GENERIC_DIY_ENGINE),
             (_W.NATIVE_MUSIC, "Music", "music_profile", _R.HOME_ASSISTANT_CONTROL, _S.COORDINATOR_WRITER),
         )
     ),
@@ -1105,8 +1111,8 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
                 _R.HOME_ASSISTANT_CONTROL,
                 _S.MODEL_SCENE_ENGINE,
             ),
-            (_W.SINGLE, "Basic DIY", "h617a_single", _R.HOME_ASSISTANT_CONTROL, _S.H617A_CUSTOM_ENGINE),
-            (_W.MULTI, "Mixed DIY", "h617a_multi", _R.HOME_ASSISTANT_CONTROL, _S.H617A_CUSTOM_ENGINE),
+            (_W.SINGLE, "Basic DIY", SINGLE_EFFECT_CONTENT_KIND, _R.HOME_ASSISTANT_CONTROL, _S.GENERIC_DIY_ENGINE),
+            (_W.MULTI, "Mixed DIY", MULTI_EFFECT_CONTENT_KIND, _R.HOME_ASSISTANT_CONTROL, _S.GENERIC_DIY_ENGINE),
             (_W.NATIVE_MUSIC, "Music", "music_profile", _R.HOME_ASSISTANT_CONTROL, _S.COORDINATOR_WRITER),
         )
     ),
@@ -1132,9 +1138,9 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
                 _S.MODEL_SCENE_ENGINE,
             ),
             (_W.LAYERED_SCENES, "Layered scenes", "scene_layered", _R.HOME_ASSISTANT_CONTROL, _S.MODEL_SCENE_ENGINE),
-            (_W.PAINTED, "Paint", "h617a_painted", _R.HOME_ASSISTANT_CONTROL, _S.H617A_CUSTOM_ENGINE),
-            (_W.SINGLE, "Basic DIY", "h617a_single", _R.HOME_ASSISTANT_CONTROL, _S.H617A_CUSTOM_ENGINE),
-            (_W.MULTI, "Mixed DIY", "h617a_multi", _R.HOME_ASSISTANT_CONTROL, _S.H617A_CUSTOM_ENGINE),
+            (_W.PAINTED, "Paint", PAINTED_EFFECT_CONTENT_KIND, _R.HOME_ASSISTANT_CONTROL, _S.GENERIC_DIY_ENGINE),
+            (_W.SINGLE, "Basic DIY", SINGLE_EFFECT_CONTENT_KIND, _R.HOME_ASSISTANT_CONTROL, _S.GENERIC_DIY_ENGINE),
+            (_W.MULTI, "Mixed DIY", MULTI_EFFECT_CONTENT_KIND, _R.HOME_ASSISTANT_CONTROL, _S.GENERIC_DIY_ENGINE),
             (_W.NATIVE_MUSIC, "Music", "music_profile", _R.HOME_ASSISTANT_CONTROL, _S.COORDINATOR_WRITER),
             (_W.VIDEO, "Video", "video_profile", _R.HOME_ASSISTANT_CONTROL, _S.COORDINATOR_WRITER),
             (_W.ADVANCED, "Advanced", "advanced", _R.HOME_ASSISTANT_CONTROL, _S.MODEL_SCENE_ENGINE),
@@ -1156,8 +1162,8 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         for workflow, label, kind, route, strategy in (
             (_W.NATIVE_SCENES, "Scenes", "scene_builtin", _R.STUDIO_SCENE_APPLY, _S.NATIVE_EFFECT_SELECTION),
             (_W.LAYERED_SCENES, "Layered scenes", "scene_layered", _R.HOME_ASSISTANT_CONTROL, _S.MODEL_SCENE_ENGINE),
-            (_W.SINGLE, "Basic DIY", "h617a_single", _R.HOME_ASSISTANT_CONTROL, _S.H617A_CUSTOM_ENGINE),
-            (_W.MULTI, "Mixed DIY", "h617a_multi", _R.HOME_ASSISTANT_CONTROL, _S.H617A_CUSTOM_ENGINE),
+            (_W.SINGLE, "Basic DIY", SINGLE_EFFECT_CONTENT_KIND, _R.HOME_ASSISTANT_CONTROL, _S.GENERIC_DIY_ENGINE),
+            (_W.MULTI, "Mixed DIY", MULTI_EFFECT_CONTENT_KIND, _R.HOME_ASSISTANT_CONTROL, _S.GENERIC_DIY_ENGINE),
             (_W.ADVANCED, "Template DIY", "advanced", _R.HOME_ASSISTANT_CONTROL, _S.MODEL_SCENE_ENGINE),
             (_W.NATIVE_MUSIC, "Music", "music_profile", _R.HOME_ASSISTANT_CONTROL, _S.COORDINATOR_WRITER),
         )

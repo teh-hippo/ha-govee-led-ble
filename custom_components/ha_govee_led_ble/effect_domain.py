@@ -14,6 +14,11 @@ from typing import Any, Self, assert_never, cast
 from uuid import UUID, uuid4
 
 from .const import MODEL_PROFILES
+from .effect_content_ids import (
+    MULTI_EFFECT_CONTENT_KIND,
+    PAINTED_EFFECT_CONTENT_KIND,
+    SINGLE_EFFECT_CONTENT_KIND,
+)
 from .effect_limits import (
     MAX_EFFECT_DOCUMENT_BYTES,
     MAX_EFFECT_KIND_LENGTH,
@@ -972,7 +977,7 @@ def _content_to_dict(content: EffectContent) -> dict[str, JsonValue]:
         return native_effect_to_value(content)
     if isinstance(content, PaintedEffect):
         return {
-            "kind": "h617a_painted",
+            "kind": PAINTED_EFFECT_CONTENT_KIND,
             "effect": content.effect,
             "speed": content.speed,
             "brightness": content.brightness,
@@ -983,7 +988,7 @@ def _content_to_dict(content: EffectContent) -> dict[str, JsonValue]:
         }
     if isinstance(content, SingleEffect):
         return {
-            "kind": "h617a_single",
+            "kind": SINGLE_EFFECT_CONTENT_KIND,
             "family": content.family,
             "variant": content.variant,
             "speed": content.speed,
@@ -1089,7 +1094,7 @@ def _content_to_dict(content: EffectContent) -> dict[str, JsonValue]:
         }
     if isinstance(content, MultiEffect):
         return {
-            "kind": "h617a_multi",
+            "kind": MULTI_EFFECT_CONTENT_KIND,
             "effects": [{"family": effect.family, "variant": effect.variant} for effect in content.effects],
             "speed": content.speed,
             "palette": [list(colour) for colour in content.palette],
@@ -1145,7 +1150,7 @@ def _content_from_dict(raw: Mapping[str, Any]) -> EffectContent:
         )
     if kind == "native_effect":
         return native_effect_from_value(raw)
-    if kind == "h617a_painted":
+    if kind == PAINTED_EFFECT_CONTENT_KIND:
         return PaintedEffect(
             effect=_required_str(raw, "effect"),
             speed=_required_int(raw, "speed"),
@@ -1155,7 +1160,7 @@ def _content_from_dict(raw: Mapping[str, Any]) -> EffectContent:
             addressing=_optional_str(raw, "addressing") or "segments",
             model=_optional_str(raw, "model"),
         )
-    if kind == "h617a_single":
+    if kind == SINGLE_EFFECT_CONTENT_KIND:
         return SingleEffect(
             family=_required_int(raw, "family"),
             variant=_required_int(raw, "variant"),
@@ -1247,7 +1252,7 @@ def _content_from_dict(raw: Mapping[str, Any]) -> EffectContent:
             ),
             blank_screen_same_tone_duration_seconds=_optional_int(raw, "blank_screen_same_tone_duration_seconds"),
         )
-    if kind == "h617a_multi":
+    if kind == MULTI_EFFECT_CONTENT_KIND:
         return MultiEffect(
             effects=tuple(
                 EffectPair(
