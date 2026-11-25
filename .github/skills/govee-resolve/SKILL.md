@@ -22,6 +22,7 @@ Obtain operator approval before each action.
   PR: set `support_quality=SupportQuality.SUPPORTED`, update the README to `✅ Supported` and adjust existing tests.
   Reference the issue and keep it open until the green PR merges and the promotion ships in a verified automatic master candidate.
   Then thumbs-up the confirming comment and close that issue.
-- **Bug:** once the fix is merged, released and reporter-confirmed, thumbs-up the comment and close the issue.
+- **Bug:** once the fix is merged, released and the maintainer or operator confirms verification, close the issue.
+  Reporter confirmation, a confirming comment, a reaction and extra proof are not required for maintainer-verified bugs.
   Merge an open green fix PR first.
-- **Partial confirmation, new problems or missing replies:** summarise the status for an operator decision.
+- **Partial confirmation or new problems:** summarise the status for an operator decision.
