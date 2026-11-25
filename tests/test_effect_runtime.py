@@ -34,7 +34,7 @@ from custom_components.ha_govee_led_ble.effect_compiler import (
     CompiledEffect,
     compile_application,
     compile_effect,
-    compile_h617a,
+    compile_generic_diy,
     compile_h6199,
 )
 from custom_components.ha_govee_led_ble.effect_deployments import (
@@ -365,7 +365,7 @@ async def test_prior_preflight_refreshes_master_brightness_in_every_mode(mode):
 
     coordinator.refresh_state.side_effect = refresh
     engine = EffectDeploymentEngine(EffectDeploymentRepository(InMemoryVersionedDocumentStore()))
-    assert await engine._async_prepare_prior_state(coordinator, compile_h617a(_item(), 800))
+    assert await engine._async_prepare_prior_state(coordinator, compile_generic_diy(_item(), 800))
     assert engine._capture_prior_state(coordinator, config_entry_id="entry-a").brightness_pct == 37
     if mode in {"colour", "off"}:
         coordinator.async_refresh_segments.assert_awaited_once()
@@ -391,7 +391,7 @@ async def test_truthy_mock_is_not_successful_preflight():
     coordinator.refresh_state = AsyncMock()
     engine = EffectDeploymentEngine(EffectDeploymentRepository(InMemoryVersionedDocumentStore()))
     with pytest.raises(RuntimeError, match="Could not read"):
-        await engine._async_prepare_prior_state(coordinator, compile_h617a(_item(), 800))
+        await engine._async_prepare_prior_state(coordinator, compile_generic_diy(_item(), 800))
     coordinator.send_command.assert_not_awaited()
 
 
@@ -1199,7 +1199,7 @@ async def test_saved_effect_uploads_activates_then_confirms_selector(
     coordinator.async_set_updated_data = MagicMock()
     _confirm_on_call(coordinator, 2, 800)
     item = _item()
-    compiled = compile_h617a(item, 800)
+    compiled = compile_generic_diy(item, 800)
 
     result = await EffectDeploymentEngine(repository, cache).async_apply_saved(
         coordinator,
@@ -1235,7 +1235,7 @@ async def test_saved_effect_powers_on_before_committed_upload(
     coordinator.async_set_updated_data = MagicMock()
     _confirm_on_call(coordinator, 2, 800)
     item = _item()
-    compiled = compile_h617a(item, 800)
+    compiled = compile_generic_diy(item, 800)
 
     result = await EffectDeploymentEngine(repository, cache).async_apply_saved(
         coordinator,
@@ -1414,7 +1414,7 @@ async def test_verification_retry_only_repeats_safe_activation(
     repository, cache = await _repositories(hass)
     coordinator = _coordinator()
     item = _item()
-    compiled = compile_h617a(item, 800)
+    compiled = compile_generic_diy(item, 800)
 
     async def refresh(request=DEFAULT_REFRESH_REQUEST) -> bool:
         if coordinator.refresh_state.await_count == 2:
@@ -1447,7 +1447,7 @@ async def test_non_transport_sequence_failure_is_not_retried(
     repository, cache = await _repositories(hass)
     coordinator = _coordinator()
     item = _item()
-    compiled = compile_h617a(item, 800)
+    compiled = compile_generic_diy(item, 800)
     coordinator.send_command.side_effect = [
         *([None] * len(compiled.upload_packets)),
         RuntimeError("ambiguous activation write"),
@@ -1506,7 +1506,7 @@ async def test_mid_upload_failure_is_uncertain_without_supported_recovery(
     repository, cache = await _repositories(hass)
     coordinator = _coordinator()
     item = _item()
-    compiled = compile_h617a(item, 800)
+    compiled = compile_generic_diy(item, 800)
     coordinator.send_command.side_effect = [None, RuntimeError("write failed")]
     operation_id = uuid4()
 
@@ -1713,7 +1713,7 @@ async def test_verification_failure_retries_reads_then_recovers(
 
     coordinator.refresh_state.side_effect = refresh
     item = _item()
-    compiled = compile_h617a(item, 800)
+    compiled = compile_generic_diy(item, 800)
     operation_id = uuid4()
 
     with pytest.raises(RuntimeError, match="read failed"):
@@ -2233,7 +2233,7 @@ async def test_simultaneous_same_operation_id_shares_one_device_transaction() ->
     await repository.async_load()
     coordinator = _coordinator()
     item = _item()
-    compiled = compile_h617a(item, 800)
+    compiled = compile_generic_diy(item, 800)
     _confirm_on_call(coordinator, 2, 800)
     operation_id = uuid4()
     engine = EffectDeploymentEngine(repository)
@@ -2781,7 +2781,7 @@ async def test_write_only_h601c_deployment_installs_optimistic_state_without_rol
     await coordinator.send_command(build_color_rgb(10, 20, 30, coordinator.model))
     client.write_gatt_char.reset_mock()
     item = _type04_item()
-    compiled = compile_h617a(item, 24, model="H601C")
+    compiled = compile_generic_diy(item, 24, model="H601C")
     engine = EffectDeploymentEngine(repository, cache, active_workspaces)
 
     result = await engine.async_apply_saved(
