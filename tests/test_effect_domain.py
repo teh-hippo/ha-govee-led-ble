@@ -655,15 +655,16 @@ def test_painted_effect_rejects_unbounded_geometry(segment_count: int) -> None:
         PaintedEffect("clockwise", 50, 100, (None,) * segment_count)
 
 
-def test_non_fifteen_logical_geometry_qualifies_for_its_target(monkeypatch) -> None:
-    model = "H7000"
-    profile = replace(MODEL_PROFILES["H617A"], segment_count=14)
-    catalogue = replace(MODEL_EFFECT_CATALOGUES["H617A"], sku=model)
-    monkeypatch.setitem(MODEL_PROFILES, model, profile)
-    monkeypatch.setitem(MODEL_EFFECT_CATALOGUES, model, catalogue)
+def test_non_fifteen_logical_geometry_round_trips_and_compiles_for_effective_profile() -> None:
+    model = "H617E"
+    profile = replace(MODEL_PROFILES[model], segment_count=14)
     content = PaintedEffect("clockwise", 50, 100, (None,) * 14)
+    item = LibraryItem.from_dict(LibraryItem.new("Fourteen segments", content).to_dict())
 
-    validate_effect_eligibility(content, model)
+    validate_effect_eligibility(item.content, model, profile=profile)
+    compiled = compile_application(item, model, diy_code=800, profile=profile)
+    assert isinstance(compiled, CompiledEffect)
+    assert decode_effect_frames(compiled.upload_packets, model, compiled.upload_transport, profile=profile) == content
 
 
 def test_h617a_rejects_wrong_geometry_during_target_qualification() -> None:

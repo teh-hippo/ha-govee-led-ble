@@ -64,7 +64,7 @@ class ApplicationRoute(StrEnum):
 
 class CompilerDeployerStrategy(StrEnum):
     NATIVE_EFFECT_SELECTION = "native_effect_selection"
-    GENERIC_DIY_ENGINE = "generic_diy_engine"
+    GENERIC_DIY_ENGINE = "h617a_custom_engine"
     H6199_CUSTOM_ENGINE = "h6199_custom_engine"
     MODEL_SCENE_ENGINE = "model_scene_engine"
     COORDINATOR_WRITER = "coordinator_writer"

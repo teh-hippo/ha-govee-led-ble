@@ -36,6 +36,7 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     BuiltinScene,
     CatalogueRef,
     MusicProfile,
+    PaintedEffect,
     PaletteDiyEffect,
     SingleEffect,
     effect_content_to_dict,
@@ -809,6 +810,37 @@ async def test_template_default_set_rejects_mismatched_identity(
 
     assert response["success"] is False
     assert response["error"]["code"] == "invalid_format"
+
+
+async def test_template_default_set_rejects_target_geometry_before_persistence(
+    hass: HomeAssistant,
+    hass_ws_client,
+    monkeypatch,
+) -> None:
+    backend = await _setup_backend(hass)
+    entry = SimpleNamespace(
+        entry_id="entry-a",
+        domain=DOMAIN,
+        state=ConfigEntryState.LOADED,
+        runtime_data=_EffectCoordinator(model="H617A", profile=get_profile("H617A")),
+    )
+    monkeypatch.setattr(hass.config_entries, "async_get_entry", lambda _entry_id: entry)
+    client = await hass_ws_client(hass)
+
+    await client.send_json_auto_id(
+        {
+            "type": WS_TEMPLATE_DEFAULT_SET,
+            "config_entry_id": entry.entry_id,
+            "template_id": "template:paint",
+            "content": effect_content_to_dict(PaintedEffect("clockwise", 50, 100, (None,) * 14)),
+            "updated_at": "2026-08-27T00:00:00Z",
+        }
+    )
+    response = await client.receive_json()
+
+    assert response["success"] is False
+    assert response["error"]["code"] == "invalid_format"
+    assert backend.template_defaults.get(entry.entry_id, "template:paint") is None
 
 
 async def test_scene_default_websocket_persists_full_content_without_ble(
