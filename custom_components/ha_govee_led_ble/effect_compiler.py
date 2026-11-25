@@ -12,14 +12,12 @@ from typing import Any, Literal, assert_never, cast
 
 from .const import ModelProfile, get_profile, supported_effect_categories
 from .effect_catalogue import (
-    H6199_PALETTE_DIY_APPLY_CODE,
     diy_destination_range,
     native_diy_template_contract,
     requires_diy_destination_consent,
     validate_effect_eligibility,
     validate_native_diy,
 )
-from .effect_commands import build_h6199_palette_diy
 from .effect_content_ids import TYPED_DIY_CONTENT_KINDS
 from .effect_contracts import (
     EFFECT_COMPILER_VERSION,
@@ -38,6 +36,7 @@ from .effect_diy_codec import (
     generic_diy_content_kind,
     is_single_or_multi_diy_kind,
     prepare_generic_diy,
+    prepare_palette_diy,
     prepare_typed_diy,
     retained_scene_activation_packet,
 )
@@ -76,7 +75,7 @@ from .native_scenes import (
     encode_authored_scene_body,
     native_scene_prefers_selector,
 )
-from .protocol_core import H6199EffectUpload, SceneBody
+from .protocol_core import SceneBody
 from .scenes import MODEL_SCENES, SceneEntry, scene_for_profile, scene_selector_code
 from .transport import fragment_a3
 
@@ -644,7 +643,7 @@ def compile_effect(
             raise ValueError("Generic DIY compilation requires a DIY code")
         return compile_generic_diy(item, diy_code, model=model, profile=profile)
     if isinstance(item.content, PaletteDiyEffect):
-        return compile_h6199(
+        return compile_palette_diy(
             item,
             diy_code,
             model=model,
@@ -803,12 +802,7 @@ def resolve_diy_code(
             if not isinstance(requested, int) or isinstance(requested, bool) or not minimum <= requested <= maximum:
                 raise ValueError(f"{model} approved DIY code must be an integer from {minimum} to {maximum}")
             return requested
-        if requested is not None and requested != H6199_PALETTE_DIY_APPLY_CODE:
-            raise ValueError(
-                f"{model} has no evidenced activation packet for the requested slot; "
-                f"expected {H6199_PALETTE_DIY_APPLY_CODE}"
-            )
-        return H6199_PALETTE_DIY_APPLY_CODE
+        raise ValueError(f"{model} palette DIY requires an approved disposable destination")
     if isinstance(content, PaintedEffect | SingleEffect | MultiEffect):
         workflow = _effect_workflow(content)
         content_kind = generic_diy_content_kind(content)
@@ -1249,7 +1243,7 @@ def compile_typed_diy(
     )
 
 
-def compile_h6199(
+def compile_palette_diy(
     item: LibraryItem,
     diy_code: int | None = None,
     *,
@@ -1264,39 +1258,35 @@ def compile_h6199(
             raise ValueError("unsupported palette DIY content")
         model = content.model
     item = resolve_target_item(item, model, profile)
+    profile = get_profile(model) if profile is None else profile
     result = compatibility(item, model, profile=profile)
     if result.state is not CompatibilityState.COMPATIBLE:
         raise ValueError("; ".join(result.reasons))
     resolved_diy_code = resolve_diy_code(item, diy_code, model=model, profile=profile)
     if resolved_diy_code is None:
-        raise ValueError(f"{model} palette DIY application requires an approved observed DIY code")
+        raise ValueError(f"{model} palette DIY application requires an approved destination")
 
     content = item.content
     if not isinstance(content, PaletteDiyEffect):
-        raise ValueError("unsupported H6199 DIY content")
-    upload = build_h6199_palette_diy(
-        content.family,
-        content.variant,
-        content.speed,
-        content.palette,
-    )
-    activation = build_diy_activation(resolved_diy_code, model, profile=profile)
-    digest = sha256(b"".join((*upload, activation))).hexdigest()
+        raise ValueError("unsupported palette DIY content")
+    prepared = prepare_palette_diy(content, resolved_diy_code, model, profile)
+    digest = sha256(b"".join((*prepared.upload_packets, prepared.activation_packet))).hexdigest()
     return CompiledEffect(
         item_id=str(item.id),
         item_version=item.version,
         model=model,
-        content_kind="palette_diy",
+        content_kind=prepared.content_kind,
         workflow=_effect_workflow(content),
         diy_code=resolved_diy_code,
         activation_mode=ActivationMode.CUSTOM,
         selector_kind="diy",
         expected_effect=None,
-        upload_packets=tuple(upload),
-        activation_packet=activation,
+        upload_packets=prepared.upload_packets,
+        activation_packet=prepared.activation_packet,
         artifact_sha256=digest,
         evidence_codes=(DIY_ACK_EVIDENCE, "effect_content_readback_unavailable"),
-        upload_subtype=int(H6199EffectUpload.BodyKind.diy),
+        upload_transport=prepared.upload_transport,
+        upload_subtype=prepared.upload_subtype,
     )
 
 

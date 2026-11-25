@@ -35,7 +35,7 @@ from custom_components.ha_govee_led_ble.effect_compiler import (
     compile_application,
     compile_effect,
     compile_generic_diy,
-    compile_h6199,
+    compile_palette_diy,
 )
 from custom_components.ha_govee_led_ble.effect_deployments import (
     DeploymentPhase,
@@ -953,7 +953,7 @@ async def test_h6199_palette_accepts_changed_active_selector_after_compilation()
     coordinator.profile = get_profile("H6199")
     coordinator.diy_code = 73
     item = _h6199_item()
-    compiled = compile_h6199(item, 73)
+    compiled = compile_palette_diy(item, 73)
     consent = approve_diy_destination_operation(coordinator, "entry-a", 73)
     coordinator.diy_code = 74
     repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
@@ -975,7 +975,7 @@ async def test_activation_retry_revalidates_destination_consent_before_write() -
     coordinator = _coordinator()
     coordinator.model = "H6199"
     coordinator.profile = get_profile("H6199")
-    compiled = compile_h6199(_h6199_item(), 73)
+    compiled = compile_palette_diy(_h6199_item(), 73)
     consent = approve_diy_destination_operation(coordinator, "entry-a", 73)
     engine = EffectDeploymentEngine(EffectDeploymentRepository(InMemoryVersionedDocumentStore()))
 
@@ -2841,7 +2841,7 @@ async def test_h6199_upload_without_selector_readback_stays_uncertain(
     coordinator.diy_code = 73
     coordinator.async_observe_effect = AsyncMock(return_value=None)
     item = _h6199_item()
-    compiled = compile_h6199(item, 73)
+    compiled = compile_palette_diy(item, 73)
 
     result = await EffectDeploymentEngine(repository, cache).async_apply_saved(
         coordinator,
