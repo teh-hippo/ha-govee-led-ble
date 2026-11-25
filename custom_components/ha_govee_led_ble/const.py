@@ -408,7 +408,6 @@ _GRAMMAR_TRAITS: Mapping[str, frozenset[str]] = {
             "display_music",
             "music_selector_parameters",
             "rhythm_selector_parameter",
-            "workshop_scene_type",
         }
     ),
     "H7025": frozenset({"new_music_selector"}),
@@ -3705,6 +3704,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         static_readback_zero_kelvin_is_rgb=True,
         boolean_controls=frozenset({"power_off_memory"}),
         supports_custom_effects=True,
+        supports_advanced_effects=True,
         supports_scenes=True,
         supports_multi_layered_effects=True,
         scene_catalogue_sku="H7020",
