@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from .h60b0_controls import source_readback as source_readback
+from .h60b0_controls import source_values as source_values
 from .protocol_admission import require_profile_packet as require_profile_packet
 from .protocol_commands import KELVIN_DIRECT_RGB as KELVIN_DIRECT_RGB
 from .protocol_commands import build_black_border as build_black_border

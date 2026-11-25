@@ -243,7 +243,7 @@ def parse_color_mode(generated: Any, model: str, *, profile: ModelProfile | None
     if detail is None:
         detail = getattr(body, "mode_body", None)
     if profile.status_grammar_has("source_status") and mode_name == "source_control":
-        from .h60b0_controls import source_readback
+        from .generated_protocol_adapter import source_readback
 
         return ParsedColorModeResponse(mode=ParsedMode.COLOUR, source_values=source_readback(detail))
     if mode_name in {"legacy_static", "legacy_colour", "whole_device_colour"}:
