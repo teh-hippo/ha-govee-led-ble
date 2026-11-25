@@ -671,6 +671,7 @@ NATIVE_EFFECT_CODECS: tuple[NativeEffectCodec, ...] = (
             NativeUploadRoute(NativeEffectCarrier.A3, 3, NativeUploadPurpose.PAINT, DiyType03),
             NativeUploadRoute(NativeEffectCarrier.A3, 4, NativeUploadPurpose.CUSTOM, DiyType04),
         ),
+        serialised_fields=frozenset({"enabled"}),
         profile_subtype_qualified=True,
         explicit_profile_required=True,
     ),

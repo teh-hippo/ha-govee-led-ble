@@ -27,7 +27,11 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     upload_ack_success,
 )
 from custom_components.ha_govee_led_ble.h7025_effects import encode_h7025_diy, validate_h7025_diy
-from custom_components.ha_govee_led_ble.native_effect import NativeDiyLayer
+from custom_components.ha_govee_led_ble.native_effect import (
+    NativeDiyLayer,
+    native_effect_from_value,
+    native_effect_to_value,
+)
 from custom_components.ha_govee_led_ble.native_effect_codecs import native_effect_codec_for_profile
 from custom_components.ha_govee_led_ble.protocol_admission import require_profile_packet
 from custom_components.ha_govee_led_ble.protocol_core import H7025DiyBody
@@ -250,6 +254,15 @@ def test_h7025_codec_validation_does_not_reenter_native_effect_initialisation(
 
     monkeypatch.setattr(NativeEffect, "__post_init__", reject_reentry)
     validate_h7025_diy(content)
+
+
+def test_h7025_star_flash_round_trips_its_secondary_palette() -> None:
+    template = next(template for template in MODEL_EFFECT_CATALOGUES["H7025"].templates if template.id.endswith(":22"))
+    assert isinstance(template.content, NativeEffect)
+
+    restored = native_effect_from_value(native_effect_to_value(template.content))
+
+    assert restored == template.content
 
 
 @pytest.mark.parametrize(("status", "success"), [(0, True), (1, False)])
