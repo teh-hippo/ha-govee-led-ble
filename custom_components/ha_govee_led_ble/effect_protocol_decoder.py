@@ -8,7 +8,6 @@ from kaitaistruct import KaitaiStructError
 
 from .const import ModelProfile, get_profile
 from .effect_domain import (
-    H617A_SEGMENT_COUNT,
     EffectContent,
     EffectPair,
     H6179MixedDiyEffect,
@@ -37,6 +36,8 @@ from .protocol_core import (
     SceneType1Body,
 )
 from .transport import reassemble_a1_02, reassemble_a3
+
+_H617A_PAINTED_SEGMENT_COUNT = 15
 
 __all__ = [
     "UnsupportedA3EffectError",
@@ -191,13 +192,13 @@ def _decode_h617a_painted(tree: Any) -> PaintedEffect:
         raise UnsupportedA3EffectError("H617A painted group count does not match its generated tree")
     _require_zero_padding(tree.padding, "H617A painted")
 
-    segments: list[tuple[int, int, int] | None] = [None] * H617A_SEGMENT_COUNT
+    segments: list[tuple[int, int, int] | None] = [None] * _H617A_PAINTED_SEGMENT_COUNT
     for group in tree.groups:
         if group.num_segment_indices != len(group.segment_indices) or not group.segment_indices:
             raise UnsupportedA3EffectError("H617A painted groups must contain their declared segments")
         fill = _rgb(group.fill)
         for index in group.segment_indices:
-            if not 0 <= index < H617A_SEGMENT_COUNT:
+            if not 0 <= index < _H617A_PAINTED_SEGMENT_COUNT:
                 raise UnsupportedA3EffectError(f"H617A painted segment {index} is out of range")
             if segments[index] is not None:
                 raise UnsupportedA3EffectError(f"H617A painted segment {index} appears more than once")

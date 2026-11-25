@@ -71,8 +71,6 @@ from .protocol_core import MAX_SCENE_PARAM_BYTES
 EFFECT_SCHEMA_VERSION = 2
 MAX_PALETTE_COLOURS = 0xFF // 3  # DIY palettes encode their RGB byte length in one byte.
 MAX_MULTI_EFFECTS = 4
-H617A_SEGMENT_COUNT = 15
-
 PALETTE_CONFIG_RESERVED_MASK = 0x08
 H6179_DIY_EFFECT_PAIRS = frozenset({(0, 0), (1, 0), (2, 0)})
 
@@ -165,10 +163,8 @@ class PaintedEffect:
         _validate_rgb(self.background, "painted background")
         if self.addressing not in {"segments", "physical_ic"}:
             raise EffectValidationError("unknown painted addressing")
-        if self.addressing == "segments" and len(self.segments) != H617A_SEGMENT_COUNT:
-            raise EffectValidationError(f"painted effect must contain exactly {H617A_SEGMENT_COUNT} segments")
-        if self.addressing == "physical_ic" and not 1 <= len(self.segments) <= 255:
-            raise EffectValidationError("painted effect must contain 1 to 255 physical ICs")
+        if not 1 <= len(self.segments) <= 255:
+            raise EffectValidationError("painted effect must contain 1 to 255 segments")
         for segment in self.segments:
             if segment is not None:
                 _validate_rgb(segment, "painted segment")

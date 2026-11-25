@@ -20,6 +20,7 @@ from custom_components.ha_govee_led_ble.effect_catalogue import (
     H6199_WORKSHOP_APPLY_CODE,
     MODEL_EFFECT_CATALOGUES,
     WORKSHOP_PROTOCOL_FIXTURES,
+    validate_effect_eligibility,
 )
 from custom_components.ha_govee_led_ble.effect_compiler import (
     ActivationMode,
@@ -648,9 +649,28 @@ def test_layered_json_preserves_unknown_flags_and_excess() -> None:
     assert layer["excess"] == "aabb"
 
 
-def test_painted_effect_requires_exact_segment_count() -> None:
-    with pytest.raises(EffectValidationError, match="exactly 15"):
-        PaintedEffect("clockwise", 50, 100, (None,) * 14)
+@pytest.mark.parametrize("segment_count", [0, 256])
+def test_painted_effect_rejects_unbounded_geometry(segment_count: int) -> None:
+    with pytest.raises(EffectValidationError, match="1 to 255"):
+        PaintedEffect("clockwise", 50, 100, (None,) * segment_count)
+
+
+def test_non_fifteen_logical_geometry_qualifies_for_its_target(monkeypatch) -> None:
+    model = "H7000"
+    profile = replace(MODEL_PROFILES["H617A"], segment_count=14)
+    catalogue = replace(MODEL_EFFECT_CATALOGUES["H617A"], sku=model)
+    monkeypatch.setitem(MODEL_PROFILES, model, profile)
+    monkeypatch.setitem(MODEL_EFFECT_CATALOGUES, model, catalogue)
+    content = PaintedEffect("clockwise", 50, 100, (None,) * 14)
+
+    validate_effect_eligibility(content, model)
+
+
+def test_h617a_rejects_wrong_geometry_during_target_qualification() -> None:
+    content = PaintedEffect("clockwise", 50, 100, (None,) * 14)
+
+    with pytest.raises(ValueError, match="segment count does not match"):
+        validate_effect_eligibility(content, "H617A")
 
 
 def test_newer_schema_is_not_silently_loaded() -> None:
