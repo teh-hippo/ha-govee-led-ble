@@ -91,8 +91,10 @@ test("target catalogue limits reject inverted ranges and wire overflows", () => 
   payload.models.H6199.effects[0].rate_max = 60;
   expect(() => decodeCatalogue(payload)).toThrow("rate limits are inverted");
   const slots = structuredClone(backendContracts.responses.custom_catalogue);
-  slots.models.H6199.diy_destination_min = 241;
-  slots.models.H6199.diy_destination_max = 240;
+  Object.assign(slots.models.H6199, {
+    diy_destination_min: 241,
+    diy_destination_max: 240,
+  });
   expect(() => decodeCatalogue(slots)).toThrow();
 });
 
