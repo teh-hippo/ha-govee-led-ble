@@ -1528,17 +1528,7 @@ def music_variant(profile: ModelProfile, mode_code: int) -> MusicVariant | None:
         variant
         and any(spec.profile_key == "key_count" for spec in variant.parameters)
         and ic is not None
-        and (
-            variant.layout
-            in {
-                "h6097_music_parameters",
-                "h6099_music_parameters",
-                "h66a0_music_parameters",
-                "h61f5_music_parameters",
-                "h1ab2_music_parameters",
-            }
-            or any(spec.requires_physical_ic_count for spec in variant.parameters)
-        )
+        and (variant.requires_physical_ic_count or any(spec.requires_physical_ic_count for spec in variant.parameters))
     ):
         minimum, maximum = (ceil(ic / 2), ic) if ic < 30 else (9, max(9, ceil(ic * 3 / 5)))
         default = ceil(ic * 3 / 4) if ic < 30 else ceil(ic * 3 / 10)
@@ -1558,14 +1548,7 @@ def music_variant(profile: ModelProfile, mode_code: int) -> MusicVariant | None:
     if (
         variant
         and mode_code == 0x37
-        and variant.layout
-        in {
-            "h6097_music_parameters",
-            "h6099_music_parameters",
-            "h66a0_music_parameters",
-            "h61f5_music_parameters",
-            "h1ab2_music_parameters",
-        }
+        and variant.requires_physical_ic_count
         and variant.parameters
         and ic is not None
     ):

@@ -89,6 +89,25 @@ def test_native_strip_music_keeps_exact_selector_geometry_and_independent_speed_
     assert expectations_from_packet(compiled.packets[-1], "H1AB2")["music_mode"] == mode
 
 
+def test_music_geometry_uses_declared_policy_not_layout_name():
+    source = get_profile("H61F5")
+    variants = tuple(
+        replace(variant, layout="synthetic_music_parameters")
+        for variant in source.music_variants
+        if variant.mode_code in {0x34, 0x37}
+    )
+    profile = replace(source, physical_ic_count=50, music_variants=variants)
+
+    piano = music_variant(profile, 0x34)
+    day_and_night = music_variant(profile, 0x37)
+
+    assert piano is not None and piano.parameters[0].default == 15
+    assert (piano.parameters[0].min_value, piano.parameters[0].max_value) == (9, 30)
+    assert day_and_night is not None and day_and_night.parameters[0].default == 7
+    assert day_and_night.parameters[0].max_value == 10
+    assert day_and_night.parameters[1].default == 20
+
+
 @pytest.mark.parametrize(
     "mode,code,parameters,tail",
     [
