@@ -11,6 +11,7 @@ from custom_components.ha_govee_led_ble.coordinator_status import (
     ParsedColorModeResponse,
     ParsedMode,
     StatusDomain,
+    _parse_static_mode,
     decode_status_frame,
     decode_status_frame_result,
     parse_color_mode,
@@ -31,6 +32,23 @@ def _parse_colour(frame: str, model: str = "H617A") -> ParsedColorModeResponse:
 def _h6179_status(domain: int, body: bytes) -> bytes:
     frame = bytes((0xAA, domain)) + body.ljust(17, b"\0")
     return frame + bytes((xor_checksum(frame),))
+
+
+def test_static_kelvin_precedence_follows_profile_capability() -> None:
+    profile = replace(
+        MODEL_PROFILES["H6139"],
+        status_grammar="synthetic-static",
+        static_readback_echoes_color=True,
+    )
+    detail = SimpleNamespace(
+        kelvin=4000,
+        rgb=SimpleNamespace(red=10, green=20, blue=30),
+    )
+
+    parsed = _parse_static_mode(detail, profile)
+
+    assert parsed.color_temp_kelvin == 4000
+    assert parsed.rgb_color is None
 
 
 def test_h7025_exact_status_root_covers_declared_reads_and_music_numbering():
