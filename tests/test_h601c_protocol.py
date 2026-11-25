@@ -51,6 +51,7 @@ PROFILE = ModelProfile(
     color_temp_range=(2700, 6500),
     static_readback_echoes_color=True,
     static_readback_kelvin=True,
+    static_readback_kelvin_suppresses_rgb=True,
     static_readback_zero_kelvin_is_rgb=True,
     whole_device_mask_override=1,
 )

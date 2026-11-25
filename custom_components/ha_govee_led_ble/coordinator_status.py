@@ -406,7 +406,7 @@ def _parse_static_mode(detail: Any, profile: ModelProfile) -> ParsedColorModeRes
     return ParsedColorModeResponse(
         mode=ParsedMode.COLOUR,
         rgb_color=_rgb_values(rgb)
-        if rgb is not None and not (profile.status_grammar_has("kelvin_status_omits_rgb") and kelvin is not None)
+        if rgb is not None and not (profile.static_readback_kelvin_suppresses_rgb and kelvin is not None)
         else None,
         color_temp_kelvin=kelvin,
         zero_kelvin_reported=reported == 0,

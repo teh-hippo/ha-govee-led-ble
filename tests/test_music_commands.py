@@ -918,7 +918,9 @@ def test_h6076_geometry_policy_survives_a_different_wire_layout_name() -> None:
         physical_ic_count=30,
         music_variants=(replace(separation, layout="synthetic_companion"),),
     )
-    assert music_variant(profile, 0x32).gradient_companions == (99, 98)
+    resolved = music_variant(profile, 0x32)
+    assert resolved is not None
+    assert resolved.gradient_companions == (99, 98)
 
 
 @pytest.mark.parametrize(

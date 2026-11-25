@@ -8,3 +8,5 @@ For new-model support, reference the request without automatic issue-closing key
 ## Candidate support scope
 
 ## Model-specific changes and owner checks
+
+Classify each difference as a product declaration, Kaitai wire format, distinct semantics or shared defect.  Show how any exception stays behind a profile or declared codec boundary.

@@ -39,6 +39,7 @@ def test_static_kelvin_precedence_follows_profile_capability() -> None:
         MODEL_PROFILES["H6139"],
         status_grammar="synthetic-static",
         static_readback_echoes_color=True,
+        static_readback_kelvin_suppresses_rgb=True,
     )
     detail = SimpleNamespace(
         kelvin=4000,
