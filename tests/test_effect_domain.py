@@ -873,7 +873,7 @@ def test_profile_compatibility_rejects_model_or_mode_mismatches(item, model, rea
 def test_compile_application_retains_the_target_slot_constraints() -> None:
     custom = LibraryItem.new("Custom", SingleEffect(0, 0, 50, ((255, 0, 0),)))
 
-    with pytest.raises(ValueError, match="approved observed DIY code"):
+    with pytest.raises(ValueError, match="approved destination"):
         compile_application(custom, "H6199")
     assert compile_application(custom, "H6199", diy_code=24).diy_code == 24
     assert compatibility(custom, "H6199").state is CompatibilityState.COMPATIBLE

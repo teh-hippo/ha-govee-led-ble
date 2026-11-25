@@ -23,7 +23,7 @@ from custom_components.ha_govee_led_ble.effect_compiler import (
     compile_application,
     compile_effect,
     compile_generic_diy,
-    compile_h6199,
+    compile_palette_diy,
     resolve_diy_code,
     validate_compiled_geometry,
 )
@@ -195,7 +195,7 @@ def test_target_catalogue_limits_do_not_follow_shared_grammar(effect_catalogue_t
 
 def test_direct_compilers_cannot_bypass_target_route():
     with pytest.raises(ValueError):
-        compile_h6199(LibraryItem.new("Single", SINGLE_CONTENT), model="H617A")
+        compile_palette_diy(LibraryItem.new("Single", SINGLE_CONTENT), model="H617A")
     with pytest.raises(ValueError):
         compile_generic_diy(LibraryItem.new("Palette", H6199_CONTENT), 401, model="H6199")
 
@@ -207,15 +207,15 @@ def test_palette_diy_uses_target_catalogue_not_global_encoding_roster(monkeypatc
     assert decode_a3_effect(parse_a3_effect_envelope(reassemble_a3(frames), "H6199"), "H6199") == content
     item = LibraryItem.new("Extended", content)
     with pytest.raises(ValueError, match="family 42 variation 7"):
-        compile_h6199(item, H6199_TEST_DIY_CODE)
+        compile_palette_diy(item, H6199_TEST_DIY_CODE)
     family = replace(
         catalogue.effects[0], family=42, variations=(replace(catalogue.effects[0].variations[0], variant=7),)
     )
     monkeypatch.setitem(MODEL_EFFECT_CATALOGUES, "H6199", replace(catalogue, effects=(*catalogue.effects, family)))
-    assert compile_h6199(item, H6199_TEST_DIY_CODE).upload_packets == tuple(frames)
+    assert compile_palette_diy(item, H6199_TEST_DIY_CODE).upload_packets == tuple(frames)
     monkeypatch.setitem(MODEL_EFFECT_CATALOGUES, "H6199", replace(catalogue, palette_max=1))
     with pytest.raises(ValueError, match="palette"):
-        compile_h6199(LibraryItem.new("Too many colours", H6199_CONTENT), H6199_TEST_DIY_CODE)
+        compile_palette_diy(LibraryItem.new("Too many colours", H6199_CONTENT), H6199_TEST_DIY_CODE)
 
 
 @pytest.mark.parametrize("diy_code", [-1, 0x10000, 1.5])
@@ -274,7 +274,7 @@ def test_h6199_compiler_matches_every_visible_family_and_variation(label, family
     palette = ((255, 0, 0), (0, 0, 255))
     item = LibraryItem.new(label, PaletteDiyEffect("H6199", family, variant, 50, palette))
 
-    compiled = compile_h6199(item, H6199_TEST_DIY_CODE)
+    compiled = compile_palette_diy(item, H6199_TEST_DIY_CODE)
     parsed = H6199EffectUpload(KaitaiStream(io.BytesIO(reassemble_a3(compiled.upload_packets))))
     parsed._read()
 
@@ -422,7 +422,7 @@ def test_h6199_fixed_diy_envelope_accepts_the_largest_structurally_fitting_palet
     assert len(content.palette) == 9
     assert effect_content_from_dict(effect_content_to_dict(content)) == content
     with pytest.raises(ValueError, match="palette"):
-        compile_h6199(
+        compile_palette_diy(
             LibraryItem.new("Imported nine colours", content),
             H6199_TEST_DIY_CODE,
         )
@@ -443,7 +443,7 @@ def test_h6199_fixed_diy_envelope_accepts_the_largest_structurally_fitting_palet
         MODEL_EFFECT_CATALOGUES, model, replace(MODEL_EFFECT_CATALOGUES["H6199"], sku=model, palette_max=9)
     )
     item = LibraryItem.new("Qualified nine colours", replace(content, model=model))
-    assert reassemble_a3(compile_h6199(item, H6199_TEST_DIY_CODE, model=model).upload_packets) == envelope
+    assert reassemble_a3(compile_palette_diy(item, H6199_TEST_DIY_CODE, model=model).upload_packets) == envelope
 
 
 def test_h6199_fixed_diy_envelope_rejects_palette_overflow_before_writing() -> None:
@@ -510,7 +510,7 @@ def test_compiled_basic_effect_packets_round_trip_to_canonical_content(
     expected_packets: tuple[bytes, ...],
 ) -> None:
     item = LibraryItem.new("Round trip", content)
-    compiled = compile_generic_diy(item, diy_code) if model == "H617A" else compile_h6199(item, diy_code)
+    compiled = compile_generic_diy(item, diy_code) if model == "H617A" else compile_palette_diy(item, diy_code)
 
     assert compiled.upload_packets == expected_packets
     envelope = reassemble_a3(compiled.upload_packets)
@@ -558,7 +558,7 @@ def test_basic_effect_decoder_preserves_uncatalogued_pairs_but_rejects_reserved_
 
     h6199 = parse_a3_effect_envelope(
         reassemble_a3(
-            compile_h6199(
+            compile_palette_diy(
                 LibraryItem.new("Palette DIY", H6199_CONTENT),
                 H6199_TEST_DIY_CODE,
             ).upload_packets

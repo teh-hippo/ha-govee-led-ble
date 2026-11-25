@@ -16,6 +16,7 @@ from .effect_commands import (
     build_h617a_diy_multi,
     build_h617a_diy_painted,
     build_h617a_diy_single,
+    build_h6199_palette_diy,
 )
 from .effect_content_ids import (
     MULTI_EFFECT_CONTENT_KIND,
@@ -28,6 +29,7 @@ from .effect_domain import (
     EffectContent,
     MultiEffect,
     PaintedEffect,
+    PaletteDiyEffect,
     SingleEffect,
     TypedMixedDiyEffect,
     TypedSingleDiyEffect,
@@ -85,6 +87,30 @@ def prepare_typed_diy(
         activation_packet=build_diy_activation(diy_code, model, profile=profile),
         upload_transport="a3" if transport == "a3" else "a1_02",
         upload_subtype=4 if transport == "a3" else None,
+        upload_prefix=None,
+    )
+
+
+def prepare_palette_diy(
+    content: PaletteDiyEffect,
+    diy_code: int,
+    model: str,
+    profile: ModelProfile,
+) -> GenericDiyPreparation:
+    if profile.effect_grammar != "H6199":
+        raise ValueError(f"{model} has no selected palette DIY codec")
+    upload_packets = build_h6199_palette_diy(
+        content.family,
+        content.variant,
+        content.speed,
+        content.palette,
+    )
+    return GenericDiyPreparation(
+        content_kind="palette_diy",
+        upload_packets=tuple(upload_packets),
+        activation_packet=build_diy_activation(diy_code, model, profile=profile),
+        upload_transport="a3",
+        upload_subtype=int(H6199EffectUpload.BodyKind.diy),
         upload_prefix=None,
     )
 
