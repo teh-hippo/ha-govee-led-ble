@@ -268,7 +268,7 @@ export class PanelPreviewController {
     });
   }
 
-  private submit(request: PanelPreviewRequest): void {
+  public submit(request: PanelPreviewRequest): void {
     if (this.cancellation) {
       this.deferredPreviewRequest = request;
       return;
