@@ -19,8 +19,8 @@ import {
 import type {
   DiyEffectFamily,
   EffectPair,
-  H6179MixedDiyContent,
-  H6179SingleDiyContent,
+  TypedMixedDiyContent,
+  TypedSingleDiyContent,
   ModelEffectCatalogue,
   MultiContent,
   NativeEffectContent,
@@ -35,17 +35,18 @@ import {
   isMixedPaletteEffectContent,
   isMultiEffectKind,
   isSinglePaletteEffectContent,
+  isTypedMixedDiyContent,
   type MixedPaletteEffectContent,
 } from "./custom-effect-policies";
 
 type PaletteContent =
   | SingleContent
   | MultiContent
-  | H6179SingleDiyContent
-  | H6179MixedDiyContent
+  | TypedSingleDiyContent
+  | TypedMixedDiyContent
   | PaletteDiyEffectContent;
 function mixedPairs(content: MixedPaletteEffectContent): EffectPair[] {
-  return content.kind === "h6179_mixed_diy"
+  return isTypedMixedDiyContent(content)
     ? content.components
     : content.effects;
 }
@@ -54,7 +55,7 @@ function withMixedPairs(
   content: MixedPaletteEffectContent,
   pairs: EffectPair[],
 ): MixedPaletteEffectContent {
-  return content.kind === "h6179_mixed_diy"
+  return isTypedMixedDiyContent(content)
     ? { ...content, components: pairs }
     : { ...content, effects: pairs };
 }
@@ -370,7 +371,7 @@ export class GoveeCustomEffectEditor extends LitElement {
         ? html`
             <section class="card effect-card">
               <h3 class="section-title">
-                ${this.content.kind === "h6179_mixed_diy"
+                ${isTypedMixedDiyContent(this.content)
                   ? "Effect Components"
                   : "Effect Layers"}
               </h3>

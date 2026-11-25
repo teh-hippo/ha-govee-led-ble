@@ -38,6 +38,8 @@ import {
   MULTI_EFFECT_KIND,
   PAINTED_EFFECT_KIND,
   SINGLE_EFFECT_KIND,
+  TYPED_MIXED_DIY_KIND,
+  TYPED_SINGLE_DIY_KIND,
   customEffectCategoryForKind,
   isCustomEffectKind,
   isMultiEffectContent,
@@ -46,6 +48,9 @@ import {
   isMultiEffectKind,
   isSingleEffectContent,
   isSingleEffectKind,
+  isTypedDiyContent,
+  isTypedMixedDiyContent,
+  isTypedSingleDiyContent,
   normaliseCustomEffectKind,
   type CustomEffectCategory,
 } from "./custom-effect-policies";
@@ -282,13 +287,13 @@ export function blankCustomEffect(
   catalogue: ModelEffectCatalogue,
 ): Extract<CustomEffectContent, { kind: typeof MULTI_EFFECT_KIND }>;
 export function blankCustomEffect(
-  kind: "h6179_single_diy",
+  kind: typeof TYPED_SINGLE_DIY_KIND,
   catalogue: ModelEffectCatalogue,
-): Extract<CustomEffectContent, { kind: "h6179_single_diy" }>;
+): Extract<CustomEffectContent, { kind: typeof TYPED_SINGLE_DIY_KIND }>;
 export function blankCustomEffect(
-  kind: "h6179_mixed_diy",
+  kind: typeof TYPED_MIXED_DIY_KIND,
   catalogue: ModelEffectCatalogue,
-): Extract<CustomEffectContent, { kind: "h6179_mixed_diy" }>;
+): Extract<CustomEffectContent, { kind: typeof TYPED_MIXED_DIY_KIND }>;
 export function blankCustomEffect(
   kind: Exclude<CustomEffectContent["kind"], typeof PAINTED_EFFECT_KIND>,
   catalogue: ModelEffectCatalogue,
@@ -361,7 +366,7 @@ export function blankCustomEffect(
       palette: first.palette_max === 3 ? [[255, 0, 0], [0, 255, 0], [0, 0, 255]] : defaultPalette(catalogue).slice(0, first.palette_max),
     };
   }
-  if (kind === "h6179_single_diy") {
+  if (kind === TYPED_SINGLE_DIY_KIND) {
     return {
       kind,
       model: catalogue.sku,
@@ -370,7 +375,7 @@ export function blankCustomEffect(
       palette: defaultPalette(),
     };
   }
-  if (kind === "h6179_mixed_diy") {
+  if (kind === TYPED_MIXED_DIY_KIND) {
     return {
       kind,
       model: catalogue.sku,
@@ -430,13 +435,13 @@ export function cloneCustomEffect(
   if (isPaintedEffectContent(content)) {
     return clonePainted(content);
   }
-  if (isSingleEffectContent(content) || content.kind === "h6179_single_diy") {
+  if (isSingleEffectContent(content) || isTypedSingleDiyContent(content)) {
     return {
       ...content,
       palette: clonePalette(content.palette),
     };
   }
-  if (content.kind === "h6179_mixed_diy") {
+  if (isTypedMixedDiyContent(content)) {
     return {
       ...content,
       components: content.components.map((component) => ({ ...component })),
@@ -684,9 +689,9 @@ export function customKindLabel(kind: unknown): string {
       return "Single";
     case MULTI_EFFECT_KIND:
       return "Multi";
-    case "h6179_single_diy":
+    case TYPED_SINGLE_DIY_KIND:
       return "Single DIY";
-    case "h6179_mixed_diy":
+    case TYPED_MIXED_DIY_KIND:
       return "Mixed DIY";
     case "advanced":
       return "Advanced";
@@ -801,9 +806,8 @@ export function upsertSummary(
 export function libraryItemModel(item: LibraryItem): ModelSku | undefined {
   const content = item.content;
   if (isPaintedEffectContent(content) && content.model !== undefined) return content.model;
+  if (isTypedDiyContent(content)) return content.model;
   if (
-    content.kind === "h6179_single_diy" ||
-    content.kind === "h6179_mixed_diy" ||
     content.kind === "palette_diy" ||
     content.kind === "native_effect" ||
     content.kind === "workshop" ||

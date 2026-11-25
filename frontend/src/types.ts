@@ -184,7 +184,7 @@ export interface MultiContent {
   palette: RGB[];
 }
 
-export interface H6179SingleDiyContent {
+export interface TypedSingleDiyContent {
   kind: "h6179_single_diy";
   model: ModelSku;
   family: number;
@@ -193,7 +193,7 @@ export interface H6179SingleDiyContent {
   palette: RGB[];
 }
 
-export interface H6179MixedDiyContent {
+export interface TypedMixedDiyContent {
   kind: "h6179_mixed_diy";
   model: ModelSku;
   components: EffectPair[];
@@ -491,8 +491,8 @@ export type CustomEffectContent =
   | PaintedContent
   | SingleContent
   | MultiContent
-  | H6179SingleDiyContent
-  | H6179MixedDiyContent;
+  | TypedSingleDiyContent
+  | TypedMixedDiyContent;
 
 export interface PaintedEffectTemplate {
   id: PaintedContent["effect"];
