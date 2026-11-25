@@ -4,6 +4,8 @@ type NativeEffectLayout = {
   layerCount: number;
 };
 
+type NativeEffectEditor = "generic" | "projector" | "revisioned" | "single-palette" | "dual-source" | "zones";
+
 export type NativeEffectPolicy = {
   acceptsFamily: (family: number) => boolean;
   acceptsLayout: (layout: NativeEffectLayout) => boolean;
@@ -13,6 +15,7 @@ export type NativeEffectPolicy = {
   revisioned: boolean;
   sectionTail: boolean;
   temperatures: boolean;
+  editor: NativeEffectEditor;
   combinedFamily?: number;
   diyFamily?: number;
   paintFamily?: number;
@@ -41,6 +44,7 @@ const POLICIES = {
     revisioned: false,
     sectionTail: false,
     temperatures: false,
+    editor: "generic",
     diyFamily: 797,
     paintFamily: 798,
   },
@@ -53,6 +57,7 @@ const POLICIES = {
     revisioned: false,
     sectionTail: false,
     temperatures: false,
+    editor: "zones",
   },
   H1771: {
     acceptsFamily: family => family === 957,
@@ -63,6 +68,7 @@ const POLICIES = {
     revisioned: false,
     sectionTail: true,
     temperatures: false,
+    editor: "dual-source",
   },
   H60B0: {
     acceptsFamily: () => true,
@@ -78,6 +84,7 @@ const POLICIES = {
     revisioned: true,
     sectionTail: true,
     temperatures: true,
+    editor: "revisioned",
     combinedFamily: 81,
   },
   H60B2: {
@@ -89,6 +96,7 @@ const POLICIES = {
     revisioned: false,
     sectionTail: false,
     temperatures: false,
+    editor: "zones",
   },
   H1AB2: {
     acceptsFamily: family => family === 948,
@@ -99,6 +107,7 @@ const POLICIES = {
     revisioned: false,
     sectionTail: false,
     temperatures: false,
+    editor: "zones",
   },
   H6093: {
     acceptsFamily: family => family === 712,
@@ -109,6 +118,7 @@ const POLICIES = {
     revisioned: false,
     sectionTail: false,
     temperatures: false,
+    editor: "projector",
   },
   H7025: {
     acceptsFamily: family => family === 767,
@@ -119,9 +129,14 @@ const POLICIES = {
     revisioned: false,
     sectionTail: false,
     temperatures: false,
+    editor: "single-palette",
   },
 } satisfies Record<NativeEffectModel, NativeEffectPolicy>;
 
 export function nativeEffectPolicy(model: NativeEffectModel): NativeEffectPolicy {
   return POLICIES[model];
+}
+
+export function isNativeEffectModel(model: string): model is NativeEffectModel {
+  return NATIVE_EFFECT_MODELS.some(candidate => candidate === model);
 }

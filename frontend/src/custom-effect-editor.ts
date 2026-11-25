@@ -1,10 +1,7 @@
 import { LitElement, css, html, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
 import { paintNativeLayerPoint } from "./effect-editor-model";
-import { renderH7025Editor } from "./h7025-native-editor";
-import { renderH1771SectionEditor, renderNativeZoneEditor } from "./native-zone-editor";
-import { renderH60B0Editor } from "./h60b0-native-editor";
-import { renderProjectorEditor } from "./projector-editor";
+import { renderNativeEffectEditor } from "./native-effect-editors";
 import { renderNativeLayerControls } from "./native-layer-controls";
 
 import type { LivePreviewInteraction } from "./live-preview-controller";
@@ -222,32 +219,22 @@ export class GoveeCustomEffectEditor extends LitElement {
 
   protected render() {
     if (this.nativeContent && this.catalogue) {
-      if (this.nativeContent.projector_layers) {
-        return renderProjectorEditor(this.nativeContent, this.disabled,
-          (content, interaction) => this.nativeChanged(content, interaction));
-      }
-      if (this.nativeContent.model === "H60B0") {
-        return renderH60B0Editor(this.nativeContent, this.catalogue, this.disabled,
-          (content, interaction) => this.nativeChanged(content, interaction));
-      }
-      if (this.nativeContent.model === "H7025") {
-        return renderH7025Editor(this.nativeContent, this.disabled,
-          (content, interaction) => this.nativeChanged(content, interaction));
-      }
-      if (this.catalogue.native_zones?.length || this.nativeContent.model === "H1771") {
-        return (this.nativeContent.model === "H1771" ? renderH1771SectionEditor : renderNativeZoneEditor)(
-          this.nativeContent, this.catalogue, this.disabled,
-          (index, update, family, kind, interaction) => {
-            const current = this.nativeContent;
-            const layer = current?.layers[index];
-            if (!current || current.family !== family || !layer || layer.type === "paint" || layer.kind !== kind) return;
-            const layers = structuredClone(current.layers);
-            layers[index] = (layer.type === "opaque" && update.type === "diy"
-              ? structuredClone(update) : { ...layers[index], ...update }) as NativeDiyLayer;
-            this.nativeChanged({ ...current, layers, speed_index: null }, interaction);
-          },
-        );
-      }
+      const editor = renderNativeEffectEditor(
+        this.nativeContent,
+        this.catalogue,
+        this.disabled,
+        (content, interaction) => this.nativeChanged(content, interaction),
+        (index, update, family, kind, interaction) => {
+          const current = this.nativeContent;
+          const layer = current?.layers[index];
+          if (!current || current.family !== family || !layer || layer.type === "paint" || layer.kind !== kind) return;
+          const layers = structuredClone(current.layers);
+          layers[index] = (layer.type === "opaque" && update.type === "diy"
+            ? structuredClone(update) : { ...layers[index], ...update }) as NativeDiyLayer;
+          this.nativeChanged({ ...current, layers, speed_index: null }, interaction);
+        },
+      );
+      if (editor !== undefined) return editor;
       return this.renderNative();
     }
     if (!this.content || !this.catalogue) {
