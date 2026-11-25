@@ -83,7 +83,7 @@ from .protocol_core import (
     H6199EffectUpload,
     SceneBody,
 )
-from .protocol_effect_bodies import build_inline_diy
+from .protocol_effect_bodies import build_dedicated_diy, build_inline_diy
 from .scenes import MODEL_SCENES, SceneEntry, scene_for_profile, scene_selector_code
 from .transport import fragment_a3
 
@@ -1238,10 +1238,8 @@ def compile_h617a(
     content = item.content
     upload_prefix = profile.a1_diy_prefix if profile.a1_diy_prefix is not None else profile.a1_diy_selector
     if profile.effect_grammar_has("dedicated_a1_diy") and isinstance(content, SingleEffect | MultiEffect):
-        from .h6181_effects import build_diy
-
         content_kind = "h617a_single" if isinstance(content, SingleEffect) else "h617a_multi"
-        upload = build_diy(content, diy_code, profile)
+        upload = build_dedicated_diy(content, diy_code, profile)
     elif isinstance(content, PaintedEffect):
         content_kind = "h617a_painted"
         upload = build_h617a_diy_painted(
