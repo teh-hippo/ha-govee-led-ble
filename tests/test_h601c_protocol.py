@@ -73,7 +73,7 @@ def test_static_derived_vectors_and_expectations(kelvin, hex_packet):
     require_profile_packet(packet, PROFILE)
     parsed = parse_static_write(packet, profile=PROFILE)
     assert parsed is not None and parsed.whole_strip and parsed.kelvin == kelvin
-    expected = expectations_from_packet(packet, profile=PROFILE, static_echoes_color=True)
+    expected = expectations_from_packet(packet, "H601C", profile=PROFILE, static_echoes_color=True)
     assert expected["color_mode"] == (ParsedMode.COLOUR, None)
     if kelvin is None:
         assert expected["rgb_color"] == (255, 0, 0) and expected["color_temp_kelvin"] is None
@@ -112,7 +112,7 @@ def test_queries_identity_and_complete_status_root():
         packet = builder("H9901", profile=PROFILE)
         assert packet == frame(prefix)
         require_profile_packet(packet, PROFILE)
-        assert expectations_from_packet(packet, profile=PROFILE) == {}
+        assert expectations_from_packet(packet, "H601C", profile=PROFILE) == {}
     assert build_colour_mode_query(profile=PROFILE).hex() == "aa050100000000000000000000000000000000ae"
     for builder, prefix in ((build_power, "330101"), (build_brightness, "330432")):
         packet = builder(True if builder is build_power else 50, profile=PROFILE)
@@ -127,7 +127,7 @@ def test_queries_identity_and_complete_status_root():
     }
     assert PROFILE.read_domains == statuses.keys()
     for domain, prefix in statuses.items():
-        decoded = decode_status_frame(frame(prefix), profile=PROFILE)
+        decoded = decode_status_frame(frame(prefix), "H601C", profile=PROFILE)
         assert decoded is not None and decoded.domain == domain
     assert parse_status_result(frame(statuses[ReadDomain.HARDWARE]), profile=PROFILE).parsed.body.text == "1.00.01"
 

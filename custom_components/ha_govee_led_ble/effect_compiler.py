@@ -652,8 +652,8 @@ def compile_effect(
         if _has_fixed_diy_slot(model, profile=profile):
             diy_code = resolve_diy_code(item, diy_code, model=model, profile=profile)
         if diy_code is None:
-            raise ValueError("H617A custom-effect compilation requires a DIY code")
-        return compile_h617a(item, diy_code, model=model, profile=profile)
+            raise ValueError("Generic DIY compilation requires a DIY code")
+        return compile_generic_diy(item, diy_code, model=model, profile=profile)
     if isinstance(item.content, PaletteDiyEffect):
         return compile_h6199(
             item,
@@ -1213,7 +1213,7 @@ def compile_native_effect(
     )
 
 
-def compile_h617a(
+def compile_generic_diy(
     item: LibraryItem,
     diy_code: int,
     *,
@@ -1278,7 +1278,7 @@ def compile_h617a(
             a1_selector=upload_prefix,
         )
     else:
-        raise ValueError("unsupported H617A effect content")
+        raise ValueError("unsupported generic DIY effect content")
 
     resolve_diy_code(item, diy_code, model=model, profile=profile)
     activation = (
@@ -1320,6 +1320,16 @@ def compile_h617a(
         authored_diy=content if isinstance(content, SingleEffect | MultiEffect) else None,
         upload_prefix=profile.a1_diy_prefix,
     )
+
+
+def compile_h617a(
+    item: LibraryItem,
+    diy_code: int,
+    *,
+    model: str | None = None,
+    profile: ModelProfile | None = None,
+) -> CompiledEffect:
+    return compile_generic_diy(item, diy_code, model=model, profile=profile)
 
 
 def compile_h6179(

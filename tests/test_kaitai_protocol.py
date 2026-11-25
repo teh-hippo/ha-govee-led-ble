@@ -1893,7 +1893,7 @@ def test_missing_or_unknown_grammar_fails_closed_only_in_its_direction(monkeypat
     assert accepted.parsed is not None and accepted.rejection is None
 
     if direction == "command":
-        assert expectations_from_packet(COMMAND_STATIC) == {}
+        assert expectations_from_packet(COMMAND_STATIC, "H617A") == {}
         for build, args in (
             (generated_protocol_adapter.build_power, (True,)),
             (generated_protocol_adapter.build_brightness_query, ()),

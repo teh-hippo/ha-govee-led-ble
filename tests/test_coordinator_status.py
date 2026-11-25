@@ -326,19 +326,19 @@ async def test_impossible_installed_geometry_is_rejected_before_updating_either_
 
 
 def test_status_envelope_rejects_invalid_frames() -> None:
-    assert decode_status_frame(b"") is None
-    assert decode_status_frame(H("3301010000000000000000000000000000000033")) is None
+    assert decode_status_frame(b"", "H617A") is None
+    assert decode_status_frame(H("3301010000000000000000000000000000000033"), "H617A") is None
     bad_checksum = bytearray(H("aa05049d0800000000000000000000000000003e"))
     bad_checksum[-1] ^= 1
-    assert decode_status_frame(bytes(bad_checksum)) is None
+    assert decode_status_frame(bytes(bad_checksum), "H617A") is None
 
 
 def test_status_rejections_expose_stable_reasons_and_fail_closed() -> None:
-    assert decode_status_frame_result(b"").rejection is ProtocolParseRejection.INVALID_LENGTH
+    assert decode_status_frame_result(b"", "H617A").rejection is ProtocolParseRejection.INVALID_LENGTH
 
     bad_checksum = bytearray(H("aa05049d0800000000000000000000000000003e"))
     bad_checksum[-1] ^= 1
-    assert decode_status_frame_result(bytes(bad_checksum)).rejection is ProtocolParseRejection.INVALID_CHECKSUM
+    assert decode_status_frame_result(bytes(bad_checksum), "H617A").rejection is ProtocolParseRejection.INVALID_CHECKSUM
 
     unsupported = decode_status_frame_result(H("aa05049d0800000000000000000000000000003e"), "H9999")
     assert unsupported.parser is None
@@ -348,7 +348,7 @@ def test_status_rejections_expose_stable_reasons_and_fail_closed() -> None:
     assert h6102.parser == "h6102_status_reply"
     assert h6102.rejection is None
 
-    invalid_shape = decode_status_frame_result(H("aaa506731f646408646464fe6464640000000093"))
+    invalid_shape = decode_status_frame_result(H("aaa506731f646408646464fe6464640000000093"), "H617A")
     assert invalid_shape.parser == "status_reply"
     assert invalid_shape.rejection is ProtocolParseRejection.SCHEMA_REJECTED
 

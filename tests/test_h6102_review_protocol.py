@@ -128,7 +128,7 @@ def test_removed_booleans_cannot_bypass_current_authorization(operations) -> Non
         ):
             with pytest.raises(ValueError, match="boolean control"):
                 require_profile_packet(packet, narrowed)
-        decoded = decode_status_frame(frame(f"aa{opcode}01"), profile=original)
+        decoded = decode_status_frame(frame(f"aa{opcode}01"), "H6102", profile=original)
         assert decoded is not None and not status_is_authorized(decoded, narrowed)
     require_profile_packet(build_h6199_control("gradient", 1), get_profile("H6199"))
 
@@ -139,7 +139,7 @@ def test_undeclared_gradual_register_is_read_only(model):
     with pytest.raises(ValueError, match="boolean control gradual"):
         require_profile_packet(frame("33a301"), profile)
     require_profile_packet(frame("aaa3"), profile)
-    decoded = decode_status_frame(frame("aaa301"), profile=profile)
+    decoded = decode_status_frame(frame("aaa301"), model, profile=profile)
     assert decoded is not None and status_is_authorized(decoded, profile)
 
 

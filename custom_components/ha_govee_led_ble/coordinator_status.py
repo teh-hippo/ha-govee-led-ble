@@ -58,9 +58,7 @@ class ParsedStatusEnvelope:
     generated: Any
 
 
-def decode_status_frame_result(
-    frame: bytes, model: str = "H617A", *, profile: ModelProfile | None = None
-) -> ProtocolParseResult:
+def decode_status_frame_result(frame: bytes, model: str, *, profile: ModelProfile | None = None) -> ProtocolParseResult:
     effective_profile = profile or get_profile(model)
     result = (
         parse_h6179_status_result(frame)
@@ -85,7 +83,7 @@ def decode_status_frame_result(
 
 
 def decode_status_frame(
-    frame: bytes, model: str = "H617A", *, profile: ModelProfile | None = None
+    frame: bytes, model: str, *, profile: ModelProfile | None = None
 ) -> ParsedStatusEnvelope | None:
     """Parse one fixed-size status notification with its model-specific Kaitai class."""
     return cast(ParsedStatusEnvelope | None, decode_status_frame_result(frame, model, profile=profile).parsed)

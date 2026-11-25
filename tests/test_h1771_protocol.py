@@ -160,7 +160,7 @@ def test_candidate_queries_match_reconstructed_bytes(packet, prefix):
 
 
 def test_candidate_colour_mode_status_uses_separate_kelvin_observation():
-    decoded = decode_status_frame(frame("aa050d010fa0"), profile=PROFILE)
+    decoded = decode_status_frame(frame("aa050d010fa0"), "H1771", profile=PROFILE)
     assert decoded is not None and decoded.domain is ReadDomain.COLOUR_MODE
     mode = parse_color_mode(decoded.generated, "H1771", profile=PROFILE)
     assert mode.mode is ParsedMode.COLOUR and mode.color_temp_kelvin == 4000

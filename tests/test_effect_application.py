@@ -551,8 +551,8 @@ async def test_saved_application_compiles_once_while_its_item_is_reserved(monkey
     created = await application.async_create_library_item(name="Effect", content=CONTENT)
     coordinator = _coordinator()
     coordinator.async_observe_effect = AsyncMock(return_value=True)
-    compile = MagicMock(wraps=effect_compiler.compile_h617a)
-    monkeypatch.setattr(effect_compiler, "compile_h617a", compile)
+    compile = MagicMock(wraps=effect_compiler.compile_generic_diy)
+    monkeypatch.setattr(effect_compiler, "compile_generic_diy", compile)
     engine = EffectDeploymentEngine(application.deployments)
     if entry_point == "application":
         result = await application.async_apply_saved_effect(
