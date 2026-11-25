@@ -1545,13 +1545,7 @@ def music_variant(profile: ModelProfile, mode_code: int) -> MusicVariant | None:
                 *variant.parameters[1:],
             ),
         )
-    if (
-        variant
-        and mode_code == 0x37
-        and variant.requires_physical_ic_count
-        and variant.parameters
-        and ic is not None
-    ):
+    if variant and mode_code == 0x37 and variant.requires_physical_ic_count and variant.parameters and ic is not None:
         max_value = max(1, ic // 2) if ic < 30 else ceil(ic / 5)
         default = max(1, ic // 2) if ic < 30 else ceil(ic * 7 / 50)
         speed_default = variant.daynight_speed_default or (10 if ic < 30 else 20)
