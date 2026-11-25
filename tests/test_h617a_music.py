@@ -89,14 +89,14 @@ def test_invalid_palettes_fail_before_writes(palette):
 @pytest.mark.parametrize("mode", NEW_MODES)
 @pytest.mark.parametrize("suffix", ["0000000000", "01ff2060a0"])
 def test_new_selector_has_no_style_or_colour_authority(mode, suffix):
-    response = decode_status_frame(frame(f"aa0513{mode:02x}32{suffix}"))
+    response = decode_status_frame(frame(f"aa0513{mode:02x}32{suffix}"), "H617A")
     parsed = parse_color_mode(response.generated, "H617A")
     assert parsed.music_sensitivity == 50
     assert parsed.music_calm is None and parsed.music_color is None and not parsed.music_color_present
     slug = next(slug for slug, code in MUSIC_MODE_SLUGS.items() if code == mode)
     packet = build_music_mode(mode, 50, None, mode in (0x30, 0x31))
     assert packet == frame(f"330513{mode:02x}32")
-    expected = expectations_from_packet(packet)
+    expected = expectations_from_packet(packet, "H617A")
     assert expected["music_mode"] == slug and expected["music_sensitivity"] == 50
     assert "music_color" not in expected and "music_calm" not in expected
     writes = prepare_music_profile_writes("H617A", slug, 50, None, False, {}, include_parameters=False)
@@ -106,12 +106,12 @@ def test_new_selector_has_no_style_or_colour_authority(mode, suffix):
 @pytest.mark.parametrize("mode", (3, 4, 5, 6))
 @pytest.mark.parametrize("flag", (0, 1, 2, 255))
 def test_legacy_colour_is_nonzero_flag_not_count(mode, flag):
-    response = decode_status_frame(frame(f"aa0513{mode:02x}3201{flag:02x}2060a0"))
+    response = decode_status_frame(frame(f"aa0513{mode:02x}3201{flag:02x}2060a0"), "H617A")
     parsed = parse_color_mode(response.generated, "H617A")
     assert parsed.music_color_present
     assert parsed.music_color == ((32, 96, 160) if flag else None)
     assert parsed.music_calm == (True if mode == 3 else None)
-    expected = expectations_from_packet(frame(f"330513{mode:02x}3201{flag:02x}2060a0"))
+    expected = expectations_from_packet(frame(f"330513{mode:02x}3201{flag:02x}2060a0"), "H617A")
     assert expected["music_color"] == parsed.music_color
 
 

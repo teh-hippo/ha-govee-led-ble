@@ -25,7 +25,7 @@ def parse_write_state(packet: bytes, model: str, *, profile: ModelProfile) -> Pa
 
 def expectations_from_packet(
     packet: bytes,
-    model: str = "H617A",
+    model: str,
     *,
     static_echoes_color: bool = False,
     profile: ModelProfile | None = None,

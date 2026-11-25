@@ -27,7 +27,7 @@ async def test_optional_count_is_diagnostic_only(hass, value):
     # 15 is direct-device evidence; other values exercise the signed-byte boundary.
     payload = bytes([0xAA, 0x0F, value]) + bytes(16)
     packet = payload + bytes([xor_checksum(payload)])
-    decoded = decode_status_frame(packet)
+    decoded = decode_status_frame(packet, "H617A")
     assert decoded is not None and decoded.generated.body.light_count == value
     assert type(decoded.generated.body).__module__.endswith(".h617a_control_payload")
     coordinator._notify_callback(None, bytearray(packet))
@@ -53,7 +53,7 @@ def test_query_and_unknown_tail_have_generated_coverage():
     query._read()
     assert query.domain.name == "light_count" and query.body.zeros == [0] * 17
     payload = bytes([0xAA, 0x0F, 15]) + bytes(range(16))
-    decoded = decode_status_frame(payload + bytes([xor_checksum(payload)]))
+    decoded = decode_status_frame(payload + bytes([xor_checksum(payload)]), "H617A")
     assert decoded is not None and decoded.generated.body.unknown == bytes(range(16))
 
 

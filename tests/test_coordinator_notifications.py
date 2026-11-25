@@ -783,43 +783,43 @@ def test_expectations_from_packet_covers_every_command_family():
     spectrum_id = next(mid for mid, slug in _MUSIC_SLUG_BY_ID.items() if slug == "spectrum")
     scene_code = next(iter(_SCENE_EFFECT_BY_ID))
 
-    assert expectations_from_packet(build_power(True)) == {"is_on": True}
-    assert expectations_from_packet(build_power(False)) == {"is_on": False}
-    assert expectations_from_packet(build_brightness(37)) == {"brightness_pct": 37}
+    assert expectations_from_packet(build_power(True), "H617A") == {"is_on": True}
+    assert expectations_from_packet(build_power(False), "H617A") == {"is_on": False}
+    assert expectations_from_packet(build_brightness(37), "H617A") == {"brightness_pct": 37}
 
-    rgb = expectations_from_packet(build_color_rgb(255, 0, 0))
+    rgb = expectations_from_packet(build_color_rgb(255, 0, 0), "H617A")
     assert rgb["rgb_color"] == (255, 0, 0)
     # RGB readback does not establish an echo of the write-side operation selector.
     assert rgb["color_mode"] == (ParsedMode.COLOUR, None)
-    echoed = expectations_from_packet(build_color_rgb(255, 0, 0), static_echoes_color=True)
+    echoed = expectations_from_packet(build_color_rgb(255, 0, 0), "H617A", static_echoes_color=True)
     assert echoed["color_mode"] == (ParsedMode.COLOUR, None)
 
     # Colour-temperature writes zero the direct RGB field, so they map to a Kelvin
     # expectation rather than an rgb_color one.
-    ct = expectations_from_packet(build_color_temp(4000))
+    ct = expectations_from_packet(build_color_temp(4000), "H617A")
     assert ct["color_temp_kelvin"] == 4000
     assert "rgb_color" not in ct
 
     # A deliberate black paint is also all-zero, but it is a colour, not a 0 K temperature.
     # Splitting the two on "any RGB byte set" put this frame in the kelvin branch.
-    black = expectations_from_packet(build_color_rgb(0, 0, 0))
+    black = expectations_from_packet(build_color_rgb(0, 0, 0), "H617A")
     assert black["rgb_color"] == (0, 0, 0)
     assert "color_temp_kelvin" not in black
 
-    assert expectations_from_packet(build_segment_brightness_mask(0x7FFF, 80))["white_brightness"] == 80
+    assert expectations_from_packet(build_segment_brightness_mask(0x7FFF, 80), "H617A")["white_brightness"] == 80
 
-    assert expectations_from_packet(build_h617a_scene(scene_code))["effect"] == _SCENE_EFFECT_BY_ID[scene_code]
+    assert expectations_from_packet(build_h617a_scene(scene_code), "H617A")["effect"] == _SCENE_EFFECT_BY_ID[scene_code]
 
-    diy = expectations_from_packet(_packet(0x33, 0x05, [int(StatusReply.ColorMode.diy), 0x20, 0x03]))
+    diy = expectations_from_packet(_packet(0x33, 0x05, [int(StatusReply.ColorMode.diy), 0x20, 0x03]), "H617A")
     assert diy["color_mode"] == (ParsedMode.DIY, 800)
 
-    rhythm = expectations_from_packet(build_music_mode(rhythm_id, 50, (10, 20, 30), True))
+    rhythm = expectations_from_packet(build_music_mode(rhythm_id, 50, (10, 20, 30), True), "H617A")
     assert rhythm["music_mode"] == "rhythm"
     assert rhythm["music_sensitivity"] == 50
     assert rhythm["music_calm"] is True
     assert rhythm["music_color"] == (10, 20, 30)
 
-    auto = expectations_from_packet(build_music_mode(spectrum_id, 40, None, False))
+    auto = expectations_from_packet(build_music_mode(spectrum_id, 40, None, False), "H617A")
     assert auto["music_mode"] == "spectrum"
     assert auto["music_color"] is None
     assert "music_calm" not in auto
@@ -834,8 +834,8 @@ def test_expectations_from_packet_covers_every_command_family():
     assert video["video_sound_effects"] is True
     assert video["video_sound_effects_softness"] == 55
 
-    assert expectations_from_packet(b"\x00\x01") == {}
-    assert expectations_from_packet(_packet(0x33, 0x05, [0xEE])) == {}
+    assert expectations_from_packet(b"\x00\x01", "H617A") == {}
+    assert expectations_from_packet(_packet(0x33, 0x05, [0xEE]), "H617A") == {}
 
 
 def test_an_unnameable_scene_is_reported_rather_than_hidden(coord):
