@@ -183,8 +183,10 @@ async def read_appearance(coordinator: GoveeBLECoordinator) -> ProjectorAppearan
         token, generation = coordinator._notification_token, coordinator._profile_generation
         deadline = time.monotonic() + STATE_QUERY_TIMEOUT
         pending: asyncio.Future[ProjectorAppearance] = asyncio.get_running_loop().create_future()
+        if profile.projector_grammar is None:
+            raise ValueError("Projector appearance requires a declared grammar")
         coordinator._projector_reply = pending
-        coordinator._projector_collector = BulkStatusCollector("H6093")
+        coordinator._projector_collector = BulkStatusCollector(profile.projector_grammar)
 
         def guard() -> None:
             if (
