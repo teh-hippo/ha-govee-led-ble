@@ -907,11 +907,8 @@ export function decodeEffectContent(value: unknown): EffectContent {
       const paintedSegments = arrayValue(
         content.segments,
         "painted segments",
-        addressing === "physical_ic" ? 255 : 15,
+        255,
       );
-      if (addressing === "segments" && paintedSegments.length !== 15) {
-        invalid("painted effect must contain exactly 15 segments");
-      }
       if (paintedSegments.length === 0) invalid("painted effect must not be empty");
       return {
         kind,

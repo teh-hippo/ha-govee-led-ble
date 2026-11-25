@@ -71,6 +71,44 @@ test("Mixed speed zero remains eligible independently of Basic speed bounds", ()
   }, catalogue, "H1AB2", 10)).toBe(false);
 });
 
+test("non-15 painted content crosses the API boundary with exact target qualification", async () => {
+  const raw = {
+    kind: "h617a_painted",
+    effect: "clockwise",
+    speed: 50,
+    brightness: 80,
+    segments: Array.from({ length: 23 }, (_, index) =>
+      index === 0 ? [255, 0, 0] : null),
+  };
+  const decoded = decodeEffectContent(raw);
+  const callWS = vi.fn().mockResolvedValue({
+    compatibility: { state: "compatible", reasons: [] },
+  });
+  const api = new EffectStudioApi({
+    callWS,
+    callService: vi.fn(),
+    connection: { subscribeMessage: vi.fn() },
+  } as unknown as HomeAssistant);
+
+  await api.contentCompatibility("painted-target", decoded);
+  expect(effectContentToWire(decoded)).toEqual(raw);
+  expect(callWS).toHaveBeenCalledWith(
+    expect.objectContaining({ content: raw }),
+  );
+
+  const catalogue = decodeCustomCatalogue(responses.custom_catalogue).models.H617A;
+  expect(effectContentEligible(decoded, catalogue, "H617A", 23)).toBe(true);
+  expect(effectContentEligible(decoded, catalogue, "H617A", 22)).toBe(false);
+});
+
+test("painted physical addressing remains structurally bounded", () => {
+  expect(() => decodeEffectContent({
+    ...cloneObject(contentSamples.h617a_painted),
+    addressing: "physical_ic",
+    segments: Array(256).fill(null),
+  })).toThrow(/painted segments/);
+});
+
 test("canonical backend responses decode through the production validators", () => {
   const info = decodeEditorApiInfo(responses.editor_info);
   expect(isCompatibleEditorInfo(info)).toBe(true);
