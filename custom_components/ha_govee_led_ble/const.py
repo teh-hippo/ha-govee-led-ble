@@ -192,6 +192,51 @@ class CameraControlPolicy:
     entity_suffixes: frozenset[str]
 
 
+def _h6199_video_control_revision_states(identity: Any) -> Mapping[str, str]:
+    def identity_version(value: object) -> int | None:
+        version = FirmwareVersion.parse(value)
+        return version.identity_number() if version is not None else None
+
+    fw, hw, wifi_hw, wifi_fw = (
+        identity_version(getattr(identity, field, None))
+        for field in ("fw_version", "hw_version", "subordinate_20_version", "subordinate_21_version")
+    )
+    pact = (getattr(identity, "pact_type", None), getattr(identity, "pact_code", None))
+
+    def state(*checks: bool | None) -> str:
+        if False in checks:
+            return "unsupported"
+        return "evidence_gap" if None in checks else "supported"
+
+    white_balance = state(
+        None if fw is None else fw >= 10811,
+        None if hw is None else hw >= 30201,
+        None if wifi_fw is None else wifi_fw >= 10023,
+        None if wifi_hw is None else wifi_hw >= 10300,
+    )
+    relative = state(
+        None if fw is None else fw >= 11002,
+        None if hw is None else hw in (30201, 30210),
+        None if wifi_fw is None else wifi_fw >= 10030,
+        None if wifi_hw is None else wifi_hw == 10300,
+    )
+    if pact in ((3, 1), (4, 1)):
+        sound = "supported"
+    else:
+        sound = state(
+            None if hw is None else hw // 10000 in (1, 3) and hw // 100 != 304,
+            None if fw is None or hw is None else fw >= (10601 if hw // 10000 == 1 else 10702),
+        )
+        if sound == "unsupported" and None in pact:
+            sound = "evidence_gap"
+    return {
+        "white_balance": white_balance,
+        "relative_brightness": relative,
+        "blank_screen": relative,
+        "sound_effects": sound,
+    }
+
+
 _IDENTITY_READ_DOMAINS = frozenset(
     {
         ReadDomain.FIRMWARE,
@@ -575,6 +620,7 @@ class ModelProfile:
     dreamview_requires_group_ack: bool = False
     video_firmware_conditions: tuple[VideoFirmwareCondition, ...] = ()
     video_control_exclusions: tuple[tuple[str, str], ...] = ()
+    video_control_state_resolver: Callable[[Any], Mapping[str, str]] | None = None
     profile_identity_fields: frozenset[str] = frozenset()
     effect_identity_fields: frozenset[str] = frozenset()
     scene_identity_fields: frozenset[str] = frozenset()
@@ -824,6 +870,8 @@ class ModelProfile:
                 raise ValueError("Kelvin range must lie on the supported companion-colour grid")
         if self.requires_pact_confirmation and not (self.requires_qualified_identity and self.profile_pact_dependent):
             raise ValueError("Pact confirmation requires identity-qualified, Pact-dependent controls")
+        if (self.video_revision_policy is None) != (self.video_control_state_resolver is None):
+            raise ValueError("Video revision policy requires an exact video-control state resolver")
         if (
             len({source.key for source in self.light_sources}) != len(self.light_sources)
             or len({source.control for source in self.light_sources}) != len(self.light_sources)
@@ -3954,6 +4002,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         effect_grammar="H6199",
         video_grammar="H6199",
         video_revision_policy=VideoRevisionPolicy.QUALIFIED_CAMERA,
+        video_control_state_resolver=_h6199_video_control_revision_states,
         camera_control_policy=CameraControlPolicy(
             identity_fields=("fw_version", "hw_version", "subordinate_20_version", "subordinate_21_version"),
             qualified_versions=(11004, 30201, 10300, 10033),
