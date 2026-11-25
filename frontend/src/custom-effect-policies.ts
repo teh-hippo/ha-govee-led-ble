@@ -1,7 +1,7 @@
 import type {
   CustomEffectContent,
-  H6179MixedDiyContent,
-  H6179SingleDiyContent,
+  TypedMixedDiyContent,
+  TypedSingleDiyContent,
   MultiContent,
   PaintedContent,
   PaletteDiyEffectContent,
@@ -11,6 +11,8 @@ import type {
 export const PAINTED_EFFECT_KIND = "h617a_painted";
 export const SINGLE_EFFECT_KIND = "h617a_single";
 export const MULTI_EFFECT_KIND = "h617a_multi";
+export const TYPED_SINGLE_DIY_KIND = "h6179_single_diy";
+export const TYPED_MIXED_DIY_KIND = "h6179_mixed_diy";
 
 export type CustomEffectCategory =
   | "all"
@@ -41,6 +43,42 @@ export function isMultiEffectKind(
   return kind === MULTI_EFFECT_KIND;
 }
 
+export function isTypedSingleDiyKind(
+  kind: unknown,
+): kind is TypedSingleDiyContent["kind"] {
+  return kind === TYPED_SINGLE_DIY_KIND;
+}
+
+export function isTypedMixedDiyKind(
+  kind: unknown,
+): kind is TypedMixedDiyContent["kind"] {
+  return kind === TYPED_MIXED_DIY_KIND;
+}
+
+export function isTypedDiyKind(
+  kind: unknown,
+): kind is TypedSingleDiyContent["kind"] | TypedMixedDiyContent["kind"] {
+  return isTypedSingleDiyKind(kind) || isTypedMixedDiyKind(kind);
+}
+
+export function isTypedSingleDiyContent(
+  content: { kind: unknown } | undefined,
+): content is TypedSingleDiyContent {
+  return isTypedSingleDiyKind(content?.kind);
+}
+
+export function isTypedMixedDiyContent(
+  content: { kind: unknown } | undefined,
+): content is TypedMixedDiyContent {
+  return isTypedMixedDiyKind(content?.kind);
+}
+
+export function isTypedDiyContent(
+  content: { kind: unknown } | undefined,
+): content is TypedSingleDiyContent | TypedMixedDiyContent {
+  return isTypedSingleDiyContent(content) || isTypedMixedDiyContent(content);
+}
+
 export function isCustomEffectKind(
   kind: unknown,
 ): kind is CustomEffectContent["kind"] {
@@ -48,8 +86,7 @@ export function isCustomEffectKind(
     isPaintedEffectKind(kind) ||
     isSingleEffectKind(kind) ||
     isMultiEffectKind(kind) ||
-    kind === "h6179_single_diy" ||
-    kind === "h6179_mixed_diy"
+    isTypedDiyKind(kind)
   );
 }
 
@@ -59,10 +96,10 @@ export function normaliseCustomEffectKind(
   if (isPaintedEffectKind(kind)) return "painted";
   if (
     isSingleEffectKind(kind) ||
-    kind === "h6179_single_diy" ||
+    isTypedSingleDiyKind(kind) ||
     kind === "palette_diy"
   ) return "single";
-  if (isMultiEffectKind(kind) || kind === "h6179_mixed_diy") return "multi";
+  if (isMultiEffectKind(kind) || isTypedMixedDiyKind(kind)) return "multi";
   return undefined;
 }
 
@@ -86,7 +123,7 @@ export function isMultiEffectContent(
 
 export type SinglePaletteEffectContent =
   | SingleContent
-  | H6179SingleDiyContent
+  | TypedSingleDiyContent
   | PaletteDiyEffectContent;
 
 export function isSinglePaletteEffectContent(
@@ -95,7 +132,7 @@ export function isSinglePaletteEffectContent(
   return normaliseCustomEffectKind(content?.kind) === "single";
 }
 
-export type MixedPaletteEffectContent = MultiContent | H6179MixedDiyContent;
+export type MixedPaletteEffectContent = MultiContent | TypedMixedDiyContent;
 
 export function isMixedPaletteEffectContent(
   content: { kind: unknown } | undefined,

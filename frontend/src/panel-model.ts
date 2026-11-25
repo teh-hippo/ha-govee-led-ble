@@ -39,6 +39,8 @@ import {
   MULTI_EFFECT_KIND,
   PAINTED_EFFECT_KIND,
   SINGLE_EFFECT_KIND,
+  TYPED_MIXED_DIY_KIND,
+  TYPED_SINGLE_DIY_KIND,
   isSinglePaletteEffectContent,
   normaliseCustomEffectKind,
 } from "./custom-effect-policies";
@@ -654,9 +656,9 @@ export class PanelModel {
         return device.custom_effects.single;
       case MULTI_EFFECT_KIND:
         return device.custom_effects.multi;
-      case "h6179_single_diy":
+      case TYPED_SINGLE_DIY_KIND:
         return device.custom_effects.single;
-      case "h6179_mixed_diy":
+      case TYPED_MIXED_DIY_KIND:
         return device.custom_effects.multi;
       case "palette_diy":
         return device.custom_effects.palette_diy;

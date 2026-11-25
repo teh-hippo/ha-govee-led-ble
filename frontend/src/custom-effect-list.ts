@@ -14,6 +14,8 @@ import {
   MULTI_EFFECT_KIND,
   PAINTED_EFFECT_KIND,
   SINGLE_EFFECT_KIND,
+  TYPED_MIXED_DIY_KIND,
+  TYPED_SINGLE_DIY_KIND,
   isPortableLibraryEffectKind,
 } from "./custom-effect-policies";
 
@@ -171,7 +173,7 @@ export function customEffectCategoryAvailable(
         customEffectKindAvailable(context, "native_effect") ||
         customEffectKindAvailable(context, PAINTED_EFFECT_KIND) ||
         customEffectKindAvailable(context, SINGLE_EFFECT_KIND) ||
-        customEffectKindAvailable(context, "h6179_single_diy") ||
+        customEffectKindAvailable(context, TYPED_SINGLE_DIY_KIND) ||
         customEffectKindAvailable(context, "palette_diy")
       );
     case "multi-layer":
@@ -179,7 +181,7 @@ export function customEffectCategoryAvailable(
         Boolean(context.catalogue?.templates?.some(template => template.category === "multi-layer" &&
           template.content.kind === "native_effect")) && context.catalogue?.apply.multi === "supported" ||
         customEffectKindAvailable(context, MULTI_EFFECT_KIND) ||
-        customEffectKindAvailable(context, "h6179_mixed_diy")
+        customEffectKindAvailable(context, TYPED_MIXED_DIY_KIND)
       );
     case "advanced":
       return (
@@ -213,13 +215,13 @@ export function customEffectKindAvailable(
   if (kind === SINGLE_EFFECT_KIND) {
     return (
       !catalogue.workflows.some(
-        (workflow) => workflow.content_kind === "h6179_single_diy",
+        (workflow) => workflow.content_kind === TYPED_SINGLE_DIY_KIND,
       ) &&
       Boolean(catalogue.effects.length) &&
       catalogue.apply.single !== "unsupported"
     );
   }
-  if (kind === "h6179_single_diy") {
+  if (kind === TYPED_SINGLE_DIY_KIND) {
     return (
       catalogue.workflows.some((workflow) => workflow.content_kind === kind) &&
       Boolean(catalogue.effects.length) &&
@@ -235,14 +237,14 @@ export function customEffectKindAvailable(
   if (kind === MULTI_EFFECT_KIND) {
     return (
       !catalogue.workflows.some(
-        (workflow) => workflow.content_kind === "h6179_mixed_diy" ||
+        (workflow) => workflow.content_kind === TYPED_MIXED_DIY_KIND ||
           workflow.id === "multi" && workflow.content_kind === "native_effect",
       ) &&
       catalogue.supports.multi !== "unsupported" &&
       catalogue.apply.multi !== "unsupported"
     );
   }
-  if (kind === "h6179_mixed_diy") {
+  if (kind === TYPED_MIXED_DIY_KIND) {
     return (
       catalogue.workflows.some((workflow) => workflow.content_kind === kind) &&
       catalogue.supports.multi !== "unsupported" &&
@@ -276,8 +278,8 @@ export function newEffectKindForCategory(
     if (customEffectKindAvailable(context, SINGLE_EFFECT_KIND)) {
       return SINGLE_EFFECT_KIND;
     }
-    if (customEffectKindAvailable(context, "h6179_single_diy")) {
-      return "h6179_single_diy";
+    if (customEffectKindAvailable(context, TYPED_SINGLE_DIY_KIND)) {
+      return TYPED_SINGLE_DIY_KIND;
     }
     if (customEffectKindAvailable(context, "palette_diy")) {
       return "palette_diy";
@@ -290,8 +292,8 @@ export function newEffectKindForCategory(
     if (customEffectKindAvailable(context, MULTI_EFFECT_KIND)) {
       return MULTI_EFFECT_KIND;
     }
-    return customEffectKindAvailable(context, "h6179_mixed_diy")
-      ? "h6179_mixed_diy"
+    return customEffectKindAvailable(context, TYPED_MIXED_DIY_KIND)
+      ? TYPED_MIXED_DIY_KIND
       : undefined;
   }
   if (category === "advanced") {
@@ -317,8 +319,8 @@ function customEffectEntryAvailable(
         context,
         customEffectKindAvailable(context, SINGLE_EFFECT_KIND)
           ? SINGLE_EFFECT_KIND
-          : customEffectKindAvailable(context, "h6179_single_diy")
-            ? "h6179_single_diy"
+          : customEffectKindAvailable(context, TYPED_SINGLE_DIY_KIND)
+            ? TYPED_SINGLE_DIY_KIND
             : "palette_diy",
       );
     case "music":

@@ -7,8 +7,8 @@ import type {
   EffectContent,
   EffectUserState,
   EffectLayer,
-  H6179MixedDiyContent,
-  H6179SingleDiyContent,
+  TypedMixedDiyContent,
+  TypedSingleDiyContent,
   JsonObject,
   KnownEffectContent,
   LayeredSceneContent,
@@ -978,7 +978,7 @@ export function decodeEffectContent(value: unknown): EffectContent {
         ),
         speed: integerValue(content.speed, "H6179 Single DIY speed", 0, 100),
         palette: paletteValue(content.palette, "H6179 Single DIY palette", 8),
-      } satisfies H6179SingleDiyContent;
+      } satisfies TypedSingleDiyContent;
     case "h6179_mixed_diy": {
       const components = arrayValue(
         content.components,
@@ -1017,7 +1017,7 @@ export function decodeEffectContent(value: unknown): EffectContent {
         }),
         speed: integerValue(content.speed, "H6179 Mixed DIY speed", 0, 100),
         palette: paletteValue(content.palette, "H6179 Mixed DIY palette", 8),
-      } satisfies H6179MixedDiyContent;
+      } satisfies TypedMixedDiyContent;
     }
     case "palette_diy":
       return {

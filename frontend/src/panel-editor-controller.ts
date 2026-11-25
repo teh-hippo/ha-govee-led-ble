@@ -44,6 +44,7 @@ import {
   MULTI_EFFECT_KIND,
   PAINTED_EFFECT_KIND,
   SINGLE_EFFECT_KIND,
+  TYPED_SINGLE_DIY_KIND,
   isMixedPaletteEffectContent,
   isMultiEffectContent,
   isMultiEffectKind,
@@ -52,6 +53,8 @@ import {
   isSingleEffectContent,
   isSingleEffectKind,
   isSinglePaletteEffectContent,
+  isTypedDiyContent,
+  isTypedSingleDiyContent,
 } from "./custom-effect-policies";
 
 interface PanelEditorOptions {
@@ -142,8 +145,8 @@ export class PanelEditorController {
           { section: "custom", category: entry.category },
           true,
         );
-      } else if (this.model.customEffectKindAvailable("h6179_single_diy")) {
-        const content = blankCustomEffect("h6179_single_diy", catalogue);
+      } else if (this.model.customEffectKindAvailable(TYPED_SINGLE_DIY_KIND)) {
+        const content = blankCustomEffect(TYPED_SINGLE_DIY_KIND, catalogue);
         this.openEditableTemplate(
           entry.label,
           { ...content, family: entry.family, variant: entry.variant },
@@ -373,12 +376,12 @@ export class PanelEditorController {
         existingTransitionEpoch,
       );
     } else if (
-      this.model.customEffectKindAvailable("h6179_single_diy") &&
+      this.model.customEffectKindAvailable(TYPED_SINGLE_DIY_KIND) &&
       catalogue &&
       family
     ) {
       const variation = family.variations[0];
-      const content = blankCustomEffect("h6179_single_diy", catalogue);
+      const content = blankCustomEffect(TYPED_SINGLE_DIY_KIND, catalogue);
       this.openEditableTemplate(
         family.label,
         {
@@ -782,10 +785,7 @@ export class PanelEditorController {
       this.model.content.kind === kind
     ) return;
     const current = this.model.content;
-    if (
-      current.kind === "h6179_single_diy" ||
-      current.kind === "h6179_mixed_diy"
-    ) return;
+    if (isTypedDiyContent(current)) return;
     if (isSingleEffectKind(kind) && isMultiEffectContent(current) && current.effects.length > 1) return;
     let next: CustomEffectContent;
     if (isPaintedEffectKind(kind)) {
@@ -943,7 +943,7 @@ export class PanelEditorController {
     }
     if (
       ((isSingleEffectContent(content) ||
-        content.kind === "h6179_single_diy") &&
+        isTypedSingleDiyContent(content)) &&
         this.model.customEffectKindAvailable(content.kind)) ||
       (content.kind === "palette_diy" &&
         content.model === selectedModel &&
@@ -963,9 +963,9 @@ export class PanelEditorController {
       const resetContent =
         isSingleEffectContent(content)
           ? blankCustomEffect(SINGLE_EFFECT_KIND, catalogue, family.family, variation.variant)
-          : content.kind === "h6179_single_diy"
+          : isTypedSingleDiyContent(content)
             ? {
-                ...blankCustomEffect("h6179_single_diy", catalogue),
+                ...blankCustomEffect(TYPED_SINGLE_DIY_KIND, catalogue),
                 family: family.family,
                 variant: variation.variant,
               }
