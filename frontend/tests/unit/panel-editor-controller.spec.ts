@@ -103,6 +103,7 @@ test("actual paint and single controller paths use target defaults on open, rese
   model.isAdmin = true;
   model.liveApplyEnabled = false;
   const target = device("restricted", "H9908");
+  target.segment_count = 23;
   target.custom_effects.single = "supported";
   model.devices = [target];
   model.selectedDeviceId = target.config_entry_id;
@@ -123,6 +124,9 @@ test("actual paint and single controller paths use target defaults on open, rese
     controller.selectCustomEffectEntry(entry);
     expect(model.previewCapability).toBe("supported");
     expect(model.content).toMatchObject(entry.kind === "paint" ? { brightness: 60 } : { family: 1, speed: 80 });
+    if (entry.kind === "paint") {
+      expect(model.content).toMatchObject({ segments: Array(23).fill(null) });
+    }
     const initial = structuredClone(model.content);
     expect(controller.openActiveWorkspace({ kind: "workspace", section: "custom", category: "single-layer",
       label: entry.label, origin: { kind: "catalogue_template", source_id: entry.key },
@@ -132,12 +136,13 @@ test("actual paint and single controller paths use target defaults on open, rese
     expect(model.previewCapability).toBe("supported");
   }
   controller.openDefaultAvailableTemplate("single-layer", model.editorTransitionEpoch);
-  expect(model.content).toMatchObject({ kind: "h617a_painted", brightness: 60 });
+  expect(model.content).toMatchObject({ kind: "h617a_painted", brightness: 60, segments: Array(23).fill(null) });
   catalogue.apply.painted = "unsupported";
   controller.openDefaultAvailableTemplate("single-layer", model.editorTransitionEpoch);
   expect(model.content).toMatchObject({ kind: "h617a_single", family: 0, speed: 10 });
   catalogue.apply.painted = "supported";
   controller.newEffect("h617a_painted");
+  expect(model.content).toMatchObject({ segments: Array(23).fill(null) });
   expect(model.previewCapability).toBe("supported");
   controller.updatePaintedContent({ brightness: 59 });
   controller.resetContent();
@@ -149,7 +154,7 @@ test("actual paint and single controller paths use target defaults on open, rese
   expect(model.content).toMatchObject({ family: 0, speed: 10 });
   expect(model.previewCapability).toBe("supported");
   controller.selectSingleEffect("paint");
-  expect(model.content).toMatchObject({ kind: "h617a_painted", brightness: 60, speed: 30 });
+  expect(model.content).toMatchObject({ kind: "h617a_painted", brightness: 60, speed: 30, segments: Array(23).fill(null) });
   expect(model.previewCapability).toBe("supported");
 });
 

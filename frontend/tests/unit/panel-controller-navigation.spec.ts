@@ -647,7 +647,7 @@ test("painted workspace restoration keeps variation content under the fixed Pain
   expect(model.catalogueSourceLabel).toBe("Paint");
   expect(model.name).toBe("Paint");
   expect(model.content).toEqual(workspaceContent);
-  expect(model.resetBaseline).toEqual(blankCustomEffect("h617a_painted", model.modelCatalogue!));
+  expect(model.resetBaseline).toEqual(blankCustomEffect("h617a_painted", model.modelCatalogue!, selected.segment_count));
 });
 
 test("active workspace does not open a category disabled by options", async () => {

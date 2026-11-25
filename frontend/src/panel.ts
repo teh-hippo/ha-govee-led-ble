@@ -10,7 +10,6 @@ import {
   advancedEditorContent,
   effectOriginDescription,
   isAdvancedEditableContent,
-  isCustomEffectContent,
 } from "./effect-editor-model";
 import type { EditorActionDescriptor } from "./editor-state";
 import { customEffectCategories } from "./custom-effect-workflow";
@@ -61,6 +60,13 @@ import {
   showHomeAssistantHeader,
 } from "./ui-utils";
 import { MAX_EDITOR_DEVICES, MAX_IDENTIFIER_LENGTH } from "./validation-constants";
+import {
+  PAINTED_EFFECT_KIND,
+  customEffectEditorForKind,
+  isPaintedEffectContent,
+  isSingleEffectKind,
+  isSinglePaletteEffectContent,
+} from "./custom-effect-policies";
 
 const FEEDBACK_SESSION_STORAGE_KEY = "ha_govee_led_ble/effect_studio/hidden_feedback";
 
@@ -231,6 +237,15 @@ export class GoveeLedEffectStudio extends LitElement {
     if (!this.model.editorOwnedByActiveView) {
       return;
     }
+    const editor = customEffectEditorForKind(this.model.content.kind);
+    if (editor === "painted") {
+      this.requestComponentGroup("painted");
+      return;
+    }
+    if (editor === "palette") {
+      this.requestComponentGroup("custom");
+      return;
+    }
     switch (this.model.content.kind) {
       case "advanced":
       case "scene_layered":
@@ -238,18 +253,6 @@ export class GoveeLedEffectStudio extends LitElement {
       case "workshop_rgbic_v2":
       case "shared_scene_rgbic_v1":
         this.requestComponentGroup("advanced");
-        break;
-      case "static_rgb":
-      case "h617a_painted":
-        this.requestComponentGroup("painted");
-        break;
-      case "h617a_single":
-      case "h617a_multi":
-      case "h6179_single_diy":
-      case "h6179_mixed_diy":
-      case "palette_diy":
-      case "native_effect":
-        this.requestComponentGroup("custom");
         break;
       case "music_profile":
         this.requestComponentGroup("music");
@@ -809,15 +812,9 @@ export class GoveeLedEffectStudio extends LitElement {
 
   private renderCurrentCustomEditor() {
     if (this.content.kind === "native_effect") return this.renderNativeEditor();
-    if (this.content.kind === "static_rgb") return this.renderPaintedEditor();
-    if (isCustomEffectContent(this.content)) {
-      return this.content.kind === "h617a_painted"
-        ? this.renderPaintedEditor()
-        : this.renderPaletteEffectEditor();
-    }
-    if (this.content.kind === "palette_diy") {
-      return this.renderPaletteEffectEditor();
-    }
+    const editor = customEffectEditorForKind(this.content.kind);
+    if (editor === "painted") return this.renderPaintedEditor();
+    if (editor === "palette") return this.renderPaletteEffectEditor();
     if (this.content.kind === "music_profile") {
       return this.renderMusicProfileEditor();
     }
@@ -1441,12 +1438,12 @@ export class GoveeLedEffectStudio extends LitElement {
   }
 
   private renderPaintedEditor() {
-    if (this.content.kind !== "h617a_painted" && this.content.kind !== "static_rgb") {
+    if (!isPaintedEffectContent(this.content) && this.content.kind !== "static_rgb") {
       return nothing;
     }
     const content = this.content;
     const isStatic = content.kind === "static_rgb";
-    const physical = content.kind === "h617a_painted" && content.addressing === "physical_ic";
+    const physical = isPaintedEffectContent(content) && content.addressing === "physical_ic";
     return html`
       ${this.renderEditorHeading()}
 
@@ -1458,7 +1455,7 @@ export class GoveeLedEffectStudio extends LitElement {
 
       <govee-painted-segment-editor
         .segments=${this.content.segments}
-        .background=${content.kind === "h617a_painted" ? content.background ?? [0, 0, 0] : [0, 0, 0]}
+        .background=${isPaintedEffectContent(content) ? content.background ?? [0, 0, 0] : [0, 0, 0]}
         .physical=${physical}
         .disabled=${this.editorDisabled}
         @segment-selected=${(
@@ -1524,7 +1521,7 @@ export class GoveeLedEffectStudio extends LitElement {
                   this.editor.updatePaintedContent({ background: event.detail.colour }, "committed")}
               ></govee-single-colour-field>
             ` : nothing}
-            ${content.kind === "h617a_painted" ? html`
+            ${isPaintedEffectContent(content) ? html`
             ${this.sliderField("Speed", "speed", content.speed)}
             ${this.sliderField(
               "Brightness",
@@ -1539,13 +1536,7 @@ export class GoveeLedEffectStudio extends LitElement {
   }
 
   private renderPaletteEffectEditor() {
-    if (
-      this.content.kind !== "h617a_single" &&
-      this.content.kind !== "h617a_multi" &&
-      this.content.kind !== "h6179_single_diy" &&
-      this.content.kind !== "h6179_mixed_diy" &&
-      this.content.kind !== "palette_diy"
-    ) {
+    if (customEffectEditorForKind(this.content.kind) !== "palette" || this.content.kind === "native_effect") {
       return nothing;
     }
     const content = this.content;
@@ -1579,16 +1570,14 @@ export class GoveeLedEffectStudio extends LitElement {
     if (
       !this.model.customCatalogue ||
       !this.model.showSingleEffectSelector ||
-      (this.content.kind !== "h617a_painted" &&
-        this.content.kind !== "h617a_single" &&
-        this.content.kind !== "h6179_single_diy" &&
-        this.content.kind !== "palette_diy")
+      (!isPaintedEffectContent(this.content) &&
+        !isSinglePaletteEffectContent(this.content))
     ) {
       return nothing;
     }
     const family = this.selectedSingleEffectFamily;
     const effectFamilies =
-      this.currentItem?.content.kind === "h617a_painted"
+      isPaintedEffectContent(this.currentItem?.content)
         ? []
         : this.model.editorCatalogue?.effects.filter(
             (effect) => effect.category === "single_layer",
@@ -1597,14 +1586,14 @@ export class GoveeLedEffectStudio extends LitElement {
       (effect) => effect.family === family?.family,
     );
     const selectedEffect =
-      this.content.kind === "h617a_painted"
+      isPaintedEffectContent(this.content)
         ? "paint"
         : family && familyAvailable
           ? family.id
           : `unknown:${this.content.family}`;
     const includePaint =
-      this.customEffectKindAvailable("h617a_painted") &&
-      this.currentItem?.content.kind !== "h617a_single";
+      this.customEffectKindAvailable(PAINTED_EFFECT_KIND) &&
+      !isSingleEffectKind(this.currentItem?.content.kind);
     return html`
       <section class="card single-effect-settings">
         <label class="field">
@@ -1618,9 +1607,7 @@ export class GoveeLedEffectStudio extends LitElement {
                 (event.target as HTMLSelectElement).value,
               )}
           >
-            ${(this.content.kind === "h617a_single" ||
-              this.content.kind === "h6179_single_diy" ||
-              this.content.kind === "palette_diy") && !familyAvailable
+            ${isSinglePaletteEffectContent(this.content) && !familyAvailable
               ? html`
                   <option value=${selectedEffect}>
                     Unknown effect ${this.content.family}
@@ -1728,7 +1715,7 @@ export class GoveeLedEffectStudio extends LitElement {
   }
 
   private renderPaintedVariationField() {
-    if (!this.model.customCatalogue || this.content.kind !== "h617a_painted") {
+    if (!this.model.customCatalogue || !isPaintedEffectContent(this.content)) {
       return nothing;
     }
     const content = this.content;
@@ -1991,10 +1978,8 @@ export class GoveeLedEffectStudio extends LitElement {
 
   private syncSingleEffectSelects(): void {
     if (
-      this.content.kind !== "h617a_painted" &&
-      this.content.kind !== "h617a_single" &&
-      this.content.kind !== "h6179_single_diy" &&
-      this.content.kind !== "palette_diy"
+      !isPaintedEffectContent(this.content) &&
+      !isSinglePaletteEffectContent(this.content)
     ) {
       return;
     }
@@ -2003,12 +1988,12 @@ export class GoveeLedEffectStudio extends LitElement {
     );
     if (effect) {
       effect.value =
-        this.content.kind === "h617a_painted"
+        isPaintedEffectContent(this.content)
           ? "paint"
           : this.selectedSingleEffectFamily?.id ??
             `unknown:${this.content.family}`;
     }
-    if (this.content.kind === "h617a_painted") {
+    if (isPaintedEffectContent(this.content)) {
       const variation = this.shadowRoot?.querySelector<HTMLSelectElement>(
         'select[aria-label="Variation"]',
       );

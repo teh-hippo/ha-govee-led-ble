@@ -40,6 +40,19 @@ import type {
   RGB,
   VideoProfileContent,
 } from "./types";
+import {
+  MULTI_EFFECT_KIND,
+  PAINTED_EFFECT_KIND,
+  SINGLE_EFFECT_KIND,
+  isMixedPaletteEffectContent,
+  isMultiEffectContent,
+  isMultiEffectKind,
+  isPaintedEffectContent,
+  isPaintedEffectKind,
+  isSingleEffectContent,
+  isSingleEffectKind,
+  isSinglePaletteEffectContent,
+} from "./custom-effect-policies";
 
 interface PanelEditorOptions {
   apiReady(): boolean;
@@ -93,7 +106,7 @@ export class PanelEditorController {
     this.beginTransition(cancelPreview);
     this.model.patch({
       sceneEditorOpen: false, sceneInitialSelection: undefined, currentItem: undefined, savedSceneSelection: undefined,
-      editorSource: { kind: "none" }, name: "", content: blankPainted(),
+      editorSource: { kind: "none" }, name: "", content: blankPainted(this.model.selectedDevice?.segment_count),
       savedBaseline: undefined, resetBaseline: undefined, resetNameBaseline: undefined, builtInBaselines: undefined,
     });
   }
@@ -113,7 +126,7 @@ export class PanelEditorController {
       if (!catalogue) return;
       this.openEditableTemplate(
         entry.label,
-        blankCustomEffect("h617a_painted", catalogue),
+        blankCustomEffect(PAINTED_EFFECT_KIND, catalogue, this.model.selectedDevice!.segment_count),
         entry.key,
         { section: "custom", category: entry.category },
         true,
@@ -121,10 +134,10 @@ export class PanelEditorController {
     } else {
       const catalogue = this.model.modelCatalogue;
       if (!catalogue) return;
-      if (this.model.customEffectKindAvailable("h617a_single")) {
+      if (this.model.customEffectKindAvailable(SINGLE_EFFECT_KIND)) {
         this.openEditableTemplate(
           entry.label,
-          blankCustomEffect("h617a_single", catalogue, entry.family, entry.variant),
+          blankCustomEffect(SINGLE_EFFECT_KIND, catalogue, entry.family, entry.variant),
           entry.key,
           { section: "custom", category: entry.category },
           true,
@@ -207,7 +220,7 @@ export class PanelEditorController {
       this.beginSelectionTransition();
     }
     const installed = cloneEditableEffect(content);
-    if (installed.kind === "h617a_painted" && installed.addressing === "physical_ic") {
+    if (isPaintedEffectContent(installed) && installed.addressing === "physical_ic") {
       this.model.paintColour = [255, 0, 0];
       this.model.paintBrushOff = false;
     }
@@ -276,7 +289,7 @@ export class PanelEditorController {
       name: label,
       content: cloneEditableEffect(context.content),
       paintBrushOff:
-        context.content.kind === "h617a_painted"
+        isPaintedEffectContent(context.content)
           ? false
           : this.model.paintBrushOff,
       savedBaseline: undefined,
@@ -331,10 +344,10 @@ export class PanelEditorController {
       this.clearSelection(existingTransitionEpoch);
       return;
     }
-    if (catalogue && this.model.customEffectKindAvailable("h617a_painted")) {
+    if (catalogue && this.model.customEffectKindAvailable(PAINTED_EFFECT_KIND)) {
       this.openEditableTemplate(
         "Paint",
-        blankCustomEffect("h617a_painted", catalogue),
+        blankCustomEffect(PAINTED_EFFECT_KIND, catalogue, this.model.selectedDevice!.segment_count),
         "template:paint",
         { section: "custom", category },
         false,
@@ -346,14 +359,14 @@ export class PanelEditorController {
       catalogue?.effects.find((effect) => effect.category === "single_layer") ??
       catalogue?.effects[0];
     if (
-      this.model.customEffectKindAvailable("h617a_single") &&
+      this.model.customEffectKindAvailable(SINGLE_EFFECT_KIND) &&
       catalogue &&
       family
     ) {
       const variation = family.variations[0];
       this.openEditableTemplate(
         family.label,
-        blankCustomEffect("h617a_single", catalogue, family.family, variation.variant),
+        blankCustomEffect(SINGLE_EFFECT_KIND, catalogue, family.family, variation.variant),
         `template:single:${family.family}:${variation.variant}`,
         { section: "custom", category },
         false,
@@ -422,11 +435,13 @@ export class PanelEditorController {
           ? this.musicTemplateContent(this.model.modelCatalogue!.music_modes[0]?.id ?? "")
         : kind === "palette_diy"
           ? blankPaletteDiy(this.model.modelCatalogue!, this.model.selectedModel!)
-          : blankCustomEffect(kind, this.model.modelCatalogue!)
+          : isPaintedEffectKind(kind)
+            ? blankCustomEffect(kind, this.model.modelCatalogue!, this.model.selectedDevice!.segment_count)
+            : blankCustomEffect(kind as Exclude<CustomEffectContent["kind"], typeof PAINTED_EFFECT_KIND>, this.model.modelCatalogue!)
     );
     if (!content) return;
     const name = initial?.name ?? (kind === "static_rgb" ? "New Canvas" : `New ${customKindLabel(kind)} effect`);
-    if (content.kind === "h617a_painted" && content.addressing === "physical_ic") {
+    if (isPaintedEffectContent(content) && content.addressing === "physical_ic") {
       this.model.paintColour = [255, 0, 0];
     }
     const owner: EditorOwner = {
@@ -436,7 +451,7 @@ export class PanelEditorController {
           ? "static"
           : kind === "music_profile"
           ? "music"
-          : kind === "h617a_multi" || kind === "h6179_mixed_diy"
+          : isMixedPaletteEffectContent({ kind })
             ? "multi-layer"
             : kind === "advanced"
               ? "advanced"
@@ -447,7 +462,7 @@ export class PanelEditorController {
       editorSource: { kind: "new", owner },
       name,
       content: cloneEditableEffect(content),
-      paintBrushOff: kind === "h617a_painted" || kind === "static_rgb" ? false : this.model.paintBrushOff,
+      paintBrushOff: isPaintedEffectKind(kind) || kind === "static_rgb" ? false : this.model.paintBrushOff,
       savedBaseline: serialiseEditable(name, content),
       resetBaseline: cloneEditableEffect(content),
       resetNameBaseline: name,
@@ -492,7 +507,7 @@ export class PanelEditorController {
       resetBaseline: cloneEditableEffect(content),
       resetNameBaseline: undefined,
       builtInBaselines: undefined,
-      paintBrushOff: content.kind === "h617a_painted" ? false : this.model.paintBrushOff,
+      paintBrushOff: isPaintedEffectContent(content) ? false : this.model.paintBrushOff,
       notice: undefined,
     });
     return true;
@@ -503,7 +518,7 @@ export class PanelEditorController {
     this.model.patch({
       currentItem: undefined, editorSource: { kind: "none" },
       sceneEditorOpen: false,
-      name: "", content: blankPainted(), savedBaseline: undefined,
+      name: "", content: blankPainted(this.model.selectedDevice?.segment_count), savedBaseline: undefined,
       resetBaseline: undefined, resetNameBaseline: undefined, builtInBaselines: undefined,
     });
   }
@@ -513,7 +528,7 @@ export class PanelEditorController {
       currentItem: undefined,
       editorSource: { kind: "none" },
       name: "",
-      content: blankPainted(),
+      content: blankPainted(this.model.selectedDevice?.segment_count),
       savedBaseline: undefined,
       resetBaseline: undefined,
       resetNameBaseline: undefined,
@@ -647,7 +662,7 @@ export class PanelEditorController {
     const content = this.model.content;
     if (
       this.model.currentItem &&
-      ((content.kind === "h617a_painted" && selected !== "paint") || (content.kind === "h617a_single" && selected === "paint"))
+      ((isPaintedEffectKind(content.kind) && selected !== "paint") || (isSingleEffectKind(content.kind) && selected === "paint"))
     ) return;
     const source = this.model.editorSource;
     if (source.kind === "catalogue") {
@@ -671,7 +686,7 @@ export class PanelEditorController {
       return;
     }
     if (selected === "paint") {
-      if (content.kind !== "h617a_painted") this.switchCustomMode("h617a_painted");
+      if (!isPaintedEffectKind(content.kind)) this.switchCustomMode(PAINTED_EFFECT_KIND);
       this.model.update((model) => {
         this.updateGeneratedEffectName(model, "Paint");
       });
@@ -680,11 +695,9 @@ export class PanelEditorController {
     const family = this.model.editorCatalogue?.effects.find((effect) => effect.id === selected);
     const variation = family?.variations[0];
     if (!family || !variation) return;
-    if (this.model.content.kind === "h617a_painted") this.switchCustomMode("h617a_single", false);
+    if (isPaintedEffectContent(this.model.content)) this.switchCustomMode(SINGLE_EFFECT_KIND, false);
     if (
-      this.model.content.kind !== "h617a_single" &&
-      this.model.content.kind !== "h6179_single_diy" &&
-      this.model.content.kind !== "palette_diy"
+      !isSinglePaletteEffectContent(this.model.content)
     ) return;
     const selectedContent = {
       ...this.model.content,
@@ -699,7 +712,7 @@ export class PanelEditorController {
   }
 
   public setSegmentColour(index: number, interaction: LivePreviewInteraction): boolean {
-    if (this.model.content.kind !== "h617a_painted" && this.model.content.kind !== "static_rgb") return false;
+    if (!isPaintedEffectContent(this.model.content) && this.model.content.kind !== "static_rgb") return false;
     if (!Number.isInteger(index) || index < 0 || index >= this.model.content.segments.length) return false;
     const segments = this.model.content.segments.map((segment) =>
       segment === null ? null : [...segment] as RGB,
@@ -737,7 +750,7 @@ export class PanelEditorController {
         ? this.model.resetNameBaseline
         : undefined;
     const contentDirty = this.model.resetContentDirty;
-    if (baseline.kind === "h617a_painted") {
+    if (isPaintedEffectContent(baseline)) {
       this.model.patch({ paintBrushOff: false });
     }
     if (resetName !== undefined) {
@@ -749,7 +762,7 @@ export class PanelEditorController {
   }
 
   public updatePaintedContent(update: Partial<PaintedContent>, interaction: LivePreviewInteraction = "changing"): void {
-    if (this.model.content.kind === "h617a_painted") {
+    if (isPaintedEffectContent(this.model.content)) {
       this.installEditedContent({ ...this.model.content, ...update }, interaction);
     }
   }
@@ -773,23 +786,23 @@ export class PanelEditorController {
       current.kind === "h6179_single_diy" ||
       current.kind === "h6179_mixed_diy"
     ) return;
-    if (kind === "h617a_single" && current.kind === "h617a_multi" && current.effects.length > 1) return;
+    if (isSingleEffectKind(kind) && isMultiEffectContent(current) && current.effects.length > 1) return;
     let next: CustomEffectContent;
-    if (kind === "h617a_painted") {
-      if (current.kind !== "h617a_painted") {
+    if (isPaintedEffectKind(kind)) {
+      if (!isPaintedEffectContent(current)) {
         this.model.paintColour = current.palette[0]
           ? [...current.palette[0]]
           : [47, 111, 237];
       }
       this.model.paintBrushOff = false;
       next = {
-        ...blankCustomEffect("h617a_painted", catalogue),
+        ...blankCustomEffect(PAINTED_EFFECT_KIND, catalogue, this.model.selectedDevice!.segment_count),
         speed: Math.max(catalogue.limits.speed_min, Math.min(current.speed, catalogue.limits.speed_max)),
       };
       if (next.addressing === "physical_ic") this.model.paintColour = [255, 0, 0];
-    } else if (current.kind === "h617a_painted") {
+    } else if (isPaintedEffectContent(current)) {
       const paintedPalette = uniquePaintedPalette(current);
-      if (kind === "h617a_single") {
+      if (isSingleEffectKind(kind)) {
         const blank = blankCustomEffect(kind, catalogue);
         const family = catalogue.effects.find((family) => family.family === blank.family)!;
         next = {
@@ -799,19 +812,19 @@ export class PanelEditorController {
             ? paintedPalette.slice(0, catalogue.limits.palette_max) : blank.palette,
         };
       } else {
-        const blank = blankCustomEffect("h617a_multi", catalogue);
+        const blank = blankCustomEffect(MULTI_EFFECT_KIND, catalogue);
         next = {
           ...blank,
           palette: paintedPalette.length >= catalogue.limits.palette_min
             ? paintedPalette.slice(0, catalogue.limits.palette_max) : blank.palette,
         };
       }
-    } else if (kind === "h617a_multi" && current.kind === "h617a_single") {
+    } else if (isMultiEffectKind(kind) && isSingleEffectContent(current)) {
       next = {
         kind, effects: [{ family: current.family, variant: current.variant }], speed: current.speed,
         palette: current.palette.map((colour) => [...colour]),
       };
-    } else if (kind === "h617a_single" && current.kind === "h617a_multi") {
+    } else if (isSingleEffectKind(kind) && isMultiEffectContent(current)) {
       const first = current.effects[0];
       next = {
         kind, family: first.family, variant: first.variant, speed: current.speed,
@@ -864,7 +877,7 @@ export class PanelEditorController {
       currentItem: undefined,
       editorSource: { kind: "none" },
       name: "",
-      content: blankPainted(),
+      content: blankPainted(this.model.selectedDevice?.segment_count),
       savedBaseline: undefined,
       resetBaseline: undefined,
       resetNameBaseline: undefined,
@@ -919,17 +932,17 @@ export class PanelEditorController {
       return undefined;
     }
     if (
-      content.kind === "h617a_painted" &&
+      isPaintedEffectContent(content) &&
       this.model.customEffectKindAvailable(content.kind)
     ) {
       return {
         selectionIdentity: "template:paint",
         label: "Paint",
-        resetContent: blankCustomEffect("h617a_painted", catalogue),
+        resetContent: blankCustomEffect(PAINTED_EFFECT_KIND, catalogue, this.model.selectedDevice!.segment_count),
       };
     }
     if (
-      ((content.kind === "h617a_single" ||
+      ((isSingleEffectContent(content) ||
         content.kind === "h6179_single_diy") &&
         this.model.customEffectKindAvailable(content.kind)) ||
       (content.kind === "palette_diy" &&
@@ -948,8 +961,8 @@ export class PanelEditorController {
       }
       const [{ family, variation }] = matches;
       const resetContent =
-        content.kind === "h617a_single"
-          ? blankCustomEffect("h617a_single", catalogue, family.family, variation.variant)
+        isSingleEffectContent(content)
+          ? blankCustomEffect(SINGLE_EFFECT_KIND, catalogue, family.family, variation.variant)
           : content.kind === "h6179_single_diy"
             ? {
                 ...blankCustomEffect("h6179_single_diy", catalogue),
