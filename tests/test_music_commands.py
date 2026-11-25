@@ -910,6 +910,17 @@ def test_h6076_companions_carry_the_default_palette_and_only_separation_has_a_ta
     assert selector == _h6076_selector(f"33050f{code}3200")
 
 
+def test_h6076_geometry_policy_survives_a_different_wire_layout_name() -> None:
+    separation = music_variant(_H6076, 0x32)
+    assert separation is not None
+    profile = replace(
+        _H6076,
+        physical_ic_count=30,
+        music_variants=(replace(separation, layout="synthetic_companion"),),
+    )
+    assert music_variant(profile, 0x32).gradient_companions == (99, 98)
+
+
 @pytest.mark.parametrize(
     ("mode", "colour", "calm", "fields"),
     [

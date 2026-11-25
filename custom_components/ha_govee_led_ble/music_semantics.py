@@ -57,6 +57,7 @@ class MusicVariant:
     supports_style: bool = False
     calm_default: bool = False
     requires_physical_ic_count: bool = False
+    uses_physical_ic_geometry: bool = False
     # Semantics are qualified independently of the structural tail type.
     gradient_companions: tuple[int, int] | None = None
     style_companions: tuple[int, int] | None = None
@@ -1286,6 +1287,7 @@ H6076_MUSIC_VARIANTS = (
         palette_bounds=(2, 8),
         gradient_companions=(0x61, 0x5E),
         supports_fixed_colour=False,
+        uses_physical_ic_geometry=True,
     ),
     *(
         MusicVariant(
@@ -1583,7 +1585,10 @@ def music_variant(profile: ModelProfile, mode_code: int) -> MusicVariant | None:
         )
     if (
         variant
-        and variant.layout in {"music_body", "h6072_music_body", "h6076_music_body"}
+        and (
+            variant.layout in {"music_body", "h6072_music_body"}
+            or variant.uses_physical_ic_geometry
+        )
         and ic is not None
         and any(spec.requires_physical_ic_count for spec in variant.parameters)
     ):
