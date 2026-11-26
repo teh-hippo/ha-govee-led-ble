@@ -18,7 +18,7 @@ from .coordinator_segments import SegmentPaintRequest
 from .dreamview_services import async_register_dreamview_services
 from .generated_protocol_adapter import StripCalibrationRequest
 from .govee_encryption import GoveeCryptoError
-from .h6099_controls import (
+from .installation_controls import (
     async_read_installation_controls,
     async_set_installation_direction,
     installation_direction_value,

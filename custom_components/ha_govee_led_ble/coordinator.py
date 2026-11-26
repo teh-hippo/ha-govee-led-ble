@@ -119,7 +119,7 @@ from .generated_protocol_adapter import (
 )
 from .govee_encryption import GoveeCryptoError, GoveeTransportError
 from .govee_encryption.session import GoveeEncryptionSession
-from .h6099_controls import h6099_control_queries
+from .installation_controls import installation_control_queries
 from .light_commands import (
     ParsedStaticWrite,
 )
@@ -2429,7 +2429,7 @@ class GoveeBLECoordinator(
             queries.extend(
                 (query, domain, (domain.value,))
                 for query, domain in zip(
-                    h6099_control_queries(self.model, profile),
+                    installation_control_queries(self.model, profile),
                     (
                         domain
                         for domain in (ReadDomain.INSTALLATION_DIRECTION, ReadDomain.CAMERA_HEALTH)

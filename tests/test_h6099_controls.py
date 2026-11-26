@@ -26,12 +26,12 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     parse_command,
     require_profile_packet,
 )
-from custom_components.ha_govee_led_ble.h6099_controls import (
-    async_read_h6099_controls,
+from custom_components.ha_govee_led_ble.installation_controls import (
     async_read_installation_controls,
+    async_refresh_installation_controls,
     async_set_installation_direction,
-    h6099_control_queries,
-    h6099_control_status,
+    installation_control_queries,
+    installation_control_status,
     installation_direction_value,
 )
 from custom_components.ha_govee_led_ble.light_services import async_register_light_services
@@ -122,8 +122,8 @@ def test_exact_builders_and_generic_status_root() -> None:
     assert not domains & profile.setup_required_read_domains
     assert build_installation_direction_query("H6099") == frame("aa30")
     assert build_camera_health_query("H6099") == frame("aa32")
-    assert h6099_control_queries("H6099", profile) == (frame("aa30"), frame("aa32"))
-    assert h6099_control_queries("H6199", get_profile("H6199")) == ()
+    assert installation_control_queries("H6099", profile) == (frame("aa30"), frame("aa32"))
+    assert installation_control_queries("H6199", get_profile("H6199")) == ()
     for value in (2, 3, 4, 5):
         packet = build_installation_direction(value, "H6099")
         assert packet == frame(f"3330{value:02x}")
@@ -134,17 +134,17 @@ def test_exact_builders_and_generic_status_root() -> None:
         assert decoded is not None
         assert decoded.domain is ReadDomain.INSTALLATION_DIRECTION
         assert decoded.generated.body.unknown_tail.startswith(bytes.fromhex("abcd"))
-        assert h6099_control_status(decoded, profile) == {"installation_direction": value}
+        assert installation_control_status(decoded, profile) == {"installation_direction": value}
     for value, expected in ((0, "absent"), (1, "healthy"), (2, "incompatible"), (3, "unknown"), (255, "unknown")):
         decoded = decode_status_frame(frame(f"aa32{value:02x}"), "H6099")
         assert decoded is not None
         assert decoded.domain is ReadDomain.CAMERA_HEALTH
-        assert h6099_control_status(decoded, profile) == {"camera_health": expected}
+        assert installation_control_status(decoded, profile) == {"camera_health": expected}
     for prefix in ("aa3000", "aa3001", "aa30ff"):
-        assert h6099_control_status(decode_status_frame(frame(prefix), "H6099"), profile) == {
+        assert installation_control_status(decode_status_frame(frame(prefix), "H6099"), profile) == {
             "installation_direction": None
         }
-    assert h6099_control_status(decode_status_frame(frame("aa3101"), "H6099"), profile) == {}
+    assert installation_control_status(decode_status_frame(frame("aa3101"), "H6099"), profile) == {}
     assert decode_status_frame(frame("aa3201")[:-1], "H6099") is None
     assert decode_status_frame(frame("aa3201")[:-1] + b"\0", "H6099") is None
 
@@ -173,9 +173,9 @@ def test_profile_gates_and_grammar_direction(monkeypatch) -> None:
     with pytest.raises(ValueError):
         build_camera_health_query("H6099")
     decoded = decode_status_frame(frame("aa3201"), "H6099")
-    assert h6099_control_status(decoded, profile) == {"camera_health": "healthy"}
+    assert installation_control_status(decoded, profile) == {"camera_health": "healthy"}
     assert (
-        h6099_control_status(
+        installation_control_status(
             decoded, replace(profile, read_domains=frozenset(), setup_required_read_domains=frozenset())
         )
         == {}
@@ -234,7 +234,7 @@ async def test_services_preflight_freshness_and_no_optimistic_state(hass, mock_c
         )
         for prefix in ("aa3004", "aa3200"):
             decoded = decode_status_frame(frame(prefix), "H6099")
-            for key, value in h6099_control_status(decoded, coordinator.profile).items():
+            for key, value in installation_control_status(decoded, coordinator.profile).items():
                 setattr(coordinator, key, value)
             coordinator._domain_revisions[decoded.domain] = coordinator._domain_revisions.get(decoded.domain, 0) + 1
         return True
@@ -301,7 +301,7 @@ async def test_concrete_controls_optional_refresh_and_independent_freshness(hass
     )
     packets = [call.args[1] for call in client.write_gatt_char.await_args_list]
     assert frame("aa30") in packets and frame("aa32") in packets
-    assert await async_read_h6099_controls(c) == {
+    assert await async_refresh_installation_controls(c) == {
         "installation_direction": 4 if "aa3004" in replies else None,
         "camera_health": "healthy" if "aa3201" in replies else "incompatible" if "aa3202" in replies else "unknown",
     }
@@ -365,7 +365,7 @@ async def test_queued_read_does_not_claim_external_replies(hass, monkeypatch, vi
 
     monkeypatch.setattr(c, "refresh_state", immediate_refresh)
     async with c._control_arbiter.hold(ControlIntent.USER):
-        read = asyncio.create_task(async_read_h6099_controls(c))
+        read = asyncio.create_task(async_refresh_installation_controls(c))
         await asyncio.sleep(0)
         assert not read.done() and c._control_arbiter._waiters
         client.write_gatt_char.assert_not_awaited()
