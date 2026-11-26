@@ -1080,6 +1080,7 @@ async def test_h617e_extended_music_requires_positive_verdict_before_selector(se
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
 
+
 @pytest.mark.parametrize(
     "connected,mode,pact",
     [
