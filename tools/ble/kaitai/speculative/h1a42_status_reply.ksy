@@ -68,6 +68,14 @@ enums:
     0x04: spectrum
     0x05: energetic
     0x06: rolling
+    0x07: piano_keys
+    0x30: bloom
+    0x31: shiny
+    0x32: separation
+    0x33: hopping
+    0x35: fountain
+    0x37: day_and_night
+    0x51: meteor
     0x84: splash
     0x85: spring
     0x92: ripple

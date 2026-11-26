@@ -518,8 +518,7 @@ H617A_MUSIC_VARIANTS = (
 )
 
 
-# H617E's pre-R5/R6 qualified presets, independently declared. Shared wire layout
-# does not inherit H617A's new authoring permissions or physical-IC policy.
+# H617E's pre-R5/R6 qualified presets retain their independent parameter shape.
 H617E_MUSIC_VARIANTS = (
     MusicVariant(0x03, "H617E owner-qualified shared music semantics", supports_style=True),
     MusicVariant(
@@ -545,8 +544,16 @@ H617E_MUSIC_VARIANTS = (
         bytes.fromhex("3205ff7f00ff0000ffff000000ff00ff0001015e0000000000000000000000"),
         (
             MusicParamSpec("music_separation_point", "point", "point", "number", 1, 1, 5),
-            MusicParamSpec("music_separation_gradient", "gradient", "gradient", "switch", True),
+            MusicParamSpec(
+                "music_separation_gradient",
+                "gradient",
+                "gradient",
+                "switch",
+                True,
+                requires_physical_ic_count=True,
+            ),
         ),
+        requires_physical_ic_count=True,
         gradient_companions=(0x61, 0x5E),
     ),
     MusicVariant(
@@ -557,13 +564,26 @@ H617E_MUSIC_VARIANTS = (
             "3307ff0000ff7f00ffff0000ff000000ff00ffff8b00ffff000032620103020600000000000000000000000000000000"
         ),
         (MusicParamSpec("music_hopping_brightness", "relative_brightness", "rel_brightness", "number", 50, 0, 50),),
+        requires_physical_ic_count=True,
     ),
     MusicVariant(
         0x34,
         "H617E owner-qualified shared music semantics",
         "music_body",
         bytes.fromhex("3407ff0000ff7f00ffff0000ff000000ff00ffff8b00ff000f0a0407000000"),
-        (MusicParamSpec("music_piano_key_count", "key_count", "key_count", "number", 15, 8, 15),),
+        (
+            MusicParamSpec(
+                "music_piano_key_count",
+                "key_count",
+                "key_count",
+                "number",
+                15,
+                8,
+                15,
+                requires_physical_ic_count=True,
+            ),
+        ),
+        requires_physical_ic_count=True,
         piano_derived_half=True,
     ),
     MusicVariant(
@@ -579,8 +599,10 @@ H617E_MUSIC_VARIANTS = (
                 "select",
                 "clockwise",
                 options=("clockwise", "counterclockwise", "two_way"),
+                requires_physical_ic_count=True,
             ),
         ),
+        requires_physical_ic_count=True,
         direction_values=(("clockwise", 0, 5), ("counterclockwise", 2, 5), ("two_way", 1, 3)),
     ),
     MusicVariant(
@@ -589,11 +611,32 @@ H617E_MUSIC_VARIANTS = (
         "music_body",
         bytes.fromhex("3707ff0000ff7f00ffff0000ff000000ff00ffff8b00ff010a000000000000"),
         (
-            MusicParamSpec("music_daynight_segments", "segment_count", "piece_count", "number", 1, 1, 7),
+            MusicParamSpec(
+                "music_daynight_segments",
+                "segment_count",
+                "piece_count",
+                "number",
+                1,
+                1,
+                7,
+                requires_physical_ic_count=True,
+            ),
             MusicParamSpec("music_daynight_speed", "speed", "speed", "number", 10, 1, 50),
             MusicParamSpec("music_daynight_gradient", "gradient", "gradient", "switch", False),
         ),
+        requires_physical_ic_count=True,
     ),
+)
+
+H617F_MUSIC_VARIANTS = tuple(
+    replace(
+        variant,
+        evidence=variant.evidence.replace("H617A ", "H617F "),
+        requires_physical_ic_count=True,
+    )
+    if variant.mode_code in (0x32, 0x33, 0x34, 0x35, 0x37)
+    else replace(variant, evidence=variant.evidence.replace("H617A ", "H617F "))
+    for variant in H617A_MUSIC_VARIANTS
 )
 
 
@@ -886,6 +929,123 @@ H1A42_MUSIC_VARIANTS = (
         if variant.mode_code in (3, 4, 5, 6)
     ),
     MusicVariant(
+        0x30,
+        "H1A42 Bloom companion",
+        "h1a42_music_parameters",
+        bytes.fromhex("30" + _H6099_PALETTE + "0a50"),
+        supports_style=True,
+        palette_bounds=(1, 8),
+        supports_fixed_colour=False,
+    ),
+    MusicVariant(
+        0x31,
+        "H1A42 Shiny companion",
+        "h1a42_music_parameters",
+        bytes.fromhex("31" + _H6099_PALETTE + "05640a"),
+        supports_style=True,
+        palette_bounds=(1, 8),
+        supports_fixed_colour=False,
+    ),
+    MusicVariant(
+        0x32,
+        "H1A42 Separation companion",
+        "h1a42_music_parameters",
+        bytes.fromhex("32" + _H6099_PALETTE + "030061"),
+        (
+            MusicParamSpec("music_separation_point", "point", "point", "number", 3, 1, 5),
+            MusicParamSpec(
+                "music_separation_gradient",
+                "gradient",
+                "gradient",
+                "switch",
+                False,
+                requires_physical_ic_count=True,
+            ),
+        ),
+        requires_physical_ic_count=True,
+        palette_bounds=(1, 8),
+        supports_fixed_colour=False,
+    ),
+    MusicVariant(
+        0x33,
+        "H1A42 Hopping companion",
+        "h1a42_music_parameters",
+        bytes.fromhex("33" + _H6099_PALETTE + "010101196201030205"),
+        (
+            MusicParamSpec("music_hopping_background", "background", "background", "number", 0x010101, 0, 0xFFFFFF),
+            MusicParamSpec("music_hopping_brightness", "relative_brightness", "rel_brightness", "number", 25, 0, 50),
+        ),
+        requires_physical_ic_count=True,
+        palette_bounds=(1, 8),
+        supports_fixed_colour=False,
+    ),
+    MusicVariant(
+        0x07,
+        "H1A42 Piano companion",
+        "h1a42_music_parameters",
+        bytes.fromhex("07" + _H6099_PALETTE + "00090a0304"),
+        (
+            MusicParamSpec(
+                "music_piano_key_count",
+                "key_count",
+                "key_count",
+                "number",
+                9,
+                6,
+                12,
+                requires_physical_ic_count=True,
+            ),
+            MusicParamSpec("music_piano_gradient", "gradient", "gradient", "switch", False),
+        ),
+        requires_physical_ic_count=True,
+        piano_derived_half=True,
+        palette_bounds=(1, 8),
+        supports_fixed_colour=False,
+    ),
+    MusicVariant(
+        0x35,
+        "H1A42 Fountain companion",
+        "h1a42_music_parameters",
+        bytes.fromhex("35" + _H6099_PALETTE + "01010350"),
+        (
+            MusicParamSpec(
+                "music_fountain_direction",
+                "direction",
+                "start_point",
+                "select",
+                "two_way",
+                options=("clockwise", "counterclockwise", "two_way"),
+                requires_physical_ic_count=True,
+            ),
+        ),
+        requires_physical_ic_count=True,
+        palette_bounds=(1, 8),
+        supports_fixed_colour=False,
+    ),
+    MusicVariant(
+        0x37,
+        "H1A42 Day and Night companion",
+        "h1a42_music_parameters",
+        bytes.fromhex("37" + _H6099_PALETTE + "060a00"),
+        (
+            MusicParamSpec(
+                "music_daynight_segments",
+                "segment_count",
+                "piece_count",
+                "number",
+                6,
+                1,
+                6,
+                requires_physical_ic_count=True,
+            ),
+            MusicParamSpec("music_daynight_speed", "speed", "speed", "number", 10, 1, 50),
+            MusicParamSpec("music_daynight_gradient", "gradient", "gradient", "switch", False),
+        ),
+        requires_physical_ic_count=True,
+        palette_bounds=(1, 8),
+        supports_fixed_colour=False,
+    ),
+    MusicVariant(
         0x84,
         "H1A42 ShuiHua music mode",
         "h1a42_music_parameters",
@@ -914,6 +1074,14 @@ H1A42_MUSIC_VARIANTS = (
         "H1A42 YouDong music mode",
         "h1a42_music_parameters",
         bytes.fromhex("a3" + _H6099_PALETTE),
+        palette_bounds=(1, 8),
+        supports_fixed_colour=False,
+    ),
+    MusicVariant(
+        0x51,
+        "H1A42 Meteor music mode",
+        "h1a42_music_parameters",
+        bytes.fromhex("51" + _H6099_PALETTE),
         palette_bounds=(1, 8),
         supports_fixed_colour=False,
     ),

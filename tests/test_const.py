@@ -328,6 +328,7 @@ def test_h6022_is_an_exact_experimental_profile_with_its_own_catalogue_and_effec
     assert profile.music_grammar == "H6022" and len(profile.music_variants) == 8
     assert profile.music_upload_before_selector and profile.music_requires_upload_ack
     assert profile.music_params_require_activation
+    assert profile.supports_music_color
 
 
 def test_h617f_uses_exact_scene_catalogue_with_h617a_wire_grammars():
