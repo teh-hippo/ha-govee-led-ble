@@ -10,12 +10,12 @@ from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.ha_govee_led_ble.const import DOMAIN, device_profile, get_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
-from custom_components.ha_govee_led_ble.coordinator_h6102 import H6102InitialIdentity
 from custom_components.ha_govee_led_ble.effect_catalogue import resolve_catalogue_template, validate_native_diy
 from custom_components.ha_govee_led_ble.effect_compiler import compile_music_profile
 from custom_components.ha_govee_led_ble.effect_domain import LayeredEffect, LibraryItem, MusicProfile
 from custom_components.ha_govee_led_ble.effect_websocket_payloads import retained_music_edit
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_music_mode
+from custom_components.ha_govee_led_ble.h6102_capabilities import H6102InitialIdentity
 from custom_components.ha_govee_led_ble.layered_scene import AppliedArea, Selection
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
 from custom_components.ha_govee_led_ble.transport import fragment_a3

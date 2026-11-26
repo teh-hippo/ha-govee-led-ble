@@ -91,7 +91,7 @@ async def _finish_studio_setup(hass, result):
 )
 async def test_new_devices_can_opt_out_of_studio_registration(hass: HomeAssistant, source, data):
     result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": source}, data=data)
-    while result.get("step_id") in {"bluetooth_confirm", "experimental", "h6102_firmware"}:
+    while result.get("step_id") in {"bluetooth_confirm", "experimental", "configured_identity"}:
         assert not result.get("errors")
         result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
 
@@ -335,7 +335,7 @@ async def test_user_step_creates_manual_h6102_entry_without_promoting_discovery(
         )
 
     assert firmware["type"] is FlowResultType.FORM
-    assert firmware["step_id"] == "h6102_firmware"
+    assert firmware["step_id"] == "configured_identity"
     result = await hass.config_entries.flow.async_configure(firmware["flow_id"], {})
     result = await _finish_studio_setup(hass, result)
     assert result["type"] is FlowResultType.CREATE_ENTRY
@@ -396,7 +396,7 @@ async def test_user_step_rejects_invalid_h6102_firmware(hass: HomeAssistant, fir
     )
 
     assert invalid["type"] is FlowResultType.FORM
-    assert invalid["step_id"] == "h6102_firmware"
+    assert invalid["step_id"] == "configured_identity"
     assert invalid["errors"] == {field: error}
     assert not hass.config_entries.async_entries(DOMAIN)
 
@@ -923,7 +923,7 @@ async def test_reconfigure_h6102_firmware_preserves_identity(
         updated = await hass.config_entries.flow.async_configure(firmware["flow_id"], submitted)
 
     assert firmware["type"] is FlowResultType.FORM
-    assert firmware["step_id"] == "h6102_firmware"
+    assert firmware["step_id"] == "configured_identity"
     assert updated["type"] is FlowResultType.ABORT
     assert updated["reason"] == "reconfigure_successful"
     assert entry.entry_id == original_entry_id

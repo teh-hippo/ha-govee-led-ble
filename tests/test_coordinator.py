@@ -32,7 +32,6 @@ from custom_components.ha_govee_led_ble.coordinator import (
 )
 from custom_components.ha_govee_led_ble.coordinator_base import async_prepare_effect_profile
 from custom_components.ha_govee_led_ble.coordinator_expectations import expectations_from_packet
-from custom_components.ha_govee_led_ble.coordinator_h6102 import H6102InitialIdentity
 from custom_components.ha_govee_led_ble.coordinator_refresh import DEFAULT_REFRESH_REQUEST, RefreshRequest
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.effect_compiler import compile_application
@@ -51,6 +50,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_segment_query,
 )
 from custom_components.ha_govee_led_ble.govee_encryption import GoveeCryptoError, GoveeTransportError
+from custom_components.ha_govee_led_ble.h6102_capabilities import H6102InitialIdentity
 from custom_components.ha_govee_led_ble.protocol_core import StatusReply
 from custom_components.ha_govee_led_ble.transport import WRITE_UUID, xor_checksum
 from tests.coordinator_test_support import _CONFIGURATION_URL, _c, _packet
@@ -80,9 +80,11 @@ def h6102(hass):
 
 def test_h6102_unknown_context_bootstraps_identity_with_notifications(h6102):
     assert h6102.profile.command_operations == frozenset({"power", "brightness"})
-    assert h6102.rgb_variant is None
-    assert h6102.firmware_source is None
-    assert h6102.capability_resolution_reason == "pact_unknown"
+    resolution = h6102.configured_identity_resolution
+    assert resolution is not None
+    assert resolution.rgb_variant is None
+    assert resolution.firmware_source is None
+    assert resolution.capability_resolution_reason == "pact_unknown"
     assert h6102.configuration_url is None
     assert h6102.profile.requires_notifications
     assert h6102.update_interval == timedelta(seconds=30)
@@ -117,9 +119,11 @@ def test_h6102_configured_firmware_does_not_invent_pact(hass):
     )
 
     assert not coordinator.profile.supports_rgb
-    assert coordinator.rgb_variant is None
-    assert coordinator.firmware_source == "configured"
-    assert coordinator.capability_resolution_reason == "pact_unknown"
+    resolution = coordinator.configured_identity_resolution
+    assert resolution is not None
+    assert resolution.rgb_variant is None
+    assert resolution.firmware_source == "configured"
+    assert resolution.capability_resolution_reason == "pact_unknown"
 
 
 def test_h617x_uses_short_idle_release_with_periodic_polling(coord):

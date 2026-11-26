@@ -181,8 +181,6 @@ async def test_h6102_custom_effect_action_fails_before_preview_or_deployment(
     resolution = resolve_h6102_capabilities("1.03.01", "configured")
     mock_coordinator.model = "H6102"
     mock_coordinator.profile = resolution.profile
-    mock_coordinator.rgb_variant = resolution.rgb_variant
-    mock_coordinator.firmware_source = resolution.firmware_source
     item = LibraryItem.new(
         "Saved H6102 Workshop",
         replace(WORKSHOP_PROTOCOL_FIXTURES[0].content("H617A"), model="H6102"),

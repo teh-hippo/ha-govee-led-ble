@@ -66,16 +66,6 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
     def _identity_policy_for_model(self, model: str) -> ConfiguredIdentityPolicy | None:
         return MODEL_PROFILES[model].configured_identity
 
-    def _identity_policy_for_step(self, step_id: str) -> tuple[str, ConfiguredIdentityPolicy]:
-        matches = [
-            (model, policy)
-            for model, profile in MODEL_PROFILES.items()
-            if (policy := profile.configured_identity) is not None and policy.step_id == step_id
-        ]
-        if len(matches) != 1:
-            raise ValueError(f"Configured identity step {step_id} is ambiguous")
-        return matches[0]
-
     @staticmethod
     @callback
     def async_get_options_flow(_config_entry: ConfigEntry) -> GoveeOptionsFlow:
@@ -98,7 +88,7 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
             return self.async_show_form(step_id="bluetooth_confirm", description_placeholders={"model": model})
         if self._identity_policy_for_model(model) is not None:
             self._identity_model = model
-            return await self._async_step_configured_identity()
+            return await self.async_step_configured_identity()
         return await self._async_finish_new_device(self._discovered)
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
@@ -124,7 +114,7 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
             self._abort_if_unique_id_configured()
             if self._identity_policy_for_model(selected_model) is not None:
                 self._identity_model = selected_model
-                return await self._async_step_configured_identity()
+                return await self.async_step_configured_identity()
             return await self._async_finish_new_device({CONF_MODEL: selected_model})
         return self._show_user_form()
 
@@ -139,13 +129,11 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
                 return self._show_reconfigure_form(entry, errors={"base": "model_mismatch"})
             if self._identity_policy_for_model(selected_model) is not None:
                 self._identity_model = selected_model
-                return await self._async_step_configured_identity()
+                return await self.async_step_configured_identity()
             return await self._finish_reconfigure(entry, selected_model)
         return self._show_reconfigure_form(entry)
 
-    async def _async_step_configured_identity(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        if not hasattr(self, "_identity_model"):
-            self._identity_model, _ = self._identity_policy_for_step("h6102_firmware")
+    async def async_step_configured_identity(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         model = self._identity_model
         policy = self._identity_policy_for_model(model)
         assert policy is not None
@@ -176,9 +164,6 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
         self._abort_if_unique_id_configured()
         data = {CONF_MODEL: model, **identity}
         return await self._async_finish_new_device(data)
-
-    async def async_step_h6102_firmware(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        return await self._async_step_configured_identity(user_input)
 
     async def _async_finish_new_device(self, data: dict[str, str]) -> ConfigFlowResult:
         model = data[CONF_MODEL]

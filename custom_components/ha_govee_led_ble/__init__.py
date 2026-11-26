@@ -39,12 +39,12 @@ from .const import (
     supported_effect_categories,
 )
 from .coordinator import GoveeBLECoordinator, clear_availability_log_state
+from .coordinator_configured_identity import initial_identity_from_entry
 from .coordinator_dreamview import (
     async_cleanup_dreamview_claims_on_entry_removed,
     async_guard_dreamview_entry,
     async_recover_dreamview_claims,
 )
-from .coordinator_h6102 import initial_identity_from_entry
 from .editor import EDITOR_PANEL_PATH, async_register_editor_panel, editor_url
 from .effect_setup import async_setup_effects, get_effect_backend
 from .light_services import async_register_light_services

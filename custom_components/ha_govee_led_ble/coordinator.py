@@ -57,10 +57,10 @@ from .const import (
     supported_effect_categories,
 )
 from .control_arbiter import BLEControlArbiter, ControlIntent, LatestRequests, PreviewAdmission, async_control_intent
+from .coordinator_configured_identity import _ConfiguredIdentityMixin
 from .coordinator_control import ControlWriteRequest
 from .coordinator_dreamview import DreamviewClaimedError, _DreamviewMixin, is_dreamview_claimed
 from .coordinator_expectations import expectations_from_packet, parse_write_state
-from .coordinator_h6102 import _H6102Mixin
 from .coordinator_identity import InitialDeviceIdentity, PactIdentityState
 from .coordinator_modes import ModeTransitionPurpose, ModeTransitionSupersededError, _ActiveModeMixin
 from .coordinator_notifications import _OPTIONAL_CONTROL_DOMAINS, _NotificationMixin
@@ -214,7 +214,12 @@ def _equal_profile_requires_identity_reset(
 
 
 class GoveeBLECoordinator(
-    _DreamviewMixin, _ActiveModeMixin, _NotificationMixin, _RecoveryMixin, _H6102Mixin, _SegmentMixin
+    _DreamviewMixin,
+    _ActiveModeMixin,
+    _NotificationMixin,
+    _RecoveryMixin,
+    _ConfiguredIdentityMixin,
+    _SegmentMixin,
 ):
     """Manages BLE connection lifecycle for a Govee device."""
 
@@ -943,10 +948,11 @@ class GoveeBLECoordinator(
             and not declared.profile_pact_dependent
             and declared.video_revision_policy is None
             and not declared.configured_string_counts
+            and declared.configured_identity is None
         ):
             return
         if declared.configured_identity is not None:
-            profile, context_changed = self._resolve_h6102_profile()
+            profile, context_changed = self._resolve_configured_identity_profile()
         else:
             context_changed = False
             profile = device_profile(
@@ -2953,7 +2959,7 @@ class GoveeBLECoordinator(
         if not fields or self.identity_fields_confirmed(fields):
             return qualify_geometry(self.profile)
         if self.profile.configured_identity is not None:
-            return qualify_geometry(self._h6102_authorization_profile())
+            return qualify_geometry(self._configured_identity_authorization_profile())
         return qualify_geometry(
             device_profile(
                 self.model,

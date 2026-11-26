@@ -13,7 +13,6 @@ from custom_components.ha_govee_led_ble.coordinator import (
     PACKET_LOG_RAW_BYTES_LIMIT,
     GoveeBLECoordinator,
 )
-from custom_components.ha_govee_led_ble.coordinator_h6102 import H6102InitialIdentity
 from custom_components.ha_govee_led_ble.diagnostics import async_get_config_entry_diagnostics
 from custom_components.ha_govee_led_ble.effect_diagnostics import (
     DiagnosticOutcome,
@@ -21,6 +20,7 @@ from custom_components.ha_govee_led_ble.effect_diagnostics import (
     EffectDiagnosticHistory,
 )
 from custom_components.ha_govee_led_ble.effect_setup import EFFECT_BACKEND_DATA_KEY
+from custom_components.ha_govee_led_ble.h6102_capabilities import H6102InitialIdentity
 
 REDACTED = "**REDACTED**"
 
