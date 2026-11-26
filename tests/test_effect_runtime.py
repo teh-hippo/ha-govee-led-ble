@@ -2803,6 +2803,9 @@ async def test_readable_h601c_deployment_installs_optimistic_state_without_rollb
     coordinator._notify_callback(None, bytearray(frame("aa0432")))
     coordinator._notify_callback(None, bytearray(frame("aa050d0a141e000000000000")))
     client.write_gatt_char.reset_mock()
+    client.write_gatt_char.side_effect = lambda _uuid, packet, **_kwargs: (
+        coordinator._notify_callback(None, bytearray(frame("a30400"))) if packet[:2] == b"\xa3\xff" else None
+    )
     item = _type04_item()
     compiled = compile_generic_diy(item, 24, model="H601C")
     engine = EffectDeploymentEngine(repository, cache, active_workspaces)
