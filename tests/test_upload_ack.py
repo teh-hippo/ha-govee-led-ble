@@ -942,7 +942,10 @@ async def test_native_scene_revalidates_command_version_after_subscription_repla
         c._client = second
         await c._start_notify()
         assert c._profile_generation == generation
-        assert c.effect_authorization_profile.rgbic_scene_v0 is compiled.rgbic_scene_v0
+        assert c.effect_authorization_profile.scene_command_versions == {0}
+        assert c.effect_authorization_profile.rgbic_scene_v0 is (
+            True if c.model == "H617C" else compiled.rgbic_scene_v0
+        )
         return second
 
     async def write(_uuid, packet, **kwargs):

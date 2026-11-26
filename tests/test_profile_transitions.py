@@ -198,8 +198,13 @@ def test_equal_basic_profile_reinitializes_only_for_real_identity_transition(has
     assert coordinator._profile_generation == generation + 1 and coordinator.color_mode is None
 
 
-@pytest.mark.parametrize("model,physical_ic_count", [("H617C", 30), ("H617E", 30), ("H617F", 45)])
-def test_goods_type_70_scene_transitions_preserve_ordinary_control_state(hass, model, physical_ic_count):
+@pytest.mark.parametrize(
+    ("model", "physical_ic_count", "v0_at_hardware_1_00_02"),
+    [("H617C", 30, False), ("H617E", 30, True), ("H617F", 45, True)],
+)
+def test_goods_type_70_scene_transitions_preserve_ordinary_control_state(
+    hass, model, physical_ic_count, v0_at_hardware_1_00_02
+):
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", model, configuration_url=None)
     coordinator._client = MagicMock(is_connected=True)
     coordinator.is_on = True
@@ -210,7 +215,7 @@ def test_goods_type_70_scene_transitions_preserve_ordinary_control_state(hass, m
     coordinator._observe_identity_field("fw_version", "1.06.00")
     coordinator._observe_identity_field("hw_version", "1.00.02")
     assert coordinator.profile.scene_command_versions == {0, 1}
-    assert coordinator.profile.rgbic_scene_v0 is True
+    assert coordinator.profile.rgbic_scene_v0 is v0_at_hardware_1_00_02
 
     coordinator._observe_identity_field("hw_version", "1.00.03")
     assert coordinator.profile.scene_command_versions == {0, 1}
