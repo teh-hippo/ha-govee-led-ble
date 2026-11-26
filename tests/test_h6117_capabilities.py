@@ -14,10 +14,25 @@ from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_segments import SegmentPaintRequest
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
-from custom_components.ha_govee_led_ble.effect_catalogue import H617A_TYPE04_APPLY_CODE, H6117_NATIVE_DIY_TEMPLATES
-from custom_components.ha_govee_led_ble.effect_compiler import compile_application
+from custom_components.ha_govee_led_ble.effect_catalogue import (
+    H617A_TYPE04_APPLY_CODE,
+    H6117_NATIVE_DIY_TEMPLATES,
+    MODEL_EFFECT_CATALOGUES,
+)
+from custom_components.ha_govee_led_ble.effect_compiler import (
+    CompatibilityState,
+    compatibility,
+    compile_application,
+    validate_compiled_geometry,
+)
 from custom_components.ha_govee_led_ble.effect_deployments import DeploymentPhase, EffectDeploymentRepository
-from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, SingleEffect, effect_content_to_dict
+from custom_components.ha_govee_led_ble.effect_domain import (
+    EffectPair,
+    LibraryItem,
+    MultiEffect,
+    SingleEffect,
+    effect_content_to_dict,
+)
 from custom_components.ha_govee_led_ble.effect_runtime import EffectDeploymentEngine
 from custom_components.ha_govee_led_ble.effect_scenes import resolve_scene
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
@@ -51,6 +66,9 @@ from tests.test_effect_websocket import _setup_backend
 
 def _profile(*, firmware="1.08.06", hardware="1.00.02", pact=(1, 1)):
     return device_profile("H6117", *pact, firmware=firmware, hardware=hardware)
+
+
+H6117_PACTS = ((1, 1), (1, 2), (2, 1), (2, 2), (3, 1))
 
 
 @pytest.mark.parametrize(
@@ -122,8 +140,55 @@ def test_modern_telink_does_not_inherit_legacy_expanded_music(firmware):
 )
 def test_modern_pact_does_not_bypass_uploaded_scene_boundaries(hardware, firmware, uploaded):
     profile = _profile(pact=(2, 1), hardware=hardware, firmware=firmware)
-    assert profile.supports_multi_layered_effects is uploaded
+    assert profile.supports_advanced_effects is uploaded
     assert (profile.selector_only_scene_bits is None) is uploaded
+
+
+@pytest.mark.parametrize("pact", H6117_PACTS)
+@pytest.mark.parametrize(("firmware", "mixed"), [("1.02.02", False), ("1.02.03", True)])
+def test_mixed_diy_revision_gate_updates_profile_and_catalogue_for_every_pact(pact, firmware, mixed):
+    profile = _profile(pact=pact, firmware=firmware)
+    catalogue = MODEL_EFFECT_CATALOGUES["H6117"].to_dict(profile=profile)
+    expected = "supported" if mixed else "unsupported"
+
+    assert ("multi" in profile.effect_workflows) is mixed
+    assert profile.supports_multi_layered_effects is mixed
+    assert catalogue["supports"]["multi"] == expected
+    assert catalogue["apply"]["multi"] == expected
+    assert any(workflow["id"] == "multi" for workflow in catalogue["workflows"]) is mixed
+
+
+def test_mixed_diy_gate_is_independent_of_advanced_scene_admission():
+    original = _profile(firmware="1.02.02")
+    mixed = _profile(firmware="1.02.03")
+    advanced = _profile(firmware="1.04.00")
+
+    assert original.supports_scenes and mixed.supports_scenes and advanced.supports_scenes
+    assert not original.supports_advanced_effects
+    assert not mixed.supports_advanced_effects and "advanced" not in mixed.effect_workflows
+    assert mixed.supports_multi_layered_effects and "multi" in mixed.effect_workflows
+    assert advanced.supports_advanced_effects and advanced.supports_multi_layered_effects
+
+
+@pytest.mark.parametrize("pact", H6117_PACTS)
+def test_mixed_diy_compatibility_and_compilation_require_qualified_identity(pact):
+    item = LibraryItem.new(
+        "Mixed boundary",
+        MultiEffect((EffectPair(0, 0), EffectPair(2, 0)), 50, ((255, 0, 0), (0, 0, 255))),
+    )
+    missing = _profile(pact=pact, firmware=None)
+    old = _profile(pact=pact, firmware="1.02.02")
+    new = _profile(pact=pact, firmware="1.02.03")
+
+    assert compatibility(item, "H6117", profile=missing).state is CompatibilityState.INCOMPATIBLE
+    assert compatibility(item, "H6117", profile=old).state is CompatibilityState.INCOMPATIBLE
+    with pytest.raises(ValueError, match="effective profile does not support multi"):
+        compile_application(item, "H6117", diy_code=0xFE, profile=old)
+    assert compatibility(item, "H6117", profile=new).state is CompatibilityState.COMPATIBLE
+    compiled = compile_application(item, "H6117", diy_code=0xFE, profile=new)
+    validate_compiled_geometry(compiled, new)
+    with pytest.raises(ValueError, match="no longer supports the compiled workflow"):
+        validate_compiled_geometry(compiled, old)
 
 
 @pytest.mark.parametrize(
