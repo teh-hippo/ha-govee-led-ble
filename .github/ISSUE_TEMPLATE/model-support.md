@@ -28,7 +28,7 @@ Enter `unknown` for unavailable values and identify each version number's source
 
 ## Additional evidence, if available
 
-- BLE local-name prefix without the unique suffix (for example `Govee_H617P_...`):
+- BLE local-name prefix without the unique suffix (for example `Govee_H617A_`):
 - Controller protocol, if shown in diagnostics (`pact_type` / `pact_code`; otherwise `unknown`):
 - Sanitised integration diagnostics or debug logs:
 

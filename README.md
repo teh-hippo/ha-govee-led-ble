@@ -62,27 +62,21 @@ To request another model or suggest a device-specific fix, see [CONTRIBUTING.md]
 
 Effect Studio is a Home Assistant sidebar panel showing your device's available effect controls.
 Explore built-in scenes, create effects with colours and layers, tune music and camera/video settings, and preview changes live before saving.
-Studio visibility and control follow Home Assistant's permission policy for each light.
-Readable lights are shown read-only; users with control permission can apply and preview that light, while shared library and default changes remain administrator-only.
+Studio follows Home Assistant permissions for each light.
+Read permission allows viewing; control permission also allows Apply and Live preview.
+Shared library and default changes remain administrator-only.
 
-Effects require a recoverable static layout before starting.
-Normal release-mode idle disconnects retain that history, with identity and layout checked again before reuse.
-Effect off restores that original layout, including different area and segment colours, even after switching between effects.
-If recovery state is unavailable, including after restarting while an effect is running, establish a complete static colour and brightness layout through the integration first.
-Write-only devices can use successfully delivered static controls.
-Live effect selections retain extra readback requirements for source layouts and configurable segments; Apply remains available for complete write-only layouts.
-Disabling Live or closing the editor stops further Live changes without undoing completed changes.
+Starting a new effect requires a recoverable static appearance.
+Effect off restores that appearance, including area and segment colours, even after switching effects.
+Some devices can recover retained static colours and levels while an effect is active, including after a restart.
+If recovery is unavailable, establish a complete static appearance through the integration first.
+Completed static writes can establish that appearance on write-only devices, but Live preview may require independent readback.
+Disabling Live or closing the editor restores the appearance owned by the preview; explicit Apply or newer lighting controls take precedence.
 Restoring a previously off light may briefly illuminate it before turning it off again.
 
-H6093 uses its own projector controls, scenes and DIY formats.
-**Initialise projector lighting** establishes a missing projector appearance.
-It turns the light on at full master brightness, sets both aurora patterns blue and sets the stars to 50% with flicker and movement off.
-This replaces the current lighting settings and establishes a complete recovery baseline.
-Later controller revisions retain completed native writes as delivered state.
-Live preview requires observed appearance.
+On H6093, **Initialise projector lighting** replaces the current appearance to establish a recovery baseline.
+It turns the projector on at full brightness, sets both aurora patterns blue and sets the stars to 50% with flicker and movement off.
 Aurora movement controls physical motion separately from pattern speed.
-A single-colour palette does not demonstrate colour-flow speed; test Fade, Breathe or Flash, or use multiple colours in Effect Studio.
-Create and save projector DIY in Effect Studio.
 Local sound playback pauses or resumes the selected sound; Local sound mode controls device-wide sound enablement.
 
 Choose **Canvas** to paint native logical segments and save complete colour compositions for recall.
@@ -110,28 +104,8 @@ Download `ha_govee_led_ble.zip` from the [latest GitHub release][release-url], e
 
 ## Development
 
-Native development is the default.
-Install [mise](https://mise.jdx.dev/getting-started.html), then run:
-
-```bash
-make bootstrap
-```
-
-Use the narrowest relevant loop while editing:
-
-```bash
-uv run pytest tests/test_coordinator_status.py -q
-npm --prefix frontend run dev
-npm --prefix frontend run typecheck
-npm --prefix frontend run test:unit
-make protocol
-```
-
-Run `make check-fast` for a broad checkpoint and `make check` at the completion boundary.
-Run `make package` only when a distributable is explicitly required.
-The optional dev container is a thin wrapper around the same project-local bootstrap, not a separate toolchain.
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for architecture, repository non-goals and acceptance requirements.
+Install [mise](https://mise.jdx.dev/getting-started.html) and run `make bootstrap`.
+See [contributor guidance](CONTRIBUTING.md#development) for build, test and acceptance steps.
 
 ## License
 

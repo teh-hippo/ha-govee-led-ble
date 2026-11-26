@@ -1,28 +1,21 @@
 ---
 name: govee-resolve
 description: >-
-  Close out Govee work once users confirm it. Give it a SKU, a model-support request or a bug issue: it
-  promotes owner-confirmed models from Experimental to Supported, and closes bugs whose fix is
-  released and confirmed.
+  Promote owner-confirmed Experimental support or close a shipped, verified Govee bug.
 license: MIT
 ---
 
 # govee-resolve
 
-Argument: a SKU, support request, existing model-feedback issue or bug issue.
-Examples: `/govee-resolve H6117`, `/govee-resolve #511`.
-Read `.github/skills/govee-shared.md` first.
+Argument: an exact SKU, support request, existing feedback thread or bug issue.
+Inspect the issue and release evidence first; open device evidence only if needed to resolve a discrepancy.
+Obtain operator approval before each mutating action.
 
-Goal: close confirmed work.
-Code changes are limited to support status and its dependent README/tests.
-Obtain operator approval before each action.
-
-- **Experimental model:** require owner confirmation of complete working support on the `confirmation_issue` thread.
-  Use the original request for new support and retain existing active feedback threads.
-  PR: set `support_quality=SupportQuality.SUPPORTED`, update the README to `✅ Supported` and adjust existing tests.
-  Reference the issue and keep it open until the green PR merges and the promotion ships in a verified automatic master candidate.
-  Then thumbs-up the confirming comment and close that issue.
-- **Bug:** once the fix is merged, released and the maintainer or operator confirms verification, close the issue.
-  Reporter confirmation, a confirming comment, a reaction and extra proof are not required for maintainer-verified bugs.
-  Merge an open green fix PR first.
-- **Partial confirmation or new problems:** summarise the status for an operator decision.
+- **Experimental model:** require owner confirmation of complete working support on its `confirmation_issue` thread.
+  Update `SupportQuality.SUPPORTED`, the README row and dependent existing tests.
+  Follow [change acceptance](../../../CONTRIBUTING.md#change-and-test-design).
+  After the promotion ships in a verified candidate, react to the confirming comment and close the issue.
+- **Bug:** confirm the fix is merged and shipped, and the maintainer or operator verifies it.
+  An open fix PR must merge and ship first.
+  Maintainer-verified bugs need no extra reporter confirmation, comment, reaction or proof.
+- **Partial confirmation or new problems:** report the remaining gap and stop for an operator decision.
