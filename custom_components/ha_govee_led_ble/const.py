@@ -2870,6 +2870,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         ),
         music_variants=H61E5_MUSIC_VARIANTS,
         music_upload_before_selector=True,
+        music_requires_upload_ack=True,
         supports_music_color=True,
         supports_advanced_effects=True,
         supports_multi_layered_effects=True,

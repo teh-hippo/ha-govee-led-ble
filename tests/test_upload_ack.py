@@ -862,6 +862,45 @@ async def test_h7025_music_waits_for_positive_upload_result(selection_ready, acc
     assert (selector in sent) is accepted
 
 
+@pytest.mark.parametrize("connected", ["H61E5"], indirect=True)
+@pytest.mark.parametrize("verdict", ["accepted", "rejected", "missing"])
+async def test_h61e5_extended_music_activates_only_after_positive_upload_verdict(selection_ready, verdict):
+    c, client = selection_ready
+    c._observe_pact(1, 1)
+    c._physical_ic_count_confirmed = True
+    c.music_sensitivity = 42
+    expected = tuple(
+        bytes.fromhex(packet)
+        for packet in (
+            "3301010000000000000000000000000000000033",
+            "a3000103413307ff0000ff7f00ffff0000ff0054",
+            "a3010000ff00ffff8b00ff010101196201030554",
+            "a3ff0f0000000000000000000000000000000053",
+            "330513332a00000000000000000000000000003c",
+        )
+    )
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet == expected[-2] and verdict != "missing":
+            receive(client, frame("a3413300" if verdict == "accepted" else "a3413301"))
+
+    client.write_gatt_char.side_effect = write
+    if verdict == "accepted":
+        await c.async_select_music_slug("hopping")
+        assert c.music_body is not None
+    elif verdict == "rejected":
+        with pytest.raises(RuntimeError, match="Device rejected A3 upload"):
+            await c.async_select_music_slug("hopping")
+        assert c.music_body is None
+    else:
+        with pytest.raises(TimeoutError, match="Device did not acknowledge effect upload"):
+            await c.async_select_music_slug("hopping")
+        assert c.music_body is None
+    sent = [call.args[1] for call in client.write_gatt_char.await_args_list]
+    assert sent == list(expected if verdict == "accepted" else expected[:-1])
+    assert c._upload_ack is None
+
+
 @pytest.mark.parametrize("connected", ["H6139", "H6159"], indirect=True)
 @pytest.mark.parametrize("pact,firmware,hardware,mode", [(1, "1.07.02", "1.00.01", 14), (10, "2.04.00", "2.01.01", 19)])
 async def test_invalid_native_sensitivity_does_not_poison_observation_or_mode_selection(
