@@ -1,13 +1,22 @@
 from dataclasses import replace
+from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
 
+from custom_components.ha_govee_led_ble import switch as switch_platform
 from custom_components.ha_govee_led_ble.const import device_profile
+from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.effect_catalogue import MODEL_EFFECT_CATALOGUES, resolve_catalogue_template
 from custom_components.ha_govee_led_ble.effect_compiler import compile_application
 from custom_components.ha_govee_led_ble.effect_contracts import CapabilityWorkflow, require_effect_route
 from custom_components.ha_govee_led_ble.effect_domain import LayeredEffect, LibraryItem, PaintedEffect
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
+    build_boolean_control,
+    build_boolean_control_query,
+    require_profile_packet,
+)
 from custom_components.ha_govee_led_ble.scenes import resolve_scene_identity
+from tests.coordinator_test_support import frame
 
 
 @pytest.mark.parametrize(
@@ -81,3 +90,96 @@ def test_h617f_catalogue_uses_exact_native_geometry_and_selector_contracts():
         profile=profile,
     )
     assert compiled.packets
+
+
+def test_h617f_scene_revision_separates_command_admission_from_v0_conversion():
+    expected = {
+        (None, None): ({0}, True),
+        ("1.05.99", "1.00.03"): ({0}, True),
+        ("1.06.00", "1.00.01"): ({0}, True),
+        ("1.06.00", "1.00.02"): ({0}, True),
+        ("1.06.00", "1.00.03"): ({0, 1}, False),
+        ("3.02.24", "3.01.01"): ({0, 1}, False),
+    }
+
+    for (firmware, hardware), (scene_versions, rgbic_scene_v0) in expected.items():
+        profile = device_profile("H617F", 10, 1, hardware=hardware, firmware=firmware)
+
+        assert profile.scene_command_versions == scene_versions
+        assert profile.rgbic_scene_v0 is rgbic_scene_v0
+        assert (profile.physical_ic_count, profile.segment_count, profile.segment_group_size) == (45, 15, 3)
+
+
+@pytest.mark.parametrize("model,v0", [("H617A", True), ("H617C", False), ("H617E", False)])
+def test_h617f_scene_revision_preserves_sibling_gt70_contracts(model, v0):
+    profile = device_profile(model, 10, 1, hardware="1.00.02", firmware="1.06.00")
+
+    assert profile.scene_command_versions == {0, 1}
+    assert profile.rgbic_scene_v0 is v0
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_h617f_gradual_uses_exact_shared_register_and_query(enabled):
+    profile = device_profile("H617F", 10, 1, hardware="1.00.02", firmware="1.06.00")
+    write = build_boolean_control("gradual", enabled, "H617F", profile=profile)
+
+    assert profile.static_readback_gradual
+    assert profile.boolean_controls == {"gradual"}
+    assert write == frame(f"33a3{int(enabled):02x}")
+    assert build_boolean_control_query("gradual", "H617F", profile=profile) == frame("aaa3")
+    require_profile_packet(write, profile)
+
+    narrowed = replace(profile, boolean_controls=frozenset())
+    with pytest.raises(ValueError, match="boolean control gradual"):
+        build_boolean_control("gradual", enabled, "H617F", profile=narrowed)
+
+
+def test_h617f_gradual_readback_updates_register_and_static_state_independently(hass):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H617F", configuration_url=None)
+    coordinator.profile = device_profile("H617F", 10, 1, hardware="1.00.02", firmware="1.06.00")
+
+    coordinator._notify_callback(None, bytearray(frame("aa0515011194")))
+    assert coordinator.static_gradual is True
+
+    coordinator._notify_callback(None, bytearray(frame("aaa300")))
+    assert coordinator.boolean_control_state["gradual"] is False
+    assert coordinator.static_gradual is True
+    assert coordinator._field_revisions["boolean_gradual"] > 0
+    assert coordinator._field_revisions["static_gradual"] > 0
+    assert coordinator._setting_queries(coordinator.profile) == [(frame("aaa3"), ("boolean_gradual",))]
+
+
+async def test_h617f_gradual_write_verifies_exact_register_reply(hass, monkeypatch):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H617F", configuration_url=None)
+    coordinator.profile = device_profile("H617F", 10, 1, hardware="1.00.02", firmware="1.06.00")
+    query = frame("aaa3")
+
+    async def transmit(_uuid, packet, **_kwargs):
+        if packet == query:
+            coordinator._notify_callback(None, bytearray(frame("aaa301")))
+
+    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(side_effect=transmit))
+    coordinator._client = client
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
+    monkeypatch.setattr(coordinator, "_renew_foreground_lease", lambda: None)
+
+    await coordinator.async_set_boolean_control("gradual", True)
+
+    assert [item.args[1] for item in client.write_gatt_char.await_args_list] == [frame("33a301"), query]
+    assert coordinator.boolean_control_state["gradual"] is True
+    assert coordinator.static_gradual is None
+
+
+async def test_h617f_exposes_and_routes_public_gradual_switch(hass, monkeypatch):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H617F", configuration_url=None)
+    entry = MagicMock(runtime_data=coordinator)
+    add_entities = MagicMock()
+    await switch_platform.async_setup_entry(hass, entry, add_entities)
+    gradual = next(entity for entity in add_entities.call_args.args[0] if entity.translation_key == "gradual")
+    setter = AsyncMock()
+    monkeypatch.setattr(coordinator, "async_set_boolean_control", setter)
+
+    await gradual.async_turn_on()
+    await gradual.async_turn_off()
+
+    assert setter.await_args_list == [call("gradual", True), call("gradual", False)]

@@ -199,11 +199,11 @@ def test_equal_basic_profile_reinitializes_only_for_real_identity_transition(has
 
 
 @pytest.mark.parametrize(
-    ("model", "physical_ic_count", "v0_at_hardware_1_00_02"),
-    [("H617C", 30, False), ("H617E", 30, False), ("H617F", 45, True)],
+    ("model", "physical_ic_count", "modern_at_hardware_1_00_02"),
+    [("H617C", 30, True), ("H617E", 30, True), ("H617F", 45, False)],
 )
 def test_goods_type_70_scene_transitions_preserve_ordinary_control_state(
-    hass, model, physical_ic_count, v0_at_hardware_1_00_02
+    hass, model, physical_ic_count, modern_at_hardware_1_00_02
 ):
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", model, configuration_url=None)
     coordinator._client = MagicMock(is_connected=True)
@@ -214,9 +214,9 @@ def test_goods_type_70_scene_transitions_preserve_ordinary_control_state(
 
     coordinator._observe_identity_field("fw_version", "1.06.00")
     coordinator._observe_identity_field("hw_version", "1.00.02")
-    assert coordinator.profile.scene_command_versions == {0, 1}
-    assert coordinator.profile.rgbic_scene_v0 is v0_at_hardware_1_00_02
-    if model == "H617E":
+    assert coordinator.profile.scene_command_versions == ({0, 1} if modern_at_hardware_1_00_02 else {0})
+    assert coordinator.profile.rgbic_scene_v0 is not modern_at_hardware_1_00_02
+    if model in {"H617C", "H617E", "H617F"}:
         assert coordinator.profile.static_readback_gradual
         assert coordinator.profile.boolean_controls == {"gradual"}
 
@@ -224,7 +224,7 @@ def test_goods_type_70_scene_transitions_preserve_ordinary_control_state(
     assert coordinator.profile.scene_command_versions == {0, 1}
     assert coordinator.profile.rgbic_scene_v0 is False
     assert coordinator.profile.physical_ic_count == physical_ic_count
-    if model == "H617E":
+    if model in {"H617C", "H617E", "H617F"}:
         assert coordinator.profile.static_readback_gradual
         assert coordinator.profile.boolean_controls == {"gradual"}
     assert coordinator.is_on and coordinator.brightness_pct == 37
@@ -235,7 +235,7 @@ def test_goods_type_70_scene_transitions_preserve_ordinary_control_state(
     assert coordinator.profile.rgbic_scene_v0 is True
     assert coordinator.effect_authorization_profile.scene_command_versions == {0}
     assert coordinator.effect_authorization_profile.supports_rgb
-    if model == "H617E":
+    if model in {"H617C", "H617E", "H617F"}:
         assert coordinator.profile.static_readback_gradual
         assert coordinator.profile.boolean_controls == {"gradual"}
 
