@@ -17,12 +17,12 @@ from custom_components.ha_govee_led_ble.const import (
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_expectations import expectations_from_packet
-from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
+from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode, parse_color_mode
 from custom_components.ha_govee_led_ble.effect_catalogue import MODEL_EFFECT_CATALOGUES, resolve_catalogue_template
-from custom_components.ha_govee_led_ble.effect_compiler import compatibility, compile_application
+from custom_components.ha_govee_led_ble.effect_compiler import compatibility, compile_application, compile_video_profile
 from custom_components.ha_govee_led_ble.effect_contracts import device_effect_capabilities
 from custom_components.ha_govee_led_ble.effect_deployments import PriorControlState
-from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, MusicProfile
+from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, MusicProfile, PaletteDiyEffect, VideoProfile
 from custom_components.ha_govee_led_ble.effect_storage import LibrarySnapshot
 from custom_components.ha_govee_led_ble.effect_websocket import ws_scene_catalogue_list
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
@@ -37,6 +37,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_subordinate_query,
     build_video_mode,
     build_white_balance,
+    parse_status_result,
     require_profile_packet,
 )
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
@@ -153,7 +154,6 @@ def test_rgb_reuses_the_shared_logical_command_and_expectations():
         build_brightness(0, "H6199"),
         frame("330465"),
         build_brightness(50, "H6199")[:-1] + b"\x00",
-        build_video_mode("movie", True, 50, False, 50, "H6199"),
         build_h6199_control("gradient", 1),
         build_white_balance(21, 5, "H6199"),
         build_segment_query(1, "H6199"),
@@ -281,7 +281,7 @@ async def test_late_pact_changes_capabilities_without_destroying_library(hass):
     assert [item.to_dict() for item in items] == before
 
 
-async def test_editor_limits_pact1_to_built_in_scenes(hass, monkeypatch):
+async def test_scene_catalogue_limits_pact1_to_built_in_scenes(hass, monkeypatch):
     c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url=None)
     advertise(c, 1)
     entry = SimpleNamespace(runtime_data=c, state=ConfigEntryState.LOADED, domain=DOMAIN, entry_id="entry")
@@ -298,9 +298,9 @@ async def test_editor_limits_pact1_to_built_in_scenes(hass, monkeypatch):
 
 
 @pytest.mark.parametrize("change_at", ["connect", "guard"])
-async def test_late_pact_identification_blocks_prepared_write(hass, monkeypatch, change_at):
+async def test_late_pact_identification_blocks_unsupported_prepared_write(hass, monkeypatch, change_at):
     c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url=None)
-    packet = build_video_mode("movie", True, 50, False, 50, c.model)
+    packet = build_h6199_control("gradient", 1)
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
     c._client = client
 
@@ -314,12 +314,160 @@ async def test_late_pact_identification_blocks_prepared_write(hass, monkeypatch,
             advertise(c, 1)
 
     monkeypatch.setattr(c, "_ensure_connected", connect)
-    with pytest.raises(ValueError, match="does not support this operation"):
+    with pytest.raises(ValueError, match="profile changed|does not support this operation"):
         await c.async_write_effect_sequence(
             (packet,), intent=ControlIntent.USER, write_guard=guard, state_values={"brightness_pct": 254}
         )
     assert c.brightness_pct == 100 and c.control_write_attempts == 0
     client.write_gatt_char.assert_not_awaited()
+
+
+async def test_public_pact1_video_admission_transmission_observation_and_restoration(
+    pact_lifecycle,  # noqa: F811
+    monkeypatch,
+):
+    c, _replies, _clients, packets = pact_lifecycle
+    advertise(c, 1)
+    c.is_on = True
+    c.effect_families = frozenset({"video"})
+    c.video_full_screen = True
+    c.video_saturation = 50
+    c.video_sound_effects = False
+    c.video_sound_effects_softness = 50
+    monkeypatch.setattr(
+        c,
+        "async_prepare_static_baseline",
+        AsyncMock(
+            return_value=PriorControlState(
+                mode="colour",
+                is_on=True,
+                brightness_pct=50,
+                rgb_color=(32, 96, 160),
+                static_rgb_known=True,
+                segment_colors=((32, 96, 160),) * 15,
+                segment_brightness=(50,) * 15,
+            )
+        ),
+    )
+    light = GoveeBLELight(c)
+    monkeypatch.setattr(light, "_notify_state_changed", MagicMock())
+    expected = build_video_mode("movie", True, 50, False, 50, c.model, profile=c.profile)
+    assert expected == bytes.fromhex("3305000100320032000000000000000000000037")
+
+    assert "Movie" in light.effect_list
+    content = VideoProfile(
+        "H6199",
+        "movie",
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    compiled = compile_video_profile(LibraryItem.new("Resident movie", content), c.model, profile=c.profile)
+    assert compiled.mode == "movie"
+    require_profile_packet(expected, c.profile)
+    assert c.profile.outbound_transform is not None and c.profile.outbound_transform(expected) == expected
+    public_expected = bytes.fromhex("3305000100640064000000000000000000000037")
+
+    await light._async_handle_turn_on(effect="movie")
+
+    assert [packet.hex() for packet in packets if packet[:1] == b"\x33"] == [public_expected.hex()]
+    status = parse_status_result(frame("aa0500010032000032"), c.model, profile=c.profile)
+    assert status.parsed is not None
+    parsed = parse_color_mode(status.parsed, c.model, profile=c.profile)
+    assert parsed.mode is ParsedMode.VIDEO and parsed.video_mode == "movie"
+    c._notify_callback(None, bytearray(frame("aa0500010032000032")))
+    assert c.color_mode is ParsedMode.VIDEO and c.video_mode == "movie"
+
+    c.send_command = AsyncMock()
+    c.refresh_state = AsyncMock(return_value=True)
+    await c.async_restore_effect_control_state(
+        PriorControlState(
+            mode="scene",
+            is_on=True,
+            brightness_pct=50,
+            rgb_color=(32, 96, 160),
+            effect="sunset",
+        ),
+        overwritten_diy_code=None,
+    )
+    assert [item.args[0] for item in c.send_command.await_args_list] == [
+        build_power(True, c.model),
+        build_brightness(50, c.model),
+        frame("3305040100"),
+    ]
+
+
+@pytest.mark.parametrize("verdict", ["accepted", "missing", "rejected", "stale", "wrong_subtype"])
+async def test_pact1_a1_diy_requires_current_positive_ack_before_activation_and_restores(hass, monkeypatch, verdict):
+    from custom_components.ha_govee_led_ble import coordinator as coordinator_module
+
+    c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url=None)
+    c._note_advertisement(SimpleNamespace(manufacturer_data={34818: bytes((0xEC, 0, 1, 1, 0))}))
+    c._observe_identity_field("fw_version", "1.06.00")
+    c._observe_identity_field("hw_version", "1.00.01")
+    profile = c.profile
+    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
+    c._client = client
+    c._notification_token = object()
+    monkeypatch.setattr(c, "_ensure_connected", AsyncMock(return_value=client))
+    monkeypatch.setattr(coordinator_module, "UPLOAD_ACK_TIMEOUT", 0.02)
+    monkeypatch.setattr(coordinator_module, "EFFECT_SEQUENCE_ATTEMPTS", 1)
+    item = LibraryItem.new(
+        "Pact 1 DIY",
+        PaletteDiyEffect("H6199", 0, 0, 20, ((30, 0, 0), (0, 30, 0))),
+    )
+    compiled = compile_application(item, c.model, diy_code=73, profile=profile)
+    assert compiled.upload_packets[0][:2] == b"\xa1\x02"
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet == compiled.upload_packets[0] and verdict == "stale":
+            c._notify_callback(None, bytearray(frame("a10200")))
+        if packet == compiled.upload_packets[-1]:
+            response = {
+                "accepted": "a10200",
+                "rejected": "a10201",
+                "wrong_subtype": "a10100",
+            }.get(verdict)
+            if response is not None:
+                c._notify_callback(None, bytearray(frame(response)))
+
+    client.write_gatt_char.side_effect = write
+    operation = c.async_write_effect_sequence(
+        compiled.upload_packets,
+        intent=ControlIntent.APPLY,
+        require_upload_ack=True,
+        upload_ack_index=len(compiled.upload_packets) - 1,
+        final_packet=compiled.activation_packet,
+    )
+    if verdict == "accepted":
+        await operation
+        assert [call.args[1] for call in client.write_gatt_char.await_args_list][-1] == compiled.activation_packet
+    else:
+        with pytest.raises((TimeoutError, RuntimeError)):
+            await operation
+        assert compiled.activation_packet not in [call.args[1] for call in client.write_gatt_char.await_args_list]
+        c._disconnect_locked = AsyncMock()
+        c.send_command = AsyncMock()
+        c.refresh_state = AsyncMock(return_value=True)
+        await c.async_restore_effect_control_state(
+            PriorControlState(
+                mode="scene",
+                is_on=True,
+                brightness_pct=50,
+                rgb_color=(32, 96, 160),
+                effect="sunset",
+            ),
+            overwritten_diy_code=None,
+        )
+        assert [call.args[0] for call in c.send_command.await_args_list] == [
+            build_power(True, c.model),
+            build_brightness(50, c.model),
+            frame("3305040100"),
+        ]
 
 
 async def test_prepared_rgb_reencodes_after_pact_identification_during_connect(hass, monkeypatch):
