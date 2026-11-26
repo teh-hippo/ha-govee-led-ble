@@ -192,7 +192,7 @@ async def test_known_pact1_real_setup_and_basic_controls(
         replies[frame(f"aaa2{group:02x}")] = frame(f"aaa2{group:02x}" + "2060a0" * 4)
     await c._async_update_data()
     assert c.available and c.is_on
-    assert c.profile is H6199_PACT1_PROFILE
+    assert c.profile.supports_custom_effects and c.profile.diy_upload_transport == "a1_02"
     assert set(packets) == {
         build_power_query(c.model),
         build_hardware_query(c.model),
@@ -259,25 +259,20 @@ async def test_late_pact_changes_capabilities_without_destroying_library(hass):
     c.brightness_pct = 254
     advertise(c, 1)
     assert c.brightness_pct == 100 and light.brightness == 255 and light.color_mode is ColorMode.RGB
-    for item in items:
-        assert compatibility(item, c.model, profile=c.profile).state == "incompatible"
-        if isinstance(item.content, MusicProfile):
-            continue
-        with pytest.raises(ValueError):
-            compile_application(item, c.model, profile=c.profile)
+    assert c.profile.supports_custom_effects
+    assert c.profile.diy_upload_transport == "a1_02"
+    assert c.profile.scene_type_selectors == ((1, 199), (2, 401))
+    assert any(compatibility(item, c.model, profile=c.profile).state == "compatible" for item in items)
     catalogue = MODEL_EFFECT_CATALOGUES[c.model].to_dict(profile=c.profile)
     assert catalogue["templates"] and catalogue["music_modes"]
     for template in MODEL_EFFECT_CATALOGUES[c.model].templates:
         if isinstance(template.content, MusicProfile):
             resolved = resolve_catalogue_template(c.model, template.id, profile=c.profile)
             compile_application(LibraryItem.new(resolved.label, resolved.content), c.model, profile=c.profile)
-        else:
-            with pytest.raises(ValueError):
-                resolve_catalogue_template(c.model, template.id, profile=c.profile)
     capabilities = device_effect_capabilities("entry", c.model, "Test", 0, profile=c.profile).to_dict()
-    assert set(capabilities["custom_effects"].values()) == {"unsupported"}
+    assert "supported" in capabilities["custom_effects"].values()
     c._note_advertisement(SimpleNamespace(manufacturer_data={}))
-    assert c.profile is H6199_PACT1_PROFILE
+    assert c.profile.supports_custom_effects
     advertise(c, 2)
     assert c.profile == device_profile(c.model, 2, 1, firmware=c.fw_version, hardware=c.hw_version)
     assert ColorMode.RGB in light.supported_color_modes and light.color_mode is ColorMode.RGB

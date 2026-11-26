@@ -159,6 +159,8 @@ async def test_exact_rgbic_scene_transfer_observes_upload_before_activation(sele
     c, client = selection_ready
     if c.model in {"H61E5", "H61F5"}:
         c._observe_pact(*pact)
+        c._observe_identity_field("fw_version", "1.06.00")
+        c._observe_identity_field("hw_version", "1.00.03")
         c._physical_ic_count_confirmed = True
     c.is_on = True
     scene = next(scene for scene in SCENE_ENTRIES[c.model] if scene.scene_type == 2 and scene.command_version == 1)
@@ -421,7 +423,7 @@ async def test_bulb_scene_and_diy_ack_barrier(selection_ready, kind, response):
     compiled = compile_effect(LibraryItem.new("Bulb effect", content), c.model, diy_code=24)
     final_upload = len(compiled.upload_packets) - 1
     subtype = upload_ack_subtype(compiled.upload_packets, final_upload, c.model)
-    assert subtype == (4 if c.model == "H601C" or kind == "diy" else 1)
+    assert subtype == (4 if kind == "diy" else 1)
 
     async def write(_uuid, packet, **kwargs):
         if packet == compiled.upload_packets[-1] and response != "missing":

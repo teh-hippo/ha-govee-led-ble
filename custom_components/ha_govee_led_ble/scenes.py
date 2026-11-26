@@ -310,6 +310,9 @@ def scene_selector_code(
     model: str, scene: SceneEntry, *, profile: ModelProfile | None = None, authored: bool = False
 ) -> int:
     profile = MODEL_PROFILES[model] if profile is None else profile
+    type_selector = dict(profile.scene_type_selectors).get(scene.scene_type)
+    if type_selector is not None:
+        return type_selector
     if authored and scene.scene_type == 1 and profile.authored_palette_scene_selector is not None:
         return profile.authored_palette_scene_selector
     bits = profile.selector_only_scene_bits

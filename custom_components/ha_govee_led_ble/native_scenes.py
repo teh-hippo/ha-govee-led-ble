@@ -158,7 +158,11 @@ def build_native_scene_packets(
         decoded = decode_layered_scene(CatalogueRef(model, scene.scene_id, scene.effect_id), payload)
         payload = encode_layered_scene(decoded, profile=profile)
     if native_scene_prefers_selector(scene, payload, profile):
-        return [build_scene_activation(model, scene.code, scene.music_code, profile=profile)]
+        return [
+            build_scene_activation(
+                model, scene_selector_code(model, scene, profile=profile), scene.music_code, profile=profile
+            )
+        ]
     route = native_scene_upload_route(scene, profile)
     if payload and scene.scene_type == 5:
         native = _parse_native_scene_body(payload, scene.diy_effect_codes[0])
@@ -175,7 +179,9 @@ def build_native_scene_packets(
     upload = (
         (fragment_a4 if route[0] == "a4" else fragment_a3)(route[1], payload) if payload and route is not None else []
     )
-    activation = build_scene_activation(model, scene.code, scene.music_code, profile=profile)
+    activation = build_scene_activation(
+        model, scene_selector_code(model, scene, profile=profile), scene.music_code, profile=profile
+    )
     return [*upload, activation]
 
 

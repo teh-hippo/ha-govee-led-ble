@@ -189,7 +189,7 @@ def upload_ack_subtype(packets: Sequence[bytes], index: int, model: str, *, prof
             raise ValueError("A1 upload selector does not match the profile")
         return A1_02_COMMAND
     subtype, _envelope = _complete_a3_upload(packets, index, model, profile)
-    return profile.effect_upload_ack_subtype if profile.effect_upload_ack_subtype is not None else subtype
+    return subtype
 
 
 def upload_ack_mode(
@@ -230,6 +230,8 @@ def upload_ack_success(
         if upload.opcode != subtype or (protocol is not None and parsed.header != protocol):
             return None
         return bool(upload.is_success)
+    if protocol == 0xA1 and getattr(parsed, "header", None) == 0xA1:
+        return bool(parsed.status == 0) if parsed.opcode == subtype else None
     if protocol is not None and getattr(parsed, "protocol_id", None) != protocol:
         return None
     if (

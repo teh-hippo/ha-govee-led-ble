@@ -99,19 +99,33 @@ def prepare_palette_diy(
 ) -> GenericDiyPreparation:
     if profile.effect_grammar != "H6199":
         raise ValueError(f"{model} has no selected palette DIY codec")
-    upload_packets = build_h6199_palette_diy(
-        content.family,
-        content.variant,
-        content.speed,
-        content.palette,
-    )
+    if profile.diy_upload_transport == "a1_02":
+        from .protocol_h6199 import build_h6199_pact1_palette_diy
+
+        upload_packets = build_h6199_pact1_palette_diy(
+            content.family,
+            content.variant,
+            content.speed,
+            content.palette,
+        )
+        upload_transport = "a1_02"
+        upload_subtype = None
+    else:
+        upload_packets = build_h6199_palette_diy(
+            content.family,
+            content.variant,
+            content.speed,
+            content.palette,
+        )
+        upload_transport = "a3"
+        upload_subtype = int(H6199EffectUpload.BodyKind.diy)
     return GenericDiyPreparation(
         content_kind="palette_diy",
         upload_packets=tuple(upload_packets),
         activation_packet=build_diy_activation(diy_code, model, profile=profile),
-        upload_transport="a3",
-        upload_subtype=int(H6199EffectUpload.BodyKind.diy),
-        upload_prefix=None,
+        upload_transport=upload_transport,
+        upload_subtype=upload_subtype,
+        upload_prefix=profile.a1_diy_prefix,
     )
 
 

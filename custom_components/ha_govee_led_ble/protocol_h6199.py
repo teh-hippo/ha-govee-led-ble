@@ -23,6 +23,7 @@ from .protocol_core import (
 )
 from .transport import (
     A3_CHUNK_SIZE,
+    fragment_a1_02,
 )
 
 H6199_NATIVE_CONTROLS = ("strip_direction", "camera_position", "gradient", "camera_status")
@@ -98,6 +99,30 @@ def build_h6199_palette_diy_envelope(
     content.padding = [0] * h6199_diy_padding_len(len(palette))
     check_generated_tree(root)
     return _write(root, root.diy_chunk_count * A3_CHUNK_SIZE)
+
+
+def build_h6199_pact1_palette_diy(
+    family: int,
+    variant: int,
+    speed: int,
+    palette: tuple[tuple[int, int, int], ...],
+) -> list[bytes]:
+    root = H6199EffectUpload()
+    content = _child(H6199EffectUpload.Pact1DiyContent, root)
+    content.prefix = b"\xfe"
+    content.family = KaitaiStream.resolve_enum(H6199EffectUpload.EffectFamily, family)
+    content.variant = variant
+    content.speed = speed
+    content.palette_len = len(palette) * 3
+    content.palette = []
+    for colour in palette:
+        entry = _child(H6199EffectUpload.Pact1PaletteEntry, content)
+        entry.colour = new_rgb(entry, colour)
+        entry.reserved = b"\0"
+        content.palette.append(entry)
+    check_generated_tree(content)
+    body = _write(content, 5 + 4 * len(palette))
+    return fragment_a1_02(body)
 
 
 def parse_h6199_workshop_content(raw_param: bytes) -> tuple[Any, int]:

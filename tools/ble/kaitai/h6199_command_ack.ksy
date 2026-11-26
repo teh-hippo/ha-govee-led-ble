@@ -17,13 +17,14 @@ seq:
   - id: header
     type: u1
     valid:
-      any-of: [0x33, 0xa3]
+      any-of: [0x33, 0xa1, 0xa3]
   - id: opcode
     type: u1
-    if: header == 0x33
+    if: header == 0x33 or header == 0xa1
     enum: command_op
     valid:
       any-of:
+        - command_op::diy_upload
         - command_op::power
         - command_op::mode
         - command_op::display_setting
@@ -34,10 +35,10 @@ seq:
   - id: status
     type: u1
     valid: 0
-    if: header == 0x33
+    if: header == 0x33 or header == 0xa1
   - id: padding
     contents: [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
-    if: header == 0x33
+    if: header == 0x33 or header == 0xa1
   - id: upload
     type: h6199_upload_ack_payload
     if: header == 0xa3
@@ -45,6 +46,7 @@ seq:
     type: u1
 enums:
   command_op:
+    0x02: diy_upload
     0x01: power
     0x05: mode
     0x30: strip_direction

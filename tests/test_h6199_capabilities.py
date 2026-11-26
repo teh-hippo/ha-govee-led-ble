@@ -14,7 +14,8 @@ from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshReques
 from custom_components.ha_govee_led_ble.effect_catalogue import MODEL_EFFECT_CATALOGUES
 from custom_components.ha_govee_led_ble.effect_compiler import compile_effect
 from custom_components.ha_govee_led_ble.effect_contracts import CapabilityState
-from custom_components.ha_govee_led_ble.effect_domain import LibraryItem
+from custom_components.ha_govee_led_ble.effect_domain import BuiltinScene, LibraryItem, PaletteDiyEffect
+from custom_components.ha_govee_led_ble.layered_scene import CatalogueRef
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_blank_screen_query,
     build_brightness_query,
@@ -26,11 +27,13 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_segment_query,
     build_subordinate_query,
     build_white_balance_query,
+    parse_command_ack_result,
 )
 from custom_components.ha_govee_led_ble.music_commands import resolve_music_profile
 from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_packets
 from custom_components.ha_govee_led_ble.palette_scene_decoder import decode_catalogue_palette_scene
 from custom_components.ha_govee_led_ble.protocol_admission import require_profile_packet
+from custom_components.ha_govee_led_ble.protocol_effect_bodies import upload_ack_subtype, upload_ack_success
 from custom_components.ha_govee_led_ble.protocol_h6199 import build_h6199_control_query
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES, scene_supported
 from custom_components.ha_govee_led_ble.transport import xor_checksum
@@ -39,6 +42,7 @@ from custom_components.ha_govee_led_ble.video_applicability import (
     video_control_states,
     video_identity_fields,
 )
+from tests.coordinator_test_support import frame
 
 QUALIFIED = dict(
     fw_version="1.10.04",
@@ -89,6 +93,59 @@ def test_pact2_uploaded_scene_revision_boundary(pact, firmware, hardware, upload
     else:
         assert tuple(sorted(scene.code for scene in residents)) == (0, 1, 4, 5, 7, 8, 9, 10, 15, 16, 21, 22)
         assert all(scene.scene_type == 0 for scene in residents)
+
+
+@pytest.mark.parametrize(
+    ("firmware", "hardware", "uploaded"),
+    [
+        ("1.06.00", "1.00.01", False),
+        ("1.06.01", "1.00.01", True),
+        ("1.07.01", "3.02.01", False),
+        ("1.07.02", "3.02.01", True),
+    ],
+)
+def test_pact1_uses_qualified_old_controller_upload_route(firmware, hardware, uploaded):
+    profile = device_profile("H6199", 1, 1, firmware=firmware, hardware=hardware)
+    item = LibraryItem.new(
+        "Pact 1 upload",
+        PaletteDiyEffect("H6199", 0, 0, 20, ((30, 0, 0), (30, 0, 0))),
+    )
+
+    assert ("edited_palette_scenes" in profile.effect_workflows) is uploaded
+    assert profile.supports_custom_effects is uploaded
+    if uploaded:
+        compiled = compile_effect(item, "H6199", diy_code=73, profile=profile)
+        assert compiled.upload_transport == "a1_02"
+        assert compiled.upload_packets == tuple(
+            bytes.fromhex(packet)
+            for packet in (
+                "a1020001000000000000000000000000000000a2",
+                "a10201fe000014061e0000001e0000000000004e",
+                "a102ff000000000000000000000000000000005c",
+            )
+        )
+        assert compiled.activation_packet[0:5] == bytes((0x33, 0x05, 0x0A, 73, 0))
+        subtype = upload_ack_subtype(
+            compiled.upload_packets,
+            len(compiled.upload_packets) - 1,
+            "H6199",
+            profile=profile,
+        )
+        assert subtype == 0x02
+        ack = parse_command_ack_result(frame("a10200"), "H6199", profile=profile)
+        assert ack.parsed is not None and upload_ack_success(ack.parsed, subtype, protocol=0xA1)
+        for scene_type, selector in ((1, 199), (2, 401)):
+            scene = next(entry for entry in SCENE_ENTRIES["H6199"] if entry.scene_type == scene_type and entry.param)
+            compiled_scene = compile_effect(
+                LibraryItem.new("Pact 1 scene", BuiltinScene(CatalogueRef("H6199", scene.scene_id, scene.effect_id))),
+                "H6199",
+                profile=profile,
+            )
+            assert compiled_scene.upload_packets
+            assert int.from_bytes(compiled_scene.activation_packet[3:5], "little") == selector
+    else:
+        with pytest.raises(ValueError, match="effective profile does not support"):
+            compile_effect(item, "H6199", profile=profile)
 
 
 def test_pact2_scene_profile_transitions_with_fresh_identity(hass):

@@ -1,10 +1,12 @@
 import pytest
+from dataclasses import replace
 
 from custom_components.ha_govee_led_ble.const import device_profile
 from custom_components.ha_govee_led_ble.effect_catalogue import MODEL_EFFECT_CATALOGUES, resolve_catalogue_template
 from custom_components.ha_govee_led_ble.effect_compiler import compile_application
 from custom_components.ha_govee_led_ble.effect_contracts import CapabilityWorkflow, require_effect_route
 from custom_components.ha_govee_led_ble.effect_domain import LayeredEffect, LibraryItem, PaintedEffect
+from custom_components.ha_govee_led_ble.scenes import resolve_scene_identity
 
 
 @pytest.mark.parametrize(
@@ -28,7 +30,7 @@ def test_h617f_catalogue_admits_declared_workflows_in_identity_contexts(pact_typ
 
     assert (profile.segment_count, profile.segment_group_size) == (15, 3)
     assert profile.segment_count * profile.segment_group_size == 45
-    assert profile.advanced_scene_carrier == (1013, 11836)
+    assert profile.advanced_scene_carrier == (29884, 41599)
     assert {mode.id for mode in catalogue.music_modes} == set(profile.music_modes)
     assert [item["id"] for item in catalogue.to_dict(profile=profile)["music_modes"]] == list(profile.music_modes)
     for workflow in (
@@ -70,3 +72,11 @@ def test_h617f_catalogue_uses_exact_native_geometry_and_selector_contracts():
     assert isinstance(meteor, LayeredEffect) and all(layer.selection.quantity == 9 for layer in meteor.layers)
     assert isinstance(bloom, LayeredEffect) and [layer.selection.quantity for layer in bloom.layers[2:]] == [22, 22]
     assert {family.family for family in catalogue.effects} == {0, 1, 2, 3, 4, 8, 9, 10}
+    assert resolve_scene_identity("H617F", 29884, 41599) is not None
+    compiled = compile_application(
+        LibraryItem.new("Advanced H617F", replace(meteor, native_diy=None)),
+        "H617F",
+        diy_code=402,
+        profile=profile,
+    )
+    assert compiled.packets
