@@ -950,6 +950,7 @@ async def test_h61e5_extended_music_activates_only_after_positive_upload_verdict
     assert sent == list(expected if verdict == "accepted" else expected[:-1])
     assert c._upload_ack is None
 
+
 @pytest.mark.parametrize("connected", ["H61F5"], indirect=True)
 @pytest.mark.parametrize("response", ["accepted", "rejected", "missing"])
 async def test_h61f5_extended_music_waits_for_positive_upload_result(selection_ready, response):
@@ -994,6 +995,7 @@ async def test_h61f5_extended_music_waits_for_positive_upload_result(selection_r
         assert c._pre_mode_snapshot == recovery
     assert c._upload_ack is None
     assert c._ensure_connected.await_count == 1
+
 
 @pytest.mark.parametrize("connected", ["H617E"], indirect=True)
 @pytest.mark.parametrize("verdict", ["accepted", "rejected", "missing", "late"])
