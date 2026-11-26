@@ -690,6 +690,33 @@ def test_h7020_catalogue_exposes_exact_music_roster_and_rhythm_response() -> Non
     assert all(music_settings[mode.id]["parameters"] == {} for mode in H7020_NATIVE_MUSIC_MODES if mode.id != "rhythm")
 
 
+def test_h6022_studio_catalogue_exposes_exact_music_parameters() -> None:
+    settings = cast(dict[str, dict[str, Any]], MODEL_EFFECT_CATALOGUES["H6022"].to_dict()["music_settings"])
+
+    assert settings["spectrum"]["parameters"] == {
+        "gradient": {"kind": "switch", "default": True, "min": 0, "max": 0, "options": []}
+    }
+    assert settings["rolling"]["parameters"] == {
+        "gradient": {"kind": "switch", "default": True, "min": 0, "max": 0, "options": []},
+        "direction": {"kind": "select", "default": "up", "min": 0, "max": 0, "options": ["up", "down"]},
+    }
+    assert settings["separation"]["parameters"] == settings["spectrum"]["parameters"]
+    assert settings["hopping"]["parameters"] == {
+        "gradient": {"kind": "switch", "default": False, "min": 0, "max": 0, "options": []}
+    }
+    assert settings["fountain"]["parameters"] == settings["rolling"]["parameters"]
+    assert settings["meteor"]["parameters"] == {
+        "direction": {
+            "kind": "select",
+            "default": "left",
+            "min": 0,
+            "max": 0,
+            "options": ["left", "right"],
+        }
+    }
+    assert settings["energetic"]["parameters"] == settings["rhythm"]["parameters"] == {}
+
+
 def test_music_availability_reuses_validation_only_for_equivalent_profiles(monkeypatch) -> None:
     profile = replace(MODEL_PROFILES["H617A"], name="catalogue-availability-cache")
     resolve = Mock(wraps=music_commands.resolve_music_profile)

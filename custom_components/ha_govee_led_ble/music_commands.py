@@ -577,6 +577,9 @@ def music_body_parameters(body: bytes, mode: str, *, profile: ModelProfile) -> d
             result[spec.profile_key] = bool(value)
         elif spec.kind == "select":
             if not variant.direction_values and spec.wire_field != "start_point":
+                if type(value) is int and 0 <= value < len(spec.options):
+                    result[spec.profile_key] = spec.options[value]
+                    continue
                 name = getattr(value, "name", None)
                 if name in spec.options:
                     result[spec.profile_key] = name
