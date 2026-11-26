@@ -174,7 +174,7 @@ def test_suspended_history_requires_qualified_physical_geometry(hass, confirmed,
     ],
 )
 async def test_readable_static_effect_off_round_trip(
-    hass, monkeypatch, virtual_clock, initially_on, kelvin, retry_selector, release_between
+    hass, monkeypatch, initially_on, kelvin, retry_selector, release_between
 ):
     coord = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H601C", configuration_url=None)
     client = _c(write_gatt_char=AsyncMock(), disconnect=AsyncMock())
