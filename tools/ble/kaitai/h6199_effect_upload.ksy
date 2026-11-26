@@ -53,15 +53,9 @@ types:
         valid:
           expr: _ % 3 == 0
       - id: palette
-        type: pact1_palette_entry
+        type: govee_shared::rgb
         repeat: expr
         repeat-expr: palette_len / 3
-  pact1_palette_entry:
-    seq:
-      - id: colour
-        type: govee_shared::rgb
-      - id: reserved
-        contents: [0]
   scene_content:
     seq:
       - id: num_blocks

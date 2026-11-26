@@ -97,17 +97,18 @@ def h6199_pact1_outbound_transform(packet: bytes) -> bytes:
     """Re-encode authorised H6199 controls that differ on Pact 1."""
 
     from .dreamview import is_legacy_dreamview_packet
-    from .generated_protocol_adapter import parse_command, require_profile_packet
+    from .generated_protocol_adapter import parse_command
 
     profile = H6199_PACT1_PROFILE
     if is_legacy_dreamview_packet(packet):
         return packet
-    require_profile_packet(packet, profile)
+    if packet[:1] in {b"\xa1", b"\xa3", b"\xa4"}:
+        return packet
     parsed = parse_command(packet, profile=profile)
     if parsed is None:
         return packet
     operation = parsed.body.sub_mode.name if parsed.opcode.name == "mode" else parsed.opcode.name
-    if operation in {"power", "scene"}:
+    if operation in {"power", "scene", "diy"}:
         return packet
 
     root = H6199Pact1WireWrite()

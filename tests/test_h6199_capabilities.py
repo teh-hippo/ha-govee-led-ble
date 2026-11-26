@@ -11,6 +11,7 @@ from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ReadDomain,
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
+from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode, parse_color_mode
 from custom_components.ha_govee_led_ble.effect_catalogue import MODEL_EFFECT_CATALOGUES
 from custom_components.ha_govee_led_ble.effect_compiler import compile_effect
 from custom_components.ha_govee_led_ble.effect_contracts import CapabilityState
@@ -27,6 +28,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_subordinate_query,
     build_white_balance_query,
     parse_command_ack_result,
+    parse_status_result,
 )
 from custom_components.ha_govee_led_ble.layered_scene import CatalogueRef
 from custom_components.ha_govee_led_ble.music_commands import resolve_music_profile
@@ -35,7 +37,12 @@ from custom_components.ha_govee_led_ble.palette_scene_decoder import decode_cata
 from custom_components.ha_govee_led_ble.protocol_admission import require_profile_packet
 from custom_components.ha_govee_led_ble.protocol_effect_bodies import upload_ack_subtype, upload_ack_success
 from custom_components.ha_govee_led_ble.protocol_h6199 import build_h6199_control_query
-from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES, scene_supported
+from custom_components.ha_govee_led_ble.scenes import (
+    SCENE_ENTRIES,
+    scene_code_is_ambiguous,
+    scene_key_for_code,
+    scene_supported,
+)
 from custom_components.ha_govee_led_ble.transport import xor_checksum
 from custom_components.ha_govee_led_ble.video_applicability import (
     camera_controls_state,
@@ -120,7 +127,7 @@ def test_pact1_uses_qualified_old_controller_upload_route(firmware, hardware, up
             bytes.fromhex(packet)
             for packet in (
                 "a1020001000000000000000000000000000000a2",
-                "a10201fe000014061e0000001e0000000000004e",
+                "a10201fe000014061e00001e000000000000004e",
                 "a102ff000000000000000000000000000000005c",
             )
         )
@@ -134,6 +141,8 @@ def test_pact1_uses_qualified_old_controller_upload_route(firmware, hardware, up
         assert subtype == 0x02
         ack = parse_command_ack_result(frame("a10200"), "H6199", profile=profile)
         assert ack.parsed is not None and upload_ack_success(ack.parsed, subtype, protocol=0xA1)
+        assert profile.outbound_transform is not None
+        assert tuple(profile.outbound_transform(packet) for packet in compiled.packets) == compiled.packets
         for scene_type, selector in ((1, 199), (2, 401)):
             scene = next(entry for entry in SCENE_ENTRIES["H6199"] if entry.scene_type == scene_type and entry.param)
             compiled_scene = compile_effect(
@@ -143,6 +152,22 @@ def test_pact1_uses_qualified_old_controller_upload_route(firmware, hardware, up
             )
             assert compiled_scene.upload_packets
             assert int.from_bytes(compiled_scene.activation_packet[3:5], "little") == selector
+            assert (
+                upload_ack_subtype(
+                    compiled_scene.upload_packets,
+                    len(compiled_scene.upload_packets) - 1,
+                    "H6199",
+                    profile=profile,
+                )
+                == scene_type
+            )
+            transformed = tuple(profile.outbound_transform(packet) for packet in compiled_scene.packets)
+            assert transformed == compiled_scene.packets
+            assert scene_code_is_ambiguous("H6199", selector, profile=profile)
+            assert scene_key_for_code("H6199", selector, profile=profile) is None
+        status = parse_status_result(frame("aa050a4900"), "H6199", profile=profile)
+        parsed = parse_color_mode(status.parsed, "H6199", profile=profile)
+        assert parsed.mode is ParsedMode.DIY and parsed.diy_code == 73
     else:
         with pytest.raises(ValueError, match="effective profile does not support"):
             compile_effect(item, "H6199", profile=profile)

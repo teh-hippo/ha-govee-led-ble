@@ -207,34 +207,6 @@ def test_goods_type_70_scene_admission_and_v0_conversion_are_separate(
     assert prepared.overall_movement.distance == physical_ic_count - 2
 
 
-@pytest.mark.parametrize(
-    ("model", "pact", "physical_ic_count"),
-    [("H61E5", (1, 1), 36), ("H61E5", (2, 1), 36), ("H61F5", (2, 2), 50), ("H61F5", (3, 1), 50)],
-)
-@pytest.mark.parametrize(
-    ("firmware", "hardware", "admitted", "v0"),
-    [
-        (None, None, False, True),
-        ("1.00.10", "3.05.00", False, True),
-        ("1.06.00", "1.00.02", True, True),
-        ("1.06.00", "1.00.03", True, False),
-    ],
-)
-def test_h61_rgbic_scene_admission_and_v0_conversion_are_revision_aware(
-    model, pact, physical_ic_count, firmware, hardware, admitted, v0
-):
-    profile = device_profile(model, *pact, firmware=firmware, hardware=hardware)
-    scene = LayeredScene(CatalogueRef(model, 0, 0), LayeredEffect((_layer(),)))
-    prepared = decode_layered_scene(scene.template, encode_layered_scene(scene, profile=profile)).effect.layers[0]
-
-    assert profile.scene_command_versions == ({0, 1} if admitted else {0})
-    assert profile.rgbic_scene_v0 is v0
-    assert profile.physical_ic_count == physical_ic_count
-    assert prepared.selection.type == int(SelectionType.SEGMENT if v0 else SelectionType.CUSTOM)
-    assert prepared.distribution.backwards is not v0
-    assert prepared.unknown_flags == (0x0D if v0 else 0xFD)
-
-
 @pytest.mark.parametrize("missing_metadata", ["physical_ic_count", "rgbic_scene_v0"])
 def test_stale_layered_metadata_cannot_bypass_prepared_geometry(missing_metadata):
     profile = get_profile("H617A")

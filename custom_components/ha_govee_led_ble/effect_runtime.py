@@ -2081,7 +2081,7 @@ def active_workspace_matches(
     )
     scene_code = getattr(coordinator, "scene_code", None)
     return (scene_code is None or scene_code == selector) and (
-        not scene_code_is_ambiguous(workspace.model, selector)
+        not scene_code_is_ambiguous(workspace.model, selector, profile=getattr(coordinator, "profile", None))
         or coordinator.effect == canonical_scene_key(workspace.model, key)
     )
 
@@ -2251,7 +2251,7 @@ def compiled_observation(
             compiled.activation_mode is ActivationMode.SCENE
             and compiled.diy_code is not None
             and compiled.expected_effect is not None
-            and scene_code_is_ambiguous(compiled.model, compiled.diy_code)
+            and scene_code_is_ambiguous(compiled.model, compiled.diy_code, profile=profile)
         ):
             expectations["effect"] = canonical_scene_key(compiled.model, compiled.expected_effect)
         return expectations, ObservationConfidence.ACTIVATION_MATCH
@@ -2470,7 +2470,7 @@ def _scene_record_matches(
 ) -> bool:
     if record.diy_code != scene_code:
         return False
-    if not scene_code_is_ambiguous(coordinator.model, scene_code):
+    if not scene_code_is_ambiguous(coordinator.model, scene_code, profile=coordinator.profile):
         return True
     return (
         record.target_effect is not None
