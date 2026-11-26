@@ -131,7 +131,7 @@ async def radio(hass, monkeypatch, virtual_clock):
             elif packet[:3] in (bytes.fromhex("330511"), bytes.fromhex("330513")):
                 wire_mode = packet[3]
                 logical_mode = {0x10: 5, 0x11: 3, 0x12: 4, 0x13: 6}.get(wire_mode, wire_mode)
-                state["mode"] = f"13{logical_mode:02x}{packet[4]:02x}"
+                state["mode"] = f"{1 if c.pact_type == 1 else 0x13:02x}{logical_mode:02x}{packet[4]:02x}"
             if packet[0] == 0xA3 and packet[1] == 0:
                 state["upload_subtype"] = packet[4]
             elif packet[0] == 0xA3 and packet[1] == 0xFF:
@@ -146,7 +146,11 @@ async def radio(hass, monkeypatch, virtual_clock):
             static = parse_static_write(packet, c.model, profile=c.profile)
             if static and static.kelvin is not None and state["accept_kelvin"]:
                 state["kelvin"] = static.kelvin
-                state["mode"] = "15" + bytes([int(state["gradual"])]).hex() + static.kelvin.to_bytes(2, "big").hex()
+                if c.pact_type == 1:
+                    companion = bytes(static.kelvin_companion_rgb).hex()
+                    state["mode"] = f"02{companion}01{companion}"
+                else:
+                    state["mode"] = "15" + bytes([int(state["gradual"])]).hex() + static.kelvin.to_bytes(2, "big").hex()
                 state["colours"] = [static.kelvin_companion_rgb] * 15
                 if state["corrupt_kelvin_rgb"]:
                     state["colours"][-1] = (1, 2, 3)
@@ -156,7 +160,11 @@ async def radio(hass, monkeypatch, virtual_clock):
                         state["colours"][index] = static.rgb
                 if state["accept_rgb_kelvin"]:
                     state["kelvin"] = 0
-                    state["mode"] = "15" + bytes([int(state["gradual"])]).hex() + "0000"
+                    state["mode"] = (
+                        "02" + bytes(static.rgb).hex() + "00000000"
+                        if c.pact_type == 1
+                        else "15" + bytes([int(state["gradual"])]).hex() + "0000"
+                    )
             if static and static.brightness_pct is not None:
                 for index in range(15):
                     if static.segment_mask & (1 << index):
@@ -630,10 +638,11 @@ async def test_legacy_saved_diy_requires_ack_confirms_mode_and_restores(radio):
     light.async_write_ha_state = MagicMock()
     await light.async_turn_on(rgb_color=(10, 20, 30))
     prior = c.capture_effect_control_state()
+    state["mode"] = "020a141e00000000"
 
     repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
     await repository.async_load()
-    record = await EffectDeploymentEngine(repository).async_apply_snapshot(
+    record = await EffectDeploymentEngine(repository).async_apply_saved(
         c,
         LibraryItem.new("Legacy DIY", SingleEffect(0, 1, 40, ((255, 0, 0),))),
         config_entry_id="legacy",

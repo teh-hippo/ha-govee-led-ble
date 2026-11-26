@@ -203,6 +203,7 @@ def resolve_h6102_capabilities(
                 _BASE_PROFILE,
                 command_operations=None,
                 command_ack_grammar="H6125",
+                status_grammar="H6102-legacy",
                 read_domains=frozenset(read_domains),
                 setup_required_read_domains=frozenset(setup_read_domains),
                 effect_workflows=workflows,

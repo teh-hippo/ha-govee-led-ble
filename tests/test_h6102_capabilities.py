@@ -86,6 +86,7 @@ def test_legacy_revision_operation_matrix(pact_code, firmware, colour, uploaded,
     assert profile.supports_scenes is colour
     assert profile.supports_music_mode is colour
     assert profile.supports_color_mode_readback is colour
+    assert profile.status_grammar == ("H6102-legacy" if colour else "H6102")
     assert profile.diy_upload_transport == ("a1_02" if colour else None)
     assert profile.a1_diy_selector == (0xFE if colour else None)
     assert (profile.advanced_diy_selector is not None) is uploaded
@@ -118,6 +119,7 @@ def test_legacy_operation_matrix_conflicting_identity_fails_closed(pact_type, pa
 @pytest.mark.parametrize("pact_code", [1, 2])
 def test_modern_candidate_exact_catalogue_and_no_donor_policy(pact_code):
     profile = device_profile("H6102", 10, pact_code)
+    assert profile.status_grammar == "H6102"
     assert profile.supports_rgb and profile.supports_scenes and profile.supports_custom_effects
     assert profile.supports_color_temperature and profile.supports_segments
     assert profile.command_grammar == profile.effect_grammar == "H617A"
