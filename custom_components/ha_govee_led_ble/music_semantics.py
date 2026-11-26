@@ -61,6 +61,8 @@ class MusicVariant:
     # Semantics are qualified independently of the structural tail type.
     gradient_companions: tuple[int, int] | None = None
     style_companions: tuple[int, int] | None = None
+    style_field: str | None = None
+    style_values: tuple[int, int] | None = None
     piano_derived_half: bool = False
     direction_values: tuple[tuple[str, int, int], ...] = ()
     palette_bounds: tuple[int, int] | None = None
@@ -1242,6 +1244,8 @@ H6022_MUSIC_VARIANTS = tuple(
         palette_bounds=bounds,
         supports_style=code in (57, 56),
         calm_default=code in (57, 56),
+        style_field="style" if code in (57, 56) else None,
+        style_values=(0, 1) if code in (57, 56) else None,
         supports_fixed_colour=False,
     )
     for code, bounds, tail in (
