@@ -15,6 +15,7 @@ from homeassistant.core import HomeAssistant, SupportsResponse
 from homeassistant.exceptions import ServiceValidationError
 
 from custom_components.ha_govee_led_ble.const import DOMAIN, get_profile
+from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
 from custom_components.ha_govee_led_ble.effect_catalogue import WORKSHOP_PROTOCOL_FIXTURES
 from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, StaticRgbComposition, TypedSingleDiyEffect
@@ -103,12 +104,24 @@ async def test_entity_action_applies_saved_effect_and_returns_deployment(
         effect_backend=backend,
     )
 
-    response = await entity.async_apply_custom_effect(
-        effect=item.name if reference == "name" else None,
-        effect_id=str(item.id) if reference == "id" else None,
-        diy_destination=None if static else 0x1234,
-        overwrite_confirmed=not static,
+    from custom_components.ha_govee_led_ble.effect_diy_destination import (
+        async_prepare_diy_destination_consent as prepare_consent,
     )
+
+    async def require_owned_preparation(*args, **kwargs):
+        assert mock_coordinator._control_arbiter.current_task_intent is ControlIntent.USER
+        return await prepare_consent(*args, **kwargs)
+
+    with patch(
+        "custom_components.ha_govee_led_ble.effect_diy_destination.async_prepare_diy_destination_consent",
+        side_effect=require_owned_preparation,
+    ) as prepare:
+        response = await entity.async_apply_custom_effect(
+            effect=item.name if reference == "name" else None,
+            effect_id=str(item.id) if reference == "id" else None,
+            diy_destination=None if static else 0x1234,
+            overwrite_confirmed=not static,
+        )
 
     assert response["phase"] == "confirmed"
     preview.async_supersede_device.assert_awaited_once_with(
@@ -121,6 +134,9 @@ async def test_entity_action_applies_saved_effect_and_returns_deployment(
     assert apply_saved.await_args.kwargs.get("diy_code") == (None if static else 0x1234)
     if not static:
         assert apply_saved.await_args.kwargs["destination_consent"].destination == 0x1234
+        prepare.assert_awaited_once()
+    else:
+        prepare.assert_not_awaited()
 
 
 @pytest.mark.parametrize(

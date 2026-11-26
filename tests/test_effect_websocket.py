@@ -21,7 +21,9 @@ from homeassistant.setup import async_setup_component
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant.common import MockConfigEntry, async_fire_time_changed
 
+from custom_components.ha_govee_led_ble import effect_websocket
 from custom_components.ha_govee_led_ble.const import CONF_SHOW_EXPERIMENTAL_FEEDBACK, DOMAIN, get_profile
+from custom_components.ha_govee_led_ble.control_arbiter import BLEControlArbiter, ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_modes import ModeTransitionSupersededError
 from custom_components.ha_govee_led_ble.coordinator_segments import SegmentPaintRequest
@@ -963,7 +965,11 @@ async def test_apply_snapshot_requires_and_forwards_bound_destination_consent(
     deployment.to_public_dict.return_value = {"phase": "confirmed"}
     apply_snapshot = AsyncMock(return_value=deployment)
     monkeypatch.setattr(backend.engine, "async_apply_snapshot", apply_snapshot)
-    coordinator = _EffectCoordinator(model="H6199", profile=get_profile("H6199"))
+    coordinator = _EffectCoordinator(
+        model="H6199",
+        profile=get_profile("H6199"),
+        _control_arbiter=BLEControlArbiter(),
+    )
     entry = SimpleNamespace(
         entry_id="entry-a",
         domain=DOMAIN,
@@ -980,6 +986,19 @@ async def test_apply_snapshot_requires_and_forwards_bound_destination_consent(
         "content": content,
         "updated_at": "2026-11-24T00:00:00Z",
     }
+    from custom_components.ha_govee_led_ble.effect_diy_destination import (
+        async_prepare_diy_destination_consent as prepare_consent,
+    )
+
+    async def require_owned_preparation(*args, **kwargs):
+        assert coordinator._control_arbiter.current_task_intent is ControlIntent.BACKGROUND
+        return await prepare_consent(*args, **kwargs)
+
+    monkeypatch.setattr(
+        effect_websocket,
+        "async_prepare_diy_destination_consent",
+        require_owned_preparation,
+    )
 
     await client.send_json_auto_id(base)
     assert (await client.receive_json())["error"]["code"] == "unsupported_model"

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from contextlib import nullcontext
 from dataclasses import dataclass
 from functools import partial
 from typing import Any, cast
@@ -33,7 +34,7 @@ from .const import (
     light_unique_id,
     supported_effect_categories,
 )
-from .control_arbiter import ControlIntent
+from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator_base import async_prepare_effect_profile
 from .coordinator_modes import ModeTransitionSupersededError
 from .effect_backend import EffectBackend
@@ -1621,44 +1622,49 @@ async def ws_apply(
             msg["item_id"],
             expected_version=msg["expected_version"],
         ) as item:
-            destination_consent = (
-                await async_prepare_diy_destination_consent(
-                    entry.runtime_data,
-                    entry.entry_id,
-                    msg["diy_destination_consent"],
-                )
+            async with (
+                async_control_intent(entry.runtime_data, ControlIntent.BACKGROUND)
                 if "diy_destination_consent" in msg
-                else None
-            )
-            diy_code = requested_diy_destination(
-                msg.get("diy_destination_consent"),
-                msg.get("diy_code"),
-            )
-            compiled = await async_prepare_application(
-                entry.runtime_data,
-                item,
-                diy_code=diy_code,
-                destination_consent=destination_consent,
-                intent=ControlIntent.BACKGROUND,
-            )
-            await backend.preview.async_supersede_device(entry.entry_id, reason="committed_apply")
-            apply_kwargs: dict[str, Any] = {
-                "config_entry_id": entry.entry_id,
-                "updated_at": msg["updated_at"],
-                "operation_id": operation_id,
-                "diy_code": diy_code,
-                "compiled": compiled,
-                "write_guard": partial(_ensure_entry_control, hass, connection, entry),
-            }
-            if destination_consent is not None:
-                apply_kwargs["destination_consent"] = destination_consent
-            if "live" in msg:
-                apply_kwargs["live"] = msg["live"]
-            result = await backend.engine.async_apply_saved(
-                entry.runtime_data,
-                item,
-                **apply_kwargs,
-            )
+                else nullcontext()
+            ):
+                destination_consent = (
+                    await async_prepare_diy_destination_consent(
+                        entry.runtime_data,
+                        entry.entry_id,
+                        msg["diy_destination_consent"],
+                    )
+                    if "diy_destination_consent" in msg
+                    else None
+                )
+                diy_code = requested_diy_destination(
+                    msg.get("diy_destination_consent"),
+                    msg.get("diy_code"),
+                )
+                compiled = await async_prepare_application(
+                    entry.runtime_data,
+                    item,
+                    diy_code=diy_code,
+                    destination_consent=destination_consent,
+                    intent=ControlIntent.BACKGROUND,
+                )
+                await backend.preview.async_supersede_device(entry.entry_id, reason="committed_apply")
+                apply_kwargs: dict[str, Any] = {
+                    "config_entry_id": entry.entry_id,
+                    "updated_at": msg["updated_at"],
+                    "operation_id": operation_id,
+                    "diy_code": diy_code,
+                    "compiled": compiled,
+                    "write_guard": partial(_ensure_entry_control, hass, connection, entry),
+                }
+                if destination_consent is not None:
+                    apply_kwargs["destination_consent"] = destination_consent
+                if "live" in msg:
+                    apply_kwargs["live"] = msg["live"]
+                result = await backend.engine.async_apply_saved(
+                    entry.runtime_data,
+                    item,
+                    **apply_kwargs,
+                )
     except EffectNotFoundError as exc:
         _send_error(hass, connection, msg, "not_found", exc)
         return
@@ -1724,35 +1730,40 @@ async def ws_apply_snapshot(
             ),
         )
         operation_id = UUID(msg["operation_id"]) if "operation_id" in msg else None
-        destination_consent = (
-            await async_prepare_diy_destination_consent(
-                entry.runtime_data,
-                entry.entry_id,
-                msg["diy_destination_consent"],
-            )
+        async with (
+            async_control_intent(entry.runtime_data, ControlIntent.BACKGROUND)
             if "diy_destination_consent" in msg
-            else None
-        )
-        diy_code = requested_diy_destination(msg.get("diy_destination_consent"), msg.get("diy_code"))
-        compiled = await async_prepare_application(
-            entry.runtime_data,
-            item,
-            diy_code=diy_code,
-            destination_consent=destination_consent,
-            intent=ControlIntent.BACKGROUND,
-        )
-        await backend.preview.async_supersede_device(entry.entry_id, reason="committed_apply")
-        result = await backend.engine.async_apply_snapshot(
-            entry.runtime_data,
-            item,
-            config_entry_id=entry.entry_id,
-            updated_at=msg["updated_at"],
-            operation_id=operation_id,
-            diy_code=diy_code,
-            compiled=compiled,
-            write_guard=partial(_ensure_entry_control, hass, connection, entry),
-            **({"destination_consent": destination_consent} if destination_consent is not None else {}),
-        )
+            else nullcontext()
+        ):
+            destination_consent = (
+                await async_prepare_diy_destination_consent(
+                    entry.runtime_data,
+                    entry.entry_id,
+                    msg["diy_destination_consent"],
+                )
+                if "diy_destination_consent" in msg
+                else None
+            )
+            diy_code = requested_diy_destination(msg.get("diy_destination_consent"), msg.get("diy_code"))
+            compiled = await async_prepare_application(
+                entry.runtime_data,
+                item,
+                diy_code=diy_code,
+                destination_consent=destination_consent,
+                intent=ControlIntent.BACKGROUND,
+            )
+            await backend.preview.async_supersede_device(entry.entry_id, reason="committed_apply")
+            result = await backend.engine.async_apply_snapshot(
+                entry.runtime_data,
+                item,
+                config_entry_id=entry.entry_id,
+                updated_at=msg["updated_at"],
+                operation_id=operation_id,
+                diy_code=diy_code,
+                compiled=compiled,
+                write_guard=partial(_ensure_entry_control, hass, connection, entry),
+                **({"destination_consent": destination_consent} if destination_consent is not None else {}),
+            )
     except EffectValidationError as exc:
         _send_error(hass, connection, msg, "invalid_format", exc)
         return
