@@ -1287,41 +1287,6 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                     validate_diy_destination_consent,
                 )
 
-                destination_consent = None
-                if compiled_requires_diy_destination_consent(compiled, self.coordinator.effect_authorization_profile):
-                    if diy_code is None or not overwrite_confirmed:
-                        raise ValueError("DIY destination and explicit overwrite confirmation are required")
-                    minimum, maximum = diy_destination_range(self.coordinator.model)
-                    destination_consent = await async_prepare_diy_destination_consent(
-                        self.coordinator,
-                        self._config_entry_id,
-                        {
-                            "config_entry_id": self._config_entry_id,
-                            "model": self.coordinator.model,
-                            "destination": diy_code,
-                            "minimum": minimum,
-                            "maximum": maximum,
-                            "route": diy_destination_route(
-                                self.coordinator.model,
-                                self.coordinator.effect_authorization_profile,
-                            ),
-                            "authority": diy_destination_authority(self.coordinator),
-                            "overwrite_confirmed": True,
-                        },
-                    )
-
-                def guard() -> None:
-                    if native_write_guard is not None:
-                        native_write_guard()
-                    validate_compiled_geometry(compiled, self.coordinator.effect_authorization_profile)
-                    validate_video_request(self.coordinator, current.content)
-                    validate_diy_destination_consent(
-                        self.coordinator,
-                        compiled,
-                        destination_consent,
-                        config_entry_id=self._config_entry_id,
-                    )
-
                 async with (
                     async_control_intent(
                         self.coordinator,
@@ -1331,6 +1296,43 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                         purpose=None if isinstance(compiled, CompiledStaticRgb) else ModeTransitionPurpose.SELECTION
                     ),
                 ):
+                    destination_consent = None
+                    if compiled_requires_diy_destination_consent(
+                        compiled, self.coordinator.effect_authorization_profile
+                    ):
+                        if diy_code is None or not overwrite_confirmed:
+                            raise ValueError("DIY destination and explicit overwrite confirmation are required")
+                        minimum, maximum = diy_destination_range(self.coordinator.model)
+                        destination_consent = await async_prepare_diy_destination_consent(
+                            self.coordinator,
+                            self._config_entry_id,
+                            {
+                                "config_entry_id": self._config_entry_id,
+                                "model": self.coordinator.model,
+                                "destination": diy_code,
+                                "minimum": minimum,
+                                "maximum": maximum,
+                                "route": diy_destination_route(
+                                    self.coordinator.model,
+                                    self.coordinator.effect_authorization_profile,
+                                ),
+                                "authority": diy_destination_authority(self.coordinator),
+                                "overwrite_confirmed": True,
+                            },
+                        )
+
+                    def guard() -> None:
+                        if native_write_guard is not None:
+                            native_write_guard()
+                        validate_compiled_geometry(compiled, self.coordinator.effect_authorization_profile)
+                        validate_video_request(self.coordinator, current.content)
+                        validate_diy_destination_consent(
+                            self.coordinator,
+                            compiled,
+                            destination_consent,
+                            config_entry_id=self._config_entry_id,
+                        )
+
                     guard()
                     await self._async_supersede_preview()
                     if turn_on_kwargs is not None:
