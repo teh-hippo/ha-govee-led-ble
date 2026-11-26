@@ -1211,12 +1211,34 @@ def _dreamcolor_music_variants(model: str) -> tuple[MusicVariant, ...]:
 
 H617C_MUSIC_VARIANTS = _dreamcolor_music_variants("H617C")
 _H6022_PALETTE = "07ff0000ff7f00ffff0000ff000000ff00ffff8b00ff"
+
+
+def _h6022_music_parameters(code: int) -> tuple[MusicParamSpec, ...]:
+    parameters = []
+    if code in (84, 99, 85, 51, 100):
+        parameters.append(MusicParamSpec("music_gradient", "gradient", "gradient", "switch", code != 51))
+    if code in (99, 100, 101):
+        horizontal = code == 101
+        parameters.append(
+            MusicParamSpec(
+                "music_direction",
+                "direction",
+                "direction",
+                "select",
+                "left" if horizontal else "up",
+                options=("left", "right") if horizontal else ("up", "down"),
+            )
+        )
+    return tuple(parameters)
+
+
 H6022_MUSIC_VARIANTS = tuple(
     MusicVariant(
         code,
         "H6022 exact onboard music mode",
         "h6022_music_body",
         bytes.fromhex(f"{code:02x}{_H6022_PALETTE}{tail}"),
+        _h6022_music_parameters(code),
         palette_bounds=bounds,
         supports_style=code in (57, 56),
         calm_default=code in (57, 56),

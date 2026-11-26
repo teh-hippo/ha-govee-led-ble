@@ -11,6 +11,8 @@ from custom_components.ha_govee_led_ble.effect_domain import LibraryItem
 from custom_components.ha_govee_led_ble.effect_scenes import scene_detail_payload
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import parse_status_result
 from custom_components.ha_govee_led_ble.music_commands import (
+    edit_music_body,
+    music_body_parameters,
     music_body_style,
     prepare_music_body_writes,
     prepare_music_profile_writes,
@@ -131,6 +133,28 @@ def test_h6022_music_style_is_encoded_and_read_from_its_exact_body():
 
 
 @pytest.mark.parametrize(
+    ("mode", "parameters", "tail"),
+    [
+        ("spectrum", {"gradient": False}, b"\x00\x00"),
+        ("rolling", {"gradient": False, "direction": "down"}, b"\x00\x01\x00"),
+        ("separation", {"gradient": False}, b"\x00\x00"),
+        ("hopping", {"gradient": True}, b"\x01\x19"),
+        ("fountain", {"gradient": False, "direction": "down"}, b"\x00\x01\x00"),
+        ("meteor", {"direction": "right"}, b"\x01"),
+    ],
+)
+def test_h6022_nondefault_parameters_encode_and_edit_exact_tails(mode, parameters, tail):
+    profile = MODEL_PROFILES["H6022"]
+    default = H6022_MUSIC_BODIES[mode]
+    authored = prepare_music_profile_writes("H6022", mode, 42, None, False, parameters, profile=profile)
+    expected = default[: -len(tail)] + tail
+
+    assert authored.body == (mode, expected)
+    assert music_body_parameters(expected, mode, profile=profile) == parameters
+    assert edit_music_body(default, mode, parameters, profile=profile) == expected
+
+
+@pytest.mark.parametrize(
     "mode,expected_code",
     [(mode, bytes((code,))) for mode, code in zip(H6022_MUSIC_BODIES, (57, 56, 84, 99, 85, 51, 100, 101), strict=True)],
 )
@@ -148,21 +172,45 @@ def test_h6022_exact_music_readback_selects_mode_and_sensitivity(mode, expected_
     assert parsed.music_color_present is False
 
 
-def test_h6022_recovery_replays_retained_body_before_selector():
+@pytest.mark.parametrize(
+    ("mode", "parameters"),
+    [
+        ("spectrum", {"gradient": False}),
+        ("rolling", {"gradient": False, "direction": "down"}),
+        ("separation", {"gradient": False}),
+        ("hopping", {"gradient": True}),
+        ("fountain", {"gradient": False, "direction": "down"}),
+        ("meteor", {"direction": "right"}),
+    ],
+)
+def test_h6022_recovery_replays_retained_parameter_body_before_selector(mode, parameters):
     profile = MODEL_PROFILES["H6022"]
-    body = H6022_MUSIC_BODIES["energetic"][:-2] + b"\x00\x00"
-    writes = prepare_music_body_writes("H6022", "energetic", 37, body, profile=profile)
+    body = edit_music_body(H6022_MUSIC_BODIES[mode], mode, parameters, profile=profile)
+    writes = prepare_music_body_writes("H6022", mode, 37, body, profile=profile)
 
-    assert writes.body == ("energetic", body)
+    assert writes.body == (mode, body)
     assert tuple(packet for packet, _state in writes.writes[1:-1]) == tuple(fragment_a3(0x41, body))
-    assert writes.writes[-2][1]["music_calm"] is False
-    assert writes.writes[-1][1]["music_mode"] == "energetic"
+    if "gradient" in parameters:
+        assert writes.writes[-2][1]["music_gradient"] is parameters["gradient"]
+    else:
+        assert "music_gradient" not in writes.writes[-2][1]
+    if "direction" in parameters:
+        assert writes.writes[-2][1]["music_direction"] == parameters["direction"]
+    assert writes.writes[-1][1]["music_mode"] == mode
 
 
 @pytest.mark.parametrize("success", [False, True])
 def test_h6022_music_upload_ack_is_required_before_activation(success):
     profile = MODEL_PROFILES["H6022"]
-    writes = prepare_music_profile_writes("H6022", "meteor", 42, None, False, {}, profile=profile)
+    writes = prepare_music_profile_writes(
+        "H6022",
+        "rolling",
+        42,
+        None,
+        False,
+        {"gradient": False, "direction": "down"},
+        profile=profile,
+    )
     packets = tuple(packet for packet, _state in writes.writes)
     index = writes.last_upload
     assert index is not None

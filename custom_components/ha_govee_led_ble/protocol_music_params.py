@@ -254,9 +254,13 @@ def encode_music_parameters(
             setattr(tail, spec.wire_field, int(value))
         elif not variant.direction_values:
             current = getattr(tail, spec.wire_field)
-            if not isinstance(current, IntEnum) or str(value) not in spec.options:
+            if str(value) not in spec.options:
                 raise ValueError("music parameter requires a qualified enum value")
-            setattr(tail, spec.wire_field, type(current)[str(value)])
+            setattr(
+                tail,
+                spec.wire_field,
+                type(current)[str(value)] if isinstance(current, IntEnum) else spec.options.index(str(value)),
+            )
     if (
         isinstance(tail, H617aControlPayload.HoppingTail | H607cMusicBody.HoppingParameters)
         and physical_ic_count is not None
