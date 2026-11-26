@@ -12,7 +12,6 @@ from homeassistant.components.light import ColorMode
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ReadDomain, device_profile
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
-from custom_components.ha_govee_led_ble.coordinator_h6102 import H6102InitialIdentity
 from custom_components.ha_govee_led_ble.effect_catalogue import (
     MODEL_EFFECT_CATALOGUES,
     resolve_catalogue_template,
@@ -40,7 +39,10 @@ from custom_components.ha_govee_led_ble.effect_domain import (
 )
 from custom_components.ha_govee_led_ble.effect_runtime import EffectDeploymentEngine, compiled_observation
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_scene_activation
-from custom_components.ha_govee_led_ble.h6102_capabilities import resolve_h6102_capabilities
+from custom_components.ha_govee_led_ble.h6102_capabilities import (
+    H6102InitialIdentity,
+    resolve_h6102_capabilities,
+)
 from custom_components.ha_govee_led_ble.layered_scene import CatalogueRef
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.music_commands import edit_music_body, prepare_music_request

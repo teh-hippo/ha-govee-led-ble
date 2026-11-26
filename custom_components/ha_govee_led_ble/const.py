@@ -170,10 +170,12 @@ class ConfiguredIdentityOption:
 @dataclass(frozen=True, slots=True)
 class ConfiguredIdentityPolicy:
     step_id: str
+    adapter: str
     firmware_key: str
     hardware_key: str
     pact_key: str
     pact_options: tuple[ConfiguredIdentityOption, ...]
+    configured_authorization_pacts: frozenset[tuple[int, int]]
 
     @property
     def keys(self) -> frozenset[str]:
@@ -3282,7 +3284,8 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         color_temp_range=KELVIN_RANGE_2000_9000,
         support_quality=SupportQuality.SUPPORTED,
         configured_identity=ConfiguredIdentityPolicy(
-            step_id="h6102_firmware",
+            step_id="configured_identity",
+            adapter="h6102_capabilities",
             firmware_key=CONF_H6102_APP_FIRMWARE,
             hardware_key=CONF_H6102_APP_HARDWARE,
             pact_key=CONF_H6102_PACT,
@@ -3292,6 +3295,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
                 ConfiguredIdentityOption("1/1", "Legacy Pact 1/1", 1, 1),
                 ConfiguredIdentityOption("1/2", "Legacy Pact 1/2", 1, 2),
             ),
+            configured_authorization_pacts=frozenset({(1, 1), (1, 2)}),
         ),
         resolve_profile_before_state_init=True,
         brightness_zero_turns_off=True,

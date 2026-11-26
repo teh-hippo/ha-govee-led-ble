@@ -116,7 +116,7 @@
           "model": "Device Model"
         }
       },
-      "h6102_firmware": {
+      "configured_identity": {
         "title": "Experimental H6102 protocol context",
         "description": "Pact is normally read from Bluetooth advertisements. If it is missing, select a Pact only when identified with the maintainer using device evidence. Firmware alone cannot identify Pact. Unknown context permits power, brightness and identity reads. Observed Bluetooth context takes precedence.",
         "data": {

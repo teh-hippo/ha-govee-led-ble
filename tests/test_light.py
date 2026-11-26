@@ -123,8 +123,6 @@ def _h6102_light(mock_coordinator, firmware=None, firmware_source=None, *, pact_
     resolution = resolve_h6102_capabilities(firmware, firmware_source, pact_type=pact_type, pact_code=1)
     mock_coordinator.model = "H6102"
     mock_coordinator.profile = resolution.profile
-    mock_coordinator.rgb_variant = resolution.rgb_variant
-    mock_coordinator.firmware_source = resolution.firmware_source
     mock_coordinator.effect_families = frozenset()
     mock_coordinator.effect_categories = frozenset()
     mock_coordinator.scene_name_set = frozenset()

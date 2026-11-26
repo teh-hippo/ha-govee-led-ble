@@ -26,7 +26,7 @@ async_setup  # __init__.py
 _._async_setup  # coordinator.py
 async_setup_entry  # __init__.py, light.py, select.py, sensor.py, switch.py
 _.async_step_bluetooth  # config_flow.py
-_.async_step_h6102_firmware  # config_flow.py: profile-selected HA dynamic step handler
+_.async_step_configured_identity  # config_flow.py
 _.async_step_init  # config_flow.py
 _.async_step_reconfigure  # config_flow.py
 _.async_step_user  # config_flow.py

@@ -12,7 +12,6 @@ from pytest_homeassistant.common import MockConfigEntry
 from custom_components.ha_govee_led_ble.const import DOMAIN, ReadDomain
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
-from custom_components.ha_govee_led_ble.coordinator_h6102 import H6102InitialIdentity
 from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
 from custom_components.ha_govee_led_ble.effect_deployments import (
     DeploymentPhase,
@@ -23,6 +22,7 @@ from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, Single
 from custom_components.ha_govee_led_ble.effect_persistence_validation import EffectStorageError
 from custom_components.ha_govee_led_ble.effect_runtime import EffectDeploymentEngine
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_scene_activation, table_kelvin_rgb
+from custom_components.ha_govee_led_ble.h6102_capabilities import H6102InitialIdentity
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.light_commands import (
     build_color_rgb,

@@ -11,6 +11,7 @@ from homeassistant.core import HomeAssistant
 from . import GoveeBLEConfigEntry
 from .const import ModelProfile, ReadDomain, get_profile
 from .coordinator import PACKET_LOG_LIMIT, PACKET_LOG_RAW_BYTES_LIMIT
+from .coordinator_configured_identity import configured_identity_diagnostics
 from .coordinator_status import decode_status_frame
 from .effect_contracts import diagnostics_release_capabilities
 from .effect_diagnostics import empty_effect_diagnostic_snapshot
@@ -201,7 +202,7 @@ async def async_get_config_entry_diagnostics(
         "last_rx_aa05_raw": last_rx_aa05_raw,
     }
     if coordinator.profile.configured_identity is not None:
-        coordinator_data["capability_resolution"] = _h6102_capability_resolution(entry, coordinator)
+        coordinator_data["capability_resolution"] = configured_identity_diagnostics(entry, coordinator)
     elif coordinator.identity_gated_controls:
         cutoff = time.monotonic() - FALLBACK_MAXIMUM_STALE_ADVERTISEMENT_SECONDS
         fresh_pacts = {
@@ -286,44 +287,6 @@ async def async_get_config_entry_diagnostics(
         "active_effect_state": _active_effect_state(hass, entry.entry_id),
         "effect_deployment_diagnostics": _effect_deployment_diagnostics(hass, entry.entry_id),
     }
-
-
-def _h6102_capability_resolution(
-    entry: GoveeBLEConfigEntry,
-    coordinator: Any,
-) -> dict[str, Any]:
-    profile = coordinator.profile
-    policy = profile.configured_identity
-    assert policy is not None
-    data: dict[str, Any] = {
-        "configured_app_firmware": entry.data.get(policy.firmware_key),
-        "configured_app_hardware": entry.data.get(policy.hardware_key),
-        "configured_pact": entry.data.get(policy.pact_key),
-        "pact_type": coordinator.pact_type,
-        "pact_code": coordinator.pact_code,
-        "music_modes": list(profile.music_modes),
-        "music_context": "resolved" if profile.music_modes else "evidence_gap",
-        "boolean_controls": dict(coordinator.boolean_control_state),
-        "resolved_profile": profile.name,
-        "firmware_source": coordinator.firmware_source,
-        "classified_rgb_variant": coordinator.rgb_variant.value if coordinator.rgb_variant is not None else None,
-        "rgb_enabled": profile.supports_rgb,
-        "capability_resolution_reason": coordinator.capability_resolution_reason,
-        "read_domains": sorted(domain.value for domain in profile.read_domains),
-        "surface_capabilities": {
-            "color_temperature": profile.supports_color_temperature,
-            "regions": profile.supports_segments,
-            "music": profile.supports_music_mode,
-            "scenes": profile.supports_scenes,
-            "diy": profile.supports_custom_effects,
-            "studio": bool(coordinator.configuration_url and coordinator.effect_categories),
-        },
-    }
-    if coordinator.fw_version is not None:
-        data["observed_firmware"] = coordinator.fw_version
-    if coordinator.hw_version is not None:
-        data["observed_hardware"] = coordinator.hw_version
-    return data
 
 
 def _light_count_observation(
