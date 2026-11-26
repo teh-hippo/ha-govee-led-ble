@@ -4477,8 +4477,11 @@ def _h6117_profile(
         and not hardware.startswith("3.04.")
         and fw >= FirmwareVersion((3, 1))
     )
+    mixed_diy = fw >= FirmwareVersion((1, 2, 3))
     uploaded_scenes = hw >= FirmwareVersion((1, 0, 2)) and fw >= FirmwareVersion((1, 4))
-    workflows = frozenset({"native_music", "native_scenes", "single", "multi"})
+    workflows = frozenset({"native_music", "native_scenes", "single"})
+    if mixed_diy:
+        workflows |= {"multi"}
     if uploaded_scenes:
         workflows |= {"edited_palette_scenes", "layered_scenes", "advanced", "workshop"}
     if extended:
@@ -4500,7 +4503,7 @@ def _h6117_profile(
         effect_workflows=workflows,
         music_modes=profile.music_modes if expanded_music else profile.music_modes[:4],
         supports_advanced_effects=uploaded_scenes,
-        supports_multi_layered_effects=uploaded_scenes,
+        supports_multi_layered_effects=mixed_diy,
         advanced_diy_selector=profile.advanced_diy_selector if uploaded_scenes else None,
         a1_diy_selector=None if modern else 0xFE,
         selector_only_scene_bits=None if uploaded_scenes else 16,
