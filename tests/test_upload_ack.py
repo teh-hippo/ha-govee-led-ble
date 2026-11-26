@@ -828,20 +828,22 @@ async def test_h600a_connection_failure_before_upload_can_retry(connected):
 
 
 @pytest.mark.parametrize(
-    "connected", ["H6139", "H6159", "H6097", "H7025", "H6046", ("H6053", 1), "H6053"], indirect=True
+    "connected", ["H6022", "H6139", "H6159", "H6097", "H7025", "H6046", ("H6053", 1), "H6053"], indirect=True
 )
 @pytest.mark.parametrize("accepted", [False, True])
 async def test_h7025_music_waits_for_positive_upload_result(selection_ready, accepted):
     c, client = selection_ready
     c.music_sensitivity = 42
     mode, code = (
-        ("bloom", "30")
+        ("energetic", "39")
+        if c.model == "H6022"
+        else ("bloom", "30")
         if c.model in {"H6139", "H6159"}
         else ("torch", "50")
         if c.model in {"H6046", "H6053"}
         else ("hopping", "48")
     )
-    expected = prepare_music_request(c.model, mode, 42, None, False, {}, profile=c.profile)
+    expected = prepare_music_request(c.model, mode, 42, None, c.model == "H6022", {}, profile=c.profile)
     selector = c.profile.outbound_transform(expected[-1]) if c.profile.outbound_transform else expected[-1]
 
     async def write(_uuid, packet, **_kwargs):

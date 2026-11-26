@@ -284,7 +284,19 @@ def test_h6022_is_an_exact_experimental_profile_with_its_own_catalogue_and_effec
     assert profile.supports_rgb and profile.supports_color_temperature
     assert profile.supports_segment_writes and profile.supports_segment_brightness
     assert profile.supports_scenes and profile.supports_custom_effects and profile.supports_music_mode
-    assert len(profile.music_modes) == 11 and profile.music_variants
+    assert profile.music_modes == (
+        "energetic",
+        "rhythm",
+        "spectrum",
+        "rolling",
+        "separation",
+        "hopping",
+        "fountain",
+        "meteor",
+    )
+    assert profile.music_grammar == "H6022" and len(profile.music_variants) == 8
+    assert profile.music_upload_before_selector and profile.music_requires_upload_ack
+    assert profile.music_params_require_activation
 
 
 def test_h617f_uses_exact_scene_catalogue_with_h617a_wire_grammars():

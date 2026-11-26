@@ -17,6 +17,7 @@ from .protocol_core import (
     H617aControlPayload,
     H705aMusicBody,
     H1771MusicBody,
+    H6022MusicBody,
     H6072MusicBody,
     H6076MusicBody,
     H6181MusicBody,
@@ -132,6 +133,7 @@ def parse_music_parameters(variant: MusicVariant, body: bytes) -> Any:
     elif variant.layout in COMPANION_MUSIC_LAYOUTS:
         root_type = {
             "music_body": MusicBody,
+            "h6022_music_body": H6022MusicBody,
             "h6076_music_body": H6076MusicBody,
             "h6072_music_body": H6072MusicBody,
             "h7025_music_body": H7025MusicBody,
@@ -288,6 +290,8 @@ def encode_music_parameters(
             tail.minimum_brightness, tail.maximum_brightness = value >> 8, value & 255
         else:
             tail.no_rhythm_speed, tail.rhythm_speed = 10, value
+    if variant.layout == "h6022_music_body" and variant.supports_style and calm is not None:
+        tail.style = int(calm)
     return _serialize_a3_scene_param(root)
 
 

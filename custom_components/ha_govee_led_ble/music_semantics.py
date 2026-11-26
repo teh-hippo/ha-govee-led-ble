@@ -83,6 +83,7 @@ COMPANION_MUSIC_LAYOUTS = frozenset(
         "h1a42_music_parameters",
         "h1ab2_music_parameters",
         "h61f5_music_parameters",
+        "h6022_music_body",
         "h7025_music_body",
         "h705a_music_body",
         "h6046_music_body",
@@ -1209,7 +1210,29 @@ def _dreamcolor_music_variants(model: str) -> tuple[MusicVariant, ...]:
 
 
 H617C_MUSIC_VARIANTS = _dreamcolor_music_variants("H617C")
-H6022_MUSIC_VARIANTS = _dreamcolor_music_variants("H6022")
+_H6022_PALETTE = "07ff0000ff7f00ffff0000ff000000ff00ffff8b00ff"
+H6022_MUSIC_VARIANTS = tuple(
+    MusicVariant(
+        code,
+        "H6022 exact onboard music mode",
+        "h6022_music_body",
+        bytes.fromhex(f"{code:02x}{_H6022_PALETTE}{tail}"),
+        palette_bounds=bounds,
+        supports_style=code in (57, 56),
+        calm_default=code in (57, 56),
+        supports_fixed_colour=False,
+    )
+    for code, bounds, tail in (
+        (57, (1, 8), "0100"),
+        (56, (1, 8), "0100"),
+        (84, (3, 8), "0100"),
+        (99, (2, 8), "010000"),
+        (85, (2, 8), "0100"),
+        (51, (1, 8), "0019"),
+        (100, (2, 8), "010000"),
+        (101, (1, 8), "00"),
+    )
+)
 H618A_MUSIC_VARIANTS = tuple(
     replace(
         variant,

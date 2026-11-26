@@ -4,7 +4,6 @@ meta:
   endian: le
   imports:
     - ../govee_segment_page
-    - ../govee_common
     - ../govee_shared
 doc: |
   H6022 firmware 1.00.14 / hardware 3.05.01.
@@ -46,6 +45,15 @@ enums:
     0x0a: diy
     0x13: music
     0x15: static
+  music_mode:
+    0x39: energetic
+    0x38: rhythm
+    0x54: spectrum
+    0x63: rolling
+    0x55: separation
+    0x33: hopping
+    0x64: fountain
+    0x65: meteor
 types:
   power_body:
     seq:
@@ -97,25 +105,14 @@ types:
     seq:
       - id: mode_id
         type: u1
-        enum: govee_common::music_mode
+        enum: music_mode
       - id: sensitivity
         type: u1
-      - id: style
-        type: u1
-        if: is_legacy
-      - id: has_fixed_colour
-        type: u1
-        if: is_legacy
-      - id: rgb
-        type: govee_shared::rgb
-        if: is_legacy and has_fixed_colour != 0
       - id: unknown_tail
         size-eos: true
     instances:
       is_legacy:
-        value: >-
-          mode_id == govee_common::music_mode::rhythm or mode_id == govee_common::music_mode::spectrum or
-          mode_id == govee_common::music_mode::energetic or mode_id == govee_common::music_mode::rolling
+        value: false
   version_body:
     seq:
       - id: text

@@ -1,17 +1,45 @@
 import base64
 
+import pytest
+
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES
+from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode, parse_color_mode
 from custom_components.ha_govee_led_ble.effect_catalogue import MODEL_EFFECT_CATALOGUES
 from custom_components.ha_govee_led_ble.effect_commands import build_h617a_diy_single
 from custom_components.ha_govee_led_ble.effect_compiler import compile_effect
 from custom_components.ha_govee_led_ble.effect_domain import LibraryItem
 from custom_components.ha_govee_led_ble.effect_scenes import scene_detail_payload
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import parse_status_result
+from custom_components.ha_govee_led_ble.music_commands import (
+    music_body_style,
+    prepare_music_body_writes,
+    prepare_music_profile_writes,
+)
+from custom_components.ha_govee_led_ble.music_protocol import music_codebook
 from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_packets, native_scene_body_is_opaque
 from custom_components.ha_govee_led_ble.protocol_admission import require_profile_packet
 from custom_components.ha_govee_led_ble.protocol_core import H6022EffectUpload
-from custom_components.ha_govee_led_ble.protocol_effect_bodies import parse_a3_effect_envelope
+from custom_components.ha_govee_led_ble.protocol_effect_bodies import (
+    parse_a3_effect_envelope,
+    upload_ack_mode,
+    upload_ack_subtype,
+    upload_ack_success,
+)
+from custom_components.ha_govee_led_ble.protocol_parsing import parse_command_ack_result
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
-from custom_components.ha_govee_led_ble.transport import reassemble_a3
+from custom_components.ha_govee_led_ble.transport import fragment_a3, reassemble_a3, xor_checksum
+
+H6022_PALETTE = "07ff0000ff7f00ffff0000ff000000ff00ffff8b00ff"
+H6022_MUSIC_BODIES = {
+    "energetic": bytes.fromhex("39" + H6022_PALETTE + "0100"),
+    "rhythm": bytes.fromhex("38" + H6022_PALETTE + "0100"),
+    "spectrum": bytes.fromhex("54" + H6022_PALETTE + "0100"),
+    "rolling": bytes.fromhex("63" + H6022_PALETTE + "010000"),
+    "separation": bytes.fromhex("55" + H6022_PALETTE + "0100"),
+    "hopping": bytes.fromhex("33" + H6022_PALETTE + "0019"),
+    "fountain": bytes.fromhex("64" + H6022_PALETTE + "010000"),
+    "meteor": bytes.fromhex("65" + H6022_PALETTE + "00"),
+}
 
 
 def _scene(family: int):
@@ -29,11 +57,8 @@ def test_h6022_declares_exact_scene_and_diy_catalogues():
         "rolling",
         "separation",
         "hopping",
-        "piano_keys",
         "fountain",
-        "day_and_night",
-        "bloom",
-        "shiny",
+        "meteor",
     }
     assert len(SCENE_ENTRIES["H6022"]) == 96
 
@@ -78,3 +103,73 @@ def test_h6022_family_zero_diy_is_not_inferred_from_legacy_scene_marker():
     template = next(item for item in MODEL_EFFECT_CATALOGUES["H6022"].templates if item.id == "template:single:0:0")
     compiled = compile_effect(LibraryItem.new("H6022 gradual", template.content), "H6022", diy_code=24)
     assert isinstance(parse_a3_effect_envelope(reassemble_a3(compiled.upload_packets), "H6022"), H6022EffectUpload)
+
+
+@pytest.mark.parametrize("mode", tuple(H6022_MUSIC_BODIES))
+def test_h6022_music_modes_match_exact_selector_and_body_bytes(mode):
+    profile = MODEL_PROFILES["H6022"]
+    code = music_codebook(profile)[mode]
+    expected_body = H6022_MUSIC_BODIES[mode]
+    writes = prepare_music_profile_writes("H6022", mode, 42, None, mode in {"energetic", "rhythm"}, {}, profile=profile)
+
+    assert writes.body == (mode, expected_body)
+    assert tuple(packet for packet, _state in writes.writes[1:-1]) == tuple(fragment_a3(0x41, expected_body))
+    selector_prefix = bytes((0x33, 0x05, 0x13, code, 42)) + bytes(14)
+    assert writes.writes[-1][0] == selector_prefix + bytes((xor_checksum(selector_prefix),))
+    assert writes.first_upload == 1 and writes.last_upload == 2
+    assert writes.writes[-1][1]["music_mode"] == mode
+
+
+def test_h6022_music_style_is_encoded_and_read_from_its_exact_body():
+    profile = MODEL_PROFILES["H6022"]
+    dynamic = prepare_music_profile_writes("H6022", "energetic", 42, None, False, {}, profile=profile)
+
+    assert dynamic.body is not None
+    assert dynamic.body[1] == H6022_MUSIC_BODIES["energetic"][:-2] + b"\x00\x00"
+    assert music_body_style(dynamic.body[1], "energetic", profile=profile) is False
+    assert music_body_style(H6022_MUSIC_BODIES["energetic"], "energetic", profile=profile) is True
+
+
+@pytest.mark.parametrize(
+    "mode,expected_code",
+    [(mode, bytes((code,))) for mode, code in zip(H6022_MUSIC_BODIES, (57, 56, 84, 99, 85, 51, 100, 101), strict=True)],
+)
+def test_h6022_exact_music_readback_selects_mode_and_sensitivity(mode, expected_code):
+    profile = MODEL_PROFILES["H6022"]
+    prefix = bytes.fromhex("aa0513") + expected_code + b"\x2a"
+    frame = prefix.ljust(19, b"\x00") + bytes((xor_checksum(prefix.ljust(19, b"\x00")),))
+    result = parse_status_result(frame, "H6022", profile=profile)
+
+    assert result.rejection is None and result.parser == "h6022_status_reply"
+    parsed = parse_color_mode(result.parsed, "H6022", profile=profile)
+    assert parsed.mode is ParsedMode.MUSIC
+    assert parsed.music_mode == mode
+    assert parsed.music_sensitivity == 42
+    assert parsed.music_color_present is False
+
+
+def test_h6022_recovery_replays_retained_body_before_selector():
+    profile = MODEL_PROFILES["H6022"]
+    body = H6022_MUSIC_BODIES["energetic"][:-2] + b"\x00\x00"
+    writes = prepare_music_body_writes("H6022", "energetic", 37, body, profile=profile)
+
+    assert writes.body == ("energetic", body)
+    assert tuple(packet for packet, _state in writes.writes[1:-1]) == tuple(fragment_a3(0x41, body))
+    assert writes.writes[-2][1]["music_calm"] is False
+    assert writes.writes[-1][1]["music_mode"] == "energetic"
+
+
+@pytest.mark.parametrize("success", [False, True])
+def test_h6022_music_upload_ack_is_required_before_activation(success):
+    profile = MODEL_PROFILES["H6022"]
+    writes = prepare_music_profile_writes("H6022", "meteor", 42, None, False, {}, profile=profile)
+    packets = tuple(packet for packet, _state in writes.writes)
+    index = writes.last_upload
+    assert index is not None
+    assert upload_ack_subtype(packets, index, "H6022", profile=profile) == 0x41
+    assert upload_ack_mode(packets, index, "H6022", profile=profile) is None
+
+    prefix = bytes.fromhex("a3410000" if success else "a3410001").ljust(19, b"\x00")
+    ack = parse_command_ack_result(prefix + bytes((xor_checksum(prefix),)), "H6022", profile=profile)
+    assert ack.rejection is None and ack.parser == "h617a_command_ack"
+    assert upload_ack_success(ack.parsed, 0x41) is success
