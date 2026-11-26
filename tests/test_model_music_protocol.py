@@ -20,6 +20,7 @@ from custom_components.ha_govee_led_ble.music_protocol import (
     H66a0MusicWrite,
     H607cMusicWrite,
     H1771MusicBody,
+    H6022MusicWrite,
     H6046CommandWrite,
     H6046MusicBody,
     H6076MusicBody,
@@ -177,6 +178,7 @@ def test_codebooks_match_generated_kaitai_enums_and_gate_on_effective_profile() 
     expected_enums = {
         "H60B0": H60b0MusicBody.MusicMode,
         "H60B2": H60b2MusicBody.MusicMode,
+        "H6022": H6022MusicWrite.MusicMode,
         "H1771": H1771MusicBody.MusicMode,
         "H6046": H6046CommandWrite.MusicMode,
         "H6097": H6097MusicWrite.MusicMode,

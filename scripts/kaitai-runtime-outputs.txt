@@ -1,5 +1,7 @@
 __init__.py
 command_write.py
+h6022_music_body.py
+h6022_music_write.py
 h1ab2_status_reply.py
 h1ab2_settings.py
 h1ab2_music_write.py

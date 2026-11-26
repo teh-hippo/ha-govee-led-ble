@@ -89,6 +89,8 @@ H617aCommandAck = load_generated_class("h617a_command_ack", "H617aCommandAck")
 
 H617aControlPayload = load_generated_class("h617a_control_payload", "H617aControlPayload")
 
+H6022MusicBody = load_generated_class("h6022_music_body", "H6022MusicBody")
+H6022MusicWrite = load_generated_class("h6022_music_write", "H6022MusicWrite")
 
 H6199CommandWrite = load_generated_class("h6199_command_write", "H6199CommandWrite")
 
@@ -588,6 +590,7 @@ _H6076_ACK_ROOTS = {
 
 _MUSIC_WRITE_ROOTS = {
     "H8604": ("h8604_music_write", H8604MusicWrite),
+    "H6022": ("h6022_music_write", H6022MusicWrite),
     "H705A": ("h705a_music_write", H705aMusicWrite),
     "H60B2": ("h60b2_music_write", H60b2MusicWrite),
     "H6072": ("h6072_music_write", H6072MusicWrite),
