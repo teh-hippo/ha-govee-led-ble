@@ -54,6 +54,59 @@ def qualified(model):
     return device_profile(model, None, None, hardware="1.04.03", firmware="1.02.20" if model == "H60A1" else "1.00.41")
 
 
+def test_h60a6_masked_kelvin_builder_boundary_preserves_later_pact_bytes():
+    pact_1_2 = device_profile("H60A6", 1, 2)
+    pact_1_3 = device_profile("H60A6", 1, 3)
+
+    assert build_color_temp(4000, "H60A6", profile=pact_1_2).hex() == ("33051501ffffff0fa0ffd5a1ff1f000000000019")
+    assert build_segment_color([2], 1, 2, 3, "H60A6", profile=pact_1_2).hex() == (
+        "3305150101020300000000000200000000000020"
+    )
+    with pytest.raises(ValueError, match="segment colour temperature"):
+        build_segment_color_temp([2], 4000, "H60A6", profile=pact_1_2)
+    assert build_segment_color_temp([2], 4000, "H60A6", profile=pact_1_3).hex() == (
+        "33051501ffffff0fa0ffd5a102000000000000fb"
+    )
+
+
+def test_h60a6_masked_kelvin_admission_boundary_is_revision_specific():
+    pact_1_2 = device_profile("H60A6", 1, 2)
+    pact_1_3 = device_profile("H60A6", 1, 3)
+    whole_kelvin = build_color_temp(4000, "H60A6", profile=pact_1_2)
+    segmented_rgb = build_segment_color([2], 1, 2, 3, "H60A6", profile=pact_1_2)
+    masked_kelvin = build_segment_color_temp([2], 4000, "H60A6", profile=pact_1_3)
+
+    require_profile_packet(whole_kelvin, pact_1_2)
+    require_profile_packet(segmented_rgb, pact_1_2)
+    require_profile_packet(masked_kelvin, pact_1_3)
+    with pytest.raises(ValueError, match="segment colour temperature"):
+        require_profile_packet(masked_kelvin, pact_1_2)
+
+
+async def test_h60a6_masked_kelvin_public_service_rejects_pact_1_2_before_side_effects(hass, monkeypatch):
+    c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H60A6", configuration_url=None)
+    light = GoveeBLELight(c)
+    preview = AsyncMock()
+    writer = AsyncMock()
+    monkeypatch.setattr(light, "_async_supersede_preview", preview)
+    monkeypatch.setattr(light, "_notify_state_changed", MagicMock())
+    monkeypatch.setattr(c, "async_set_segment_kelvin", writer)
+
+    c.profile = device_profile("H60A6", 1, 2)
+    with pytest.raises(ServiceValidationError):
+        await light.async_set_segment_color_temp([2], 4000)
+    preview.assert_not_awaited()
+    writer.assert_not_awaited()
+    assert c.control_write_attempts == 0
+
+    c.profile = device_profile("H60A6", 1, 3)
+    await light.async_set_segment_color_temp([2], 4000)
+    writer.assert_awaited_once_with(
+        bytes.fromhex("33051501ffffff0fa0ffd5a102000000000000fb"),
+        requested_kelvin=4000,
+    )
+
+
 def bulk_frames(payload: bytes) -> list[bytes]:
     if len(payload) <= 12:
         return [frame(f"ac000100{len(payload):02x}0300" + payload.hex())]

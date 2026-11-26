@@ -5413,7 +5413,7 @@ def _h60a6_revision_policy(context: ModelRevisionContext) -> ModelProfile:
     profile = _h60a_revision_profile(
         context,
         segmented_firmware=_H60A6_SEGMENTED_FIRMWARE,
-        supports_segment_color_temperature=True,
+        supports_segment_color_temperature=(context.pact_type, context.pact_code) != (1, 2),
         native_controls=True,
     )
     if (context.pact_type, context.pact_code) == (1, 1):
