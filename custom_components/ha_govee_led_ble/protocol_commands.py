@@ -691,6 +691,34 @@ def build_black_border(enabled: bool, model: str) -> bytes:
     return _serialize_xor(root)
 
 
+def build_hdr_contrast(enabled: bool, contrast: int, model: str) -> bytes:
+    profile = get_profile(model)
+    if not profile.supports_hdr_contrast:
+        raise ValueError(f"{model} does not support HDR contrast")
+    if type(enabled) is not bool:
+        raise ValueError("HDR contrast requires a boolean enabled state")
+    if type(contrast) is not int or not profile.video_hdr_contrast_min <= contrast <= profile.video_hdr_contrast_max:
+        raise ValueError("HDR contrast is outside the profile range")
+    grammar = _video_command_grammar(model, profile)
+    if "display_controls" not in grammar_traits(grammar):
+        raise ValueError(f"{model} has no generated HDR contrast grammar")
+    root_type = _COMMAND_ROOTS[grammar][1]
+    root = root_type()
+    root.header = b"\x33"
+    root.opcode = root_type.CommandOp.display_setting
+    body = _child(root_type.DisplaySettingBody, root)
+    body.setting = root_type.DisplaySetting.hdr_contrast
+    body.len = 2
+    payload = _child(root_type.HdrContrastPayload, body)
+    payload.is_enabled = int(enabled)
+    payload.contrast = contrast
+    payload.unknown_tail = b""
+    body.payload = payload
+    body.unknown_tail = bytes(13)
+    root.body = body
+    return _serialize_xor(root)
+
+
 def build_relative_brightness(
     left: int,
     top: int,

@@ -1106,6 +1106,15 @@ def build_black_border_query(model: str, *, profile: ModelProfile | None = None)
     )
 
 
+def build_hdr_contrast_query(model: str, *, profile: ModelProfile | None = None) -> bytes:
+    profile = profile or get_profile(model)
+    if not profile.supports_hdr_contrast:
+        raise ValueError(f"{model} does not support HDR contrast")
+    return _build_status_query(
+        "display_setting", _video_command_grammar(model, profile), display_setting="hdr_contrast"
+    )
+
+
 def _build_h8604_video_setting_query(setting: H8604VideoSettings.Setting) -> bytes:
     root = H8604VideoSettings.Query()
     root.header = b"\xaa\xa9"

@@ -69,6 +69,7 @@ from .native_profile_controls import (
     apply_blank_screen,
     apply_hdmi_box_light,
     apply_hdmi_input,
+    apply_hdr_contrast,
     apply_relative_brightness,
     apply_video_color_calibration,
     apply_video_sensitivity,
@@ -1063,6 +1064,8 @@ class _RecoveryMixin(_CoordinatorBase):
             relative_brightness_strip_right=self.relative_brightness_strip_right,
             blank_screen=self.blank_screen,
             black_border=self.black_border,
+            hdr_enabled=self.hdr_enabled,
+            hdr_contrast=self.hdr_contrast,
             blank_screen_detection=self.blank_screen_detection,
             blank_screen_low_brightness_duration_seconds=self.blank_screen_low_brightness_duration_seconds,
             blank_screen_same_tone_duration_seconds=self.blank_screen_same_tone_duration_seconds,
@@ -1517,6 +1520,7 @@ class _RecoveryMixin(_CoordinatorBase):
                     else ("blank_screen",),
                 ),
                 ("black_border", ("black_border",)),
+                ("hdr_contrast", ("hdr_enabled", "hdr_contrast")),
                 ("whole_relative_brightness", ("whole_relative_brightness",)),
                 ("video_sensitivity", ("video_sensitivity",)),
                 ("hdmi_input", ("video_hdmi_input",)),
@@ -1665,6 +1669,11 @@ class _RecoveryMixin(_CoordinatorBase):
                 )
         if "black_border" in permitted & needed and state.black_border is not None:
             await apply_black_border(self._as_coordinator, state.black_border)
+        if "hdr_contrast" in permitted & needed:
+            if state.hdr_enabled is None or state.hdr_contrast is None:
+                complete = False
+            else:
+                await apply_hdr_contrast(self._as_coordinator, state.hdr_enabled, state.hdr_contrast)
         return permitted, complete
 
     async def _restore_custom(self, state: PriorControlState, overwritten_diy_code: int | None, complete: bool) -> bool:

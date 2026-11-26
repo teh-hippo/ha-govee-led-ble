@@ -23,7 +23,7 @@ doc: |
   whole-device and all-14 writes both echo the requested Kelvin.
   Segment RGB can temporarily be black before settling, without changing brightness.
   AA 06, AA 07, AA 20, AA 21, and AA 40 (90 ICs) are confirmed on hardware.
-  Display settings (A9 06, A9 0A, A9 0B), relative brightness (AE 01),
+  Display settings (A9 06, A9 0A, A9 0B, A9 11), relative brightness (AE 01),
   installation direction (AA 30), and camera health (AA 32) follow the shared
   family status layout and remain open to further owner qualification.
 seq:
@@ -71,6 +71,7 @@ enums:
     0x06: scalar_white_balance
     0x0a: blank_screen
     0x0b: black_border
+    0x11: hdr_contrast
   camera_health:
     0: absent
     1: healthy
@@ -136,6 +137,7 @@ types:
             'display_setting::scalar_white_balance': scalar_white_balance_state
             'display_setting::blank_screen': blank_screen_state
             'display_setting::black_border': black_border_state
+            'display_setting::hdr_contrast': hdr_contrast_state
       - id: unknown_tail
         size-eos: true
   scalar_white_balance_state:
@@ -161,6 +163,17 @@ types:
     seq:
       - id: is_enabled
         type: u1
+      - id: unknown_tail
+        size-eos: true
+  hdr_contrast_state:
+    seq:
+      - id: is_enabled
+        type: u1
+      - id: contrast
+        type: u1
+        valid:
+          min: 1
+          max: 4
       - id: unknown_tail
         size-eos: true
   relative_brightness_body:

@@ -16,6 +16,7 @@ from .generated_protocol_adapter import (
     build_blank_screen,
     build_hdmi_box_light,
     build_hdmi_input,
+    build_hdr_contrast,
     build_power,
     build_relative_brightness,
     build_video_color_calibration,
@@ -776,3 +777,27 @@ async def apply_black_border(
         if not verify or await coordinator.refresh_state(RefreshRequest(black_border=expected)) is not False:
             return True
     raise RuntimeError("Black-border write was not confirmed by the device")
+
+
+async def apply_hdr_contrast(
+    coordinator: GoveeBLECoordinator,
+    enabled: bool,
+    contrast: int,
+    *,
+    writer: ProfileWriter | None = None,
+    verify: bool = True,
+) -> bool:
+    packet = build_hdr_contrast(enabled, contrast, coordinator.model)
+    fields = {"hdr_enabled": enabled, "hdr_contrast": contrast}
+    for _ in range(2 if verify else 1):
+        await _send_video_setting(
+            coordinator,
+            packet,
+            frozenset({"hdr_contrast"}),
+            writer=writer,
+            state_values=fields,
+            expected_values=fields if verify else None,
+        )
+        if not verify or await coordinator.refresh_state(RefreshRequest(hdr=(enabled, contrast))) is not False:
+            return True
+    raise RuntimeError("HDR contrast write was not confirmed by the device")

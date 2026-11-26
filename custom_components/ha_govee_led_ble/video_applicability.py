@@ -64,6 +64,7 @@ def video_control_states(profile: ModelProfile, identity: object) -> dict[str, C
             ("whole_relative_brightness", profile.supports_whole_relative_brightness),
             ("blank_screen", profile.supports_blank_screen),
             ("black_border", profile.supports_black_border),
+            ("hdr_contrast", profile.supports_hdr_contrast),
         )
         if control != "inline_relative_brightness" or profile.video_embeds_relative_brightness
     }
@@ -168,6 +169,12 @@ def requested_video_controls(content: Any) -> frozenset[str]:
             ("whole_relative_brightness", getattr(content, "whole_relative_brightness", None) is not None),
             ("blank_screen", content.blank_screen is not None),
             ("black_border", content.black_border is not None),
+            (
+                "hdr_contrast",
+                (content.hdr_enabled is not None or content.hdr_contrast is not None)
+                if isinstance(content, VideoProfile)
+                else content.hdr is not None,
+            ),
         )
         if requested
     )

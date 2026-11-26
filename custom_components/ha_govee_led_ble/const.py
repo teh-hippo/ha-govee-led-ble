@@ -544,6 +544,7 @@ class VideoFirmwareCondition:
             "whole_relative_brightness",
             "blank_screen",
             "black_border",
+            "hdr_contrast",
         }:
             raise ValueError("unknown video firmware control")
         if self.identity_field not in {"fw_version", "hw_version", "subordinate_20_version", "subordinate_21_version"}:
@@ -695,6 +696,9 @@ class ModelProfile:
     brightness_zero_turns_off: bool = False
     supports_blank_screen: bool = False
     supports_black_border: bool = False
+    supports_hdr_contrast: bool = False
+    video_hdr_contrast_min: int = 1
+    video_hdr_contrast_max: int = 4
     # Selects the music codebook and selector writer when they differ from command_grammar.
     music_grammar: str | None = None
     music_modes: tuple[str, ...] = ()
@@ -1051,6 +1055,12 @@ class ModelProfile:
             raise ValueError("HDMI box light effect maximum must be non-negative")
         if not 0 <= self.video_softness_min <= self.video_softness_max <= 100:
             raise ValueError("invalid video softness range")
+        if (
+            type(self.video_hdr_contrast_min) is not int
+            or type(self.video_hdr_contrast_max) is not int
+            or not 0 <= self.video_hdr_contrast_min <= self.video_hdr_contrast_max <= 255
+        ):
+            raise ValueError("invalid HDR contrast range")
         if not self.setup_required_read_domains <= self.read_domains:
             raise ValueError("setup-required read domains must also be readable")
         if len({(condition.control, condition.identity_field) for condition in self.video_firmware_conditions}) != len(
@@ -1066,6 +1076,7 @@ class ModelProfile:
             "whole_relative_brightness",
             "blank_screen",
             "black_border",
+            "hdr_contrast",
         }
         if any(
             source not in controls or target not in controls or source == target
@@ -1110,6 +1121,7 @@ class ModelProfile:
             or self.supports_whole_relative_brightness
             or self.supports_blank_screen
             or self.supports_black_border
+            or self.supports_hdr_contrast
         ) and not self.supports_video_mode:
             raise ValueError("video settings require video-mode support")
         if self.supports_white_balance or self.supports_white_balance_readback:
@@ -2541,6 +2553,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_relative_brightness=True,
         supports_blank_screen=True,
         supports_black_border=True,
+        supports_hdr_contrast=True,
         physical_ic_count=90,
         music_variants=H66A0_MUSIC_VARIANTS,
         music_upload_before_selector=True,

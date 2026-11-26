@@ -13,6 +13,7 @@ from .protocol_commands import build_black_border as build_black_border
 from .protocol_commands import build_blank_screen as build_blank_screen
 from .protocol_commands import build_brightness as build_brightness
 from .protocol_commands import build_colour_temperature as build_colour_temperature
+from .protocol_commands import build_hdr_contrast as build_hdr_contrast
 from .protocol_commands import build_music_mode as build_music_mode
 from .protocol_commands import build_power as build_power
 from .protocol_commands import build_relative_brightness as build_relative_brightness
@@ -75,6 +76,7 @@ from .protocol_settings import build_hardware_query as build_hardware_query
 from .protocol_settings import build_hdmi_box_light as build_hdmi_box_light
 from .protocol_settings import build_hdmi_box_light_query as build_hdmi_box_light_query
 from .protocol_settings import build_hdmi_input as build_hdmi_input
+from .protocol_settings import build_hdr_contrast_query as build_hdr_contrast_query
 from .protocol_settings import build_ic_refresh as build_ic_refresh
 from .protocol_settings import build_installation_direction as build_installation_direction
 from .protocol_settings import build_installation_direction_query as build_installation_direction_query

@@ -348,6 +348,10 @@ export interface VideoControls {
     maximum: number;
     default: number;
   };
+  hdr_contrast?: {
+    minimum: number;
+    maximum: number;
+  };
   brightness_zones: (keyof RelativeBrightness)[];
 }
 
@@ -372,6 +376,8 @@ export interface VideoProfileContent {
   whole_relative_brightness?: number;
   blank_screen: boolean | null;
   black_border?: boolean;
+  hdr_enabled?: boolean;
+  hdr_contrast?: number;
   blank_screen_detection?: number;
   blank_screen_low_brightness_duration_seconds?: number;
   blank_screen_same_tone_duration_seconds?: number;
@@ -389,7 +395,8 @@ export type VideoProfileSetting =
   | "relative_brightness"
   | "whole_relative_brightness"
   | "blank_screen"
-  | "black_border";
+  | "black_border"
+  | "hdr_contrast";
 
 export type VideoControlName = VideoProfileSetting | "color_calibration_red";
 

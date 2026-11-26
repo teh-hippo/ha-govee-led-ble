@@ -62,6 +62,7 @@ enums:
     0x06: scalar_white_balance
     0x0a: blank_screen
     0x0b: black_border
+    0x11: hdr_contrast
   blank_screen_detection:
     0x01: low_brightness
     0x02: same_tone
@@ -165,6 +166,7 @@ types:
             'display_setting::scalar_white_balance': scalar_white_balance_payload
             'display_setting::blank_screen': blank_screen_payload
             'display_setting::black_border': black_border_payload
+            'display_setting::hdr_contrast': hdr_contrast_payload
       - id: unknown_tail
         size-eos: true
   scalar_white_balance_payload:
@@ -191,6 +193,17 @@ types:
     seq:
       - id: is_on
         type: u1
+      - id: unknown_tail
+        size-eos: true
+  hdr_contrast_payload:
+    seq:
+      - id: is_enabled
+        type: u1
+      - id: contrast
+        type: u1
+        valid:
+          min: 1
+          max: 4
       - id: unknown_tail
         size-eos: true
   music_body:

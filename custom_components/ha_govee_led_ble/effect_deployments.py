@@ -76,6 +76,7 @@ _VIDEO_RESTORE_CONTROLS: Final = frozenset(
         "blank_screen",
         "blank_screen_policy",
         "black_border",
+        "hdr_contrast",
     }
 )
 
@@ -200,6 +201,8 @@ class PriorControlState:
     relative_brightness_strip_right: int | None = None
     blank_screen: bool | None = None
     black_border: bool | None = None
+    hdr_enabled: bool | None = None
+    hdr_contrast: int | None = None
     blank_screen_detection: int | None = None
     blank_screen_low_brightness_duration_seconds: int | None = None
     blank_screen_same_tone_duration_seconds: int | None = None
@@ -495,6 +498,7 @@ class PriorControlState:
                 0,
                 65535,
             ),
+            (self.hdr_contrast, "prior HDR contrast", 1, 4),
         )
         for optional_value, optional_name, minimum, maximum in optional_numeric_values:
             if optional_value is not None and (
@@ -507,6 +511,8 @@ class PriorControlState:
             raise EffectStorageError("prior blank-screen state must be a boolean or null")
         if self.black_border is not None and type(self.black_border) is not bool:
             raise EffectStorageError("prior black-border state must be a boolean or null")
+        if self.hdr_enabled is not None and type(self.hdr_enabled) is not bool:
+            raise EffectStorageError("prior HDR enabled state must be a boolean or null")
 
     def restorable_bar_white(self, profile: ModelProfile) -> bool:
         from .coordinator_recovery import restorable_bar_white
@@ -649,6 +655,8 @@ class PriorControlState:
             "relative_brightness_bottom": self.relative_brightness_bottom,
             "blank_screen": self.blank_screen,
             **({"black_border": self.black_border} if self.black_border is not None else {}),
+            **({"hdr_enabled": self.hdr_enabled} if self.hdr_enabled is not None else {}),
+            **({"hdr_contrast": self.hdr_contrast} if self.hdr_contrast is not None else {}),
             "blank_screen_detection": self.blank_screen_detection,
             "blank_screen_low_brightness_duration_seconds": self.blank_screen_low_brightness_duration_seconds,
             "blank_screen_same_tone_duration_seconds": self.blank_screen_same_tone_duration_seconds,
@@ -808,6 +816,8 @@ class PriorControlState:
             relative_brightness_bottom=_optional_int(raw, "relative_brightness_bottom"),
             blank_screen=_optional_bool(raw, "blank_screen"),
             black_border=_optional_bool(raw, "black_border"),
+            hdr_enabled=_optional_bool(raw, "hdr_enabled"),
+            hdr_contrast=_optional_int(raw, "hdr_contrast"),
             blank_screen_detection=_optional_int(raw, "blank_screen_detection"),
             blank_screen_low_brightness_duration_seconds=_optional_int(
                 raw,

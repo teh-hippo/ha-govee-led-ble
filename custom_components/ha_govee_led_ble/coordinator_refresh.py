@@ -50,6 +50,7 @@ class RefreshRequest:
     blank_screen: bool | None = None
     blank_screen_policy: tuple[int, int, int] | None = None
     black_border: bool | None = None
+    hdr: tuple[bool, int] | None = None
     relative_brightness: tuple[int, ...] | None = None
     display_settings: frozenset[str] = frozenset()
     refresh_relative_brightness: bool = False
@@ -102,6 +103,10 @@ class RefreshRequest:
     @property
     def expects_black_border(self) -> bool:
         return self.black_border is not None
+
+    @property
+    def expects_hdr_contrast(self) -> bool:
+        return self.hdr is not None
 
     @property
     def expects_video_sensitivity(self) -> bool:
@@ -180,6 +185,8 @@ class RefreshRequest:
             expectations.update(zip(BLANK_SCREEN_POLICY_FIELDS, self.blank_screen_policy, strict=True))
         if self.black_border is not None:
             expectations["black_border"] = self.black_border
+        if self.hdr is not None:
+            expectations["hdr_enabled"], expectations["hdr_contrast"] = self.hdr
         if self.relative_brightness is not None:
             expectations["relative_brightness"] = (
                 self.relative_brightness[0] if len(set(self.relative_brightness)) == 1 else None

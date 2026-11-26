@@ -133,6 +133,10 @@ export class GoveeVideoProfileEditor extends LitElement {
       this.settings.includes("blank_screen") &&
       this.content.blank_screen !== null;
     const blackBorder = this.settings.includes("black_border") && this.content.black_border !== undefined;
+    const hdrContrast =
+      this.settings.includes("hdr_contrast") &&
+      this.content.hdr_enabled !== undefined &&
+      this.content.hdr_contrast !== undefined;
     const relativeBrightness =
       this.settings.includes("relative_brightness") &&
       this.content.relative_brightness !== null;
@@ -166,6 +170,7 @@ export class GoveeVideoProfileEditor extends LitElement {
             setting === "white_balance" ? whiteBalance : setting === "relative_brightness" ? relativeBrightness
               : setting === "blank_screen" ? blankScreen : setting === "capture_region" ? captureRegion
               : setting === "black_border" ? blackBorder
+              : setting === "hdr_contrast" ? hdrContrast
               : setting === "whole_relative_brightness" ? wholeBrightness
               : setting === "video_sensitivity" ? videoSensitivity
               : setting === "hdmi_input" ? hdmiInput
@@ -191,6 +196,15 @@ export class GoveeVideoProfileEditor extends LitElement {
                 case "black_border":
                   if (checked) content.black_border = false;
                   else delete content.black_border;
+                  break;
+                case "hdr_contrast":
+                  if (checked) {
+                    content.hdr_enabled = false;
+                    content.hdr_contrast = this.controls?.hdr_contrast?.minimum ?? 1;
+                  } else {
+                    delete content.hdr_enabled;
+                    delete content.hdr_contrast;
+                  }
                   break;
                 case "white_balance":
                   content.white_balance_position = null;
@@ -322,6 +336,23 @@ export class GoveeVideoProfileEditor extends LitElement {
               : nothing}
             ${blackBorder ? this.renderCheckboxField("Black-border removal", this.content.black_border ?? false,
               checked => this.updateContent(content => { content.black_border = checked; })) : nothing}
+            ${hdrContrast ? html`
+              ${this.renderCheckboxField("HDR effect", this.content.hdr_enabled ?? false,
+                checked => this.updateContent(content => { content.hdr_enabled = checked; }))}
+              ${this.renderRangeField(
+                "HDR contrast",
+                this.content.hdr_contrast ?? this.controls?.hdr_contrast?.minimum ?? 1,
+                this.controls?.hdr_contrast?.minimum ?? 1,
+                this.controls?.hdr_contrast?.maximum ?? 4,
+                value => this.updateContent(content => {
+                  content.hdr_contrast = clampInteger(
+                    value,
+                    this.controls?.hdr_contrast?.minimum ?? 1,
+                    this.controls?.hdr_contrast?.maximum ?? 4,
+                  );
+                }),
+              )}
+            ` : nothing}
             ${blankScreen ? html`
               ${this.renderCheckboxField("Edit blank-screen policy", this.content.blank_screen_detection !== undefined,
                 checked => this.updateContent(content => {

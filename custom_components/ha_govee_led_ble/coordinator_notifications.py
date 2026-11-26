@@ -782,6 +782,17 @@ class _NotificationMixin(_CoordinatorBase):
             if self._accept_expected("white_balance_scalar", scalar_value):
                 self.white_balance_scalar = scalar_value
                 observed = ("white_balance_scalar",)
+        if getattr(generated.body.setting, "name", None) == "hdr_contrast" and self.profile.supports_hdr_contrast:
+            values = {
+                "hdr_enabled": bool(generated.body.payload.is_enabled),
+                "hdr_contrast": int(generated.body.payload.contrast),
+            }
+            if not self.profile.video_hdr_contrast_min <= values["hdr_contrast"] <= self.profile.video_hdr_contrast_max:
+                raise ValueError("HDR contrast is outside profile limits")
+            if self._accept_expected_values(values):
+                for field, value in values.items():
+                    setattr(self, field, value)
+                observed = tuple(values)
         if generated.body.setting == 0 and self.profile.video_white_balance_representation == "position":
             payload = generated.body.payload
             values = {

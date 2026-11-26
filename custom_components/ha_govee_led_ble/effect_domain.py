@@ -338,6 +338,8 @@ class VideoProfile:
     blank_screen: bool | None
     white_balance_value: int | None = None
     black_border: bool | None = None
+    hdr_enabled: bool | None = None
+    hdr_contrast: int | None = None
     blank_screen_detection: int | None = None
     blank_screen_low_brightness_duration_seconds: int | None = None
     blank_screen_same_tone_duration_seconds: int | None = None
@@ -380,6 +382,8 @@ class VideoProfile:
             (self.whole_relative_brightness, "whole_relative_brightness", profile.supports_whole_relative_brightness),
             (self.blank_screen, "blank_screen", profile.supports_blank_screen),
             (self.black_border, "black_border", profile.supports_black_border),
+            (self.hdr_enabled, "hdr_enabled", profile.supports_hdr_contrast),
+            (self.hdr_contrast, "hdr_contrast", profile.supports_hdr_contrast),
         ):
             _validate_video_setting(value, name, supported=supported)
         if self.full_screen is not None:
@@ -470,6 +474,17 @@ class VideoProfile:
             _validate_bool(self.blank_screen, "blank_screen")
         if self.black_border is not None:
             _validate_bool(self.black_border, "black_border")
+        if (self.hdr_enabled is None) != (self.hdr_contrast is None):
+            raise EffectValidationError("HDR requires both enabled and contrast values")
+        if self.hdr_enabled is not None:
+            _validate_bool(self.hdr_enabled, "hdr_enabled")
+        if self.hdr_contrast is not None:
+            _validate_range(
+                self.hdr_contrast,
+                "hdr_contrast",
+                minimum=profile.video_hdr_contrast_min,
+                maximum=profile.video_hdr_contrast_max,
+            )
         policy = (
             self.blank_screen_detection,
             self.blank_screen_low_brightness_duration_seconds,
@@ -1078,6 +1093,8 @@ def _content_to_dict(content: EffectContent) -> dict[str, JsonValue]:
                 else {}
             ),
             **({"black_border": content.black_border} if content.black_border is not None else {}),
+            **({"hdr_enabled": content.hdr_enabled} if content.hdr_enabled is not None else {}),
+            **({"hdr_contrast": content.hdr_contrast} if content.hdr_contrast is not None else {}),
             **(
                 {
                     "blank_screen_detection": content.blank_screen_detection,
@@ -1244,6 +1261,8 @@ def _content_from_dict(raw: Mapping[str, Any]) -> EffectContent:
             whole_relative_brightness=_optional_int(raw, "whole_relative_brightness"),
             blank_screen=_optional_bool(raw, "blank_screen"),
             black_border=_optional_bool(raw, "black_border"),
+            hdr_enabled=_optional_bool(raw, "hdr_enabled"),
+            hdr_contrast=_optional_int(raw, "hdr_contrast"),
             blank_screen_detection=_optional_int(raw, "blank_screen_detection"),
             blank_screen_low_brightness_duration_seconds=_optional_int(
                 raw, "blank_screen_low_brightness_duration_seconds"
