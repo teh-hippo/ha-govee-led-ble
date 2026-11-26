@@ -504,13 +504,10 @@ def test_h6125_is_an_exact_supported_profile_on_the_shared_dreamcolor_route():
 
 
 def test_h61e5_is_an_exact_experimental_profile_on_the_h61d3_route():
-    pacts = (
-        device_profile("H61E5", 1, 1, firmware="1.00.10", hardware="3.05.00"),
-        device_profile("H61E5", 2, 1),
-    )
+    old = device_profile("H61E5", 1, 1, firmware="1.00.10", hardware="3.05.00")
+    modern = device_profile("H61E5", 2, 1, firmware="1.06.00", hardware="1.00.03")
 
-    assert pacts[0] == pacts[1] == MODEL_PROFILES["H61E5"]
-    profile = pacts[0]
+    profile = MODEL_PROFILES["H61E5"]
     assert profile.support_quality is SupportQuality.EXPERIMENTAL and profile.confirmation_issue == 731
     assert (profile.command_grammar, profile.status_grammar, profile.effect_grammar) == (
         "H617A",
@@ -536,7 +533,8 @@ def test_h61e5_is_an_exact_experimental_profile_on_the_h61d3_route():
     )
     assert len(profile.music_variants) == 11
     assert profile.scene_catalogue_sku == "H61E5" and "H61E5" in BLE_DISCOVERABLE_MODELS
-    assert profile.scene_command_versions == frozenset({0, 1}) and profile.rgbic_scene_v0 is False
+    assert old.scene_command_versions == frozenset({0}) and old.rgbic_scene_v0
+    assert modern.scene_command_versions == frozenset({0, 1}) and not modern.rgbic_scene_v0
     assert supported_effect_categories("H61E5") == (
         "scenes",
         "effects",

@@ -767,6 +767,7 @@ class ModelProfile:
     workshop_brightness_algorithm: int | None = None
     advanced_diy_selector: int | None = None
     authored_palette_scene_selector: int | None = None
+    scene_type_selectors: tuple[tuple[int, int], ...] = ()
     rgbic_scene_v0: bool | None = None
     # When set, Type04 custom effects upload as A1 command-02 frames led by this selector and activate with it.
     a1_diy_selector: int | None = None
@@ -777,7 +778,6 @@ class ModelProfile:
     native_diy_upload_subtype: int | None = None
     native_diy_selector: int | None = None
     diy_requires_upload_ack: bool = False
-    effect_upload_ack_subtype: int | None = None
     effect_retry_after_upload: bool = True
     packet_write_delay: float = 0.0
     boolean_controls: frozenset[str] = frozenset()
@@ -869,6 +869,14 @@ class ModelProfile:
             for route, selector in self.legacy_custom_to_scene_signatures
         ):
             raise ValueError("Legacy signature migrations require a route and unsigned selector")
+        if any(
+            type(scene_type) is not int
+            or not 0 <= scene_type <= 255
+            or type(selector) is not int
+            or not 0 <= selector <= 65535
+            for scene_type, selector in self.scene_type_selectors
+        ) or len({scene_type for scene_type, _selector in self.scene_type_selectors}) != len(self.scene_type_selectors):
+            raise ValueError("Scene type selectors require distinct types and unsigned selector values")
         if self.color_temp_range is not None:
             if (
                 not isinstance(self.color_temp_range, tuple)
@@ -2116,7 +2124,6 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_scenes=True,
         supports_multi_layered_effects=True,
         diy_requires_upload_ack=True,
-        effect_upload_ack_subtype=0x04,
         whole_device_mask_override=1,
         connection_idle_timeout=IDLE_TIMEOUT_BULB,
         scene_catalogue_sku="H601C",
@@ -2913,6 +2920,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         music_requires_upload_ack=True,
         music_params_require_activation=True,
         supports_music_color=True,
+        scene_identity_fields=frozenset({"fw_version", "hw_version"}),
         supports_advanced_effects=True,
         supports_multi_layered_effects=True,
         effect_workflows=frozenset({"native_scenes", "painted", "single", "multi", "native_music", "advanced"}),
@@ -2992,6 +3000,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         music_requires_upload_ack=True,
         music_params_require_activation=True,
         supports_music_color=True,
+        scene_identity_fields=frozenset({"fw_version", "hw_version"}),
         scene_command_versions=frozenset({0, 1}),
         rgbic_scene_v0=False,
         physical_ic_count=50,
@@ -3199,7 +3208,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_segment_color_temperature=True,
         connection_idle_timeout=IDLE_TIMEOUT_STANDARD,
         scene_catalogue_sku="H617F",
-        advanced_scene_carrier=(1013, 11836),
+        advanced_scene_carrier=(29884, 41599),
         diy_requires_upload_ack=True,
         effect_readback="diy_code_only",
     ),
@@ -4330,7 +4339,7 @@ MODEL_REVISION_POLICY_REGISTRATIONS = (
     ModelRevisionPolicyRegistration("H6046", "standard_pacts"),
     ModelRevisionPolicyRegistration("H607C", "h607c"),
     ModelRevisionPolicyRegistration("H6097", "standard_pacts"),
-    ModelRevisionPolicyRegistration("H61E5", "standard_pacts"),
+    ModelRevisionPolicyRegistration("H61E5", "h61e5"),
     ModelRevisionPolicyRegistration("H7020", "standard_pacts"),
     ModelRevisionPolicyRegistration("H60A1", "h60a1"),
     ModelRevisionPolicyRegistration("H60A6", "h60a6"),
@@ -5490,8 +5499,27 @@ def _h60a6_revision_policy(context: ModelRevisionContext) -> ModelProfile:
     return profile
 
 
-def _h61f5_revision_policy(context: ModelRevisionContext) -> ModelProfile:
+def _h61_scene_revision_profile(context: ModelRevisionContext) -> ModelProfile:
     profile = get_profile(context.model)
+    fw, hw = FirmwareVersion.parse(context.firmware), FirmwareVersion.parse(context.hardware)
+    modern_firmware = fw is not None and fw >= FirmwareVersion((1, 6))
+    return replace(
+        profile,
+        scene_command_versions=frozenset({0, 1})
+        if modern_firmware and hw is not None and hw >= FirmwareVersion((1, 0, 2))
+        else frozenset({0}),
+        rgbic_scene_v0=not modern_firmware or hw is None or hw < FirmwareVersion((1, 0, 3)),
+    )
+
+
+def _h61e5_revision_policy(context: ModelRevisionContext) -> ModelProfile:
+    if (context.pact_type, context.pact_code) not in _STANDARD_PACTS:
+        return _basic_revision_profile(get_profile(context.model))
+    return _h61_scene_revision_profile(context)
+
+
+def _h61f5_revision_policy(context: ModelRevisionContext) -> ModelProfile:
+    profile = _h61_scene_revision_profile(context)
     return (
         replace(profile, color_temp_range=KELVIN_RANGE_1000_10000)
         if (context.pact_type, context.pact_code) == (4, 1)
@@ -5568,19 +5596,39 @@ def _h6199_revision_policy(context: ModelRevisionContext) -> ModelProfile:
     pact = (context.pact_type, context.pact_code)
     profile = H6199_PACT1_PROFILE if pact == (1, 1) else get_profile(context.model)
     fw, hw = FirmwareVersion.parse(context.firmware), FirmwareVersion.parse(context.hardware)
-    if pact == (2, 1):
+    if pact in {(1, 1), (2, 1)}:
         telink = hw is not None and 10000 <= hw.identity_number() < 20000
         frk = hw is not None and 30000 <= hw.identity_number() < 40000 and not 30400 <= hw.identity_number() < 30500
         uploaded_scenes = fw is not None and (
             telink and fw >= FirmwareVersion((1, 6, 1)) or frk and fw >= FirmwareVersion((1, 7, 2))
         )
-        if not uploaded_scenes:
+        if not uploaded_scenes and pact == (2, 1):
             profile = replace(
                 profile,
                 supports_advanced_effects=False,
                 selector_only_scene_bits=16,
                 scene_codes=frozenset({0, 1, 4, 5, 7, 8, 9, 10, 15, 16, 21, 22}),
                 scene_command_versions=frozenset({0}),
+            )
+        elif uploaded_scenes and pact == (1, 1):
+            assert profile.command_operations is not None and profile.effect_workflows is not None
+            profile = replace(
+                profile,
+                command_operations=profile.command_operations | {"diy", "effect_upload"},
+                supports_custom_effects=True,
+                supports_advanced_effects=True,
+                effect_workflows=profile.effect_workflows
+                | {"edited_palette_scenes", "layered_scenes", "palette_diy", "advanced"},
+                selector_only_scene_bits=None,
+                scene_codes=None,
+                scene_command_versions=frozenset({0, 1}),
+                scene_upload_subtypes=frozenset({1, 2}),
+                diy_upload_transport="a1_02",
+                a1_diy_prefix=0xFE,
+                diy_requires_upload_ack=True,
+                command_ack_grammar="H6199",
+                scene_type_selectors=((1, 199), (2, 401)),
+                effect_readback="diy_code_only",
             )
     if pact == (2, 1) and context.hardware == "3.02.01" and context.firmware == "1.10.04":
         profile = replace(profile, supports_compound_static_recovery=True)
@@ -5676,6 +5724,7 @@ _MODEL_REVISION_POLICIES: Mapping[str, Callable[[ModelRevisionContext], ModelPro
     "h607c": _h607c_revision_policy,
     "h60a1": _h60a1_revision_policy,
     "h60a6": _h60a6_revision_policy,
+    "h61e5": _h61e5_revision_policy,
     "h61f5": _h61f5_revision_policy,
     "goods_type_70_scene": _goods_type_70_scene_revision_policy,
     "h617a": _h617a_revision_policy,

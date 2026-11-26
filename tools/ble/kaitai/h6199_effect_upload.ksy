@@ -37,6 +37,31 @@ enums:
     0x09: rainbow
     0x0a: crossing
 types:
+  pact1_diy_content:
+    seq:
+      - id: prefix
+        contents: [0xfe]
+      - id: family
+        type: u1
+        enum: effect_family
+      - id: variant
+        type: u1
+      - id: speed
+        type: u1
+      - id: palette_len
+        type: u1
+        valid:
+          expr: _ % 3 == 0
+      - id: palette
+        type: pact1_palette_entry
+        repeat: expr
+        repeat-expr: palette_len / 3
+  pact1_palette_entry:
+    seq:
+      - id: colour
+        type: govee_shared::rgb
+      - id: reserved
+        contents: [0]
   scene_content:
     seq:
       - id: num_blocks
