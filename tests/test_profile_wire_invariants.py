@@ -109,6 +109,9 @@ def _consume_status(coordinator: GoveeBLECoordinator, frame: bytes) -> None:
 def _qualified_coordinator(hass, model: str, profile: ModelProfile) -> GoveeBLECoordinator:
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url="http://x")
     coordinator.profile = profile
+    if profile.configured_string_scene_geometry and profile.physical_ic_count in {15, 30}:
+        coordinator.configured_strings = profile.physical_ic_count // profile.bulbs_per_string
+        coordinator._configured_strings_confirmed = True
     coordinator._confirmed_identity_fields.update(
         profile.profile_identity_fields | profile.effect_identity_fields | profile.scene_identity_fields
     )
@@ -350,9 +353,17 @@ _MUSIC_READBACK_PROFILES = tuple(
 )
 
 _SCENE_PROFILES = tuple(
-    pytest.param(model, profile, id=case_id)
+    pytest.param(model, qualified_profile, id=qualified_id)
     for case_id, model, profile in _EFFECTIVE_PROFILES
     if profile.supports_scenes and profile is not MODEL_PROFILES["H6125"]
+    for qualified_id, qualified_profile in (
+        (
+            (f"{case_id}-15", replace(profile, segment_count=15, physical_ic_count=15)),
+            (f"{case_id}-30", replace(profile, segment_count=30, physical_ic_count=30)),
+        )
+        if profile.configured_string_scene_geometry
+        else ((case_id, profile),)
+    )
 )
 
 _DIY_PROFILES = tuple(
