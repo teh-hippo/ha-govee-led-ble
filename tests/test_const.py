@@ -278,6 +278,9 @@ def test_h617a_and_h617e_share_wire_behaviour_but_keep_exact_product_profiles():
     assert protocol_model("H617E") == "H617A"
     assert h617e.command_grammar == h617e.status_grammar == "H617A"
     assert h617e.effect_grammar == h617a.effect_grammar == "H617A"
+    assert h617e.physical_ic_count == 30
+    assert h617e.scene_identity_fields == frozenset({"fw_version", "hw_version"})
+    assert h617e.supports_segment_color_temperature
 
 
 def test_h617c_is_an_exact_isolated_profile_with_its_own_status_grammar_and_30_ic_geometry():
@@ -288,6 +291,8 @@ def test_h617c_is_an_exact_isolated_profile_with_its_own_status_grammar_and_30_i
     assert profile.scene_catalogue_sku == "H617C"
     assert (profile.command_grammar, profile.status_grammar, profile.effect_grammar) == ("H617A", "H617C", "H617A")
     assert (profile.segment_count, profile.segment_group_size, profile.physical_ic_count) == (15, 3, 30)
+    assert profile.scene_identity_fields == frozenset({"fw_version", "hw_version"})
+    assert profile.supports_segment_color_temperature
     assert profile.whole_device_mask == 0x7FFF and profile.colour_mode_query_selector == 1
     assert profile.static_readback_kelvin and profile.static_readback_zero_kelvin_is_rgb
     assert profile.static_readback_gradual and profile.boolean_controls == frozenset({"gradual"})
@@ -331,6 +336,9 @@ def test_h617f_uses_exact_scene_catalogue_with_h617a_wire_grammars():
     assert profile.support_quality is SupportQuality.SUPPORTED
     assert profile.scene_catalogue_sku == "H617F"
     assert profile.command_grammar == profile.status_grammar == profile.effect_grammar == "H617A"
+    assert profile.physical_ic_count == 45
+    assert profile.scene_identity_fields == frozenset({"fw_version", "hw_version"})
+    assert profile.supports_segment_color_temperature
 
 
 @pytest.mark.parametrize("pact", [(2, 1), (3, 1)])
@@ -527,6 +535,7 @@ def test_h61e5_is_an_exact_experimental_profile_on_the_h61d3_route():
     )
     assert len(profile.music_variants) == 11
     assert profile.scene_catalogue_sku == "H61E5" and "H61E5" in BLE_DISCOVERABLE_MODELS
+    assert profile.scene_command_versions == frozenset({0, 1}) and profile.rgbic_scene_v0 is False
     assert supported_effect_categories("H61E5") == (
         "scenes",
         "effects",
@@ -547,6 +556,15 @@ def test_h61e5_unknown_pacts_keep_only_basic_controls(pact):
     assert not profile.supports_scenes
     assert not profile.supports_music_mode
     assert not profile.effect_workflows
+
+
+def test_h61f5_prepares_exact_geometry_without_replacing_product_catalogue():
+    profile = get_profile("H61F5")
+
+    assert profile.physical_ic_count == 50
+    assert profile.scene_catalogue_sku == "H61F5"
+    assert profile.scene_command_versions == frozenset({0, 1})
+    assert profile.rgbic_scene_v0 is False
 
 
 def test_h612a_has_exact_experimental_product_and_revision_contracts():

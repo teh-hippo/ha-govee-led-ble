@@ -19,7 +19,7 @@ from custom_components.ha_govee_led_ble.effect_compiler import (
     compile_effect,
     validate_compiled_geometry,
 )
-from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, SingleEffect
+from custom_components.ha_govee_led_ble.effect_domain import BuiltinScene, LibraryItem, SingleEffect
 from custom_components.ha_govee_led_ble.generated_protocol.scene_body import SceneBody
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_h617a_scene, parse_scene_body_param
 from custom_components.ha_govee_led_ble.layered_scene import (
@@ -142,6 +142,69 @@ def test_revision_scene_admission_and_geometry_are_independent(hardware, firmwar
     assert prepared.overall_movement.distance == 13
     assert prepared.unknown_flags == (0xFD if modern else 0x0D)
     assert scene.effect.layers == (_layer(),)
+
+
+@pytest.mark.parametrize(
+    ("model", "physical_ic_count", "pact"),
+    [
+        ("H61E5", 36, (1, 1)),
+        ("H61E5", 36, (2, 1)),
+        ("H61F5", 50, (2, 2)),
+        ("H61F5", 50, (3, 1)),
+        ("H61F5", 50, (4, 1)),
+        ("H617C", 30, (10, 1)),
+        ("H617E", 30, (10, 1)),
+        ("H617F", 45, (10, 1)),
+    ],
+)
+def test_exact_sku_scene_compilation_prepares_physical_geometry(model, physical_ic_count, pact):
+    firmware, hardware = ("1.06.00", "1.00.03")
+    profile = device_profile(model, *pact, firmware=firmware, hardware=hardware)
+    entry = next(scene for scene in SCENE_ENTRIES[model] if scene.command_version == 1)
+    item = LibraryItem.new("Exact scene", BuiltinScene(CatalogueRef(model, entry.scene_id, entry.effect_id)))
+
+    compiled = compile_effect(item, model, profile=profile)
+    scene = LayeredScene(CatalogueRef(model, 0, 0), LayeredEffect((_layer(),)))
+    prepared = decode_layered_scene(scene.template, encode_layered_scene(scene, profile=profile)).effect.layers[0]
+
+    assert profile.physical_ic_count == physical_ic_count
+    assert compiled.scene_entry == entry
+    assert compiled.physical_ic_count == physical_ic_count
+    assert compiled.rgbic_scene_v0 is False
+    assert prepared.overall_movement.distance == physical_ic_count - 2
+    assert compiled.packets[-1] == compiled.activation_packet
+
+
+@pytest.mark.parametrize("model,physical_ic_count", [("H617C", 30), ("H617E", 30), ("H617F", 45)])
+@pytest.mark.parametrize(
+    ("firmware", "hardware", "admitted", "v0"),
+    [
+        (None, None, False, True),
+        ("1.05.99", "1.00.03", False, True),
+        ("1.06.00", "1.00.01", False, True),
+        ("1.06.00", "1.00.02", True, True),
+        ("1.06.00", "1.00.03", True, False),
+        ("3.02.24", "3.01.01", True, False),
+    ],
+)
+def test_goods_type_70_scene_admission_and_v0_conversion_are_separate(
+    model, physical_ic_count, firmware, hardware, admitted, v0
+):
+    profile = device_profile(model, 10, 1, firmware=firmware, hardware=hardware)
+    entry = next(scene for scene in SCENE_ENTRIES[model] if scene.command_version == 1)
+
+    assert scene_supported(entry, profile) is admitted
+    assert scene_supported(replace(entry, command_version=0), profile)
+    assert profile.scene_command_versions == ({0, 1} if admitted else {0})
+    assert profile.rgbic_scene_v0 is v0
+    assert profile.physical_ic_count == physical_ic_count
+    assert profile.scene_catalogue_sku == model
+
+    scene = LayeredScene(CatalogueRef(model, 0, 0), LayeredEffect((_layer(),)))
+    prepared = decode_layered_scene(scene.template, encode_layered_scene(scene, profile=profile)).effect.layers[0]
+    assert prepared.selection.type == int(SelectionType.SEGMENT if v0 else SelectionType.CUSTOM)
+    assert prepared.distribution.backwards is not v0
+    assert prepared.overall_movement.distance == physical_ic_count - 2
 
 
 @pytest.mark.parametrize("missing_metadata", ["physical_ic_count", "rgbic_scene_v0"])

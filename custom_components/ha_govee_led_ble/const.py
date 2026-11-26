@@ -2884,6 +2884,8 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_advanced_effects=True,
         supports_multi_layered_effects=True,
         effect_workflows=frozenset({"native_scenes", "painted", "single", "multi", "native_music", "advanced"}),
+        scene_command_versions=frozenset({0, 1}),
+        rgbic_scene_v0=False,
         physical_ic_count=36,
         physical_ic_capacity=36,
         segment_count_ic_divisor=3,
@@ -2956,6 +2958,8 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         music_upload_before_selector=True,
         music_requires_upload_ack=True,
         supports_music_color=True,
+        scene_command_versions=frozenset({0, 1}),
+        rgbic_scene_v0=False,
         physical_ic_count=50,
         segment_count_ic_divisor=5,
         segment_count_capacity=20,
@@ -3012,10 +3016,15 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_music_color=True,
         supports_advanced_effects=True,
         supports_multi_layered_effects=True,
+        physical_ic_count=30,
+        scene_identity_fields=frozenset({"fw_version", "hw_version"}),
+        scene_command_versions=frozenset({0, 1}),
+        rgbic_scene_v0=False,
         segment_count=15,
         segment_group_size=3,
         supports_segment_writes=True,
         supports_segment_brightness=True,
+        supports_segment_color_temperature=True,
         connection_idle_timeout=IDLE_TIMEOUT_STANDARD,
         scene_catalogue_sku="H617E",
         legacy_scene_catalogue_sku="H617A",
@@ -3082,10 +3091,14 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         music_requires_upload_ack=True,
         supports_music_color=True,
         physical_ic_count=30,
+        scene_identity_fields=frozenset({"fw_version", "hw_version"}),
+        scene_command_versions=frozenset({0, 1}),
+        rgbic_scene_v0=False,
         segment_count=15,
         segment_group_size=3,
         supports_segment_writes=True,
         supports_segment_brightness=True,
+        supports_segment_color_temperature=True,
         connection_idle_timeout=IDLE_TIMEOUT_STANDARD,
         scene_catalogue_sku="H617C",
         advanced_scene_carrier=(29884, 41599),
@@ -3136,10 +3149,15 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_music_color=True,
         supports_advanced_effects=True,
         supports_multi_layered_effects=True,
+        physical_ic_count=45,
+        scene_identity_fields=frozenset({"fw_version", "hw_version"}),
+        scene_command_versions=frozenset({0, 1}),
+        rgbic_scene_v0=False,
         segment_count=15,
         segment_group_size=3,
         supports_segment_writes=True,
         supports_segment_brightness=True,
+        supports_segment_color_temperature=True,
         connection_idle_timeout=IDLE_TIMEOUT_STANDARD,
         scene_catalogue_sku="H617F",
         advanced_scene_carrier=(1013, 11836),
@@ -4278,6 +4296,9 @@ MODEL_REVISION_POLICY_REGISTRATIONS = (
     ModelRevisionPolicyRegistration("H60A6", "h60a6"),
     ModelRevisionPolicyRegistration("H61F5", "h61f5"),
     ModelRevisionPolicyRegistration("H617A", "h617a"),
+    ModelRevisionPolicyRegistration("H617C", "goods_type_70_scene"),
+    ModelRevisionPolicyRegistration("H617E", "goods_type_70_scene"),
+    ModelRevisionPolicyRegistration("H617F", "goods_type_70_scene"),
     ModelRevisionPolicyRegistration("H619A", "h619a"),
     ModelRevisionPolicyRegistration("H618A", "h618a"),
     ModelRevisionPolicyRegistration("H6199", "h6199"),
@@ -5438,6 +5459,18 @@ def _h61f5_revision_policy(context: ModelRevisionContext) -> ModelProfile:
     )
 
 
+def _goods_type_70_scene_revision_policy(context: ModelRevisionContext) -> ModelProfile:
+    fw, hw = FirmwareVersion.parse(context.firmware), FirmwareVersion.parse(context.hardware)
+    modern_firmware = fw is not None and fw >= FirmwareVersion((1, 6))
+    return replace(
+        get_profile(context.model),
+        scene_command_versions=frozenset({0, 1})
+        if modern_firmware and hw is not None and hw >= FirmwareVersion((1, 0, 2))
+        else frozenset({0}),
+        rgbic_scene_v0=not modern_firmware or hw is None or hw < FirmwareVersion((1, 0, 3)),
+    )
+
+
 def _h617a_revision_policy(context: ModelRevisionContext) -> ModelProfile:
     fw, hw = FirmwareVersion.parse(context.firmware), FirmwareVersion.parse(context.hardware)
     modern_firmware = fw is not None and fw >= FirmwareVersion((1, 6))
@@ -5604,6 +5637,7 @@ _MODEL_REVISION_POLICIES: Mapping[str, Callable[[ModelRevisionContext], ModelPro
     "h60a1": _h60a1_revision_policy,
     "h60a6": _h60a6_revision_policy,
     "h61f5": _h61f5_revision_policy,
+    "goods_type_70_scene": _goods_type_70_scene_revision_policy,
     "h617a": _h617a_revision_policy,
     "h619a": _h619a_revision_policy,
     "h618a": _h618a_revision_policy,

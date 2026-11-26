@@ -37,7 +37,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.light_commands import build_color_rgb, normalize_kelvin, parse_static_write
 from custom_components.ha_govee_led_ble.light_source import GoveeBLESourceLight
-from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES, scene_selector_code
+from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES, SCENE_ENTRIES, scene_selector_code
 from custom_components.ha_govee_led_ble.transport import WRITE_UUID
 from custom_components.ha_govee_led_ble.video_applicability import video_identity_fields
 from tests.coordinator_test_support import _CONFIGURATION_URL, _c, _packet, frame
@@ -1996,6 +1996,55 @@ async def test_restore_effect_control_state_maps_h617e_legacy_scene_name(hass):
         call(build_scene_activation("H617E", scene.code, scene.music_code)),
     ]
     refresh.assert_awaited_once_with(RefreshRequest(on=True, brightness=72, scene_code=scene.code))
+
+
+@pytest.mark.parametrize("model", ["H617C", "H617E", "H617F"])
+@pytest.mark.parametrize(
+    ("firmware", "hardware", "restored"),
+    [
+        (None, None, False),
+        ("1.05.99", "1.00.03", False),
+        ("1.06.00", "1.00.02", True),
+        ("1.06.00", "1.00.03", True),
+    ],
+)
+async def test_goods_type_70_scene_recovery_tracks_revision_admission(hass, model, firmware, hardware, restored):
+    coordinator = GoveeBLECoordinator(
+        hass,
+        "22:33:44:55:66:77",
+        model,
+        configuration_url=_CONFIGURATION_URL,
+    )
+    if firmware is not None:
+        coordinator._observe_identity_field("fw_version", firmware)
+    if hardware is not None:
+        coordinator._observe_identity_field("hw_version", hardware)
+    scene = next(entry for entry in SCENE_ENTRIES[model] if entry.command_version == 1)
+    state = PriorControlState(
+        mode="scene",
+        is_on=True,
+        brightness_pct=72,
+        rgb_color=(1, 2, 3),
+        effect=scene.display_name,
+        scene_code=scene.code,
+    )
+
+    with (
+        patch.object(coordinator, "send_command", new_callable=AsyncMock) as send,
+        patch.object(coordinator, "refresh_state", new_callable=AsyncMock, return_value=True) as refresh,
+    ):
+        assert await coordinator.async_restore_effect_control_state(state, overwritten_diy_code=None) is False
+
+    if restored:
+        assert send.await_args_list == [
+            call(build_power(True, model)),
+            call(build_brightness(72, model)),
+            call(build_scene_activation(model, scene.code, scene.music_code)),
+        ]
+        refresh.assert_awaited_once_with(RefreshRequest(on=True, brightness=72, scene_code=scene.code))
+    else:
+        send.assert_not_awaited()
+        refresh.assert_not_awaited()
 
 
 async def test_restore_effect_control_state_preserves_h617e_raw_legacy_scene(hass):
