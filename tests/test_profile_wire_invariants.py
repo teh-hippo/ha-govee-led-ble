@@ -64,7 +64,6 @@ from custom_components.ha_govee_led_ble.protocol_semantics import ParsedProtocol
 from custom_components.ha_govee_led_ble.scenes import (
     MODEL_SCENES,
     SceneEntry,
-    scene_code_is_ambiguous,
     scene_key_for_code,
     scene_selector_code,
     scene_supported,
@@ -1061,9 +1060,12 @@ def test_every_supported_scene_round_trips_between_command_and_status(hass, mode
 
     for key, scene in supported:
         selector = scene_selector_code(model, scene, profile=profile)
-        assert scene_key_for_code(model, selector, profile=profile) == (
-            None if scene_code_is_ambiguous(model, selector, profile=profile) else key
-        )
+        matches = [
+            candidate
+            for candidate, entry in catalogue.items()
+            if scene_supported(entry, profile) and scene_selector_code(model, entry, profile=profile) == selector
+        ]
+        assert scene_key_for_code(model, selector, profile=profile) == (key if len(matches) == 1 else None)
 
     sampled: list[tuple[str, SceneEntry]] = [supported[0], supported[-1]]
     for candidate in supported:
@@ -1084,7 +1086,7 @@ def test_every_supported_scene_round_trips_between_command_and_status(hass, mode
             assert xor_checksum(packet) == 0
             a.require_profile_packet(packet, profile)
         activation = packets[-1]
-        ambiguous = scene_code_is_ambiguous(model, selector, profile=profile)
+        ambiguous = scene_key_for_code(model, selector, profile=profile) is None
         assert expectations_from_packet(activation, model, profile=profile) == {
             "color_mode": (ParsedMode.SCENE, None),
             "scene_code": selector,
