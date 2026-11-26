@@ -400,7 +400,7 @@ test("native layer moves retain authored speeds and allow building a mixed effec
   expect(speeds(await state())).toEqual([85, 58]);
 });
 
-test("native pole/base recipes retain siblings, fixed rates and independent palettes", async ({ page }) => {
+test("native pole/base recipes retain siblings, variable rates and independent palettes", async ({ page }) => {
   await page.evaluate(async () => {
     const modulePath = "/src/custom-effect-editor.ts";
     await import(modulePath);
@@ -421,14 +421,19 @@ test("native pole/base recipes retain siblings, fixed rates and independent pale
   const before = await editor.evaluate(element => (element as GoveeCustomEffectEditor).nativeContent!);
   await expect(editor.getByRole("checkbox", {name: "Include this effect", exact: true})).toHaveCount(2);
   await editor.getByRole("combobox").first().selectOption("113");
-  await expect(editor.getByText("Speed: 50 (fixed)", {exact: true})).toBeVisible();
+  const speed = editor.locator("section.card").first().locator("govee-slider-control");
+  await expect(speed).toBeVisible();
+  expect(await speed.evaluate(element => (element as HTMLElement & {minimum: number}).minimum)).toBe(1);
+  expect(await speed.evaluate(element => (element as HTMLElement & {maximum: number}).maximum)).toBe(100);
+  await expect(editor.getByRole("heading", {name: "Moving colours", exact: true})).toBeVisible();
+  await expect(editor.getByRole("heading", {name: "Background", exact: true})).toBeVisible();
   const after = await editor.evaluate(element => (element as GoveeCustomEffectEditor).nativeContent!);
   expect(after.layers[1]).toEqual(before.layers[1]);
   expect(after.layers[0]).toMatchObject({type: "diy", kind: 113, speed: 50, enabled: true});
   const palettes = editor.locator("section.card").first().locator("govee-palette-editor");
   await expect(palettes).toHaveCount(2);
   expect(await palettes.nth(0).evaluate(element => (element as HTMLElement & {minColours: number}).minColours)).toBe(1);
-  expect(await palettes.nth(1).evaluate(element => (element as HTMLElement & {minColours: number}).minColours)).toBe(2);
+  expect(await palettes.nth(1).evaluate(element => (element as HTMLElement & {minColours: number}).minColours)).toBe(1);
   await editor.getByRole("checkbox", {name: "Include this effect", exact: true}).first().uncheck();
   const disabled = await editor.evaluate(element => (element as GoveeCustomEffectEditor).nativeContent!);
   expect(disabled.layers[0]).toMatchObject({enabled: false});
