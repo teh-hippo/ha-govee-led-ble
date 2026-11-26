@@ -202,7 +202,7 @@ def test_goods_type_70_scene_command_admission(model, physical_ic_count, firmwar
 
 @pytest.mark.parametrize(
     ("model", "physical_ic_count", "conversion_hardware"),
-    [("H617C", 30, "1.00.03"), ("H617E", 30, "1.00.02"), ("H617F", 45, "1.00.03")],
+    [("H617C", 30, "1.00.02"), ("H617E", 30, "1.00.02"), ("H617F", 45, "1.00.03")],
 )
 @pytest.mark.parametrize(
     ("firmware", "hardware"),
