@@ -43,7 +43,7 @@ def test_tail_schema_ownership_is_independent_of_product_permissions(model, mode
     assert type(parsed.tail).__module__.endswith("." + module)
     if model == "H617E":
         assert variant.palette_bounds is None
-        assert not profile.music_requires_upload_ack
+        assert profile.music_requires_upload_ack
 
 
 @pytest.mark.parametrize("mode", NEW_MODES)
