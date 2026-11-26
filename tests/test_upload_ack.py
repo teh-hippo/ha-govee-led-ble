@@ -36,6 +36,7 @@ from custom_components.ha_govee_led_ble.effect_preview import PreviewPhase
 from custom_components.ha_govee_led_ble.effect_runtime import EffectDeploymentEngine
 from custom_components.ha_govee_led_ble.effect_storage import LibrarySnapshot
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
+    build_diy_activation,
     build_music_mode,
     build_power,
     build_scene_activation,
@@ -406,10 +407,10 @@ async def test_scene_ack_revalidates_dependent_policy_and_authority(selection_re
     assert c._ensure_connected.await_count == 1
 
 
-@pytest.mark.parametrize("connected", ["H600A"], indirect=True)
+@pytest.mark.parametrize("connected", ["H600A", "H601C"], indirect=True)
 @pytest.mark.parametrize("kind", ["scene", "diy"])
 @pytest.mark.parametrize("response", ["accepted", "rejected", "missing"])
-async def test_h600a_scene_and_diy_ack_barrier(selection_ready, kind, response):
+async def test_bulb_scene_and_diy_ack_barrier(selection_ready, kind, response):
     c, client = selection_ready
     c.is_on = True
     if kind == "scene":
@@ -420,7 +421,7 @@ async def test_h600a_scene_and_diy_ack_barrier(selection_ready, kind, response):
     compiled = compile_effect(LibraryItem.new("Bulb effect", content), c.model, diy_code=24)
     final_upload = len(compiled.upload_packets) - 1
     subtype = upload_ack_subtype(compiled.upload_packets, final_upload, c.model)
-    assert subtype == (1 if kind == "scene" else 4)
+    assert subtype == (4 if c.model == "H601C" or kind == "diy" else 1)
 
     async def write(_uuid, packet, **kwargs):
         if packet == compiled.upload_packets[-1] and response != "missing":
@@ -1078,6 +1079,98 @@ async def test_h617e_extended_music_requires_positive_verdict_before_selector(se
     finally:
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
+
+@pytest.mark.parametrize(
+    "connected,mode,pact",
+    [
+        ("H6099", "hopping", None),
+        ("H66A0", "hopping", None),
+        ("H1A42", "splash", None),
+        ("H61E5", "hopping", (1, 1)),
+        ("H61F5", "hopping", (3, 1)),
+        ("H617E", "hopping", None),
+    ],
+    indirect=["connected"],
+)
+@pytest.mark.parametrize("accepted", [False, True])
+async def test_fleet_extended_music_activates_only_after_positive_upload_verdict(selection_ready, mode, pact, accepted):
+    c, client = selection_ready
+    if pact is not None:
+        c._observe_pact(*pact)
+        c._physical_ic_count_confirmed = True
+        c.profile = device_profile(c.model, *pact)
+    elif c.model == "H6099":
+        c.profile = replace(c.profile, physical_ic_count=50)
+        c._physical_ic_count_confirmed = True
+    c.music_sensitivity = 42
+    expected = prepare_music_request(c.model, mode, 42, None, False, {}, profile=c.profile)
+    final_upload, selector = expected[-2:]
+    assert final_upload[0] == 0xA3 and selector[0] == 0x33
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet == final_upload:
+            receive(client, frame(f"a341{selector[3]:02x}{'00' if accepted else '01'}"))
+
+    client.write_gatt_char.side_effect = write
+    if accepted:
+        await c.async_select_music_slug(mode)
+        assert c.music_body is not None
+    else:
+        with pytest.raises(RuntimeError, match="Device rejected A3 upload"):
+            await c.async_select_music_slug(mode)
+        assert c.music_body is None
+    sent = [call.args[1] for call in client.write_gatt_char.await_args_list]
+    assert sent == list(expected if accepted else expected[:-1])
+    assert c._upload_ack is None
+
+
+@pytest.mark.parametrize("connected", ["H61E5", "H61F5", "H617E", "H617F"], indirect=True)
+@pytest.mark.parametrize("accepted", [False, True])
+async def test_fleet_authored_uploads_activate_only_after_positive_verdict(selection_ready, accepted):
+    c, client = selection_ready
+    if c.model == "H61E5":
+        c._observe_pact(1, 1)
+        c._physical_ic_count_confirmed = True
+    elif c.model == "H61F5":
+        c._observe_pact(3, 1)
+        c._physical_ic_count_confirmed = True
+    c.is_on = True
+    if c.model == "H617F":
+        upload_packets = tuple(fragment_a3(4, bytes.fromhex("0401006401010203")))
+        activation_packet = build_diy_activation(24, c.model, profile=c.profile)
+    else:
+        compiled = compile_effect(
+            LibraryItem.new("Fleet upload", SingleEffect(0, 0, 50, ((1, 2, 3),))),
+            c.model,
+            diy_code=24,
+            profile=c.profile,
+        )
+        upload_packets = compiled.upload_packets
+        activation_packet = compiled.activation_packet
+    assert activation_packet is not None
+    packets = (*upload_packets, activation_packet)
+    last_upload = len(upload_packets) - 1
+    subtype = upload_ack_subtype(upload_packets, last_upload, c.model, profile=c.profile)
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet == upload_packets[-1]:
+            receive(client, frame(f"a3{subtype:02x}{'00' if accepted else '01'}"))
+
+    client.write_gatt_char.side_effect = write
+    awaitable = c.async_write_effect_sequence(
+        packets,
+        intent=ControlIntent.APPLY,
+        require_upload_ack=c.profile.diy_requires_upload_ack,
+        upload_ack_index=last_upload,
+    )
+    if accepted:
+        await awaitable
+    else:
+        with pytest.raises(RuntimeError, match="Device rejected A3 upload"):
+            await awaitable
+    sent = [call.args[1] for call in client.write_gatt_char.await_args_list]
+    assert sent == list(packets if accepted else upload_packets)
+    assert c._upload_ack is None
 
 
 @pytest.mark.parametrize("connected", ["H6139", "H6159"], indirect=True)

@@ -19,12 +19,14 @@ from custom_components.ha_govee_led_ble.govee_encryption import (
     parse_v1_handshake,
     parse_v2_handshake,
     parse_wire,
+    seal,
     unseal,
     v1_transform,
 )
 from custom_components.ha_govee_led_ble.music_commands import prepare_music_body_writes, prepare_music_profile_writes
 from custom_components.ha_govee_led_ble.music_semantics import music_variant
 from custom_components.ha_govee_led_ble.protocol_music_params import music_default_palette
+from custom_components.ha_govee_led_ble.transport import xor_checksum
 from tests.test_govee_encryption import client, v1_reply, v2_reply
 
 
@@ -87,7 +89,7 @@ async def test_bloom_last_fragment_failure_restarts_all_packets(hass, route, ver
         attempts.append([])
         key = bytes((connection + 1,)) * 16
         reply = v2_reply(bytes((connection + 1,)) * 8)
-        device_key = parse_v2_handshake(reply)[1]
+        device_iv, device_key = parse_v2_handshake(reply)
         phase, host_iv = 0, None
         if reject_reconnect and connection == 1:
             device.read_gatt_char.side_effect = GoveeCryptoError("invalid_marker")
@@ -139,6 +141,16 @@ async def test_bloom_last_fragment_failure_restarts_all_packets(hass, route, ver
                 raise BleakError("last companion fragment failed")
             if index == 2:
                 coordinator.rgb_color = (10, 20, 30)
+                ack_body = bytes.fromhex("a3413000") + bytes(15)
+                ack = ack_body + bytes((xor_checksum(ack_body),))
+                encrypted = (
+                    v1_transform(ack, key, encrypt=True)
+                    if version == 1
+                    else seal(ack, device_iv, device_key, 1)
+                    if version == 2
+                    else ack
+                )
+                device.start_notify.call_args.args[1](None, bytearray(encrypted))
 
         device.write_gatt_char.side_effect = write
         return device

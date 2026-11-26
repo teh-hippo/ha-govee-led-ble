@@ -141,8 +141,9 @@ def test_compiled_defaults_count_as_actual_geometry_parameters(mode, parameters,
 
 def test_h617e_metadata_keeps_independent_controls_with_exact_geometry():
     profile = get_profile("H617E")
-    assert profile.music_upload_before_selector and profile.music_requires_upload_ack
-    assert not profile.music_params_require_activation
+    assert profile.music_upload_before_selector
+    assert profile.music_requires_upload_ack
+    assert profile.music_params_require_activation
     assert [variant.mode_code for variant in profile.music_variants] == [3, 48, 49, 50, 51, 52, 53, 55]
     for variant in profile.music_variants:
         assert variant.palette_bounds is None
@@ -236,6 +237,50 @@ async def test_lowlevel_edit_requires_body_and_retains_unknown_companions(hass, 
         build_music_mode(51, coordinator.music_sensitivity, None, False),
     ]
     assert writes[writes.last_upload][1]["music_hopping_brightness"] == 17
+
+
+@pytest.mark.parametrize(
+    "model,mode",
+    [
+        ("H6022", "hopping"),
+        ("H6099", "hopping"),
+        ("H66A0", "hopping"),
+        ("H1A42", "splash"),
+        ("H61E5", "hopping"),
+        ("H61F5", "hopping"),
+        ("H617C", "hopping"),
+        ("H617E", "hopping"),
+        ("H617F", "hopping"),
+    ],
+)
+async def test_fleet_parameter_edit_reactivates_music_after_upload(hass, monkeypatch, model, mode):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url=None)
+    if model == "H6099":
+        coordinator.profile = replace(coordinator.profile, physical_ic_count=50)
+    elif model == "H61E5":
+        coordinator._observe_pact(1, 1)
+        coordinator.profile = get_profile(model)
+    elif model == "H61F5":
+        coordinator._observe_pact(3, 1)
+        coordinator.profile = get_profile(model)
+    variant = music_variant(coordinator.profile, {"hopping": 51, "splash": 132}[mode])
+    assert variant is not None and variant.template is not None
+    coordinator.music_mode = mode
+    coordinator._music_body = (mode, variant.template)
+    sequence = AsyncMock()
+    monkeypatch.setattr(coordinator, "async_write_music_sequence", sequence)
+
+    await coordinator.async_apply_music_params(variant.mode_code, parameters={})
+
+    writes = sequence.call_args.args[0]
+    prepared = prepare_music_body_writes(model, mode, coordinator.music_sensitivity, variant.template)
+    assert prepared.first_upload is not None and prepared.last_upload is not None
+    assert writes.first_upload == 0
+    assert writes.last_upload == prepared.last_upload - prepared.first_upload
+    assert tuple(packet for packet, _ in writes[: writes.last_upload + 1]) == tuple(
+        packet for packet, _ in prepared[prepared.first_upload : prepared.last_upload + 1]
+    )
+    assert writes[-1][0] == prepared[-1][0]
 
 
 async def test_per_parameter_guard_runs_before_physical_write(hass, monkeypatch, admit_static_baseline):

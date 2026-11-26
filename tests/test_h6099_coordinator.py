@@ -442,9 +442,7 @@ async def test_music_recovery_uses_device_geometry_without_unsupported_colour(de
         ).body[1],
     )
     monkeypatch.setattr(device, "refresh_state", AsyncMock(return_value=True))
-    assert not await device.async_restore_effect_control_state(state, overwritten_diy_code=None)
-    packets = [call.args[1] for call in device._client.write_gatt_char.await_args_list]
-    assert packets == [build_brightness(state.brightness_pct, "H6099")] + list(
+    music_packets = list(
         prepare_music_request(
             "H6099",
             "piano_keys",
@@ -456,6 +454,15 @@ async def test_music_recovery_uses_device_geometry_without_unsupported_colour(de
             palette=state.music_palette,
         )
     )
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet == music_packets[-2]:
+            notify(device, "a3413400")
+
+    device._client.write_gatt_char.side_effect = write
+    assert not await device.async_restore_effect_control_state(state, overwritten_diy_code=None)
+    packets = [call.args[1] for call in device._client.write_gatt_char.await_args_list]
+    assert packets == [build_brightness(state.brightness_pct, "H6099")] + music_packets
     assert device.music_mode == "piano_keys" and device.music_sensitivity == 99
     assert device.music_color is None
     assert device.music_piano_key_count == 18 and device.music_piano_gradient is False

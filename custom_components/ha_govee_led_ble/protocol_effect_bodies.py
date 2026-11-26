@@ -44,7 +44,6 @@ from .protocol_core import (
     H6099EffectUpload,
     H6127WireWrite,
     H6181DiyBody,
-    H6199CommandAck,
     H6199DiySelector,
     H6199EffectUpload,
     SceneBody,
@@ -144,7 +143,7 @@ def _complete_a3_upload(
     ack_grammar = active_profile.command_ack_grammar or active_profile.command_grammar
     if (
         active_profile.command_grammar not in {"H600A", "H6046", "H607C", "H60B0", "H617A", "H6181", "H7020"}
-        and active_profile.command_ack_grammar != "H617A"
+        and ack_grammar not in {"H6099", "H617A"}
         and not (ack_grammar == "H6199" and active_profile.effect_grammar == "H6199")
     ):
         raise ValueError("Upload ACK semantics are not qualified for this command grammar")
@@ -189,7 +188,8 @@ def upload_ack_subtype(packets: Sequence[bytes], index: int, model: str, *, prof
         if body[0] != prefix:
             raise ValueError("A1 upload selector does not match the profile")
         return A1_02_COMMAND
-    return _complete_a3_upload(packets, index, model, profile)[0]
+    subtype, _envelope = _complete_a3_upload(packets, index, model, profile)
+    return profile.effect_upload_ack_subtype if profile.effect_upload_ack_subtype is not None else subtype
 
 
 def upload_ack_mode(
@@ -225,9 +225,9 @@ def upload_ack_success(
     parsed: Any, subtype: int, mode: int | None = None, *, protocol: int | None = None
 ) -> bool | None:
     """Return a matching upload result, never treating an ordinary ACK as upload acceptance."""
-    if isinstance(parsed, H6199CommandAck):
-        upload = getattr(parsed, "upload", None)
-        if upload is None or upload.opcode != subtype or (protocol is not None and parsed.header != protocol):
+    upload = getattr(parsed, "upload", None)
+    if upload is not None:
+        if upload.opcode != subtype or (protocol is not None and parsed.header != protocol):
             return None
         return bool(upload.is_success)
     if protocol is not None and getattr(parsed, "protocol_id", None) != protocol:
