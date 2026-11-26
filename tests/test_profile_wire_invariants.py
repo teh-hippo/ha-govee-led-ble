@@ -819,7 +819,7 @@ def test_scalar_white_balance_readback_has_a_typed_payload(model: str, profile: 
 
 @pytest.mark.parametrize(("model", "profile"), _COMMAND_PROFILES)
 def test_every_declared_basic_command_can_be_built_and_parsed(model: str, profile: ModelProfile) -> None:
-    """Every profile with a command grammar (including write-only H601C and restricted Pact 1
+    """Every profile with a command grammar (including H601C and restricted Pact 1
     profiles) must build valid, profile-authorised basic commands that round-trip through its
     command parser and outbound transform."""
     commands: list[tuple[bytes, str, object]] = [(a.build_power(True, model, profile=profile), "is_on", True)]

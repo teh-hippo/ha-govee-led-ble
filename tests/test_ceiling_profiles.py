@@ -19,7 +19,11 @@ from custom_components.ha_govee_led_ble.const import (
     supported_effect_categories,
 )
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
-from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_brightness, require_profile_packet
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
+    build_brightness,
+    build_colour_mode_query,
+    require_profile_packet,
+)
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.light_commands import (
     build_color_rgb,
@@ -27,6 +31,7 @@ from custom_components.ha_govee_led_ble.light_commands import (
     build_segment_color,
     build_segment_color_temp,
 )
+from tests.coordinator_test_support import frame
 
 
 @pytest.mark.parametrize("model", ["H60A1", "H60A6", "H601C"])
@@ -48,7 +53,7 @@ def test_exact_ceiling_profiles_have_no_catalogue_inheritance(model):
         assert p.scene_catalogue_sku == model
         assert p.supports_custom_effects and p.supports_scenes and not p.supports_music_mode
     assert not p.supports_segment_brightness and not p.supports_segment_color_temperature
-    assert not p.static_readback_echoes_color
+    assert p.static_readback_echoes_color is (model == "H601C")
     require_profile_packet(build_brightness(50, model), p)
     assert resolve_model("H60C1") is None
 
@@ -134,18 +139,24 @@ def test_h60a1_kelvin_bounds_track_hardware(hass, hardware, minimum):
 @pytest.mark.parametrize("pact", [(None, None), (1, 1), (2, 1), (2, 2), (3, 1)])
 def test_h601c_basic_app_encoding_has_no_artificial_revision_restriction(pact):
     p = device_profile("H601C", *pact)
-    assert p == get_profile("H601C") and p.command_grammar == "H601C" and p.status_grammar is None
+    assert p == get_profile("H601C") and p.command_grammar == "H601C" and p.status_grammar == "H601C"
     assert p.supports_rgb and p.supports_color_temperature and p.whole_device_mask == 1
     assert (p.min_color_temp_kelvin, p.max_color_temp_kelvin) == (2700, 6500)
-    assert not p.read_domains and not p.setup_required_read_domains
-    assert not p.static_readback_echoes_color
-    assert not p.static_readback_kelvin and not p.static_readback_zero_kelvin_is_rgb
+    assert p.read_domains == {
+        ReadDomain.POWER,
+        ReadDomain.BRIGHTNESS,
+        ReadDomain.COLOUR_MODE,
+        ReadDomain.FIRMWARE,
+        ReadDomain.HARDWARE,
+    }
+    assert not p.setup_required_read_domains
+    assert p.static_readback_echoes_color and p.static_readback_kelvin and p.static_readback_zero_kelvin_is_rgb
     assert p.connection_idle_timeout == 1.5
     assert not p.supports_segments
     require_profile_packet(build_color_rgb(1, 2, 3, "H601C"), p)
 
 
-async def test_h601c_rgb_write_does_not_wait_for_status_readback(hass, monkeypatch):
+async def test_h601c_rgb_write_waits_for_status_readback(hass, monkeypatch):
     c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H601C", configuration_url=None)
     c.is_on = True
     c._power_known = True
@@ -153,14 +164,21 @@ async def test_h601c_rgb_write_does_not_wait_for_status_readback(hass, monkeypat
     c._client = client
     monkeypatch.setattr(c, "_ensure_connected", AsyncMock(return_value=client))
     monkeypatch.setattr(c, "_renew_foreground_lease", lambda: None)
-    monkeypatch.setattr(c, "refresh_state", AsyncMock(side_effect=AssertionError("H601C is write-only")))
     light = GoveeBLELight(c)
     light.async_write_ha_state = MagicMock()
 
+    async def respond(_uuid, packet, **_kwargs):
+        if packet == build_colour_mode_query("H601C"):
+            c._notify_callback(None, bytearray(frame("aa050d0a141e000000000000")))
+
+    client.write_gatt_char.side_effect = respond
     await light.async_turn_on(rgb_color=(10, 20, 30))
 
-    assert [call.args[1] for call in client.write_gatt_char.await_args_list] == [build_color_rgb(10, 20, 30, "H601C")]
-    c.refresh_state.assert_not_awaited()
+    assert [call.args[1] for call in client.write_gatt_char.await_args_list] == [
+        build_color_rgb(10, 20, 30, "H601C"),
+        build_colour_mode_query("H601C"),
+    ]
+    assert c.rgb_color == (10, 20, 30) and c.rgb_color_source == "observed"
 
 
 @pytest.mark.parametrize("model", ["H60A1", "H60A6"])

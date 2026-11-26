@@ -26,7 +26,10 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_blank_screen,
     build_boolean_control,
     build_brightness,
+    build_brightness_query,
+    build_colour_mode_query,
     build_power,
+    build_power_query,
     build_scene_activation,
     build_swap_bars,
     table_kelvin_rgb,
@@ -170,7 +173,7 @@ def test_suspended_history_requires_qualified_physical_geometry(hass, confirmed,
         pytest.param(True, 5000, False, True, id="released-kelvin"),
     ],
 )
-async def test_write_only_static_effect_off_round_trip(
+async def test_readable_static_effect_off_round_trip(
     hass, monkeypatch, virtual_clock, initially_on, kelvin, retry_selector, release_between
 ):
     coord = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H601C", configuration_url=None)
@@ -192,7 +195,7 @@ async def test_write_only_static_effect_off_round_trip(
 
     monkeypatch.setattr(coord, "_ensure_connected", AsyncMock(side_effect=connect))
     monkeypatch.setattr(coord, "_renew_foreground_lease", lambda: None)
-    physical = {"on": False, "level": None, "rgb": None, "kelvin": None}
+    physical = {"on": initially_on, "level": None, "rgb": None, "kelvin": None, "mode": None}
     selector_failed = False
 
     async def radio(_uuid, packet, **_kwargs):
@@ -206,12 +209,20 @@ async def test_write_only_static_effect_off_round_trip(
             assert static is not None
             physical["rgb"] = static.rgb or static.kelvin_companion_rgb
             physical["kelvin"] = static.kelvin
+            physical["mode"] = packet[2:11]
         elif packet[:3] == b"\x33\x05\x04":
             physical["rgb"] = (255, 0, 0)
             physical["kelvin"] = None
+            physical["mode"] = packet[2:5]
             if retry_selector and not selector_failed:
                 selector_failed = True
                 raise BleakError("Connection lost during selector delivery")
+        elif packet == build_power_query(profile=coord.profile):
+            coord._notify_callback(None, bytearray(frame(f"aa01{int(physical['on']):02x}")))
+        elif packet == build_brightness_query(profile=coord.profile) and physical["level"] is not None:
+            coord._notify_callback(None, bytearray(frame(f"aa04{physical['level']:02x}")))
+        elif packet == build_colour_mode_query(profile=coord.profile) and physical["mode"] is not None:
+            coord._notify_callback(None, bytearray(frame("aa05" + physical["mode"].hex())))
 
     client.write_gatt_char.side_effect = radio
     light = GoveeBLELight(coord)
@@ -226,14 +237,17 @@ async def test_write_only_static_effect_off_round_trip(
     if not initially_on and kelvin is None:
         with pytest.raises(HomeAssistantError) as error:
             await control(effect="Morning", brightness=200)
-        assert error.value.translation_key == "recovery_not_ready"
-        client.write_gatt_char.assert_not_awaited()
+        assert error.value.translation_key == "recovery_read_failed"
+        assert not any(call.args[1].startswith(b"\x33") for call in client.write_gatt_char.await_args_list)
     await control(**({"rgb_color": [36, 72, 108]} if kelvin is None else {"color_temp_kelvin": kelvin}), brightness=102)
     if initially_on and kelvin is None:
         coord._clear_client_state(client)
         coord._client = client
         coord._notification_token = object()
+        coord._notify_started_monotonic = time.monotonic()
         physical["on"] = False
+        coord._expected_state.clear()
+        coord._notify_callback(None, bytearray(frame("aa0100")))
         await control(rgb_color=[36, 72, 108], brightness=102)
         assert physical["on"]
     if not initially_on:
@@ -251,7 +265,7 @@ async def test_write_only_static_effect_off_round_trip(
     await control(effect="off")
     assert physical == before
     assert selector_failed is retry_selector
-    assert not any(call.args[1][0] == 0xAA for call in client.write_gatt_char.await_args_list)
+    assert any(call.args[1][0] == 0xAA for call in client.write_gatt_char.await_args_list)
 
 
 @pytest.mark.parametrize("field", ["brightness_pct", "is_on"])
@@ -259,6 +273,15 @@ async def test_interrupted_write_only_controls_cannot_publish_rolled_back_baseli
     hass, monkeypatch, virtual_clock, field
 ):
     coord = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H601C", configuration_url=None)
+    coord.profile = replace(
+        coord.profile,
+        status_grammar=None,
+        read_domains=frozenset(),
+        static_readback_echoes_color=False,
+        static_readback_kelvin=False,
+        static_readback_kelvin_suppresses_rgb=False,
+        static_readback_zero_kelvin_is_rgb=False,
+    )
     client = _c(write_gatt_char=AsyncMock())
     coord._client = client
     coord._notification_token = object()

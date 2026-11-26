@@ -115,7 +115,7 @@ speculative/h600a_command_write
 speculative/h600a_status_reply
 speculative/h600a_command_ack
 speculative/h601c_command_write
-speculative/h601c_status_reply
+h601c_status_reply
 speculative/h60a1_status_reply
 speculative/h60a6_status_reply
 speculative/h60a_bulk
