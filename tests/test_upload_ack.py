@@ -1777,6 +1777,51 @@ async def test_saved_native_diy_apply_uses_ack_gate(selection_ready, monkeypatch
     assert c._upload_ack is None
 
 
+@pytest.mark.parametrize("connected", ["H1A42"], indirect=True)
+async def test_h1a42_saved_preset_public_apply_and_recovery(selection_ready, monkeypatch):
+    c, client = selection_ready
+    content = resolve_catalogue_template("H1A42", "template:native-diy:504").content
+    item = LibraryItem.new("Meteor Shower", content)
+    compiled = compile_application(item, "H1A42", profile=c.effect_authorization_profile)
+    repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
+    await repository.async_load()
+    engine = EffectDeploymentEngine(repository)
+    monkeypatch.setattr(engine, "_async_prepare_prior_state", AsyncMock(return_value=(True, None)))
+    prior = PriorControlState(mode="unknown", is_on=True, brightness_pct=23, rgb_color=(17, 34, 51))
+    monkeypatch.setattr(c, "capture_effect_control_state", MagicMock(return_value=prior))
+    restore = AsyncMock(return_value=True)
+    monkeypatch.setattr(c, "_async_restore_prior_control_state", restore)
+    monkeypatch.setattr(c, "refresh_state", AsyncMock(return_value=True))
+    monkeypatch.setattr(c, "async_observe_effect", AsyncMock(return_value=True))
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet == compiled.upload_packets[-1]:
+            receive(client, DIY_OK)
+
+    client.write_gatt_char.side_effect = write
+    result = await engine.async_apply_saved(
+        c,
+        item,
+        config_entry_id="h1a42",
+        updated_at="2026-11-27T00:00:00Z",
+    )
+
+    assert result.phase is DeploymentPhase.CONFIRMED
+    assert result.prior_state is not None
+    sent = [call.args[1] for call in client.write_gatt_char.call_args_list]
+    assert sent[-len(compiled.packets) :] == list(compiled.packets)
+    assert sent[: -len(compiled.packets)] == [build_power(True, "H1A42")]
+    assert await c.async_restore_effect_control_state(
+        result.prior_state,
+        overwritten_diy_code=compiled.diy_code,
+    )
+    restore.assert_awaited_once_with(
+        result.prior_state,
+        overwritten_diy_code=504,
+        prepared_colour=None,
+    )
+
+
 @pytest.mark.parametrize("connected", ["H6199"], indirect=True)
 @pytest.mark.parametrize("path", ["saved", "snapshot", "preview"])
 @pytest.mark.parametrize("power", [False, True])

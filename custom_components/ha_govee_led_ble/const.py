@@ -2760,6 +2760,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         color_temp_range=KELVIN_RANGE_1000_10000,
         supports_custom_effects=True,
         supports_scenes=True,
+        effect_workflows=frozenset({"native_scenes", "painted", "single", "multi", "native_music", "advanced"}),
         music_modes=(
             "energetic",
             "rhythm",
