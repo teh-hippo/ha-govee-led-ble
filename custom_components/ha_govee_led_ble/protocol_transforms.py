@@ -108,7 +108,7 @@ def h6199_pact1_outbound_transform(packet: bytes) -> bytes:
     if parsed is None:
         return packet
     operation = parsed.body.sub_mode.name if parsed.opcode.name == "mode" else parsed.opcode.name
-    if operation in {"power", "scene", "diy"}:
+    if operation in {"power", "scene", "diy", "video"}:
         return packet
 
     root = H6199Pact1WireWrite()

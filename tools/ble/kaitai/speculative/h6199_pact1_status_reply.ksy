@@ -9,8 +9,9 @@ meta:
     - govee_rgb_segment_page
 doc: |
   SPECULATIVE: H6199 Pact 1/1 reports scaled brightness, RGB-only
-  segment pages and a legacy mode selector.  Static mode detail does not
-  establish RGB or an exact Kelvin observation.  Retain unread fields as bytes.
+  segment pages and legacy mode selectors including the resident 0x00 video
+  mode.  Static mode detail does not establish RGB or an exact Kelvin
+  observation.  Retain unread fields as bytes.
 seq:
   - id: header
     contents: [0xaa]
@@ -39,6 +40,7 @@ enums:
     0x07: hardware
     0xa2: legacy_segments
   mode_sel:
+    0x00: video
     0x04: scene
     0x0a: diy
     0x0b: static_colour
@@ -54,6 +56,7 @@ types:
         type:
           switch-on: mode
           cases:
+            'mode_sel::video': h6199_status_reply::video_state
             'mode_sel::scene': h6199_status_reply::scene_state
             'mode_sel::diy': h6199_diy_selector::diy_selector
             'mode_sel::music': h6199_pact1_wire_write::music_body

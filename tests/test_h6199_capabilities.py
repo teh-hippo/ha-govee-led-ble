@@ -119,30 +119,36 @@ def test_pact1_uses_qualified_old_controller_upload_route(firmware, hardware, up
     )
 
     assert ("edited_palette_scenes" in profile.effect_workflows) is uploaded
-    assert profile.supports_custom_effects is uploaded
+    assert profile.supports_custom_effects
+    assert "palette_diy" in profile.effect_workflows
+    compiled = compile_effect(item, "H6199", diy_code=73, profile=profile)
+    assert compiled.upload_transport == "a1_02"
+    assert compiled.upload_packets == tuple(
+        bytes.fromhex(packet)
+        for packet in (
+            "a1020001000000000000000000000000000000a2",
+            "a10201fe000014061e00001e000000000000004e",
+            "a102ff000000000000000000000000000000005c",
+        )
+    )
+    assert compiled.activation_packet[0:5] == bytes((0x33, 0x05, 0x0A, 73, 0))
+    subtype = upload_ack_subtype(
+        compiled.upload_packets,
+        len(compiled.upload_packets) - 1,
+        "H6199",
+        profile=profile,
+    )
+    assert subtype == 0x02
+    ack = parse_command_ack_result(frame("a10200"), "H6199", profile=profile)
+    assert ack.parsed is not None and upload_ack_success(ack.parsed, subtype, protocol=0xA1)
+    assert profile.outbound_transform is not None
+    assert tuple(profile.outbound_transform(packet) for packet in compiled.packets) == compiled.packets
+    for packet in compiled.packets:
+        require_profile_packet(packet, profile)
+    status = parse_status_result(frame("aa050a4900"), "H6199", profile=profile)
+    parsed = parse_color_mode(status.parsed, "H6199", profile=profile)
+    assert parsed.mode is ParsedMode.DIY and parsed.diy_code == 73
     if uploaded:
-        compiled = compile_effect(item, "H6199", diy_code=73, profile=profile)
-        assert compiled.upload_transport == "a1_02"
-        assert compiled.upload_packets == tuple(
-            bytes.fromhex(packet)
-            for packet in (
-                "a1020001000000000000000000000000000000a2",
-                "a10201fe000014061e00001e000000000000004e",
-                "a102ff000000000000000000000000000000005c",
-            )
-        )
-        assert compiled.activation_packet[0:5] == bytes((0x33, 0x05, 0x0A, 73, 0))
-        subtype = upload_ack_subtype(
-            compiled.upload_packets,
-            len(compiled.upload_packets) - 1,
-            "H6199",
-            profile=profile,
-        )
-        assert subtype == 0x02
-        ack = parse_command_ack_result(frame("a10200"), "H6199", profile=profile)
-        assert ack.parsed is not None and upload_ack_success(ack.parsed, subtype, protocol=0xA1)
-        assert profile.outbound_transform is not None
-        assert tuple(profile.outbound_transform(packet) for packet in compiled.packets) == compiled.packets
         for scene_type, selector in ((1, 199), (2, 401)):
             scene = next(entry for entry in SCENE_ENTRIES["H6199"] if entry.scene_type == scene_type and entry.param)
             compiled_scene = compile_effect(
@@ -165,12 +171,10 @@ def test_pact1_uses_qualified_old_controller_upload_route(firmware, hardware, up
             assert transformed == compiled_scene.packets
             assert scene_code_is_ambiguous("H6199", selector, profile=profile)
             assert scene_key_for_code("H6199", selector, profile=profile) is None
-        status = parse_status_result(frame("aa050a4900"), "H6199", profile=profile)
-        parsed = parse_color_mode(status.parsed, "H6199", profile=profile)
-        assert parsed.mode is ParsedMode.DIY and parsed.diy_code == 73
     else:
-        with pytest.raises(ValueError, match="effective profile does not support"):
-            compile_effect(item, "H6199", profile=profile)
+        assert not profile.supports_advanced_effects
+        assert profile.scene_upload_subtypes is None
+        assert profile.scene_type_selectors == ()
 
 
 def test_pact2_scene_profile_transitions_with_fresh_identity(hass):

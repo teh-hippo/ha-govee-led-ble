@@ -440,7 +440,7 @@ _GRAMMAR_TRAITS: Mapping[str, frozenset[str]] = {
             "video_status_settings",
         }
     ),
-    "H6199-Pact1": frozenset({"legacy_segments", "percent_brightness"}),
+    "H6199-Pact1": frozenset({"display_video", "legacy_segments", "percent_brightness"}),
     "H66A0": frozenset(
         {
             "new_music_omits_colour",
@@ -4429,10 +4429,12 @@ H6199_PACT1_PROFILE = ModelProfile(
     support_quality=SupportQuality.SUPPORTED,
     revision_policy="h6199",
     command_grammar="H6199",
-    command_operations=frozenset({"power", "brightness", "static", "scene", "music"}),
+    command_operations=frozenset({"power", "brightness", "static", "scene", "music", "diy", "effect_upload", "video"}),
+    command_ack_grammar="H6199",
     status_grammar="H6199-Pact1",
     effect_grammar="H6199",
-    effect_workflows=frozenset({"native_scenes", "native_music"}),
+    effect_workflows=frozenset({"native_scenes", "native_music", "palette_diy", "video"}),
+    video_grammar="H6199",
     read_domains=frozenset(
         {
             ReadDomain.POWER,
@@ -4453,6 +4455,9 @@ H6199_PACT1_PROFILE = ModelProfile(
     supports_segment_writes=True,
     segment_colour_mode_ambiguous=True,
     supports_scenes=True,
+    supports_custom_effects=True,
+    supports_video_mode=True,
+    video_modes=("movie", "game"),
     scene_catalogue_sku="H6199",
     selector_only_scene_bits=16,
     scene_codes=frozenset({0, 1, 4, 5, 7, 8, 9, 10, 15, 16, 21, 22}),
@@ -4466,6 +4471,10 @@ H6199_PACT1_PROFILE = ModelProfile(
     music_sensitivity_min=0,
     music_sensitivity_max=99,
     supports_music_color=True,
+    diy_upload_transport="a1_02",
+    a1_diy_prefix=0xFE,
+    diy_requires_upload_ack=True,
+    effect_readback="diy_code_only",
     brightness_wire_range=(20, 254),
     outbound_transform=_h6199_pact1_wire,
     profile_identity_fields=frozenset({"fw_version", "hw_version"}),
@@ -5593,21 +5602,13 @@ def _h6199_revision_policy(context: ModelRevisionContext) -> ModelProfile:
             assert profile.command_operations is not None and profile.effect_workflows is not None
             profile = replace(
                 profile,
-                command_operations=profile.command_operations | {"diy", "effect_upload"},
-                supports_custom_effects=True,
                 supports_advanced_effects=True,
-                effect_workflows=profile.effect_workflows
-                | {"edited_palette_scenes", "layered_scenes", "palette_diy", "advanced"},
+                effect_workflows=profile.effect_workflows | {"edited_palette_scenes", "layered_scenes", "advanced"},
                 selector_only_scene_bits=None,
                 scene_codes=None,
                 scene_command_versions=frozenset({0, 1}),
                 scene_upload_subtypes=frozenset({1, 2}),
-                diy_upload_transport="a1_02",
-                a1_diy_prefix=0xFE,
-                diy_requires_upload_ack=True,
-                command_ack_grammar="H6199",
                 scene_type_selectors=((1, 199), (2, 401)),
-                effect_readback="diy_code_only",
             )
     if pact == (2, 1) and context.hardware == "3.02.01" and context.firmware == "1.10.04":
         profile = replace(profile, supports_compound_static_recovery=True)
