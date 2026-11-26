@@ -2885,6 +2885,7 @@ async def test_h61f5_native_presets_apply_through_public_runtime(hass: HomeAssis
     template = resolve_catalogue_template("H61F5", f"template:native-diy:{selector}")
     item = LibraryItem.new(template.label, template.content)
     compiled = compile_application(item, "H61F5", profile=coordinator.profile)
+    assert isinstance(compiled, CompiledEffect)
 
     result = await EffectDeploymentEngine(repository, cache).async_apply_saved(
         coordinator,
