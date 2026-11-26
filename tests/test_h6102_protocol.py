@@ -4,7 +4,7 @@ from dataclasses import replace
 
 import pytest
 
-from custom_components.ha_govee_led_ble.const import ModelProfile, device_profile, get_profile
+from custom_components.ha_govee_led_ble.const import ModelProfile, ReadDomain, device_profile, get_profile
 from custom_components.ha_govee_led_ble.coordinator_expectations import expectations_from_packet
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode, parse_color_mode
 from custom_components.ha_govee_led_ble.effect_commands import build_h617a_diy_single
@@ -17,6 +17,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_firmware_query,
     build_h617a_diy_activation,
     build_hardware_query,
+    build_music_mode,
     build_power,
     build_power_query,
     build_scene_activation,
@@ -174,6 +175,51 @@ def test_pact1_brightness_register_is_independent_of_static_revision(pact_code):
     assert modern.brightness_wire_range is None and modern.outbound_transform is None
     unknown = device_profile("H6102", None, None)
     assert unknown.brightness_wire_range is None and unknown.outbound_transform is None
+
+
+@pytest.mark.parametrize("firmware", ["1.01.20", "1.03.00", "1.03.01"])
+@pytest.mark.parametrize("pact_code", [1, 2])
+def test_pact1_legacy_operations_preserve_exact_route_bytes(firmware, pact_code):
+    profile = device_profile("H6102", 1, pact_code, firmware=firmware, hardware="1.00.02")
+    assert profile.can_read(ReadDomain.COLOUR_MODE)
+
+    logical_colour = build_color_rgb(32, 64, 96, "H6102", profile=profile)
+    assert profile.outbound_transform(logical_colour) == _frame("33050b204060ff7f")
+    logical_music = build_music_mode(5, 50, None, False, "H6102", profile=profile)
+    assert profile.outbound_transform(logical_music) == _frame("3305111032")
+    assert build_scene_activation("H6102", 0x1234, profile=profile) == _frame("3305043412")
+
+    upload = build_h617a_diy_single(0, 0, 50, [(32, 64, 96)], a1_selector=0xFE)
+    assert upload == [
+        _frame("a1020001"),
+        _frame("a10201fe00003203204060"),
+        _frame("a102ff"),
+    ]
+    assert build_h617a_diy_activation(0xFE) == _frame("33050afe00")
+
+
+@pytest.mark.parametrize(
+    ("reply", "mode", "selector"),
+    [
+        ("aa0504060001", ParsedMode.SCENE, 6),
+        ("aa050afe00", ParsedMode.DIY, 254),
+        ("aa05130532", ParsedMode.MUSIC, 5),
+    ],
+)
+@pytest.mark.parametrize("pact_code", [1, 2])
+def test_pact1_legacy_mode_query_and_readback_are_independent(reply, mode, selector, pact_code):
+    profile = device_profile("H6102", 1, pact_code, firmware="1.01.20", hardware="1.00.01")
+    assert build_colour_mode_query("H6102", profile=profile) == _frame("aa0501")
+    result = parse_status_result(_frame(reply), "H6102", profile=profile)
+    assert result.rejection is None
+    parsed = parse_color_mode(result.parsed, "H6102", profile=profile)
+    assert parsed.mode is mode
+    if mode is ParsedMode.SCENE:
+        assert parsed.scene_code == selector
+    elif mode is ParsedMode.DIY:
+        assert parsed.diy_code == selector
+    else:
+        assert parsed.music_mode == "energetic"
 
 
 @pytest.mark.parametrize(("control", "opcode"), [("gradual", "a3"), ("limit", "0e")])

@@ -13,6 +13,7 @@ from custom_components.ha_govee_led_ble.const import DOMAIN, ReadDomain
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
+from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.effect_deployments import (
     DeploymentPhase,
     EffectDeploymentRepository,
@@ -64,6 +65,7 @@ async def radio(hass, monkeypatch, virtual_clock):
         "relative": [100] * 15,
         "accept_rgb_kelvin": True,
         "fault_upload": False,
+        "upload_subtype": None,
         "pact_on_connect": None,
         "corrupt_kelvin_rgb": False,
     }
@@ -126,9 +128,20 @@ async def radio(hass, monkeypatch, virtual_clock):
                 state["mode"] = "0a" + packet[3:5].hex()
             elif packet[:3] == bytes.fromhex("330504"):
                 state["mode"] = "04" + packet[3:5].hex()
+            elif packet[:3] in (bytes.fromhex("330511"), bytes.fromhex("330513")):
+                wire_mode = packet[3]
+                logical_mode = {0x10: 5, 0x11: 3, 0x12: 4, 0x13: 6}.get(wire_mode, wire_mode)
+                state["mode"] = f"13{logical_mode:02x}{packet[4]:02x}"
+            if packet[0] == 0xA3 and packet[1] == 0:
+                state["upload_subtype"] = packet[4]
             elif packet[0] == 0xA3 and packet[1] == 0xFF:
-                reply = "a30400"
+                subtype = state["upload_subtype"]
+                reply = f"a3{subtype:02x}" + ("3000" if subtype == 0x41 else "00")
+            elif packet[:3] == bytes.fromhex("a102ff"):
+                reply = "a10200"
             if packet[0] == 0xA3 and state["fault_upload"]:
+                raise RuntimeError("failed body upload")
+            if packet[0] == 0xA1 and state["fault_upload"]:
                 raise RuntimeError("failed body upload")
             static = parse_static_write(packet, c.model, profile=c.profile)
             if static and static.kelvin is not None and state["accept_kelvin"]:
@@ -326,9 +339,10 @@ async def test_qualified_pact1_keeps_confirmed_rgb_and_exposes_candidate_kelvin(
     state.update(hw="1.00.03", fw="1.06.00", register_brightness=True)
     c.fw_version, c.hw_version = state["fw"], state["hw"]
     c._resolve_device_profile()
-    assert not c.profile.can_read(ReadDomain.COLOUR_MODE) and not c.profile.supports_segments
+    assert c.profile.can_read(ReadDomain.COLOUR_MODE) and not c.profile.supports_segments
     assert await c.refresh_state(RefreshRequest(refresh_all=True))
-    assert not {bytes(packet[:2]) for packet in packets} & {bytes.fromhex("aa05"), bytes.fromhex("aaa5")}
+    assert bytes.fromhex("aa05") in {bytes(packet[:2]) for packet in packets}
+    assert bytes.fromhex("aaa5") not in {bytes(packet[:2]) for packet in packets}
     red = build_color_rgb(255, 0, 0, c.model, profile=c.profile)
     assert red == bytes.fromhex("33051501ff00000000000000ff7f00000000005d")
     white = build_color_temp(3123, c.model, profile=c.profile)
@@ -338,7 +352,7 @@ async def test_qualified_pact1_keeps_confirmed_rgb_and_exposes_candidate_kelvin(
     await light.async_turn_on(color_temp_kelvin=3123)
     assert white in packets and c.color_temp_kelvin == 3100
     assert not c.profile.static_readback_kelvin
-    assert not {bytes(packet[:2]) for packet in packets} & {bytes.fromhex("aa05"), bytes.fromhex("aaa5")}
+    assert bytes.fromhex("aaa5") not in {bytes(packet[:2]) for packet in packets}
     c.fw_version = "1.05.00"
     c._resolve_device_profile()
     assert c.profile.outbound_transform is not None
@@ -605,6 +619,37 @@ async def test_engine_failed_upload_never_reselects_overwritten_scene_slot(radio
     assert repository.snapshot().records[0].phase is DeploymentPhase.UNCERTAIN
 
 
+async def test_legacy_saved_diy_requires_ack_confirms_mode_and_restores(radio):
+    from custom_components.ha_govee_led_ble.effect_deployments import ObservationConfidence
+
+    c, state, packets, _ = radio
+    c.pact_type, c.pact_code = 1, 1
+    state.update(hw="1.00.02", fw="1.01.20", register_brightness=True)
+    assert await c.refresh_state(RefreshRequest(refresh_all=True))
+    light = GoveeBLELight(c)
+    light.async_write_ha_state = MagicMock()
+    await light.async_turn_on(rgb_color=(10, 20, 30))
+    prior = c.capture_effect_control_state()
+
+    repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
+    await repository.async_load()
+    record = await EffectDeploymentEngine(repository).async_apply_snapshot(
+        c,
+        LibraryItem.new("Legacy DIY", SingleEffect(0, 1, 40, ((255, 0, 0),))),
+        config_entry_id="legacy",
+        updated_at="2026-11-27T00:00:00Z",
+    )
+    assert record.phase is DeploymentPhase.CONFIRMED
+    assert record.verification_confidence is ObservationConfidence.ACTIVATION_MATCH
+    assert any(packet[:2] == b"\xa1\x02" for packet in packets)
+    assert frame("33050afe00") in packets
+
+    packets.clear()
+    assert await c.async_restore_effect_control_state(prior, overwritten_diy_code=0xFE)
+    assert frame("33050b0a141eff7f") in packets
+    assert c.color_mode is ParsedMode.COLOUR
+
+
 async def test_issue424_pact1_scenes_music_studio_and_segments(radio, virtual_clock):
     from custom_components.ha_govee_led_ble.effect_active_workspace import ActiveEffectWorkspaceRepository
     from custom_components.ha_govee_led_ble.effect_deployments import ObservationConfidence
@@ -630,9 +675,10 @@ async def test_issue424_pact1_scenes_music_studio_and_segments(radio, virtual_cl
 
     packets.clear()
     await c.async_apply_native_scene("fire & blood", verify=True)
-    assert len(packets) == 4
-    assert all(packet[0] == 0xA3 for packet in packets[:-1])
-    assert packets[-1] == bytes.fromhex("330504383f000000000000000000000000000035")
+    writes = [packet for packet in packets if packet[0] != 0xAA]
+    assert len(writes) == 4
+    assert all(packet[0] == 0xA3 for packet in writes[:-1])
+    assert writes[-1] == bytes.fromhex("330504383f000000000000000000000000000035")
     assert c.effect == "fire & blood" and c.scene_code == 16184
 
     # 2. All 11 music modes (basic 4 selector-only + expanded 7 A3 41 upload before 33 05 11 selector)
@@ -672,15 +718,16 @@ async def test_issue424_pact1_scenes_music_studio_and_segments(radio, virtual_cl
     for slug, body_hex, selector_hex in expected_music:
         packets.clear()
         await c.async_select_music_slug(slug)
-        assert packets[-1] == bytes.fromhex(selector_hex)
+        writes = [packet for packet in packets if packet[0] != 0xAA]
+        assert writes[-1] == bytes.fromhex(selector_hex)
         if body_hex is None:
-            assert len(packets) == 2
+            assert len(writes) == 2
         else:
-            assert len(packets) >= 4
-            envelope = reassemble_a3(packets[1:-1])
+            assert len(writes) >= 4
+            envelope = reassemble_a3(writes[1:-1])
             assert envelope[2] == 0x41 and envelope[3:].startswith(bytes.fromhex(body_hex))
 
-    # 3. Saved music & A1 DIY deployments reconcile as WRITE_COMPLETED without AA05 readback
+    # 3. Saved music & A1 DIY deployments confirm through AA05 after their positive upload verdicts.
     repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
     await repository.async_load()
     cache = EffectDeviceCache(InMemoryVersionedDocumentStore())
@@ -690,10 +737,10 @@ async def test_issue424_pact1_scenes_music_studio_and_segments(radio, virtual_cl
     engine = EffectDeploymentEngine(repository, device_cache=cache, active_workspaces=workspaces)
     music_item = LibraryItem.new("Saved Hopping", MusicProfile("H6102", "hopping", 50))
     record = await engine.async_apply_saved(c, music_item, config_entry_id="entry", updated_at="2026-10-24T00:00:00Z")
-    assert record.phase is DeploymentPhase.APPLIED and record.error_code is None
+    assert record.phase is DeploymentPhase.CONFIRMED and record.error_code is None
     observed = cache.get("entry")
     assert observed is not None and observed.mode == "music"
-    assert observed.confidence is ObservationConfidence.WRITE_COMPLETED
+    assert observed.confidence is ObservationConfidence.MODE_MATCH
     assert observed.active_effect is not None and observed.active_effect.item_id == music_item.id
 
     packets.clear()
@@ -701,9 +748,9 @@ async def test_issue424_pact1_scenes_music_studio_and_segments(radio, virtual_cl
     diy_record = await engine.async_apply_snapshot(
         c, diy_item, config_entry_id="entry", updated_at="2026-10-24T00:01:00Z"
     )
-    assert diy_record.phase is DeploymentPhase.APPLIED
-    assert diy_record.verification_confidence is ObservationConfidence.WRITE_COMPLETED
+    assert diy_record.phase is DeploymentPhase.CONFIRMED
+    assert diy_record.verification_confidence is ObservationConfidence.ACTIVATION_MATCH
     a1_frames = [packet for packet in packets if packet[0] == 0xA1]
     assert reassemble_a1_02(a1_frames)[0] == 0xFE
-    assert packets[-1] == frame("33050afe00")
+    assert frame("33050afe00") in packets
     assert workspaces.get("entry") is not None
