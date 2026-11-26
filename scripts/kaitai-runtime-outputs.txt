@@ -68,6 +68,7 @@ govee_shared.py
 govee_rgb_segment_page.py
 h6102_status_reply.py
 h6102_legacy_status_reply.py
+h6102_intermediate_status_reply.py
 h6102_wire_write.py
 h6117_status_reply.py
 h6117_legacy_status_reply.py

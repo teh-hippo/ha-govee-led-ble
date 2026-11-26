@@ -286,6 +286,9 @@ H7025StatusReply = load_generated_class("h7025_status_reply", "H7025StatusReply"
 H6102LegacyStatusReply = load_generated_class("h6102_legacy_status_reply", "H6102LegacyStatusReply")
 
 
+H6102IntermediateStatusReply = load_generated_class("h6102_intermediate_status_reply", "H6102IntermediateStatusReply")
+
+
 H6125StatusReply = load_generated_class("h6125_status_reply", "H6125StatusReply")
 
 
@@ -513,6 +516,7 @@ _STATUS_ROOTS = {
     "H6076": ("h6076_status_reply", H6076StatusReply),
     "H6102": ("h6102_status_reply", H6102StatusReply),
     "H6102-legacy": ("h6102_legacy_status_reply", H6102LegacyStatusReply),
+    "H6102-intermediate": ("h6102_intermediate_status_reply", H6102IntermediateStatusReply),
     "H6117": ("h6117_status_reply", H6117StatusReply),
     "H6117-legacy": ("h6117_legacy_status_reply", H6117LegacyStatusReply),
     "H612A": ("h612a_status_reply", H612aStatusReply),

@@ -131,7 +131,14 @@ async def radio(hass, monkeypatch, virtual_clock):
             elif packet[:3] in (bytes.fromhex("330511"), bytes.fromhex("330513")):
                 wire_mode = packet[3]
                 logical_mode = {0x10: 5, 0x11: 3, 0x12: 4, 0x13: 6}.get(wire_mode, wire_mode)
-                state["mode"] = f"{1 if c.pact_type == 1 else 0x13:02x}{logical_mode:02x}{packet[4]:02x}"
+                if c.profile.status_grammar == "H6102-legacy":
+                    legacy_mode = {0x10: 0, 0x11: 3, 0x12: 1, 0x13: 2}[wire_mode]
+                    colour = packet[7:10] if wire_mode in (0x12, 0x13) and packet[6] else b""
+                    state["mode"] = f"01{legacy_mode:02x}{packet[4]:02x}{colour.hex()}"
+                else:
+                    mode = 0x11 if c.pact_type == 1 else 0x13
+                    selector = wire_mode if c.pact_type == 1 else logical_mode
+                    state["mode"] = f"{mode:02x}{selector:02x}{packet[4]:02x}"
             if packet[0] == 0xA3 and packet[1] == 0:
                 state["upload_subtype"] = packet[4]
             elif packet[0] == 0xA3 and packet[1] == 0xFF:
@@ -146,7 +153,7 @@ async def radio(hass, monkeypatch, virtual_clock):
             static = parse_static_write(packet, c.model, profile=c.profile)
             if static and static.kelvin is not None and state["accept_kelvin"]:
                 state["kelvin"] = static.kelvin
-                if c.pact_type == 1:
+                if c.profile.status_grammar in {"H6102-legacy", "H6102-intermediate"}:
                     companion = bytes(static.kelvin_companion_rgb).hex()
                     state["mode"] = f"02{companion}01{companion}"
                 else:
@@ -162,7 +169,7 @@ async def radio(hass, monkeypatch, virtual_clock):
                     state["kelvin"] = 0
                     state["mode"] = (
                         "02" + bytes(static.rgb).hex() + "00000000"
-                        if c.pact_type == 1
+                        if c.profile.status_grammar in {"H6102-legacy", "H6102-intermediate"}
                         else "15" + bytes([int(state["gradual"])]).hex() + "0000"
                     )
             if static and static.brightness_pct is not None:
@@ -627,18 +634,28 @@ async def test_engine_failed_upload_never_reselects_overwritten_scene_slot(radio
     assert repository.snapshot().records[0].phase is DeploymentPhase.UNCERTAIN
 
 
-async def test_legacy_saved_diy_requires_ack_confirms_mode_and_restores(radio):
+@pytest.mark.parametrize(
+    ("firmware", "hardware", "static_reply", "restore_prefix"),
+    [
+        ("1.01.20", "1.00.01", "020a141e00000000", "33050b0a141eff7f"),
+        ("1.03.01", "1.00.02", "020a141e00000000", "33050b0a141eff7f"),
+        ("1.06.00", "1.00.03", "15010000", "330515010a141e0000000000ff7f"),
+    ],
+)
+async def test_legacy_saved_diy_requires_ack_confirms_mode_and_restores(
+    radio, firmware, hardware, static_reply, restore_prefix
+):
     from custom_components.ha_govee_led_ble.effect_deployments import ObservationConfidence
 
     c, state, packets, _ = radio
     c.pact_type, c.pact_code = 1, 1
-    state.update(hw="1.00.02", fw="1.01.20", register_brightness=True)
+    state.update(hw=hardware, fw=firmware, register_brightness=True)
     assert await c.refresh_state(RefreshRequest(refresh_all=True))
     light = GoveeBLELight(c)
     light.async_write_ha_state = MagicMock()
     await light.async_turn_on(rgb_color=(10, 20, 30))
     prior = c.capture_effect_control_state()
-    state["mode"] = "020a141e00000000"
+    state["mode"] = static_reply
 
     repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
     await repository.async_load()
@@ -655,7 +672,7 @@ async def test_legacy_saved_diy_requires_ack_confirms_mode_and_restores(radio):
 
     packets.clear()
     assert await c.async_restore_effect_control_state(prior, overwritten_diy_code=0xFE)
-    assert frame("33050b0a141eff7f") in packets
+    assert frame(restore_prefix) in packets
     assert c.color_mode is ParsedMode.COLOUR
 
 

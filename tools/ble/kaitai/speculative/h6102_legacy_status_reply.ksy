@@ -8,9 +8,10 @@ meta:
 doc: |
   H6102.
   Pact 1 revisions report static colour with mode 02. The payload carries RGB,
-  a temperature flag and companion RGB. Music is reported with mode 01 and the
-  shared H6102 music selector/sensitivity body. Scene and DIY selectors remain
-  independently readable. Unknown tails stay opaque.
+  a temperature flag and companion RGB. Music is reported with mode 01, the
+  original 0/3/1/2 selector codebook, sensitivity, and direct RGB only for
+  Spectrum and Rolling. Scene and DIY selectors remain independently readable.
+  Unknown tails stay opaque.
 seq:
   - id: header
     contents: [0xaa]
@@ -41,6 +42,11 @@ enums:
     0x02: static
     0x04: scene
     0x0a: diy
+  music_mode:
+    0: energetic
+    3: rhythm
+    1: spectrum
+    2: rolling
 types:
   colormode_body:
     seq:
@@ -52,7 +58,7 @@ types:
         type:
           switch-on: mode
           cases:
-            'color_mode::music': h6102_status_reply::cm_music
+            'color_mode::music': cm_music
             'color_mode::static': cm_static
             'color_mode::scene': h6102_status_reply::cm_scene
             'color_mode::diy': h6102_status_reply::cm_diy
@@ -66,3 +72,20 @@ types:
         type: govee_shared::rgb
       - id: unknown_tail
         size-eos: true
+  cm_music:
+    seq:
+      - id: mode_id
+        type: u1
+        enum: music_mode
+      - id: sensitivity
+        type: u1
+      - id: rgb
+        type: govee_shared::rgb
+        if: mode_id == music_mode::spectrum or mode_id == music_mode::rolling
+      - id: unknown_tail
+        size-eos: true
+    instances:
+      is_legacy:
+        value: true
+      has_fixed_colour:
+        value: mode_id == music_mode::spectrum or mode_id == music_mode::rolling
