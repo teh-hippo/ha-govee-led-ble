@@ -44,6 +44,8 @@ from custom_components.ha_govee_led_ble.effect_runtime import (
 )
 from custom_components.ha_govee_led_ble.effect_template_defaults import CatalogueTemplateDefault
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
+    build_boolean_control,
+    build_boolean_control_query,
     build_brightness,
     build_colour_mode_query,
     build_diy_activation,
@@ -70,6 +72,7 @@ from custom_components.ha_govee_led_ble.projector_runtime import (
 )
 from custom_components.ha_govee_led_ble.protocol_core import H6093Projector
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
+from custom_components.ha_govee_led_ble.switch import GoveeBLEControlSwitch
 from custom_components.ha_govee_led_ble.transport import fragment_a3, reassemble_a3, xor_checksum
 from tests.coordinator_test_support import _packet, frame
 from tests.storage_test_double import InMemoryVersionedDocumentStore
@@ -819,7 +822,7 @@ def physical(hass, monkeypatch, request):
                         if state["scene"] is not None
                         else [0x0C]
                         if model == "H6093" and state["native"]
-                        else [0x15, 0, *state.get("kelvin", 0).to_bytes(2, "big")],
+                        else [0x15, int(state.get("gradual", False)), *state.get("kelvin", 0).to_bytes(2, "big")],
                     ),
                 )
             elif domain == 0x0F and fault != "missing_count":
@@ -929,6 +932,36 @@ def physical(hass, monkeypatch, request):
     monkeypatch.setattr(coordinator, "refresh_state", lambda request: refresh(replace(request, timeout=0.02)))
     monkeypatch.setattr(coordinator, "async_refresh_segments", lambda: segments(timeout=0.02))
     return coordinator, state
+
+
+@pytest.mark.parametrize("physical", ["H617E"], indirect=True)
+async def test_h617e_gradual_public_control_and_recovery_use_matching_register_state(physical):
+    coordinator, state = physical
+    state["gradual"] = True
+    assert await coordinator.refresh_state(RefreshRequest(refresh_all=True))
+    prior = PriorControlState.from_dict(coordinator.capture_effect_control_state().to_dict())
+    assert prior.static_gradual is True
+    state["packets"].clear()
+
+    entry = MagicMock(runtime_data=coordinator)
+    gradual = GoveeBLEControlSwitch(entry, "gradual")
+    await gradual.async_turn_off()
+
+    write = build_boolean_control("gradual", False, "H617E", profile=coordinator.profile)
+    query = build_boolean_control_query("gradual", "H617E", profile=coordinator.profile)
+    assert write == frame("33a300")
+    assert query == frame("aaa3")
+    assert write in state["packets"] and query in state["packets"]
+    assert state["gradual"] is False
+    assert coordinator.boolean_control_state["gradual"] is False
+    assert not gradual.is_on
+
+    assert await coordinator.async_restore_effect_control_state(prior, overwritten_diy_code=None)
+    assert build_boolean_control("gradual", True, "H617E", profile=coordinator.profile) in state["packets"]
+    assert state["gradual"] is True
+    assert coordinator.boolean_control_state["gradual"] is True
+    assert coordinator.static_gradual is True
+    assert gradual.is_on
 
 
 @pytest.mark.parametrize(

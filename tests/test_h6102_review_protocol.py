@@ -135,7 +135,7 @@ def test_removed_booleans_cannot_bypass_current_authorization(operations) -> Non
     require_profile_packet(build_h6199_control("gradient", 1), get_profile("H6199"))
 
 
-@pytest.mark.parametrize("model", ["H617A", "H617E", "H617F"])
+@pytest.mark.parametrize("model", ["H617A", "H617F"])
 def test_undeclared_gradual_register_is_read_only(model):
     profile = get_profile(model)
     with pytest.raises(ValueError, match="boolean control gradual"):

@@ -20,6 +20,7 @@ from custom_components.ha_govee_led_ble.effect_compiler import (
     validate_compiled_geometry,
 )
 from custom_components.ha_govee_led_ble.effect_domain import BuiltinScene, LibraryItem, SingleEffect
+from custom_components.ha_govee_led_ble.firmware_version import FirmwareVersion
 from custom_components.ha_govee_led_ble.generated_protocol.scene_body import SceneBody
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_h617a_scene, parse_scene_body_param
 from custom_components.ha_govee_led_ble.layered_scene import (
@@ -178,28 +179,54 @@ def test_exact_sku_scene_compilation_prepares_physical_geometry(model, physical_
 
 @pytest.mark.parametrize("model,physical_ic_count", [("H617E", 30), ("H617F", 45)])
 @pytest.mark.parametrize(
-    ("firmware", "hardware", "admitted", "v0"),
+    ("firmware", "hardware", "admitted"),
     [
-        (None, None, False, True),
-        ("1.05.99", "1.00.03", False, True),
-        ("1.06.00", "1.00.01", False, True),
-        ("1.06.00", "1.00.02", True, True),
-        ("1.06.00", "1.00.03", True, False),
-        ("3.02.24", "3.01.01", True, False),
+        (None, None, False),
+        ("1.05.99", "1.00.03", False),
+        ("1.06.00", "1.00.01", False),
+        ("1.06.00", "1.00.02", True),
+        ("1.06.00", "1.00.03", True),
+        ("3.02.24", "3.01.01", True),
     ],
 )
-def test_goods_type_70_scene_admission_and_v0_conversion_are_separate(
-    model, physical_ic_count, firmware, hardware, admitted, v0
-):
+def test_goods_type_70_scene_command_admission(model, physical_ic_count, firmware, hardware, admitted):
     profile = device_profile(model, 10, 1, firmware=firmware, hardware=hardware)
     entry = next(scene for scene in SCENE_ENTRIES[model] if scene.command_version == 1)
 
     assert scene_supported(entry, profile) is admitted
     assert scene_supported(replace(entry, command_version=0), profile)
     assert profile.scene_command_versions == ({0, 1} if admitted else {0})
-    assert profile.rgbic_scene_v0 is v0
     assert profile.physical_ic_count == physical_ic_count
     assert profile.scene_catalogue_sku == model
+
+
+@pytest.mark.parametrize(
+    ("model", "physical_ic_count", "conversion_hardware"),
+    [("H617C", 30, "1.00.03"), ("H617E", 30, "1.00.02"), ("H617F", 45, "1.00.03")],
+)
+@pytest.mark.parametrize(
+    ("firmware", "hardware"),
+    [
+        (None, None),
+        ("1.05.99", "1.00.03"),
+        ("1.06.00", "1.00.01"),
+        ("1.06.00", "1.00.02"),
+        ("1.06.00", "1.00.03"),
+        ("3.02.24", "3.01.01"),
+    ],
+)
+def test_goods_type_70_scene_v0_conversion_is_exact_revision_policy(
+    model, physical_ic_count, conversion_hardware, firmware, hardware
+):
+    profile = device_profile(model, 10, 1, firmware=firmware, hardware=hardware)
+    fw = FirmwareVersion.parse(firmware)
+    hw = FirmwareVersion.parse(hardware)
+    conversion = FirmwareVersion.parse(conversion_hardware)
+    assert conversion is not None
+    v0 = not (fw is not None and hw is not None and fw >= FirmwareVersion((1, 6)) and hw >= conversion)
+
+    assert profile.rgbic_scene_v0 is v0
+    assert profile.physical_ic_count == physical_ic_count
 
     scene = LayeredScene(CatalogueRef(model, 0, 0), LayeredEffect((_layer(),)))
     prepared = decode_layered_scene(scene.template, encode_layered_scene(scene, profile=profile)).effect.layers[0]
