@@ -15,7 +15,6 @@ from custom_components.ha_govee_led_ble.effect_catalogue import MODEL_EFFECT_CAT
 from custom_components.ha_govee_led_ble.effect_compiler import compile_effect
 from custom_components.ha_govee_led_ble.effect_contracts import CapabilityState
 from custom_components.ha_govee_led_ble.effect_domain import BuiltinScene, LibraryItem, PaletteDiyEffect
-from custom_components.ha_govee_led_ble.layered_scene import CatalogueRef
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_blank_screen_query,
     build_brightness_query,
@@ -29,6 +28,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_white_balance_query,
     parse_command_ack_result,
 )
+from custom_components.ha_govee_led_ble.layered_scene import CatalogueRef
 from custom_components.ha_govee_led_ble.music_commands import resolve_music_profile
 from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_packets
 from custom_components.ha_govee_led_ble.palette_scene_decoder import decode_catalogue_palette_scene

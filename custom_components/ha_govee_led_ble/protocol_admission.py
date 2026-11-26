@@ -283,9 +283,9 @@ def _check_video_write_packet(frame: bytes, profile: ModelProfile) -> bool:
                     if supported
                 }:
                     return True
-    if profile.video_control_grammar == "H6099":
+    if profile.video_control_grammar is not None:
         for roots in (_COMMAND_ROOTS, _STATUS_QUERY_ROOTS):
-            display = _parse_xor_frame(frame, "H6099", roots).parsed
+            display = _parse_xor_frame(frame, profile.video_control_grammar, roots).parsed
             if display is None:
                 continue
             operation = getattr(getattr(display, "opcode", getattr(display, "domain", None)), "name", None)
