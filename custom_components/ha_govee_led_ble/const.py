@@ -3066,6 +3066,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_music_color=True,
         supports_advanced_effects=True,
         supports_multi_layered_effects=True,
+        static_readback_gradual=True,
         physical_ic_count=30,
         scene_identity_fields=frozenset({"fw_version", "hw_version"}),
         scene_command_versions=frozenset({0, 1}),
@@ -3080,6 +3081,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         legacy_scene_catalogue_sku="H617A",
         advanced_scene_carrier=(29884, 41599),
         diy_requires_upload_ack=True,
+        boolean_controls=frozenset({"gradual"}),
         effect_readback="diy_code_only",
         legacy_effect_selector_domains=(
             (PAINTED_EFFECT_CONTENT_KIND, LegacyEffectSelectorDomain.DIY),
@@ -4352,7 +4354,7 @@ MODEL_REVISION_POLICY_REGISTRATIONS = (
     ModelRevisionPolicyRegistration("H61F5", "h61f5"),
     ModelRevisionPolicyRegistration("H617A", "h617a"),
     ModelRevisionPolicyRegistration("H617C", "h617c"),
-    ModelRevisionPolicyRegistration("H617E", "goods_type_70_scene"),
+    ModelRevisionPolicyRegistration("H617E", "h617e_goods_type_70_scene"),
     ModelRevisionPolicyRegistration("H617F", "goods_type_70_scene"),
     ModelRevisionPolicyRegistration("H619A", "h619a"),
     ModelRevisionPolicyRegistration("H618A", "h618a"),
@@ -5545,6 +5547,17 @@ def _h617c_revision_policy(context: ModelRevisionContext) -> ModelProfile:
     )
 
 
+def _h617e_goods_type_70_scene_revision_policy(context: ModelRevisionContext) -> ModelProfile:
+    fw, hw = FirmwareVersion.parse(context.firmware), FirmwareVersion.parse(context.hardware)
+    modern_firmware = fw is not None and fw >= FirmwareVersion((1, 6))
+    modern_scene = modern_firmware and hw is not None and hw >= FirmwareVersion((1, 0, 2))
+    return replace(
+        get_profile(context.model),
+        scene_command_versions=frozenset({0, 1}) if modern_scene else frozenset({0}),
+        rgbic_scene_v0=not modern_scene,
+    )
+
+
 def _h617a_revision_policy(context: ModelRevisionContext) -> ModelProfile:
     fw, hw = FirmwareVersion.parse(context.firmware), FirmwareVersion.parse(context.hardware)
     modern_firmware = fw is not None and fw >= FirmwareVersion((1, 6))
@@ -5725,6 +5738,7 @@ _MODEL_REVISION_POLICIES: Mapping[str, Callable[[ModelRevisionContext], ModelPro
     "h61f5": _h61f5_revision_policy,
     "goods_type_70_scene": _goods_type_70_scene_revision_policy,
     "h617c": _h617c_revision_policy,
+    "h617e_goods_type_70_scene": _h617e_goods_type_70_scene_revision_policy,
     "h617a": _h617a_revision_policy,
     "h619a": _h619a_revision_policy,
     "h618a": _h618a_revision_policy,

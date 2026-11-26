@@ -281,6 +281,9 @@ def test_h617a_and_h617e_share_wire_behaviour_but_keep_exact_product_profiles():
     assert h617e.physical_ic_count == 30
     assert h617e.scene_identity_fields == frozenset({"fw_version", "hw_version"})
     assert h617e.supports_segment_color_temperature
+    assert h617e.revision_policy == "h617e_goods_type_70_scene"
+    assert h617e.static_readback_gradual
+    assert h617e.boolean_controls == frozenset({"gradual"})
 
 
 def test_h617c_is_an_exact_isolated_profile_with_its_own_status_grammar_and_30_ic_geometry():
@@ -288,7 +291,7 @@ def test_h617c_is_an_exact_isolated_profile_with_its_own_status_grammar_and_30_i
 
     assert profile is not MODEL_PROFILES["H617A"]
     assert profile.revision_policy == "h617c"
-    assert MODEL_PROFILES["H617E"].revision_policy == MODEL_PROFILES["H617F"].revision_policy == "goods_type_70_scene"
+    assert MODEL_PROFILES["H617F"].revision_policy == "goods_type_70_scene"
     assert profile.support_quality is SupportQuality.SUPPORTED
     assert profile.scene_catalogue_sku == "H617C"
     assert (profile.command_grammar, profile.status_grammar, profile.effect_grammar) == ("H617A", "H617C", "H617A")
