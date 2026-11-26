@@ -187,6 +187,7 @@ def resolve_h6102_capabilities(
         else:
             revision = None
         if revision is not None and revision.colour:
+            assert version is not None
             extended_colour = variant is H6102RgbVariant.EXTENDED
             workflows = frozenset({"native_music", "native_scenes", "single", "multi"})
             if revision.uploaded_scenes:
