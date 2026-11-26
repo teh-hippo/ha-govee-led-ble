@@ -8,6 +8,7 @@ For new-model support, reference the request without automatic issue-closing key
 ## Candidate support scope
 
 State the existing Home Assistant and shared capability paths this work uses.  If minimal SKU bootstrapping is insufficient, identify the missing shared boundary being fixed.
+For affected revisions and operations, record the evidence, checks run and unresolved limits.
 
 ## Model-specific changes and owner checks
 

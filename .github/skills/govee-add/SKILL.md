@@ -1,60 +1,25 @@
 ---
 name: govee-add
 description: >-
-  Add complete Experimental support for a new Govee BLE model. Give it a SKU (and the support-request
-  issue if there is one): it builds the device brief from the device evidence, implements full support
-  through shared capability-driven paths, audits itself, opens the PR, merges it and tells the requester.
+  Add complete Experimental support for an exact Govee BLE SKU and ship a candidate for owner testing.
 license: MIT
 ---
 
 # govee-add
 
-Argument: a SKU, optionally its support-request issue.
-Read `.github/skills/govee-shared.md` first.
+Argument: a SKU and, if available, its support request.
+Use the [shared evidence method](../govee-shared.md).
 
-Goal: complete Experimental support, merged and available in a master release candidate.
-
-Task list:
-
-1. Read the evidence workspace README and the exact-SKU starting brief.
-   Reuse it as the investigation baseline and preserve its revision conflicts; build the brief if it is absent.
-   Use the exact-SKU request for implementation and owner verification.
-   Create a missing request with `.github/ISSUE_TEMPLATE/model-support.md`; consolidate existing threads under `CONTRIBUTING.md`.
-   Set `confirmation_issue` and the README Experimental link to that request.
-2. Complete the revision-aware device brief and map it onto existing declarations, codecs and shared operations.
-   Cover each checklist row or explain its applicability.
-   Start from evidenced active callers, not sibling profiles or a nearby model's implementation.
-   Extend shared machinery where evidence demonstrates a gap.
-3. Run `govee-audit` for completeness, special treatment and implementation correctness.
-   Close coupled findings under canonical acceptance policy.
-   Its fresh-context correctness review can satisfy independent acceptance review.
-4. Reconcile upstream at readiness, commit, pass `make check` and open the PR referencing the request.
-   Keep the request open for hardware confirmation.
-5. Merge the green PR to `master`, then verify the automatic master candidate's workflow and assets.
-6. Show the requester reply draft to the operator and post after approval:
-   > Experimental support for `<SKU>` is available in `<master RC tag>`.
-   > @`<requester>`, install it through HACS, restart Home Assistant and report hardware/firmware versions, controls tested and visible results here.
-   `govee-resolve` handles confirmed support and eventual closure.
-
-## New-model integration checklist
-
-Use existing shared contracts at these integration points.
-
-Under `custom_components/ha_govee_led_ble/`:
-
-- `manifest.json`: `bluetooth` `local_name` matchers for every evidenced name prefix.
-  Examples: `ihoment_`, `Govee_`, `Minger_`, `GBK_`, `GVH_`, `GVH<n>`, `GV<n>`, `<SKU>_`.
-- `const.py`: complete `ModelProfile` with `confirmation_issue`.
-- `effect_catalogue.py`: `ModelEffectCatalogue`.
-- `scene_catalogues/<SKU>.json`: run `uv run python tools/ble/refresh_scene_catalogues.py <SKU>` before profile registration.
-
-Repository files:
-
-- `tools/ble/kaitai/speculative/<sku>_*.ksy`: exact-model schemas; recorded traffic qualifies schemas outside `speculative/`.
-- `scripts/kaitai-runtime-roots.txt` and `scripts/kaitai-runtime-outputs.txt`: new roots and generated modules.
-- `README.md`: `[🚧 Experimental](<confirmation issue URL>)` device row.
-- Existing discovery, profile, catalogue, protocol and frontend suites: shared parametrisation for distinct capabilities, prefixes and wire shapes.
-
-Record durable exact-model navigation facts and unresolved hardware questions in the private evidence starting brief.
-Update `CONTRIBUTING.md` for contributor-wide invariants.
-Build `generated_protocol/` and `frontend/tests/fixtures/backend-contracts.json` locally; both remain gitignored.
+1. Use one exact-SKU support request for implementation and owner verification.
+   Reuse or consolidate existing threads under [contributor policy](../../../CONTRIBUTING.md#requesting-support-or-suggesting-fixes); use the [request template](../../ISSUE_TEMPLATE/model-support.md) when none exists.
+2. Build a revision-aware brief, classify the whole device and map every evidenced in-scope capability to its owning declaration, codec or shared operation.
+   Keep conflicting routes and owner checks explicit.
+3. Cover evidenced discovery prefixes in `manifest.json`, declare the Experimental profile and its `confirmation_issue`, and add the applicable effect and scene catalogues.
+   Refresh scenes before registering the profile; link the README row to the request.
+   Register new Kaitai roots and outputs as needed and use existing suites for distinct contracts.
+4. Run `govee-audit` against the result.
+   Resolve coupled findings; a fresh audit that checks implementation correctness can also satisfy independent acceptance review.
+5. Follow [change acceptance](../../../CONTRIBUTING.md#change-and-test-design), open a PR referencing the request and merge once green.
+   Verify the [master candidate](../../../docs/release-candidates.md#master-candidates) contains the merge and keep the issue open.
+6. Show the operator the requester reply before posting.
+   Give the exact candidate, installation and restart instructions, and ask for revision, controls tested, visible results and untested areas.

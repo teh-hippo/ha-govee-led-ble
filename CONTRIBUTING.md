@@ -24,6 +24,7 @@ Profiles own product facts, Kaitai owns wire structure, and shared runtime opera
 - Kaitai schemas are the source of truth for BLE wire structure.  Generated protocol types carry wire differences into codecs; shared Python must not reconstruct or select raw structures by exact SKU.
 - Exact models are expected to expose distinct product facts and wire or semantic formats.
   Keep those differences in profiles, catalogues and narrow codecs selected through declared grammars or typed semantics, never as exact-model patches in shared execution.
+  Model names in declarations and codecs are not evidence of SKU-dependent shared execution.
 - Common code owns behaviour that has one contract across models.
   A shared capability must mean the same thing to every caller; adjacent facts with different consequences require separate fields rather than inferred compatibility.
 - Adding a new SKU should normally require only explicit product declarations, Kaitai evidence and the narrowest new codec needed to join existing shared capability paths.
@@ -79,17 +80,11 @@ Profiles own product facts, Kaitai owns wire structure, and shared runtime opera
 
 ### Evidence-led model work
 
-- Start each add, fix or audit from the maintainer-provided exact-SKU evidence brief when one exists.
-  Treat it as a navigation baseline, not a coverage limit: confirm active callers, revision selectors, command builders and recovery paths for the requested behaviour.
-- Record each conclusion's strength and scope.
-  Direct exact-model observations and active exact-model routes support defects and behaviour.
-  Shared routes require a demonstrated selector; conflicts, inferences and absent evidence remain explicit uncertainty.
-- A conflict between evidence paths is not proof that either runtime choice is wrong.
-  Record both paths and the missing revision, operation or capture needed to resolve it.
-  Deliberate policy and non-goals must not be reported as hardware limitations.
-- Prefer the smallest existing test set that exercises the selected route.
-  Widen to shared suites when the investigated path or correction affects equivalent capability combinations.
-- Preserve useful exact-model navigation discoveries in the private evidence brief so later work starts from the known route rather than repeating it.
+Use available evidence to confirm the active operation and revision; an issue, capture, starting brief or public source can provide the entry point.
+Distinguish evidence strength from the conclusion, and a software comparison from hardware confirmation.
+Record competing routes and the observation that would distinguish them.
+Keep private references out of the repository and public discussion.
+The [shared evidence method](.github/skills/govee-shared.md) covers model investigation and reporting.
 
 ### Identity qualification
 
@@ -250,7 +245,8 @@ The Makefile owns build orchestration:
 | Command | Purpose |
 | --- | --- |
 | `make bootstrap` | Install project-pinned tools and locked Python/frontend dependencies. |
-| `make protocol` | Generate protocol code after a fresh clone, new worktree or `.ksy` change. |
+| `make protocol` | Generate protocol code for backend tests or scene refresh in a fresh checkout, and after `.ksy` changes. |
+| `make fixtures` | Generate frontend contract fixtures when required. |
 | `make build` | Build protocol and frontend outputs. |
 | `make check-fast` | Run a broad non-hardware checkpoint: workflows, lint, generated outputs, fixtures and frontend/static contracts. |
 | `make check` | Completion gate, including independent generated-output verification, full Python branch coverage and mobile WebKit. |
@@ -338,7 +334,7 @@ Python Semantic Release owns versions, release commits, tags and notes from Conv
 | Stable | Operator runs `gh workflow run release.yml --ref master` on current validated `master`. |
 
 Manual `Release` defaults to stable; select `release_type=rc` for candidates.
-Use [major-version selection](docs/release-candidates.md#intentionally-starting-a-major-version) for explicit major releases.
+Use [major-version selection](docs/release-publication.md#intentionally-starting-a-major-version) for explicit major releases.
 
 Publication requires successful validation of exact current master.
 After master advances, wait for its checks and retry.
@@ -348,6 +344,6 @@ Tags and published releases remain immutable; stable publication alone moves Git
 
 Every release publishes a verified integration ZIP and SHA-256 checksum.
 GitHub CLI uploads assets through a draft, then publishes after successful upload.
-Recover failed publication at the same exact commit and tag using [release recovery](docs/release-candidates.md#recovering-a-failed-publication).
+Recover failed publication at the same exact commit and tag using [release recovery](docs/release-publication.md#recovering-a-failed-publication).
 
 Follow [release candidates](docs/release-candidates.md) for build inputs, Marketplace installation and hardware testing.

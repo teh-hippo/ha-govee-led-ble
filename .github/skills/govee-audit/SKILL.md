@@ -1,54 +1,27 @@
 ---
 name: govee-audit
 description: >-
-  Audit delivered Govee BLE support against the device evidence. Give it a SKU, an issue or a concern
-  in plain words: it builds the device brief and reports behavioural gaps, unjustified device-specific
-  handling and the shared design problems behind them.
+  Audit delivered Govee BLE behaviour, missing support and special treatment against device evidence.
 license: MIT
 ---
 
 # govee-audit
 
 Argument: one or more SKUs, an issue or a concern.
-Read `.github/skills/govee-shared.md` first.
+Use the [shared evidence method](../govee-shared.md).
 
-Goal: identify behavioural gaps and unjustified special treatment across every evidenced hardware/firmware revision.
+1. Set the scope: whole device across evidenced revisions, or the requested operation and affected contracts.
+   Severity filters findings, not which capability domains a whole-device audit considers.
+2. Compare active paths with evidence and [shared boundaries](../../../CONTRIBUTING.md#shared-core-and-product-boundaries).
+   Distinguish justified product facts and codecs from SKU-dependent decisions in shared execution, including indirect capability coupling.
+   Before confirming a defect, follow the active guard or owner, including any replacement path, and show why it does not uphold the contract.
+   Leave behaviour unchecked when that path cannot be established.
+3. Check available prerequisites before running the smallest tests that exercise the contract and revision boundaries.
+   Expand for shared callers or uncovered risks; a test need not name the SKU to be relevant.
+   In a read-only audit, use non-mutating checks with available outputs; report static-only coverage or unavailable comparisons explicitly.
+   Reserve `make check` for change acceptance.
+4. Report findings by owning cause and impact, justified differences, coverage and unchecked areas.
+   Distinguish software evidence from hardware qualification and propose the next discriminating check for conflicts.
 
-Read the evidence workspace README and exact-SKU starting brief before repository-wide discovery.
-Reuse an existing brief rather than rediscovering it; build or update it when absent or stale.
-Build the revision-aware device brief and compare it with Kaitai, profiles, catalogues and complete runtime paths.
-Run the exact-SKU selectors and directly affected shared contract tests first.
-For an exact-SKU audit, use the repository search to identify relevant test files, then select the SKU/revision cases; do not run every test in those files indiscriminately.
-Expand to shared suites only where the traced path is shared or the finding invalidates a broader contract.
-Classify failures as defects, missing tools or existing environment problems.
-Generate comparison bytes in a scratch copy.
-Include unimplemented in-scope capabilities and deliberately gated revisions, labelled as policy.
-Stop once the brief, each suspected finding and every unresolved hardware question are classified.
-Do not run `make check` for a read-only audit; reserve it for code-changing workflows.
-
-## Audit special treatment
-
-- Trace where identity affects behaviour, including indirect grammar checks, capability overrides, catalogue filters, defaults, fallback paths and device-named helpers.
-  Follow callers and recovery paths.
-- For each difference, determine whether it is an explicit product declaration, an evidenced wire or semantic distinction, or compensation for a shared design flaw.
-  Review authority, execution, optional-feature coupling and state ownership against `CONTRIBUTING.md`.
-- Compare equivalent capability combinations and entry points.
-  Determine whether a shared correction removes an exception while preserving explicit product contracts.
-- Challenge suspected findings against the evidence and current guards.
-  Findings require a demonstrated behavioural or structural problem.
-- Treat evidence conflicts and unqualified candidate paths as uncertainty or policy, not confirmed defects.
-  If implementation follows one credible path, explain that choice and preserve the alternative in the brief.
-
-## Report
-
-Group findings by root cause and rank by user impact and maintenance risk.
-Give each finding's behaviour, evidence, affected contracts/revisions, inadequate safeguards, owning layer and mitigation direction.
-Name the shared invariant to preserve and record justified special treatment separately.
-
-Mark each conclusion as **Captured**, **Exact route**, **Shared route**, **Public reference**, **Conflict**, **Inference** or **Policy/non-goal**.
-List confirmed defects separately from hardware questions, uncertainty, policy and possible non-goals.
-End with comparison coverage and unchecked areas.
-Keep private references in evidence notes.
-
-Standalone audits report findings for operator decisions.
-Within `govee-add`, close coupled findings and re-review invalidated contracts under `CONTRIBUTING.md`, preserving complete device scope.
+Standalone audits report findings without editing files or evidence notes.
+In `govee-add`, close and recheck coupled findings before acceptance.
