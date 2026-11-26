@@ -38,6 +38,7 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     SingleEffect,
 )
 from custom_components.ha_govee_led_ble.effect_runtime import EffectDeploymentEngine, compiled_observation
+from custom_components.ha_govee_led_ble.firmware_version import FirmwareVersion
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_scene_activation
 from custom_components.ha_govee_led_ble.h6102_capabilities import (
     H6102InitialIdentity,
@@ -86,7 +87,14 @@ def test_legacy_revision_operation_matrix(pact_code, firmware, colour, uploaded,
     assert profile.supports_scenes is colour
     assert profile.supports_music_mode is colour
     assert profile.supports_color_mode_readback is colour
-    assert profile.status_grammar == ("H6102-legacy" if colour else "H6102")
+    expected_status = (
+        "H6102"
+        if not colour
+        else "H6102-legacy"
+        if FirmwareVersion.parse(firmware) < FirmwareVersion((1, 3, 1))
+        else "H6102-intermediate"
+    )
+    assert profile.status_grammar == expected_status
     assert profile.diy_upload_transport == ("a1_02" if colour else None)
     assert profile.a1_diy_selector == (0xFE if colour else None)
     assert (profile.advanced_diy_selector is not None) is uploaded
@@ -476,6 +484,7 @@ def test_limit_and_pact1_static_conditions_are_independent():
     assert old.boolean_controls == {"gradual"} and new.boolean_controls == {"gradual", "limit"}
     extended = device_profile("H6102", 1, 1, hardware="1.00.03", firmware="1.06.00")
     assert extended.supports_rgb and extended.supports_color_temperature and not extended.supports_segments
+    assert extended.status_grammar == "H6125"
     assert extended.supports_scenes and extended.supports_custom_effects and extended.supports_advanced_effects
     assert len(extended.music_modes) == 4 and extended.a1_diy_selector == 0xFE
     assert extended.packet_write_delay == 0.1
