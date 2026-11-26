@@ -221,8 +221,9 @@ async def test_readable_static_effect_off_round_trip(
         elif packet[0] == 0xA3 and packet[1] == 0:
             upload_subtype = packet[4]
         elif packet[0] == 0xA3 and packet[1] == 0xFF:
-            assert upload_subtype is not None
-            coord._notify_callback(None, bytearray(frame(f"a3{upload_subtype:02x}00")))
+            subtype = coord.profile.effect_upload_ack_subtype or upload_subtype
+            assert subtype is not None
+            coord._notify_callback(None, bytearray(frame(f"a3{subtype:02x}00")))
         elif packet == build_power_query(profile=coord.profile):
             coord._notify_callback(None, bytearray(frame(f"aa01{int(physical['on']):02x}")))
         elif packet == build_brightness_query(profile=coord.profile) and physical["level"] is not None:
@@ -309,8 +310,9 @@ async def test_interrupted_write_only_controls_cannot_publish_rolled_back_baseli
         if packet[0] == 0xA3 and packet[1] == 0:
             upload_subtype = packet[4]
         elif packet[0] == 0xA3 and packet[1] == 0xFF:
-            assert upload_subtype is not None
-            coord._notify_callback(None, bytearray(frame(f"a3{upload_subtype:02x}00")))
+            subtype = coord.profile.effect_upload_ack_subtype or upload_subtype
+            assert subtype is not None
+            coord._notify_callback(None, bytearray(frame(f"a3{subtype:02x}00")))
 
     client.write_gatt_char.side_effect = radio
     await light.async_turn_on(rgb_color=(36, 72, 108), brightness=102)
