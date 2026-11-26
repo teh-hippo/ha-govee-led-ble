@@ -13,6 +13,7 @@ from typing import Any, Literal, assert_never, cast
 from .const import ModelProfile, get_profile, supported_effect_categories
 from .effect_catalogue import (
     diy_destination_range,
+    native_diy_template_available,
     native_diy_template_contract,
     requires_diy_destination_consent,
     validate_effect_eligibility,
@@ -358,16 +359,27 @@ def validate_compiled_geometry(
             require_compiled_geometry_authority(compiled, coordinator)
         if compiled.body_template_id is not None:
             contract = native_diy_template_contract(compiled.model, compiled.body_template_id)
-            supported = (
-                profile.supports_custom_effects
-                and contract is not None
-                and compiled.content_kind == "advanced"
-                and compiled.activation_mode is ActivationMode.CUSTOM
-                and compiled.selector_kind == ("scene" if contract.activation_selector is not None else "diy")
-                and (contract.activation_selector is None or compiled.diy_code == contract.activation_selector)
-                and compiled.upload_subtype == contract.upload_subtype
-                and compiled.body_effect_code == contract.body_effect
-            )
+            if contract is None:
+                supported = (
+                    profile.supports_custom_effects
+                    and native_diy_template_available(compiled.model, compiled.body_template_id)
+                    and (profile.effect_workflows is None or "advanced" in profile.effect_workflows)
+                    and compiled.content_kind == "advanced"
+                    and compiled.activation_mode is ActivationMode.CUSTOM
+                    and compiled.selector_kind == "scene"
+                    and compiled.diy_code == compiled.body_template_id
+                    and compiled.upload_subtype == int(SceneBody.SceneType.scene_v2)
+                )
+            else:
+                supported = (
+                    profile.supports_custom_effects
+                    and compiled.content_kind == "advanced"
+                    and compiled.activation_mode is ActivationMode.CUSTOM
+                    and compiled.selector_kind == ("scene" if contract.activation_selector is not None else "diy")
+                    and (contract.activation_selector is None or compiled.diy_code == contract.activation_selector)
+                    and compiled.upload_subtype == contract.upload_subtype
+                    and compiled.body_effect_code == contract.body_effect
+                )
         else:
             supported = (
                 profile.supports_scenes
@@ -1047,7 +1059,7 @@ def compile_scene_effect(
             or (content.native_diy is not None and validate_native_diy(content, model, profile))
             else None,
             upload_subtype=subtype,
-            body_template_id=content.native_diy if contract is not None else None,
+            body_template_id=content.native_diy,
             body_effect_code=contract.body_effect if contract is not None else None,
             rgbic_scene_v0=profile.rgbic_scene_v0,
         )

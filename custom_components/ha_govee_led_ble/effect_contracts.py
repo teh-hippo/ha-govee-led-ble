@@ -990,6 +990,15 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         _S.COORDINATOR_WRITER,
         _V.SELECTION_ONLY,
     ),
+    _capability(
+        "H1A42",
+        _W.ADVANCED,
+        "Native presets",
+        "advanced",
+        _R.HOME_ASSISTANT_CONTROL,
+        _S.MODEL_SCENE_ENGINE,
+        _V.SELECTION_ONLY,
+    ),
     *(
         _capability(
             "H61F5",

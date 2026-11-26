@@ -680,7 +680,11 @@ def _check_upload_packet(frame: bytes, profile: ModelProfile) -> bool:
                     and any(subtype == 1 for _, subtype, _ in profile.workshop_carriers),
                     2: profile.supports_scenes
                     and (2 in scene_types or any(subtype == 2 for _, subtype, _ in profile.shared_scene_carriers))
-                    or profile.supports_advanced_effects
+                    or (
+                        profile.supports_advanced_effects
+                        or profile.effect_workflows is not None
+                        and "advanced" in profile.effect_workflows
+                    )
                     or profile.command_grammar == "H7020",
                     3: profile.supports_custom_effects
                     and profile.effect_workflows is not None

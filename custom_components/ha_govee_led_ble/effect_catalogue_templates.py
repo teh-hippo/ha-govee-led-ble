@@ -368,6 +368,11 @@ def _rgbic_native_templates(preset_ic_count: int) -> tuple[CatalogueTemplate, ..
 H6102_NATIVE_DIY_TEMPLATES: Final = _rgbic_native_templates(60)
 H6125_NATIVE_DIY_TEMPLATES: Final = _rgbic_native_templates(50)
 H6117_NATIVE_DIY_TEMPLATES: Final = _rgbic_native_templates(50)
+H1A42_NATIVE_DIY_TEMPLATES: Final = tuple(
+    template
+    for template in _rgbic_native_templates(12)
+    if isinstance(template.content, LayeredEffect) and template.content.native_diy in {501, 502, 504, 505, 506}
+)
 H61E5_NATIVE_DIY_TEMPLATES: Final = _rgbic_native_templates(36)
 H617C_NATIVE_DIY_TEMPLATES: Final = _rgbic_native_templates(30)
 H619A_NATIVE_DIY_TEMPLATES: Final = _rgbic_native_templates(20)

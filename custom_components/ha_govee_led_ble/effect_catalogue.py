@@ -445,6 +445,14 @@ def native_diy_template_contract(model: str, template_id: int | None) -> NativeD
     )
 
 
+def native_diy_template_available(model: str, template_id: int) -> bool:
+    catalogue = MODEL_EFFECT_CATALOGUES.get(model)
+    return catalogue is not None and any(
+        isinstance(template.content, LayeredEffect) and template.content.native_diy == template_id
+        for template in catalogue.templates
+    )
+
+
 def requires_diy_destination_consent(model: str) -> bool:
     return release_selector_policy(model) is SelectorPolicy.APPROVED_DISPOSABLE
 
