@@ -2288,7 +2288,7 @@ def _verification_expectations(
             "is_on": True,
             "scene_code": scene_code,
         }
-        if scene_code_is_ambiguous(coordinator.model, scene_code):
+        if scene_code_is_ambiguous(coordinator.model, scene_code, profile=coordinator.profile):
             scene_expectations["effect"] = canonical_scene_key(coordinator.model, request.scene.key)
         return scene_expectations
     return None if compiled is None else compiled_observation(compiled, profile=coordinator.profile)[0]

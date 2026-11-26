@@ -4,6 +4,7 @@ meta:
   endian: le
   imports:
     - ../h6199_status_reply
+    - ../h6199_diy_selector
     - h6199_pact1_wire_write
     - govee_rgb_segment_page
 doc: |
@@ -39,6 +40,7 @@ enums:
     0xa2: legacy_segments
   mode_sel:
     0x04: scene
+    0x0a: diy
     0x0b: static_colour
     0x0c: music
 types:
@@ -53,4 +55,5 @@ types:
           switch-on: mode
           cases:
             'mode_sel::scene': h6199_status_reply::scene_state
+            'mode_sel::diy': h6199_diy_selector::diy_selector
             'mode_sel::music': h6199_pact1_wire_write::music_body

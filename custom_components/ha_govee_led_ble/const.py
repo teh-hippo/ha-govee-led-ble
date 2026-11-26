@@ -2920,7 +2920,6 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         music_requires_upload_ack=True,
         music_params_require_activation=True,
         supports_music_color=True,
-        scene_identity_fields=frozenset({"fw_version", "hw_version"}),
         supports_advanced_effects=True,
         supports_multi_layered_effects=True,
         effect_workflows=frozenset({"native_scenes", "painted", "single", "multi", "native_music", "advanced"}),
@@ -3000,7 +2999,6 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         music_requires_upload_ack=True,
         music_params_require_activation=True,
         supports_music_color=True,
-        scene_identity_fields=frozenset({"fw_version", "hw_version"}),
         scene_command_versions=frozenset({0, 1}),
         rgbic_scene_v0=False,
         physical_ic_count=50,
@@ -4339,7 +4337,7 @@ MODEL_REVISION_POLICY_REGISTRATIONS = (
     ModelRevisionPolicyRegistration("H6046", "standard_pacts"),
     ModelRevisionPolicyRegistration("H607C", "h607c"),
     ModelRevisionPolicyRegistration("H6097", "standard_pacts"),
-    ModelRevisionPolicyRegistration("H61E5", "h61e5"),
+    ModelRevisionPolicyRegistration("H61E5", "standard_pacts"),
     ModelRevisionPolicyRegistration("H7020", "standard_pacts"),
     ModelRevisionPolicyRegistration("H60A1", "h60a1"),
     ModelRevisionPolicyRegistration("H60A6", "h60a6"),
@@ -5499,27 +5497,8 @@ def _h60a6_revision_policy(context: ModelRevisionContext) -> ModelProfile:
     return profile
 
 
-def _h61_scene_revision_profile(context: ModelRevisionContext) -> ModelProfile:
-    profile = get_profile(context.model)
-    fw, hw = FirmwareVersion.parse(context.firmware), FirmwareVersion.parse(context.hardware)
-    modern_firmware = fw is not None and fw >= FirmwareVersion((1, 6))
-    return replace(
-        profile,
-        scene_command_versions=frozenset({0, 1})
-        if modern_firmware and hw is not None and hw >= FirmwareVersion((1, 0, 2))
-        else frozenset({0}),
-        rgbic_scene_v0=not modern_firmware or hw is None or hw < FirmwareVersion((1, 0, 3)),
-    )
-
-
-def _h61e5_revision_policy(context: ModelRevisionContext) -> ModelProfile:
-    if (context.pact_type, context.pact_code) not in _STANDARD_PACTS:
-        return _basic_revision_profile(get_profile(context.model))
-    return _h61_scene_revision_profile(context)
-
-
 def _h61f5_revision_policy(context: ModelRevisionContext) -> ModelProfile:
-    profile = _h61_scene_revision_profile(context)
+    profile = get_profile(context.model)
     return (
         replace(profile, color_temp_range=KELVIN_RANGE_1000_10000)
         if (context.pact_type, context.pact_code) == (4, 1)
@@ -5724,7 +5703,6 @@ _MODEL_REVISION_POLICIES: Mapping[str, Callable[[ModelRevisionContext], ModelPro
     "h607c": _h607c_revision_policy,
     "h60a1": _h60a1_revision_policy,
     "h60a6": _h60a6_revision_policy,
-    "h61e5": _h61e5_revision_policy,
     "h61f5": _h61f5_revision_policy,
     "goods_type_70_scene": _goods_type_70_scene_revision_policy,
     "h617a": _h617a_revision_policy,

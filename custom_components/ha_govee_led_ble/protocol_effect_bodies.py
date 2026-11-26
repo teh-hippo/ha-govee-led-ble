@@ -156,8 +156,11 @@ def _complete_a3_upload(
             envelope = reassemble_a3(packets[start : index + 1])
             if ack_grammar == "H6199":
                 upload = parse_a3_effect_envelope(envelope, model, profile=active_profile)
-                if upload.kind != H6199EffectUpload.BodyKind.diy or upload.chunk_count != upload.diy_chunk_count:
-                    raise ValueError("Upload ACK is qualified only for the H6199 palette DIY body")
+                if upload.kind == H6199EffectUpload.BodyKind.diy:
+                    if upload.chunk_count != upload.diy_chunk_count:
+                        raise ValueError("H6199 palette DIY upload is incomplete")
+                elif int(upload.kind) not in (active_profile.scene_upload_subtypes or frozenset()):
+                    raise ValueError("A3 upload ACK is outside profile capabilities")
             return int(frame.body.subtype), envelope
     raise ValueError("Upload ACK index must end a complete A3 upload")
 

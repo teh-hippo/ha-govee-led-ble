@@ -2943,6 +2943,17 @@ class GoveeBLECoordinator(
         def qualify_geometry(profile: ModelProfile) -> ModelProfile:
             if profile.segment_count_ic_divisor is not None and not self._physical_ic_count_confirmed:
                 return replace(profile, physical_ic_count=None)
+            if (
+                profile.segment_count_ic_divisor is not None
+                and self._physical_ic_count_confirmed
+                and self.profile.physical_ic_count is not None
+            ):
+                declared = get_profile(self.model)
+                return profile_with_physical_ic_count(
+                    profile,
+                    self.profile.physical_ic_count,
+                    segment_count_ceiling=declared.segment_count_capacity or declared.segment_count,
+                )
             return profile
 
         if get_profile(self.model).reconciles_marker_pact and self._pact_identity.conflict:
@@ -4956,7 +4967,7 @@ class GoveeBLECoordinator(
         ):
             return False
         scene_code = expectations.get("scene_code")
-        if scene_code is not None and scene_code_is_ambiguous(self.model, scene_code):
+        if scene_code is not None and scene_code_is_ambiguous(self.model, scene_code, profile=self.profile):
             # Catalogue names are derived from this same selector, not independent readback.
             return None
         return all(

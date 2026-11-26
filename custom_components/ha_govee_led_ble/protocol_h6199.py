@@ -114,14 +114,9 @@ def build_h6199_pact1_palette_diy(
     content.variant = variant
     content.speed = speed
     content.palette_len = len(palette) * 3
-    content.palette = []
-    for colour in palette:
-        entry = _child(H6199EffectUpload.Pact1PaletteEntry, content)
-        entry.colour = new_rgb(entry, colour)
-        entry.reserved = b"\0"
-        content.palette.append(entry)
+    content.palette = [new_rgb(content, colour) for colour in palette]
     check_generated_tree(content)
-    body = _write(content, 5 + 4 * len(palette))
+    body = _write(content, 5 + 3 * len(palette))
     return fragment_a1_02(body)
 
 

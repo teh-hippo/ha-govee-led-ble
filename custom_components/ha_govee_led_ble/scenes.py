@@ -347,10 +347,12 @@ def scene_key_for_code(
     profile = MODEL_PROFILES.get(model) if profile is None else profile
     if profile is None or profile.scene_catalogue_sku is None:
         return None
-    for key, scene in MODEL_SCENES.get(profile.scene_catalogue_sku, {}).items():
-        if scene_supported(scene, profile) and scene_selector_code(model, scene, profile=profile) == code:
-            return key
-    return None
+    matches = tuple(
+        key
+        for key, scene in MODEL_SCENES.get(profile.scene_catalogue_sku, {}).items()
+        if scene_supported(scene, profile) and scene_selector_code(model, scene, profile=profile) == code
+    )
+    return matches[0] if len(matches) == 1 else None
 
 
 # H617A protocol and service lookups use the legacy unhyphenated variant names.
@@ -467,11 +469,12 @@ def resolve_scene_code(
     )
 
 
-def scene_code_is_ambiguous(model: str, scene_code: int) -> bool:
+def scene_code_is_ambiguous(model: str, scene_code: int, *, profile: ModelProfile | None = None) -> bool:
+    profile = MODEL_PROFILES[model] if profile is None else profile
     exact_keys = {
         key
         for key, entry in OFFICIAL_MODEL_SCENES.get(model, {}).items()
-        if scene_selector_code(model, entry) == scene_code
+        if scene_supported(entry, profile) and scene_selector_code(model, entry, profile=profile) == scene_code
     }
     legacy_model = MODEL_PROFILES[model].legacy_scene_catalogue_sku
     legacy_keys = {
@@ -479,7 +482,7 @@ def scene_code_is_ambiguous(model: str, scene_code: int) -> bool:
         for key, entry in MODEL_SCENES.get(legacy_model or "", {}).items()
         if entry.code == scene_code
     }
-    return bool(exact_keys and legacy_keys and exact_keys != legacy_keys)
+    return len(exact_keys) > 1 or bool(exact_keys and legacy_keys and exact_keys != legacy_keys)
 
 
 def legacy_scene_entries(model: str, scene_key: str) -> tuple[SceneEntry, ...]:
