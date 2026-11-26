@@ -2,7 +2,7 @@
 uv = "0.13.9"
 node = "26.13.1"
 actionlint = "1.7.12"
-zizmor = "1.32.0"
+zizmor = "1.33.1"
 "npm:typescript-language-server" = "6.1.0"
 # Official compiler used only to generate and verify committed Python protocol modules.
 "github:kaitai-io/kaitai_struct_compiler" = "0.11"
