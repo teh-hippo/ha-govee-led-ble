@@ -414,6 +414,56 @@ async def test_h600a_scene_and_diy_ack_barrier(selection_ready, kind, response):
     assert c._ensure_connected.await_count == 1
 
 
+@pytest.mark.parametrize("connected", ["H601C"], indirect=True)
+@pytest.mark.parametrize("response", ["accepted", "rejected", "missing"])
+async def test_h601c_production_upload_waits_for_positive_ack_before_selector(selection_ready, response):
+    c, client = selection_ready
+    c.is_on = True
+    compiled = compile_effect(
+        LibraryItem.new("H601C upload", SingleEffect(0, 0, 50, ((1, 2, 3),))),
+        c.model,
+        diy_code=24,
+        profile=c.profile,
+    )
+    final_upload = len(compiled.upload_packets) - 1
+    assert upload_ack_subtype(compiled.upload_packets, final_upload, c.model, profile=c.profile) == 0x04
+    assert compiled.activation_packet == frame("33050a1800")
+    uploaded = asyncio.Event()
+    verdict_delivered = False
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet == compiled.upload_packets[-1]:
+            uploaded.set()
+        if packet == compiled.activation_packet:
+            assert response == "accepted"
+            assert verdict_delivered
+
+    client.write_gatt_char.side_effect = write
+    task = asyncio.create_task(
+        c.async_write_effect_sequence(
+            compiled.packets,
+            intent=ControlIntent.APPLY,
+            require_upload_ack=c.profile.diy_requires_upload_ack,
+            upload_ack_index=final_upload,
+        )
+    )
+    await asyncio.wait_for(uploaded.wait(), 1)
+    assert c._upload_ack is not None
+    assert compiled.activation_packet not in [call.args[1] for call in client.write_gatt_char.await_args_list]
+    if response != "missing":
+        verdict_delivered = True
+        receive(client, frame(f"a304{'00' if response == 'accepted' else '01'}"))
+    if response == "accepted":
+        await asyncio.wait_for(task, 1)
+    else:
+        with pytest.raises((RuntimeError, TimeoutError)):
+            await asyncio.wait_for(task, 1)
+    sent = [call.args[1] for call in client.write_gatt_char.await_args_list]
+    assert sent == list(compiled.packets if response == "accepted" else compiled.upload_packets)
+    assert c._upload_ack is None
+    assert c._ensure_connected.await_count == 1
+
+
 @pytest.mark.parametrize("connected", ["H6139", "H6159", "H6181"], indirect=True)
 @pytest.mark.parametrize("kind,pact", [("diy", (None, None)), ("diy", (10, 2)), ("scene", (10, 2))])
 @pytest.mark.parametrize("response", ["accepted", "rejected", "missing"])

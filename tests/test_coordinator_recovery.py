@@ -197,9 +197,10 @@ async def test_readable_static_effect_off_round_trip(
     monkeypatch.setattr(coord, "_renew_foreground_lease", lambda: None)
     physical = {"on": initially_on, "level": None, "rgb": None, "kelvin": None, "mode": None}
     selector_failed = False
+    upload_subtype = None
 
     async def radio(_uuid, packet, **_kwargs):
-        nonlocal selector_failed
+        nonlocal selector_failed, upload_subtype
         if packet[:2] == b"\x33\x01":
             physical["on"] = bool(packet[2])
         elif packet[:2] == b"\x33\x04":
@@ -217,6 +218,11 @@ async def test_readable_static_effect_off_round_trip(
             if retry_selector and not selector_failed:
                 selector_failed = True
                 raise BleakError("Connection lost during selector delivery")
+        elif packet[0] == 0xA3 and packet[1] == 0:
+            upload_subtype = packet[4]
+        elif packet[0] == 0xA3 and packet[1] == 0xFF:
+            assert upload_subtype is not None
+            coord._notify_callback(None, bytearray(frame(f"a3{upload_subtype:02x}00")))
         elif packet == build_power_query(profile=coord.profile):
             coord._notify_callback(None, bytearray(frame(f"aa01{int(physical['on']):02x}")))
         elif packet == build_brightness_query(profile=coord.profile) and physical["level"] is not None:
@@ -293,11 +299,18 @@ async def test_interrupted_write_only_controls_cannot_publish_rolled_back_baseli
     monkeypatch.setattr(light, "_async_supersede_preview", AsyncMock())
     sent, resume, queued = asyncio.Event(), asyncio.Event(), asyncio.Event()
     pause = False
+    upload_subtype = None
 
     async def radio(_uuid, packet, **_kwargs):
+        nonlocal upload_subtype
         if pause and packet[:2] == (b"\x33\x04" if field == "brightness_pct" else b"\x33\x01"):
             sent.set()
             await resume.wait()
+        if packet[0] == 0xA3 and packet[1] == 0:
+            upload_subtype = packet[4]
+        elif packet[0] == 0xA3 and packet[1] == 0xFF:
+            assert upload_subtype is not None
+            coord._notify_callback(None, bytearray(frame(f"a3{upload_subtype:02x}00")))
 
     client.write_gatt_char.side_effect = radio
     await light.async_turn_on(rgb_color=(36, 72, 108), brightness=102)
