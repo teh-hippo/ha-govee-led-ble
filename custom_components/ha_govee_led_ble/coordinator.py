@@ -975,7 +975,17 @@ class GoveeBLECoordinator(
                 profile = replace(profile, physical_ic_count=self.profile.physical_ic_count)
             if profile.configured_string_counts and self.configured_strings in profile.configured_string_counts:
                 bulbs = self.configured_strings * profile.bulbs_per_string
-                profile = replace(profile, segment_count=bulbs)
+                profile = replace(
+                    profile,
+                    segment_count=bulbs,
+                    physical_ic_count=bulbs
+                    if profile.configured_string_scene_geometry and self._configured_strings_confirmed
+                    else (
+                        self.profile.physical_ic_count
+                        if profile.configured_string_scene_geometry
+                        else profile.physical_ic_count
+                    ),
+                )
         reset_equal_identity = _equal_profile_requires_identity_reset(
             profile, identity_changed=identity_changed, preserve_state=preserve_state
         )
@@ -2941,6 +2951,8 @@ class GoveeBLECoordinator(
         """Read the last reconciled capabilities without changing coordinator state."""
 
         def qualify_geometry(profile: ModelProfile) -> ModelProfile:
+            if profile.configured_string_scene_geometry and not self._configured_strings_confirmed:
+                return replace(profile, physical_ic_count=None)
             if profile.segment_count_ic_divisor is not None and not self._physical_ic_count_confirmed:
                 return replace(profile, physical_ic_count=None)
             if (
@@ -3026,23 +3038,35 @@ class GoveeBLECoordinator(
     def _apply_configured_strings(self, count: int) -> None:
         if count not in self.profile.configured_string_counts:
             raise ValueError("unsupported configured string count")
-        if self.configured_strings == count:
+        bulbs = count * self.profile.bulbs_per_string
+        if self.configured_strings == count and (
+            not self.profile.configured_string_scene_geometry or self.profile.physical_ic_count == bulbs
+        ):
             return
+        changed_layout = self.configured_strings != count
         self.configured_strings = count
         self._configured_strings_confirmed = False
-        bulbs = count * self.profile.bulbs_per_string
-        self.profile = replace(self.profile, segment_count=bulbs)
+        self.profile = replace(
+            self.profile,
+            segment_count=bulbs,
+            physical_ic_count=bulbs
+            if self.profile.configured_string_scene_geometry
+            else self.profile.physical_ic_count,
+        )
         self._advance_profile_generation()
         self._expected_state.clear()
         self._segment_query_generation = None
         self._segment_groups_observed.clear()
         self._segment_query_colors = self._segment_query_brightness = None
-        self.segment_colors = [(255, 255, 255)] * bulbs
-        self.segment_brightness = [100] * bulbs
+        if changed_layout:
+            self.segment_colors = [(255, 255, 255)] * bulbs
+            self.segment_brightness = [100] * bulbs
+            self.segment_kelvin = [None] * bulbs
+            self.segment_brightness_known = [False] * bulbs
+            self.segment_state_source = "initial"
+            self.segment_state_observed_at = None
         self.segment_brightness_readable = False
         self._static_rgb_known = False
-        self.segment_state_source = "initial"
-        self.segment_state_observed_at = None
         self.color_temp_kelvin = None
         self.rgb_color_source = self.color_temp_kelvin_source = "initial"
         self.color_temp_unknown = False

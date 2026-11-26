@@ -438,6 +438,7 @@ class _ActiveModeMixin(_CoordinatorBase):
         from .effect_compiler import require_native_scenes
         from .effect_domain import BuiltinScene
         from .layered_scene import CatalogueRef
+        from .native_scenes import native_scene_uses_geometry
 
         if scene_entry is None:
             scene_name = canonical_scene_key(self.model, scene_name)
@@ -449,7 +450,11 @@ class _ActiveModeMixin(_CoordinatorBase):
         content = BuiltinScene(CatalogueRef(self.model, scene.scene_id, scene.effect_id))
         profile = await async_prepare_effect_profile(self, intent=intent, content=content)
         route = (profile.command_grammar, profile.effect_grammar, profile.selector_only_scene_bits)
-        prepared_body = scene.scene_type == 2 and profile.rgbic_scene_v0 is not None
+        prepared_body = native_scene_uses_geometry(scene, profile)
+        geometry_authority = (
+            self._notification_token,
+            self._profile_generation,
+        )
 
         def qualified() -> None:
             self._reconcile_authorization()
@@ -460,7 +465,11 @@ class _ActiveModeMixin(_CoordinatorBase):
                 raise ValueError("Device scene route changed during scene preparation")
             if prepared_body and profile.rgbic_scene_v0 != current.rgbic_scene_v0:
                 raise ValueError("RGBIC scene format changed during scene preparation")
-            if prepared_body and profile.physical_ic_count != current.physical_ic_count:
+            if prepared_body and (
+                geometry_authority != (self._notification_token, self._profile_generation)
+                or (profile.configured_string_scene_geometry and not self._configured_strings_confirmed)
+                or profile.physical_ic_count != current.physical_ic_count
+            ):
                 raise ValueError("RGBIC scene geometry changed during scene preparation")
 
         qualified()

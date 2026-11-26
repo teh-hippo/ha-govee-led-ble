@@ -108,7 +108,7 @@ from .music_protocol import music_code_for
 from .music_semantics import music_variant
 from .native_profile_controls import ResidentVideoSelection, async_prepare_video_mode, async_require_video_controls
 from .native_profile_controls import apply_active_video_mode as apply_active_video_mode
-from .native_scenes import build_native_scene_packets
+from .native_scenes import build_native_scene_packets, native_scene_uses_geometry
 from .scenes import (
     MODEL_SCENE_ALIASES,
     MODEL_SCENE_LABELS,
@@ -914,7 +914,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             ) from exc
         if selected is not None and selected.source == "scene":
             scene = MODEL_SCENES[coordinator.model][selected.value]
-            if scene_command_identity_fields(coordinator.model, scene):
+            if scene_command_identity_fields(coordinator.model, scene) or native_scene_uses_geometry(scene, profile):
                 profile = await async_prepare_effect_profile(
                     coordinator,
                     intent=ControlIntent.BACKGROUND,
