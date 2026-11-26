@@ -47,7 +47,7 @@ RIGHT = LightSource("right_bar", "right_bar_enabled", (6, 7, 8, 9, 10))
         ("H607C", (None, None), False, {ColorMode.ONOFF}),
         ("H60B2", (1, 1), True, {ColorMode.RGB, ColorMode.COLOR_TEMP}),
         ("H60B2", (None, None), True, {ColorMode.RGB, ColorMode.COLOR_TEMP}),
-        ("H60A6", (1, 2), True, {ColorMode.RGB, ColorMode.COLOR_TEMP}),
+        ("H60A6", (1, 2), True, {ColorMode.RGB}),
         ("H60A6", (1, 1), True, {ColorMode.BRIGHTNESS}),
         ("H60A6", (None, None), False, {ColorMode.ONOFF}),
     ],
@@ -405,9 +405,9 @@ async def test_h60a6_panel_brightness_does_not_invent_ring_brightness(source_coo
     coordinator.brightness_pct = 75
     panel = GoveeBLESourceLight(coordinator, "panel")
     ring = GoveeBLESourceLight(coordinator, "ring")
-    assert panel.supported_color_modes == {ColorMode.RGB, ColorMode.COLOR_TEMP}
+    assert panel.supported_color_modes == {ColorMode.RGB}
     assert panel.brightness == 191 and panel.assumed_state
-    assert ring.supported_color_modes == {ColorMode.RGB, ColorMode.COLOR_TEMP}
+    assert ring.supported_color_modes == {ColorMode.RGB}
     assert ring.brightness is None
     await panel.async_turn_on(brightness=128)
     packet = coordinator.send_command.await_args.args[0]
@@ -460,7 +460,7 @@ async def test_h60a6_panel_colour_uses_only_the_panel_segment(source_coordinator
 async def test_h60a6_source_kelvin_keeps_the_sibling_out_of_the_write_mask(source_coordinator, key, mask):
     coordinator = source_coordinator
     coordinator.model = "H60A6"
-    coordinator.profile = device_profile("H60A6", 1, 2)
+    coordinator.profile = device_profile("H60A6", 1, 3)
     coordinator.boolean_control_state = {"panel_enabled": True, "ring_enabled": True}
     source = GoveeBLESourceLight(coordinator, key)
     await source.async_turn_on(color_temp_kelvin=4000)
@@ -827,8 +827,8 @@ async def test_native_kelvin_survives_non_table_palette_and_recovery_projection(
 @pytest.mark.parametrize("failure", [TimeoutError, asyncio.CancelledError])
 async def test_failed_masked_colour_write_preserves_untouched_source_intent(hass, failure):
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H60A6", configuration_url=None)
-    coordinator.pact_type, coordinator.pact_code = 1, 2
-    coordinator.profile = device_profile("H60A6", 1, 2)
+    coordinator.pact_type, coordinator.pact_code = 1, 3
+    coordinator.profile = device_profile("H60A6", 1, 3)
     colour = table_kelvin_rgb(4000)
     coordinator.segment_colors = [colour] * 13
     coordinator.segment_state_source = "observed"

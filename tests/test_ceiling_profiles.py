@@ -87,7 +87,7 @@ def test_geometry_requires_positive_revision_evidence(model, pact, hardware, fir
     assert p.supports_segments is segmented
     assert p.supports_rgb is (segmented or legacy_colour)
     assert p.supports_color_temperature is (segmented or legacy_colour)
-    expected_seg_kelvin = segmented and model == "H60A6"
+    expected_seg_kelvin = segmented and model == "H60A6" and pact != (1, 2)
     assert p.supports_segment_color_temperature is expected_seg_kelvin
     assert p.can_read(ReadDomain.SEGMENTS) is segmented
     assert p.segment_count == (14 if model == "H60A1" else 1 if pact == (1, 1) else 13)
@@ -116,6 +116,17 @@ def test_geometry_requires_positive_revision_evidence(model, pact, hardware, fir
             build_color_temp(4000, model, profile=p)
         with pytest.raises(ValueError, match="per-segment"):
             build_segment_color([1], 1, 2, 3, model, profile=p)
+
+
+def test_h60a6_pact_kelvin_profile_boundary_preserves_sibling_controls():
+    pact_1_2 = device_profile("H60A6", 1, 2)
+    pact_1_3 = device_profile("H60A6", 1, 3)
+    pact_1_4 = device_profile("H60A6", 1, 4)
+
+    assert pact_1_2.supports_segments and pact_1_2.supports_rgb and pact_1_2.supports_color_temperature
+    assert not pact_1_2.supports_segment_color_temperature
+    assert pact_1_3.supports_segments and pact_1_3.supports_rgb and pact_1_3.supports_color_temperature
+    assert pact_1_3.supports_segment_color_temperature and pact_1_4.supports_segment_color_temperature
 
 
 @pytest.mark.parametrize(
