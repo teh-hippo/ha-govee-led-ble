@@ -760,7 +760,7 @@ async def test_options_flow_exposes_connection_mode_for_readable_models(
         assert {"scenes", "effects", "multi_layered"} <= set(fields)
 
 
-async def test_options_flow_does_not_offer_hold_without_readable_state(hass: HomeAssistant, monkeypatch):
+async def test_options_flow_offers_hold_for_readable_h601c(hass: HomeAssistant, monkeypatch):
     entry = MockConfigEntry(domain=DOMAIN, data={CONF_MODEL: "H601C"}, unique_id=SVC_H6076.address)
     entry.add_to_hass(hass)
 
@@ -770,7 +770,8 @@ async def test_options_flow_does_not_offer_hold_without_readable_state(hass: Hom
     schema = result["data_schema"]
     assert schema is not None
     fields = [marker.schema for marker in schema.schema]
-    assert CONF_CONNECTION_MODE not in fields
+    assert fields[0] == CONF_CONNECTION_MODE
+    assert schema({})[CONF_CONNECTION_MODE] == CONNECTION_MODE_RELEASE
     with patch.object(hass.config_entries, "async_schedule_reload"):
         saved = await hass.config_entries.options.async_configure(
             result["flow_id"],
@@ -784,7 +785,7 @@ async def test_options_flow_does_not_offer_hold_without_readable_state(hass: Hom
             },
         )
     assert saved["type"] is FlowResultType.CREATE_ENTRY
-    assert CONF_CONNECTION_MODE not in saved["data"]
+    assert saved["data"][CONF_CONNECTION_MODE] == CONNECTION_MODE_RELEASE
 
     monkeypatch.setitem(
         MODEL_PROFILES,
@@ -796,9 +797,11 @@ async def test_options_flow_does_not_offer_hold_without_readable_state(hass: Hom
             supports_multi_layered_effects=False,
         ),
     )
-    aborted = await hass.config_entries.options.async_init(entry.entry_id)
-    assert aborted["type"] is FlowResultType.ABORT
-    assert aborted["reason"] == "no_options"
+    connection_only = await hass.config_entries.options.async_init(entry.entry_id)
+    assert connection_only["type"] is FlowResultType.FORM
+    connection_schema = connection_only["data_schema"]
+    assert connection_schema is not None
+    assert [marker.schema for marker in connection_schema.schema] == [CONF_CONNECTION_MODE]
 
 
 async def test_reconfigure_h6076_preserves_entry_identity(hass: HomeAssistant):

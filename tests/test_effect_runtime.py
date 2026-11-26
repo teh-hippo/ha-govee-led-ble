@@ -90,7 +90,7 @@ from custom_components.ha_govee_led_ble.light_commands import build_color_rgb
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
 from custom_components.ha_govee_led_ble.transport import WRITE_UUID, xor_checksum
 from custom_components.ha_govee_led_ble.video_applicability import video_identity_fields
-from tests.coordinator_test_support import approve_diy_destination_operation
+from tests.coordinator_test_support import approve_diy_destination_operation, frame
 from tests.storage_test_double import InMemoryVersionedDocumentStore
 from tests.test_effect_preview import _EffectCoordinator, _manager, _open
 from tests.test_music_commands import _music_transport
@@ -2762,7 +2762,7 @@ async def test_h6181_music_is_applied_without_claiming_unavailable_selector_veri
         assert coordinator.music_mode == "off" and coordinator._music_body is None
 
 
-async def test_write_only_h601c_deployment_installs_optimistic_state_without_rollback_writes(
+async def test_readable_h601c_deployment_installs_optimistic_state_without_rollback_writes(
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2774,11 +2774,34 @@ async def test_write_only_h601c_deployment_installs_optimistic_state_without_rol
     coordinator.is_on = True
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
     coordinator._client = client
+    coordinator._notification_token = object()
+    coordinator._notify_started_monotonic = 0
     monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
     monkeypatch.setattr(coordinator, "_renew_foreground_lease", lambda: None)
+    mode = bytes.fromhex("0d0a141e000000000000")
+
+    async def respond(_uuid, packet, **_kwargs):
+        nonlocal mode
+        if packet[:3] == b"\x33\x05\x0d":
+            mode = packet[2:11]
+        elif packet[:3] in {b"\x33\x05\x04", b"\x33\x05\x0a"}:
+            mode = packet[2:5]
+        replies = {
+            0x01: "aa0101",
+            0x04: "aa0432",
+        }
+        if packet[:1] == b"\xaa" and (reply := replies.get(packet[1])) is not None:
+            coordinator._notify_callback(None, bytearray(frame(reply)))
+        elif packet[:2] == b"\xaa\x05":
+            coordinator._notify_callback(None, bytearray(frame("aa05" + mode.hex())))
+
+    client.write_gatt_char.side_effect = respond
     await coordinator.send_command(build_power(True, coordinator.model))
     await coordinator.send_command(build_brightness(50, coordinator.model))
     await coordinator.send_command(build_color_rgb(10, 20, 30, coordinator.model))
+    coordinator._notify_callback(None, bytearray(frame("aa0101")))
+    coordinator._notify_callback(None, bytearray(frame("aa0432")))
+    coordinator._notify_callback(None, bytearray(frame("aa050d0a141e000000000000")))
     client.write_gatt_char.reset_mock()
     item = _type04_item()
     compiled = compile_generic_diy(item, 24, model="H601C")
@@ -2791,14 +2814,16 @@ async def test_write_only_h601c_deployment_installs_optimistic_state_without_rol
         updated_at="2026-08-11T00:00:00Z",
     )
 
-    assert result.phase is DeploymentPhase.APPLIED
+    assert result.phase is DeploymentPhase.CONFIRMED
     assert result.error_code is None
-    assert [call.args[1] for call in client.write_gatt_char.await_args_list] == list(compiled.packets)
+    assert [
+        call.args[1] for call in client.write_gatt_char.await_args_list if not call.args[1].startswith(b"\xaa")
+    ] == list(compiled.packets)
     assert coordinator.active_mode == "custom"
     assert coordinator.diy_code == 24
     assert active_workspaces.get("entry-a") is None
     observed = cache.get("entry-a")
-    assert observed is not None and observed.confidence is ObservationConfidence.WRITE_COMPLETED
+    assert observed is not None and observed.confidence is ObservationConfidence.ACTIVATION_MATCH
     assert observed.active_effect is not None and observed.active_effect.item_id == item.id
 
     snapshot_item = LibraryItem.new("Draft Jump", SingleEffect(1, 0, 60, ((0, 0, 255),)))
@@ -2808,10 +2833,10 @@ async def test_write_only_h601c_deployment_installs_optimistic_state_without_rol
         config_entry_id="entry-a",
         updated_at="2026-08-11T00:01:00Z",
     )
-    assert snapshot_result.phase is DeploymentPhase.APPLIED
+    assert snapshot_result.phase is DeploymentPhase.CONFIRMED
     workspace = active_workspaces.get("entry-a")
     assert workspace is not None and workspace.selector_label == "Draft Jump"
-    assert workspace.confidence is ObservationConfidence.WRITE_COMPLETED
+    assert workspace.confidence is ObservationConfidence.ACTIVATION_MATCH
 
 
 async def test_h6199_is_rejected_before_any_write(hass: HomeAssistant) -> None:

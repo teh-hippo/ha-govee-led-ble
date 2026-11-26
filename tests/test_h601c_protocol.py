@@ -357,3 +357,61 @@ def test_h600a_kelvin_grid_and_whole_bulb_admission():
     for invalid in ("33050dffffff0fa0000000", "33050501", "330400"):
         with pytest.raises(ValueError):
             require_profile_packet(frame(invalid), profile)
+
+
+def test_h601c_production_status_domains_decode_observed_state(hass):
+    device = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H601C", configuration_url=None)
+    assert device.profile.status_grammar == "H601C"
+    assert device.profile.read_domains == {
+        ReadDomain.POWER,
+        ReadDomain.BRIGHTNESS,
+        ReadDomain.COLOUR_MODE,
+        ReadDomain.FIRMWARE,
+        ReadDomain.HARDWARE,
+    }
+
+    device._notify_callback(None, bytearray(frame("aa0101")))
+    device._notify_callback(None, bytearray(frame("aa0432")))
+    device._notify_callback(None, bytearray(frame("aa050d0a141e000000000000")))
+    device._notify_callback(None, bytearray(frame("aa06312e30302e303000")))
+    device._notify_callback(None, bytearray(frame("aa0703312e30302e303100")))
+
+    assert device.is_on and device.brightness_pct == 50
+    assert device.rgb_color == (10, 20, 30) and device.rgb_color_source == "observed"
+    assert device.fw_version == "1.00.00" and device.hw_version == "1.00.01"
+    assert device._domain_revisions.keys() >= device.profile.read_domains
+
+
+def test_h601c_production_partial_and_malformed_replies_do_not_change_state(hass):
+    device = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H601C", configuration_url=None)
+    valid_power = frame("aa0101")
+    valid_brightness = frame("aa0432")
+
+    device._notify_callback(None, bytearray(valid_power[:-1]))
+    device._notify_callback(None, bytearray(valid_power + b"\x00"))
+    device._notify_callback(None, bytearray(frame("aa07023100")))
+    device._notify_callback(None, bytearray(valid_brightness[:-1] + bytes([valid_brightness[-1] ^ 1])))
+
+    assert device._domain_revisions == {}
+    assert not device.is_on and device.brightness_pct == 100
+    device._notify_callback(None, bytearray(valid_power))
+    assert device.is_on and device._domain_revisions[ReadDomain.POWER] == 1
+
+
+def test_h601c_observed_static_state_preserves_recovery_on_external_effect(hass):
+    device = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H601C", configuration_url=None)
+    device._client = MagicMock(is_connected=True)
+    device._notification_token = object()
+    device._notify_started_monotonic = 0
+    device._notify_callback(None, bytearray(frame("aa0101")))
+    device._notify_callback(None, bytearray(frame("aa0432")))
+    device._notify_callback(None, bytearray(frame("aa050d0a141e0fa0ffd5a1")))
+
+    assert device.static_mode_confirmed()
+    baseline = device.capture_effect_control_state()
+    assert baseline.static_colour_observed and baseline.mode == "colour"
+
+    device._notify_callback(None, bytearray(frame("aa050a1800")))
+
+    assert device.color_mode is ParsedMode.DIY and device.diy_code == 24
+    assert device._pre_mode_snapshot == baseline
