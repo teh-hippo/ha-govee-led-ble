@@ -13,6 +13,8 @@ from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from custom_components.ha_govee_led_ble import generated_protocol_adapter as adapter
 from custom_components.ha_govee_led_ble.const import DOMAIN, ModelProfile, ReadDomain, get_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
+from custom_components.ha_govee_led_ble.coordinator_segments import SegmentPaintRequest
 from custom_components.ha_govee_led_ble.dreamview import (
     DreamviewMember,
     MusicGroup,
@@ -59,7 +61,7 @@ from custom_components.ha_govee_led_ble.protocol_music_params import (
 from custom_components.ha_govee_led_ble.transport import fragment_a3, reassemble_a3
 from tests.coordinator_test_support import frame
 from tests.storage_test_double import InMemoryVersionedDocumentStore
-from tests.test_effect_runtime import _profile_coordinator
+from tests.test_coordinator_recovery import source_recovery_wire
 
 HOPPING = bytes.fromhex("3302ff00000000ff00000019620103123a")
 PAIRED = bytes.fromhex("82331002ff00000000ff00000019620103123a4f070200ff00ffffff")
@@ -210,7 +212,7 @@ def test_native_diy_two_palettes_keep_distinct_primary_and_background_colours(ra
     assert encode_zoned_diy(content) == raw
 
 
-async def test_native_diy_paired_shimmer_and_drip_survive_save_reload_apply_and_restoration():
+async def test_native_diy_paired_shimmer_and_drip_survive_save_reload_apply_and_restoration(hass, monkeypatch):
     shimmer = bytes.fromhex("000102ff000000ff00010000ff")
     drip = bytes.fromhex("006402ff0000ffff00010000ff")
     raw = bytes.fromhex("0b99") + bytes((110, len(shimmer))) + shimmer + bytes((113, len(drip))) + drip
@@ -230,8 +232,55 @@ async def test_native_diy_paired_shimmer_and_drip_survive_save_reload_apply_and_
     uploaded = decode_effect_frames(compiled.upload_packets, "H607C", compiled.upload_transport)
     assert replace(uploaded, opaque=b"") == content
 
-    coordinator = _profile_coordinator("H607C")
+    coordinator, physical = source_recovery_wire(hass, monkeypatch, "H607C")
+    physical["master"] = 44
+    physical["source_flags"].update({0: True, 1: False})
+    original_radio = coordinator._client.write_gatt_char.side_effect
+    final_upload: bytes | None = None
+    physical["diy_active"] = False
+
+    async def radio(uuid, packet, **kwargs):
+        if packet[:2] == b"\xaa\x05" and physical["diy_active"]:
+            coordinator._notify_callback(None, bytearray(frame("aa050afe000000")))
+            return
+        if packet[:2] == b"\xaa\x07":
+            flags = 0x81 | sum(int(enabled) << (zone + 1) for zone, enabled in physical["source_flags"].items())
+            coordinator._notify_callback(
+                None,
+                bytearray(frame(f"aa0708{physical['master']:02x}{flags:02x}")),
+            )
+            return
+        if packet[:2] == b"\x33\x30":
+            physical["source_flags"][packet[2]] = bool(packet[3])
+        if packet == compiled.activation_packet:
+            physical["diy_active"] = True
+        elif packet[:2] == b"\x33\x05":
+            physical["diy_active"] = False
+        await original_radio(uuid, packet, **kwargs)
+        if packet == final_upload:
+            coordinator._notify_callback(None, bytearray(frame("a35600")))
+
+    coordinator._client.write_gatt_char.side_effect = radio
+    await coordinator.send_command(adapter.build_brightness(44, "H607C", profile=coordinator.profile))
+    pole_colour, base_colour = (17, 34, 51), (68, 85, 102)
+    await coordinator.async_paint_segments(
+        SegmentPaintRequest(
+            [
+                (list(range(1, 9)), pole_colour),
+                (list(range(9, 14)), base_colour),
+            ]
+        )
+    )
+    await coordinator.async_set_segment_brightness(list(range(1, 9)), 37)
+    await coordinator.async_set_segment_brightness(list(range(9, 14)), 63)
+    assert await coordinator.refresh_state(RefreshRequest(refresh_all=True, query_segments=False))
+
+    baseline = coordinator.capture_effect_control_state()
+    assert baseline.segment_colors == (pole_colour,) * 8 + (base_colour,) * 5
+    assert baseline.segment_brightness == (37,) * 8 + (63,) * 5
+    assert (baseline.pole_enabled, baseline.base_enabled) == (True, False)
     coordinator.async_observe_effect = AsyncMock(return_value=True)
+    final_upload = compiled.upload_packets[-1]
     repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
     await repository.async_load()
     await EffectDeploymentEngine(repository).async_apply_saved(
@@ -239,9 +288,20 @@ async def test_native_diy_paired_shimmer_and_drip_survive_save_reload_apply_and_
         restored,
         config_entry_id="entry-a",
         updated_at="2026-11-27T00:00:00Z",
+        compiled=compiled,
     )
-    assert coordinator.send_command.await_args_list
-    assert [call.args[0] for call in coordinator.send_command.await_args_list] == list(compiled.packets)
+
+    physical["colours"][:] = [(255, 255, 255)] * coordinator.profile.segment_count
+    physical["levels"][:] = [1] * coordinator.profile.segment_count
+    physical["source_flags"].update({0: False, 1: True})
+    await coordinator.async_restore_pre_mode()
+
+    assert physical["colours"] == [pole_colour] * 8 + [base_colour] * 5
+    assert physical["levels"] == [37] * 8 + [63] * 5
+    assert physical["master"] == 44
+    assert physical["source_flags"] == {0: True, 1: False}
+    assert coordinator.boolean_control_state["pole_enabled"] is True
+    assert coordinator.boolean_control_state["base_enabled"] is False
     applied = decode_effect_frames(compiled.upload_packets, "H607C", compiled.upload_transport)
     assert replace(applied, opaque=b"") == restored.content
 
