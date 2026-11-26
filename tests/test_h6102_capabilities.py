@@ -63,6 +63,59 @@ def test_firmware_never_selects_pact(firmware):
 
 
 @pytest.mark.parametrize("pact_code", [1, 2])
+@pytest.mark.parametrize(
+    ("firmware", "colour", "uploaded", "music_count"),
+    [
+        ("1.01.19", False, False, 0),
+        ("1.01.20", True, False, 4),
+        ("1.03.00", True, False, 4),
+        ("1.03.01", True, False, 4),
+        ("1.03.99", True, False, 4),
+        ("1.04.00", True, True, 4),
+        ("1.06.99", True, True, 4),
+        ("1.07.00", True, True, 11),
+    ],
+)
+def test_legacy_revision_operation_matrix(pact_code, firmware, colour, uploaded, music_count):
+    profile = device_profile("H6102", 1, pact_code, firmware=firmware, hardware="1.00.02")
+    if pact_code == 2:
+        uploaded |= colour
+
+    assert profile.supports_rgb is colour
+    assert profile.supports_custom_effects is colour
+    assert profile.supports_scenes is colour
+    assert profile.supports_music_mode is colour
+    assert profile.supports_color_mode_readback is colour
+    assert profile.diy_upload_transport == ("a1_02" if colour else None)
+    assert profile.a1_diy_selector == (0xFE if colour else None)
+    assert (profile.advanced_diy_selector is not None) is uploaded
+    assert profile.supports_advanced_effects is uploaded
+    assert not colour or (profile.selector_only_scene_bits is None) is uploaded
+    assert len(profile.music_modes) == music_count
+    assert profile.diy_requires_upload_ack is colour
+    assert profile.music_requires_upload_ack is colour
+
+
+@pytest.mark.parametrize(
+    ("pact_type", "pact_code", "firmware", "hardware"),
+    [
+        (None, None, "1.07.00", "1.00.03"),
+        (1, 3, "1.07.00", "1.00.03"),
+        (1, 1, "1.07.00", "3.00.03"),
+        (1, 1, None, "1.00.03"),
+        (1, 1, "3.02.02", "1.00.03"),
+    ],
+)
+def test_legacy_operation_matrix_conflicting_identity_fails_closed(pact_type, pact_code, firmware, hardware):
+    profile = device_profile("H6102", pact_type, pact_code, firmware=firmware, hardware=hardware)
+    assert profile.command_operations == frozenset({"power", "brightness"})
+    assert not profile.supports_rgb
+    assert not profile.supports_scenes
+    assert not profile.diy_requires_upload_ack
+    assert not profile.music_requires_upload_ack
+
+
+@pytest.mark.parametrize("pact_code", [1, 2])
 def test_modern_candidate_exact_catalogue_and_no_donor_policy(pact_code):
     profile = device_profile("H6102", 10, pact_code)
     assert profile.supports_rgb and profile.supports_scenes and profile.supports_custom_effects
@@ -423,7 +476,9 @@ def test_limit_and_pact1_static_conditions_are_independent():
     assert extended.supports_rgb and extended.supports_color_temperature and not extended.supports_segments
     assert extended.supports_scenes and extended.supports_custom_effects and extended.supports_advanced_effects
     assert len(extended.music_modes) == 4 and extended.a1_diy_selector == 0xFE
-    assert extended.packet_write_delay == 0.1 and not extended.diy_requires_upload_ack
+    assert extended.packet_write_delay == 0.1
+    assert extended.diy_requires_upload_ack and extended.music_requires_upload_ack
+    assert extended.can_read(ReadDomain.COLOUR_MODE)
     expanded = device_profile("H6102", 1, 1, hardware="1.00.03", firmware="1.08.08")
     assert len(expanded.music_modes) == 11
     intermediate = device_profile("H6102", 1, 1, hardware="1.00.03", firmware="1.03.01")

@@ -86,6 +86,10 @@ async def connected(hass, monkeypatch, request):
         c._observe_pact(2, 1)
         c._observe_identity_field("fw_version", "1.10.04")
         c._observe_identity_field("hw_version", "3.02.01")
+    if c.model == "H6102":
+        c._observe_pact(1, 1)
+        c._observe_identity_field("fw_version", "1.01.20")
+        c._observe_identity_field("hw_version", "1.00.02")
     if c.model in {"H6139", "H6159"}:
         c._observe_pact(pact, 1)
         c._observe_identity_field("fw_version", "1.07.02")
@@ -148,6 +152,69 @@ def selection_ready(connected, monkeypatch):
 
 def receive(client, data):
     client.start_notify.call_args.args[1](None, bytearray(data))
+
+
+@pytest.mark.parametrize("connected", ["H6102"], indirect=True)
+@pytest.mark.parametrize("route", ["diy", "music"])
+@pytest.mark.parametrize("response", ["accepted", "rejected", "missing", "wrong_subtype", "stale"])
+async def test_h6102_legacy_upload_verdict_blocks_activation(connected, route, response):
+    c, client = connected
+    c._renew_foreground_lease = MagicMock()
+    assert c.profile.diy_requires_upload_ack and c.profile.music_requires_upload_ack
+    if route == "diy":
+        compiled = compile_application(
+            LibraryItem.new("H6102 upload", SingleEffect(0, 0, 50, ((1, 2, 3),))),
+            c.model,
+            diy_code=0xFE,
+            profile=c.profile,
+        )
+        packets = compiled.packets
+        index = len(compiled.upload_packets) - 1
+        accepted = frame("a10200")
+        rejected = frame("a10201")
+        wrong_subtype = frame("a10300")
+    else:
+        c._observe_identity_field("fw_version", "1.07.00")
+        packets = tuple(prepare_music_request(c.model, "separation", 50, None, False, {}, profile=c.profile))
+        index = len(packets) - 2
+        accepted = frame("a3413000")
+        rejected = frame("a3413001")
+        wrong_subtype = frame("a30200")
+    subtype = upload_ack_subtype(packets, index, c.model, profile=c.profile)
+    assert subtype == (2 if route == "diy" else 0x41)
+    old_callback = client.start_notify.call_args.args[1]
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet != packets[index]:
+            return
+        assert packets[-1] not in [call.args[1] for call in client.write_gatt_char.await_args_list]
+        if response == "accepted":
+            receive(client, accepted)
+        elif response == "rejected":
+            receive(client, rejected)
+        elif response == "wrong_subtype":
+            receive(client, wrong_subtype)
+        elif response == "stale":
+            await c._start_notify()
+            old_callback(None, bytearray(accepted))
+
+    client.write_gatt_char.side_effect = write
+    options = {
+        "require_upload_ack": True,
+        "upload_ack_index": index,
+        "retry_allowed": lambda: False,
+    }
+    if response == "accepted":
+        await c.async_write_effect_sequence(packets, intent=ControlIntent.APPLY, **options)
+        expected = [
+            c.profile.outbound_transform(packet) if c.profile.outbound_transform else packet for packet in packets
+        ]
+    else:
+        with pytest.raises((BleakError, RuntimeError, TimeoutError, ValueError)):
+            await c.async_write_effect_sequence(packets, intent=ControlIntent.APPLY, **options)
+        expected = list(packets[: index + 1])
+    assert [call.args[1] for call in client.write_gatt_char.await_args_list] == expected
+    assert c._upload_ack is None
 
 
 @pytest.mark.parametrize(

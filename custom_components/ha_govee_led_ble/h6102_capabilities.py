@@ -15,6 +15,18 @@ type H6102CapabilityResolutionReason = Literal["pact_unknown", "legacy_capture_r
 
 
 @dataclass(frozen=True, slots=True)
+class _H6102LegacyRevisionPolicy:
+    colour: bool
+    palette: bool
+    uploaded_scenes: bool
+    mode_readback: bool
+    music_activation: bool
+    diy_activation: bool
+    expanded_music: bool
+    requires_upload_ack: bool
+
+
+@dataclass(frozen=True, slots=True)
 class H6102CapabilityResolution:
     profile: ModelProfile
     rgb_variant: H6102RgbVariant | None
@@ -68,6 +80,9 @@ def initial_identity_from_entry(
 
 _UNSET = object()
 _SCENES_V0_CODES = frozenset({0, 1, 4, 5, 7, 8, 9, 10, 15, 16, 21, 22})
+_LEGACY_OPERATIONS_MINIMUM = FirmwareVersion((1, 1, 20))
+_UPLOADED_SCENES_MINIMUM = FirmwareVersion((1, 4))
+_EXPANDED_MUSIC_MINIMUM = FirmwareVersion((1, 7))
 _BASE_PROFILE = MODEL_PROFILES["H6102"]
 _BOOTSTRAP_PROFILE = replace(
     _BASE_PROFILE,
@@ -98,6 +113,20 @@ _BOOTSTRAP_PROFILE = replace(
     music_requires_upload_ack=False,
     boolean_controls=frozenset(),
 )
+
+
+def _legacy_revision_policy(version: FirmwareVersion, pact_code: int) -> _H6102LegacyRevisionPolicy:
+    operations = version >= _LEGACY_OPERATIONS_MINIMUM
+    return _H6102LegacyRevisionPolicy(
+        colour=operations,
+        palette=operations,
+        uploaded_scenes=operations and (pact_code == 2 or version >= _UPLOADED_SCENES_MINIMUM),
+        mode_readback=operations,
+        music_activation=operations,
+        diy_activation=operations,
+        expanded_music=operations and version >= _EXPANDED_MUSIC_MINIMUM,
+        requires_upload_ack=operations,
+    )
 
 
 def resolve_h6102_capabilities(
@@ -153,47 +182,56 @@ def resolve_h6102_capabilities(
     if pact_type == 1 and pact_code in (1, 2):
         from .protocol_transforms import h6102_outbound_transform_for
 
-        if variant is not None and version is not None and hw is not None and version >= FirmwareVersion((1, 3, 1)):
+        if variant is not None and version is not None and hw is not None:
+            revision = _legacy_revision_policy(version, pact_code)
+        else:
+            revision = None
+        if revision is not None and revision.colour:
             extended_colour = variant is H6102RgbVariant.EXTENDED
-            expanded_music = version >= FirmwareVersion((1, 7))
-            uploaded_scenes = pact_code == 2 or version >= FirmwareVersion((1, 4))
             workflows = frozenset({"native_music", "native_scenes", "single", "multi"})
-            if uploaded_scenes:
+            if revision.uploaded_scenes:
                 workflows |= {"edited_palette_scenes", "layered_scenes", "advanced"}
             if extended_colour:
                 workflows |= {"painted"}
+            read_domains = _BOOTSTRAP_PROFILE.read_domains | (
+                {ReadDomain.COLOUR_MODE} if revision.mode_readback else set()
+            )
+            setup_read_domains = _BOOTSTRAP_PROFILE.setup_required_read_domains | (
+                {ReadDomain.COLOUR_MODE} if revision.mode_readback else set()
+            )
             profile = replace(
                 _BASE_PROFILE,
                 command_operations=None,
                 command_ack_grammar="H6125",
-                read_domains=_BOOTSTRAP_PROFILE.read_domains,
-                setup_required_read_domains=_BOOTSTRAP_PROFILE.setup_required_read_domains,
+                read_domains=frozenset(read_domains),
+                setup_required_read_domains=frozenset(setup_read_domains),
                 effect_workflows=workflows,
                 supports_rgb=True,
                 supports_color_temperature=extended_colour,
                 static_readback_kelvin=False,
                 static_readback_zero_kelvin_is_rgb=False,
                 static_readback_gradual=False,
-                supports_custom_effects=True,
+                supports_custom_effects=revision.palette,
                 supports_scenes=True,
-                supports_advanced_effects=uploaded_scenes,
-                supports_multi_layered_effects=uploaded_scenes,
-                music_modes=_BASE_PROFILE.music_modes if expanded_music else _BASE_PROFILE.music_modes[:4],
+                supports_advanced_effects=revision.uploaded_scenes,
+                supports_multi_layered_effects=revision.uploaded_scenes,
+                music_modes=_BASE_PROFILE.music_modes if revision.expanded_music else _BASE_PROFILE.music_modes[:4],
                 music_variants=H6102_MUSIC_VARIANTS,
-                supports_music_color=True,
+                supports_music_color=revision.music_activation,
                 whole_device_mask_override=0x7FFF,
                 segment_count=0,
                 segment_group_size=0,
                 supports_segment_writes=False,
                 supports_segment_brightness=False,
-                selector_only_scene_bits=None if uploaded_scenes else 16,
-                scene_codes=None if uploaded_scenes else _SCENES_V0_CODES,
-                advanced_diy_selector=_BASE_PROFILE.advanced_diy_selector if uploaded_scenes else None,
+                selector_only_scene_bits=None if revision.uploaded_scenes else 16,
+                scene_codes=None if revision.uploaded_scenes else _SCENES_V0_CODES,
+                advanced_diy_selector=_BASE_PROFILE.advanced_diy_selector if revision.uploaded_scenes else None,
                 a1_diy_selector=0xFE,
+                diy_upload_transport="a1_02",
                 effect_readback="none",
-                diy_requires_upload_ack=False,
+                diy_requires_upload_ack=revision.diy_activation and revision.requires_upload_ack,
                 music_upload_before_selector=True,
-                music_requires_upload_ack=False,
+                music_requires_upload_ack=revision.music_activation and revision.requires_upload_ack,
                 packet_write_delay=0.1,
                 boolean_controls=frozenset(),
                 brightness_wire_range=(20, 254),
