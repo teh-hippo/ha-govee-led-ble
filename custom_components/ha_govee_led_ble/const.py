@@ -3169,6 +3169,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         command_grammar="H617A",
         status_grammar="H617A",
         effect_grammar="H617A",
+        static_readback_gradual=True,
         read_domains=frozenset(
             {
                 ReadDomain.POWER,
@@ -3217,6 +3218,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         scene_catalogue_sku="H617F",
         advanced_scene_carrier=(29884, 41599),
         diy_requires_upload_ack=True,
+        boolean_controls=frozenset({"gradual"}),
         effect_readback="diy_code_only",
     ),
     "H618A": ModelProfile(
@@ -4355,7 +4357,7 @@ MODEL_REVISION_POLICY_REGISTRATIONS = (
     ModelRevisionPolicyRegistration("H617A", "h617a"),
     ModelRevisionPolicyRegistration("H617C", "h617c"),
     ModelRevisionPolicyRegistration("H617E", "h617e_goods_type_70_scene"),
-    ModelRevisionPolicyRegistration("H617F", "goods_type_70_scene"),
+    ModelRevisionPolicyRegistration("H617F", "h617f"),
     ModelRevisionPolicyRegistration("H619A", "h619a"),
     ModelRevisionPolicyRegistration("H618A", "h618a"),
     ModelRevisionPolicyRegistration("H6199", "h6199"),
@@ -5558,6 +5560,16 @@ def _h617e_goods_type_70_scene_revision_policy(context: ModelRevisionContext) ->
     )
 
 
+def _h617f_revision_policy(context: ModelRevisionContext) -> ModelProfile:
+    fw, hw = FirmwareVersion.parse(context.firmware), FirmwareVersion.parse(context.hardware)
+    modern = fw is not None and fw >= FirmwareVersion((1, 6)) and hw is not None and hw >= FirmwareVersion((1, 0, 3))
+    return replace(
+        get_profile(context.model),
+        scene_command_versions=frozenset({0, 1}) if modern else frozenset({0}),
+        rgbic_scene_v0=not modern,
+    )
+
+
 def _h617a_revision_policy(context: ModelRevisionContext) -> ModelProfile:
     fw, hw = FirmwareVersion.parse(context.firmware), FirmwareVersion.parse(context.hardware)
     modern_firmware = fw is not None and fw >= FirmwareVersion((1, 6))
@@ -5740,6 +5752,7 @@ _MODEL_REVISION_POLICIES: Mapping[str, Callable[[ModelRevisionContext], ModelPro
     "h617c": _h617c_revision_policy,
     "h617e_goods_type_70_scene": _h617e_goods_type_70_scene_revision_policy,
     "h617a": _h617a_revision_policy,
+    "h617f": _h617f_revision_policy,
     "h619a": _h619a_revision_policy,
     "h618a": _h618a_revision_policy,
     "h6199": _h6199_revision_policy,

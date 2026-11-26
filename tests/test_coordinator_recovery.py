@@ -360,6 +360,7 @@ async def test_interrupted_write_only_controls_cannot_publish_rolled_back_baseli
         ("H6072", 5000, True, (255, 255, 255)),
         ("H6076", None, True, (255, 185, 105)),
         ("H6076", None, False, (255, 146, 39)),
+        ("H617F", None, True, (255, 185, 105)),
     ],
 )
 async def test_native_white_scene_off_uses_supported_observations(

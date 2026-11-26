@@ -179,19 +179,20 @@ def test_exact_sku_scene_compilation_prepares_physical_geometry(model, physical_
 
 @pytest.mark.parametrize("model,physical_ic_count", [("H617E", 30), ("H617F", 45)])
 @pytest.mark.parametrize(
-    ("firmware", "hardware", "admitted"),
+    ("firmware", "hardware", "admitted_models"),
     [
-        (None, None, False),
-        ("1.05.99", "1.00.03", False),
-        ("1.06.00", "1.00.01", False),
-        ("1.06.00", "1.00.02", True),
-        ("1.06.00", "1.00.03", True),
-        ("3.02.24", "3.01.01", True),
+        (None, None, set()),
+        ("1.05.99", "1.00.03", set()),
+        ("1.06.00", "1.00.01", set()),
+        ("1.06.00", "1.00.02", {"H617E"}),
+        ("1.06.00", "1.00.03", {"H617E", "H617F"}),
+        ("3.02.24", "3.01.01", {"H617E", "H617F"}),
     ],
 )
-def test_goods_type_70_scene_command_admission(model, physical_ic_count, firmware, hardware, admitted):
+def test_goods_type_70_scene_command_admission(model, physical_ic_count, firmware, hardware, admitted_models):
     profile = device_profile(model, 10, 1, firmware=firmware, hardware=hardware)
     entry = next(scene for scene in SCENE_ENTRIES[model] if scene.command_version == 1)
+    admitted = model in admitted_models
 
     assert scene_supported(entry, profile) is admitted
     assert scene_supported(replace(entry, command_version=0), profile)
