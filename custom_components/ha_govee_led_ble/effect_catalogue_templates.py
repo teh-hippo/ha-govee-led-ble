@@ -15,6 +15,8 @@ from .effect_catalogue_families import (
     H617A_NATIVE_MUSIC_MODES,
     H617A_TYPE04_FAMILIES,
     H617E_NATIVE_MUSIC_MODES,
+    H617F_DIY_FAMILIES,
+    H617F_NATIVE_MUSIC_MODES,
     H6179_DIY_FAMILIES,
     H6179_NATIVE_MUSIC_MODES,
     H6199_NATIVE_MUSIC_MODES,
@@ -160,6 +162,7 @@ def _h617a_catalogue_templates(
     model: str,
     music_modes: tuple[NativeModeOption, ...],
     *,
+    families: tuple[DiyEffectFamily, ...] = H617A_TYPE04_FAMILIES,
     retain_family_palette_limit: bool,
 ) -> tuple[CatalogueTemplate, ...]:
     return (
@@ -179,7 +182,7 @@ def _h617a_catalogue_templates(
                 model,
                 family if retain_family_palette_limit else replace(family, palette_max=None),
             )
-            for family in H617A_TYPE04_FAMILIES
+            for family in families
         ),
         *(_music_template(model, mode) for mode in music_modes),
     )
@@ -380,6 +383,15 @@ H617E_CATALOGUE_TEMPLATES: Final = _h617a_catalogue_templates(
     "H617E",
     H617E_NATIVE_MUSIC_MODES,
     retain_family_palette_limit=False,
+)
+H617F_CATALOGUE_TEMPLATES: Final = (
+    *_h617a_catalogue_templates(
+        "H617F",
+        H617F_NATIVE_MUSIC_MODES,
+        families=H617F_DIY_FAMILIES,
+        retain_family_palette_limit=True,
+    ),
+    *_rgbic_native_templates(45),
 )
 
 H6179_CATALOGUE_TEMPLATES: Final = (
