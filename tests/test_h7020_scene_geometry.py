@@ -16,15 +16,24 @@ from custom_components.ha_govee_led_ble.effect_compiler import (
     compile_effect,
     validate_compiled_geometry,
 )
-from custom_components.ha_govee_led_ble.effect_deployments import PriorControlState
+from custom_components.ha_govee_led_ble.effect_deployments import (
+    EffectDeploymentRepository,
+    PriorControlState,
+)
 from custom_components.ha_govee_led_ble.effect_domain import BuiltinScene, LibraryItem
+from custom_components.ha_govee_led_ble.effect_runtime import (
+    EffectDeploymentEngine,
+    async_prepare_application,
+)
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_configured_strings_query
 from custom_components.ha_govee_led_ble.layered_scene import CatalogueRef, SelectionType
 from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_layered_scene
+from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_packets
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
 from custom_components.ha_govee_led_ble.transport import reassemble_a3
 from tests.coordinator_test_support import _packet
+from tests.storage_test_double import InMemoryVersionedDocumentStore
 
 
 def _scene(name: str):
@@ -76,16 +85,34 @@ async def h7020(hass, monkeypatch):
     await coordinator.disconnect()
 
 
-@pytest.mark.parametrize("count", [15, 30])
-@pytest.mark.parametrize("name", ["Party", "Moonlight", "Candy"])
-def test_h7020_catalogue_bodies_fit_configured_geometry(count, name):
+@pytest.mark.parametrize(
+    ("name", "count", "expected"),
+    [
+        ("Party", 15, ((1, 0, 15, 0, 8), (1, 0, 15, 0, 1), (1, 0, 15, 0, 0), (2, 15, 1, 0, 0))),
+        ("Party", 30, ((1, 0, 30, 0, 8), (1, 0, 30, 0, 1), (1, 0, 30, 0, 0), (2, 25, 1, 0, 0))),
+        ("Moonlight", 15, ((2, 14, 6, 0, 0), (1, 0, 15, 0, 0))),
+        ("Moonlight", 30, ((2, 14, 6, 0, 0), (1, 0, 30, 0, 0))),
+        ("Candy", 15, ((1, 0, 15, 0, 8), (1, 0, 15, 0, 1), (1, 0, 15, 0, 0), (2, 15, 1, 0, 0))),
+        ("Candy", 30, ((1, 0, 30, 0, 8), (1, 0, 30, 0, 1), (1, 0, 30, 0, 0), (2, 25, 1, 0, 0))),
+    ],
+)
+def test_h7020_catalogue_bodies_use_exact_configured_geometry(name, count, expected):
     profile = replace(get_profile("H7020"), physical_ic_count=count, segment_count=count)
     scene = _scene(name)
 
     prepared = _decoded_upload(build_native_scene_packets("H7020", scene, profile=profile))
 
-    for layer in prepared.effect.layers:
-        _assert_geometry(layer, count)
+    actual = tuple(
+        (
+            layer.selection.type,
+            layer.selection.param_1,
+            layer.selection.param_2,
+            layer.selected_movement.distance,
+            layer.overall_movement.distance,
+        )
+        for layer in prepared.effect.layers
+    )
+    assert actual == expected
 
 
 @pytest.mark.parametrize("count", [15, 30])
@@ -172,6 +199,69 @@ async def test_h7020_rejects_layout_change_during_scene_transfer(h7020, monkeypa
         -1
     ]
     assert activation not in [call.args[1] for call in client.write_gatt_char.await_args_list]
+
+
+async def test_h7020_prepared_light_scene_revalidates_before_leading_brightness(h7020):
+    coordinator, client, receive = h7020
+    coordinator.is_on = True
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet == build_configured_strings_query(coordinator.profile):
+            receive(None, bytearray(_packet(0xAA, 0x0F, [1])))
+
+    client.write_gatt_char.side_effect = write
+    light = GoveeBLELight(coordinator)
+    guards = []
+    prepared = await light._prepare_effect("Party", effect_guards=guards)
+    prepared_generation = coordinator._profile_generation
+    client.write_gatt_char.reset_mock()
+
+    coordinator._notification_token = object()
+    coordinator._configured_strings_confirmed = False
+    assert coordinator._profile_generation == prepared_generation
+
+    with pytest.raises(ValueError, match="geometry authority changed"):
+        await light._async_turn_on(
+            prepared_effect=prepared,
+            effect_write_guard=guards[0],
+            brightness=128,
+        )
+
+    client.write_gatt_char.assert_not_awaited()
+    assert coordinator.brightness_pct != 50
+
+
+async def test_h7020_studio_rejects_old_subscription_at_same_geometry(h7020):
+    coordinator, client, receive = h7020
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet == build_configured_strings_query(coordinator.profile):
+            receive(None, bytearray(_packet(0xAA, 0x0F, [1])))
+
+    client.write_gatt_char.side_effect = write
+    item = LibraryItem.new("Party", _scene_content("Party"))
+    compiled = await async_prepare_application(coordinator, item)
+    assert compiled.physical_ic_count == 15
+    assert compiled.scene_geometry_authority is not None
+    original_token = coordinator._notification_token
+    coordinator._notification_token = object()
+    assert coordinator._notification_token is not original_token
+    assert coordinator.configured_strings == 1
+    assert coordinator._configured_strings_confirmed
+
+    repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
+    await repository.async_load()
+    engine = EffectDeploymentEngine(repository)
+    with pytest.raises(ValueError, match="authority changed since compilation"):
+        await engine.async_apply_saved(
+            coordinator,
+            item,
+            config_entry_id="entry-a",
+            updated_at="2026-11-27T00:00:00Z",
+            compiled=compiled,
+        )
+
+    assert coordinator.control_write_attempts == 0
 
 
 @pytest.mark.parametrize("current_count", [15, 30])

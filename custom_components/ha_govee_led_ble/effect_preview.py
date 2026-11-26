@@ -30,6 +30,7 @@ from .effect_compiler import (
     CompiledApplication,
     CompiledEffect,
     CompiledVideoProfile,
+    bind_compiled_geometry,
     compile_application,
     require_native_scenes,
     validate_compiled_geometry,
@@ -614,6 +615,7 @@ class EffectPreviewManager:
             )
             diy_code = resolve_diy_code(item, diy_code, model=coordinator.model, profile=profile)
             compiled = compile_application(item, coordinator.model, diy_code=diy_code, profile=profile)
+            compiled = bind_compiled_geometry(compiled, coordinator)
         except GoveeCryptoError:
             raise
         except ValueError as exc:
@@ -1472,7 +1474,7 @@ class EffectPreviewManager:
             ):
                 raise PreviewError("Fresh video brightness observations are required before Preview")
         if compiled is not None:
-            validate_compiled_geometry(compiled, coordinator.effect_authorization_profile)
+            validate_compiled_geometry(compiled, coordinator.effect_authorization_profile, coordinator)
         if isinstance(compiled, CompiledEffect):
             validate_diy_destination_consent(
                 coordinator,
@@ -1642,7 +1644,7 @@ class EffectPreviewManager:
                 request.control_guard()
             if not await self._async_request_is_current(request):
                 raise _PreviewSupersededError
-            validate_compiled_geometry(compiled, coordinator.effect_authorization_profile)
+            validate_compiled_geometry(compiled, coordinator.effect_authorization_profile, coordinator)
             validate_diy_destination_consent(
                 coordinator,
                 compiled,
@@ -1663,7 +1665,7 @@ class EffectPreviewManager:
             write_options.update(final_packet=final_activation, before_final=before_final)
 
         def validate_effect_write() -> None:
-            validate_compiled_geometry(compiled, coordinator.effect_authorization_profile)
+            validate_compiled_geometry(compiled, coordinator.effect_authorization_profile, coordinator)
             validate_diy_destination_consent(
                 coordinator,
                 compiled,
