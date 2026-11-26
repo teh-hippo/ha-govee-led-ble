@@ -995,6 +995,51 @@ async def test_h61f5_extended_music_waits_for_positive_upload_result(selection_r
     assert c._upload_ack is None
     assert c._ensure_connected.await_count == 1
 
+@pytest.mark.parametrize("connected", ["H617E"], indirect=True)
+@pytest.mark.parametrize("verdict", ["accepted", "rejected", "missing", "late"])
+async def test_h617e_extended_music_requires_positive_verdict_before_selector(selection_ready, verdict, monkeypatch):
+    c, client = selection_ready
+    expected = prepare_music_request(c.model, "hopping", c.music_sensitivity, None, False, {}, profile=c.profile)
+    final_upload, selector = expected[-2:]
+    assert final_upload[0] == 0xA3 and selector[0] == 0x33
+    uploaded = asyncio.Event()
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet == final_upload:
+            uploaded.set()
+
+    client.write_gatt_char.side_effect = write
+    if verdict == "missing":
+        monkeypatch.setattr(coordinator_module, "UPLOAD_ACK_TIMEOUT", 0.05)
+    task = asyncio.create_task(c.async_select_music_slug("hopping"))
+    try:
+        await asyncio.wait_for(uploaded.wait(), 1)
+        sent = [call.args[1] for call in client.write_gatt_char.await_args_list]
+        assert sent == list(expected[:-1])
+        assert selector not in sent
+        assert not task.done()
+
+        if verdict in {"accepted", "rejected"}:
+            receive(client, frame(f"a34133{'00' if verdict == 'accepted' else '01'}"))
+            if verdict == "accepted":
+                await task
+            else:
+                with pytest.raises(RuntimeError, match="Device rejected A3 upload"):
+                    await task
+        else:
+            with pytest.raises(TimeoutError, match="did not acknowledge"):
+                await asyncio.wait_for(task, 1)
+            if verdict == "late":
+                receive(client, frame("a3413300"))
+                await asyncio.sleep(0)
+
+        sent = [call.args[1] for call in client.write_gatt_char.await_args_list]
+        assert sent == list(expected if verdict == "accepted" else expected[:-1])
+        assert c._upload_ack is None
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
 
 @pytest.mark.parametrize("connected", ["H6139", "H6159"], indirect=True)
 @pytest.mark.parametrize("pact,firmware,hardware,mode", [(1, "1.07.02", "1.00.01", 14), (10, "2.04.00", "2.01.01", 19)])

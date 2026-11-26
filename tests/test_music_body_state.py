@@ -141,7 +141,8 @@ def test_compiled_defaults_count_as_actual_geometry_parameters(mode, parameters,
 
 def test_h617e_metadata_does_not_inherit_new_controls_or_geometry_policy():
     profile = get_profile("H617E")
-    assert not profile.music_upload_before_selector and not profile.music_requires_upload_ack
+    assert profile.music_upload_before_selector and profile.music_requires_upload_ack
+    assert not profile.music_params_require_activation
     assert [variant.mode_code for variant in profile.music_variants] == [3, 48, 49, 50, 51, 52, 53, 55]
     for variant in profile.music_variants:
         assert variant.palette_bounds is None
