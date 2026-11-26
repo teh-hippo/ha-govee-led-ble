@@ -294,8 +294,8 @@ def encode_music_parameters(
             tail.minimum_brightness, tail.maximum_brightness = value >> 8, value & 255
         else:
             tail.no_rhythm_speed, tail.rhythm_speed = 10, value
-    if variant.layout == "h6022_music_body" and variant.supports_style and calm is not None:
-        tail.style = int(calm)
+    if variant.style_field is not None and variant.style_values is not None and calm is not None:
+        setattr(tail, variant.style_field, variant.style_values[int(calm)])
     return _serialize_a3_scene_param(root)
 
 

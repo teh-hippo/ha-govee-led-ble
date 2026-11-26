@@ -154,6 +154,24 @@ def _forbidden_semantic_grammar_dispatches(source: str) -> tuple[int, ...]:
     return tuple(sorted(sites))
 
 
+def _forbidden_exact_layout_dispatches(source: str) -> tuple[int, ...]:
+    tree = ast.parse(source)
+    return tuple(
+        sorted(
+            node.lineno
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Compare)
+            and any(
+                isinstance(value, ast.Attribute) and value.attr == "layout" for value in (node.left, *node.comparators)
+            )
+            and any(
+                isinstance(value, ast.Constant) and isinstance(value.value, str) and value.value.startswith("h6022")
+                for value in ast.walk(node)
+            )
+        )
+    )
+
+
 def test_shared_model_special_policy_guard_rejects_runtime_dispatch() -> None:
     root = Path(const.__file__).parent
     for path in root.rglob("*.py"):
@@ -164,6 +182,8 @@ def test_shared_model_special_policy_guard_rejects_runtime_dispatch() -> None:
         assert not _forbidden_model_dispatches(source, path.name), path
         if path.name in _SEMANTIC_GRAMMAR_FILES:
             assert not _forbidden_semantic_grammar_dispatches(source), path
+        if path.name in {"music_commands.py", "protocol_music_params.py"}:
+            assert not _forbidden_exact_layout_dispatches(source), path
 
 
 @pytest.mark.parametrize(
@@ -191,6 +211,12 @@ def test_shared_model_policy_guard_detects_mutation(source: str) -> None:
 )
 def test_shared_model_policy_guard_detects_grammar_mutation(source: str) -> None:
     assert _forbidden_semantic_grammar_dispatches(source)
+
+
+def test_exact_music_layout_guard_detects_mutation() -> None:
+    assert _forbidden_exact_layout_dispatches(
+        'def injected(variant):\n    return variant.layout == "h6022_music_body"\n'
+    )
 
 
 def test_segment_count_and_supports_segments():

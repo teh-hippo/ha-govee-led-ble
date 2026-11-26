@@ -603,6 +603,14 @@ def music_body_style(body: bytes, mode: str, *, profile: ModelProfile) -> bool |
     variant = music_variant(profile, music_codebook(profile)[mode])
     if variant is None or not variant.supports_style:
         return None
+    fields = root.body if hasattr(root, "body") and hasattr(root.body, "tail") else root
+    if variant.style_field is not None and variant.style_values is not None:
+        value = int(getattr(fields.tail, variant.style_field))
+        if value == variant.style_values[0]:
+            return False
+        if value == variant.style_values[1]:
+            return True
+        return None
     if variant.layout == "h60b0_music_body":
         from .music_protocol import H60b0MusicBody
 
@@ -614,8 +622,6 @@ def music_body_style(body: bytes, mode: str, *, profile: ModelProfile) -> bool |
         from .protocol_core import H60b2MusicBody
 
         return {H60b2MusicBody.Style.calm: True, H60b2MusicBody.Style.dynamic: False}.get(root.tail.style)
-    if variant.layout == "h6022_music_body":
-        return {0: False, 1: True}.get(int(root.tail.style))
     if variant.layout == "h1771_music_body":
         return {0: True, 1: False}.get(root.tail.style)
     if hasattr(root.tail, "rhythm_speed") and root.tail.no_rhythm_speed == 10:
