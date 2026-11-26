@@ -287,6 +287,8 @@ def test_h617c_is_an_exact_isolated_profile_with_its_own_status_grammar_and_30_i
     profile = MODEL_PROFILES["H617C"]
 
     assert profile is not MODEL_PROFILES["H617A"]
+    assert profile.revision_policy == "h617c"
+    assert MODEL_PROFILES["H617E"].revision_policy == MODEL_PROFILES["H617F"].revision_policy == "goods_type_70_scene"
     assert profile.support_quality is SupportQuality.SUPPORTED
     assert profile.scene_catalogue_sku == "H617C"
     assert (profile.command_grammar, profile.status_grammar, profile.effect_grammar) == ("H617A", "H617C", "H617A")

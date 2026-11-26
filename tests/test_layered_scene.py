@@ -47,6 +47,7 @@ from custom_components.ha_govee_led_ble.layered_scene_decoder import (
     decode_layered_scene,
     encode_layered_scene,
 )
+from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_packets
 from custom_components.ha_govee_led_ble.protocol_core import (
     _A3_MAX_CONTENT,
     _U1_MAX,
@@ -56,7 +57,7 @@ from custom_components.ha_govee_led_ble.protocol_core import (
 )
 from custom_components.ha_govee_led_ble.protocol_h6199 import build_h6199_scene
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES, scene_supported
-from custom_components.ha_govee_led_ble.transport import fragment_a3
+from custom_components.ha_govee_led_ble.transport import fragment_a3, reassemble_a3
 
 # The parameter drops the marker, line-count and scene-type bytes the A3 header carries.
 _A3_STRIPPED_PREFIX = 3
@@ -175,7 +176,7 @@ def test_exact_sku_scene_compilation_prepares_physical_geometry(model, physical_
     assert compiled.packets[-1] == compiled.activation_packet
 
 
-@pytest.mark.parametrize("model,physical_ic_count", [("H617C", 30), ("H617E", 30), ("H617F", 45)])
+@pytest.mark.parametrize("model,physical_ic_count", [("H617E", 30), ("H617F", 45)])
 @pytest.mark.parametrize(
     ("firmware", "hardware", "admitted", "v0"),
     [
@@ -205,6 +206,85 @@ def test_goods_type_70_scene_admission_and_v0_conversion_are_separate(
     assert prepared.selection.type == int(SelectionType.SEGMENT if v0 else SelectionType.CUSTOM)
     assert prepared.distribution.backwards is not v0
     assert prepared.overall_movement.distance == physical_ic_count - 2
+
+
+@pytest.mark.parametrize(
+    ("firmware", "hardware", "admitted"),
+    [
+        (None, None, False),
+        ("1.05.99", "1.00.03", False),
+        ("1.06.00", "1.00.01", False),
+        ("1.06.00", "1.00.02", True),
+        ("1.06.00", "1.00.03", True),
+        ("3.02.24", "3.01.01", True),
+    ],
+)
+def test_h617c_scene_command_admission_uses_its_complete_modern_revision(firmware, hardware, admitted):
+    profile = device_profile("H617C", 10, 1, firmware=firmware, hardware=hardware)
+    version_one = next(scene for scene in SCENE_ENTRIES["H617C"] if scene.command_version == 1)
+
+    assert scene_supported(version_one, profile) is admitted
+    assert scene_supported(replace(version_one, command_version=0), profile)
+    assert not scene_supported(replace(version_one, command_version=2), profile)
+    assert profile.scene_command_versions == ({0, 1} if admitted else {0})
+
+
+@pytest.mark.parametrize(
+    ("firmware", "hardware", "v0", "expected_hex"),
+    [
+        (
+            None,
+            None,
+            True,
+            "013a000000010f0100ff00ff00ff7fff000b00010201020302030403040504050605060706070807080908090a090a0b0a0b0cbb00ff041c00ffaabb",
+        ),
+        (
+            "1.05.99",
+            "1.00.03",
+            True,
+            "013a000000010f0100ff00ff00ff7fff000b00010201020302030403040504050605060706070807080908090a090a0b0a0b0cbb00ff041c00ffaabb",
+        ),
+        (
+            "1.06.00",
+            "1.00.01",
+            True,
+            "013a000000010f0100ff00ff00ff7fff000b00010201020302030403040504050605060706070807080908090a090a0b0a0b0cbb00ff041c00ffaabb",
+        ),
+        (
+            "1.06.00",
+            "1.00.02",
+            False,
+            "013a0003001cff0100ff00ff00ffffff000b00010201020302030403040504050605060706070807080908090a090a0b0a0b0cbb00ff041c00ffaabb",
+        ),
+        (
+            "1.06.00",
+            "1.00.03",
+            False,
+            "013a0003001cff0100ff00ff00ffffff000b00010201020302030403040504050605060706070807080908090a090a0b0a0b0cbb00ff041c00ffaabb",
+        ),
+        (
+            "3.02.24",
+            "3.01.01",
+            False,
+            "013a0003001cff0100ff00ff00ffffff000b00010201020302030403040504050605060706070807080908090a090a0b0a0b0cbb00ff041c00ffaabb",
+        ),
+    ],
+)
+def test_h617c_scene_body_conversion_is_independent_of_command_admission(firmware, hardware, v0, expected_hex):
+    profile = device_profile("H617C", 10, 1, firmware=firmware, hardware=hardware)
+    source = bytes.fromhex(
+        "013a000300ffff0100ff00ff00ffffff000b00010201020302030403040504050605060706070807080908090a090a0b0a0b0cbb00ff04ff00ffaabb"
+    )
+    entry = replace(
+        next(scene for scene in SCENE_ENTRIES["H617C"] if scene.command_version == 1),
+        command_version=0,
+    )
+    packets = build_native_scene_packets("H617C", entry, canonical_body=source, profile=profile)
+    envelope = reassemble_a3(packets[:-1])
+
+    assert profile.rgbic_scene_v0 is v0
+    assert envelope[:3] == b"\x01\x04\x02"
+    assert envelope[3 : 3 + len(source)] == bytes.fromhex(expected_hex)
 
 
 @pytest.mark.parametrize("missing_metadata", ["physical_ic_count", "rgbic_scene_v0"])

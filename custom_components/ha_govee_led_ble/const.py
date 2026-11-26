@@ -4351,7 +4351,7 @@ MODEL_REVISION_POLICY_REGISTRATIONS = (
     ModelRevisionPolicyRegistration("H60A6", "h60a6"),
     ModelRevisionPolicyRegistration("H61F5", "h61f5"),
     ModelRevisionPolicyRegistration("H617A", "h617a"),
-    ModelRevisionPolicyRegistration("H617C", "goods_type_70_scene"),
+    ModelRevisionPolicyRegistration("H617C", "h617c"),
     ModelRevisionPolicyRegistration("H617E", "goods_type_70_scene"),
     ModelRevisionPolicyRegistration("H617F", "goods_type_70_scene"),
     ModelRevisionPolicyRegistration("H619A", "h619a"),
@@ -5535,6 +5535,16 @@ def _goods_type_70_scene_revision_policy(context: ModelRevisionContext) -> Model
     )
 
 
+def _h617c_revision_policy(context: ModelRevisionContext) -> ModelProfile:
+    fw, hw = FirmwareVersion.parse(context.firmware), FirmwareVersion.parse(context.hardware)
+    modern = fw is not None and fw >= FirmwareVersion((1, 6)) and hw is not None and hw >= FirmwareVersion((1, 0, 2))
+    return replace(
+        get_profile(context.model),
+        scene_command_versions=frozenset({0, 1}) if modern else frozenset({0}),
+        rgbic_scene_v0=not modern,
+    )
+
+
 def _h617a_revision_policy(context: ModelRevisionContext) -> ModelProfile:
     fw, hw = FirmwareVersion.parse(context.firmware), FirmwareVersion.parse(context.hardware)
     modern_firmware = fw is not None and fw >= FirmwareVersion((1, 6))
@@ -5714,6 +5724,7 @@ _MODEL_REVISION_POLICIES: Mapping[str, Callable[[ModelRevisionContext], ModelPro
     "h60a6": _h60a6_revision_policy,
     "h61f5": _h61f5_revision_policy,
     "goods_type_70_scene": _goods_type_70_scene_revision_policy,
+    "h617c": _h617c_revision_policy,
     "h617a": _h617a_revision_policy,
     "h619a": _h619a_revision_policy,
     "h618a": _h618a_revision_policy,
