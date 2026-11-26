@@ -624,6 +624,8 @@ def _check_upload_packet(frame: bytes, profile: ModelProfile) -> bool:
         and (
             (profile.command_operations is None or "music" in profile.command_operations)
             and any(variant.template for variant in profile.music_variants)
+            or profile.supports_advanced_effects
+            and profile.scene_upload_subtypes
         )
     ):
         return True

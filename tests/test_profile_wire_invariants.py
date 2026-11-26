@@ -64,6 +64,7 @@ from custom_components.ha_govee_led_ble.protocol_semantics import ParsedProtocol
 from custom_components.ha_govee_led_ble.scenes import (
     MODEL_SCENES,
     SceneEntry,
+    scene_code_is_ambiguous,
     scene_key_for_code,
     scene_selector_code,
     scene_supported,
@@ -1060,7 +1061,9 @@ def test_every_supported_scene_round_trips_between_command_and_status(hass, mode
 
     for key, scene in supported:
         selector = scene_selector_code(model, scene, profile=profile)
-        assert scene_key_for_code(model, selector, profile=profile) == key
+        assert scene_key_for_code(model, selector, profile=profile) == (
+            None if scene_code_is_ambiguous(model, selector, profile=profile) else key
+        )
 
     sampled: list[tuple[str, SceneEntry]] = [supported[0], supported[-1]]
     for candidate in supported:
@@ -1081,11 +1084,12 @@ def test_every_supported_scene_round_trips_between_command_and_status(hass, mode
             assert xor_checksum(packet) == 0
             a.require_profile_packet(packet, profile)
         activation = packets[-1]
+        ambiguous = scene_code_is_ambiguous(model, selector, profile=profile)
         assert expectations_from_packet(activation, model, profile=profile) == {
             "color_mode": (ParsedMode.SCENE, None),
             "scene_code": selector,
-            "effect": key,
-            "unknown_scene_code": None,
+            "effect": None if ambiguous else key,
+            "unknown_scene_code": selector if ambiguous else None,
         }
         if profile.supports_color_mode_readback:
             color_mode_enum = _status_color_mode_enum(profile)
@@ -1098,11 +1102,13 @@ def test_every_supported_scene_round_trips_between_command_and_status(hass, mode
             decoded = decode_status_frame(reply, model, profile=profile)
             assert decoded is not None
             parsed = parse_color_mode(decoded.generated, model, profile=profile)
-            assert parsed.mode is ParsedMode.SCENE and parsed.effect == key and parsed.scene_code == selector
+            assert parsed.mode is ParsedMode.SCENE
+            assert parsed.effect == (None if ambiguous else key)
+            assert parsed.scene_code == selector
             coordinator = _qualified_coordinator(hass, model, profile)
             _consume_status(coordinator, reply)
             assert coordinator.color_mode is ParsedMode.SCENE
-            assert coordinator.effect == key
+            assert coordinator.effect == (None if ambiguous else key)
             assert coordinator._scene_code == selector
 
     if unsupported:
