@@ -244,6 +244,16 @@ export class GoveePaintedSegmentEditor extends LitElement {
         rgb(255 255 255 / 12%);
     }
 
+    @supports not (color: color-mix(in srgb, black, white)) {
+      button {
+        border: var(--studio-border-width) solid var(--segment-colour);
+      }
+
+      button.off {
+        border-color: #000;
+      }
+    }
+
     /* Three rows of five segments preserve paint targets on phones. */
     @media (max-width: 600px) {
       .segments {
