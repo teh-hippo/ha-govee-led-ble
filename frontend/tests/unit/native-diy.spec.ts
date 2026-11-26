@@ -178,6 +178,45 @@ test("native family descriptions do not create nonexistent legacy template choic
   expect(catalogue.effects).toHaveLength(9);
 });
 
+test("H607C Shimmer and Drip expose ordered primary and background palette contracts", () => {
+  const catalogue = decodeCustomCataloguePayload(
+    backendContracts.responses.custom_catalogue,
+    decodeEffectContent,
+  ).models.H607C;
+  const shimmer = catalogue.effects.find(effect => effect.family === 110)!;
+  const drip = catalogue.effects.find(effect => effect.family === 113)!;
+
+  for (const effect of catalogue.effects) {
+    expect(effect.rate_min).toBe(1);
+    expect(effect.rate_max).toBe(100);
+  }
+  expect(shimmer).toMatchObject({
+    palette_min: 1,
+    palette_max: 8,
+    secondary_palette: { min: 1, max: 1 },
+    palette_labels: ["Accent colours", "Background"],
+  });
+  expect(drip).toMatchObject({
+    palette_min: 1,
+    palette_max: 8,
+    secondary_palette: { min: 1, max: 1 },
+    palette_labels: ["Moving colours", "Background"],
+  });
+
+  for (const family of [shimmer.family, drip.family]) {
+    const template = catalogue.templates!.find(
+      candidate => candidate.content.kind === "native_effect" && candidate.content.family === family,
+    )!;
+    const content = structuredClone(template.content) as NativeEffectContent;
+    const layer = content.layers[0];
+    expect(layer.type).toBe("diy");
+    if (layer.type !== "diy") throw new Error("expected DIY layer");
+    expect(layer.speed).toBe(50);
+    expect(layer.secondary_palette).toHaveLength(1);
+    expect(decodeEffectContent(content)).toEqual(content);
+  }
+});
+
 test("canonical packed controls preserve siblings, BE high byte, and extension bits", () => {
   const layer = blankLayer();
   layer.unknown_flags = 0x21;
