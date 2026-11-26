@@ -203,7 +203,7 @@ def test_pact1_legacy_operations_preserve_exact_route_bytes(firmware, pact_code)
     [
         ("aa0504060001", ParsedMode.SCENE, 6),
         ("aa050afe00", ParsedMode.DIY, 254),
-        ("aa05130532", ParsedMode.MUSIC, 5),
+        ("aa05010532", ParsedMode.MUSIC, 5),
     ],
 )
 @pytest.mark.parametrize("pact_code", [1, 2])
@@ -220,6 +220,29 @@ def test_pact1_legacy_mode_query_and_readback_are_independent(reply, mode, selec
         assert parsed.diy_code == selector
     else:
         assert parsed.music_mode == "energetic"
+
+
+@pytest.mark.parametrize("pact_code", [1, 2])
+@pytest.mark.parametrize(
+    ("reply", "expected"),
+    [
+        ("aa05020a141e00000000", ParsedMode.COLOUR),
+        ("aa05010532", ParsedMode.MUSIC),
+    ],
+)
+def test_pact1_legacy_status_decodes_static_and_music_independently(reply, expected, pact_code):
+    profile = device_profile("H6102", 1, pact_code, firmware="1.03.01", hardware="1.00.02")
+    modern = parse_status_result(_frame(reply), "H6102")
+    assert modern.parsed is not None
+    assert parse_color_mode(modern.parsed, "H6102").mode is ParsedMode.UNKNOWN
+    result = parse_status_result(_frame(reply), "H6102", profile=profile)
+    assert result.rejection is None and result.parser == "h6102_legacy_status_reply"
+    parsed = parse_color_mode(result.parsed, "H6102", profile=profile)
+    assert parsed.mode is expected
+    if expected is ParsedMode.COLOUR:
+        assert parsed.rgb_color == (10, 20, 30)
+    else:
+        assert parsed.music_mode == "energetic" and parsed.music_sensitivity == 50
 
 
 @pytest.mark.parametrize(("control", "opcode"), [("gradual", "a3"), ("limit", "0e")])

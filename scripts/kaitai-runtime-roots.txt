@@ -65,6 +65,7 @@ speculative/h6046_music_body
 diy_type03
 diy_type04
 speculative/h6102_status_reply
+speculative/h6102_legacy_status_reply
 speculative/h6102_wire_write
 speculative/h6117_status_reply
 speculative/h6117_legacy_status_reply
