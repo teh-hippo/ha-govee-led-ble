@@ -37,6 +37,7 @@ from .effect_compiler import (
     CompiledMusicProfile,
     CompiledStaticRgb,
     CompiledVideoProfile,
+    bind_compiled_geometry,
     compile_application,
     validate_compiled_geometry,
 )
@@ -239,7 +240,9 @@ async def async_apply_compiled_profile(
                 compiled.groups,
                 writer=writer,
                 intent=intent,
-                write_guard=lambda: validate_compiled_geometry(compiled, coordinator.effect_authorization_profile),
+                write_guard=lambda: validate_compiled_geometry(
+                    compiled, coordinator.effect_authorization_profile, coordinator
+                ),
                 on_write=on_write,
             )
         )
@@ -249,7 +252,7 @@ async def async_apply_compiled_profile(
     if isinstance(compiled, CompiledMusicProfile):
         if coordinator.model != compiled.model:
             raise ValueError("music profile target does not match coordinator")
-        validate_compiled_geometry(compiled, coordinator.profile)
+        validate_compiled_geometry(compiled, coordinator.profile, coordinator)
         writes = prepare_music_profile_writes(
             compiled.model,
             compiled.mode,
@@ -542,6 +545,7 @@ async def async_prepare_application(
     profile = await async_prepare_effect_profile(coordinator, intent=intent, content=item.content)
     resolved = resolve_diy_code(item, diy_code, model=coordinator.model, profile=profile)
     compiled = compile_application(item, coordinator.model, diy_code=resolved, profile=profile)
+    compiled = bind_compiled_geometry(compiled, coordinator)
     if isinstance(compiled, CompiledEffect) and DIY_ACK_EVIDENCE in compiled.evidence_codes:
         index = len(compiled.upload_packets) - 1
         upload_ack_subtype(compiled.upload_packets, index, coordinator.model, profile=profile)
@@ -614,7 +618,7 @@ class EffectDeploymentEngine:
             destination_consent,
             config_entry_id=config_entry_id,
         )
-        validate_compiled_geometry(compiled, coordinator.effect_authorization_profile)
+        validate_compiled_geometry(compiled, coordinator.effect_authorization_profile, coordinator)
         record = self._new_record(
             compiled,
             config_entry_id=config_entry_id,
@@ -966,7 +970,7 @@ class EffectDeploymentEngine:
                         destination_consent,
                         config_entry_id=record.config_entry_id,
                     )
-                    validate_compiled_geometry(compiled, coordinator.effect_authorization_profile)
+                    validate_compiled_geometry(compiled, coordinator.effect_authorization_profile, coordinator)
                     await coordinator.async_admit_effect_selection()
                     self._reconcile_observation(
                         coordinator,
@@ -1006,7 +1010,7 @@ class EffectDeploymentEngine:
                         def validate_effect_write() -> None:
                             if write_guard is not None:
                                 write_guard()
-                            validate_compiled_geometry(compiled, coordinator.effect_authorization_profile)
+                            validate_compiled_geometry(compiled, coordinator.effect_authorization_profile, coordinator)
                             validate_diy_destination_consent(coordinator, compiled, destination_consent)
 
                         if not coordinator.is_on:
@@ -1207,7 +1211,7 @@ class EffectDeploymentEngine:
                 assert compiled.activation_packet is not None
 
                 def activation_guard() -> None:
-                    validate_compiled_geometry(compiled, coordinator.effect_authorization_profile)
+                    validate_compiled_geometry(compiled, coordinator.effect_authorization_profile, coordinator)
                     if write_guard is not None:
                         write_guard()
 

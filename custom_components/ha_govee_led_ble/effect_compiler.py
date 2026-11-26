@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from hashlib import sha256
 from types import MappingProxyType
@@ -107,6 +107,14 @@ class CompatibilityResult:
 
 
 @dataclass(frozen=True, slots=True)
+class SceneGeometryAuthority:
+    subscription: object
+    profile_generation: int
+    configured_strings: int
+    physical_ic_count: int
+
+
+@dataclass(frozen=True, slots=True)
 class CompiledEffect:
     item_id: str
     item_version: int
@@ -123,6 +131,7 @@ class CompiledEffect:
     evidence_codes: tuple[str, ...] = ()
     compiler_version: int = EFFECT_COMPILER_VERSION
     physical_ic_count: int | None = None
+    scene_geometry_authority: SceneGeometryAuthority | None = None
     upload_transport: str = "a3"
     scene_entry: SceneEntry | None = None
     scene_route: tuple[str | None, str | None, int | None] | None = None
@@ -236,7 +245,68 @@ class CompiledStaticRgb:
 CompiledApplication = CompiledEffect | CompiledMusicProfile | CompiledVideoProfile | CompiledStaticRgb
 
 
-def validate_compiled_geometry(compiled: CompiledApplication, profile: ModelProfile) -> None:
+def configured_scene_geometry_authority(coordinator: Any) -> SceneGeometryAuthority | None:
+    profile = coordinator.profile
+    if not profile.configured_string_scene_geometry:
+        return None
+    if (
+        coordinator._notification_token is None
+        or not coordinator._configured_strings_confirmed
+        or coordinator.configured_strings not in profile.configured_string_counts
+        or profile.physical_ic_count is None
+    ):
+        raise ValueError("Configured scene geometry is unknown; refresh and retry")
+    return SceneGeometryAuthority(
+        coordinator._notification_token,
+        coordinator._profile_generation,
+        coordinator.configured_strings,
+        profile.physical_ic_count,
+    )
+
+
+def require_scene_geometry_authority(authority: SceneGeometryAuthority | None, coordinator: Any) -> None:
+    if authority is None:
+        return
+    try:
+        current = configured_scene_geometry_authority(coordinator)
+    except ValueError as error:
+        raise ValueError("Configured scene geometry authority changed during scene preparation") from error
+    if current is None or authority != current or authority.subscription is not current.subscription:
+        raise ValueError("Configured scene geometry authority changed during scene preparation")
+
+
+def bind_compiled_geometry(compiled: CompiledApplication, coordinator: Any) -> CompiledApplication:
+    if not isinstance(compiled, CompiledEffect) or not coordinator.profile.configured_string_scene_geometry:
+        return compiled
+    if (
+        compiled.scene_entry is None
+        or compiled.scene_entry.scene_type != 2
+        or compiled.content_kind not in {"scene_builtin", "scene_palette", "scene_layered"}
+    ):
+        return compiled
+    return replace(compiled, scene_geometry_authority=configured_scene_geometry_authority(coordinator))
+
+
+def require_compiled_geometry_authority(compiled: CompiledApplication, coordinator: Any) -> None:
+    if not isinstance(compiled, CompiledEffect) or not coordinator.profile.configured_string_scene_geometry:
+        return
+    if (
+        compiled.scene_entry is None
+        or compiled.scene_entry.scene_type != 2
+        or compiled.content_kind not in {"scene_builtin", "scene_palette", "scene_layered"}
+    ):
+        return
+    try:
+        require_scene_geometry_authority(compiled.scene_geometry_authority, coordinator)
+    except ValueError as error:
+        raise ValueError("Configured scene geometry authority changed since compilation; refresh and retry") from error
+    if compiled.scene_geometry_authority is None:
+        raise ValueError("Configured scene geometry was not bound during compilation")
+
+
+def validate_compiled_geometry(
+    compiled: CompiledApplication, profile: ModelProfile, coordinator: Any | None = None
+) -> None:
     """Reject prepared work after incompatible permission, encoding or geometry changes."""
     if isinstance(compiled, CompiledStaticRgb):
         if not profile.supports_segments or not profile.supports_rgb or len(compiled.segments) != profile.segment_count:
@@ -284,6 +354,8 @@ def validate_compiled_geometry(compiled: CompiledApplication, profile: ModelProf
             raise ValueError("Upload acknowledgement contract changed since compilation; refresh and retry")
         if configured_scene and compiled.physical_ic_count != profile.physical_ic_count:
             raise ValueError("Physical IC count changed since compilation; refresh and retry")
+        if configured_scene and coordinator is not None:
+            require_compiled_geometry_authority(compiled, coordinator)
         if compiled.body_template_id is not None:
             contract = native_diy_template_contract(compiled.model, compiled.body_template_id)
             supported = (

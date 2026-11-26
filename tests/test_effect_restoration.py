@@ -634,6 +634,7 @@ def physical(hass, monkeypatch, request):
         coordinator.pact_type = coordinator.pact_code = 1
         coordinator._resolve_device_profile()
         coordinator._apply_configured_strings(1)
+        coordinator._configured_strings_confirmed = True
     count = coordinator.profile.segment_count
     state = {
         "on": True,

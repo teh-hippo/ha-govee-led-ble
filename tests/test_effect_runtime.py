@@ -713,6 +713,13 @@ def _profile_coordinator(model: str):
     coordinator._field_received_at = {}
     coordinator.model = model
     coordinator.profile = get_profile(model)
+    if model == "H7020":
+        coordinator.profile = replace(coordinator.profile, segment_count=15, physical_ic_count=15)
+        coordinator.configured_strings = 1
+        coordinator._configured_strings_confirmed = True
+        coordinator._lock = asyncio.Lock()
+        coordinator._ensure_connected = AsyncMock(return_value=coordinator._client)
+        coordinator._read_configured_strings = AsyncMock(return_value=True)
     if model == "H6199":
         set_qualified_identity(coordinator)
     coordinator.active_mode = None
@@ -784,7 +791,7 @@ async def test_scene_snapshot_does_not_require_disposable_diy_slot(model: str, n
         name,
         BuiltinScene(CatalogueRef(model, entry.scene_id, entry.effect_id)),
     )
-    compiled = compile_application(item, model)
+    compiled = compile_application(item, model, profile=coordinator.profile)
     assert isinstance(compiled, CompiledEffect)
     repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
     await repository.async_load()

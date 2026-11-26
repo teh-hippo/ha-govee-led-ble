@@ -69,7 +69,10 @@ from .effect_compiler import (
     CompiledMusicProfile,
     CompiledStaticRgb,
     CompiledVideoProfile,
+    bind_compiled_geometry,
     compile_application,
+    configured_scene_geometry_authority,
+    require_scene_geometry_authority,
     resolve_diy_code,
     validate_compiled_geometry,
 )
@@ -920,10 +923,16 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                     intent=ControlIntent.BACKGROUND,
                     content=BuiltinScene(CatalogueRef(coordinator.model, scene.scene_id, scene.effect_id)),
                 )
+                geometry_authority = (
+                    configured_scene_geometry_authority(coordinator)
+                    if native_scene_uses_geometry(scene, profile)
+                    else None
+                )
 
                 def check_scene() -> None:
                     require_scene_command_identity(coordinator, scene)
                     scene_for_profile(scene, coordinator.effect_authorization_profile)
+                    require_scene_geometry_authority(geometry_authority, coordinator)
 
                 if effect_guards is not None:
                     effect_guards.append(check_scene)
@@ -1017,7 +1026,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             compiled = self._compile_template_default(f"template:music:{selected.value}")
             if compiled is not None:
                 if effect_guards is not None:
-                    effect_guards.append(lambda: validate_compiled_geometry(compiled, coordinator.profile))
+                    effect_guards.append(lambda: validate_compiled_geometry(compiled, coordinator.profile, coordinator))
                 return partial(
                     async_apply_compiled_profile,
                     coordinator,
@@ -1273,6 +1282,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                     diy_code=resolve_diy_code(current, diy_code, model=self.coordinator.model, profile=profile),
                     profile=profile,
                 )
+                compiled = bind_compiled_geometry(compiled, self.coordinator)
                 if isinstance(compiled, CompiledVideoProfile):
                     await async_require_video_controls(
                         self.coordinator,
@@ -1324,7 +1334,9 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                     def guard() -> None:
                         if native_write_guard is not None:
                             native_write_guard()
-                        validate_compiled_geometry(compiled, self.coordinator.effect_authorization_profile)
+                        validate_compiled_geometry(
+                            compiled, self.coordinator.effect_authorization_profile, self.coordinator
+                        )
                         validate_video_request(self.coordinator, current.content)
                         validate_diy_destination_consent(
                             self.coordinator,

@@ -141,11 +141,16 @@ class _EffectCoordinator(SimpleNamespace):
 
 
 def _coordinator(*, model: str = "H617A", readable: bool = False) -> SimpleNamespace:
+    profile = (
+        get_profile(model)
+        if readable
+        else replace(get_profile(model), read_domains=frozenset(), setup_required_read_domains=frozenset())
+    )
+    if model == "H7020":
+        profile = replace(profile, segment_count=15, physical_ic_count=15)
     coordinator = _EffectCoordinator(
         model=model,
-        profile=get_profile(model)
-        if readable
-        else replace(get_profile(model), read_domains=frozenset(), setup_required_read_domains=frozenset()),
+        profile=profile,
         effect_families={EFFECT_FAMILY_SCENES},
         _control_arbiter=BLEControlArbiter(),
         is_on=False,
@@ -162,6 +167,12 @@ def _coordinator(*, model: str = "H617A", readable: bool = False) -> SimpleNames
         _recovery_invalidation_generation=0,
         _pre_mode_snapshot=None,
     )
+    if model == "H7020":
+        coordinator.configured_strings = 1
+        coordinator._configured_strings_confirmed = True
+        coordinator._lock = asyncio.Lock()
+        coordinator._ensure_connected = AsyncMock(return_value=object())
+        coordinator._read_configured_strings = AsyncMock(return_value=True)
     coordinator.async_preview_preflight = AsyncMock()
     coordinator.disconnect = AsyncMock()
     coordinator.capture_effect_control_state = MagicMock(
