@@ -927,7 +927,10 @@ async def test_music_upload_without_verdict_does_not_restore_a_selector(selectio
 async def test_native_scene_revalidates_command_version_after_subscription_replacement(selection_ready):
     c, first = selection_ready
     c.is_on = True
-    c._note_identity(fw_version="1.06.00", hw_version="1.00.02")
+    c._note_identity(
+        fw_version="1.06.00",
+        hw_version="1.00.03" if c.model == "H617F" else "1.00.02",
+    )
     scene = next(scene for scene in SCENE_ENTRIES[c.model] if scene.command_version == 1)
     compiled = compile_effect(
         LibraryItem.new("Scene", BuiltinScene(CatalogueRef(c.model, scene.scene_id, scene.effect_id))),
