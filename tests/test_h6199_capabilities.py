@@ -8,10 +8,13 @@ from unittest.mock import AsyncMock, MagicMock, Mock
 import pytest
 
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ReadDomain, device_profile, get_profile
+from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
 from custom_components.ha_govee_led_ble.effect_catalogue import MODEL_EFFECT_CATALOGUES
+from custom_components.ha_govee_led_ble.effect_compiler import compile_effect
 from custom_components.ha_govee_led_ble.effect_contracts import CapabilityState
+from custom_components.ha_govee_led_ble.effect_domain import LibraryItem
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_blank_screen_query,
     build_brightness_query,
@@ -25,7 +28,11 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_white_balance_query,
 )
 from custom_components.ha_govee_led_ble.music_commands import resolve_music_profile
+from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_packets
+from custom_components.ha_govee_led_ble.palette_scene_decoder import decode_catalogue_palette_scene
+from custom_components.ha_govee_led_ble.protocol_admission import require_profile_packet
 from custom_components.ha_govee_led_ble.protocol_h6199 import build_h6199_control_query
+from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES, scene_supported
 from custom_components.ha_govee_led_ble.transport import xor_checksum
 from custom_components.ha_govee_led_ble.video_applicability import (
     camera_controls_state,
@@ -51,6 +58,131 @@ def set_qualified_identity(coordinator):
     confirmed.update(video_identity_fields(coordinator.profile))
     if not callable(getattr(coordinator, "identity_fields_confirmed", None)):
         coordinator.identity_fields_confirmed = lambda fields: fields <= confirmed
+
+
+@pytest.mark.parametrize(
+    ("pact", "firmware", "hardware", "uploaded"),
+    [
+        ((2, 1), "1.06.00", "1.00.01", False),
+        ((2, 1), "1.06.01", "1.00.01", True),
+        ((2, 1), "1.07.01", "3.02.01", False),
+        ((2, 1), "1.07.02", "3.02.01", True),
+        ((2, 1), "9.99.99", "3.04.01", False),
+        ((2, 1), "9.99.99", "2.01.01", False),
+        ((2, 1), None, "1.00.01", False),
+        ((2, 1), "1.06.01", None, False),
+        ((3, 1), "1.00.01", "1.00.01", True),
+        ((4, 1), "1.00.01", "1.00.01", True),
+    ],
+)
+def test_pact2_uploaded_scene_revision_boundary(pact, firmware, hardware, uploaded):
+    profile = device_profile("H6199", *pact, firmware=firmware, hardware=hardware)
+    residents = tuple(scene for scene in SCENE_ENTRIES["H6199"] if scene_supported(scene, profile))
+
+    assert profile.profile_identity_fields == frozenset({"fw_version", "hw_version"})
+    assert profile.supports_advanced_effects is uploaded
+    assert (profile.selector_only_scene_bits is None) is uploaded
+    assert (profile.scene_codes is None) is uploaded
+    assert profile.scene_upload_subtypes == frozenset({1, 2, 3})
+    if uploaded:
+        assert len(residents) == 240
+    else:
+        assert tuple(sorted(scene.code for scene in residents)) == (0, 1, 4, 5, 7, 8, 9, 10, 15, 16, 21, 22)
+        assert all(scene.scene_type == 0 for scene in residents)
+
+
+def test_pact2_scene_profile_transitions_with_fresh_identity(hass):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url=None)
+    coordinator._client = MagicMock(is_connected=True)
+    coordinator._note_advertisement(SimpleNamespace(manufacturer_data={34818: bytes((0xEC, 0, 2, 1, 0))}))
+    coordinator._observe_identity_field("hw_version", "1.00.01")
+
+    coordinator._observe_identity_field("fw_version", "1.06.00")
+    assert coordinator.profile.scene_codes is not None
+    old_generation = coordinator._profile_generation
+
+    coordinator._observe_identity_field("fw_version", "1.06.01")
+    assert coordinator.profile.scene_codes is None
+    assert coordinator._profile_generation > old_generation
+    full_generation = coordinator._profile_generation
+
+    coordinator._observe_identity_field("fw_version", "1.06.00")
+    assert coordinator.profile.scene_codes is not None
+    assert coordinator._profile_generation > full_generation
+
+
+@pytest.mark.parametrize("subtype", [2, 3])
+def test_old_pact2_resident_scene_packets_survive_but_uploaded_scene_packets_do_not(subtype):
+    full = device_profile("H6199", 2, 1, firmware="1.06.01", hardware="1.00.01")
+    old = device_profile("H6199", 2, 1, firmware="1.06.00", hardware="1.00.01")
+    entry = next(
+        scene
+        for scene in SCENE_ENTRIES["H6199"]
+        if (content := decode_catalogue_palette_scene("H6199", scene)) is not None
+        and compile_effect(LibraryItem.new("Uploaded", content), "H6199", profile=full).upload_packets[0][2:5]
+        == bytes((1, subtype, 1))
+    )
+    compiled = compile_effect(
+        LibraryItem.new("Uploaded", decode_catalogue_palette_scene("H6199", entry)),
+        "H6199",
+        profile=full,
+    )
+    resident = next(scene for scene in SCENE_ENTRIES["H6199"] if scene.code == 1)
+
+    for packet in build_native_scene_packets("H6199", resident, profile=old):
+        require_profile_packet(packet, old)
+    for packet in compiled.upload_packets:
+        require_profile_packet(packet, full)
+    with pytest.raises(ValueError, match="scene upload"):
+        require_profile_packet(compiled.upload_packets[0], old)
+    with pytest.raises(ValueError, match="scene selector"):
+        require_profile_packet(compiled.activation_packet, old)
+
+
+@pytest.mark.parametrize("transition_at", ["admission", "upload", "activation"])
+async def test_old_pact2_scene_identity_transition_blocks_upload_and_activation(hass, monkeypatch, transition_at):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url=None)
+    coordinator._note_advertisement(SimpleNamespace(manufacturer_data={34818: bytes((0xEC, 0, 2, 1, 0))}))
+    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
+    coordinator._client = client
+    coordinator._notification_token = object()
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
+    coordinator._observe_identity_field("hw_version", "1.00.01")
+    coordinator._observe_identity_field("fw_version", "1.06.00" if transition_at == "admission" else "1.06.01")
+    full = device_profile("H6199", 2, 1, firmware="1.06.01", hardware="1.00.01")
+    entry = next(scene for scene in SCENE_ENTRIES["H6199"] if decode_catalogue_palette_scene("H6199", scene))
+    compiled = compile_effect(
+        LibraryItem.new("Uploaded", decode_catalogue_palette_scene("H6199", entry)),
+        "H6199",
+        profile=full,
+    )
+    transition_packet = (
+        compiled.upload_packets[0]
+        if transition_at == "upload"
+        else compiled.upload_packets[-1]
+        if transition_at == "activation"
+        else None
+    )
+    written = []
+
+    async def write(_uuid, packet, **_kwargs):
+        written.append(packet)
+        if packet == transition_packet:
+            coordinator._observe_identity_field("fw_version", "1.06.00")
+
+    client.write_gatt_char.side_effect = write
+    with pytest.raises(ValueError):
+        await coordinator.async_write_effect_sequence(
+            compiled.packets,
+            intent=ControlIntent.USER,
+        )
+
+    expected_writes = (
+        0 if transition_at == "admission" else 1 if transition_at == "upload" else len(compiled.upload_packets)
+    )
+    assert len(written) == expected_writes
+    assert compiled.activation_packet not in written
+    assert not coordinator.profile.supports_advanced_effects
 
 
 def test_compound_static_recovery_is_limited_to_the_captured_h6199_revision():

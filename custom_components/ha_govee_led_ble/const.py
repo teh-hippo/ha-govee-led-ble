@@ -751,6 +751,8 @@ class ModelProfile:
     selector_only_scene_bits: int | None = None
     # scene_codes limits selector eligibility per revision; local_scenes use scene_id 0, effect_id = selector.
     scene_codes: frozenset[int] | None = None
+    # Declared A3 scene upload subtypes; None leaves admission to the shared grammar.
+    scene_upload_subtypes: frozenset[int] | None = None
     scene_command_versions: frozenset[int] | None = None
     local_scenes: tuple[tuple[int, str], ...] = ()
     advanced_scene_carrier: tuple[int, int] | None = None
@@ -4095,6 +4097,8 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_segment_writes=True,
         supports_segment_brightness=True,
         scene_catalogue_sku="H6199",
+        scene_command_versions=frozenset({0, 1}),
+        scene_upload_subtypes=frozenset({1, 2, 3}),
         advanced_scene_carrier=(29884, 41599),
         default_effect_families_override=frozenset({EFFECT_FAMILY_VIDEO}),
         effect_readback="diy_code_only",
@@ -5479,11 +5483,25 @@ def _h618a_revision_policy(context: ModelRevisionContext) -> ModelProfile:
 def _h6199_revision_policy(context: ModelRevisionContext) -> ModelProfile:
     pact = (context.pact_type, context.pact_code)
     profile = H6199_PACT1_PROFILE if pact == (1, 1) else get_profile(context.model)
+    fw, hw = FirmwareVersion.parse(context.firmware), FirmwareVersion.parse(context.hardware)
+    if pact == (2, 1):
+        telink = hw is not None and 10000 <= hw.identity_number() < 20000
+        frk = hw is not None and 30000 <= hw.identity_number() < 40000 and not 30400 <= hw.identity_number() < 30500
+        uploaded_scenes = fw is not None and (
+            telink and fw >= FirmwareVersion((1, 6, 1)) or frk and fw >= FirmwareVersion((1, 7, 2))
+        )
+        if not uploaded_scenes:
+            profile = replace(
+                profile,
+                supports_advanced_effects=False,
+                selector_only_scene_bits=16,
+                scene_codes=frozenset({0, 1, 4, 5, 7, 8, 9, 10, 15, 16, 21, 22}),
+                scene_command_versions=frozenset({0}),
+            )
     if pact == (2, 1) and context.hardware == "3.02.01" and context.firmware == "1.10.04":
         profile = replace(profile, supports_compound_static_recovery=True)
     if pact not in _H6199_DREAMVIEW_PACTS:
         return replace(profile, dreamview_operations=frozenset(), dreamview_reads=frozenset())
-    fw, hw = FirmwareVersion.parse(context.firmware), FirmwareVersion.parse(context.hardware)
     if fw is None or hw is None or fw < FirmwareVersion((1, 9)) or hw < FirmwareVersion((3, 2, 1)):
         if "same_brightness" not in profile.dreamview_operations:
             return profile

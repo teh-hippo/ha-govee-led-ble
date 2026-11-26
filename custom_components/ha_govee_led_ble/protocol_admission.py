@@ -441,7 +441,9 @@ def _check_command_packet(frame: bytes, profile: ModelProfile) -> bool:
                     raise ValueError("Invalid boolean control value")
                 return True
             raise ValueError(f"{profile.name} does not support boolean control {control}")
-        if operation == "scene" and profile.scene_codes is not None:
+        if (
+            operation == "scene" or operation in {"multi", "mode"} and sub_operation == "scene"
+        ) and profile.scene_codes is not None:
             _sub_operation, detail = _command_mode_parts(command, profile.command_grammar)
             code = getattr(detail, "code", getattr(detail, "scene_id", None))
             if code not in profile.scene_codes:
@@ -584,6 +586,12 @@ def _check_upload_packet(frame: bytes, profile: ModelProfile) -> bool:
                 return True
             raise ValueError("Palette DIY upload is outside profile capabilities")
     upload = _parse_xor_frame(frame, "A3", {"A3": ("command_write.upload_frame", CommandWrite.UploadFrame)}).parsed
+    if upload is not None and upload.index == 0 and profile.scene_upload_subtypes is not None:
+        subtype = int(upload.body.subtype)
+        if subtype in profile.scene_upload_subtypes:
+            if not profile.supports_advanced_effects:
+                raise ValueError("scene upload is outside the confirmed revision")
+            return True
     if upload is not None and upload.index == 0 and upload.body.subtype == 0x41:
         if (profile.command_operations is not None and "music" not in profile.command_operations) or not any(
             variant.template for variant in profile.music_variants
