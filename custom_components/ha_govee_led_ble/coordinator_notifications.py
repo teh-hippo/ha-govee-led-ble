@@ -42,7 +42,7 @@ from .generated_protocol_adapter import (
     upload_ack_success,
     video_parameters_from_brightness,
 )
-from .h6099_controls import h6099_control_status
+from .installation_controls import installation_control_status
 from .low_blue_light import parse_setting as parse_low_blue_light_setting
 from .low_blue_light import setting_state as low_blue_light_state
 from .music_semantics import (
@@ -1218,7 +1218,7 @@ class _NotificationMixin(_CoordinatorBase):
                 if self._observe_identity_field("subordinate_21_version", generated.body.text or None):
                     observed = ("subordinate_21_version",)
             elif domain in _OPTIONAL_CONTROL_DOMAINS:
-                control_values = h6099_control_status(decoded, self.profile)
+                control_values = installation_control_status(decoded, self.profile)
                 if not control_values:
                     self._record_parsed_status(frame, decoded, parser)
                     return

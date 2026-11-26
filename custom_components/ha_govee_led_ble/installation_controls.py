@@ -33,7 +33,7 @@ def installation_direction_value(value: Any) -> int:
     raise vol.Invalid("Installation direction must be 2, 3, 4, or 5")
 
 
-def h6099_control_queries(model: str, profile: ModelProfile) -> tuple[bytes, ...]:
+def installation_control_queries(model: str, profile: ModelProfile) -> tuple[bytes, ...]:
     """Optional refresh queries; neither domain is required for setup."""
     return tuple(
         builder(model, profile=profile)
@@ -45,7 +45,7 @@ def h6099_control_queries(model: str, profile: ModelProfile) -> tuple[bytes, ...
     )
 
 
-def h6099_control_status(decoded: ParsedStatusEnvelope, profile: ModelProfile) -> dict[str, int | str | None]:
+def installation_control_status(decoded: ParsedStatusEnvelope, profile: ModelProfile) -> dict[str, int | str | None]:
     """Interpret the generic status root; unknown values must clear old observations."""
     if not profile.can_read(decoded.domain):
         return {}
@@ -57,7 +57,9 @@ def h6099_control_status(decoded: ParsedStatusEnvelope, profile: ModelProfile) -
     return {}
 
 
-async def async_read_h6099_controls(coordinator: GoveeBLECoordinator) -> dict[str, int | str | None]:
+async def async_refresh_installation_controls(
+    coordinator: GoveeBLECoordinator,
+) -> dict[str, int | str | None]:
     domains = frozenset({ReadDomain.INSTALLATION_DIRECTION, ReadDomain.CAMERA_HEALTH})
     if not domains <= coordinator.profile.read_domains:
         raise ServiceValidationError(
@@ -81,7 +83,7 @@ async def async_read_h6099_controls(coordinator: GoveeBLECoordinator) -> dict[st
 
 async def async_read_installation_controls(entity: GoveeBLELight, call: ServiceCall) -> dict[str, int | str | None]:
     """Return fresh observations, not cached health after a missed reply."""
-    return await async_read_h6099_controls(entity.coordinator)
+    return await async_refresh_installation_controls(entity.coordinator)
 
 
 async def async_set_installation_direction(entity: GoveeBLELight, call: ServiceCall) -> None:
@@ -98,6 +100,6 @@ async def async_set_installation_direction(entity: GoveeBLELight, call: ServiceC
     await entity._async_supersede_preview()
     async with async_control_intent(coordinator, ControlIntent.USER):
         await coordinator.async_write_effect_sequence((packet,), intent=ControlIntent.USER)
-        observed = await async_read_h6099_controls(coordinator)
+        observed = await async_refresh_installation_controls(coordinator)
         if observed["installation_direction"] != value:
             raise HomeAssistantError(translation_domain=DOMAIN, translation_key="device_command_failed")
