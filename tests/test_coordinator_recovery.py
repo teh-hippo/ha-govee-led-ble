@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 from bleak.exc import BleakError
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.setup import async_setup_component
 
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, MUSIC_MODE_SLUGS, ReadDomain, device_profile
@@ -354,6 +354,7 @@ async def test_interrupted_write_only_controls_cannot_publish_rolled_back_baseli
 @pytest.mark.parametrize(
     ("model", "external_kelvin", "initially_on", "rendered"),
     [
+        ("H60A6", None, True, (255, 185, 105)),
         ("H6072", 5000, True, (255, 255, 255)),
         ("H6076", None, True, (255, 185, 105)),
         ("H6076", None, False, (255, 146, 39)),
@@ -365,6 +366,9 @@ async def test_native_white_scene_off_uses_supported_observations(
     coord = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url=None)
     if model == "H6072":
         coord.profile = device_profile(model, 2, 1, firmware="2.04.10", hardware="3.02.00")
+    elif model == "H60A6":
+        coord.pact_type, coord.pact_code = 1, 2
+        coord._resolve_device_profile()
     monkeypatch.setattr(coord, "_authorization_profile", lambda: coord.profile)
     monkeypatch.setattr(coord, "_reconcile_authorization", lambda: None)
     monkeypatch.setattr(coord, "async_prepare_identity_gated_control", AsyncMock(return_value=lambda: None))
@@ -384,7 +388,17 @@ async def test_native_white_scene_off_uses_supported_observations(
         coord._notify_callback(None, bytearray(_packet(0xAA, domain, values)))
 
     async def radio(_uuid, packet, **_kwargs):
-        if packet[0] == 0xAA:
+        if model == "H60A6" and packet[0] == 0xAC:
+            from tests.test_h60a_protocol import bulk_frames
+
+            if packet[2] == 1:
+                payload = bytes.fromhex("30020101")
+            elif physical["scene"]:
+                payload = bytes.fromhex("0503") + bytes((4, *physical["scene"]))
+            else:
+                payload = bytes.fromhex("050415000000")
+            coord._notify_callback(None, bytearray(bulk_frames(payload)[0]))
+        elif packet[0] == 0xAA:
             if packet[1] == 1:
                 reply(1, [int(physical["on"])])
             elif packet[1] == 4:
@@ -438,6 +452,9 @@ async def test_native_white_scene_off_uses_supported_observations(
     monkeypatch.setattr(coord, "async_set_boolean_control", gradual)
     client.write_gatt_char.side_effect = radio
     await light.async_turn_on(color_temp_kelvin=3000, brightness=128)
+    if model == "H60A6":
+        with pytest.raises(ServiceValidationError):
+            await light.async_set_segment_color_temp([13], 3000)
     if external_kelvin is not None:
         coord._expected_state.clear()
         physical["kelvin"] = external_kelvin

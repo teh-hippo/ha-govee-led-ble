@@ -2098,6 +2098,14 @@ class _RecoveryMixin(_CoordinatorBase):
                     exceptions.setdefault(rgb, []).append(index)
             for rgb, segments in exceptions.items():
                 packets.extend(build_segment_paint([(segments, rgb)], self.model, profile=self.profile))
+        elif (
+            strategy is StaticRecoveryStrategy.NATIVE_SOURCE
+            and not self.profile.supports_segment_color_temperature
+            and self.profile.supports_color_temperature
+            and len(positive) == 1
+            and len(set(target_intents)) == 1
+        ):
+            packets = [build_color_temp(next(iter(positive)), self.model, profile=self.profile)]
         else:
             packets = []
             semantic_groups: dict[tuple[int, tuple[int, int, int]], list[int]] = {}
