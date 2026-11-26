@@ -2945,6 +2945,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         ),
         music_variants=H61F5_MUSIC_VARIANTS,
         music_upload_before_selector=True,
+        music_requires_upload_ack=True,
         supports_music_color=True,
         physical_ic_count=50,
         segment_count_ic_divisor=5,

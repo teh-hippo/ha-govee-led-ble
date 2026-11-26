@@ -900,6 +900,51 @@ async def test_h61e5_extended_music_activates_only_after_positive_upload_verdict
     assert sent == list(expected if verdict == "accepted" else expected[:-1])
     assert c._upload_ack is None
 
+@pytest.mark.parametrize("connected", ["H61F5"], indirect=True)
+@pytest.mark.parametrize("response", ["accepted", "rejected", "missing"])
+async def test_h61f5_extended_music_waits_for_positive_upload_result(selection_ready, response):
+    c, client = selection_ready
+    c._observe_pact(3, 1)
+    c._physical_ic_count_confirmed = True
+    c.music_sensitivity = 42
+    recovery = c._pre_mode_snapshot
+    expected = (
+        bytes.fromhex("3301010000000000000000000000000000000033"),
+        bytes.fromhex("a3000103413307ff0000ff7f00ffff0000ff0054"),
+        bytes.fromhex("a3010000ff00ffff8b00ff010101196201030657"),
+        bytes.fromhex("a3ff140000000000000000000000000000000048"),
+        bytes.fromhex("330513332a00000000000000000000000000003c"),
+    )
+    assert prepare_music_request("H61F5", "hopping", 42, None, False, {}, profile=c.profile) == expected
+    selector = expected[-1]
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet == expected[-2] and response != "missing":
+            assert selector not in [call.args[1] for call in client.write_gatt_char.call_args_list]
+            receive(client, frame("a34133" + ("00" if response == "accepted" else "01")))
+
+    client.write_gatt_char.side_effect = write
+    if response == "accepted":
+        await c.async_select_music_slug("hopping")
+        assert c.music_mode == "hopping"
+        assert c.music_body is not None
+    else:
+        with pytest.raises((RuntimeError, TimeoutError)):
+            await c.async_select_music_slug("hopping")
+        assert c.music_mode == "off"
+        assert c.music_body is None
+    assert [call.args[1] for call in client.write_gatt_char.await_args_list] == list(
+        expected if response == "accepted" else expected[:-1]
+    )
+    if response == "accepted":
+        assert c._pre_mode_snapshot is not None
+        assert c._pre_mode_snapshot.segment_colors == ((17, 34, 51),) * 10
+        assert c._pre_mode_snapshot.segment_brightness == (23,) * 10
+    else:
+        assert c._pre_mode_snapshot == recovery
+    assert c._upload_ack is None
+    assert c._ensure_connected.await_count == 1
+
 
 @pytest.mark.parametrize("connected", ["H6139", "H6159"], indirect=True)
 @pytest.mark.parametrize("pact,firmware,hardware,mode", [(1, "1.07.02", "1.00.01", 14), (10, "2.04.00", "2.01.01", 19)])
