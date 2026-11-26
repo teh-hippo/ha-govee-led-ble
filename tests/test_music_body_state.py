@@ -139,16 +139,17 @@ def test_compiled_defaults_count_as_actual_geometry_parameters(mode, parameters,
         validate_compiled_geometry(compiled, replace(profile, physical_ic_count=None))
 
 
-def test_h617e_metadata_does_not_inherit_new_controls_or_geometry_policy():
+def test_h617e_metadata_keeps_independent_controls_with_exact_geometry():
     profile = get_profile("H617E")
     assert profile.music_upload_before_selector and profile.music_requires_upload_ack
     assert not profile.music_params_require_activation
     assert [variant.mode_code for variant in profile.music_variants] == [3, 48, 49, 50, 51, 52, 53, 55]
     for variant in profile.music_variants:
         assert variant.palette_bounds is None
-        assert not any(spec.requires_physical_ic_count for spec in variant.parameters)
-    piano = music_variant(replace(profile, physical_ic_count=60), 52)
-    assert [(spec.profile_key, spec.min_value, spec.max_value) for spec in piano.parameters] == [("key_count", 8, 15)]
+    assert profile.physical_ic_count == 30
+    assert all(music_variant(profile, mode).requires_physical_ic_count for mode in (0x32, 0x33, 0x34, 0x35, 0x37))
+    piano = music_variant(profile, 52)
+    assert [(spec.profile_key, spec.min_value, spec.max_value) for spec in piano.parameters] == [("key_count", 9, 18)]
     assert [spec.profile_key for spec in music_variant(profile, 51).parameters] == ["relative_brightness"]
 
 
