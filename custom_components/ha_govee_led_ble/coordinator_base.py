@@ -316,6 +316,8 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
 
         def _apply_configured_strings(self, count: int) -> None: ...
 
+        async def _read_configured_strings(self, client: BleakClient, *, deadline: float) -> bool: ...
+
         async def _wait_for_revisions(
             self,
             field_baselines: Mapping[str, int],
