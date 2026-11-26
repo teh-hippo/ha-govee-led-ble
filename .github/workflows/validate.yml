@@ -95,6 +95,8 @@ jobs:
         working-directory: .build/ci-package
         run: |
           sha256sum --check ha_govee_led_ble.zip.sha256
+          apt-get update
+          apt-get install -y --no-install-recommends unzip
           unzip -q -n -DD ha_govee_led_ble.zip 'frontend/*' \
             -d "$GITHUB_WORKSPACE/custom_components/ha_govee_led_ble"
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
