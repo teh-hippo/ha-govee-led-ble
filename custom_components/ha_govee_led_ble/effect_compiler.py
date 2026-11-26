@@ -185,6 +185,7 @@ class CompiledVideoProfile:
     artifact_sha256: str
     white_balance_wire: tuple[int, ...] | None = None
     black_border: bool | None = None
+    hdr: tuple[bool, int] | None = None
     blank_screen_policy: tuple[int, int, int] | None = None
     whole_relative_brightness: int | None = None
     video_sensitivity: int | None = None
@@ -209,6 +210,7 @@ class CompiledVideoProfile:
                 self.color_calibration is not None,
                 self.blank_screen is not None,
                 self.black_border is not None,
+                self.hdr is not None,
             )
         )
 
@@ -1463,6 +1465,7 @@ def compile_video_profile(
             cast(int, content.hdmi_box_effect),
         )
     )
+    hdr = None if content.hdr_enabled is None else (content.hdr_enabled, cast(int, content.hdr_contrast))
     payload = {
         "kind": "video_profile",
         "model": model,
@@ -1487,6 +1490,7 @@ def compile_video_profile(
         ),
         "blank_screen": content.blank_screen,
         **({"black_border": content.black_border} if content.black_border is not None else {}),
+        **({"hdr": hdr} if hdr is not None else {}),
     }
     policy = None
     if (
@@ -1520,6 +1524,7 @@ def compile_video_profile(
         color_calibration=content.color_calibration,
         blank_screen=content.blank_screen,
         black_border=content.black_border,
+        hdr=hdr,
         blank_screen_policy=policy,
         artifact_sha256=_semantic_digest(payload),
     )

@@ -92,6 +92,12 @@ function decodeVideoControls(value: unknown): VideoControls {
       maximum: integerValue(white.maximum, "white balance maximum", 0, 255),
       default: integerValue(white.default, "white balance default", 0, 255),
     },
+    ...(controls.hdr_contrast === undefined ? {} : {
+      hdr_contrast: {
+        minimum: integerValue(objectValue(controls.hdr_contrast, "HDR contrast control").minimum, "HDR contrast minimum", 0, 255),
+        maximum: integerValue(objectValue(controls.hdr_contrast, "HDR contrast control").maximum, "HDR contrast maximum", 0, 255),
+      },
+    }),
     brightness_zones: arrayValue(controls.brightness_zones, "brightness zones", 6).map(zone =>
       enumString(zone, ["left", "top", "right", "bottom", "strip_left", "strip_right"] as const, "brightness zone")),
   };
@@ -110,6 +116,7 @@ const VIDEO_PROFILE_SETTINGS = [
   "whole_relative_brightness",
   "blank_screen",
   "black_border",
+  "hdr_contrast",
 ] as const;
 export function decodeCustomCataloguePayload(
   value: unknown,

@@ -31,6 +31,8 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_hdmi_box_light,
     build_hdmi_box_light_query,
     build_hdmi_input,
+    build_hdr_contrast,
+    build_hdr_contrast_query,
     build_subordinate_query,
     build_video_color_calibration,
     build_video_mode,
@@ -45,6 +47,7 @@ from custom_components.ha_govee_led_ble.native_profile_controls import (
     apply_blank_screen,
     apply_hdmi_box_light,
     apply_hdmi_input,
+    apply_hdr_contrast,
     apply_video_color_calibration,
     apply_video_sensitivity,
 )
@@ -169,7 +172,7 @@ async def test_border_only_gate_and_physical_recheck(version, state) -> None:
     assert all(
         value == "supported"
         for key, value in states.items()
-        if key not in {"black_border", "whole_relative_brightness"}
+        if key not in {"black_border", "whole_relative_brightness", "hdr_contrast"}
     )
     validate_video_request(device, content())
     compiled = compile_video_profile(LibraryItem.new("Video only", content()), "H6099")
@@ -193,6 +196,99 @@ async def test_border_only_gate_and_physical_recheck(version, state) -> None:
         with pytest.raises(ValueError, match="black_border"):
             await apply_black_border(device, True, writer=disconnected)
         assert not hasattr(device, "black_border")
+
+
+def test_h66a0_hdr_exact_wire_and_public_contract() -> None:
+    profile = get_profile("H66A0")
+    assert profile.supports_hdr_contrast
+    assert profile.video_hdr_contrast_min == 1
+    assert profile.video_hdr_contrast_max == 4
+    assert video_control_states(profile, SimpleNamespace())["hdr_contrast"] == "supported"
+    assert build_hdr_contrast_query("H66A0") == frame("aaa911")
+    video_settings = MODEL_EFFECT_CATALOGUES["H66A0"].to_dict(profile=profile)["video_settings"]
+    assert isinstance(video_settings, list)
+    assert "hdr_contrast" in video_settings
+    for enabled in (False, True):
+        for contrast in (1, 4):
+            packet = build_hdr_contrast(enabled, contrast, "H66A0")
+            assert packet == frame(f"33a91102{int(enabled):02x}{contrast:02x}")
+            parsed = parse_command(packet, "H66A0")
+            assert parsed is not None
+            assert parsed.body.setting == 17
+            assert bool(parsed.body.payload.is_enabled) is enabled
+            assert parsed.body.payload.contrast == contrast
+            require_profile_packet(packet, profile)
+            decoded = decode_status_frame(frame(f"aaa91102{int(enabled):02x}{contrast:02x}"), "H66A0")
+            assert decoded is not None
+            assert bool(decoded.generated.body.payload.is_enabled) is enabled
+            assert decoded.generated.body.payload.contrast == contrast
+    authored = VideoProfile(
+        "H66A0",
+        "movie",
+        None,
+        100,
+        False,
+        50,
+        None,
+        None,
+        None,
+        hdr_enabled=True,
+        hdr_contrast=4,
+    )
+    compiled = compile_video_profile(LibraryItem.new("HDR", authored), "H66A0")
+    assert compiled.hdr == (True, 4)
+    round_trip = effect_content_from_dict(effect_content_to_dict(authored))
+    assert round_trip == authored
+    with pytest.raises(EffectValidationError, match="both"):
+        replace(authored, hdr_contrast=None)
+    with pytest.raises(EffectValidationError, match="hdr_contrast"):
+        replace(authored, hdr_contrast=5)
+    with pytest.raises(ValueError, match="does not support"):
+        build_hdr_contrast(True, 2, "H6099")
+
+
+def test_hdr_codec_is_selected_by_profile_capability(monkeypatch) -> None:
+    monkeypatch.setitem(
+        MODEL_PROFILES,
+        "H7001",
+        replace(get_profile("H6099"), name="HDR shared-route fixture", supports_hdr_contrast=True),
+    )
+    assert build_hdr_contrast(False, 3, "H7001") == frame("33a911020003")
+    assert build_hdr_contrast_query("H7001") == frame("aaa911")
+    require_profile_packet(build_hdr_contrast(False, 3, "H7001"), MODEL_PROFILES["H7001"])
+    require_profile_packet(build_hdr_contrast_query("H7001"), MODEL_PROFILES["H7001"])
+
+
+async def test_h66a0_hdr_observation_write_and_recovery(hass, monkeypatch) -> None:
+    device = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H66A0", configuration_url="test")
+    device._client = MagicMock(is_connected=True)
+    device._notify_callback(None, bytearray(frame("aaa911020104")))
+    assert device.hdr_enabled is True
+    assert device.hdr_contrast == 4
+    captured = device.capture_effect_control_state()
+    assert captured.hdr_enabled is True
+    assert captured.hdr_contrast == 4
+    assert PriorControlState.from_dict(captured.to_dict()).hdr_contrast == 4
+
+    writer = AsyncMock()
+    await apply_hdr_contrast(device, False, 2, writer=writer, verify=False)
+    writer_call = writer.await_args
+    assert writer_call is not None
+    assert writer_call.args[0] == frame("33a911020002")
+    assert writer_call.kwargs["state_values"] == {"hdr_enabled": False, "hdr_contrast": 2}
+
+    device.hdr_enabled, device.hdr_contrast = False, 1
+    restore = AsyncMock(return_value=True)
+    monkeypatch.setattr(
+        "custom_components.ha_govee_led_ble.coordinator_recovery.apply_hdr_contrast",
+        restore,
+    )
+    permitted, complete = await device._restore_video_controls(
+        replace(captured, mode="colour", video_restore_controls=("hdr_contrast",))
+    )
+    assert permitted == {"hdr_contrast"}
+    assert complete is True
+    restore.assert_awaited_once_with(device, True, 4)
 
 
 async def test_policy_edit_toggle_retention_and_race() -> None:

@@ -10,6 +10,7 @@ doc: |
   big-endian physical IC count (distinct from the 14 logical zones).  AA20 and
   AA21 query Wi-Fi hardware and software identity.  AA30 queries installation
   direction and AA32 queries camera health with zero-filled bodies; camera
+  HDR contrast uses A9 11.
   position (31) is separate and not queried here.  Encryption is outside this
   logical frame; owner acceptance, firmware differences, and unused bytes
   remain unresolved.
@@ -60,6 +61,7 @@ enums:
     0x06: scalar_white_balance
     0x0a: blank_screen
     0x0b: black_border
+    0x11: hdr_contrast
 types:
   zero_body:
     seq:

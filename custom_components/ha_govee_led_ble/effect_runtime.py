@@ -72,6 +72,7 @@ from .generated_protocol_adapter import (
     build_blank_screen,
     build_hdmi_box_light,
     build_hdmi_input,
+    build_hdr_contrast,
     build_power,
     build_relative_brightness,
     build_video_color_calibration,
@@ -93,6 +94,7 @@ from .native_profile_controls import (
     apply_blank_screen,
     apply_hdmi_box_light,
     apply_hdmi_input,
+    apply_hdr_contrast,
     apply_relative_brightness,
     apply_video_color_calibration,
     apply_video_sensitivity,
@@ -398,6 +400,8 @@ async def async_apply_compiled_profile(
         build_blank_screen(compiled.blank_screen, coordinator.model, detection, low_duration, same_duration)
     if compiled.black_border is not None:
         build_black_border(compiled.black_border, coordinator.model)
+    if compiled.hdr is not None:
+        build_hdr_contrast(*compiled.hdr, coordinator.model)
     if compiled.whole_relative_brightness is not None:
         build_whole_relative_brightness(compiled.whole_relative_brightness, coordinator.model, profile=profile)
     active_intent = coordinator._control_arbiter.current_task_intent or intent
@@ -514,6 +518,13 @@ async def async_apply_compiled_profile(
         if compiled.black_border is not None:
             await apply_black_border(
                 coordinator, compiled.black_border, writer=writer, verify=verify and not defer_confirmation
+            )
+            completed += 1
+            if progress is not None:
+                await progress(completed)
+        if compiled.hdr is not None:
+            await apply_hdr_contrast(
+                coordinator, *compiled.hdr, writer=writer, verify=verify and not defer_confirmation
             )
             completed += 1
             if progress is not None:
@@ -1606,6 +1617,7 @@ class EffectDeploymentEngine:
                 ("color_calibration", compiled.color_calibration is not None),
                 ("blank_screen", compiled.blank_screen is not None),
                 ("black_border", compiled.black_border is not None),
+                ("hdr_contrast", compiled.hdr is not None),
             )
             if requested
         )
@@ -1632,6 +1644,8 @@ class EffectDeploymentEngine:
         required: list[object | None] = []
         if compiled.black_border is not None:
             required.append(coordinator.black_border)
+        if compiled.hdr is not None:
+            required.extend((coordinator.hdr_enabled, coordinator.hdr_contrast))
         if compiled.video_sensitivity is not None:
             required.append(coordinator.video_sensitivity)
         if compiled.hdmi_input is not None:
@@ -1782,6 +1796,8 @@ class EffectDeploymentEngine:
             relative_brightness_strip_right=getattr(coordinator, "relative_brightness_strip_right", None),
             blank_screen=getattr(coordinator, "blank_screen", None),
             black_border=getattr(coordinator, "black_border", None),
+            hdr_enabled=getattr(coordinator, "hdr_enabled", None),
+            hdr_contrast=getattr(coordinator, "hdr_contrast", None),
             blank_screen_detection=getattr(coordinator, "blank_screen_detection", None),
             blank_screen_low_brightness_duration_seconds=getattr(
                 coordinator,
@@ -2356,6 +2372,11 @@ def compiled_observation(
         if compiled.black_border is not None:
             if profile.can_read(ReadDomain.DISPLAY_SETTING):
                 expectations["black_border"] = compiled.black_border
+            else:
+                complete = False
+        if compiled.hdr is not None:
+            if profile.can_read(ReadDomain.DISPLAY_SETTING):
+                expectations["hdr_enabled"], expectations["hdr_contrast"] = compiled.hdr
             else:
                 complete = False
         if compiled.relative_brightness is not None:

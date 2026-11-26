@@ -195,6 +195,8 @@ class _ActiveModeMixin(_CoordinatorBase):
         self.relative_brightness_strip_right: int | None = None
         self.blank_screen: bool | None = None
         self.black_border: bool | None = None
+        self.hdr_enabled: bool | None = None
+        self.hdr_contrast: int | None = None
         self.blank_screen_detection: int | None = None
         self.blank_screen_low_brightness_duration_seconds: int | None = None
         self.blank_screen_same_tone_duration_seconds: int | None = None

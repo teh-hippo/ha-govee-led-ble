@@ -690,6 +690,7 @@ export class PanelModel {
           whole_relative_brightness: this.content.whole_relative_brightness !== undefined,
           blank_screen: this.content.blank_screen !== null,
           black_border: this.content.black_border !== undefined,
+          hdr_contrast: this.content.hdr_enabled !== undefined || this.content.hdr_contrast !== undefined,
         })) {
           const state = device.video_control_states?.[control as keyof NonNullable<typeof device.video_control_states>];
           if (requested && state && state !== "supported") return state;

@@ -1083,6 +1083,9 @@ export function decodeEffectContent(value: unknown): EffectContent {
       ) {
         throw new Error("HDMI box light requires enabled, brightness, automatic and effect");
       }
+      if ((content.hdr_enabled === undefined) !== (content.hdr_contrast === undefined)) {
+        throw new Error("HDR requires both enabled and contrast values");
+      }
       if ([content.blank_screen_detection, content.blank_screen_low_brightness_duration_seconds,
         content.blank_screen_same_tone_duration_seconds].some(value => value !== undefined) &&
         (content.blank_screen == null || [content.blank_screen_detection,
@@ -1160,6 +1163,10 @@ export function decodeEffectContent(value: unknown): EffectContent {
         ),
         ...(content.black_border === undefined ? {} : {
           black_border: booleanValue(content.black_border, "video black border"),
+        }),
+        ...(content.hdr_enabled === undefined ? {} : {
+          hdr_enabled: booleanValue(content.hdr_enabled, "HDR enabled"),
+          hdr_contrast: integerValue(content.hdr_contrast, "HDR contrast", 0, 255),
         }),
         ...(content.blank_screen_detection === undefined ? {} : {
           blank_screen_detection: integerValue(content.blank_screen_detection, "blank-screen detection", 1, 2),

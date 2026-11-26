@@ -176,6 +176,8 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     bar_enable_mask: int | None
     white_balance_scalar: int | None
     black_border: bool | None
+    hdr_enabled: bool | None
+    hdr_contrast: int | None
     segment_state_observed_at: str | None
     _client: BleakClient | None
     _encryption: GoveeEncryptionSession | None

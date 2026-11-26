@@ -336,6 +336,10 @@ class ModelEffectCatalogue:
                     "maximum": profile.video_white_balance_max,
                     "default": profile.video_white_balance_default,
                 },
+                "hdr_contrast": {
+                    "minimum": profile.video_hdr_contrast_min,
+                    "maximum": profile.video_hdr_contrast_max,
+                },
                 "brightness_zones": list(profile.video_brightness_zones),
             },
             "templates": [
@@ -466,6 +470,7 @@ def _video_profile_settings(profile: ModelProfile) -> tuple[str, ...]:
             ("whole_relative_brightness", profile.supports_whole_relative_brightness),
             ("blank_screen", profile.supports_blank_screen),
             ("black_border", profile.supports_black_border),
+            ("hdr_contrast", profile.supports_hdr_contrast),
         )
         if supported
     )

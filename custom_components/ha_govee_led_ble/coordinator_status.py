@@ -109,7 +109,9 @@ def status_is_authorized(decoded: ParsedStatusEnvelope, profile: ModelProfile) -
             return profile.supports_hdmi_input
         if setting == "colour_calibration":
             return profile.supports_video_color_calibration
-        return setting in {"blank_screen", "black_border"}
+        return setting in {"blank_screen", "black_border"} or (
+            setting == "hdr_contrast" and profile.supports_hdr_contrast
+        )
     if decoded.domain is ReadDomain.LOW_BLUE_LIGHT:
         return profile.setting_grammar_has("low_blue_light") and profile.supports_low_blue_light
     control = boolean_control_name(domain_name)
