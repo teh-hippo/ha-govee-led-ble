@@ -73,7 +73,7 @@ async def connected(hass, monkeypatch, request):
     client = MagicMock(is_connected=True, start_notify=AsyncMock(), write_gatt_char=AsyncMock(), disconnect=AsyncMock())
     c._client = client
     await c._start_notify()
-    if c.model == "H617A":
+    if c.model in {"H617A", "H617C", "H617E", "H617F"}:
         c._note_identity(fw_version="3.02.24", hw_version="3.01.01")
         c._observe_identity_field("fw_version", c.fw_version)
         c._observe_identity_field("hw_version", c.hw_version)
@@ -147,6 +147,37 @@ def selection_ready(connected, monkeypatch):
 
 def receive(client, data):
     client.start_notify.call_args.args[1](None, bytearray(data))
+
+
+@pytest.mark.parametrize(
+    "connected,pact",
+    [("H61E5", (1, 1)), ("H61F5", (3, 1)), ("H617C", (10, 1)), ("H617E", (10, 1)), ("H617F", (10, 1))],
+    indirect=["connected"],
+)
+async def test_exact_rgbic_scene_transfer_observes_upload_before_activation(selection_ready, pact):
+    c, client = selection_ready
+    if c.model in {"H61E5", "H61F5"}:
+        c._observe_pact(*pact)
+        c._physical_ic_count_confirmed = True
+    c.is_on = True
+    scene = next(scene for scene in SCENE_ENTRIES[c.model] if scene.scene_type == 2 and scene.command_version == 1)
+    compiled = compile_effect(
+        LibraryItem.new("Scene", BuiltinScene(CatalogueRef(c.model, scene.scene_id, scene.effect_id))),
+        c.model,
+        profile=c.effect_authorization_profile,
+    )
+    assert compiled.rgbic_scene_v0 is False
+    assert compiled.physical_ic_count == c.profile.physical_ic_count
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet == compiled.upload_packets[-1]:
+            receive(client, DIY_OK)
+
+    client.write_gatt_char.side_effect = write
+    await c.async_apply_native_scene(scene.display_name, scene_entry=scene, verify=False)
+
+    assert [call.args[1] for call in client.write_gatt_char.await_args_list] == list(compiled.packets)
+    assert c._upload_ack is None
 
 
 @pytest.mark.parametrize(
@@ -250,6 +281,7 @@ async def test_upload_revalidates_its_own_identity_dependencies(selection_ready,
 
 
 @pytest.mark.parametrize("scene_type", [0, 1])
+@pytest.mark.parametrize("connected", ["H617A", "H617C", "H617E", "H617F"], indirect=True)
 async def test_identity_independent_native_scene_survives_scene_policy_change(selection_ready, scene_type):
     c, client = selection_ready
     c.is_on = False
@@ -280,6 +312,7 @@ async def test_identity_independent_native_scene_survives_scene_policy_change(se
 
 
 @pytest.mark.parametrize("hardware", ["1.00.01", "3.01.01"])
+@pytest.mark.parametrize("connected", ["H617A", "H617C", "H617E", "H617F"], indirect=True)
 async def test_versioned_scene_waits_for_current_hardware_identity(selection_ready, monkeypatch, hardware):
     c, client = selection_ready
     c.is_on = True
@@ -314,15 +347,17 @@ async def test_versioned_scene_waits_for_current_hardware_identity(selection_rea
 
 
 @pytest.mark.parametrize("saved", [False, True])
+@pytest.mark.parametrize("connected", ["H617A", "H617C", "H617E", "H617F"], indirect=True)
 async def test_versioned_light_effect_checks_identity_before_writes(selection_ready, monkeypatch, saved):
     c, client = selection_ready
     c.is_on = False
     c._confirmed_identity_fields.discard("hw_version")
     monkeypatch.setattr(coordinator_module, "IDENTITY_QUERY_TIMEOUT", 0)
+    scene = next(scene for scene in SCENE_ENTRIES[c.model] if scene.command_version == 1)
     if saved:
         backend = MagicMock(spec=EffectBackend)
         name = "Saved"
-        item = LibraryItem.new(name, BuiltinScene(CatalogueRef(c.model, 1035, 1097)))
+        item = LibraryItem.new(name, BuiltinScene(CatalogueRef(c.model, scene.scene_id, scene.effect_id)))
         backend.application.library_snapshot.return_value = LibrarySnapshot((item,))
         backend.active_workspaces.get.return_value = None
         light = GoveeBLELight(c, config_entry_id="entry-a", effect_backend=backend)
@@ -330,7 +365,7 @@ async def test_versioned_light_effect_checks_identity_before_writes(selection_re
     else:
         c.profile = device_profile(c.model, None, None, firmware=c.fw_version)
         light = GoveeBLELight(c)
-        name = "Flying"
+        name = scene.display_name
         assert name not in light.effect_list
     supersede = AsyncMock()
     monkeypatch.setattr(light, "_async_supersede_preview", supersede)
@@ -345,6 +380,7 @@ async def test_versioned_light_effect_checks_identity_before_writes(selection_re
 
 
 @pytest.mark.parametrize("change", ["policy", "authority"])
+@pytest.mark.parametrize("connected", ["H617A", "H617C", "H617E", "H617F"], indirect=True)
 async def test_scene_ack_revalidates_dependent_policy_and_authority(selection_ready, change):
     c, client = selection_ready
     c.is_on = True
@@ -642,7 +678,7 @@ async def test_diy_upload_requires_result_without_uncertain_replay(connected, fa
     assert c._ensure_connected.await_count == 1
 
 
-@pytest.mark.parametrize("connected", ["H6097", "H600A", "H617A", "H617C"], indirect=True)
+@pytest.mark.parametrize("connected", ["H6097", "H600A", "H617A", "H617C", "H617E", "H617F"], indirect=True)
 @pytest.mark.parametrize("observations", [(None,), (False, False), (False, True)])
 async def test_scene_verification_does_not_repeat_accepted_upload(selection_ready, monkeypatch, observations):
     c, client = selection_ready
@@ -669,7 +705,7 @@ async def test_scene_verification_does_not_repeat_accepted_upload(selection_read
     assert c._ensure_connected.await_count == len(observations)
 
 
-@pytest.mark.parametrize("connected", ["H617A", "H617C"], indirect=True)
+@pytest.mark.parametrize("connected", ["H617A", "H617C", "H617E", "H617F"], indirect=True)
 async def test_missing_upload_ack_cannot_spend_transport_retries(connected, monkeypatch):
     c, client = connected
     packets, index = sequence()
@@ -720,7 +756,7 @@ async def test_late_ack_from_retired_channel_cannot_authorise_next_upload(connec
     assert [call.args[1] for call in client.write_gatt_char.call_args_list] == [*packets[: index + 1], *packets]
 
 
-@pytest.mark.parametrize("connected", ["H617C"], indirect=True)
+@pytest.mark.parametrize("connected", ["H617C", "H617E", "H617F"], indirect=True)
 @pytest.mark.parametrize("preview", [False, True])
 async def test_retired_write_failure_preserves_replacement_resources(connected, monkeypatch, preview):
     c, client = connected
@@ -817,6 +853,7 @@ async def test_music_upload_without_verdict_does_not_restore_a_selector(selectio
     assert record.error_code == ("operation_cancelled" if outcome == "cancelled" else "upload_unconfirmed")
 
 
+@pytest.mark.parametrize("connected", ["H617A", "H617C", "H617E", "H617F"], indirect=True)
 async def test_native_scene_revalidates_command_version_after_subscription_replacement(selection_ready):
     c, first = selection_ready
     c.is_on = True

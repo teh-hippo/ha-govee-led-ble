@@ -90,9 +90,8 @@ async def test_out_of_range_kelvin_is_rejected_with_the_device_range_before_any_
 def test_exact_profile_masked_kelvin_preserves_sibling_permissions():
     packet = build_segment_color_temp([1, 3], 4100, "H617A")
     assert packet.hex() == "33051501ffffff1004ffd7a60500000000000042"
-    for model in ("H617E", "H617F"):
-        with pytest.raises(ValueError, match="temperature"):
-            build_segment_color_temp([1, 3], 4100, model)
+    for model in ("H617C", "H617E", "H617F"):
+        assert build_segment_color_temp([1, 3], 4100, model) == packet
 
 
 def test_schema_and_effective_profile_validation():
@@ -191,6 +190,7 @@ def test_service_registration_uses_shared_segment_schema():
     assert calls[0].kwargs["schema"] is _SET_SEGMENT_COLOR_TEMP_SCHEMA
 
 
+@pytest.mark.parametrize("model", ["H617A", "H617C", "H617E", "H617F"])
 @pytest.mark.parametrize(
     "failure",
     [
@@ -208,10 +208,10 @@ def test_service_registration_uses_shared_segment_schema():
         "preflight_error",
     ],
 )
-async def test_masked_kelvin_requires_fresh_rgb_and_preserves_siblings(hass, monkeypatch, virtual_clock, failure):
-    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H617A", configuration_url=None)
-    # Exercises the shared masked writer on the 15-segment page layout, which no offered model shares.
-    coordinator.profile = replace(coordinator.profile, supports_segment_color_temperature=True)
+async def test_masked_kelvin_requires_fresh_rgb_and_preserves_siblings(
+    hass, monkeypatch, virtual_clock, model, failure
+):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url=None)
     coordinator.install_static_color(kelvin=4000)
     # Even an old observed cache is not the baseline for sibling preservation.
     coordinator.segment_colors = [(255, 255, 255)] * 15

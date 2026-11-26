@@ -198,6 +198,51 @@ def test_equal_basic_profile_reinitializes_only_for_real_identity_transition(has
     assert coordinator._profile_generation == generation + 1 and coordinator.color_mode is None
 
 
+@pytest.mark.parametrize("model,physical_ic_count", [("H617C", 30), ("H617E", 30), ("H617F", 45)])
+def test_goods_type_70_scene_transitions_preserve_ordinary_control_state(hass, model, physical_ic_count):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", model, configuration_url=None)
+    coordinator._client = MagicMock(is_connected=True)
+    coordinator.is_on = True
+    coordinator.brightness_pct = 37
+    coordinator.rgb_color = (1, 2, 3)
+    coordinator.effect = "existing"
+
+    coordinator._observe_identity_field("fw_version", "1.06.00")
+    coordinator._observe_identity_field("hw_version", "1.00.02")
+    assert coordinator.profile.scene_command_versions == {0, 1}
+    assert coordinator.profile.rgbic_scene_v0 is True
+
+    coordinator._observe_identity_field("hw_version", "1.00.03")
+    assert coordinator.profile.scene_command_versions == {0, 1}
+    assert coordinator.profile.rgbic_scene_v0 is False
+    assert coordinator.profile.physical_ic_count == physical_ic_count
+    assert coordinator.is_on and coordinator.brightness_pct == 37
+    assert coordinator.rgb_color == (1, 2, 3) and coordinator.effect == "existing"
+
+    coordinator._observe_identity_field("fw_version", "1.05.99")
+    assert coordinator.profile.scene_command_versions == {0}
+    assert coordinator.profile.rgbic_scene_v0 is True
+    assert coordinator.effect_authorization_profile.scene_command_versions == {0}
+    assert coordinator.effect_authorization_profile.supports_rgb
+
+
+@pytest.mark.parametrize("model", ["H617C", "H617E", "H617F"])
+def test_goods_type_70_unconfirmed_scene_identity_revokes_only_scene_authority(hass, model):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", model, configuration_url=None)
+    coordinator._client = MagicMock(is_connected=True)
+    coordinator._observe_identity_field("fw_version", "1.06.00")
+    coordinator._observe_identity_field("hw_version", "1.00.03")
+
+    assert coordinator.effect_authorization_profile.scene_command_versions == {0, 1}
+    assert coordinator.effect_authorization_profile.rgbic_scene_v0 is False
+
+    coordinator._confirmed_identity_fields.remove("hw_version")
+
+    assert coordinator.profile.scene_command_versions == {0, 1}
+    assert coordinator.effect_authorization_profile.scene_command_versions == {0}
+    assert coordinator.effect_authorization_profile.supports_rgb
+
+
 async def test_duplicate_identity_resolution_does_not_interrupt_basic_brightness_write(hass, monkeypatch):
     profile = _brightness_profile(
         command_operations=frozenset({"power", "brightness"}),
