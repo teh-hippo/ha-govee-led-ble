@@ -694,6 +694,10 @@ def _native_music_modes(model: str) -> tuple[NativeModeOption, ...]:
 
 
 H617A_NATIVE_MUSIC_MODES: Final = _native_music_modes("H617A")
+H617F_DIY_FAMILIES: Final = tuple(
+    replace(family, source_reference="H617F basic and mixed DIY") for family in H617A_TYPE04_FAMILIES
+)
+H617F_NATIVE_MUSIC_MODES: Final = _native_music_modes("H617F")
 H617A_WORKSHOP_APPLY_CODE: Final = 401
 H617A_WORKSHOP_SCENE_TYPE: Final = 2
 H6179_DIY_SOURCE_REFERENCE: Final = "tools/ble/kaitai/speculative/h6179_diy_body.ksy"

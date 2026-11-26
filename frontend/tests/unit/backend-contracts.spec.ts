@@ -139,6 +139,7 @@ test("canonical backend responses decode through the production validators", () 
     "H6022",
     "H617C",
     "H617E",
+    "H617F",
     "H6127",
     "H6139",
     "H6159",
