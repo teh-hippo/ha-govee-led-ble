@@ -27,8 +27,11 @@ from custom_components.ha_govee_led_ble.effect_application import EffectStudioAp
 from custom_components.ha_govee_led_ble.effect_catalogue import MODEL_EFFECT_CATALOGUES
 from custom_components.ha_govee_led_ble.effect_commands import DiyPaintGroup, build_h607c_diy_painted
 from custom_components.ha_govee_led_ble.effect_compiler import compile_application, compile_music_profile
+from custom_components.ha_govee_led_ble.effect_deployments import EffectDeploymentRepository
 from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, MusicProfile, effect_content_to_dict
+from custom_components.ha_govee_led_ble.effect_protocol_decoder import decode_effect_frames
 from custom_components.ha_govee_led_ble.effect_runtime import (
+    EffectDeploymentEngine,
     async_apply_compiled_profile,
 )
 from custom_components.ha_govee_led_ble.effect_websocket_payloads import item_summary
@@ -41,8 +44,13 @@ from custom_components.ha_govee_led_ble.music_commands import (
     prepare_music_request,
 )
 from custom_components.ha_govee_led_ble.music_semantics import MusicParamSpec, MusicVariant, MusicZone, music_variant
-from custom_components.ha_govee_led_ble.native_effect import native_effect_from_value, native_effect_to_value
-from custom_components.ha_govee_led_ble.protocol_core import H607cMusicWrite, H607cPaintBody
+from custom_components.ha_govee_led_ble.native_effect import (
+    NativeDiyLayer,
+    NativeEffect,
+    native_effect_from_value,
+    native_effect_to_value,
+)
+from custom_components.ha_govee_led_ble.protocol_core import H607cDiyBody, H607cMusicWrite, H607cPaintBody
 from custom_components.ha_govee_led_ble.protocol_music_params import (
     encode_music_parameters,
     native_music_zone_body,
@@ -50,6 +58,8 @@ from custom_components.ha_govee_led_ble.protocol_music_params import (
 )
 from custom_components.ha_govee_led_ble.transport import fragment_a3, reassemble_a3
 from tests.coordinator_test_support import frame
+from tests.storage_test_double import InMemoryVersionedDocumentStore
+from tests.test_effect_runtime import _profile_coordinator
 
 HOPPING = bytes.fromhex("3302ff00000000ff00000019620103123a")
 PAIRED = bytes.fromhex("82331002ff00000000ff00000019620103123a4f070200ff00ffffff")
@@ -172,13 +182,90 @@ def test_native_diy_zone_edits_preserve_sibling_disable_state_and_extensions():
     assert decode_zoned_diy(encoded) == changed
 
 
-def test_native_diy_two_palettes_round_trip_without_treating_them_as_global_power():
-    raw = bytes.fromhex("0b71003201ff00000200ff000000ff")
+@pytest.mark.parametrize(
+    ("raw_hex", "family", "primary", "secondary"),
+    [
+        (
+            "0b6e000102ff000000ff00010000ff",
+            H607cDiyBody.Family.shimmer,
+            ((255, 0, 0), (0, 255, 0)),
+            ((0, 0, 255),),
+        ),
+        (
+            "0b71006402ff000000ff00010000ff",
+            H607cDiyBody.Family.drip,
+            ((255, 0, 0), (0, 255, 0)),
+            ((0, 0, 255),),
+        ),
+    ],
+)
+def test_native_diy_two_palettes_keep_distinct_primary_and_background_colours(raw_hex, family, primary, secondary):
+    raw = bytes.fromhex(raw_hex)
     content = decode_zoned_diy(raw)
     layer = content.layers[0]
-    assert layer.palette == ((255, 0, 0),)
-    assert layer.secondary_palette == ((0, 255, 0), (0, 0, 255))
+    assert content.family == family
+    assert layer.palette == primary
+    assert layer.secondary_palette == secondary
+    assert set((*layer.palette, *layer.secondary_palette)) == {*primary, *secondary}
     assert encode_zoned_diy(content) == raw
+
+
+async def test_native_diy_paired_shimmer_and_drip_survive_save_reload_apply_and_restoration():
+    shimmer = bytes.fromhex("000102ff000000ff00010000ff")
+    drip = bytes.fromhex("006402ff0000ffff00010000ff")
+    raw = bytes.fromhex("0b99") + bytes((110, len(shimmer))) + shimmer + bytes((113, len(drip))) + drip
+
+    content = decode_zoned_diy(raw)
+    assert [layer.kind for layer in content.layers] == [110, 113]
+    assert [layer.palette for layer in content.layers] == [
+        ((255, 0, 0), (0, 255, 0)),
+        ((255, 0, 0), (255, 255, 0)),
+    ]
+    assert [layer.secondary_palette for layer in content.layers] == [((0, 0, 255),), ((0, 0, 255),)]
+
+    item = LibraryItem.new("Pole shimmer and base drip", content)
+    restored = LibraryItem.from_dict(item.to_dict())
+    compiled = compile_application(restored, "H607C")
+    assert compiled is not None
+    uploaded = decode_effect_frames(compiled.upload_packets, "H607C", compiled.upload_transport)
+    assert replace(uploaded, opaque=b"") == content
+
+    coordinator = _profile_coordinator("H607C")
+    coordinator.async_observe_effect = AsyncMock(return_value=True)
+    repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
+    await repository.async_load()
+    await EffectDeploymentEngine(repository).async_apply_saved(
+        coordinator,
+        restored,
+        config_entry_id="entry-a",
+        updated_at="2026-11-27T00:00:00Z",
+    )
+    assert coordinator.send_command.await_args_list
+    assert [call.args[0] for call in coordinator.send_command.await_args_list] == list(compiled.packets)
+    applied = decode_effect_frames(compiled.upload_packets, "H607C", compiled.upload_transport)
+    assert replace(applied, opaque=b"") == restored.content
+
+
+@pytest.mark.parametrize("family", list(H607cDiyBody.Family)[:-1])
+@pytest.mark.parametrize(("speed", "valid"), [(0, False), (1, True), (100, True)])
+def test_h607c_native_diy_speed_boundaries(family, speed, valid):
+    catalogue = MODEL_EFFECT_CATALOGUES["H607C"]
+    declared = next(candidate for candidate in catalogue.effects if candidate.family == family)
+    template = next(
+        candidate
+        for candidate in catalogue.templates
+        if isinstance(candidate.content, NativeEffect) and candidate.content.family == family
+    )
+    assert declared.rate_min == 1 and declared.rate_max == 100
+    layer = template.content.layers[0]
+    assert isinstance(layer, NativeDiyLayer)
+    content = replace(template.content, layers=(replace(layer, speed=speed),))
+    item = LibraryItem.new(template.label, content)
+    if valid:
+        compile_application(item, "H607C")
+    else:
+        with pytest.raises(ValueError, match="rate"):
+            compile_application(item, "H607C")
 
 
 def test_native_info_and_async_flags_use_different_positions_and_preserve_unknowns(profile):

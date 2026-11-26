@@ -992,15 +992,15 @@ H607C_DIY_FAMILIES: Final = tuple(
         ),
         supports_multi=True,
         source_reference="H607C candidate native zone parameters",
-        rate_min=50 if kind == H607cDiyBody.Family.drip else 0,
-        rate_max=50 if kind == H607cDiyBody.Family.drip else 100,
+        rate_min=1,
+        rate_max=100,
         palette_min=bounds[0],
         palette_max=bounds[1],
         secondary_palette_min=secondary[0] if secondary else None,
         secondary_palette_max=secondary[1] if secondary else None,
-        palette_labels=("Background", "Accent colours")
+        palette_labels=("Accent colours", "Background")
         if kind == H607cDiyBody.Family.shimmer
-        else ("Moving colours", "Breathing colours")
+        else ("Moving colours", "Background")
         if kind == H607cDiyBody.Family.drip
         else None,
     )
@@ -1027,7 +1027,7 @@ H607C_DIY_FAMILIES: Final = tuple(
             None,
         ),
         (H607cDiyBody.Family.colour_wall, "Colour wall", (H607cDiyBody.Variant.primary,), (2, 8), None),
-        (H607cDiyBody.Family.shimmer, "Shimmer", (H607cDiyBody.Variant.primary,), (1, 1), (1, 8)),
+        (H607cDiyBody.Family.shimmer, "Shimmer", (H607cDiyBody.Variant.primary,), (1, 8), (1, 1)),
         (H607cDiyBody.Family.chase, "Chase", (H607cDiyBody.Variant.primary,), (2, 8), None),
         (
             H607cDiyBody.Family.shock,
@@ -1036,7 +1036,7 @@ H607C_DIY_FAMILIES: Final = tuple(
             (1, 8),
             None,
         ),
-        (H607cDiyBody.Family.drip, "Drip", (H607cDiyBody.Variant.primary,), (1, 8), (2, 8)),
+        (H607cDiyBody.Family.drip, "Drip", (H607cDiyBody.Variant.primary,), (1, 8), (1, 1)),
         (H607cDiyBody.Family.lava, "Lava", (H607cDiyBody.Variant.primary,), (3, 8), None),
     )
 )
