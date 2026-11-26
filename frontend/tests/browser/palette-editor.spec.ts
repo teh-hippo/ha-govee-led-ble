@@ -10,6 +10,24 @@ test.beforeEach(async ({ page }) => {
   await page.goto("/tests/browser/fixtures/palette-editor.html");
 });
 
+test("effect sequences retain their card layout without container-query support", async ({ page }) => {
+  await page.route("**/src/custom-effect-editor.ts*", async route => {
+    const response = await route.fetch();
+    await route.fulfill({
+      response,
+      body: (await response.text()).replaceAll("container-type:", "unsupported-container-type:"),
+    });
+  });
+  await page.reload();
+  const context = page.getByTestId("multi-context");
+  await expect(context.locator(".sequence-header")).toBeHidden();
+  await context.getByRole("combobox", { name: "Layer 1 effect", exact: true }).selectOption({ label: "Breathe" });
+  await expect(context.getByTestId("multi-order")).toHaveText("[4,3,4]");
+  expect(await context.locator(".effect-row").evaluateAll(rows =>
+    rows.every(row => row.scrollWidth <= row.clientWidth),
+  )).toBe(true);
+});
+
 for (const contextName of CONTEXTS) {
   test(`${contextName} activates an existing colour from touch completion`, async ({
     page,

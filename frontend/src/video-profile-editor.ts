@@ -815,6 +815,12 @@ export class GoveeVideoProfileEditor extends LitElement {
           inset 0 0 0 var(--studio-border-width) rgb(255 255 255 / 6%);
       }
 
+      @supports not (color: color-mix(in srgb, black, white)) {
+        .virtual-screen {
+          border: var(--studio-border-width) solid var(--studio-muted);
+        }
+      }
+
       .screen-image {
         display: grid;
         width: 100%;

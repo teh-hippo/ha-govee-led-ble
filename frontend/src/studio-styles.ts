@@ -3,11 +3,7 @@ import { css } from "lit";
 export const studioTokenStyles = css`
   :host {
     --studio-blue: var(--primary-color, #03a9f4);
-    --studio-blue-soft: color-mix(
-      in srgb,
-      var(--studio-blue) 13%,
-      transparent
-    );
+    --studio-blue-soft: var(--secondary-background-color, #f5f6f8);
     --studio-border: var(--divider-color, #d8dce2);
     --studio-border-width: 1px;
     --studio-strong-border-width: 2px;
@@ -110,21 +106,9 @@ export const studioTokenStyles = css`
     --studio-switch-thumb-size: 18px;
     --studio-switch-thumb-inset: 3px;
     --studio-compact-switch-track-width: 48px;
-    --studio-switch-track-off: color-mix(
-      in srgb,
-      var(--studio-muted) 42%,
-      var(--studio-card)
-    );
-    --studio-switch-track-on: color-mix(
-      in srgb,
-      var(--studio-blue) 72%,
-      var(--studio-card)
-    );
-    --studio-switch-thumb-off: color-mix(
-      in srgb,
-      var(--studio-muted) 72%,
-      var(--studio-card)
-    );
+    --studio-switch-track-off: var(--studio-muted);
+    --studio-switch-track-on: var(--studio-blue);
+    --studio-switch-thumb-off: var(--studio-card);
     --studio-switch-thumb-on: var(--text-primary-color, #fff);
     --studio-switch-transition-duration: 150ms;
     --studio-switch-transition-easing: cubic-bezier(0.31, 0.94, 0.34, 1);
@@ -139,6 +123,15 @@ export const studioTokenStyles = css`
     --studio-popover-radius: 9px;
     --studio-popover-shadow: 0 8px 24px rgb(0 0 0 / 18%);
     --studio-mobile-gutter: 24px;
+  }
+
+  @supports (color: color-mix(in srgb, black, white)) {
+    :host {
+      --studio-blue-soft: color-mix(in srgb, var(--studio-blue) 13%, transparent);
+      --studio-switch-track-off: color-mix(in srgb, var(--studio-muted) 42%, var(--studio-card));
+      --studio-switch-track-on: color-mix(in srgb, var(--studio-blue) 72%, var(--studio-card));
+      --studio-switch-thumb-off: color-mix(in srgb, var(--studio-muted) 72%, var(--studio-card));
+    }
   }
 `;
 
@@ -232,6 +225,13 @@ export const studioActionStyles = css`
     border-color: var(--studio-blue);
     background: var(--studio-blue-soft);
   }
+
+  @supports not (color: color-mix(in srgb, black, white)) {
+    .danger.delete-action:hover,
+    .danger.delete-action:focus-visible {
+      background: var(--studio-danger);
+    }
+  }
 `;
 
 export const studioSelectorStyles = css`
@@ -259,6 +259,12 @@ export const studioSelectorStyles = css`
     /* Selection uses colour and fill so labels keep the same width and row height. */
     color: var(--studio-blue);
     background: var(--studio-blue-soft);
+  }
+
+  @supports not (color: color-mix(in srgb, black, white)) {
+    .selector:hover {
+      background: var(--studio-blue-soft);
+    }
   }
 `;
 

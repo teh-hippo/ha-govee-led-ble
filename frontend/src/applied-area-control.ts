@@ -597,6 +597,39 @@ export class GoveeAppliedAreaControl extends LitElement {
         line-height: var(--studio-muted-line-height);
       }
 
+      @supports not (color: color-mix(in srgb, black, white)) {
+        .area-segments span {
+          border: var(--studio-border-width) solid var(--studio-border);
+          background: var(--studio-card);
+        }
+
+        .area-segments span.covered {
+          border-color: var(--area-colour);
+          background: var(--studio-blue-soft);
+        }
+
+        .area-window {
+          border-block: var(--studio-strong-border-width) solid var(--area-colour);
+          background: transparent;
+        }
+
+        .area-move::after {
+          background-image: radial-gradient(
+            circle,
+            var(--area-colour) var(--area-move-dot-size),
+            transparent var(--area-move-dot-fade-size)
+          );
+        }
+
+        .area-handle::before {
+          border-inline: var(--studio-strong-border-width) solid var(--area-colour);
+        }
+
+        .area-handle::after {
+          border: var(--studio-strong-border-width) solid var(--area-colour);
+        }
+      }
+
       /* Narrows side padding while retaining full handle hit targets. */
       @media (max-width: 760px) {
         .area-control {

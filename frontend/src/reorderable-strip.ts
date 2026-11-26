@@ -694,6 +694,13 @@ export class GoveeReorderableStrip extends LitElement {
       background: color-mix(in srgb, var(--studio-danger) 84%, #000);
     }
 
+    @supports not (color: color-mix(in srgb, black, white)) {
+      ::slotted(.compact-action.danger-action:hover),
+      ::slotted(.compact-action.danger-action:focus-visible) {
+        background: var(--studio-danger);
+      }
+    }
+
     .item:focus-visible,
     .compact-action:focus-visible,
     ::slotted(.compact-action:focus-visible) {

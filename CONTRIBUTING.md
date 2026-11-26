@@ -263,6 +263,8 @@ Semantic-release commits use the lightweight path only after exact version-only 
   Native development is the default; OS prerequisites are limited to Git, mise and the C toolchain required by native Python dependencies.
 - Prefer the narrowest loop while editing: a focused pytest target, frontend `typecheck`/`test:unit` or the affected generated-output target.
   The Vite fixture loop runs with `npm --prefix frontend run dev`; it does not require a Home Assistant restart or a release candidate.
+- Keep packaged Studio JavaScript compatible with Safari 15.6, including lazy chunks.
+  Supply usable CSS fallbacks for newer features; current Playwright WebKit does not reproduce an older iOS engine.
 - Use `make check-fast` after broader local changes and `make check` once the final tree is ready.
   Do not repeatedly run the completion gate for unchanged files or package unless a distributable is requested.
 - Run independent pytest processes serially within a checkout; use the runner's workers for parallel tests.

@@ -79,7 +79,7 @@ export default defineConfig({
         ),
     ),
     emptyOutDir: false,
-    target: "es2022",
+    target: "safari15.6",
     rollupOptions: {
       input: panelEntry,
       output: {

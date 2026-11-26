@@ -80,6 +80,40 @@ function withMixedPairs(
     : { ...content, effects: pairs };
 }
 
+const sequenceCardStyles = css`
+  .sequence {
+    gap: var(--studio-spacing-lg);
+  }
+
+  .sequence-header {
+    display: none;
+  }
+
+  .effect-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: var(--studio-control-gap);
+    padding: var(--studio-spacing-lg);
+    border: var(--studio-border-width) solid var(--studio-border);
+    border-radius: var(--studio-control-radius);
+    background: var(--secondary-background-color, #f5f6f8);
+  }
+
+  .order-cell {
+    align-self: center;
+  }
+
+  .effect-field {
+    grid-column: 1 / -1;
+  }
+
+  .row-menu {
+    grid-column: 2;
+    grid-row: 1;
+  }
+`;
+
 export class GoveeCustomEffectEditor extends LitElement {
   @property({ attribute: false })
   public content?: PaletteContent;
@@ -1181,36 +1215,17 @@ export class GoveeCustomEffectEditor extends LitElement {
 
     /* Converts the effect-layer table into labelled cards when its own column is narrow. */
     @container (max-width: 520px) {
-      .sequence {
-        gap: var(--studio-spacing-lg);
-      }
+      ${sequenceCardStyles}
+    }
 
-      .sequence-header {
-        display: none;
-      }
+    @supports not (container-type: inline-size) {
+      ${sequenceCardStyles}
+    }
 
-      .effect-row {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) auto;
-        align-items: start;
-        gap: var(--studio-control-gap);
-        padding: var(--studio-spacing-lg);
-        border: var(--studio-border-width) solid var(--studio-border);
-        border-radius: var(--studio-control-radius);
-        background: var(--secondary-background-color, #f5f6f8);
-      }
-
-      .order-cell {
-        align-self: center;
-      }
-
-      .effect-field {
-        grid-column: 1 / -1;
-      }
-
-      .row-menu {
-        grid-column: 2;
-        grid-row: 1;
+    @supports not (color: color-mix(in srgb, black, white)) {
+      .row-menu-popover .danger.delete-action:hover,
+      .row-menu-popover .danger.delete-action:focus-visible {
+        background: var(--studio-danger);
       }
     }
 

@@ -891,6 +891,42 @@ export const effectStudioPanelStyles = [
       }
     }
 
+    @supports not (color: color-mix(in srgb, black, white)) {
+      .toolbar-control:hover,
+      .toolbar-mode-button[aria-pressed="true"] {
+        background: var(--studio-blue-soft);
+      }
+
+      .support-notice {
+        background: var(--primary-background-color);
+      }
+
+      .native-light-control.light-state-on,
+      .native-light-control.light-state-on:hover,
+      .native-light-control.light-state-on:focus-visible {
+        background: linear-gradient(
+          to top,
+          var(--studio-blue-soft) 0 var(--native-light-fill),
+          transparent var(--native-light-fill) 100%
+        );
+        box-shadow: inset 0 0 0 var(--studio-border-width) var(--studio-blue);
+      }
+
+      .native-light-control.light-state-off {
+        color: var(--studio-muted);
+        background: transparent;
+      }
+
+      .live-apply-status.pending {
+        border-color: var(--studio-border);
+        border-top-color: var(--studio-blue);
+      }
+
+      .paint-off.active {
+        border-color: var(--studio-blue);
+      }
+    }
+
     @media (prefers-reduced-motion: reduce) {
       * {
         scroll-behavior: auto !important;
