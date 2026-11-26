@@ -769,6 +769,7 @@ class ModelProfile:
     authored_palette_scene_selector: int | None = None
     scene_type_selectors: tuple[tuple[int, int], ...] = ()
     rgbic_scene_v0: bool | None = None
+    configured_string_scene_geometry: bool = False
     # When set, Type04 custom effects upload as A1 command-02 frames led by this selector and activate with it.
     a1_diy_selector: int | None = None
     a1_diy_prefix: int | None = None
@@ -1012,6 +1013,12 @@ class ModelProfile:
             or self.status_grammar is None
         ):
             raise ValueError("configured strings require positive product counts and command/status grammars")
+        if self.configured_string_scene_geometry and not (
+            self.configured_string_counts and self.rgbic_scene_v0 is None
+        ):
+            raise ValueError(
+                "configured-string scene geometry requires qualified counts and an unconverted scene format"
+            )
         if self.boolean_controls and (self.command_grammar is None or self.status_grammar is None):
             raise ValueError("boolean settings require command and status grammars")
         if self.advanced_diy_selector is not None and (
@@ -3845,6 +3852,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         segment_group_size=3,
         configured_string_counts=(1, 2),
         bulbs_per_string=15,
+        configured_string_scene_geometry=True,
         segment_colour_mode_ambiguous=True,
         supports_segment_writes=True,
         supports_segment_brightness=True,

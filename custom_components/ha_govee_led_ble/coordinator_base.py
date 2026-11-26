@@ -1,6 +1,7 @@
 """Shared typed base for the coordinator and its write mixins."""
 
 import asyncio
+import time
 from collections.abc import Awaitable, Callable, Generator, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager, contextmanager
 from typing import TYPE_CHECKING, Any, cast
@@ -12,6 +13,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from .const import DOMAIN, BrightnessEvidence, ModelProfile, ReadDomain
 from .control_arbiter import BLEControlArbiter, ControlIntent, async_control_intent
 from .coordinator_control import ControlStateCheckpoint
+from .coordinator_refresh import STATE_QUERY_TIMEOUT
 from .coordinator_status import ParsedMode, StatusDomain
 from .coordinator_upload import PendingUploadAck
 from .scenes import SceneEntry, resolve_scene_target, scene_command_identity_fields
@@ -487,12 +489,21 @@ async def async_prepare_effect_profile(
 
     scene = None
     scene_required = content is None or isinstance(content, LayeredEffect | RetainedSceneEffect)
+    geometry_required = False
     if isinstance(content, BuiltinScene | LayeredScene | PaletteScene):
+        from .native_scenes import native_scene_uses_geometry
+
         if resolved := resolve_scene_target(coordinator.model, content.template):
             _, scene = resolved
-        scene_required = scene is not None and (
-            scene.command_version != 0 or (scene.scene_type == 2 and coordinator.profile.rgbic_scene_v0 is not None)
+        scene_required = bool(
+            scene is not None
+            and (
+                scene.command_version != 0 or (scene.scene_type == 2 and coordinator.profile.rgbic_scene_v0 is not None)
+            )
         )
+        geometry_required = bool(scene is not None and native_scene_uses_geometry(scene, coordinator.profile))
+        scene_required = scene_required or geometry_required
+    configured_geometry_required = bool(geometry_required and coordinator.profile.configured_string_scene_geometry)
 
     workflow = effect_content_workflow(content) if content is not None else None
 
@@ -531,10 +542,11 @@ async def async_prepare_effect_profile(
     fields = effect_fields
     if scene_required:
         fields |= coordinator.profile.scene_identity_fields
-    if fields and coordinator.identity_fields_confirmed(fields):
+    if fields and coordinator.identity_fields_confirmed(fields) and not configured_geometry_required:
         return coordinator.effect_authorization_profile
     if (
         not (scene_required and coordinator.profile.scene_identity_fields)
+        and not configured_geometry_required
         and coordinator.profile.rgbic_scene_v0 is None
         and (
             not effect_fields
@@ -546,6 +558,11 @@ async def async_prepare_effect_profile(
     async with async_control_intent(coordinator, intent):
         async with coordinator._lock:
             client = await coordinator._ensure_connected()
+            if configured_geometry_required:
+                if not await coordinator._read_configured_strings(
+                    client, deadline=time.monotonic() + STATE_QUERY_TIMEOUT
+                ):
+                    raise ValueError("Cannot confirm configured bulb layout; refresh and retry")
             if effect_identity_pending:
                 await coordinator._async_require_identity(client, effect_fields, ready=effect_identity_ready)
             elif coordinator._authorization_profile().basic_controls_only:

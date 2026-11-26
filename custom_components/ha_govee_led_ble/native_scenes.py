@@ -154,9 +154,9 @@ def build_native_scene_packets(
         canonical_body=canonical_body,
         target=model,
     )
-    if payload and scene.scene_type == 2 and profile.rgbic_scene_v0 is not None:
+    if payload and scene.scene_type == 2 and native_scene_uses_geometry(scene, profile):
         decoded = decode_layered_scene(CatalogueRef(model, scene.scene_id, scene.effect_id), payload)
-        payload = encode_layered_scene(decoded, profile=profile)
+        payload = encode_layered_scene(decoded, profile=native_scene_geometry_profile(profile))
     if native_scene_prefers_selector(scene, payload, profile):
         return [
             build_scene_activation(
@@ -183,6 +183,20 @@ def build_native_scene_packets(
         model, scene_selector_code(model, scene, profile=profile), scene.music_code, profile=profile
     )
     return [*upload, activation]
+
+
+def native_scene_uses_geometry(scene: SceneEntry, profile: ModelProfile) -> bool:
+    """Return whether a native type-2 scene is prepared for installed geometry."""
+    return scene.scene_type == 2 and (profile.rgbic_scene_v0 is not None or profile.configured_string_scene_geometry)
+
+
+def native_scene_geometry_profile(profile: ModelProfile) -> ModelProfile:
+    """Enable V1 geometry clamping without opting native DIY into scene preparation."""
+    if profile.configured_string_scene_geometry and profile.rgbic_scene_v0 is None:
+        if profile.physical_ic_count is None:
+            raise ValueError("Native scene geometry is unknown; refresh and retry")
+        return replace(profile, rgbic_scene_v0=False, configured_string_scene_geometry=False)
+    return profile
 
 
 def resolve_native_scene_body(

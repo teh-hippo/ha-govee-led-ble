@@ -256,13 +256,25 @@ def validate_compiled_geometry(compiled: CompiledApplication, profile: ModelProf
             declared_native_subtype = declared_profile.native_diy_upload_subtype
             if declared_native_subtype is not None and compiled.upload_subtype != declared_native_subtype:
                 raise ValueError("Device native effect upload subtype changed since compilation")
-        profiled_layers = (compiled.rgbic_scene_v0 is not None or profile.rgbic_scene_v0 is not None) and (
+        configured_scene = (
+            profile.configured_string_scene_geometry
+            and compiled.scene_entry is not None
+            and compiled.scene_entry.scene_type == 2
+            and compiled.content_kind in {"scene_builtin", "scene_palette", "scene_layered"}
+        )
+        profiled_layers = (
+            (compiled.rgbic_scene_v0 is not None and (configured_scene or profile.rgbic_scene_v0 is not None))
+            or profile.rgbic_scene_v0 is not None
+        ) and (
             compiled.content_kind in {"advanced", "workshop", "shared_scene", "scene_layered"}
             or (compiled.scene_entry is not None and compiled.scene_entry.scene_type == 2)
         )
-        if (
-            profiled_layers or compiled.rgbic_scene_v0 is not None
-        ) and compiled.rgbic_scene_v0 != profile.rgbic_scene_v0:
+        expected_rgbic_scene_v0 = (
+            False if configured_scene and profile.rgbic_scene_v0 is None else profile.rgbic_scene_v0
+        )
+        if (profiled_layers or compiled.rgbic_scene_v0 is not None or configured_scene) and (
+            compiled.rgbic_scene_v0 != expected_rgbic_scene_v0
+        ):
             raise ValueError("RGBIC scene format changed since compilation; refresh and retry")
         if (
             compiled.upload_packets
@@ -270,6 +282,8 @@ def validate_compiled_geometry(compiled: CompiledApplication, profile: ModelProf
             and DIY_ACK_EVIDENCE not in compiled.evidence_codes
         ):
             raise ValueError("Upload acknowledgement contract changed since compilation; refresh and retry")
+        if configured_scene and compiled.physical_ic_count != profile.physical_ic_count:
+            raise ValueError("Physical IC count changed since compilation; refresh and retry")
         if compiled.body_template_id is not None:
             contract = native_diy_template_contract(compiled.model, compiled.body_template_id)
             supported = (
@@ -1058,11 +1072,22 @@ def compile_scene_effect(
         scene_entry=entry,
         scene_route=(profile.command_grammar, profile.effect_grammar, profile.selector_only_scene_bits),
         scene_speed_index=content.speed_index if isinstance(content, BuiltinScene) else None,
-        rgbic_scene_v0=profile.rgbic_scene_v0
+        rgbic_scene_v0=(
+            False
+            if profile.rgbic_scene_v0 is None
+            and profile.configured_string_scene_geometry
+            and entry.scene_type == 2
+            and content_kind in {"scene_builtin", "scene_palette", "scene_layered"}
+            else profile.rgbic_scene_v0
+        )
         if content_kind in {"advanced", "scene_layered"} or entry.scene_type == 2
         else None,
         physical_ic_count=profile.physical_ic_count
-        if profile.rgbic_scene_v0 is not None
+        if (
+            profile.rgbic_scene_v0 is not None
+            or profile.configured_string_scene_geometry
+            and content_kind in {"scene_builtin", "scene_palette", "scene_layered"}
+        )
         and (content_kind in {"advanced", "scene_layered"} or entry.scene_type == 2)
         else None,
         upload_subtype=_builtin_upload_route(entry, profile)[1] if upload else None,
