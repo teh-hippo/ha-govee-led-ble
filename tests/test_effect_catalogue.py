@@ -36,7 +36,11 @@ from custom_components.ha_govee_led_ble.effect_catalogue import (
     resolve_catalogue_template,
     validate_catalogue_template_identity,
 )
-from custom_components.ha_govee_led_ble.effect_compiler import compile_application, validate_compiled_geometry
+from custom_components.ha_govee_led_ble.effect_compiler import (
+    CompiledEffect,
+    compile_application,
+    validate_compiled_geometry,
+)
 from custom_components.ha_govee_led_ble.effect_contracts import (
     RELEASE_CAPABILITY_CONTRACT,
     ApplicationRoute,
@@ -211,8 +215,9 @@ def test_h61f5_exact_native_presets_are_bounded_and_revision_independent() -> No
 
     assert not catalogue.advanced_create
     assert payload["advanced_create"] is False
-    assert payload["supports"]["advanced"] == "supported"
-    assert payload["supports"]["workshop"] == "unsupported"
+    supports = cast(dict[str, str], payload["supports"])
+    assert supports["advanced"] == "supported"
+    assert supports["workshop"] == "unsupported"
     assert CapabilityWorkflow.ADVANCED in workflows
     assert CapabilityWorkflow.WORKSHOP not in workflows
     assert MODEL_PROFILES["H61F5"].supports_advanced_effects is False
@@ -240,6 +245,7 @@ def test_h61f5_exact_native_presets_are_bounded_and_revision_independent() -> No
             template = resolve_catalogue_template("H61F5", f"template:native-diy:{selector}", profile=profile)
             assert isinstance(template.content, LayeredEffect)
             compiled = compile_application(LibraryItem.new(template.label, template.content), "H61F5", profile=profile)
+            assert isinstance(compiled, CompiledEffect)
             validate_compiled_geometry(compiled, profile)
             for packet in compiled.packets:
                 require_profile_packet(packet, profile)
