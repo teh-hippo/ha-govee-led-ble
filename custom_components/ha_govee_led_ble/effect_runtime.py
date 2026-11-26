@@ -2470,7 +2470,7 @@ def _scene_record_matches(
 ) -> bool:
     if record.diy_code != scene_code:
         return False
-    if not scene_code_is_ambiguous(coordinator.model, scene_code, profile=coordinator.profile):
+    if not scene_code_is_ambiguous(coordinator.model, scene_code, profile=getattr(coordinator, "profile", None)):
         return True
     return (
         record.target_effect is not None
