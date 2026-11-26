@@ -2864,6 +2864,67 @@ async def test_h6199_is_rejected_before_any_write(hass: HomeAssistant) -> None:
     coordinator.send_command.assert_not_awaited()
 
 
+@pytest.mark.parametrize("selector", (501, 502, 504, 505, 506))
+async def test_h61f5_native_presets_apply_through_public_runtime(hass: HomeAssistant, selector: int) -> None:
+    repository, cache = await _repositories(hass)
+    coordinator = _profile_coordinator("H61F5")
+    coordinator._lock = asyncio.Lock()
+    coordinator._ensure_connected = AsyncMock(return_value=coordinator._client)
+    coordinator.segment_colors = [(1, 2, 3)] * 10
+    coordinator.segment_brightness = [100] * 10
+    coordinator.segment_kelvin = [0] * 10
+    refresh = coordinator.refresh_state.side_effect
+
+    async def refresh_with_scene(request=DEFAULT_REFRESH_REQUEST):
+        result = await refresh(request)
+        if coordinator.refresh_state.await_count >= 2:
+            coordinator.scene_code = selector
+        return result
+
+    coordinator.refresh_state.side_effect = refresh_with_scene
+    template = resolve_catalogue_template("H61F5", f"template:native-diy:{selector}")
+    item = LibraryItem.new(template.label, template.content)
+    compiled = compile_application(item, "H61F5", profile=coordinator.profile)
+
+    result = await EffectDeploymentEngine(repository, cache).async_apply_saved(
+        coordinator,
+        item,
+        config_entry_id="entry-a",
+        updated_at="2026-08-11T00:00:00Z",
+    )
+
+    assert result.phase is DeploymentPhase.CONFIRMED
+    assert result.error_code is None
+    assert result.verification_confidence is ObservationConfidence.ACTIVATION_MATCH
+    assert [call.args[0] for call in coordinator.send_command.await_args_list] == list(compiled.packets)
+    assert cache.get("entry-a") is not None
+
+
+async def test_h61f5_native_preset_recovery_uses_public_application_state(hass: HomeAssistant) -> None:
+    repository, cache = await _repositories(hass)
+    coordinator = _profile_coordinator("H61F5")
+    coordinator._lock = asyncio.Lock()
+    coordinator._ensure_connected = AsyncMock(return_value=coordinator._client)
+    coordinator.segment_colors = [(1, 2, 3)] * 10
+    coordinator.segment_brightness = [100] * 10
+    coordinator.segment_kelvin = [0] * 10
+    coordinator.async_restore_effect_control_state = AsyncMock(return_value=True)
+    template = resolve_catalogue_template("H61F5", "template:native-diy:506")
+
+    result = await EffectDeploymentEngine(repository, cache).async_apply_saved(
+        coordinator,
+        LibraryItem.new(template.label, template.content),
+        config_entry_id="entry-a",
+        updated_at="2026-08-11T00:00:00Z",
+    )
+
+    assert result.phase is DeploymentPhase.FAILED
+    coordinator.async_restore_effect_control_state.assert_awaited_once_with(
+        result.prior_state,
+        overwritten_diy_code=506,
+    )
+
+
 async def test_h6199_upload_without_selector_readback_stays_uncertain(
     hass: HomeAssistant,
 ) -> None:

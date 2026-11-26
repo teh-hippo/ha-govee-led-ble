@@ -5,7 +5,7 @@ import { customEffectCategoryForItem, effectContentEligible, nativeEffectWorkflo
 import type { AdvancedContent, LayeredSceneContent, MusicProfileContent, NativeEffectContent, RGB } from "../../src/types";
 import { decodeCatalogueTemplateDefaultDetail, decodeEffectContent } from "../../src/validation";
 import { decodeCustomCataloguePayload } from "../../src/catalogue-validation";
-import { buildCustomEffectEntries } from "../../src/custom-effect-list";
+import { buildCustomEffectEntries, newEffectKindForCategory } from "../../src/custom-effect-list";
 import backendContracts from "../fixtures/backend-contracts.json";
 import { PanelModel } from "../../src/panel-model";
 import { device, item, painted, panelControllerHarness } from "./panel-test-support";
@@ -166,6 +166,26 @@ test("native DIY catalogue entries reach the existing template loader keys", () 
   const entries = buildCustomEffectEntries({ model: "H617A", catalogue, libraryItems: [] }, "advanced");
   expect(entries.map(entry => entry.key)).toEqual(templates.map(template => template.id));
   expect(entries.every(entry => entry.kind === "native-diy")).toBe(true);
+});
+
+test("H61F5 native RGBIC presets are visible without unrestricted Advanced creation", () => {
+  const catalogue = decodeCustomCataloguePayload(
+    backendContracts.responses.custom_catalogue,
+    decodeEffectContent,
+  ).models.H61F5;
+  const templates = catalogue.templates!.filter(template => template.content.kind === "advanced");
+  const selectors = templates.map(template => template.content.kind === "advanced" ? template.content.native_diy : -1);
+
+  expect(selectors).toEqual([501, 502, 504, 505, 506]);
+  expect(catalogue.advanced_create).toBe(false);
+  expect(catalogue.workflows.find(workflow => workflow.id === "advanced")).toBeDefined();
+  expect(catalogue.workflows.find(workflow => workflow.id === "workshop")).toBeUndefined();
+  expect(buildCustomEffectEntries({ model: "H61F5", catalogue, libraryItems: [] }, "advanced")
+    .map(entry => entry.key).sort()).toEqual(templates.map(template => template.id).sort());
+  expect(newEffectKindForCategory({ model: "H61F5", catalogue, libraryItems: [] }, "advanced")).toBeUndefined();
+  for (const template of templates) {
+    expect(effectContentEligible(template.content, catalogue, "H61F5", 10)).toBe(true);
+  }
 });
 
 test("native family descriptions do not create nonexistent legacy template choices", () => {

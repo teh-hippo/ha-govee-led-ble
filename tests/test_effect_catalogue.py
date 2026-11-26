@@ -36,7 +36,7 @@ from custom_components.ha_govee_led_ble.effect_catalogue import (
     resolve_catalogue_template,
     validate_catalogue_template_identity,
 )
-from custom_components.ha_govee_led_ble.effect_compiler import compile_application
+from custom_components.ha_govee_led_ble.effect_compiler import compile_application, validate_compiled_geometry
 from custom_components.ha_govee_led_ble.effect_contracts import (
     RELEASE_CAPABILITY_CONTRACT,
     ApplicationRoute,
@@ -75,6 +75,7 @@ from custom_components.ha_govee_led_ble.generated_protocol.diy_type03 import Diy
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_h617a_scene
 from custom_components.ha_govee_led_ble.layered_scene import CatalogueRef
 from custom_components.ha_govee_led_ble.layered_scene_decoder import encode_workshop_effect
+from custom_components.ha_govee_led_ble.protocol_admission import require_profile_packet
 from custom_components.ha_govee_led_ble.protocol_h6199 import build_h6199_scene
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES
 
@@ -200,6 +201,79 @@ def test_h61e5_exact_catalogue_and_release_routes_admit_complete_scope():
     for selector in (501, 502, 503, 504, 505, 506, 507):
         template = resolve_catalogue_template("H61E5", f"template:native-diy:{selector}")
         compile_application(LibraryItem.new(template.label, template.content), "H61E5", profile=profile)
+
+
+def test_h61f5_exact_native_presets_are_bounded_and_revision_independent() -> None:
+    selectors = (501, 502, 504, 505, 506)
+    catalogue = MODEL_EFFECT_CATALOGUES["H61F5"]
+    payload = catalogue.to_dict()
+    workflows = {capability.workflow for capability in release_capabilities_for_model("H61F5")}
+
+    assert not catalogue.advanced_create
+    assert payload["advanced_create"] is False
+    assert payload["supports"]["advanced"] == "supported"
+    assert payload["supports"]["workshop"] == "unsupported"
+    assert CapabilityWorkflow.ADVANCED in workflows
+    assert CapabilityWorkflow.WORKSHOP not in workflows
+    assert MODEL_PROFILES["H61F5"].supports_advanced_effects is False
+    assert (
+        tuple(
+            template.content.native_diy
+            for template in catalogue.templates
+            if isinstance(template.content, LayeredEffect)
+        )
+        == selectors
+    )
+
+    profiles = (
+        MODEL_PROFILES["H61F5"],
+        device_profile("H61F5", 4, 1),
+        device_profile("H61F5", 3, 1),
+    )
+    assert profiles[0].color_temp_range == profiles[2].color_temp_range == (2700, 6500)
+    assert profiles[1].color_temp_range == (1000, 10000)
+
+    revision_bodies: list[tuple[tuple[bytes, ...], ...]] = []
+    for profile in profiles:
+        compiled_bodies: list[tuple[bytes, ...]] = []
+        for selector in selectors:
+            template = resolve_catalogue_template("H61F5", f"template:native-diy:{selector}", profile=profile)
+            assert isinstance(template.content, LayeredEffect)
+            compiled = compile_application(LibraryItem.new(template.label, template.content), "H61F5", profile=profile)
+            validate_compiled_geometry(compiled, profile)
+            for packet in compiled.packets:
+                require_profile_packet(packet, profile)
+            assert compiled.physical_ic_count == 50
+            assert compiled.body_template_id == selector
+            compiled_bodies.append(compiled.upload_packets)
+        assert len(set(compiled_bodies)) == len(selectors)
+        revision_bodies.append(tuple(compiled_bodies))
+    assert revision_bodies[0] == revision_bodies[1] == revision_bodies[2]
+
+    geometry = {
+        selector: resolve_catalogue_template("H61F5", f"template:native-diy:{selector}").content
+        for selector in selectors
+    }
+    meteor = geometry[504]
+    bloom = geometry[506]
+    assert isinstance(meteor, LayeredEffect)
+    assert isinstance(bloom, LayeredEffect)
+    assert tuple((layer.selection.param_1, layer.selection.param_2) for layer in meteor.layers) == (
+        (0, 10),
+        (0, 10),
+        (0, 10),
+    )
+    assert tuple((layer.selection.param_1, layer.selection.param_2) for layer in bloom.layers[2:]) == (
+        (0, 25),
+        (0, 25),
+    )
+    assert MODEL_PROFILES["H61F5"].segment_count_ic_divisor == 5
+    assert MODEL_PROFILES["H61F5"].segment_count == 10
+    with pytest.raises(ValueError, match="layered-scene framing is not supported"):
+        compile_application(
+            LibraryItem.new("Unrestricted Advanced", replace(meteor, native_diy=None)),
+            "H61F5",
+        )
 
 
 def test_native_summaries_classify_every_model_and_scene():

@@ -64,6 +64,7 @@ from .effect_catalogue_templates import (
     H1A42_NATIVE_DIY_TEMPLATES,
     H1AB2_LAYERED_TEMPLATES,
     H61E5_NATIVE_DIY_TEMPLATES,
+    H61F5_NATIVE_DIY_TEMPLATES,
     H617A_CATALOGUE_TEMPLATES,
     H617C_NATIVE_DIY_TEMPLATES,
     H617E_CATALOGUE_TEMPLATES,
@@ -480,6 +481,15 @@ MODEL_EFFECT_CATALOGUES: Final = {
     ),
     "H61F5": ModelEffectCatalogue(
         sku="H61F5",
+        native_diy_palette_groups=(
+            (501, (0,), 1, 1),
+            (501, (1, 2), 4, 8),
+            (502, (0, 1), 2, 8),
+            (504, (0, 1, 2), 3, 8),
+            (505, (1,), 1, 1),
+            (506, (0, 1), 2, 8),
+            (506, (2, 3), 2, 8),
+        ),
         painted_addressing="physical_ic",
         painted_effects=tuple(
             {"id": name, "label": name.replace("_", " ").capitalize()}
@@ -497,8 +507,10 @@ MODEL_EFFECT_CATALOGUES: Final = {
             ),
             *(_single_template("H61F5", family) for family in H61F5_DIY_FAMILIES),
             *(_music_template("H61F5", mode) for mode in _native_music_modes("H61F5")),
+            *H61F5_NATIVE_DIY_TEMPLATES,
         ),
         workshop_templates=(),
+        advanced_create=False,
     ),
     "H6117": ModelEffectCatalogue(
         sku="H6117",
