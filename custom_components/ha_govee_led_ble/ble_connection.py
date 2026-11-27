@@ -16,6 +16,7 @@ from bleak_retry_connector import (
     close_stale_connections_by_address,
     establish_connection,
 )
+from homeassistant.components import bluetooth
 from homeassistant.core import HomeAssistant
 
 from .ble_device_resolver import BLEDeviceResolver, async_resolve_ble_device
@@ -130,6 +131,30 @@ async def async_clear_gatt_cache(client: BleakClient) -> bool:
         return False
 
 
+def _reachability_diagnostic(hass: HomeAssistant, address: str) -> str:
+    try:
+        return bluetooth.async_address_reachability_diagnostics(
+            hass,
+            address,
+            bluetooth.BluetoothReachabilityIntent.CONNECTION,
+        )
+    except RuntimeError:
+        return ""
+
+
+def _connection_error(hass: HomeAssistant, address: str, message: str) -> BleakError:
+    diagnostic = _reachability_diagnostic(hass, address)
+    if diagnostic:
+        _LOGGER.debug("Bluetooth reachability at connection failure: %s", diagnostic)
+    return BleakError(f"{message}. {diagnostic}" if diagnostic else message)
+
+
+def _annotate_connection_error(hass: HomeAssistant, address: str, error: BleakError | TimeoutError) -> None:
+    if diagnostic := _reachability_diagnostic(hass, address):
+        _LOGGER.debug("Bluetooth reachability at connection failure: %s", diagnostic)
+        error.add_note(f"Bluetooth reachability: {diagnostic}")
+
+
 async def async_establish_ble_connection(
     hass: HomeAssistant,
     address: str,
@@ -153,7 +178,7 @@ async def async_establish_ble_connection(
             if attempt < DEVICE_DISCOVERY_ATTEMPTS - 1:
                 await sleep(RETRY_BACKOFF_SECONDS)
         if resolution is None:
-            raise BleakError(f"Device {address} not found")
+            raise BleakError("Device not found")
         kwargs: dict[str, object] = {"use_services_cache": cache}
         if callback is not None:
             kwargs["disconnected_callback"] = callback
@@ -188,7 +213,10 @@ async def async_establish_ble_connection(
                     async with asyncio.timeout(GATT_CACHE_CLEAR_TIMEOUT):
                         await clear_cache(address)
         if recovery_pending:
-            raise BleakError("Failed to recover the GATT cache") from None
+            raise _connection_error(hass, address, "Failed to recover the GATT cache") from None
+        if isinstance(err, BleakError | TimeoutError):
+            _annotate_connection_error(hass, address, err)
+            raise
         raise
 
 
@@ -199,7 +227,7 @@ async def async_validate_ble_connection(hass: HomeAssistant, address: str) -> No
             client = await async_establish_ble_connection(hass, address)
     except TimeoutError as err:
         await _async_close_stale_validation_connection(address)
-        raise BleakError("Timed out opening the validation connection") from err
+        raise _connection_error(hass, address, "Timed out opening the validation connection") from err
     try:
         async with asyncio.timeout(VALIDATION_DISCONNECT_TIMEOUT):
             await client.disconnect()
