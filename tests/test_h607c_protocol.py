@@ -188,16 +188,16 @@ def test_native_diy_zone_edits_preserve_sibling_disable_state_and_extensions():
     ("raw_hex", "family", "primary", "secondary"),
     [
         (
-            "0b6e000102ff000000ff00010000ff",
+            "0b6e003201ff00000200ff000000ff",
             H607cDiyBody.Family.shimmer,
-            ((255, 0, 0), (0, 255, 0)),
-            ((0, 0, 255),),
+            ((255, 0, 0),),
+            ((0, 255, 0), (0, 0, 255)),
         ),
         (
-            "0b71006402ff000000ff00010000ff",
+            "0b71003201ff00000200ff000000ff",
             H607cDiyBody.Family.drip,
-            ((255, 0, 0), (0, 255, 0)),
-            ((0, 0, 255),),
+            ((255, 0, 0),),
+            ((0, 255, 0), (0, 0, 255)),
         ),
     ],
 )
@@ -210,20 +210,29 @@ def test_native_diy_two_palettes_keep_distinct_primary_and_background_colours(ra
     assert layer.secondary_palette == secondary
     assert set((*layer.palette, *layer.secondary_palette)) == {*primary, *secondary}
     assert encode_zoned_diy(content) == raw
+    restored = LibraryItem.from_dict(LibraryItem.new(f"Saved {family.name}", content).to_dict())
+    compiled = compile_application(restored, "H607C")
+    assert encode_zoned_diy(restored.content) == raw
+    uploaded = decode_effect_frames(compiled.upload_packets, "H607C", compiled.upload_transport)
+    assert replace(uploaded.layers[0], opaque=b"") == layer
+    assert uploaded.family == content.family
 
 
 async def test_native_diy_paired_shimmer_and_drip_survive_save_reload_apply_and_restoration(hass, monkeypatch):
-    shimmer = bytes.fromhex("000102ff000000ff00010000ff")
-    drip = bytes.fromhex("006402ff0000ffff00010000ff")
+    shimmer = bytes.fromhex("003201ff00000200ff000000ff")
+    drip = bytes.fromhex("003201ff000002ffff000000ff")
     raw = bytes.fromhex("0b99") + bytes((110, len(shimmer))) + shimmer + bytes((113, len(drip))) + drip
 
     content = decode_zoned_diy(raw)
     assert [layer.kind for layer in content.layers] == [110, 113]
     assert [layer.palette for layer in content.layers] == [
-        ((255, 0, 0), (0, 255, 0)),
-        ((255, 0, 0), (255, 255, 0)),
+        ((255, 0, 0),),
+        ((255, 0, 0),),
     ]
-    assert [layer.secondary_palette for layer in content.layers] == [((0, 0, 255),), ((0, 0, 255),)]
+    assert [layer.secondary_palette for layer in content.layers] == [
+        ((0, 255, 0), (0, 0, 255)),
+        ((255, 255, 0), (0, 0, 255)),
+    ]
 
     item = LibraryItem.new("Pole shimmer and base drip", content)
     restored = LibraryItem.from_dict(item.to_dict())
