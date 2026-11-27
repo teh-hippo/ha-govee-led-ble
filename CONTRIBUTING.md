@@ -316,6 +316,10 @@ Relevant input changes reopen checks; rewritten commits require exact-SHA CI.
 Keep generated contract fixtures incremental locally, but retain clean generation and independent verification at package and completion boundaries.
 Approve public drafts before posting and track known workflow run/check IDs.
 
+Use only **Rebase and merge** for pull requests.
+Do not require the head branch to contain current `master`; reconcile conflicts with a rebase, never a merge commit.
+Keep the required PR checks before merging and let the post-merge `Validate` run certify the exact resulting `master` SHA before any release.
+
 ### Dependency caches
 
 Retain dependency pins, Home Assistant verification and required native compilation.
