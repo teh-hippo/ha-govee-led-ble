@@ -1037,11 +1037,11 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
     _capability(
         "H61F5",
         _W.ADVANCED,
-        "Advanced",
+        "Native presets",
         "advanced",
         _R.HOME_ASSISTANT_CONTROL,
         _S.MODEL_SCENE_ENGINE,
-        _V.UNVERIFIED,
+        _V.SELECTION_ONLY,
     ),
     _capability(
         "H61F5",

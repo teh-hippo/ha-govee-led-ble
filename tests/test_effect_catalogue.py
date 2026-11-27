@@ -221,6 +221,10 @@ def test_h61f5_exact_native_presets_are_bounded_and_revision_independent() -> No
     assert CapabilityWorkflow.ADVANCED in workflows
     assert CapabilityWorkflow.WORKSHOP not in workflows
     assert MODEL_PROFILES["H61F5"].supports_advanced_effects is False
+    advanced = release_capability("H61F5", CapabilityWorkflow.ADVANCED)
+    assert advanced is not None
+    assert advanced.label == "Native presets"
+    assert advanced.verification_confidence is VerificationConfidence.SELECTION_ONLY
     assert (
         tuple(
             template.content.native_diy
