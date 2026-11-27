@@ -228,20 +228,32 @@ def saved_effect_visible(
     profile: ModelProfile,
     always_include_custom_effects: bool = False,
 ) -> bool:
+    category = _saved_effect_category(item, model, profile=profile)
+    return category is not None and (category in categories or always_include_custom_effects)
+
+
+def _saved_effect_category(
+    item: LibraryItem,
+    model: str,
+    *,
+    profile: ModelProfile,
+) -> str | None:
     kind = str(effect_content_to_dict(item.content).get("kind"))
     category = effect_category_for_content_kind(kind)
     if category is None:
-        return False
-    if category in categories or always_include_custom_effects:
-        return True
+        return None
     if category != EFFECT_CATEGORY_ADVANCED or profile.supports_advanced_effects:
-        return False
+        return category
     content = item.content
     if not isinstance(content, LayeredEffect) or content.native_diy is None:
-        return False
+        return category
     from .effect_catalogue import scene_activated_native_diy_selector
 
-    return scene_activated_native_diy_selector(model, content.native_diy, profile=profile) is not None
+    return (
+        EFFECT_CATEGORY_EFFECTS
+        if scene_activated_native_diy_selector(model, content.native_diy, profile=profile) is not None
+        else category
+    )
 
 
 def _selector_candidates(
@@ -302,8 +314,8 @@ def _selector_candidates(
             item=item,
         )
         for item in compatible_saved_effects(items, model, profile=profile)
-        if (kind := str(effect_content_to_dict(item.content).get("kind"))) not in TYPED_DIY_CONTENT_KINDS
-        and (category := effect_category_for_content_kind(kind)) is not None
+        if str(effect_content_to_dict(item.content).get("kind")) not in TYPED_DIY_CONTENT_KINDS
+        and (category := _saved_effect_category(item, model, profile=profile)) is not None
         and saved_effect_visible(
             item,
             model,

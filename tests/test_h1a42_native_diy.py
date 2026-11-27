@@ -3,11 +3,14 @@
 from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any, cast
+from unittest.mock import AsyncMock
 
 import pytest
+from homeassistant.exceptions import ServiceValidationError
 
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, device_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.effect_catalogue import (
     resolve_catalogue_template,
     scene_activated_native_diy_selectors,
@@ -122,32 +125,76 @@ def test_h1a42_preset_geometry_defaults_and_frontend_ceiling() -> None:
         )
 
 
-def test_h1a42_primary_light_projects_only_declared_saved_native_preset(hass) -> None:
+@pytest.mark.parametrize(
+    ("categories", "always_include_custom_effects", "visible"),
+    [
+        (frozenset(), False, False),
+        (frozenset({"effects"}), False, True),
+        (frozenset(), True, True),
+    ],
+)
+async def test_h1a42_primary_light_gates_declared_saved_native_presets_by_effects(
+    hass, categories, always_include_custom_effects, visible
+) -> None:
     profile = device_profile("H1A42", 1, 1)
-    preset = LibraryItem.new(
-        "Saved preset",
-        resolve_catalogue_template("H1A42", "template:native-diy:501", profile=profile).content,
+    presets = tuple(
+        LibraryItem.new(
+            f"Saved preset {preset_id}",
+            resolve_catalogue_template("H1A42", f"template:native-diy:{preset_id}", profile=profile).content,
+        )
+        for preset_id in PRESET_IDS
     )
-    unrestricted = LibraryItem.new("Unrestricted", replace(preset.content, native_diy=None))
+    unrestricted = LibraryItem.new("Unrestricted", replace(presets[0].content, native_diy=None))
+    observed = SimpleNamespace(active_effect=None)
     backend = cast(
         Any,
         SimpleNamespace(
-            application=SimpleNamespace(library_snapshot=lambda: LibrarySnapshot((preset, unrestricted))),
-            device_cache=SimpleNamespace(get=lambda _entry_id: None),
+            application=SimpleNamespace(library_snapshot=lambda: LibrarySnapshot((*presets, unrestricted))),
+            device_cache=SimpleNamespace(get=lambda _entry_id: observed),
             active_workspaces=SimpleNamespace(get=lambda _entry_id: None),
         ),
     )
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H1A42", configuration_url=None)
     coordinator.profile = profile
+    coordinator.effect_categories = categories
+    coordinator.always_include_custom_effects = always_include_custom_effects
     light = GoveeBLELight(coordinator, config_entry_id="h1a42", effect_backend=backend)
+    apply_saved = AsyncMock()
+    cast(Any, light)._async_apply_saved_item = apply_saved
 
     assert not coordinator.profile.supports_advanced_effects
     assert "advanced" not in coordinator.effect_categories
-    assert "Saved preset" in light.effect_list
-    assert light._saved_effect("Saved preset") == preset
+    if visible:
+        assert {preset.name for preset in presets} <= set(light.effect_list)
+        for preset in presets:
+            assert light._saved_effect(preset.name) == preset
+        await light.async_turn_on(effect=presets[0].name)
+        apply_saved.assert_awaited_once_with(
+            presets[0],
+            turn_on_kwargs={},
+            native_write_guard=None,
+            source_colour=None,
+        )
+    else:
+        assert light.effect_list == []
+        assert all(light._saved_effect(preset.name) is None for preset in presets)
+        with pytest.raises(ServiceValidationError):
+            await light.async_turn_on(effect=presets[0].name)
+        apply_saved.assert_not_awaited()
     assert "Unrestricted" not in light.effect_list
+
+    coordinator.is_on = True
+    coordinator.color_mode = ParsedMode.SCENE
+    coordinator._scene_code = 501
+    observed.active_effect = SimpleNamespace(
+        source_kind="saved_effect",
+        item_id=presets[0].id,
+        content_hash=presets[0].content_hash,
+        observable_signature="scene-code:501",
+    )
+    assert light.effect == (presets[0].name if visible else None)
 
     other = GoveeBLECoordinator(hass, "22:33:44:55:66:77", "H601C", configuration_url=None)
     other_light = GoveeBLELight(other, config_entry_id="other", effect_backend=backend)
-    assert "Saved preset" not in other_light.effect_list
+    assert not ({preset.name for preset in presets} & set(other_light.effect_list))
     assert scene_activated_native_diy_selectors("H601C") == frozenset()
