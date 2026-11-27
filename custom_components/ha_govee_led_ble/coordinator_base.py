@@ -318,6 +318,8 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
 
         async def _read_configured_strings(self, client: BleakClient, *, deadline: float) -> bool: ...
 
+        async def _read_installation_geometry(self, client: BleakClient, *, deadline: float) -> None: ...
+
         async def _wait_for_revisions(
             self,
             field_baselines: Mapping[str, int],
@@ -506,6 +508,11 @@ async def async_prepare_effect_profile(
         geometry_required = bool(scene is not None and native_scene_uses_geometry(scene, coordinator.profile))
         scene_required = scene_required or geometry_required
     configured_geometry_required = bool(geometry_required and coordinator.profile.configured_string_scene_geometry)
+    physical_geometry_pending = bool(
+        geometry_required
+        and coordinator.profile.segment_count_ic_divisor is not None
+        and (not coordinator._physical_ic_count_confirmed or coordinator.profile.physical_ic_count is None)
+    )
 
     workflow = effect_content_workflow(content) if content is not None else None
 
@@ -547,11 +554,17 @@ async def async_prepare_effect_profile(
     fields = effect_fields
     if scene_required:
         fields |= coordinator.profile.scene_identity_fields
-    if fields and coordinator.identity_fields_confirmed(fields) and not configured_geometry_required:
+    if (
+        fields
+        and coordinator.identity_fields_confirmed(fields)
+        and not configured_geometry_required
+        and not physical_geometry_pending
+    ):
         return coordinator.effect_authorization_profile
     if (
         not (scene_required and coordinator.profile.scene_identity_fields)
         and not configured_geometry_required
+        and not physical_geometry_pending
         and coordinator.profile.rgbic_scene_v0 is None
         and (
             not effect_fields
@@ -585,6 +598,8 @@ async def async_prepare_effect_profile(
                     or coordinator._notification_token is not token
                 ):
                     raise HomeAssistantError(translation_domain=DOMAIN, translation_key="identity_not_ready")
+            if physical_geometry_pending:
+                await coordinator._read_installation_geometry(client, deadline=time.monotonic() + STATE_QUERY_TIMEOUT)
         coordinator._reconcile_authorization()
         if not coordinator.profile.supports_rgb and not coordinator.identity_fields_confirmed(
             coordinator.profile.profile_identity_fields
