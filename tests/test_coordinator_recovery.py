@@ -2011,9 +2011,7 @@ async def test_restore_effect_control_state_maps_h617e_legacy_scene_name(hass):
         ("1.06.00", "1.00.03", {"H617C", "H617E", "H617F"}),
     ],
 )
-async def test_goods_type_70_scene_recovery_tracks_revision_admission(
-    hass, model, firmware, hardware, restored_models
-):
+async def test_goods_type_70_scene_recovery_tracks_revision_admission(hass, model, firmware, hardware, restored_models):
     coordinator = GoveeBLECoordinator(
         hass,
         "22:33:44:55:66:77",
