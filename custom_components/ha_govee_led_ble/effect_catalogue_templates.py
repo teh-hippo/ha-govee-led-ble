@@ -378,8 +378,6 @@ H61F5_NATIVE_DIY_TEMPLATES: Final = tuple(
     for template in _rgbic_native_templates(50)
     if isinstance(template.content, LayeredEffect) and template.content.native_diy in {501, 502, 504, 505, 506}
 )
-    if isinstance(template.content, LayeredEffect) and template.content.native_diy in {501, 502, 504, 505, 506}
-)
 H61E5_NATIVE_DIY_TEMPLATES: Final = _rgbic_native_templates(36)
 H617C_NATIVE_DIY_TEMPLATES: Final = _rgbic_native_templates(30)
 H619A_NATIVE_DIY_TEMPLATES: Final = _rgbic_native_templates(20)
