@@ -21,6 +21,8 @@ from custom_components.ha_govee_led_ble.const import (
     MODEL_PROFILES,
     ModelProfile,
     ReadDomain,
+    default_effect_categories,
+    default_effect_families,
     device_profile,
 )
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
@@ -198,6 +200,24 @@ def test_basic_and_color_props(light, mock_coordinator):
     assert light.rgb_color == (128, 64, 32) and light.color_temp_kelvin is None
     light._attr_color_mode = ColorMode.COLOR_TEMP
     assert light.rgb_color is None and light.color_temp_kelvin == 4000
+
+
+def test_h8604_default_selectors_expose_scenes_music_and_video():
+    model = "H8604"
+    profile = device_profile(model, 1, 1)
+    entries = effect_selector_entries(
+        model,
+        frozenset(default_effect_categories(model)),
+        (),
+        prefix_effect_names=False,
+        native_categories=frozenset(default_effect_categories(model)),
+        profile=profile,
+    )
+
+    assert default_effect_families(model) == {"scenes", "music", "video"}
+    assert {entry.value for entry in entries if entry.source == "scene"} == set(MODEL_SCENES[model])
+    assert {entry.value for entry in entries if entry.source == "music"} == set(profile.music_modes)
+    assert {entry.value for entry in entries if entry.source == "video"} == {"movie"}
 
 
 @pytest.mark.parametrize("remembered", [ColorMode.RGB, ColorMode.COLOR_TEMP])

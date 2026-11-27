@@ -2723,7 +2723,6 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_segment_brightness=True,
         supports_segment_color_temperature=True,
         boolean_controls=frozenset({"gradual", "left_bar_enabled", "middle_enabled", "right_bar_enabled"}),
-        default_effect_families_override=frozenset({EFFECT_FAMILY_VIDEO}),
         effect_readback="diy_code_only",
     ),
     "H1A42": ModelProfile(

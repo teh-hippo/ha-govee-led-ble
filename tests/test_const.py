@@ -1027,6 +1027,7 @@ def test_unknown_models_fail_closed():
 def test_effect_family_defaults_and_options():
     assert default_effect_families("H617A") == {"scenes", "music"}
     assert default_effect_families("H6199") == {"video"}
+    assert default_effect_families("H8604") == {"scenes", "music", "video"}
     assert effect_families_from_options("H6199", {}) == {"video"}
     assert effect_families_from_options(
         "H6199",
