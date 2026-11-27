@@ -119,19 +119,7 @@ async def test_real_coordinator_ack_and_restricted_writer_use_effective_profile(
     client.write_gatt_char.assert_not_awaited()
 
 
-@pytest.mark.parametrize("operations", [None, frozenset({"power", "brightness", "limit", "multi_effect"})])
-def test_removed_booleans_cannot_bypass_current_authorization(operations) -> None:
-    original = get_profile("H6102")
-    narrowed = replace(original, command_operations=operations, boolean_controls=frozenset())
-    for control, opcode in (("limit", "0e"), ("gradual", "a3")):
-        for packet in (
-            build_boolean_control(control, True, "H6102", profile=original),
-            build_boolean_control_query(control, "H6102", profile=original),
-        ):
-            with pytest.raises(ValueError, match="boolean control"):
-                require_profile_packet(packet, narrowed)
-        decoded = decode_status_frame(frame(f"aa{opcode}01"), "H6102", profile=original)
-        assert decoded is not None and not status_is_authorized(decoded, narrowed)
+def test_other_profile_boolean_gradient_remains_authorized() -> None:
     require_profile_packet(build_h6199_control("gradient", 1), get_profile("H6199"))
 
 

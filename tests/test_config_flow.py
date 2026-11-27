@@ -636,9 +636,13 @@ _EM += [
 ]
 
 
-@pytest.mark.parametrize("name,expected", _EM)
-def test_extract_model(name, expected):
-    assert model_from_ble_name(name) == expected
+def test_extract_model() -> None:
+    failures = []
+    for name, expected in _EM:
+        actual = model_from_ble_name(name)
+        if actual != expected:
+            failures.append(f"{name!r}: expected {expected!r}, got {actual!r}")
+    assert not failures, "\n".join(failures)
 
 
 @pytest.mark.parametrize(

@@ -40,15 +40,14 @@ def _combined_payloads():
     )
 
 
-@pytest.mark.parametrize(
-    "effect,payload", _combined_payloads(), ids=lambda value: value.get("name") if isinstance(value, dict) else None
-)
-def test_combined_catalogue_lossless_semantics(effect, payload):
-    template = CatalogueRef("H60B0", effect["scene_id"], effect["effect_id"])
-    decoded = decode_combined_scene(template, payload)
-    restored = layered_scene_from_value(layered_scene_to_value(decoded))
-    assert encode_combined_scene(restored) == payload
-    assert restored.ripple_layers
+def test_combined_catalogue_lossless_semantics() -> None:
+    for effect, payload in _combined_payloads():
+        record = effect["name"]
+        template = CatalogueRef("H60B0", effect["scene_id"], effect["effect_id"])
+        decoded = decode_combined_scene(template, payload)
+        restored = layered_scene_from_value(layered_scene_to_value(decoded))
+        assert encode_combined_scene(restored) == payload, record
+        assert restored.ripple_layers, record
 
 
 def test_combined_upload_is_pure_and_preserves_nonzero_extensions():

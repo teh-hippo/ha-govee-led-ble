@@ -6,7 +6,12 @@ import pytest
 
 from custom_components.ha_govee_led_ble.const import ModelProfile, ReadDomain, device_profile, get_profile
 from custom_components.ha_govee_led_ble.coordinator_expectations import expectations_from_packet
-from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode, parse_color_mode
+from custom_components.ha_govee_led_ble.coordinator_status import (
+    ParsedMode,
+    decode_status_frame,
+    parse_color_mode,
+    status_is_authorized,
+)
 from custom_components.ha_govee_led_ble.effect_commands import build_h617a_diy_single
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_boolean_control,
@@ -314,6 +319,19 @@ def test_boolean_register_contract(control: str, opcode: str) -> None:
         parse_command_ack_result(_frame(f"33{opcode}00"), "H6102").parsed,
     ):
         assert generated is not None and parse_boolean_control(generated, "H6102") == {}
+    original = get_profile("H6102")
+    packet = build_boolean_control(control, True, "H6102", profile=original)
+    query = build_boolean_control_query(control, "H6102", profile=original)
+    parsed = parse_status_result(_frame(f"aa{opcode}01"), "H6102", profile=original).parsed
+    decoded = decode_status_frame(_frame(f"aa{opcode}01"), "H6102", profile=original)
+    assert parsed is not None and decoded is not None
+    for operations in (None, frozenset({"power", "brightness", "limit", "multi_effect"})):
+        narrowed = replace(original, command_operations=operations, boolean_controls=frozenset())
+        for denied in (packet, query):
+            with pytest.raises(ValueError, match="boolean control"):
+                require_profile_packet(denied, narrowed)
+        assert parse_boolean_control(parsed, "H6102", profile=narrowed) == {}
+        assert not status_is_authorized(decoded, narrowed)
 
 
 def test_static_operation_gate_does_not_grant_other_multi_commands() -> None:
