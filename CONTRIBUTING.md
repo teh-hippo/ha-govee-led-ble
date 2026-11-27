@@ -294,7 +294,9 @@ Semantic-release commits use the lightweight path only after exact version-only 
 - Establish capability limits across individual, combined and service operations and evidenced revisions.
   Protect working workflows when resolving failures or missing controls.
 - Refactors preserve complete relevant public payloads and generated wire output.
-  Fixes demonstrate the old failure and intended behaviour.
+  Fixes demonstrate the old failure and intended outcome through the reported public operation.
+  Let production code acquire required identity, geometry and recovery state from faithful boundary inputs rather than preloading the result.
+  Check the resulting delivery, observation or restoration as applicable; clearing the first error is not proof of completion.
 - Challenge both exceptions and abstractions.
   Justify special treatment, share equivalent capability paths and remove superseded code, state and tests.
   Preserve product declarations and safety boundaries.
