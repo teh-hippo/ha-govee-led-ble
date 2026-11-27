@@ -12,18 +12,21 @@ Use the [shared evidence method](../govee-shared.md).
 
 1. Set the scope: whole device across evidenced revisions, or the requested operation and affected contracts.
    Severity filters findings, not which capability domains a whole-device audit considers.
-   Treat `SupportQuality.SUPPORTED` and its confirmation issue as a supported owner-qualification baseline, not as a prompt to reinterpret ordinary safety annotations as new defects.
+   Treat owner confirmation as a baseline for working behaviour; reconcile later reports against the audited version.
 2. Compare active paths with evidence and [shared boundaries](../../../CONTRIBUTING.md#shared-core-and-product-boundaries).
+   Compare the evidenced operations with what Home Assistant actually offers on that revision.
+   Trace the reported choices, and a representative of each other in-scope route, from the public selector or service through admission, delivery and applicable recovery.
    Distinguish justified product facts and codecs from SKU-dependent decisions in shared execution, including indirect capability coupling.
    Before confirming a defect, follow the active guard or owner, including any replacement path, and show why it does not uphold the contract.
    Leave behaviour unchecked when that path cannot be established.
 3. Check available prerequisites before running the smallest tests that exercise the contract and revision boundaries.
    Expand for shared callers or uncovered risks; a test need not name the SKU to be relevant.
-   In a read-only audit, use non-mutating checks with available outputs.
+   In a read-only audit, use non-mutating checks with available outputs; a missing build prerequisite limits the check, not the device.
    Live BLE operation is qualification work owned by the [release-candidate runbook](../../../docs/release-candidates.md), not an audit prerequisite or coverage gap.
    Reserve `make check` for change acceptance.
 4. Report only material user-visible defects, missing supported behaviour or evidence conflicts, grouped by owning cause and impact.
-   If there are no findings, lead with a positive confirmation that the audit passed and clearly name the requested scope.
+   Lead with a positive pass when the requested scope is established and there are no findings.
+   If a material software path remains unchecked, name it and the missing evidence rather than passing the whole scope.
    If there are findings, present them in a Markdown table with coloured severity glyphs: `🔴 High`, `🟠 Medium` and `🟡 Low`.
    Mention justified product differences only when needed to explain a finding.
    State the user-visible consequence in plain language before protocol terminology.

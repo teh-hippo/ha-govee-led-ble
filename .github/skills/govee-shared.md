@@ -7,25 +7,29 @@
 
 Record the checkout SHA privately with the requested operation and known SKU, Pact, hardware and firmware.
 Include that revision in the report only when the result is revision-specific or needs a reproducible pin.
-Start with the exact-SKU brief in the maintainer-provided evidence workspace if available.
-The workspace index, issue, captures, profile and active callers are alternative entry points.
+Check for exact-SKU reports and read the confirmation thread when available, including the latest owner retest.
+Separate what worked, what failed and what was missing on each reported version.
+Use the exact-SKU brief in the maintainer-provided evidence workspace when available; the index, captures, profile and active callers are other entry points.
 If private evidence is unavailable, use available public evidence and record the resulting limits.
 Keep private references in private notes; describe behaviour in original wording in public material.
 
 Trace the selected revision and operation from public control through profile, catalogue or codec to preparation, transport, observation and recovery as applicable.
+Establish how the connection or preceding action supplies each required observation before its first use.
 Check registry precedence, overrides and fallback callers when they can select a different route.
 Use indexed routes to save navigation, and recheck their scope and freshness when the conclusion depends on them.
 Use symbol navigation when available; bounded search and file reads also work.
 
 For a whole device, classify discovery/identity, physical and logical geometry, ordinary controls, status, settings, scenes, music, DIY and other effects, and recovery.
 Include applicable entry points, revision boundaries, and evidenced missing or gated capabilities.
-Use representative checks for equivalent partitions.
+Choose representative operations by the route they actually take, including different prerequisites or encodings behind the same control.
 For a targeted report, follow the affected contract across equivalent callers and profiles.
 
 ## Establish and report the result
 
 - **Basis:** exact capture or owner observation, active exact route, demonstrated shared route, public reference or inference.
-  Registration alone does not establish behaviour; public specifications do not prove wire behaviour.
+  A catalogue entry, profile flag or passing codec test does not establish what Home Assistant offers or executes.
+  Public specifications do not prove wire behaviour.
+  An exclusion in code or tests needs independent product evidence or [project policy](../../CONTRIBUTING.md#repository-non-goals) to justify it.
   A declared profile fact, its owner confirmation and a runtime observation are separate authorities; do not merge one into another.
   A diagnostic or cached value does not invalidate an independently declared and owner-confirmed product fact.
 - **Disposition:** confirmed match, defect, gap, conflict, policy/non-goal or unchecked.
