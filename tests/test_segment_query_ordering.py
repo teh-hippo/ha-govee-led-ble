@@ -34,6 +34,8 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
 from custom_components.ha_govee_led_ble.govee_encryption.session import GoveeEncryptionSession
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.light_commands import build_color_rgb, build_segment_brightness
+from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_packets
+from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES
 from tests.coordinator_test_support import _confirm_identity, _packet
 
 
@@ -210,6 +212,35 @@ async def test_mask_transaction_qualifies_declared_physical_geometry(device, mon
     assert [call.args[1] for call in client.write_gatt_char.await_args_list] == [
         build_physical_ic_count_query(c.model, profile=c.profile)
     ]
+
+
+@pytest.mark.parametrize("device", ["H612A"], indirect=True)
+async def test_scene_application_qualifies_declared_physical_geometry(device, monkeypatch):
+    c, client, receive = device
+    c.pact_type, c.pact_code = 1, 2
+    c._confirmed_identity_fields.add("pact")
+    c._resolve_device_profile()
+    c.is_on = True
+    scene = MODEL_SCENES["H612A"]["afternoon"]
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet == build_physical_ic_count_query(c.model, profile=c.profile):
+            receive(None, bytearray(_packet(0xAA, 0x40, [0, 12])))
+
+    client.write_gatt_char = AsyncMock(side_effect=write)
+    write_effect = AsyncMock()
+    monkeypatch.setattr(c, "async_admit_effect_selection", AsyncMock())
+    monkeypatch.setattr(c, "async_write_effect_sequence", write_effect)
+
+    await c.async_apply_native_scene("afternoon", verify=False)
+
+    assert c._physical_ic_count_confirmed and c.effect_authorization_profile.physical_ic_count == 12
+    assert [call.args[1] for call in client.write_gatt_char.await_args_list] == [
+        build_physical_ic_count_query(c.model, profile=c.profile)
+    ]
+    assert write_effect.await_args.args[0] == build_native_scene_packets(
+        "H612A", scene, profile=c.effect_authorization_profile
+    )
 
 
 @pytest.mark.parametrize("device", ["H1AB2", "H61F5", "H612A", "H705A"], indirect=True)
