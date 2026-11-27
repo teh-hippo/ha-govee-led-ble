@@ -19,9 +19,7 @@ Use the [shared evidence method](../govee-shared.md).
 2. Correct the owning layer and replay the original sequence to the intended outcome.  Preserve working controls and evidenced revision differences.
    Run a focused `govee-audit` on the affected operation and equivalent callers.  Resolve downstream blockers on that path; report separate symptoms still open.
 3. Follow [change acceptance](../../../CONTRIBUTING.md#change-and-test-design).
-   Ask the operator whether to publish a [master candidate](../../../docs/release-candidates.md#master-candidates) after merge.
-   If approved, dispatch `Release` with `release_type=rc` on validated master; an [approved PR candidate](../../../docs/release-publication.md#building-an-optional-pr-candidate) remains available for pre-merge hardware testing.
-   Verify any approved candidate contains the fix and keep the issue open for confirmation.
-   If publication is declined, report that the fix is merged but not yet published, keep the issue open and stop.
-4. With an available candidate, show the operator a short reply draft before posting.
-   Give the exact candidate, installation and restart instructions, and the original actions and expected results for owner confirmation.
+   Merge the fix to validated `master`.
+   Invoke `govee-rc` after merge to publish and verify the candidate, classify affected issues and prepare their approved replies.
+   An [approved PR candidate](../../../docs/release-publication.md#building-an-optional-pr-candidate) remains available for pre-merge hardware testing.
+4. Keep the report open when hardware confirmation is still needed; close it only through the verified classification in `govee-rc`.
