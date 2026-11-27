@@ -60,6 +60,27 @@ test("custom catalogue admission remains bounded with the complete model invento
   expect(() => decodeCustomCatalogue(catalogue)).toThrow(/custom-effect catalogue must not exceed .* bytes/);
 });
 
+test("H8604 exposes only the admitted unverified frontend workflows", () => {
+  const model = decodeCustomCatalogue(responses.custom_catalogue).models.H8604;
+  expect(model.workflows.map(({ id, content_kind, application }) => ({
+    id,
+    content_kind,
+    application,
+  }))).toEqual([
+    { id: "native_scenes", content_kind: "scene_builtin", application: "studio" },
+    { id: "edited_palette_scenes", content_kind: "scene_palette", application: "home_assistant" },
+    { id: "layered_scenes", content_kind: "scene_layered", application: "home_assistant" },
+    { id: "painted", content_kind: "h617a_painted", application: "home_assistant" },
+    { id: "single", content_kind: "h617a_single", application: "home_assistant" },
+    { id: "multi", content_kind: "h617a_multi", application: "home_assistant" },
+    { id: "native_music", content_kind: "music_profile", application: "home_assistant" },
+    { id: "video", content_kind: "video_profile", application: "home_assistant" },
+    { id: "advanced", content_kind: "advanced", application: "home_assistant" },
+    { id: "workshop", content_kind: "workshop", application: "home_assistant" },
+  ]);
+  expect(model.apply.palette_diy).toBe("unsupported");
+});
+
 test("Mixed speed zero remains eligible independently of Basic speed bounds", () => {
   const catalogue = decodeCustomCatalogue(responses.custom_catalogue).models.H1AB2;
   const palette: [number, number, number][] = [[255, 0, 0], [0, 0, 255]];

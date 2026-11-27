@@ -37,6 +37,7 @@ from .const import (
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator_base import async_prepare_effect_profile
 from .coordinator_modes import ModeTransitionSupersededError
+from .coordinator_upload import UploadRejectedError
 from .effect_backend import EffectBackend
 from .effect_catalogue import (
     custom_effect_catalogue_payload,
@@ -53,6 +54,7 @@ from .effect_diy_destination import (
 from .effect_domain import (
     BuiltinScene,
     EffectValidationError,
+    MusicProfile,
     OpaqueContent,
     Origin,
     SourceKind,
@@ -951,6 +953,29 @@ async def ws_music_edit_retained(hass: HomeAssistant, connection: ActiveConnecti
         return
     entry, _ = authorized
     coordinator = entry.runtime_data
+    backend = _backend(hass)
+    workspace_attribution = None
+    workspace_matched_before_attempt = False
+    upload_started = False
+
+    def invalidate_workspace() -> None:
+        nonlocal upload_started, workspace_attribution, workspace_matched_before_attempt
+        if upload_started:
+            return
+        upload_started = True
+        workspace = backend.active_workspaces.get(entry.entry_id)
+        content = None if workspace is None else workspace.content
+        if (
+            workspace is not None
+            and isinstance(content, MusicProfile)
+            and workspace.model == coordinator.model
+            and content.mode == coordinator.music_mode
+            and workspace.observable_signature == f"music:{coordinator.music_mode}"
+        ):
+            workspace_attribution = workspace
+            workspace_matched_before_attempt = active_workspace_matches(coordinator, workspace)
+            backend.active_workspaces.clear(entry.entry_id)
+
     try:
         if (
             type(msg["expected_body_revision"]) is not int
@@ -959,7 +984,6 @@ async def ws_music_edit_retained(hass: HomeAssistant, connection: ActiveConnecti
             or msg["mode"] not in coordinator.profile.music_modes
         ):
             raise ValueError("Retained music body changed; refresh and retry")
-        backend = _backend(hass)
         # The existing apply path compiles the complete body before acquiring control,
         # then guards its captured revision at each physical write.
         await coordinator.async_apply_music_params(
@@ -975,7 +999,22 @@ async def ws_music_edit_retained(hass: HomeAssistant, connection: ActiveConnecti
                 entry,
                 backend,
             ),
+            on_upload_attempt=invalidate_workspace,
         )
+    except UploadRejectedError as exc:
+        content = None if workspace_attribution is None else workspace_attribution.content
+        if (
+            workspace_matched_before_attempt
+            and workspace_attribution is not None
+            and isinstance(content, MusicProfile)
+            and coordinator.music_mode == content.mode
+            and coordinator.music_sensitivity == content.sensitivity
+            and active_workspace_matches(coordinator, workspace_attribution)
+            and backend.active_workspaces.get(entry.entry_id) is None
+        ):
+            backend.active_workspaces.set(workspace_attribution)
+        _send_error(hass, connection, msg, "apply_failed", exc)
+        return
     except Unauthorized as exc:
         _send_error(hass, connection, msg, "unauthorized", exc)
         return

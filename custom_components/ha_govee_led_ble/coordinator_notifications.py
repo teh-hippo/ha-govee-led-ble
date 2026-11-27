@@ -15,7 +15,7 @@ from .const import (
     profile_with_physical_ic_count,
 )
 from .coordinator_base import _CoordinatorBase
-from .coordinator_expectations import expectations_from_packet
+from .coordinator_expectations import effect_expectation_matches, expectations_from_packet
 from .coordinator_status import (
     ParsedColorModeResponse,
     ParsedMode,
@@ -178,7 +178,7 @@ class _NotificationMixin(_CoordinatorBase):
         if time.monotonic() >= deadline:
             del self._expected_state[field]
             return True
-        if value == expected:
+        if effect_expectation_matches(field, value, expected):
             return True
         _LOGGER.debug("Ignoring stale %s for %s: %r (expecting %r)", field, self.address, value, expected)
         return False

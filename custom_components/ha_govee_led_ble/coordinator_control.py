@@ -284,6 +284,7 @@ async def async_send_guarded_command(
     state_values: Mapping[str, Any] | None = None,
     expected_values: Mapping[str, Any] | None = None,
     on_write: Callable[[], None] | None = None,
+    arm_packet_expectations: bool = True,
 ) -> None:
     profile = coordinator.profile if prepared_profile is None else prepared_profile
     if coordinator._client is None or not coordinator._client.is_connected:
@@ -312,6 +313,9 @@ async def async_send_guarded_command(
             if on_write is not None:
                 on_write()
 
+        sequence_expectation_options: dict[str, Any] = (
+            {} if arm_packet_expectations else {"arm_packet_expectations": False}
+        )
         await coordinator.async_write_effect_sequence(
             (packet,),
             intent=coordinator._control_arbiter.current_task_intent or ControlIntent.USER,
@@ -319,12 +323,24 @@ async def async_send_guarded_command(
             state_values=state_values,
             expected_values=expected_values,
             packet_on_write=commit if on_write is not None else None,
+            **sequence_expectation_options,
         )
     else:
-        await writer(
-            packet,
-            write_guard=check,
-            state_values=state_values,
-            expected_values=expected_values,
-            **({"on_write": on_write} if on_write is not None else {}),
-        )
+        writer_options: dict[str, Any] = {"on_write": on_write} if on_write is not None else {}
+        if arm_packet_expectations:
+            await writer(
+                packet,
+                write_guard=check,
+                state_values=state_values,
+                expected_values=expected_values,
+                **writer_options,
+            )
+        else:
+            await writer(
+                packet,
+                write_guard=check,
+                state_values=state_values,
+                expected_values=expected_values,
+                arm_packet_expectations=False,
+                **writer_options,
+            )

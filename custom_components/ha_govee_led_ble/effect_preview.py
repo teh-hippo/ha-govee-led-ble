@@ -62,6 +62,7 @@ from .effect_runtime import (
     _active_workspace_content,
     active_workspace_matches,
     async_apply_compiled_profile,
+    async_preflight_compiled_profile,
     async_prepare_effect_control_state,
     compiled_observation,
     observable_signature_for_compiled,
@@ -281,6 +282,7 @@ class _PreviewRequest:
     compiled: CompiledApplication | None = None
     control_guard: Callable[[], None] | None = None
     default_guard: Callable[[], None] | None = None
+    prepared_video: list[Any] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)
@@ -382,6 +384,7 @@ class _PreviewWriter:
         state_values: Mapping[str, Any] | None = None,
         expected_values: Mapping[str, Any] | None = None,
         on_write: Callable[[], None] | None = None,
+        arm_packet_expectations: bool = True,
     ) -> None:
         if self._request.control_guard is not None:
             self._request.control_guard()
@@ -407,6 +410,7 @@ class _PreviewWriter:
                 before_write=check,
                 state_values=state_values,
                 expected_values=expected_values,
+                arm_packet_expectations=arm_packet_expectations,
                 **({"on_write": on_write} if on_write is not None else {}),
             )
         else:
@@ -1500,6 +1504,10 @@ class EffectPreviewManager:
                 request.destination_consent,
                 config_entry_id=request.config_entry_id,
             )
+        if isinstance(compiled, CompiledVideoProfile) and coordinator.profile.setting_grammar_has(
+            "deferred_scalar_readback"
+        ):
+            request.prepared_video[:] = [await async_preflight_compiled_profile(coordinator, compiled)]
 
     async def _async_prepare_recovery(
         self,
@@ -1541,7 +1549,34 @@ class EffectPreviewManager:
                 and transition.purpose is ModeTransitionPurpose.PREVIEW
                 and transition.snapshot is not None
             ):
-                state = transition.snapshot
+                state = replace(
+                    transition.snapshot,
+                    blank_screen=state.blank_screen,
+                    blank_screen_detection=state.blank_screen_detection,
+                    blank_screen_low_brightness_duration_seconds=state.blank_screen_low_brightness_duration_seconds,
+                    blank_screen_same_tone_duration_seconds=state.blank_screen_same_tone_duration_seconds,
+                )
+            if isinstance(compiled, CompiledVideoProfile):
+                state = replace(
+                    state,
+                    video_restore_controls=tuple(
+                        sorted(
+                            requested_video_controls(compiled)
+                            | (
+                                {"blank_screen_policy"}
+                                if compiled.blank_screen_policy is not None
+                                or request.prepared_video
+                                and compiled.blank_screen is not None
+                                else set()
+                            )
+                            | (
+                                {"color_calibration_red"}
+                                if compiled.color_calibration is not None and len(compiled.color_calibration) == 4
+                                else set()
+                            )
+                        )
+                    ),
+                )
             available = getattr(coordinator, "preview_recovery_target_available", None)
             if available is None or not available(state):
                 raise EffectRestorationError("The current appearance cannot be safely restored after Live")
@@ -1658,6 +1693,12 @@ class EffectPreviewManager:
                     verify=False,
                     on_write=lambda: self._supersede_active_origin(request),
                     intent=ControlIntent.PREVIEW,
+                    defer_confirmation=(
+                        isinstance(compiled, CompiledVideoProfile)
+                        and compiled_observation(compiled, profile=coordinator.profile)[1]
+                        is ObservationConfidence.SETTINGS_MATCH
+                    ),
+                    prepared_video=request.prepared_video[0] if request.prepared_video else None,
                 )
             return
         final_activation = (

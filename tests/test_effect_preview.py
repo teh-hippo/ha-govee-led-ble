@@ -79,6 +79,8 @@ from custom_components.ha_govee_led_ble.effect_scene_defaults import (
 from custom_components.ha_govee_led_ble.effect_template_defaults import CatalogueTemplateDefaultRepository
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_blank_screen,
+    build_blank_screen_query,
+    build_hdmi_input,
     build_power,
     build_relative_brightness,
     build_video_mode,
@@ -89,7 +91,7 @@ from custom_components.ha_govee_led_ble.native_scenes import encode_authored_sce
 from custom_components.ha_govee_led_ble.protocol_core import MusicBody
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES, SceneEntry, scene_selector_code
 from custom_components.ha_govee_led_ble.transport import reassemble_a3, xor_checksum
-from tests.coordinator_test_support import approve_diy_destination_operation
+from tests.coordinator_test_support import approve_diy_destination_operation, frame
 from tests.storage_test_double import InMemoryVersionedDocumentStore
 
 
@@ -313,7 +315,6 @@ async def test_preview_rechecks_control_after_queueing_before_physical_write(has
         permitted = False
         release.set()
         await manager.async_wait_idle("entry-a")
-
         coordinator.async_write_effect_sequence.assert_not_awaited()
         assert events[-1].phase is PreviewPhase.FAILED
     finally:
@@ -2517,6 +2518,137 @@ async def test_toggle_only_live_preview_uses_fresh_external_policy(hass, monkeyp
         assert blank_writes == ([build_blank_screen(True, "H6099", 1, 30, 240)] if fresh else [])
         assert any(event.phase is (PreviewPhase.WRITTEN if fresh else PreviewPhase.FAILED) for event in events)
         assert not coordinator._lock.locked() and not coordinator._control_arbiter.locked()
+    finally:
+        await manager.async_shutdown()
+
+
+async def test_h8604_live_cancel_restores_policy_when_toggle_unchanged(hass, monkeypatch):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H8604", configuration_url="test")
+    coordinator.pact_type, coordinator.pact_code = 1, 1
+    coordinator._resolve_device_profile()
+    coordinator._notify_callback(None, bytearray(frame("aaa90a0600020a007800")))
+    coordinator.is_on = True
+    monkeypatch.setattr(
+        coordinator, "async_prepare_static_baseline", AsyncMock(return_value=_known_static_baseline(coordinator))
+    )
+    monkeypatch.setattr(coordinator, "preview_recovery_target_available", lambda _state: True)
+    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(), disconnect=AsyncMock())
+    coordinator._client = client
+    coordinator._notification_token = object()
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
+    monkeypatch.setattr(coordinator, "_renew_foreground_lease", lambda: None)
+    monkeypatch.setattr(coordinator, "async_preview_preflight", AsyncMock())
+    monkeypatch.setattr(coordinator, "async_observe_effect", AsyncMock(return_value=True))
+    restore = coordinator.async_restore_effect_control_state
+    monkeypatch.setattr(coordinator, "async_restore_effect_control_state", AsyncMock(wraps=restore))
+    restore_video = coordinator._restore_video_controls
+    restore_video_mock = AsyncMock(wraps=restore_video)
+    monkeypatch.setattr(coordinator, "_restore_video_controls", restore_video_mock)
+    queries = 0
+
+    async def transmit(_uuid, packet, **_kwargs):
+        nonlocal queries
+        if packet == build_blank_screen_query("H8604"):
+            queries += 1
+            coordinator._notify_callback(None, bytearray(frame("aaa90a0600020a007800")))
+
+    client.write_gatt_char.side_effect = transmit
+    manager, _cache = await _manager(hass, monkeypatch, coordinator)
+    owner, events = object(), []
+    session_id = _open(manager, owner, events)
+    item = LibraryItem.new(
+        "Toggle",
+        VideoProfile(
+            "H8604",
+            "movie",
+            True,
+            50,
+            False,
+            50,
+            None,
+            None,
+            False,
+            blank_screen_detection=1,
+            blank_screen_low_brightness_duration_seconds=300,
+            blank_screen_same_tone_duration_seconds=600,
+        ),
+    )
+    try:
+        await manager.async_queue_snapshot(
+            session_id=session_id,
+            owner=owner,
+            config_entry_id="entry-a",
+            sequence=1,
+            updated_at="2026-09-15T00:00:00Z",
+            item=item,
+        )
+        await manager.async_wait_idle("entry-a")
+        outcomes = await manager.async_cancel(session_id=session_id, owner=owner, config_entry_id="entry-a")
+        await manager.async_wait_idle("entry-a")
+        assert outcomes
+        coordinator.async_restore_effect_control_state.assert_awaited()
+        restore_video_mock.assert_awaited_once()
+        assert "blank_screen_policy" in (
+            coordinator.async_restore_effect_control_state.await_args.args[0].video_restore_controls or ()
+        )
+        assert (
+            coordinator.async_restore_effect_control_state.await_args.args[0].blank_screen_detection,
+            coordinator.async_restore_effect_control_state.await_args.args[
+                0
+            ].blank_screen_low_brightness_duration_seconds,
+            coordinator.async_restore_effect_control_state.await_args.args[0].blank_screen_same_tone_duration_seconds,
+        ) == (2, 10, 120)
+        writes = [call.args[1] for call in client.write_gatt_char.await_args_list]
+        assert build_blank_screen(False, "H8604", 1, 300, 600) in writes
+        assert build_blank_screen(False, "H8604", 2, 10, 120) in writes
+        assert coordinator.blank_screen_detection == 2
+        assert coordinator.blank_screen_low_brightness_duration_seconds == 10
+        assert coordinator.blank_screen_same_tone_duration_seconds == 120
+        assert queries >= 1
+    finally:
+        await manager.async_shutdown()
+
+
+async def test_h8604_live_deferred_hdmi_contradiction_updates_verification(hass, monkeypatch):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H8604", configuration_url="test")
+    coordinator.pact_type, coordinator.pact_code = 2, 1
+    coordinator._resolve_device_profile()
+    coordinator.is_on = True
+    monkeypatch.setattr(
+        coordinator, "async_prepare_static_baseline", AsyncMock(return_value=_known_static_baseline(coordinator))
+    )
+    monkeypatch.setattr(coordinator, "preview_recovery_target_available", lambda _state: True)
+    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(), disconnect=AsyncMock())
+    coordinator._client = client
+    coordinator._notification_token = object()
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
+    monkeypatch.setattr(coordinator, "_renew_foreground_lease", lambda: None)
+    monkeypatch.setattr(coordinator, "async_preview_preflight", AsyncMock())
+
+    async def transmit(_uuid, packet, **_kwargs):
+        if packet == build_hdmi_input(None, "H8604", profile=coordinator.profile):
+            coordinator._notify_callback(None, bytearray(frame("aaa9030202f0")))
+
+    client.write_gatt_char.side_effect = transmit
+    manager, _cache = await _manager(hass, monkeypatch, coordinator)
+    owner, events = object(), []
+    session_id = _open(manager, owner, events)
+    try:
+        await manager.async_queue_snapshot(
+            session_id=session_id,
+            owner=owner,
+            config_entry_id="entry-a",
+            sequence=1,
+            updated_at="2026-09-15T00:00:00Z",
+            item=LibraryItem.new(
+                "HDMI",
+                VideoProfile("H8604", "movie", True, 50, False, 50, None, None, None, hdmi_input=1),
+            ),
+        )
+        await manager.async_wait_idle("entry-a")
+        assert "video_hdmi_input" not in coordinator._expected_state
+        assert await coordinator.async_observe_effect({"video_hdmi_input": 1}, timeout=0.1) is False
+        assert coordinator.video_hdmi_input == 2
     finally:
         await manager.async_shutdown()
 

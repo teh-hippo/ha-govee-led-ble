@@ -20,6 +20,10 @@ class UploadAckTimeoutError(TimeoutError):
     outcome = UploadOutcome.UNCONFIRMED
 
 
+class UploadRejectedError(RuntimeError):
+    """A device explicitly rejected a completed upload."""
+
+
 class UploadCancelledError(asyncio.CancelledError):
     """Cancellation interrupted an upload before its selector."""
 

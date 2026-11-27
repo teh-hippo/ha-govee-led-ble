@@ -2,12 +2,16 @@ meta:
   id: h66a0_video_command
   endian: le
 doc: |
-  H66A0 video-only.  Based on
-  Fredde87/ha-govee-led-ble round2 command_write.ksy video_body_h66a0 and
-  TV-light video mode behaviour.  Contributor reports preset reads
-  08 Vivid, 09 Solid, 0a Smooth, 0b Delicate and a separate opaque byte.
-  Independent evidence, firmware coverage and owner qualification remain
-  unresolved.  This codec does not register H66A0 as a supported model.
+  SPECULATIVE H66A0 video command layout.  Closed owner-confirmation issue #450
+  (https://github.com/teh-hippo/ha-govee-led-ble/issues/450) records standalone
+  Video Movie as visibly working on Supported H66A0 HW 3.07.01/FW 1.00.24.
+  It separately records Game/Movie switching in DreamView sync-centre mode,
+  which is a distinct control path; standalone Game remains unconfirmed.  The
+  owner evidence qualifies those visible operations, not every byte here.
+  A contributor's round2 command_write.ksy video_body_h66a0 layout associates
+  preset reads with 08 Vivid, 09 Solid, 0a Smooth and 0b Delicate, plus a
+  separate opaque byte.  Other byte meanings, valid ranges, wire values and
+  other hardware or firmware revisions remain unqualified.
 seq:
   - id: header
     contents: [0x33]

@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from dataclasses import replace
 from datetime import timedelta
+from inspect import unwrap
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import ANY, AsyncMock, MagicMock, Mock
@@ -21,12 +22,15 @@ from homeassistant.setup import async_setup_component
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant.common import MockConfigEntry, async_fire_time_changed
 
+from custom_components.ha_govee_led_ble import coordinator as coordinator_module
 from custom_components.ha_govee_led_ble import effect_websocket
 from custom_components.ha_govee_led_ble.const import CONF_SHOW_EXPERIMENTAL_FEEDBACK, DOMAIN, get_profile
 from custom_components.ha_govee_led_ble.control_arbiter import BLEControlArbiter, ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_modes import ModeTransitionSupersededError
 from custom_components.ha_govee_led_ble.coordinator_segments import SegmentPaintRequest
+from custom_components.ha_govee_led_ble.coordinator_upload import UploadCancelledError
+from custom_components.ha_govee_led_ble.effect_active_workspace import ActiveEffectWorkspace
 from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
 from custom_components.ha_govee_led_ble.effect_catalogue import (
     diy_destination_route,
@@ -38,6 +42,7 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     BuiltinScene,
     CatalogueRef,
     MusicProfile,
+    Origin,
     PaintedEffect,
     PaletteDiyEffect,
     SingleEffect,
@@ -49,6 +54,7 @@ from custom_components.ha_govee_led_ble.effect_preview import (
     PreviewSessionNotFoundError,
     PreviewTargetUnavailableError,
 )
+from custom_components.ha_govee_led_ble.effect_runtime import active_workspace_matches
 from custom_components.ha_govee_led_ble.effect_scenes import scene_detail_payload
 from custom_components.ha_govee_led_ble.effect_websocket import (
     PREVIEW_SESSION_NOT_FOUND_CODE,
@@ -84,7 +90,11 @@ from custom_components.ha_govee_led_ble.effect_websocket import (
     async_register_effect_websocket,
 )
 from custom_components.ha_govee_led_ble.govee_encryption import GoveeCryptoError, GoveeTransportError
+from custom_components.ha_govee_led_ble.music_commands import edit_music_body
+from custom_components.ha_govee_led_ble.music_semantics import music_variant
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
+from custom_components.ha_govee_led_ble.transport import fragment_a3
+from tests.coordinator_test_support import frame
 from tests.test_effect_preview import _EffectCoordinator
 
 
@@ -563,6 +573,216 @@ async def test_control_only_policy_can_read_and_apply_without_admin(
     _restrict_user(hass_read_only_user, {"entities": {}})
     with pytest.raises(Unauthorized):
         deferred_control_guard()
+
+
+@pytest.mark.parametrize(
+    ("outcome", "workspace_sensitivity", "restored"),
+    [
+        ("accepted", 40, False),
+        ("rejected", 40, True),
+        ("rejected", 50, False),
+        ("timeout", 40, False),
+    ],
+)
+async def test_retained_music_edit_websocket_rebinds_h6097_workspace_at_upload_attempt(
+    hass: HomeAssistant,
+    hass_ws_client,
+    entity_registry,
+    monkeypatch,
+    outcome,
+    workspace_sensitivity,
+    restored,
+) -> None:
+    backend = await _setup_backend(hass)
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6097", configuration_url=None)
+    coordinator.profile = get_profile("H6097")
+    variant = music_variant(coordinator.profile, 0x33)
+    assert variant is not None and variant.template is not None
+    coordinator.is_on = True
+    coordinator.music_mode = "hopping"
+    coordinator.music_sensitivity = 40
+    coordinator._music_body = ("hopping", variant.template)
+    content = MusicProfile("H6097", "hopping", workspace_sensitivity, parameters={"relative_brightness": 25})
+    workspace = ActiveEffectWorkspace(
+        config_entry_id="h6097-music-edit",
+        model="H6097",
+        selector_label="Hopping 25",
+        content=content,
+        origin=Origin(),
+        observable_signature="music:hopping",
+        updated_at="2026-11-28T00:00:00Z",
+        generation=backend.active_workspaces.next_generation(),
+    )
+    backend.active_workspaces.set(workspace)
+    unrelated = replace(
+        workspace,
+        config_entry_id="unrelated-music-edit",
+        generation=backend.active_workspaces.next_generation(),
+    )
+    backend.active_workspaces.set(unrelated)
+    assert active_workspace_matches(coordinator, workspace) is (workspace_sensitivity == 40)
+    entry, _ = _permission_entry(
+        hass,
+        entity_registry,
+        coordinator,
+        entry_id="h6097-music-edit",
+        address="AA:BB:CC:DD:EE:FF",
+        entity_name="H6097",
+    )
+    supersede = AsyncMock()
+    monkeypatch.setattr(backend.preview, "async_supersede_device", supersede)
+    client_radio = MagicMock(
+        is_connected=True,
+        start_notify=AsyncMock(),
+        write_gatt_char=AsyncMock(),
+        disconnect=AsyncMock(),
+    )
+    coordinator._client = client_radio
+    await coordinator._start_notify()
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client_radio))
+    monkeypatch.setattr(coordinator, "_renew_foreground_lease", MagicMock())
+    if outcome == "timeout":
+        monkeypatch.setattr(coordinator_module, "UPLOAD_ACK_TIMEOUT", 0.01)
+    monkeypatch.setattr(
+        coordinator,
+        "async_prepare_static_baseline",
+        AsyncMock(return_value=coordinator.capture_effect_control_state()),
+    )
+    edited = edit_music_body(
+        variant.template,
+        "hopping",
+        {"relative_brightness": 17},
+        profile=coordinator.profile,
+    )
+    upload = fragment_a3(0x41, edited)
+    sent: list[bytes] = []
+
+    async def write(_uuid, packet, **_kwargs):
+        if sent:
+            assert backend.active_workspaces.get(entry.entry_id) is None
+        sent.append(packet)
+        if packet == upload[-1]:
+            assert backend.active_workspaces.get(entry.entry_id) is None
+            if outcome != "timeout":
+                client_radio.start_notify.call_args.args[1](
+                    None,
+                    bytearray(frame(f"a34133{'00' if outcome == 'accepted' else '01'}")),
+                )
+
+    client_radio.write_gatt_char.side_effect = write
+    client = await hass_ws_client(hass)
+    await client.send_json_auto_id(
+        {
+            "type": f"{DOMAIN}/editor/music/edit_retained",
+            "config_entry_id": entry.entry_id,
+            "mode": "hopping",
+            "expected_body_revision": coordinator._music_body_revision,
+            "parameters": {"relative_brightness": 17},
+        }
+    )
+
+    response = await client.receive_json()
+    assert response["success"] is (outcome == "accepted"), response
+    assert sent[: len(upload)] == upload
+    assert backend.active_workspaces.get(unrelated.config_entry_id) == unrelated
+    if outcome == "accepted":
+        assert sent[-1][3] == 0x33
+        assert coordinator.music_body == edited
+        assert backend.active_workspaces.get(entry.entry_id) is None
+        assert not active_workspace_matches(coordinator, workspace)
+        assert response["result"]["retained_music_edit"]["parameters"]["relative_brightness"] == 17
+    else:
+        assert sent == upload
+        assert coordinator.music_body is None
+        assert backend.active_workspaces.get(entry.entry_id) == (workspace if restored else None)
+        if outcome == "rejected":
+            assert active_workspace_matches(coordinator, workspace) is restored
+    supersede.assert_awaited_once_with(entry.entry_id, reason="home_assistant_control")
+
+
+async def test_retained_music_cancellation_does_not_restore_h6097_workspace(
+    hass: HomeAssistant,
+    entity_registry,
+    monkeypatch,
+) -> None:
+    backend = await _setup_backend(hass)
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6097", configuration_url=None)
+    coordinator.profile = get_profile("H6097")
+    coordinator.is_on = True
+    coordinator.music_mode = "hopping"
+    coordinator.music_sensitivity = 40
+    variant = music_variant(coordinator.profile, 0x33)
+    assert variant is not None and variant.template is not None
+    coordinator._music_body = ("hopping", variant.template)
+    content = MusicProfile("H6097", "hopping", 40, parameters={"relative_brightness": 25})
+    workspace = ActiveEffectWorkspace(
+        config_entry_id="h6097-music-cancel",
+        model="H6097",
+        selector_label="Hopping 25",
+        content=content,
+        origin=Origin(),
+        observable_signature="music:hopping",
+        updated_at="2026-11-28T00:00:00Z",
+        generation=backend.active_workspaces.next_generation(),
+    )
+    backend.active_workspaces.set(workspace)
+    entry, _ = _permission_entry(
+        hass,
+        entity_registry,
+        coordinator,
+        entry_id=workspace.config_entry_id,
+        address="AA:BB:CC:DD:EE:FF",
+        entity_name="H6097",
+    )
+    client_radio = MagicMock(
+        is_connected=True,
+        start_notify=AsyncMock(),
+        write_gatt_char=AsyncMock(),
+        disconnect=AsyncMock(),
+    )
+    coordinator._client = client_radio
+    await coordinator._start_notify()
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client_radio))
+    monkeypatch.setattr(coordinator, "_renew_foreground_lease", MagicMock())
+    monkeypatch.setattr(
+        coordinator,
+        "async_prepare_static_baseline",
+        AsyncMock(return_value=coordinator.capture_effect_control_state()),
+    )
+    upload = fragment_a3(
+        0x41,
+        edit_music_body(
+            variant.template,
+            "hopping",
+            {"relative_brightness": 17},
+            profile=coordinator.profile,
+        ),
+    )
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet == upload[-1]:
+            coordinator._invalidate_upload_ack(UploadCancelledError())
+
+    client_radio.write_gatt_char.side_effect = write
+    connection = Mock()
+    connection.user.is_admin = True
+
+    with pytest.raises(UploadCancelledError):
+        await unwrap(effect_websocket.ws_music_edit_retained)(
+            hass,
+            connection,
+            {
+                "id": 1,
+                "type": f"{DOMAIN}/editor/music/edit_retained",
+                "config_entry_id": entry.entry_id,
+                "mode": "hopping",
+                "expected_body_revision": coordinator._music_body_revision,
+                "parameters": {"relative_brightness": 17},
+            },
+        )
+
+    assert backend.active_workspaces.get(entry.entry_id) is None
+    assert coordinator.music_body is None
 
 
 async def test_device_subscription_stops_after_read_permission_revocation(
