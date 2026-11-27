@@ -474,6 +474,69 @@ async def test_native_white_scene_off_uses_supported_observations(
     assert physical["colours"] == [rendered] * count
 
 
+async def test_h6076_effect_after_completed_static_rgb_preserves_recovery(hass, monkeypatch):
+    coord = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6076", configuration_url=None)
+    coord.is_on = True
+    coord._notification_token = object()
+    coord._notify_started_monotonic = time.monotonic()
+    client = _c(write_gatt_char=AsyncMock())
+    coord._client = client
+    monkeypatch.setattr(coord, "_ensure_connected", AsyncMock(return_value=client))
+    monkeypatch.setattr(coord, "_renew_foreground_lease", lambda: None)
+    captured = []
+
+    async def apply_scene(*_args, **_kwargs):
+        assert coord._mode_transition is not None
+        captured.append(coord._mode_transition.snapshot)
+
+    monkeypatch.setattr(coord, "_async_apply_native_scene_locked", apply_scene)
+    light = GoveeBLELight(coord)
+    monkeypatch.setattr(light, "_async_supersede_preview", AsyncMock())
+    monkeypatch.setattr(light, "_notify_state_changed", MagicMock())
+    physical = {
+        "on": True,
+        "level": 50,
+        "colours": [(10, 20, 30)] * coord.profile.segment_count,
+        "scene": None,
+    }
+
+    def reply(domain, values):
+        coord._notify_callback(None, bytearray(_packet(0xAA, domain, values)))
+
+    async def radio(_uuid, packet, **_kwargs):
+        if packet[:2] == b"\x33\x01":
+            physical["on"] = bool(packet[2])
+        elif packet[:2] == b"\x33\x04":
+            physical["level"] = packet[2]
+        elif packet[:3] == b"\x33\x05\x04":
+            physical["scene"] = list(packet[3:5])
+        elif (static := parse_static_write(packet, coord.model, profile=coord.profile)) is not None:
+            physical["scene"] = None
+            if static.rgb is not None:
+                physical["colours"] = [static.rgb] * coord.profile.segment_count
+        elif packet[1] == 1:
+            reply(1, [int(physical["on"])])
+        elif packet[1] == 4:
+            reply(4, [physical["level"]])
+        elif packet[1] == 5:
+            reply(5, [4, *physical["scene"]] if physical["scene"] else [0x15, 1, 0, 0])
+        elif packet[1] == 0xA5:
+            group = packet[2]
+            start = (group - 1) * coord.profile.segment_group_size
+            values = [group]
+            for rgb in physical["colours"][start : start + coord.profile.segment_group_size]:
+                values.extend((physical["level"], *rgb))
+            reply(0xA5, values)
+
+    client.write_gatt_char.side_effect = radio
+    await light.async_turn_on(rgb_color=(255, 120, 0), brightness=200)
+    coord.segment_kelvin = [None] * coord.profile.segment_count
+    await light.async_turn_on(effect="Aurora")
+    assert len(captured) == 1 and captured[0] is not None
+    assert captured[0].segment_colors == ((255, 120, 0),) * coord.profile.segment_count
+    assert captured[0].segment_brightness == (78,) * coord.profile.segment_count
+
+
 async def test_whole_device_revision_keeps_its_scalar_effect_stop(hass, monkeypatch, virtual_clock):
     from tests.test_h60a_protocol import bulk_frames
 

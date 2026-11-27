@@ -198,7 +198,9 @@ def static_segment_kelvin(state: PriorControlState, profile: ModelProfile) -> tu
     result: list[int] = []
     for rgb, raw_intent in zip(state.segment_colors, intents, strict=True):
         if raw_intent is None:
-            if profile.static_palette_recovery and state.static_colour_observed:
+            if state.static_rgb_known:
+                raw_intent = 0
+            elif profile.static_palette_recovery and state.static_colour_observed:
                 raw_intent = table_rgb_kelvin(rgb)
                 if raw_intent is not None and normalize_kelvin(raw_intent, profile) != raw_intent:
                     raw_intent = 0
