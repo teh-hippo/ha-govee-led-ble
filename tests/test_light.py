@@ -233,6 +233,43 @@ def test_active_effect_reports_brightness_and_keeps_remembered_colour(light, moc
     assert (light.rgb_color, light.color_temp_kelvin) == tuple(expected.values())
 
 
+@pytest.mark.parametrize(
+    ("mode", "mode_values"),
+    [
+        (ParsedMode.DIY, {"diy_code": 32}),
+        (ParsedMode.SCENE, {"scene_code": 999, "unknown_scene_code": 999}),
+    ],
+)
+def test_unnamed_dynamic_readback_hides_initial_colour(light, mock_coordinator, mode, mode_values):
+    mock_coordinator.model = "H617C"
+    mock_coordinator.profile = MODEL_PROFILES["H617C"]
+    mock_coordinator.is_on = True
+    mock_coordinator.brightness_pct = 90
+    mock_coordinator.rgb_color = (255, 255, 255)
+    mock_coordinator.rgb_color_source = "initial"
+    mock_coordinator.color_mode = mode
+    for key, value in mode_values.items():
+        setattr(mock_coordinator, key, value)
+    mock_coordinator.effect = None
+    light._attr_color_mode = ColorMode.RGB
+
+    assert light.effect == "off"
+    assert light.color_mode is ColorMode.BRIGHTNESS
+    assert light.rgb_color is None and light.color_temp_kelvin is None
+
+    mock_coordinator.color_mode = ParsedMode.UNKNOWN
+    mock_coordinator.diy_code = None
+    mock_coordinator.scene_code = None
+    mock_coordinator.unknown_scene_code = None
+    assert light.color_mode is ColorMode.RGB
+
+    mock_coordinator.color_mode = ParsedMode.COLOUR
+    mock_coordinator.rgb_color = (10, 20, 30)
+    mock_coordinator.rgb_color_source = "observed"
+    assert light.color_mode is ColorMode.RGB
+    assert light.rgb_color == (10, 20, 30)
+
+
 @pytest.mark.parametrize("source", ["saved", "unknown", "template", "stale_saved"])
 async def test_effect_preflight_precedes_light_side_effects(hass, mock_coordinator, monkeypatch, source):
     backend = await EffectBackend.async_create(hass)

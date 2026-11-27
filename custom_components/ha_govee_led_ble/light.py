@@ -364,8 +364,15 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         if coordinator.static_color_unknown():
             return ColorMode.UNKNOWN
         # Colour attributes are hidden while an effect runs; the remembered colour returns when it clears.
-        if coordinator.color_mode not in (None, ParsedMode.COLOUR) and (
-            coordinator.profile.main_colour_sources or self.effect not in (None, EFFECT_OFF)
+        mode = coordinator.color_mode
+        if mode in (
+            ParsedMode.SCENE,
+            ParsedMode.DIY,
+            ParsedMode.MUSIC,
+            ParsedMode.VIDEO,
+        ) or (
+            mode not in (None, ParsedMode.COLOUR)
+            and (coordinator.profile.main_colour_sources or self.effect not in (None, EFFECT_OFF))
         ):
             return ColorMode.BRIGHTNESS
         if coordinator.profile.main_colour_sources:
