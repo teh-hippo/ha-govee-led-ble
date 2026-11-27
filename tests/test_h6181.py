@@ -550,6 +550,7 @@ async def test_effect_preparation_completes_when_the_requested_authority_is_read
 @pytest.mark.parametrize(
     "model,pact,firmware,hardware,colour_mode,music_mode,modes,transport",
     [
+        ("H6138", (None, None), "1.07.02", "1.00.01", 2, 14, ("dynamic", "soft", "bloom", "radiant"), "a1_02"),
         ("H6159", (None, None), "1.02.02", "1.00.01", 2, 3, ("dynamic",), "a1_02"),
         ("H6159", (None, None), "1.03.00", "1.00.01", 2, 14, ("dynamic", "soft"), "a1_02"),
         ("H6159", (1, 1), "1.06.99", "1.00.02", 2, 14, ("dynamic", "soft"), "a1_02"),
@@ -691,10 +692,10 @@ def test_palette_diy_mixed_gate_and_temporary_slot_are_independent_of_scene_uplo
             compile_effect(item, model, profile=profile)
 
 
-@pytest.mark.parametrize("model", ["H6139", "H6159"])
+@pytest.mark.parametrize("model", ["H6138", "H6139", "H6159"])
 def test_rgb_palette_programs_use_their_own_carrier_and_reject_a_changed_route(model):
     profile = device_profile(model, 1, 1, firmware="1.07.02", hardware="1.00.01")
-    if model == "H6139":
+    if model in {"H6138", "H6139"}:
         unqualified = replace(SCENE_ENTRIES[model][0], command_version=1)
         assert not scene_supported(unqualified, profile)
         with pytest.raises(ValueError, match="not supported"):
