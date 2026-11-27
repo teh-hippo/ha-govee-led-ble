@@ -1095,17 +1095,18 @@ def compile_scene_effect(
         )
         payload, speed = encode_authored_scene_body(content, entry)
         packets = tuple(
-            build_native_scene_packets(model, entry, speed_index=speed, canonical_body=payload, profile=profile)
+            build_native_scene_packets(
+                model,
+                entry,
+                speed_index=speed,
+                canonical_body=payload,
+                profile=profile,
+                authored_palette=isinstance(content, PaletteScene),
+            )
         )
         upload = packets[:-1]
         activation = packets[-1]
         if isinstance(content, PaletteScene):
-            activation = build_scene_activation(
-                model,
-                scene_selector_code(model, entry, profile=profile, authored=True),
-                entry.music_code,
-                profile=profile,
-            )
             if profile.authored_palette_scene_selector is not None:
                 scene_key = None
         evidence_codes.append("scene_payload_readback_unavailable")

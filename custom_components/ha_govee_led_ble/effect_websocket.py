@@ -613,6 +613,7 @@ async def ws_scene_apply(
                 entry,
                 backend,
             ),
+            on_write=partial(backend.engine.clear_active_origin, entry.entry_id),
             profile=profile,
         )
     except (GoveeCryptoError, ModeTransitionSupersededError) as exc:

@@ -136,6 +136,7 @@ def build_native_scene_packets(
     speed_index: int | None = None,
     canonical_body: bytes | None = None,
     profile: ModelProfile | None = None,
+    authored_palette: bool = False,
 ) -> list[bytes]:
     """Build a catalogue scene upload and activation with its resolved speed default."""
     if profile is not None:
@@ -157,7 +158,7 @@ def build_native_scene_packets(
     if payload and scene.scene_type == 2 and native_scene_uses_geometry(scene, profile):
         decoded = decode_layered_scene(CatalogueRef(model, scene.scene_id, scene.effect_id), payload)
         payload = encode_layered_scene(decoded, profile=native_scene_geometry_profile(profile))
-    if native_scene_prefers_selector(scene, payload, profile):
+    if not authored_palette and native_scene_prefers_selector(scene, payload, profile):
         return [
             build_scene_activation(
                 model, scene_selector_code(model, scene, profile=profile), scene.music_code, profile=profile
@@ -180,7 +181,10 @@ def build_native_scene_packets(
         (fragment_a4 if route[0] == "a4" else fragment_a3)(route[1], payload) if payload and route is not None else []
     )
     activation = build_scene_activation(
-        model, scene_selector_code(model, scene, profile=profile), scene.music_code, profile=profile
+        model,
+        scene_selector_code(model, scene, profile=profile, authored=authored_palette),
+        scene.music_code,
+        profile=profile,
     )
     return [*upload, activation]
 

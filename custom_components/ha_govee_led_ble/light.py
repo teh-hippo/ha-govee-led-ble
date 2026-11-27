@@ -112,6 +112,7 @@ from .music_semantics import music_variant
 from .native_profile_controls import ResidentVideoSelection, async_prepare_video_mode, async_require_video_controls
 from .native_profile_controls import apply_active_video_mode as apply_active_video_mode
 from .native_scenes import build_native_scene_packets, native_scene_uses_geometry
+from .palette_scene_decoder import decode_palette_scene
 from .scenes import (
     MODEL_SCENE_ALIASES,
     MODEL_SCENE_LABELS,
@@ -918,26 +919,6 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             ) from exc
         if selected is not None and selected.source == "scene":
             scene = MODEL_SCENES[coordinator.model][selected.value]
-            if scene_command_identity_fields(coordinator.model, scene) or native_scene_uses_geometry(scene, profile):
-                profile = await async_prepare_effect_profile(
-                    coordinator,
-                    intent=ControlIntent.BACKGROUND,
-                    content=BuiltinScene(CatalogueRef(coordinator.model, scene.scene_id, scene.effect_id)),
-                )
-                geometry_authority = (
-                    configured_scene_geometry_authority(coordinator)
-                    if native_scene_uses_geometry(scene, profile)
-                    else None
-                )
-
-                def check_scene() -> None:
-                    require_scene_command_identity(coordinator, scene)
-                    scene_for_profile(scene, coordinator.effect_authorization_profile)
-                    require_scene_geometry_authority(geometry_authority, coordinator)
-
-                if effect_guards is not None:
-                    effect_guards.append(check_scene)
-            require_effect_route(coordinator.model, CapabilityWorkflow.NATIVE_SCENES, profile=profile)
             scene_default = (
                 scene_default_for(
                     self._effect_backend.scene_defaults,
@@ -949,13 +930,81 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 if self._effect_backend is not None and self._config_entry_id is not None
                 else None
             )
+            authored_palette = scene_default is not None and scene.scene_type == 1
+            if (
+                authored_palette
+                or scene_command_identity_fields(coordinator.model, scene)
+                or native_scene_uses_geometry(scene, profile)
+            ):
+                template = CatalogueRef(coordinator.model, scene.scene_id, scene.effect_id)
+                content = (
+                    decode_palette_scene(
+                        template,
+                        scene_default.canonical_body,
+                        speed_index=scene_default.speed_index,
+                    )
+                    if authored_palette and scene_default is not None
+                    else BuiltinScene(template)
+                )
+                profile = await async_prepare_effect_profile(
+                    coordinator,
+                    intent=ControlIntent.BACKGROUND,
+                    content=content,
+                )
+                geometry_authority = (
+                    configured_scene_geometry_authority(coordinator)
+                    if native_scene_uses_geometry(scene, profile)
+                    else None
+                )
+                authored_route = (
+                    profile.command_grammar,
+                    profile.effect_grammar,
+                    profile.selector_only_scene_bits,
+                    profile.authored_palette_scene_selector,
+                )
+
+                def check_scene() -> None:
+                    current = coordinator.effect_authorization_profile
+                    require_scene_command_identity(coordinator, scene)
+                    scene_for_profile(scene, current)
+                    require_scene_geometry_authority(geometry_authority, coordinator)
+                    if authored_palette:
+                        require_effect_route(
+                            coordinator.model, CapabilityWorkflow.EDITED_PALETTE_SCENES, profile=current
+                        )
+                        if authored_route != (
+                            current.command_grammar,
+                            current.effect_grammar,
+                            current.selector_only_scene_bits,
+                            current.authored_palette_scene_selector,
+                        ):
+                            raise ValueError("Authored palette scene route changed during preparation")
+
+                if effect_guards is not None:
+                    effect_guards.append(check_scene)
+            require_effect_route(coordinator.model, CapabilityWorkflow.NATIVE_SCENES, profile=profile)
+            if authored_palette:
+                require_effect_route(coordinator.model, CapabilityWorkflow.EDITED_PALETTE_SCENES, profile=profile)
             build_native_scene_packets(
                 coordinator.model,
                 scene,
                 speed_index=scene_default.speed_index if scene_default is not None else None,
                 canonical_body=scene_default.canonical_body if scene_default is not None else None,
                 profile=profile,
+                authored_palette=authored_palette,
             )
+            if authored_palette:
+                return partial(
+                    coordinator._async_apply_native_scene_locked,
+                    selected.value,
+                    scene_entry=scene,
+                    speed_index=scene_default.speed_index if scene_default is not None else None,
+                    canonical_body=scene_default.canonical_body if scene_default is not None else None,
+                    verify=False,
+                    intent=ControlIntent.USER,
+                    authored_palette=True,
+                    on_write=self._clear_active_effect_origin,
+                )
             return partial(
                 coordinator._async_apply_native_scene_locked,
                 selected.value,

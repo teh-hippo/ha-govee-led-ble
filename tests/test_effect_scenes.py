@@ -466,6 +466,102 @@ async def test_scene_application_uses_the_stored_device_default(
     )
 
 
+async def test_h6159_palette_default_uses_authored_scene_application(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    model = "H6159"
+    scene = next(item for item in SCENE_ENTRIES[model] if item.scene_type == 1)
+    body, speed_index = resolve_native_scene_body(scene, target=model)
+    repository = NativeSceneDefaultRepository(InMemoryVersionedDocumentStore())
+    await repository.async_load()
+    await repository.async_set(
+        NativeSceneDefault(
+            config_entry_id="entry-a",
+            scene_id=scene.scene_id,
+            effect_id=scene.effect_id,
+            updated_at=TIMESTAMP,
+            canonical_body=body,
+            speed_index=speed_index,
+        )
+    )
+    coordinator = SimpleNamespace(
+        model=model,
+        profile=get_profile(model),
+        async_apply_native_scene=AsyncMock(),
+    )
+    entry = SimpleNamespace(entry_id="entry-a", runtime_data=coordinator)
+    monkeypatch.setattr(
+        effect_scenes,
+        "async_prepare_effect_profile",
+        AsyncMock(return_value=coordinator.profile),
+    )
+
+    resolved, applied_speed = await async_apply_scene(
+        hass,
+        entry,
+        scene_id=scene.scene_id,
+        effect_id=scene.effect_id,
+        speed_index=None,
+        user_id="admin",
+        scene_defaults=repository,
+    )
+
+    assert applied_speed == speed_index
+    coordinator.async_apply_native_scene.assert_awaited_once_with(
+        resolved.key,
+        scene_entry=resolved.entry,
+        speed_index=speed_index,
+        canonical_body=body,
+        authored_palette=True,
+    )
+
+
+@pytest.mark.parametrize("model", ["H6139", "H6159", "H6182"])
+async def test_palette_default_requires_revision_workflow(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, model: str
+) -> None:
+    scene = next(item for item in SCENE_ENTRIES[model] if item.scene_type == 1)
+    body, speed_index = resolve_native_scene_body(scene, target=model)
+    repository = NativeSceneDefaultRepository(InMemoryVersionedDocumentStore())
+    await repository.async_load()
+    await repository.async_set(
+        NativeSceneDefault(
+            config_entry_id="entry-a",
+            scene_id=scene.scene_id,
+            effect_id=scene.effect_id,
+            updated_at=TIMESTAMP,
+            canonical_body=body,
+            speed_index=speed_index,
+        )
+    )
+    profile = get_profile(model)
+    assert profile.effect_workflows is not None
+    coordinator = SimpleNamespace(
+        model=model,
+        profile=replace(
+            profile,
+            effect_workflows=profile.effect_workflows - {"edited_palette_scenes"},
+            authored_palette_scene_selector=None,
+        ),
+        async_apply_native_scene=AsyncMock(),
+    )
+    entry = SimpleNamespace(entry_id="entry-a", runtime_data=coordinator)
+    monkeypatch.setattr(effect_scenes, "async_prepare_effect_profile", AsyncMock(return_value=coordinator.profile))
+
+    with pytest.raises(ValueError, match="effective profile does not support edited_palette_scenes"):
+        await async_apply_scene(
+            hass,
+            entry,
+            scene_id=scene.scene_id,
+            effect_id=scene.effect_id,
+            speed_index=None,
+            user_id="admin",
+            scene_defaults=repository,
+        )
+
+    coordinator.async_apply_native_scene.assert_not_awaited()
+
+
 async def test_reset_deletes_default_without_applying_to_the_device() -> None:
     scene = next(item for item in SCENE_ENTRIES["H617A"] if item.scene_type == 2)
     coordinator = SimpleNamespace(

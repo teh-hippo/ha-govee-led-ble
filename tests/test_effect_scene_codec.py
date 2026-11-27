@@ -541,6 +541,32 @@ def test_builtin_scene_revalidation_preserves_non_default_speed(model, scene_nam
     assert compiled.packets == tuple(build_native_scene_packets(model, entry, speed_index=speed_index))
 
 
+@pytest.mark.parametrize("model", ["H6139", "H6159", "H6182"])
+def test_authored_palette_packets_activate_the_declared_upload_selector(model: str) -> None:
+    profile = get_profile(model)
+    entry = next(scene for scene in SCENE_ENTRIES[model] if scene.scene_type == 1)
+    body, speed_index = resolve_native_scene_body(entry, target=model)
+
+    catalogue_packets = build_native_scene_packets(model, entry, profile=profile)
+    authored_packets = build_native_scene_packets(
+        model,
+        entry,
+        speed_index=speed_index,
+        canonical_body=body,
+        profile=profile,
+        authored_palette=True,
+    )
+
+    assert profile.authored_palette_scene_selector is not None
+    assert catalogue_packets[-1] == build_scene_activation(model, entry.code, entry.music_code, profile=profile)
+    assert authored_packets[-1] == build_scene_activation(
+        model,
+        profile.authored_palette_scene_selector,
+        entry.music_code,
+        profile=profile,
+    )
+
+
 @pytest.mark.parametrize("grammar", ["H617A", "H6199"])
 @pytest.mark.parametrize("scene_type", [0, 1, 2])
 @pytest.mark.parametrize("disabled_route", [ApplicationRoute.NONE, ApplicationRoute.STUDIO_SCENE_APPLY])

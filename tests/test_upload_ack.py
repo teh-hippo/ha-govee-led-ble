@@ -777,7 +777,7 @@ async def test_scene_verification_does_not_repeat_accepted_upload(selection_read
 
 
 @pytest.mark.parametrize("connected", ["H617A", "H617C", "H617E", "H617F"], indirect=True)
-async def test_missing_upload_ack_cannot_spend_transport_retries(connected, monkeypatch):
+async def test_missing_upload_ack_cannot_spend_transport_retries(connected, monkeypatch, caplog):
     c, client = connected
     packets, index = sequence()
     token, generation = c._notification_token, c._profile_generation
@@ -792,6 +792,8 @@ async def test_missing_upload_ack_cannot_spend_transport_retries(connected, monk
     assert c._notification_token is None
     assert token is not None
     assert c._profile_generation == generation
+    assert f"Effect upload ACK timed out model={c.model} protocol=A3 " in caplog.text
+    assert f"subtype={upload_ack_subtype(packets, index, c.model):02X}" in caplog.text
 
 
 @pytest.mark.parametrize("preview", [False, True])

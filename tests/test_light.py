@@ -1,4 +1,6 @@
 import asyncio
+import base64
+from collections.abc import Callable
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from hashlib import sha256
@@ -1694,6 +1696,87 @@ async def test_turn_on_scene_uses_the_device_stored_default(mock_coordinator):
         scene,
         canonical_body=scene_default.canonical_body,
     )
+
+
+async def test_turn_on_h6159_palette_uses_authored_scene_selector(mock_coordinator):
+    model = "H6159"
+    mock_coordinator.model = model
+    mock_coordinator.profile = MODEL_PROFILES[model]
+    scene_name, scene = next(item for item in MODEL_SCENES[model].items() if item[1].scene_type == 1)
+    scene_default = NativeSceneDefault(
+        config_entry_id="entry-a",
+        scene_id=scene.scene_id,
+        effect_id=scene.effect_id,
+        updated_at="2026-08-17T00:00:00Z",
+        canonical_body=base64.b64decode(scene.param, validate=True),
+    )
+    backend = cast(
+        EffectBackend,
+        SimpleNamespace(
+            application=SimpleNamespace(
+                library_snapshot=MagicMock(return_value=LibrarySnapshot(())),
+            ),
+            scene_defaults=SimpleNamespace(
+                get=MagicMock(return_value=scene_default),
+            ),
+        ),
+    )
+    entity = GoveeBLELight(
+        mock_coordinator,
+        config_entry_id="entry-a",
+        effect_backend=backend,
+    )
+    entity.async_write_ha_state = MagicMock()
+    mock_coordinator.is_on = True
+
+    await entity.async_turn_on(effect=scene_name)
+
+    assert [call.args[0] for call in mock_coordinator.send_command.await_args_list] == build_native_scene_packets(
+        model,
+        scene,
+        canonical_body=scene_default.canonical_body,
+        authored_palette=True,
+    )
+
+
+async def test_h6159_palette_leading_guard_rechecks_workflow(mock_coordinator, monkeypatch):
+    model = "H6159"
+    profile = MODEL_PROFILES[model]
+    scene_name, scene = next(item for item in MODEL_SCENES[model].items() if item[1].scene_type == 1)
+    scene_default = NativeSceneDefault(
+        config_entry_id="entry-a",
+        scene_id=scene.scene_id,
+        effect_id=scene.effect_id,
+        updated_at="2026-08-17T00:00:00Z",
+        canonical_body=base64.b64decode(scene.param, validate=True),
+    )
+    backend = cast(
+        EffectBackend,
+        SimpleNamespace(
+            application=SimpleNamespace(library_snapshot=MagicMock(return_value=LibrarySnapshot(()))),
+            scene_defaults=SimpleNamespace(get=MagicMock(return_value=scene_default)),
+        ),
+    )
+    mock_coordinator.model = model
+    mock_coordinator.profile = profile
+    entity = GoveeBLELight(mock_coordinator, config_entry_id="entry-a", effect_backend=backend)
+    guards: list[Callable[[], None]] = []
+    monkeypatch.setattr(
+        "custom_components.ha_govee_led_ble.light.async_prepare_effect_profile",
+        AsyncMock(return_value=profile),
+    )
+
+    await entity._prepare_effect(scene_name, effect_guards=guards)
+    assert len(guards) == 1
+    assert profile.effect_workflows is not None
+    mock_coordinator.profile = replace(
+        profile,
+        effect_workflows=profile.effect_workflows - {"edited_palette_scenes"},
+        authored_palette_scene_selector=None,
+    )
+
+    with pytest.raises(ValueError, match="does not support edited_palette_scenes"):
+        guards[0]()
 
 
 async def test_h6199_scene_disables_linked_music(h6199_light, mock_h6199_coordinator):
