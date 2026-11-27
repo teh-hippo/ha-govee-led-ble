@@ -41,7 +41,7 @@ async def test_production_cache_uses_wrapped_client(hass):
 
     with (
         patch(f"{M}.bluetooth.async_ble_device_from_address", return_value=device) as cache,
-        patch(f"{M}.bleak.BleakClient", wrapped_client),
+        patch(f"{M}.BleakClientWithServiceCache", wrapped_client),
     ):
         resolution = await async_resolve_ble_device(hass, ADDRESS)
 
@@ -617,11 +617,19 @@ async def test_connection_establishment_fails_after_bounded_cache_resolution(has
     resolver = AsyncMock(return_value=None)
     sleep = AsyncMock()
 
-    with pytest.raises(BleakError, match="Device AA:BB:CC:DD:EE:FF not found"):
+    with (
+        patch(
+            f"{CONNECTION_M}.bluetooth.async_address_reachability_diagnostics",
+            return_value="The device is out of range",
+        ) as diagnostics,
+        pytest.raises(BleakError, match="Device not found") as caught,
+    ):
         await async_establish_ble_connection(hass, ADDRESS, resolver=resolver, sleep=sleep)
 
     assert resolver.await_count == 4
     assert sleep.await_count == 3
+    assert caught.value.__notes__ == ["Bluetooth reachability: The device is out of range"]
+    diagnostics.assert_called_once()
 
 
 async def test_connection_validation_disconnects_established_client(hass):
