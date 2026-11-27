@@ -240,6 +240,8 @@ _QUALIFIED_CONTEXTS: tuple[tuple[str, str, int | None, int | None, str | None, s
     ("H6127-expanded-music", "H6127", 1, 2, "1.07.00", "1.00.04"),
     ("H6127-modern-basic", "H6127", 10, 1, "2.03.99", "2.01.01"),
     ("H6127-modern-expanded", "H6127", 10, 2, "3.01.00", "3.01.01"),
+    ("H6138-bootstrap", "H6138", None, None, None, None),
+    ("H6138-owner-revision", "H6138", None, None, "1.07.02", "1.00.01"),
     ("H6139-bootstrap", "H6139", None, None, None, None),
     ("H6139-firmware-pending", "H6139", 10, 1, None, "2.01.01"),
     ("H6139-original", "H6139", None, None, "1.02.99", "1.00.01"),

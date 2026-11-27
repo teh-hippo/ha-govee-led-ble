@@ -1127,6 +1127,7 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
             selector_policy=selector_policy if workflow in _DIY_SELECTOR_WORKFLOWS else _P.FIXED,
         )
         for model, selector_policy in (
+            ("H6138", _P.FIXED),
             ("H6139", _P.FIXED),
             ("H6159", _P.FIXED),
             ("H6181", _P.APPROVED_DISPOSABLE),

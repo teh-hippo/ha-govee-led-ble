@@ -725,6 +725,24 @@ MODEL_EFFECT_CATALOGUES: Final = {
         ),
         workshop_templates=(),
     ),
+    "H6138": ModelEffectCatalogue(
+        sku="H6138",
+        painted_effects=(),
+        effects=tuple(
+            replace(family, source_reference="H6138 whole-strip palette DIY") for family in H6181_DIY_FAMILIES
+        ),
+        music_modes=tuple(NativeModeOption(mode, mode.title()) for mode in ("dynamic", "soft", "bloom", "radiant")),
+        video_modes=(),
+        templates=(
+            *(_single_template("H6138", family) for family in H6181_DIY_FAMILIES),
+            *(
+                _music_template("H6138", NativeModeOption(mode, mode.title()))
+                for mode in ("dynamic", "soft", "bloom", "radiant")
+            ),
+        ),
+        workshop_templates=(),
+        temporary_diy_selector=254,
+    ),
     "H6139": ModelEffectCatalogue(
         sku="H6139",
         painted_effects=(),
