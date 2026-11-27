@@ -714,6 +714,18 @@ class _NotificationMixin(_CoordinatorBase):
         pending = self._upload_ack
         if pending is not None:
             ack_success = upload_ack_success(ack.parsed, pending.subtype, pending.mode, protocol=pending.protocol)
+            if ack_success is None:
+                upload = getattr(ack.parsed, "upload", None)
+                _LOGGER.debug(
+                    "Effect upload ACK ignored model=%s expected_protocol=%02X expected_subtype=%02X "
+                    "expected_mode=%s received_protocol=%s received_subtype=%s",
+                    self.model,
+                    pending.protocol,
+                    pending.subtype,
+                    pending.mode,
+                    getattr(ack.parsed, "header", getattr(ack.parsed, "protocol_id", None)),
+                    getattr(upload, "opcode", getattr(ack.parsed, "opcode", None)),
+                )
             if (
                 ack_success is not None
                 and self._client is pending.client

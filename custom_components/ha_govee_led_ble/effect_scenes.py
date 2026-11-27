@@ -11,6 +11,8 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from .const import ModelProfile, get_profile
+from .control_arbiter import ControlIntent
+from .coordinator_base import async_prepare_effect_profile
 from .effect_contracts import CapabilityWorkflow, require_effect_route
 from .effect_domain import (
     BuiltinScene,
@@ -249,6 +251,7 @@ async def async_apply_scene(
     user_id: str,
     scene_defaults: NativeSceneDefaultRepository | None = None,
     before_apply: Callable[[], Awaitable[None]] | None = None,
+    on_write: Callable[[], None] | None = None,
     profile: ModelProfile | None = None,
 ) -> tuple[ResolvedScene, int | None]:
     del hass, user_id
@@ -272,23 +275,54 @@ async def async_apply_scene(
         speed_index=speed_index,
         profile=profile,
     )
+    authored_palette = scene_default is not None and resolved.entry.scene_type == 1
+    if authored_palette and scene_default is not None:
+        template = CatalogueRef(coordinator.model, resolved.entry.scene_id, resolved.entry.effect_id)
+        content = decode_palette_scene(
+            template,
+            scene_default.canonical_body,
+            speed_index=scene_default.speed_index,
+        )
+        profile = await async_prepare_effect_profile(coordinator, intent=ControlIntent.BACKGROUND, content=content)
 
     require_effect_route(coordinator.model, CapabilityWorkflow.NATIVE_SCENES, profile=profile)
+    if authored_palette:
+        require_effect_route(coordinator.model, CapabilityWorkflow.EDITED_PALETTE_SCENES, profile=profile)
     build_native_scene_packets(
         coordinator.model,
         resolved.entry,
         speed_index=resolved_speed,
         canonical_body=canonical_body or None,
         profile=profile,
+        authored_palette=authored_palette,
     )
     if before_apply is not None:
         await before_apply()
-    await coordinator.async_apply_native_scene(
-        resolved.key,
-        scene_entry=resolved.entry,
-        speed_index=resolved_speed,
-        canonical_body=canonical_body or None,
-    )
+    if authored_palette:
+        if on_write is None:
+            await coordinator.async_apply_native_scene(
+                resolved.key,
+                scene_entry=resolved.entry,
+                speed_index=resolved_speed,
+                canonical_body=canonical_body or None,
+                authored_palette=True,
+            )
+        else:
+            await coordinator.async_apply_native_scene(
+                resolved.key,
+                scene_entry=resolved.entry,
+                speed_index=resolved_speed,
+                canonical_body=canonical_body or None,
+                authored_palette=True,
+                on_write=on_write,
+            )
+    else:
+        await coordinator.async_apply_native_scene(
+            resolved.key,
+            scene_entry=resolved.entry,
+            speed_index=resolved_speed,
+            canonical_body=canonical_body or None,
+        )
     return resolved, resolved_speed
 
 

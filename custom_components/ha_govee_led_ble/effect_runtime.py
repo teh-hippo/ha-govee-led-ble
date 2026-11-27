@@ -2084,7 +2084,10 @@ def active_workspace_matches(
         authored=isinstance(content, PaletteScene),
     )
     scene_code = getattr(coordinator, "scene_code", None)
-    return (scene_code is None or scene_code == selector) and (
+    selector_matches = scene_code is None or scene_code == selector
+    if isinstance(content, PaletteScene) and selector_matches:
+        return True
+    return selector_matches and (
         not scene_code_is_ambiguous(workspace.model, selector, profile=getattr(coordinator, "profile", None))
         or coordinator.effect == canonical_scene_key(workspace.model, key)
     )
@@ -2473,6 +2476,13 @@ def _scene_record_matches(
     scene_code: int,
 ) -> bool:
     if record.diy_code != scene_code:
+        return False
+    if (
+        record.content_kind == "scene_palette"
+        and record.target_effect is None
+        and getattr(coordinator, "profile", None) is not None
+        and coordinator.profile.authored_palette_scene_selector == scene_code
+    ):
         return False
     if not scene_code_is_ambiguous(coordinator.model, scene_code, profile=getattr(coordinator, "profile", None)):
         return True

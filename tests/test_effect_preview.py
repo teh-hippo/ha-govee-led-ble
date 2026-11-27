@@ -72,7 +72,10 @@ from custom_components.ha_govee_led_ble.effect_preview import (
     PreviewWriteDisposition,
 )
 from custom_components.ha_govee_led_ble.effect_runtime import EffectRestorationError, resolve_diy_code
-from custom_components.ha_govee_led_ble.effect_scene_defaults import NativeSceneDefaultRepository
+from custom_components.ha_govee_led_ble.effect_scene_defaults import (
+    NativeSceneDefault,
+    NativeSceneDefaultRepository,
+)
 from custom_components.ha_govee_led_ble.effect_template_defaults import CatalogueTemplateDefaultRepository
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_blank_screen,
@@ -82,7 +85,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_white_balance,
 )
 from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_catalogue_layered_scene
-from custom_components.ha_govee_led_ble.native_scenes import encode_authored_scene_body
+from custom_components.ha_govee_led_ble.native_scenes import encode_authored_scene_body, resolve_native_scene_body
 from custom_components.ha_govee_led_ble.protocol_core import MusicBody
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES, SceneEntry, scene_selector_code
 from custom_components.ha_govee_led_ble.transport import reassemble_a3, xor_checksum
@@ -771,6 +774,69 @@ async def test_native_scene_preview_uses_scene_speed_primitive_for_repeated_sele
     assert coordinator.async_observe_effect.await_args_list[-1].args[0] == {
         "is_on": True,
         "scene_code": scene.code,
+    }
+    await manager.async_shutdown()
+
+
+async def test_h6159_palette_preview_preserves_authored_selector(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    coordinator = _coordinator(model="H6159", readable=True)
+    applied = []
+
+    async def apply_scene(
+        scene_name,
+        *,
+        scene_entry,
+        speed_index,
+        canonical_body,
+        before_write,
+        verify,
+        intent,
+        authored_palette=False,
+        on_write,
+    ):
+        async with coordinator._control_arbiter:
+            applied.append((scene_name, authored_palette))
+            await before_write()
+            on_write()
+            await coordinator.async_preview_write(b"scene")
+
+    coordinator.async_apply_native_scene = AsyncMock(side_effect=apply_scene)
+    manager, _cache = await _manager(hass, monkeypatch, coordinator)
+    scene = next(entry for entry in SCENE_ENTRIES["H6159"] if entry.scene_type == 1)
+    body, speed_index = resolve_native_scene_body(scene, target="H6159")
+    await manager._scene_defaults.async_set(
+        NativeSceneDefault(
+            config_entry_id="entry-a",
+            scene_id=scene.scene_id,
+            effect_id=scene.effect_id,
+            updated_at="2026-08-17T00:00:00Z",
+            canonical_body=body,
+            speed_index=speed_index,
+        )
+    )
+    owner = object()
+    session_id = _open(manager, owner, [])
+
+    acceptance = await manager.async_queue_scene(
+        session_id=session_id,
+        owner=owner,
+        config_entry_id="entry-a",
+        sequence=1,
+        updated_at="2026-08-17T00:00:01Z",
+        scene_id=scene.scene_id,
+        effect_id=scene.effect_id,
+        speed_index=speed_index,
+    )
+    await manager.async_wait_idle("entry-a")
+
+    assert acceptance.accepted is True
+    assert applied[-1][1] is True
+    assert coordinator.async_observe_effect.await_args.args[0] == {
+        "is_on": True,
+        "scene_code": coordinator.profile.authored_palette_scene_selector,
     }
     await manager.async_shutdown()
 

@@ -2440,6 +2440,34 @@ async def test_reconciliation_matches_scene_deployments_by_raw_selector_code(
     assert workspace.observable_signature == f"scene-code:{legacy.code}"
 
 
+async def test_reconciliation_does_not_attribute_shared_authored_palette_selector(hass: HomeAssistant) -> None:
+    repository, cache = await _repositories(hass)
+    item = _item()
+    previous = replace(
+        _confirmed_saved_record(item, diy_code=198),
+        target_mode="scene",
+        target_effect=None,
+        content_kind="scene_palette",
+        target_model="H6159",
+        observable_signature="scene-code:198",
+    )
+    await repository.async_put(previous, expected_version=None)
+    coordinator = _coordinator()
+    coordinator.model = "H6159"
+    coordinator.profile = MODEL_PROFILES["H6159"]
+    coordinator.scene_code = 198
+    coordinator.effect = None
+
+    observed = await EffectDeploymentEngine(repository, cache).async_reconcile(
+        coordinator,
+        config_entry_id="entry-a",
+        observed_at="2026-08-11T00:01:00Z",
+    )
+
+    assert observed.matched_operation_id is None
+    assert observed.active_effect is None
+
+
 async def test_reconciliation_does_not_fall_back_to_scene_name_when_codes_differ(
     hass: HomeAssistant,
 ) -> None:

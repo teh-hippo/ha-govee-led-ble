@@ -15,6 +15,7 @@ from .coordinator_base import _CoordinatorBase, async_prepare_effect_profile
 from .coordinator_refresh import RefreshRequest
 from .coordinator_sources import has_segmented_sources, native_source_fields, source_kelvin_hint_fields
 from .coordinator_status import ParsedMode
+from .effect_contracts import CapabilityWorkflow, require_effect_route
 from .generated_protocol_adapter import build_power
 from .music_commands import (
     MusicWriteSequence,
@@ -405,6 +406,8 @@ class _ActiveModeMixin(_CoordinatorBase):
         progress: Callable[[int], Awaitable[None]] | None = None,
         verify: bool = True,
         intent: ControlIntent = ControlIntent.USER,
+        authored_palette: bool = False,
+        on_write: Callable[[], None] | None = None,
     ) -> None:
         async with (
             async_control_intent(self, intent),
@@ -421,6 +424,8 @@ class _ActiveModeMixin(_CoordinatorBase):
                 progress=progress,
                 verify=verify,
                 intent=intent,
+                authored_palette=authored_palette,
+                on_write=on_write,
             )
 
     async def _async_apply_native_scene_locked(
@@ -434,9 +439,11 @@ class _ActiveModeMixin(_CoordinatorBase):
         progress: Callable[[int], Awaitable[None]] | None = None,
         verify: bool,
         intent: ControlIntent,
+        authored_palette: bool = False,
+        on_write: Callable[[], None] | None = None,
     ) -> None:
         from .effect_compiler import require_native_scenes
-        from .effect_domain import BuiltinScene
+        from .effect_domain import BuiltinScene, EffectContent
         from .layered_scene import CatalogueRef
         from .native_scenes import native_scene_uses_geometry
 
@@ -447,9 +454,23 @@ class _ActiveModeMixin(_CoordinatorBase):
             scene = scene_entry
         if scene is None:
             raise ValueError(f"unknown native scene {scene_name!r}")
-        content = BuiltinScene(CatalogueRef(self.model, scene.scene_id, scene.effect_id))
+        template = CatalogueRef(self.model, scene.scene_id, scene.effect_id)
+        content: EffectContent
+        if authored_palette:
+            if scene.scene_type != 1 or canonical_body is None:
+                raise ValueError("Authored palette scenes require a type-1 canonical body")
+            from .palette_scene_decoder import decode_palette_scene
+
+            content = decode_palette_scene(template, canonical_body, speed_index=speed_index)
+        else:
+            content = BuiltinScene(template)
         profile = await async_prepare_effect_profile(self, intent=intent, content=content)
-        route = (profile.command_grammar, profile.effect_grammar, profile.selector_only_scene_bits)
+        route = (
+            profile.command_grammar,
+            profile.effect_grammar,
+            profile.selector_only_scene_bits,
+            profile.authored_palette_scene_selector if authored_palette else None,
+        )
         prepared_body = native_scene_uses_geometry(scene, profile)
         geometry_authority = (
             self._notification_token,
@@ -460,8 +481,15 @@ class _ActiveModeMixin(_CoordinatorBase):
             self._reconcile_authorization()
             current = self.effect_authorization_profile
             require_native_scenes(self.model, current)
+            if authored_palette:
+                require_effect_route(self.model, CapabilityWorkflow.EDITED_PALETTE_SCENES, profile=current)
             scene_for_profile(scene, current)
-            if route != (current.command_grammar, current.effect_grammar, current.selector_only_scene_bits):
+            if route != (
+                current.command_grammar,
+                current.effect_grammar,
+                current.selector_only_scene_bits,
+                current.authored_palette_scene_selector if authored_palette else None,
+            ):
                 raise ValueError("Device scene route changed during scene preparation")
             if prepared_body and profile.rgbic_scene_v0 != current.rgbic_scene_v0:
                 raise ValueError("RGBIC scene format changed during scene preparation")
@@ -473,13 +501,14 @@ class _ActiveModeMixin(_CoordinatorBase):
                 raise ValueError("RGBIC scene geometry changed during scene preparation")
 
         qualified()
-        selector = scene_selector_code(self.model, scene, profile=profile)
+        selector = scene_selector_code(self.model, scene, profile=profile, authored=authored_palette)
         packets = build_native_scene_packets(
             self.model,
             scene,
             speed_index=speed_index,
             canonical_body=canonical_body,
             profile=profile,
+            authored_palette=authored_palette,
         )
         upload_count = len(packets) - 1
         async with self.async_mode_transition(purpose=ModeTransitionPurpose.SELECTION) as transition:
@@ -502,6 +531,14 @@ class _ActiveModeMixin(_CoordinatorBase):
                     if await self.refresh_state(RefreshRequest(on=True)) is False:
                         raise RuntimeError(f"Failed to confirm power-on before selecting scene {scene_name!r}")
             require_ack = bool(upload_count and self.profile.diy_requires_upload_ack)
+            origin_cleared = False
+
+            def packet_written(_index: int) -> None:
+                nonlocal origin_cleared
+                if on_write is not None and not origin_cleared:
+                    origin_cleared = True
+                    on_write()
+
             await self.async_write_effect_sequence(
                 packets,
                 intent=intent,
@@ -510,6 +547,7 @@ class _ActiveModeMixin(_CoordinatorBase):
                 write_guard=qualified,
                 require_upload_ack=require_ack,
                 upload_ack_index=upload_count - 1 + int(power_in_sequence) if require_ack else None,
+                packet_on_write=packet_written if on_write is not None else None,
             )
             qualified()
             if power_in_sequence:
@@ -523,7 +561,13 @@ class _ActiveModeMixin(_CoordinatorBase):
                     raise RuntimeError(f"Failed to confirm scene {scene_name!r}")
             transition.require_current()
             self.color_mode = ParsedMode.SCENE
-            self.effect = scene_name
+            self.effect = (
+                None
+                if authored_palette
+                and profile.authored_palette_scene_selector is not None
+                and profile.authored_palette_scene_selector == selector
+                else scene_name
+            )
             self._scene_code = selector
             self.diy_code = None
             self.music_mode = self.video_mode = "off"

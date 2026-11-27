@@ -515,10 +515,13 @@ async def async_prepare_effect_profile(
         authorized = coordinator.effect_authorization_profile
         scene_packets_match = scene is None
         if scene is not None:
+            authored_palette = isinstance(content, PaletteScene)
             try:
                 scene_packets_match = scene_supported(scene, authorized) and build_native_scene_packets(
-                    coordinator.model, scene, profile=authorized
-                ) == build_native_scene_packets(coordinator.model, scene, profile=coordinator.profile)
+                    coordinator.model, scene, profile=authorized, authored_palette=authored_palette
+                ) == build_native_scene_packets(
+                    coordinator.model, scene, profile=coordinator.profile, authored_palette=authored_palette
+                )
             except ValueError:
                 scene_packets_match = False
         return (

@@ -35,6 +35,7 @@ from .effect_compiler import (
     require_native_scenes,
     validate_compiled_geometry,
 )
+from .effect_contracts import CapabilityWorkflow, require_effect_route
 from .effect_deployments import ObservationConfidence, PriorControlState
 from .effect_diagnostics import DiagnosticOutcome, DiagnosticStage, EffectDiagnosticHistory
 from .effect_diy_destination import (
@@ -81,6 +82,7 @@ from .govee_encryption import GoveeCryptoError
 from .layered_scene import CatalogueRef
 from .native_profile_controls import async_require_video_controls
 from .native_scenes import build_native_scene_packets, encode_authored_scene_body, resolve_native_scene_body
+from .palette_scene_decoder import decode_palette_scene
 from .scenes import canonical_scene_key, scene_code_is_ambiguous, scene_selector_code
 from .video_applicability import requested_video_controls, require_video_mode, validate_video_request
 
@@ -273,6 +275,7 @@ class _PreviewRequest:
     scene: ResolvedScene | None = None
     speed_index: int | None = None
     canonical_body: bytes | None = None
+    authored_palette: bool = False
     default_action: str | None = None
     admission: PreviewAdmission | None = None
     compiled: CompiledApplication | None = None
@@ -707,10 +710,21 @@ class EffectPreviewManager:
             resolved.entry,
         )
         try:
+            authored_palette = scene_default is not None and resolved.entry.scene_type == 1
+            template = CatalogueRef(coordinator.model, scene_id, effect_id)
+            content = (
+                decode_palette_scene(
+                    template,
+                    scene_default.canonical_body,
+                    speed_index=scene_default.speed_index,
+                )
+                if authored_palette and scene_default is not None
+                else BuiltinScene(template)
+            )
             profile = await async_prepare_effect_profile(
                 coordinator,
                 intent=ControlIntent.PREVIEW,
-                content=BuiltinScene(CatalogueRef(coordinator.model, scene_id, effect_id)),
+                content=content,
             )
             canonical_body, resolved_speed = resolve_scene_application_body(
                 resolved.entry,
@@ -719,12 +733,15 @@ class EffectPreviewManager:
                 profile=profile,
             )
             require_native_scenes(coordinator.model, profile)
+            if authored_palette:
+                require_effect_route(coordinator.model, CapabilityWorkflow.EDITED_PALETTE_SCENES, profile=profile)
             build_native_scene_packets(
                 coordinator.model,
                 resolved.entry,
                 speed_index=resolved_speed,
                 canonical_body=canonical_body or None,
                 profile=profile,
+                authored_palette=authored_palette,
             )
         except ValueError as exc:
             raise PreviewError(str(exc)) from exc
@@ -735,17 +752,18 @@ class EffectPreviewManager:
             updated_at=updated_at,
             fingerprint=(
                 f"scene:{coordinator.model}:{scene_id}:{effect_id}:{resolved_speed}:"
-                f"{sha256(canonical_body).hexdigest()}"
+                f"{authored_palette}:{sha256(canonical_body).hexdigest()}"
             ),
             generation=0,
             correlation_id=str(uuid4()),
             persist_default=persist_default,
-            content_kind="scene_builtin",
+            content_kind="scene_palette" if authored_palette else "scene_builtin",
             session_cancellation_generation=session_cancellation_generation,
             device_cancellation_generation=device_cancellation_generation,
             scene=resolved,
             speed_index=resolved_speed,
             canonical_body=canonical_body or None,
+            authored_palette=authored_palette,
             default_action=(
                 _scene_default_action(
                     coordinator.model,
@@ -1607,15 +1625,28 @@ class EffectPreviewManager:
         writer: _PreviewWriter,
     ) -> None:
         if request.scene is not None:
-            await coordinator.async_apply_native_scene(
-                request.scene.key,
-                scene_entry=request.scene.entry,
-                speed_index=request.speed_index,
-                canonical_body=request.canonical_body,
-                before_write=writer.begin,
-                verify=False,
-                intent=ControlIntent.PREVIEW,
-            )
+            if request.authored_palette:
+                await coordinator.async_apply_native_scene(
+                    request.scene.key,
+                    scene_entry=request.scene.entry,
+                    speed_index=request.speed_index,
+                    canonical_body=request.canonical_body,
+                    before_write=writer.begin,
+                    verify=False,
+                    intent=ControlIntent.PREVIEW,
+                    authored_palette=True,
+                    on_write=lambda: self._supersede_active_origin(request),
+                )
+            else:
+                await coordinator.async_apply_native_scene(
+                    request.scene.key,
+                    scene_entry=request.scene.entry,
+                    speed_index=request.speed_index,
+                    canonical_body=request.canonical_body,
+                    before_write=writer.begin,
+                    verify=False,
+                    intent=ControlIntent.PREVIEW,
+                )
             return
         assert compiled is not None
         if not isinstance(compiled, CompiledEffect):
@@ -2285,12 +2316,19 @@ def _verification_expectations(
     if not coordinator.profile.can_read(ReadDomain.POWER) or not coordinator.profile.supports_color_mode_readback:
         return None
     if request.scene is not None:
-        scene_code = scene_selector_code(coordinator.model, request.scene.entry, profile=coordinator.profile)
+        scene_code = scene_selector_code(
+            coordinator.model,
+            request.scene.entry,
+            profile=coordinator.profile,
+            authored=request.authored_palette,
+        )
         scene_expectations: dict[str, Any] = {
             "is_on": True,
             "scene_code": scene_code,
         }
-        if scene_code_is_ambiguous(coordinator.model, scene_code, profile=coordinator.profile):
+        if not request.authored_palette and scene_code_is_ambiguous(
+            coordinator.model, scene_code, profile=coordinator.profile
+        ):
             scene_expectations["effect"] = canonical_scene_key(coordinator.model, request.scene.key)
         return scene_expectations
     return None if compiled is None else compiled_observation(compiled, profile=coordinator.profile)[0]

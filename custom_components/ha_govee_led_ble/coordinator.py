@@ -4535,6 +4535,16 @@ class GoveeBLECoordinator(
             check_connection()
             failure = UploadAckTimeoutError("Device did not acknowledge effect upload")
             failure.before_activation = pending.before_activation
+            _LOGGER.warning(
+                "Effect upload ACK timed out model=%s protocol=%02X subtype=%02X mode=%s "
+                "profile_generation=%s before_activation=%s",
+                self.model,
+                pending.protocol,
+                pending.subtype,
+                pending.mode,
+                pending.profile_generation,
+                pending.before_activation,
+            )
             raise failure from err
         check_connection()
         if not accepted:

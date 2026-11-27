@@ -27,7 +27,7 @@ from custom_components.ha_govee_led_ble.light_commands import (
 )
 from custom_components.ha_govee_led_ble.light_services import apply_active_video_mode
 from custom_components.ha_govee_led_ble.music_commands import build_music_params
-from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_packets
+from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_packets, resolve_native_scene_body
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES, SCENE_ENTRIES, scene_selector_code
 from custom_components.ha_govee_led_ble.transport import WRITE_UUID
 from tests.coordinator_test_support import _CONFIGURATION_URL
@@ -126,6 +126,64 @@ async def test_h6179_native_scene_uses_wire_selector_for_verification_and_state(
     assert [entry.args[1] for entry in transport.await_args_list] == [build_scene_activation("H6179", selector)]
     observe.assert_awaited_once_with({"scene_code": selector})
     assert coordinator._scene_code == selector
+
+
+async def test_authored_palette_clears_origin_at_first_physical_write(coord, monkeypatch):
+    model = "H6159"
+    profile = replace(MODEL_PROFILES[model], profile_identity_fields=frozenset())
+    scene = next(entry for entry in SCENE_ENTRIES[model] if entry.scene_type == 1)
+    body, speed_index = resolve_native_scene_body(scene, target=model)
+    monkeypatch.setitem(MODEL_PROFILES, model, profile)
+    coord.model, coord.profile = model, profile
+    coord.is_on = True
+    origin_cleared = MagicMock()
+
+    with _music_transport(coord) as transport:
+        await coord.async_apply_native_scene(
+            scene.name,
+            scene_entry=scene,
+            speed_index=speed_index,
+            canonical_body=body,
+            authored_palette=True,
+            verify=False,
+            on_write=origin_cleared,
+        )
+
+    assert origin_cleared.call_count == 1
+    assert [entry.args[1] for entry in transport.await_args_list] == build_native_scene_packets(
+        model,
+        scene,
+        speed_index=speed_index,
+        canonical_body=body,
+        profile=profile,
+        authored_palette=True,
+    )
+    assert coord.effect is None
+    assert coord._scene_code == profile.authored_palette_scene_selector
+
+
+@pytest.mark.parametrize("model", ["H6159", "H617A"])
+async def test_authored_palette_state_matches_selector_authority(coord, model):
+    profile = replace(MODEL_PROFILES[model], profile_identity_fields=frozenset())
+    scene = next(entry for entry in SCENE_ENTRIES[model] if entry.scene_type == 1)
+    body, speed_index = resolve_native_scene_body(scene, target=model)
+    coord.model, coord.profile = model, profile
+    coord.is_on = True
+    coord.async_observe_effect = AsyncMock(return_value=True)
+
+    with _music_transport(coord):
+        await coord.async_apply_native_scene(
+            scene.name,
+            scene_entry=scene,
+            speed_index=speed_index,
+            canonical_body=body,
+            authored_palette=True,
+        )
+
+    selector = scene_selector_code(model, scene, profile=profile, authored=True)
+    coord.async_observe_effect.assert_awaited_once_with({"scene_code": selector})
+    assert coord._scene_code == selector
+    assert coord.effect == (None if profile.authored_palette_scene_selector == selector else scene.name)
 
 
 async def test_select_music_slug_sends_power_then_music_and_sets_state(coord):
