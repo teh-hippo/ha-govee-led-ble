@@ -2003,15 +2003,17 @@ async def test_restore_effect_control_state_maps_h617e_legacy_scene_name(hass):
 
 @pytest.mark.parametrize("model", ["H617C", "H617E", "H617F"])
 @pytest.mark.parametrize(
-    ("firmware", "hardware", "restored"),
+    ("firmware", "hardware", "restored_models"),
     [
-        (None, None, False),
-        ("1.05.99", "1.00.03", False),
-        ("1.06.00", "1.00.02", True),
-        ("1.06.00", "1.00.03", True),
+        (None, None, set()),
+        ("1.05.99", "1.00.03", set()),
+        ("1.06.00", "1.00.02", {"H617C", "H617E"}),
+        ("1.06.00", "1.00.03", {"H617C", "H617E", "H617F"}),
     ],
 )
-async def test_goods_type_70_scene_recovery_tracks_revision_admission(hass, model, firmware, hardware, restored):
+async def test_goods_type_70_scene_recovery_tracks_revision_admission(
+    hass, model, firmware, hardware, restored_models
+):
     coordinator = GoveeBLECoordinator(
         hass,
         "22:33:44:55:66:77",
@@ -2038,7 +2040,7 @@ async def test_goods_type_70_scene_recovery_tracks_revision_admission(hass, mode
     ):
         assert await coordinator.async_restore_effect_control_state(state, overwritten_diy_code=None) is False
 
-    if restored:
+    if model in restored_models:
         assert send.await_args_list == [
             call(build_power(True, model)),
             call(build_brightness(72, model)),
