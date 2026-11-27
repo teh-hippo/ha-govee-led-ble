@@ -1100,17 +1100,9 @@ class _RecoveryMixin(_CoordinatorBase):
                 and (not strict or authorization.supports_custom_effects)
             )
         if state.mode == "scene":
-            from .effect_catalogue import MODEL_EFFECT_CATALOGUES
-            from .effect_domain import LayeredEffect
+            from .effect_catalogue import scene_activated_native_diy_selectors
 
-            catalogue = MODEL_EFFECT_CATALOGUES.get(self.model)
-            native_selectors = {
-                template.content.native_diy
-                for template in (() if catalogue is None else catalogue.templates)
-                if profile.supports_advanced_effects
-                and isinstance(template.content, LayeredEffect)
-                and template.content.native_diy is not None
-            }
+            native_selectors = set(scene_activated_native_diy_selectors(self.model, profile=profile))
             if profile.supports_advanced_effects and profile.advanced_diy_selector is not None:
                 native_selectors.add(profile.advanced_diy_selector)
             if profile.authored_palette_scene_selector is not None and profile_supports_workflow(
@@ -1711,18 +1703,10 @@ class _RecoveryMixin(_CoordinatorBase):
         )
 
     async def _restore_scene(self, state: PriorControlState, overwritten_diy_code: int | None, complete: bool) -> bool:
-        from .effect_catalogue import MODEL_EFFECT_CATALOGUES
-        from .effect_domain import LayeredEffect
+        from .effect_catalogue import scene_activated_native_diy_selectors
         from .generated_protocol_adapter import build_scene_activation
 
-        catalogue = MODEL_EFFECT_CATALOGUES.get(self.model)
-        native_selectors = {
-            template.content.native_diy
-            for template in (() if catalogue is None else catalogue.templates)
-            if self.profile.supports_advanced_effects
-            and isinstance(template.content, LayeredEffect)
-            and template.content.native_diy is not None
-        }
+        native_selectors = set(scene_activated_native_diy_selectors(self.model, profile=self.profile))
         if self.profile.supports_advanced_effects and self.profile.advanced_diy_selector is not None:
             native_selectors.add(self.profile.advanced_diy_selector)
         if self.profile.authored_palette_scene_selector is not None and profile_supports_workflow(

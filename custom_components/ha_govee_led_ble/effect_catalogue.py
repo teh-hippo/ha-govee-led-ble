@@ -453,6 +453,54 @@ def native_diy_template_available(model: str, template_id: int) -> bool:
     )
 
 
+def scene_activated_native_diy_selector(
+    model: str,
+    template_id: int,
+    *,
+    profile: ModelProfile | None = None,
+) -> int | None:
+    from .effect_contracts import CapabilityWorkflow, profile_supports_workflow, release_capability
+
+    profile = get_profile(model) if profile is None else profile
+    capability = release_capability(model, CapabilityWorkflow.ADVANCED)
+    catalogue = MODEL_EFFECT_CATALOGUES.get(model)
+    if (
+        capability is None
+        or catalogue is None
+        or "scene" not in capability.activation_operations & profile.effect_activation_operations
+        or not profile_supports_workflow(profile, CapabilityWorkflow.ADVANCED, model=model)
+    ):
+        return None
+    for template in catalogue.templates_for_profile(profile):
+        content = template.content
+        if not isinstance(content, LayeredEffect) or content.native_diy != template_id:
+            continue
+        contract = native_diy_template_contract(model, template_id)
+        if contract is not None and requires_diy_destination_consent(model):
+            return None
+        return (
+            contract.activation_selector
+            if contract is not None and contract.activation_selector is not None
+            else content.native_diy
+        )
+    return None
+
+
+def scene_activated_native_diy_selectors(model: str, *, profile: ModelProfile | None = None) -> frozenset[int]:
+    catalogue = MODEL_EFFECT_CATALOGUES.get(model)
+    if catalogue is None:
+        return frozenset()
+    selectors = {
+        selector
+        for template in catalogue.templates
+        if isinstance(template.content, LayeredEffect)
+        and template.content.native_diy is not None
+        and (selector := scene_activated_native_diy_selector(model, template.content.native_diy, profile=profile))
+        is not None
+    }
+    return frozenset(selectors)
+
+
 def requires_diy_destination_consent(model: str) -> bool:
     return release_selector_policy(model) is SelectorPolicy.APPROVED_DISPOSABLE
 

@@ -23,7 +23,7 @@ from .const import (
 )
 from .effect_compiler import CompatibilityState, compatibility
 from .effect_content_ids import TYPED_DIY_CONTENT_KINDS
-from .effect_domain import EffectValidationError, LibraryItem, effect_content_to_dict
+from .effect_domain import EffectValidationError, LayeredEffect, LibraryItem, effect_content_to_dict
 from .scenes import MODEL_SCENE_LABELS, MODEL_SCENES, scene_aliases, scene_supported
 
 EFFECT_OFF = "off"
@@ -220,6 +220,30 @@ def compatible_saved_effects(
     )
 
 
+def saved_effect_visible(
+    item: LibraryItem,
+    model: str,
+    categories: frozenset[str],
+    *,
+    profile: ModelProfile,
+    always_include_custom_effects: bool = False,
+) -> bool:
+    kind = str(effect_content_to_dict(item.content).get("kind"))
+    category = effect_category_for_content_kind(kind)
+    if category is None:
+        return False
+    if category in categories or always_include_custom_effects:
+        return True
+    if category != EFFECT_CATEGORY_ADVANCED or profile.supports_advanced_effects:
+        return False
+    content = item.content
+    if not isinstance(content, LayeredEffect) or content.native_diy is None:
+        return False
+    from .effect_catalogue import scene_activated_native_diy_selector
+
+    return scene_activated_native_diy_selector(model, content.native_diy, profile=profile) is not None
+
+
 def _selector_candidates(
     model: str,
     categories: frozenset[str],
@@ -280,7 +304,13 @@ def _selector_candidates(
         for item in compatible_saved_effects(items, model, profile=profile)
         if (kind := str(effect_content_to_dict(item.content).get("kind"))) not in TYPED_DIY_CONTENT_KINDS
         and (category := effect_category_for_content_kind(kind)) is not None
-        and (category in categories or always_include_custom_effects)
+        and saved_effect_visible(
+            item,
+            model,
+            categories,
+            profile=profile,
+            always_include_custom_effects=always_include_custom_effects,
+        )
     )
     return tuple(candidates)
 

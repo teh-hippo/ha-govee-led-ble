@@ -43,7 +43,6 @@ from .const import (
     MODEL_PROFILES,
     ModelProfile,
     ReadDomain,
-    effect_category_for_content_kind,
     get_profile,
     light_unique_id,
     resolve_model,
@@ -79,7 +78,7 @@ from .effect_compiler import (
 from .effect_contracts import CapabilityWorkflow, require_effect_route
 from .effect_deployments import DeploymentRecord
 from .effect_diagnostics import DiagnosticOutcome, DiagnosticStage
-from .effect_domain import BuiltinScene, CatalogueRef, EffectValidationError, LibraryItem, effect_content_to_dict
+from .effect_domain import BuiltinScene, CatalogueRef, EffectValidationError, LibraryItem
 from .effect_runtime import (
     active_workspace_matches,
     async_apply_compiled_profile,
@@ -92,6 +91,7 @@ from .effect_selector import (
     effect_selector_entries,
     normalise_effect_name,
     resolve_effect_selector,
+    saved_effect_visible,
 )
 from .effect_setup import get_effect_backend
 from .effect_storage import (
@@ -676,11 +676,12 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         return workspace if active_workspace_matches(self.coordinator, workspace) else None
 
     def _saved_effect_visible(self, item: LibraryItem) -> bool:
-        content_kind = effect_content_to_dict(item.content).get("kind")
-        category = effect_category_for_content_kind(str(content_kind))
-        return category is not None and (
-            category in self._effect_categories
-            or getattr(self.coordinator, "always_include_custom_effects", False) is True
+        return saved_effect_visible(
+            item,
+            self.coordinator.model,
+            self._effect_categories,
+            profile=self.coordinator.profile,
+            always_include_custom_effects=getattr(self.coordinator, "always_include_custom_effects", False) is True,
         )
 
     @property
