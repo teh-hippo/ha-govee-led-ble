@@ -426,6 +426,137 @@ async def test_h8604_final_observer_reads_each_requested_video_setting(hass) -> 
     assert packets == list(responses)
 
 
+@pytest.mark.parametrize(
+    ("requested", "reply"),
+    [
+        ((10, 20, 30), (10, 20, 30, 99)),
+        ((10, 20, 30, 40), (10, 20, 30, 40)),
+    ],
+)
+async def test_h8604_calibration_verification_matches_only_requested_channels(hass, requested, reply) -> None:
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H8604", configuration_url=None)
+    coordinator.pact_type, coordinator.pact_code = 3, 1
+    coordinator._resolve_device_profile()
+    query = build_video_color_calibration(None, "H8604", profile=coordinator.profile)
+    writes: list[bytes] = []
+
+    async def write_gatt_char(_uuid, packet, **_kwargs):
+        writes.append(bytes(packet))
+        if bytes(packet) == query:
+            coordinator._notify_callback(
+                None,
+                bytearray(frame("aaa90504" + bytes(reply).hex())),
+            )
+
+    coordinator._client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(side_effect=write_gatt_char))
+    coordinator._notification_token = object()
+
+    assert (
+        await coordinator.async_observe_effect(
+            {"video_color_calibration": requested},
+            timeout=0.1,
+        )
+        is True
+    )
+    assert coordinator.video_color_calibration == reply
+    assert writes == [query]
+
+
+@pytest.mark.parametrize("pact", [(1, 1), (2, 1), (3, 1)])
+async def test_h8604_default_movie_writes_complete_profile_through_coordinator(hass, monkeypatch, pact) -> None:
+    device = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H8604", configuration_url=None)
+    device.pact_type, device.pact_code = pact
+    device._resolve_device_profile()
+    content = next(
+        template.content
+        for template in MODEL_EFFECT_CATALOGUES["H8604"].templates
+        if isinstance(template.content, VideoProfile)
+    )
+    compiled = compile_video_profile(
+        LibraryItem.new(
+            "Default movie",
+            replace(
+                content,
+                black_border=True,
+                blank_screen_detection=2,
+                blank_screen_low_brightness_duration_seconds=10,
+                blank_screen_same_tone_duration_seconds=120,
+            ),
+        ),
+        "H8604",
+        profile=device.profile,
+    )
+    packets: list[bytes] = []
+
+    async def write_gatt_char(_uuid, packet, **_kwargs):
+        packets.append(bytes(packet))
+
+    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(side_effect=write_gatt_char))
+    device._client = client
+    device._notification_token = object()
+    device.is_on = True
+    device.video_sensitivity = 50
+    device.video_hdmi_input = 1
+    device.video_color_calibration = (50, 50, 50)
+    device.hdmi_box_light = False
+    device.hdmi_box_brightness = 1
+    device.hdmi_box_automatic = False
+    device.hdmi_box_effect = 0
+    device.blank_screen = False
+    device.blank_screen_detection = 2
+    device.blank_screen_low_brightness_duration_seconds = 10
+    device.blank_screen_same_tone_duration_seconds = 120
+    device.black_border = False
+    for zone in device.profile.video_brightness_zones:
+        setattr(device, f"relative_brightness_{zone}", 100)
+    monkeypatch.setattr(device, "_ensure_connected", AsyncMock(return_value=client))
+    monkeypatch.setattr(device, "_async_prepare_control_identity", AsyncMock())
+    monkeypatch.setattr(device, "async_prepare_static_baseline", AsyncMock(return_value=_known_static_baseline(device)))
+    monkeypatch.setattr(device, "refresh_state", AsyncMock(return_value=True))
+
+    await async_apply_compiled_profile(device, compiled, verify=False)
+
+    assert build_video_mode("movie", True, 100, False, 50, "H8604", profile=device.profile) in packets
+    assert build_video_sensitivity(50, "H8604", profile=device.profile) in packets
+    assert build_hdmi_input(1, "H8604", profile=device.profile) in packets
+    assert build_video_color_calibration((50, 50, 50), "H8604", profile=device.profile) in packets
+    assert build_blank_screen(False, "H8604") in packets
+    assert build_black_border(True, "H8604") in packets
+
+
+async def test_h8604_complete_video_profile_is_admitted_before_first_coordinator_write(hass, monkeypatch) -> None:
+    device = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H8604", configuration_url=None)
+    device.pact_type, device.pact_code = 1, 1
+    device._resolve_device_profile()
+    content = next(
+        template.content
+        for template in MODEL_EFFECT_CATALOGUES["H8604"].templates
+        if isinstance(template.content, VideoProfile)
+    )
+    content = replace(
+        content,
+        blank_screen_detection=2,
+        blank_screen_low_brightness_duration_seconds=10,
+        blank_screen_same_tone_duration_seconds=120,
+    )
+    compiled = replace(
+        compile_video_profile(LibraryItem.new("Invalid movie", content), "H8604", profile=device.profile),
+        video_sensitivity=101,
+    )
+    device.is_on = True
+    monkeypatch.setattr(device, "_ensure_connected", AsyncMock())
+    monkeypatch.setattr(device, "refresh_state", AsyncMock(return_value=True))
+    client = MagicMock(is_connected=True)
+    device._client = client
+    device._notification_token = object()
+
+    with pytest.raises(ValueError, match="sensitivity"):
+        await async_apply_compiled_profile(device, compiled, verify=False)
+
+    assert client.write_gatt_char.call_count == 0
+    device._ensure_connected.assert_not_awaited()
+
+
 def test_h8604_video_template_uses_one_based_hdmi_inputs() -> None:
     content = next(
         template.content
@@ -563,6 +694,31 @@ async def test_h8604_red_calibration_recovery_fails_closed_without_qualified_ide
     assert "color_calibration" not in permitted
     assert "color_calibration_red" not in permitted
     writer.assert_not_awaited()
+
+
+async def test_h8604_three_channel_recovery_preserves_unrequested_red(hass, monkeypatch) -> None:
+    device = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H8604", configuration_url=None)
+    device.profile = device_profile("H8604", 2, 1)
+    device.video_color_calibration = (11, 21, 31, 99)
+    state = PriorControlState(
+        mode="video",
+        is_on=True,
+        brightness_pct=50,
+        rgb_color=(255, 255, 255),
+        video_color_calibration=(10, 20, 30, 40),
+        video_restore_controls=("color_calibration",),
+    )
+    writer = AsyncMock()
+    monkeypatch.setattr(
+        "custom_components.ha_govee_led_ble.coordinator_recovery.apply_video_color_calibration",
+        writer,
+    )
+
+    permitted, complete = await device._restore_video_controls(state)
+
+    assert "color_calibration" in permitted and complete
+    writer.assert_awaited_once_with(device, (10, 20, 30))
+    assert device.video_color_calibration == (11, 21, 31, 99)
 
 
 @pytest.mark.parametrize(

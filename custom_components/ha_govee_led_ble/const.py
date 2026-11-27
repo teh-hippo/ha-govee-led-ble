@@ -471,6 +471,7 @@ _GRAMMAR_TRAITS: Mapping[str, frozenset[str]] = {
             "separate_native_setting_read",
             "power_on_query_selector",
             "video_settings",
+            "deferred_scalar_readback",
         }
     ),
     "H1A42": frozenset({"new_music_omits_colour", "new_music_selector", "scaled_music_sensitivity"}),
@@ -2222,6 +2223,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         music_variants=H6097_MUSIC_VARIANTS,
         music_upload_before_selector=True,
         music_requires_upload_ack=True,
+        music_params_require_activation=True,
         diy_requires_upload_ack=True,
         effect_retry_after_upload=False,
         supports_music_color=True,

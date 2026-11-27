@@ -35,6 +35,21 @@ from .video_applicability import (
     video_mode_controls,
 )
 
+
+class PreparedVideoMode(Protocol):
+    @property
+    def mode_packet(self) -> bytes: ...
+
+    @property
+    def mode_values(self) -> dict[str, Any]: ...
+
+    @property
+    def mode_controls(self) -> frozenset[str]: ...
+
+    @property
+    def mode_guard(self) -> Callable[[], None]: ...
+
+
 if TYPE_CHECKING:
     from .coordinator import GoveeBLECoordinator
 
@@ -50,6 +65,7 @@ class ProfileWriter(Protocol):
         state_values: Mapping[str, Any] | None = None,
         expected_values: Mapping[str, Any] | None = None,
         on_write: Callable[[], None] | None = None,
+        arm_packet_expectations: bool = True,
     ) -> Awaitable[None]: ...
 
 
@@ -337,19 +353,26 @@ async def apply_active_video_mode(
     verify: bool = True,
     on_write: Callable[[], None] | None = None,
     write_guard: Callable[[], None] | None = None,
+    prepared: PreparedVideoMode | None = None,
 ) -> bool:
     from .coordinator_modes import ModeTransitionPurpose
 
     if mode not in ("movie", "game"):
         return False
     await async_require_video_controls(coordinator, video_mode_controls(coordinator.profile))
-    packet, values, controls, check_retained = await async_prepare_video_mode(
-        coordinator,
-        mode=mode,
-        requested_values=requested_values,
-        parameters=parameters,
-        relative_brightness=relative_brightness,
-    )
+    if prepared is None:
+        packet, values, controls, check_retained = await async_prepare_video_mode(
+            coordinator,
+            mode=mode,
+            requested_values=requested_values,
+            parameters=parameters,
+            relative_brightness=relative_brightness,
+        )
+    else:
+        packet = prepared.mode_packet
+        values = prepared.mode_values
+        controls = prepared.mode_controls
+        check_retained = prepared.mode_guard
     state_values = {f"video_{field}": value for field, value in values.items()}
     state_values.update(video_mode=mode, effect=None, music_mode="off", diy_code=None)
     observable = video_control_states(coordinator.profile, coordinator)
@@ -540,6 +563,7 @@ async def _send_video_setting(
     state_values: Mapping[str, Any] | None = None,
     expected_values: Mapping[str, Any] | None = None,
     on_write: Callable[[], None] | None = None,
+    arm_packet_expectations: bool = True,
 ) -> None:
     profile = coordinator.profile
     await async_require_video_controls(coordinator, controls)
@@ -558,6 +582,7 @@ async def _send_video_setting(
         state_values=state_values,
         expected_values=expected_values,
         on_write=on_write,
+        arm_packet_expectations=arm_packet_expectations,
     )
 
 

@@ -1346,6 +1346,14 @@ async def test_h7025_connection_failure_before_upload_can_retry(connected):
             "480201020304050601020311aabb",
         ),
         (
+            "H6097",
+            "hopping",
+            0x33,
+            "3307ff0000ff7f00ffff0000ff000000ff00ffff8b00ff010101196201030000",
+            {"relative_brightness": 17},
+            "3307ff0000ff7f00ffff0000ff000000ff00ffff8b00ff010101116201030000",
+        ),
+        (
             "H617A",
             "hopping",
             0x33,

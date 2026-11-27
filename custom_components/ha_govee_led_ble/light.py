@@ -82,6 +82,7 @@ from .effect_domain import BuiltinScene, CatalogueRef, EffectValidationError, Li
 from .effect_runtime import (
     active_workspace_matches,
     async_apply_compiled_profile,
+    async_preflight_compiled_profile,
     observable_signatures_for_coordinator,
 )
 from .effect_scenes import scene_default_for
@@ -1028,7 +1029,9 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 controls |= requested_video_controls(compiled)
             await async_require_video_controls(coordinator, controls)
             if compiled is not None:
+                prepared_video = None
                 if isinstance(compiled, CompiledVideoProfile):
+                    prepared_video = await async_preflight_compiled_profile(coordinator, compiled)
                     controls = requested_video_controls(compiled)
                     requested_values = {
                         field: getattr(compiled, field)
@@ -1042,16 +1045,10 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                         and compiled.blank_screen_policy is None
                     ):
                         resident_video.append(ResidentVideoSelection(compiled.mode, requested_values))
-                    _, _, _, retained_guard = await async_prepare_video_mode(
-                        coordinator,
-                        mode=compiled.mode,
-                        requested_values=requested_values,
-                        relative_brightness=compiled.relative_brightness,
-                    )
 
                     def check_default() -> None:
                         require_video_controls(coordinator.profile, coordinator, controls)
-                        retained_guard()
+                        prepared_video.require_current(coordinator)
 
                     if effect_guards is not None:
                         effect_guards.append(check_default)
@@ -1060,6 +1057,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                     coordinator,
                     compiled,
                     on_write=self._clear_active_effect_origin,
+                    prepared_video=prepared_video,
                 )
             _, _, _, check_retained = await async_prepare_video_mode(
                 coordinator, mode=selected.value, requested_values={}
@@ -1340,11 +1338,13 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                     profile=profile,
                 )
                 compiled = bind_compiled_geometry(compiled, self.coordinator)
+                prepared_video = None
                 if isinstance(compiled, CompiledVideoProfile):
                     await async_require_video_controls(
                         self.coordinator,
                         requested_video_controls(compiled) | video_mode_controls(self.coordinator.profile),
                     )
+                    prepared_video = await async_preflight_compiled_profile(self.coordinator, compiled)
 
                 from .effect_catalogue import diy_destination_range, diy_destination_route
                 from .effect_diy_destination import (
@@ -1391,6 +1391,8 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                     def guard() -> None:
                         if native_write_guard is not None:
                             native_write_guard()
+                        if prepared_video is not None:
+                            prepared_video.require_current(self.coordinator)
                         validate_compiled_geometry(
                             compiled, self.coordinator.effect_authorization_profile, self.coordinator
                         )
@@ -1423,6 +1425,8 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                         kwargs["diy_code"] = diy_code
                     if destination_consent is not None:
                         kwargs["destination_consent"] = destination_consent
+                    if prepared_video is not None:
+                        kwargs["prepared_video"] = prepared_video
                     return await self._effect_backend.engine.async_apply_saved(
                         self.coordinator,
                         current,

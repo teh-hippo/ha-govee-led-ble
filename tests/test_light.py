@@ -70,6 +70,7 @@ from custom_components.ha_govee_led_ble.effect_storage import LibrarySnapshot
 from custom_components.ha_govee_led_ble.effect_template_defaults import CatalogueTemplateDefault
 from custom_components.ha_govee_led_ble.effect_websocket import _device_payload
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
+    build_blank_screen_query,
     build_brightness,
     build_h617a_scene,
     build_power,
@@ -98,7 +99,7 @@ from custom_components.ha_govee_led_ble.music_commands import prepare_music_requ
 from custom_components.ha_govee_led_ble.music_semantics import music_variant
 from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_packets
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENE_LABELS, MODEL_SCENES, SCENE_ENTRIES, SCENES
-from custom_components.ha_govee_led_ble.transport import xor_checksum
+from custom_components.ha_govee_led_ble.transport import WRITE_UUID, xor_checksum
 from tests.storage_test_double import InMemoryVersionedDocumentStore
 
 
@@ -1992,6 +1993,17 @@ async def test_turn_on_video_effect_uses_the_device_template_default(mock_h6199_
     entity.async_write_ha_state = MagicMock()
     mock_h6199_coordinator.is_on = True
 
+    async def refresh(request):
+        for field in (
+            "blank_screen_detection",
+            "blank_screen_low_brightness_duration_seconds",
+            "blank_screen_same_tone_duration_seconds",
+        ):
+            mock_h6199_coordinator._field_revisions[field] = mock_h6199_coordinator._field_revisions.get(field, 0) + 1
+        return True
+
+    mock_h6199_coordinator.refresh_state.side_effect = refresh
+
     with patch(
         "custom_components.ha_govee_led_ble.light.async_apply_compiled_profile",
         new_callable=AsyncMock,
@@ -2003,6 +2015,120 @@ async def test_turn_on_video_effect_uses_the_device_template_default(mock_h6199_
     assert compiled.saturation == 63
     assert compiled.relative_brightness == (80, 70, 60, 50)
     backend.template_defaults.get.assert_called_with("entry-a", "template:video:movie")
+
+
+async def test_h8604_saved_movie_preflights_blank_screen_before_turn_on_writes(hass, monkeypatch) -> None:
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H8604", configuration_url=None)
+    coordinator.pact_type, coordinator.pact_code = 1, 1
+    coordinator._resolve_device_profile()
+    coordinator.is_on = False
+    content = next(
+        template.content
+        for template in MODEL_EFFECT_CATALOGUES["H8604"].templates
+        if isinstance(template.content, VideoProfile)
+    )
+    backend = cast(
+        EffectBackend,
+        SimpleNamespace(
+            application=SimpleNamespace(library_snapshot=MagicMock(return_value=LibrarySnapshot(()))),
+            template_defaults=SimpleNamespace(
+                generation=0,
+                get=MagicMock(return_value=SimpleNamespace(model="H8604", content=content)),
+            ),
+        ),
+    )
+    entity = GoveeBLELight(coordinator, config_entry_id="entry-a", effect_backend=backend)
+    packets: list[bytes] = []
+    client = MagicMock(is_connected=True)
+
+    async def write_gatt_char(_uuid, packet, **_kwargs):
+        packets.append(bytes(packet))
+
+    client.write_gatt_char = AsyncMock(side_effect=write_gatt_char)
+    coordinator._client = client
+    coordinator._notification_token = object()
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
+
+    async def unanswered(request):
+        assert "blank_screen" in request.display_settings
+        await client.write_gatt_char(WRITE_UUID, build_blank_screen_query("H8604"), response=False)
+        return False
+
+    monkeypatch.setattr(coordinator, "refresh_state", AsyncMock(side_effect=unanswered))
+
+    with pytest.raises(ValueError, match="video settings"):
+        await entity.async_turn_on(effect="Video: Movie", brightness=128)
+
+    assert packets == [build_blank_screen_query("H8604")]
+    assert all(packet[:2] not in {b"\x33\x01", b"\x33\x04"} for packet in packets)
+
+
+async def test_h8604_saved_item_reuses_video_preflight_after_brightness(hass, monkeypatch) -> None:
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H8604", configuration_url=None)
+    coordinator.pact_type, coordinator.pact_code = 2, 1
+    coordinator._resolve_device_profile()
+    coordinator.is_on = False
+    coordinator.video_sensitivity = 50
+    coordinator.video_hdmi_input = 1
+    coordinator.video_color_calibration = (50, 50, 50)
+    coordinator.hdmi_box_light = False
+    coordinator.hdmi_box_brightness = 1
+    coordinator.hdmi_box_automatic = False
+    coordinator.hdmi_box_effect = 0
+    coordinator.blank_screen = False
+    coordinator.blank_screen_detection = 2
+    coordinator.blank_screen_low_brightness_duration_seconds = 10
+    coordinator.blank_screen_same_tone_duration_seconds = 120
+    coordinator.black_border = False
+    for zone in coordinator.profile.video_brightness_zones:
+        setattr(coordinator, f"relative_brightness_{zone}", 100)
+    content = next(
+        template.content
+        for template in MODEL_EFFECT_CATALOGUES["H8604"].templates
+        if isinstance(template.content, VideoProfile)
+    )
+    item = LibraryItem.new("Saved Movie", replace(content, black_border=True))
+    refresh = AsyncMock(return_value=True)
+    monkeypatch.setattr(coordinator, "refresh_state", refresh)
+    client = MagicMock(is_connected=True)
+    coordinator._client = client
+    coordinator._notification_token = object()
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
+    from tests.test_effect_preview import _known_static_baseline
+
+    monkeypatch.setattr(
+        coordinator,
+        "async_prepare_static_baseline",
+        AsyncMock(return_value=_known_static_baseline(coordinator)),
+    )
+
+    @asynccontextmanager
+    async def saved_effect_for_apply(*_args, **_kwargs):
+        yield item
+
+    engine_apply = AsyncMock(return_value=SimpleNamespace(phase=DeploymentPhase.CONFIRMED))
+    backend = cast(
+        EffectBackend,
+        SimpleNamespace(
+            application=SimpleNamespace(
+                library_snapshot=MagicMock(return_value=LibrarySnapshot((item,))),
+                saved_effect_for_apply=saved_effect_for_apply,
+            ),
+            engine=SimpleNamespace(async_apply_saved=engine_apply),
+            template_defaults=SimpleNamespace(generation=0, get=MagicMock(return_value=None)),
+        ),
+    )
+    entity = GoveeBLELight(coordinator, config_entry_id="entry-a", effect_backend=backend)
+    turn_on = AsyncMock()
+    monkeypatch.setattr(entity, "_async_turn_on", turn_on)
+
+    await entity.async_turn_on(effect=item.name, brightness=128)
+
+    turn_on.assert_awaited_once()
+    engine_apply.assert_awaited_once()
+    assert engine_apply.await_args is not None
+    assert engine_apply.await_args.kwargs["prepared_video"] is not None
+    assert refresh.await_count == 1
 
 
 async def test_effect_reflects_active_video_mode(h6199_light, mock_h6199_coordinator):

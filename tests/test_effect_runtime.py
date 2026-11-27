@@ -75,13 +75,17 @@ from custom_components.ha_govee_led_ble.effect_runtime import (
     _activation_matches,
     _record_signature,
     async_apply_compiled_profile,
+    async_preflight_compiled_profile,
     async_prepare_effect_control_state,
     compiled_observation,
     observable_signature_for_compiled,
     resolve_diy_code,
 )
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
+    build_blank_screen,
+    build_blank_screen_query,
     build_brightness,
+    build_hdmi_input,
     build_power,
     build_video_mode,
 )
@@ -92,7 +96,7 @@ from custom_components.ha_govee_led_ble.transport import WRITE_UUID, xor_checksu
 from custom_components.ha_govee_led_ble.video_applicability import video_identity_fields
 from tests.coordinator_test_support import approve_diy_destination_operation, frame
 from tests.storage_test_double import InMemoryVersionedDocumentStore
-from tests.test_effect_preview import _EffectCoordinator, _manager, _open
+from tests.test_effect_preview import _EffectCoordinator, _known_static_baseline, _manager, _open
 from tests.test_music_commands import _music_transport
 
 
@@ -3503,6 +3507,10 @@ async def test_h8604_deferred_box_light_write_retires_previous_expectations(
         "custom_components.ha_govee_led_ble.effect_runtime.apply_active_video_mode",
         AsyncMock(return_value=True),
     )
+    coordinator.hdmi_box_light = True
+    coordinator.hdmi_box_brightness = 10
+    coordinator.hdmi_box_automatic = True
+    coordinator.hdmi_box_effect = 1
     item = LibraryItem.new(
         "H8604 box light",
         VideoProfile(
@@ -3542,6 +3550,191 @@ async def test_h8604_deferred_box_light_write_retires_previous_expectations(
         "hdmi_box_automatic": True,
         "hdmi_box_effect": 1,
     }
+
+
+async def test_h8604_deferred_hdmi_readback_accepts_fresh_contradiction_and_retries_once(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H8604", configuration_url=None)
+    coordinator.pact_type, coordinator.pact_code = 2, 1
+    coordinator._resolve_device_profile()
+    coordinator.is_on = True
+    coordinator.video_full_screen = True
+    coordinator.video_saturation = 50
+    coordinator.video_sound_effects = False
+    coordinator.video_sound_effects_softness = 50
+    query = build_hdmi_input(None, "H8604", profile=coordinator.profile)
+    replies = iter((1, 2, 2))
+    packets: list[bytes] = []
+
+    async def write_gatt_char(_uuid, packet, **_kwargs):
+        packet = bytes(packet)
+        packets.append(packet)
+        if packet == query:
+            value = next(replies)
+            coordinator._notify_callback(None, bytearray(frame(f"aaa90301{value:02x}")))
+
+    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(side_effect=write_gatt_char))
+    coordinator._client = client
+    coordinator._notification_token = object()
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
+    monkeypatch.setattr(coordinator, "_async_prepare_control_identity", AsyncMock())
+    monkeypatch.setattr(
+        "custom_components.ha_govee_led_ble.effect_runtime.apply_active_video_mode",
+        AsyncMock(return_value=True),
+    )
+    monkeypatch.setattr(
+        coordinator,
+        "async_prepare_static_baseline",
+        AsyncMock(return_value=_known_static_baseline(coordinator)),
+    )
+    item = LibraryItem.new(
+        "Deferred HDMI",
+        VideoProfile("H8604", "movie", True, 50, False, 50, None, None, None, hdmi_input=1),
+    )
+    compiled = compile_application(item, "H8604", profile=coordinator.profile)
+    prepared_video = await async_preflight_compiled_profile(
+        coordinator,
+        compiled,
+    )
+    await async_apply_compiled_profile(
+        coordinator,
+        compiled,
+        defer_confirmation=True,
+        prepared_video=prepared_video,
+    )
+
+    assert build_hdmi_input(1, "H8604", profile=coordinator.profile) in packets
+    assert "video_hdmi_input" not in coordinator._expected_state
+    monkeypatch.setattr(
+        "custom_components.ha_govee_led_ble.effect_runtime.compiled_observation",
+        lambda *_args, **_kwargs: ({"video_hdmi_input": 1}, ObservationConfidence.SETTINGS_MATCH),
+    )
+    engine = EffectDeploymentEngine(AsyncMock())
+    transaction = SimpleNamespace(
+        current=replace(
+            _confirmed_saved_record(item),
+            phase=DeploymentPhase.VERIFYING,
+            content_kind="video_profile",
+            target_mode="video",
+        ),
+        store=AsyncMock(),
+        profile_progress=AsyncMock(),
+    )
+
+    result = await engine._async_verify_profile(
+        coordinator,
+        compiled,
+        transaction,
+        lambda: True,
+        prepared_video=prepared_video,
+    )
+
+    assert result[0] is False
+    assert packets.count(build_hdmi_input(1, "H8604", profile=coordinator.profile)) == 2
+    assert coordinator.video_hdmi_input == 2
+    assert "video_hdmi_input" not in coordinator._expected_state
+
+
+async def test_h8604_toggle_reuses_prepared_policy_and_retries_after_register_mismatch(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H8604", configuration_url=None)
+    coordinator.pact_type, coordinator.pact_code = 1, 1
+    coordinator._resolve_device_profile()
+    coordinator.is_on = True
+    coordinator.video_full_screen = True
+    coordinator.video_saturation = 50
+    coordinator.video_sound_effects = False
+    coordinator.video_sound_effects_softness = 50
+    blank_query = build_blank_screen_query("H8604")
+    hdmi_query = build_hdmi_input(None, "H8604", profile=coordinator.profile)
+    packets: list[bytes] = []
+    queries = {"blank": 0, "hdmi": 0}
+
+    async def write_gatt_char(_uuid, packet, **_kwargs):
+        packet = bytes(packet)
+        packets.append(packet)
+        if packet == blank_query:
+            queries["blank"] += 1
+            coordinator._notify_callback(None, bytearray(frame("aaa90a0600020a007800")))
+        elif packet == hdmi_query:
+            queries["hdmi"] += 1
+            value = 1 if queries["hdmi"] == 1 else 2
+            coordinator._notify_callback(None, bytearray(frame(f"aaa90301{value:02x}")))
+
+    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(side_effect=write_gatt_char))
+    coordinator._client = client
+    coordinator._notification_token = object()
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
+    monkeypatch.setattr(coordinator, "_async_prepare_control_identity", AsyncMock())
+    monkeypatch.setattr(
+        coordinator,
+        "async_prepare_static_baseline",
+        AsyncMock(return_value=_known_static_baseline(coordinator)),
+    )
+    monkeypatch.setattr(
+        "custom_components.ha_govee_led_ble.effect_runtime.apply_active_video_mode",
+        AsyncMock(return_value=True),
+    )
+    monkeypatch.setattr(
+        "custom_components.ha_govee_led_ble.effect_runtime.compiled_observation",
+        lambda *_args, **_kwargs: (
+            {"video_hdmi_input": 1, "blank_screen": False},
+            ObservationConfidence.SETTINGS_MATCH,
+        ),
+    )
+    item = LibraryItem.new(
+        "Deferred toggle",
+        VideoProfile(
+            "H8604",
+            "movie",
+            True,
+            50,
+            False,
+            50,
+            None,
+            None,
+            False,
+            hdmi_input=1,
+        ),
+    )
+    compiled = compile_application(item, "H8604", profile=coordinator.profile)
+    prepared = await async_preflight_compiled_profile(coordinator, compiled)
+    engine = EffectDeploymentEngine(AsyncMock())
+    transaction = SimpleNamespace(
+        current=replace(
+            _confirmed_saved_record(item),
+            phase=DeploymentPhase.VERIFYING,
+            content_kind="video_profile",
+            target_mode="video",
+        ),
+        store=AsyncMock(),
+        profile_progress=AsyncMock(),
+    )
+
+    await async_apply_compiled_profile(
+        coordinator,
+        compiled,
+        defer_confirmation=True,
+        prepared_video=prepared,
+    )
+    assert queries["blank"] == 1
+    result = await engine._async_verify_profile(
+        coordinator,
+        compiled,
+        transaction,
+        lambda: True,
+        prepared_video=prepared,
+    )
+
+    assert result[0] is False
+    assert queries["blank"] == 4
+    assert packets.count(build_blank_screen(False, "H8604", 2, 10, 120)) == 2
+    assert packets.count(build_hdmi_input(1, "H8604", profile=coordinator.profile)) == 2
+    assert "video_hdmi_input" not in coordinator._expected_state
 
 
 async def test_reduced_video_profile_skips_unsupported_companion_workflows(

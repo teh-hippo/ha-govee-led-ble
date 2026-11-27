@@ -16,6 +16,12 @@ from .music_protocol import music_slug_for
 from .scenes import scene_key_for_code
 
 
+def effect_expectation_matches(field: str, actual: Any, expected: Any) -> bool:
+    if field == "video_color_calibration" and isinstance(actual, tuple) and isinstance(expected, tuple):
+        return bool(len(expected) == 3 and len(actual) == 4 and actual[:3] == expected or actual == expected)
+    return bool(actual == expected)
+
+
 @dataclass(frozen=True, slots=True)
 class ParsedWriteState:
     command: Any
@@ -59,6 +65,19 @@ def expectations_from_packet(
     generated = parsed.command
     if generated is None:
         return {}
+    if profile.setting_grammar == "H8604":
+        setting = getattr(getattr(generated, "body", None), "setting", None)
+        name = getattr(setting, "name", None)
+        payload = getattr(getattr(generated, "body", None), "payload", None)
+        if name == "sensitivity" and payload is not None:
+            return {"video_sensitivity": int(payload.value)}
+        if name == "hdmi_input" and payload is not None:
+            return {"video_hdmi_input": int(payload.selected)}
+        if name == "colour_calibration" and payload is not None:
+            calibration = [int(payload.yellow), int(payload.blue), int(payload.purple)]
+            if generated.body.length == 4:
+                calibration.append(int(payload.red))
+            return {"video_color_calibration": tuple(calibration)}
     if parsed.static is not None and parsed.static.kind == "projector":
         return {"color_mode": (ParsedMode.COLOUR, None)}
     if hasattr(generated, "selector"):

@@ -243,6 +243,7 @@ async def test_lowlevel_edit_requires_body_and_retains_unknown_companions(hass, 
     "model,mode",
     [
         ("H6022", "hopping"),
+        ("H6097", "hopping"),
         ("H6099", "hopping"),
         ("H66A0", "hopping"),
         ("H1A42", "splash"),
@@ -255,7 +256,9 @@ async def test_lowlevel_edit_requires_body_and_retains_unknown_companions(hass, 
 )
 async def test_fleet_parameter_edit_reactivates_music_after_upload(hass, monkeypatch, model, mode):
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url=None)
-    if model == "H6099":
+    if model == "H6097":
+        coordinator.profile = get_profile(model)
+    elif model == "H6099":
         coordinator.profile = replace(coordinator.profile, physical_ic_count=50)
     elif model == "H61E5":
         coordinator._observe_pact(1, 1)
@@ -281,6 +284,27 @@ async def test_fleet_parameter_edit_reactivates_music_after_upload(hass, monkeyp
         packet for packet, _ in prepared[prepared.first_upload : prepared.last_upload + 1]
     )
     assert writes[-1][0] == prepared[-1][0]
+
+
+async def test_h6097_retained_edit_orders_fragments_before_selector(hass, monkeypatch):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6097", configuration_url=None)
+    coordinator.profile = get_profile("H6097")
+    variant = music_variant(coordinator.profile, 0x33)
+    assert variant is not None and variant.template is not None
+    coordinator.music_mode = "hopping"
+    coordinator._music_body = ("hopping", variant.template)
+    sequence = AsyncMock()
+    monkeypatch.setattr(coordinator, "async_write_music_sequence", sequence)
+
+    await coordinator.async_apply_music_params(0x33, parameters={"relative_brightness": 17})
+
+    writes = sequence.call_args.args[0]
+    edited = edit_music_body(variant.template, "hopping", {"relative_brightness": 17}, profile=coordinator.profile)
+    assert edited == bytes.fromhex("3307" + "ff0000ff7f00ffff0000ff000000ff00ffff8b00ff" + "010101116201030000")
+    assert tuple(packet for packet, _ in writes) == (
+        *fragment_a3(0x41, edited),
+        build_music_mode(0x33, coordinator.music_sensitivity, None, False),
+    )
 
 
 async def test_per_parameter_guard_runs_before_physical_write(hass, monkeypatch, admit_static_baseline):

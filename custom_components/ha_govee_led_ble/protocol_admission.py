@@ -261,6 +261,24 @@ def _check_music_write_packet(frame: bytes, profile: ModelProfile) -> bool:
 
 def _check_video_write_packet(frame: bytes, profile: ModelProfile) -> bool:
     """Video mode writes."""
+    if profile.setting_grammar == "H8604":
+        display = _parse_xor_frame(frame, "H6099", _COMMAND_ROOTS).parsed
+        if display is not None and getattr(display.opcode, "name", None) == "display_setting":
+            setting = getattr(display.body.setting, "name", None)
+            payload = display.body.payload
+            if setting == "blank_screen" and profile.supports_blank_screen:
+                if (
+                    int(payload.is_on) in (0, 1)
+                    and int(payload.detection) in (1, 2)
+                    and 0 <= int(payload.low_brightness_duration_seconds) <= 0xFFFF
+                    and 0 <= int(payload.same_tone_duration_seconds) <= 0xFFFF
+                ):
+                    return True
+                raise ValueError("blank-screen register is outside profile capabilities")
+            if setting == "black_border" and profile.supports_black_border:
+                if int(payload.is_on) in (0, 1):
+                    return True
+                raise ValueError("black-border register is outside profile capabilities")
     if profile.video_grammar == "H605C-video":
         scalar = _parse_xor_frame(frame, "scalar", {"scalar": ("h605c_video_settings", H605cVideoSettings)}).parsed
         if scalar is not None and scalar.header in {scalar.FrameHeader.write, scalar.FrameHeader.query}:
@@ -352,6 +370,8 @@ def _check_h8604_video_setting_packet(frame: bytes, profile: ModelProfile) -> bo
             ):
                 return True
             raise ValueError("Video colour calibration is outside profile capabilities")
+        if name is None and int(setting.body.setting) in (10, 11):
+            return False
         raise ValueError("H8604 video register is outside profile capabilities")
     query = _parse_xor_frame(
         frame, "H8604-video.query", {"H8604-video.query": ("h8604_video_settings.query", root.Query)}

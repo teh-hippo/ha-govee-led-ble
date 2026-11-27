@@ -367,6 +367,7 @@ MODEL_EFFECT_CATALOGUES: Final = {
             *(_video_template("H8604", mode, saturation=100) for mode in _native_video_modes("H8604")),
         ),
         workshop_templates=(),
+        temporary_diy_selector=254,
     ),
     "H1A42": ModelEffectCatalogue(
         sku="H1A42",

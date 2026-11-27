@@ -60,7 +60,7 @@ from .control_arbiter import BLEControlArbiter, ControlIntent, LatestRequests, P
 from .coordinator_configured_identity import _ConfiguredIdentityMixin
 from .coordinator_control import ControlWriteRequest
 from .coordinator_dreamview import DreamviewClaimedError, _DreamviewMixin, is_dreamview_claimed
-from .coordinator_expectations import expectations_from_packet, parse_write_state
+from .coordinator_expectations import effect_expectation_matches, expectations_from_packet, parse_write_state
 from .coordinator_identity import InitialDeviceIdentity, PactIdentityState
 from .coordinator_modes import ModeTransitionPurpose, ModeTransitionSupersededError, _ActiveModeMixin
 from .coordinator_notifications import _OPTIONAL_CONTROL_DOMAINS, _NotificationMixin
@@ -77,7 +77,12 @@ from .coordinator_status import (
     ParsedMode,
     StatusDomain,
 )
-from .coordinator_upload import PendingUploadAck, UploadAckTimeoutError, UploadCancelledError
+from .coordinator_upload import (
+    PendingUploadAck,
+    UploadAckTimeoutError,
+    UploadCancelledError,
+    UploadRejectedError,
+)
 from .effect_contracts import CapabilityState
 from .generated_protocol_adapter import (
     A3Sequence,
@@ -162,6 +167,8 @@ _CORE_STATE_FIELDS = (
     "effect",
     "diy_code",
 )
+
+
 _WHITE_BALANCE_GAIN_FIELDS = (
     "white_balance_flag",
     "white_balance_red",
@@ -1799,6 +1806,7 @@ class GoveeBLECoordinator(
         cleanup_deadline: float | None = None,
         packet_validator: Callable[[bytes, ModelProfile], None] = require_profile_packet,
         on_write: Callable[[], None] | None = None,
+        arm_packet_expectations: bool = True,
     ) -> None:
         """Write on the caller's connection without changing its transaction policy.
 
@@ -2002,7 +2010,7 @@ class GoveeBLECoordinator(
         if state_values is not None:
             for field, value in state_values.items():
                 setattr(self, field, value)
-        if arm_expected:
+        if arm_expected and arm_packet_expectations:
             self._arm_expected(packet, expectations=requested)
         if expected_values is not None:
             self._arm_expected_values(dict(expected_values))
@@ -3975,7 +3983,9 @@ class GoveeBLECoordinator(
                 and self._static_field_observed(field)
             }
             if expectations is not None and any(
-                field != "effect" and field in fresh_fields and getattr(self, field) != expected
+                field != "effect"
+                and field in fresh_fields
+                and not effect_expectation_matches(field, getattr(self, field), expected)
                 for field, expected in expectations.items()
             ):
                 return True
@@ -4142,6 +4152,7 @@ class GoveeBLECoordinator(
             "hdr_contrast",
             "video_sensitivity",
             "hdmi_input",
+            "hdmi_box_light",
             "color_calibration",
         }:
             raise ValueError("unknown display setting requested for refresh")
@@ -4395,7 +4406,8 @@ class GoveeBLECoordinator(
                     field_baselines, domain_baselines, attempt_deadline, expectations=expectations
                 ):
                     if not expectations or all(
-                        getattr(self, field) == expected for field, expected in expectations.items()
+                        effect_expectation_matches(field, getattr(self, field), expected)
+                        for field, expected in expectations.items()
                     ):
                         # A background poll closes its connection on return. Collect delayed
                         # optional replies first; their silence never rejects the basic poll.
@@ -4467,6 +4479,7 @@ class GoveeBLECoordinator(
         state_values: Mapping[str, Any] | None = None,
         expected_values: Mapping[str, Any] | None = None,
         on_write: Callable[[], None] | None = None,
+        arm_packet_expectations: bool = True,
     ) -> None:
         if self.hass.is_stopping:
             raise RuntimeError("Home Assistant is stopping")
@@ -4484,6 +4497,7 @@ class GoveeBLECoordinator(
                     state_values=state_values,
                     expected_values=expected_values,
                     on_write=on_write,
+                    arm_packet_expectations=arm_packet_expectations,
                 )
                 self._renew_foreground_lease()
 
@@ -4549,7 +4563,7 @@ class GoveeBLECoordinator(
             raise failure from err
         check_connection()
         if not accepted:
-            raise RuntimeError(f"Device rejected {pending.protocol:02X} upload")
+            raise UploadRejectedError(f"Device rejected {pending.protocol:02X} upload")
         if self._upload_ack is pending:
             self._upload_ack = None
 
@@ -4629,6 +4643,7 @@ class GoveeBLECoordinator(
         packet_validator: Callable[[bytes, ModelProfile], None] = require_profile_packet,
         final_packet: bytes | None = None,
         before_final: Callable[[], Awaitable[None]] | None = None,
+        arm_packet_expectations: bool = True,
     ) -> None:
         """Write a transaction; an injected writer owns its connection and never retries.
 
@@ -4785,6 +4800,7 @@ class GoveeBLECoordinator(
                                     expected_values=expected_values,
                                     packet_validator=packet_validator,
                                     on_write=commit,
+                                    arm_packet_expectations=arm_packet_expectations,
                                 )
                             else:
                                 await writer(
@@ -4997,7 +5013,7 @@ class GoveeBLECoordinator(
             field != "effect"
             and self._field_revisions.get(field, 0) > field_baselines[field]
             and self._static_field_observed(field)
-            and getattr(self, field) != expected
+            and not effect_expectation_matches(field, getattr(self, field), expected)
             for field, expected in expectations.items()
         ):
             return False
@@ -5006,7 +5022,8 @@ class GoveeBLECoordinator(
             # Catalogue names are derived from this same selector, not independent readback.
             return None
         return all(
-            getattr(self, field) == expected for field, expected in expectations.items()
+            effect_expectation_matches(field, getattr(self, field), expected)
+            for field, expected in expectations.items()
         ) and self._retain_verified_selector(expectations, generation, subscription)
 
     def _start_keep_alive(self) -> None:

@@ -656,6 +656,7 @@ class _ActiveModeMixin(_CoordinatorBase):
         writer: ProfileWriter | None = None,
         retained_body_revision: int | None = None,
         on_write: Callable[[], None] | None = None,
+        on_upload_attempt: Callable[[], None] | None = None,
     ) -> None:
         variant = music_variant(self.profile, mode_code)
         parameters = {
@@ -697,6 +698,8 @@ class _ActiveModeMixin(_CoordinatorBase):
                 def commit(index: int) -> None:
                     nonlocal attempted_upload, revision
                     if index == first_upload:
+                        if on_upload_attempt is not None:
+                            on_upload_attempt()
                         self._music_body = None
                         self._music_palette = None
                         attempted_upload = True
@@ -748,6 +751,7 @@ class _ActiveModeMixin(_CoordinatorBase):
         parameters: Mapping[str, Any] | None = None,
         calm: bool | None = None,
         before_apply: Callable[[], Awaitable[None]] | None = None,
+        on_upload_attempt: Callable[[], None] | None = None,
     ) -> None:
         if (
             self.music_mode not in self.profile.music_modes
@@ -807,6 +811,7 @@ class _ActiveModeMixin(_CoordinatorBase):
             intent=ControlIntent.USER,
             writer=writer,
             retained_body_revision=retained_body_revision,
+            on_upload_attempt=on_upload_attempt,
         )
 
     async def async_restore_pre_mode(self, prepared: PreparedStaticRecovery | None = None) -> None:

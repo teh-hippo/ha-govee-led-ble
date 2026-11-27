@@ -10,7 +10,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequenc
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, replace
 from functools import partial
-from typing import Any
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 from homeassistant.exceptions import HomeAssistantError
@@ -56,6 +56,7 @@ from .effect_domain import (
     LayeredEffect,
     LayeredScene,
     LibraryItem,
+    MusicProfile,
     NativeEffect,
     PaletteDiyEffect,
     PaletteScene,
@@ -80,11 +81,12 @@ from .generated_protocol_adapter import (
     build_video_sensitivity,
     build_white_balance,
     build_whole_relative_brightness,
+    require_profile_packet,
     upload_ack_mode,
     upload_ack_subtype,
     video_parameters_from_brightness,
 )
-from .music_commands import prepare_music_profile_writes
+from .music_commands import music_body_parameters, music_body_style, prepare_music_profile_writes
 from .music_protocol import music_code_for
 from .music_semantics import capture_music_parameters, music_variant
 from .native_profile_controls import (
@@ -169,6 +171,20 @@ class _PreparedBlankScreenPolicy:
             raise ValueError("Blank-screen policy changed after preparation; refresh and retry")
 
 
+@dataclass(frozen=True, slots=True)
+class _PreparedVideoState:
+    mode_packet: bytes
+    mode_values: dict[str, Any]
+    mode_controls: frozenset[str]
+    mode_guard: Callable[[], None]
+    blank_screen: _PreparedBlankScreenPolicy | None
+
+    def require_current(self, coordinator: GoveeBLECoordinator) -> None:
+        self.mode_guard()
+        if self.blank_screen is not None:
+            self.blank_screen.require_current(coordinator)
+
+
 class EffectStateReadError(RuntimeError):
     """Required independent observations could not be acquired."""
 
@@ -219,6 +235,214 @@ class _DeploymentTransaction:
         await self.store(replace(self.current, progress_current=index), durable=False)
 
 
+async def async_preflight_compiled_profile(
+    coordinator: GoveeBLECoordinator,
+    compiled: CompiledVideoProfile,
+    *,
+    prepared_blank_screen: _PreparedBlankScreenPolicy | None = None,
+) -> _PreparedVideoState:
+    profile = coordinator.profile
+    prepare_complete_state = profile.setting_grammar_has("deferred_scalar_readback")
+    await async_require_video_controls(coordinator, requested_video_controls(compiled))
+    require_video_mode(coordinator.profile, coordinator)
+    omitted_mode_fields = tuple(
+        field
+        for field, supported in (
+            ("full_screen", profile.supports_video_capture_region),
+            ("saturation", profile.supports_video_saturation),
+            ("sound_effects", profile.supports_video_sound_effects),
+            ("sound_effects_softness", profile.supports_video_sound_effects),
+        )
+        if supported and getattr(compiled, field) is None
+    )
+    if omitted_mode_fields:
+        baselines = {
+            f"video_{field}": coordinator._field_revisions.get(f"video_{field}", 0) for field in omitted_mode_fields
+        }
+        if not await coordinator.refresh_state() or any(
+            coordinator._field_revisions.get(field, 0) <= baseline for field, baseline in baselines.items()
+        ):
+            raise ValueError("Cannot preserve omitted video settings without fresh readback")
+        await async_require_video_controls(coordinator, requested_video_controls(compiled))
+    refresh_display_settings = frozenset(
+        setting
+        for setting, requested in (
+            ("white_balance", compiled.white_balance_wire is not None),
+            ("video_sensitivity", compiled.video_sensitivity is not None),
+            ("hdmi_input", compiled.hdmi_input is not None),
+            ("hdmi_box_light", compiled.hdmi_box_light is not None),
+            ("color_calibration", compiled.color_calibration is not None),
+            ("blank_screen", compiled.blank_screen is not None),
+            ("black_border", compiled.black_border is not None),
+            ("hdr_contrast", compiled.hdr is not None),
+        )
+        if requested
+    )
+    refresh_relative_brightness = compiled.relative_brightness is not None and not compiled.relative_brightness_inline
+    if (
+        prepare_complete_state
+        and (refresh_display_settings or refresh_relative_brightness)
+        and not await coordinator.refresh_state(
+            RefreshRequest(
+                display_settings=refresh_display_settings,
+                refresh_relative_brightness=refresh_relative_brightness,
+            )
+        )
+    ):
+        raise ValueError("Could not read the current video settings before applying the profile")
+    if (
+        compiled.blank_screen is not None
+        and compiled.blank_screen_policy is None
+        and prepared_blank_screen is None
+        and not prepare_complete_state
+    ):
+        baselines = {
+            field: coordinator._field_revisions.get(field, 0)
+            for field in (
+                "blank_screen_detection",
+                "blank_screen_low_brightness_duration_seconds",
+                "blank_screen_same_tone_duration_seconds",
+            )
+        }
+        if not await coordinator.refresh_state(RefreshRequest(display_settings=frozenset({"blank_screen"}))) or any(
+            coordinator._field_revisions.get(field, 0) <= revision for field, revision in baselines.items()
+        ):
+            raise ValueError("Blank-screen policy state has not been read freshly; refresh the device first")
+    required: list[object | None] = []
+    if compiled.black_border is not None:
+        required.append(coordinator.black_border)
+    if compiled.video_sensitivity is not None:
+        required.append(coordinator.video_sensitivity)
+    if compiled.hdmi_input is not None:
+        required.append(coordinator.video_hdmi_input)
+    if compiled.hdmi_box_light is not None:
+        required.extend(
+            (
+                getattr(coordinator, "hdmi_box_light", None),
+                getattr(coordinator, "hdmi_box_brightness", None),
+                getattr(coordinator, "hdmi_box_automatic", None),
+                getattr(coordinator, "hdmi_box_effect", None),
+            )
+        )
+    if compiled.color_calibration is not None:
+        required.append(coordinator.video_color_calibration)
+        if len(compiled.color_calibration) == 4 and (
+            coordinator.video_color_calibration is None or len(coordinator.video_color_calibration) != 4
+        ):
+            raise ValueError("Fresh four-channel colour calibration is required before applying red")
+    if compiled.relative_brightness is not None and not compiled.relative_brightness_inline:
+        required.extend(getattr(coordinator, f"relative_brightness_{zone}") for zone in profile.video_brightness_zones)
+    if compiled.relative_brightness_inline:
+        required.append(getattr(coordinator, "video_parameters", None))
+    if compiled.blank_screen is not None:
+        required.extend(
+            (
+                coordinator.blank_screen,
+                coordinator.blank_screen_detection,
+                coordinator.blank_screen_low_brightness_duration_seconds,
+                coordinator.blank_screen_same_tone_duration_seconds,
+            )
+        )
+    # Validate every packet before changing state or sending the first command.
+    mode_values = {
+        field: getattr(compiled, field)
+        for field in ("full_screen", "saturation", "sound_effects", "sound_effects_softness")
+        if getattr(compiled, field) is not None
+    }
+    prepared_mode, prepared_values, prepared_controls, prepared_guard = await async_prepare_video_mode(
+        coordinator,
+        mode=compiled.mode,
+        requested_values=mode_values,
+        relative_brightness=compiled.relative_brightness,
+    )
+    require_profile_packet(prepared_mode, profile)
+    if compiled.white_balance_wire is not None:
+        require_profile_packet(
+            build_white_balance(
+                compiled.white_balance_wire[0],
+                compiled.white_balance_wire[1] if len(compiled.white_balance_wire) == 2 else None,
+                coordinator.model,
+            ),
+            profile,
+        )
+    if compiled.video_sensitivity is not None:
+        require_profile_packet(
+            build_video_sensitivity(compiled.video_sensitivity, coordinator.model, profile=profile), profile
+        )
+    if compiled.hdmi_input is not None:
+        require_profile_packet(build_hdmi_input(compiled.hdmi_input, coordinator.model, profile=profile), profile)
+    if compiled.hdmi_box_light is not None:
+        require_profile_packet(
+            build_hdmi_box_light(*compiled.hdmi_box_light, coordinator.model, profile=profile), profile
+        )
+    if compiled.color_calibration is not None:
+        require_profile_packet(
+            build_video_color_calibration(compiled.color_calibration, coordinator.model, profile=profile), profile
+        )
+    if compiled.relative_brightness is not None and not compiled.relative_brightness_inline:
+        values = compiled.relative_brightness
+        require_profile_packet(
+            build_relative_brightness(
+                values[0],
+                values[1],
+                values[2],
+                values[3],
+                coordinator.model,
+                values[4] if len(values) == 6 else None,
+                values[5] if len(values) == 6 else None,
+            ),
+            profile,
+        )
+    if compiled.blank_screen is not None:
+        detection, low_duration, same_duration = (
+            compiled.blank_screen_policy
+            if compiled.blank_screen_policy is not None
+            else (
+                coordinator.blank_screen_detection,
+                coordinator.blank_screen_low_brightness_duration_seconds,
+                coordinator.blank_screen_same_tone_duration_seconds,
+            )
+        )
+        if detection is None or low_duration is None or same_duration is None:
+            raise ValueError("Blank-screen policy state has not been read; refresh the device first")
+        require_profile_packet(
+            build_blank_screen(compiled.blank_screen, coordinator.model, detection, low_duration, same_duration),
+            profile,
+        )
+    if compiled.black_border is not None:
+        require_profile_packet(build_black_border(compiled.black_border, coordinator.model), profile)
+    if compiled.hdr is not None:
+        require_profile_packet(build_hdr_contrast(*compiled.hdr, coordinator.model), profile)
+    if compiled.whole_relative_brightness is not None:
+        require_profile_packet(
+            build_whole_relative_brightness(compiled.whole_relative_brightness, coordinator.model, profile=profile),
+            profile,
+        )
+    if prepare_complete_state and any(value is None for value in required):
+        raise ValueError("The current video settings are incomplete")
+    prepared_blank_screen = (
+        prepared_blank_screen
+        if prepared_blank_screen is not None
+        else _PreparedBlankScreenPolicy.capture(
+            coordinator,
+            (
+                cast(int, coordinator.blank_screen_detection),
+                cast(int, coordinator.blank_screen_low_brightness_duration_seconds),
+                cast(int, coordinator.blank_screen_same_tone_duration_seconds),
+            ),
+        )
+        if compiled.blank_screen is not None and compiled.blank_screen_policy is None
+        else None
+    )
+    return _PreparedVideoState(
+        prepared_mode,
+        prepared_values,
+        prepared_controls,
+        prepared_guard,
+        prepared_blank_screen,
+    )
+
+
 async def async_apply_compiled_profile(
     coordinator: GoveeBLECoordinator,
     compiled: CompiledMusicProfile | CompiledVideoProfile | CompiledStaticRgb,
@@ -231,6 +455,7 @@ async def async_apply_compiled_profile(
     defer_confirmation: bool = False,
     on_blank_screen_write: Callable[[tuple[int, int, int]], None] | None = None,
     prepared_blank_screen: _PreparedBlankScreenPolicy | None = None,
+    prepared_video: _PreparedVideoState | None = None,
 ) -> None:
     if isinstance(compiled, CompiledStaticRgb):
         if coordinator.model != compiled.model:
@@ -281,9 +506,12 @@ async def async_apply_compiled_profile(
                 await progress(2)
         return
 
+    prepared_video = prepared_video or await async_preflight_compiled_profile(
+        coordinator, compiled, prepared_blank_screen=prepared_blank_screen
+    )
+    prepared_video.require_current(coordinator)
+    prepared_blank_screen = prepared_video.blank_screen
     profile = coordinator.profile
-    await async_require_video_controls(coordinator, requested_video_controls(compiled))
-    require_video_mode(coordinator.profile, coordinator)
     underlying_writer = writer
     requested_controls = requested_video_controls(compiled)
 
@@ -294,17 +522,19 @@ async def async_apply_compiled_profile(
         state_values: Mapping[str, Any] | None = None,
         expected_values: Mapping[str, Any] | None = None,
         on_write: Callable[[], None] | None = None,
+        arm_packet_expectations: bool = True,
     ) -> None:
-        if defer_confirmation and packet[1] in {0xA9, 0xAE, 0xB6} and state_values is not None:
+        expected_state = getattr(coordinator, "_expected_state", None)
+        if defer_confirmation and state_values is not None and expected_state is not None:
             for field in state_values:
-                coordinator._expected_state.pop(field, None)
-            if packet[1] == 0xA9 and "blank_screen" in state_values:
+                expected_state.pop(field, None)
+            if "blank_screen" in state_values:
                 for field in (
                     "blank_screen_detection",
                     "blank_screen_low_brightness_duration_seconds",
                     "blank_screen_same_tone_duration_seconds",
                 ):
-                    coordinator._expected_state.pop(field, None)
+                    expected_state.pop(field, None)
         await _send_video_setting(
             coordinator,
             packet,
@@ -314,104 +544,30 @@ async def async_apply_compiled_profile(
             state_values=state_values,
             expected_values=expected_values,
             on_write=on_write,
+            arm_packet_expectations=(
+                arm_packet_expectations
+                and (
+                    not defer_confirmation
+                    or packet[1] != 0xA9
+                    or not profile.setting_grammar_has("deferred_scalar_readback")
+                )
+            ),
         )
 
     writer = guarded_writer
-    omitted_mode_fields = tuple(
-        field
-        for field, supported in (
-            ("full_screen", profile.supports_video_capture_region),
-            ("saturation", profile.supports_video_saturation),
-            ("sound_effects", profile.supports_video_sound_effects),
-            ("sound_effects_softness", profile.supports_video_sound_effects),
-        )
-        if supported and getattr(compiled, field) is None
-    )
-    if omitted_mode_fields:
-        baselines = {
-            f"video_{field}": coordinator._field_revisions.get(f"video_{field}", 0) for field in omitted_mode_fields
-        }
-        if not await coordinator.refresh_state() or any(
-            coordinator._field_revisions.get(field, 0) <= baseline for field, baseline in baselines.items()
-        ):
-            raise ValueError("Cannot preserve omitted video settings without fresh readback")
-        await async_require_video_controls(coordinator, requested_video_controls(compiled))
-    if compiled.blank_screen is not None and compiled.blank_screen_policy is None and prepared_blank_screen is None:
-        baselines = {
-            field: coordinator._field_revisions.get(field, 0)
-            for field in (
-                "blank_screen_detection",
-                "blank_screen_low_brightness_duration_seconds",
-                "blank_screen_same_tone_duration_seconds",
-            )
-        }
-        # Preparation must fail before even the mode/power write. The shared
-        # toggle writer refreshes again and guards its own physical boundary.
-        if not await coordinator.refresh_state(RefreshRequest(display_settings=frozenset({"blank_screen"}))) or any(
-            coordinator._field_revisions.get(field, 0) <= revision for field, revision in baselines.items()
-        ):
-            raise ValueError("Blank-screen policy state has not been read freshly; refresh the device first")
-    # Validate every packet before changing state or sending the first command.
     mode_values = {
         field: getattr(compiled, field)
         for field in ("full_screen", "saturation", "sound_effects", "sound_effects_softness")
         if getattr(compiled, field) is not None
     }
-    await async_prepare_video_mode(
-        coordinator,
-        mode=compiled.mode,
-        requested_values=mode_values,
-        relative_brightness=compiled.relative_brightness,
-    )
-    if compiled.white_balance_wire is not None:
-        build_white_balance(
-            compiled.white_balance_wire[0],
-            compiled.white_balance_wire[1] if len(compiled.white_balance_wire) == 2 else None,
-            coordinator.model,
-        )
-    if compiled.video_sensitivity is not None:
-        build_video_sensitivity(compiled.video_sensitivity, coordinator.model, profile=profile)
-    if compiled.hdmi_input is not None:
-        build_hdmi_input(compiled.hdmi_input, coordinator.model, profile=profile)
-    if compiled.hdmi_box_light is not None:
-        build_hdmi_box_light(*compiled.hdmi_box_light, coordinator.model, profile=profile)
-    if compiled.color_calibration is not None:
-        build_video_color_calibration(compiled.color_calibration, coordinator.model, profile=profile)
-    if compiled.relative_brightness is not None and not compiled.relative_brightness_inline:
-        values = compiled.relative_brightness
-        build_relative_brightness(
-            values[0],
-            values[1],
-            values[2],
-            values[3],
-            coordinator.model,
-            values[4] if len(values) == 6 else None,
-            values[5] if len(values) == 6 else None,
-        )
-    if compiled.blank_screen is not None:
-        detection, low_duration, same_duration = (
-            compiled.blank_screen_policy
-            if compiled.blank_screen_policy is not None
-            else (
-                coordinator.blank_screen_detection,
-                coordinator.blank_screen_low_brightness_duration_seconds,
-                coordinator.blank_screen_same_tone_duration_seconds,
-            )
-        )
-        if detection is None or low_duration is None or same_duration is None:
-            raise ValueError("Blank-screen policy state has not been read; refresh the device first")
-        build_blank_screen(compiled.blank_screen, coordinator.model, detection, low_duration, same_duration)
-    if compiled.black_border is not None:
-        build_black_border(compiled.black_border, coordinator.model)
-    if compiled.hdr is not None:
-        build_hdr_contrast(*compiled.hdr, coordinator.model)
-    if compiled.whole_relative_brightness is not None:
-        build_whole_relative_brightness(compiled.whole_relative_brightness, coordinator.model, profile=profile)
     active_intent = coordinator._control_arbiter.current_task_intent or intent
     async with (
         async_control_intent(coordinator, active_intent),
         coordinator.async_mode_transition(purpose=ModeTransitionPurpose.SELECTION),
     ):
+        prepared_options: dict[str, Any] = (
+            {"prepared": prepared_video} if profile.setting_grammar_has("deferred_scalar_readback") else {}
+        )
         await apply_active_video_mode(
             coordinator,
             mode=compiled.mode,
@@ -425,6 +581,7 @@ async def async_apply_compiled_profile(
                 if prepared_blank_screen is not None
                 else None
             ),
+            **prepared_options,
         )
         completed = 1
         if progress is not None:
@@ -502,9 +659,21 @@ async def async_apply_compiled_profile(
                 await progress(completed)
 
         if compiled.blank_screen is not None:
-            policy_options: dict[str, Any] = (
-                {"policy": compiled.blank_screen_policy} if compiled.blank_screen_policy is not None else {}
-            )
+            policy_options: dict[str, Any] = {}
+            policy = compiled.blank_screen_policy
+            if (
+                policy is None
+                and prepared_blank_screen is not None
+                and profile.setting_grammar_has("deferred_scalar_readback")
+            ):
+                policy = prepared_blank_screen.policy
+            if policy is not None:
+                policy_options["policy"] = policy
+                policy_options["write_guard"] = (
+                    (lambda: prepared_blank_screen.require_current(coordinator))
+                    if prepared_blank_screen is not None
+                    else None
+                )
             if on_blank_screen_write is not None:
                 policy_options["on_write"] = on_blank_screen_write
             await apply_blank_screen(
@@ -600,6 +769,7 @@ class EffectDeploymentEngine:
         destination_consent: DiyDestinationConsent | None = None,
         write_guard: Callable[[], None] | None = None,
         purpose: ModeTransitionPurpose = ModeTransitionPurpose.SELECTION,
+        prepared_video: _PreparedVideoState | None = None,
     ) -> _LibraryApplicationResult:
         if compiled is None:
             compiled = await async_prepare_application(
@@ -653,6 +823,7 @@ class EffectDeploymentEngine:
             purpose=purpose,
             write_guard=write_guard,
             destination_consent=destination_consent,
+            prepared_video=prepared_video,
         )
         return _LibraryApplicationResult(result, workspace, still_active)
 
@@ -669,6 +840,7 @@ class EffectDeploymentEngine:
         destination_consent: DiyDestinationConsent | None = None,
         write_guard: Callable[[], None] | None = None,
         live: bool = False,
+        prepared_video: _PreparedVideoState | None = None,
     ) -> DeploymentRecord:
         applied = await self._apply_library_item(
             coordinator,
@@ -682,6 +854,7 @@ class EffectDeploymentEngine:
             write_guard=write_guard,
             destination_consent=destination_consent,
             purpose=ModeTransitionPurpose.PREVIEW if live else ModeTransitionPurpose.SELECTION,
+            prepared_video=prepared_video,
         )
         result = applied.record
         write_only_completed = (
@@ -855,6 +1028,7 @@ class EffectDeploymentEngine:
         purpose: ModeTransitionPurpose = ModeTransitionPurpose.SELECTION,
         write_guard: Callable[[], None] | None = None,
         destination_consent: DiyDestinationConsent | None = None,
+        prepared_video: _PreparedVideoState | None = None,
     ) -> tuple[DeploymentRecord, bool]:
         async with self._operation_lock(record.operation_id):
             return await self._async_apply_serialised(
@@ -864,6 +1038,7 @@ class EffectDeploymentEngine:
                 purpose=purpose,
                 write_guard=write_guard,
                 destination_consent=destination_consent,
+                prepared_video=prepared_video,
             )
 
     async def _async_apply_serialised(
@@ -875,6 +1050,7 @@ class EffectDeploymentEngine:
         purpose: ModeTransitionPurpose = ModeTransitionPurpose.SELECTION,
         write_guard: Callable[[], None] | None = None,
         destination_consent: DiyDestinationConsent | None = None,
+        prepared_video: _PreparedVideoState | None = None,
     ) -> tuple[DeploymentRecord, bool]:
         if existing := self._deployments.get_optional(record.operation_id):
             if (
@@ -963,7 +1139,16 @@ class EffectDeploymentEngine:
                     if isinstance(compiled, CompiledVideoProfile):
                         require_video_mode(coordinator.profile, coordinator)
                         require_video_controls(coordinator.profile, coordinator, requested_video_controls(compiled))
-                    refreshed, prepared_blank_screen = await self._async_prepare_prior_state(coordinator, compiled)
+                        if prepared_video is None and coordinator.profile.setting_grammar_has(
+                            "deferred_scalar_readback"
+                        ):
+                            prepared_video = await async_preflight_compiled_profile(coordinator, compiled)
+                    refreshed, prepared_blank_screen = await self._async_prepare_prior_state(
+                        coordinator, compiled, prepared_video=prepared_video
+                    )
+                    if isinstance(compiled, CompiledVideoProfile) and prepared_video is not None:
+                        assert prepared_video is not None
+                        prepared_blank_screen = prepared_video.blank_screen
                     validate_diy_destination_consent(
                         coordinator,
                         compiled,
@@ -995,6 +1180,12 @@ class EffectDeploymentEngine:
                                 sorted(
                                     requested_video_controls(compiled)
                                     | ({"blank_screen_policy"} if compiled.blank_screen_policy is not None else set())
+                                    | (
+                                        {"color_calibration_red"}
+                                        if compiled.color_calibration is not None
+                                        and len(compiled.color_calibration) == 4
+                                        else set()
+                                    )
                                 )
                             ),
                         )
@@ -1080,6 +1271,7 @@ class EffectDeploymentEngine:
                             defer_confirmation=defer_profile_confirmation,
                             bind_blank_screen_policy=defer_profile_confirmation,
                             prepared_blank_screen=prepared_blank_screen,
+                            prepared_video=prepared_video,
                         )
 
                     transition.require_current()
@@ -1094,6 +1286,7 @@ class EffectDeploymentEngine:
                             transition.current,
                             written_blank_screen_policy=written_blank_screen_policy,
                             prepared_blank_screen=prepared_blank_screen,
+                            prepared_video=prepared_video,
                             write_guard=(
                                 validate_effect_write if isinstance(compiled, CompiledEffect) else write_guard
                             ),
@@ -1235,6 +1428,7 @@ class EffectDeploymentEngine:
         defer_confirmation: bool = False,
         bind_blank_screen_policy: bool = False,
         prepared_blank_screen: _PreparedBlankScreenPolicy | None = None,
+        prepared_video: _PreparedVideoState | None = None,
     ) -> tuple[int, int, int] | None:
         written_policy: tuple[int, int, int] | None = None
         if write_guard is not None:
@@ -1257,6 +1451,7 @@ class EffectDeploymentEngine:
             defer_confirmation=defer_confirmation,
             on_blank_screen_write=capture_blank_screen_policy if bind_blank_screen_policy else None,
             prepared_blank_screen=prepared_blank_screen,
+            prepared_video=prepared_video,
         )
         return written_policy
 
@@ -1269,6 +1464,7 @@ class EffectDeploymentEngine:
         *,
         written_blank_screen_policy: tuple[int, int, int] | None = None,
         prepared_blank_screen: _PreparedBlankScreenPolicy | None = None,
+        prepared_video: _PreparedVideoState | None = None,
         write_guard: Callable[[], None] | None = None,
     ) -> tuple[bool | None, ObservationConfidence]:
         if isinstance(compiled, CompiledStaticRgb):
@@ -1284,6 +1480,7 @@ class EffectDeploymentEngine:
                 current,
                 written_blank_screen_policy=written_blank_screen_policy,
                 prepared_blank_screen=prepared_blank_screen,
+                prepared_video=prepared_video,
                 write_guard=write_guard,
             )
         if compiled.activation_packet is None:
@@ -1318,6 +1515,7 @@ class EffectDeploymentEngine:
         *,
         written_blank_screen_policy: tuple[int, int, int] | None = None,
         prepared_blank_screen: _PreparedBlankScreenPolicy | None = None,
+        prepared_video: _PreparedVideoState | None = None,
         write_guard: Callable[[], None] | None = None,
     ) -> tuple[bool | None, ObservationConfidence]:
         base_expectations, confidence = compiled_observation(compiled, profile=coordinator.profile)
@@ -1360,6 +1558,22 @@ class EffectDeploymentEngine:
             if not current():
                 break
             if attempt + 1 < VERIFICATION_ATTEMPTS:
+                if prepared_video is not None and prepared_video.blank_screen is not None:
+                    if not await coordinator.refresh_state(
+                        RefreshRequest(
+                            blank_screen_policy=prepared_video.blank_screen.policy,
+                            display_settings=frozenset({"blank_screen"}),
+                        )
+                    ):
+                        break
+                    prepared_video = replace(
+                        prepared_video,
+                        blank_screen=_PreparedBlankScreenPolicy.capture(
+                            coordinator,
+                            prepared_video.blank_screen.policy,
+                        ),
+                    )
+                    prepared_video.require_current(coordinator)
                 await transaction.store(
                     replace(
                         transaction.current,
@@ -1373,6 +1587,8 @@ class EffectDeploymentEngine:
                     transaction,
                     write_guard=write_guard,
                     bind_blank_screen_policy=written_blank_screen_policy is not None,
+                    defer_confirmation=True,
+                    prepared_video=prepared_video,
                 )
                 await transaction.store(replace(transaction.current, phase=DeploymentPhase.VERIFYING))
         return refreshed, ObservationConfidence.UNKNOWN
@@ -1606,10 +1822,15 @@ class EffectDeploymentEngine:
         self,
         coordinator: GoveeBLECoordinator,
         compiled: CompiledApplication,
+        *,
+        prepared_video: _PreparedVideoState | None = None,
     ) -> tuple[bool, _PreparedBlankScreenPolicy | None]:
         refreshed = await async_prepare_effect_control_state(coordinator, require_restorable_static=False)
         if not isinstance(compiled, CompiledVideoProfile):
             return refreshed, None
+        if prepared_video is not None:
+            prepared_video.require_current(coordinator)
+            return refreshed, prepared_video.blank_screen
         profile = coordinator.profile
         refresh_display_settings = frozenset(
             setting
@@ -1619,6 +1840,10 @@ class EffectDeploymentEngine:
                 ("hdmi_input", compiled.hdmi_input is not None),
                 ("hdmi_box_light", compiled.hdmi_box_light is not None),
                 ("color_calibration", compiled.color_calibration is not None),
+                (
+                    "color_calibration_red",
+                    compiled.color_calibration is not None and len(compiled.color_calibration) == 4,
+                ),
                 ("blank_screen", compiled.blank_screen is not None),
                 ("black_border", compiled.black_border is not None),
                 ("hdr_contrast", compiled.hdr is not None),
@@ -2057,6 +2282,20 @@ def active_workspace_matches(
     ):
         return False
     content = workspace.content
+    if isinstance(content, MusicProfile):
+        if coordinator.music_sensitivity != content.sensitivity:
+            return False
+        body = coordinator.music_body
+        if body is None:
+            return True
+        try:
+            parameters = music_body_parameters(body, content.mode, profile=coordinator.profile)
+            return (
+                content.calm is None
+                or music_body_style(body, content.mode, profile=coordinator.profile) == content.calm
+            ) and all(parameters.get(key) == value for key, value in content.parameters.items())
+        except ValueError:
+            return False
     identity: tuple[int, int] | None
     if isinstance(content, BuiltinScene | PaletteScene | LayeredScene):
         from .scenes import resolve_scene_target

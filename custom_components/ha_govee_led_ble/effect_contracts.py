@@ -886,6 +886,44 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
             (_W.MULTI, "Mixed", MULTI_EFFECT_CONTENT_KIND),
         )
     ),
+    *(
+        _capability(
+            "H8604",
+            workflow,
+            label,
+            kind,
+            route,
+            strategy,
+            _V.UNVERIFIED,
+            upload_carriers=(
+                frozenset({"rgb"})
+                if workflow is _W.NATIVE_SCENES
+                else (
+                    frozenset({"rgbic_v1"})
+                    if workflow in {_W.EDITED_PALETTE_SCENES, _W.LAYERED_SCENES}
+                    else frozenset()
+                )
+            ),
+        )
+        for workflow, label, kind, route, strategy in (
+            (_W.NATIVE_SCENES, "Scenes", "scene_builtin", _R.STUDIO_SCENE_APPLY, _S.NATIVE_EFFECT_SELECTION),
+            (
+                _W.EDITED_PALETTE_SCENES,
+                "Edited palette scenes",
+                "scene_palette",
+                _R.HOME_ASSISTANT_CONTROL,
+                _S.MODEL_SCENE_ENGINE,
+            ),
+            (_W.LAYERED_SCENES, "Layered scenes", "scene_layered", _R.HOME_ASSISTANT_CONTROL, _S.MODEL_SCENE_ENGINE),
+            (_W.PAINTED, "Graffiti", PAINTED_EFFECT_CONTENT_KIND, _R.HOME_ASSISTANT_CONTROL, _S.A3_EFFECT_UPLOAD),
+            (_W.SINGLE, "Basic", SINGLE_EFFECT_CONTENT_KIND, _R.HOME_ASSISTANT_CONTROL, _S.A3_EFFECT_UPLOAD),
+            (_W.MULTI, "Mixed", MULTI_EFFECT_CONTENT_KIND, _R.HOME_ASSISTANT_CONTROL, _S.A3_EFFECT_UPLOAD),
+            (_W.NATIVE_MUSIC, "Music", "music_profile", _R.HOME_ASSISTANT_CONTROL, _S.COORDINATOR_WRITER),
+            (_W.VIDEO, "Video", "video_profile", _R.HOME_ASSISTANT_CONTROL, _S.COORDINATOR_WRITER),
+            (_W.ADVANCED, "Advanced", "advanced", _R.HOME_ASSISTANT_CONTROL, _S.MODEL_SCENE_ENGINE),
+            (_W.WORKSHOP, "Workshop", "workshop", _R.HOME_ASSISTANT_CONTROL, _S.MODEL_SCENE_ENGINE),
+        )
+    ),
     _capability(
         "H6099",
         _W.NATIVE_SCENES,
@@ -1097,16 +1135,6 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         capability
         for model in ("H6117", "H612A", "H6125", "H6127", "H618A", "H619A", "H705A")
         for capability in _declared_capabilities(model, _RGBIC_WORKFLOW_DECLARATIONS, confidence=_V.SELECTION_ONLY)
-    ),
-    *_declared_capabilities("H8604", _RGBIC_WORKFLOW_DECLARATIONS, confidence=_V.SELECTION_ONLY),
-    _capability(
-        "H8604",
-        _W.VIDEO,
-        "Video",
-        "video_profile",
-        _R.HOME_ASSISTANT_CONTROL,
-        _S.COORDINATOR_WRITER,
-        _V.SELECTION_ONLY,
     ),
     *_declared_capabilities(
         "H6076",

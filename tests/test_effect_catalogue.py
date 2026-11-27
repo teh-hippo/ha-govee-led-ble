@@ -3,12 +3,13 @@
 import base64
 from dataclasses import replace
 from typing import Any, cast
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
 from custom_components.ha_govee_led_ble import music_commands
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, MUSIC_MODE_SLUGS, device_profile
+from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_expectations import expectations_from_packet
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.effect_catalogue import (
@@ -39,6 +40,7 @@ from custom_components.ha_govee_led_ble.effect_catalogue import (
 from custom_components.ha_govee_led_ble.effect_compiler import (
     CompiledEffect,
     compile_application,
+    compile_effect,
     validate_compiled_geometry,
 )
 from custom_components.ha_govee_led_ble.effect_contracts import (
@@ -71,14 +73,23 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     NativeEffect,
     PaintedEffect,
     PaletteDiyEffect,
+    RetainedSceneEffect,
     SingleEffect,
     TargetHint,
+    VideoProfile,
+    effect_content_workflow,
 )
+from custom_components.ha_govee_led_ble.effect_runtime import async_prepare_application
 from custom_components.ha_govee_led_ble.effect_websocket_payloads import item_summary
 from custom_components.ha_govee_led_ble.generated_protocol.diy_type03 import DiyType03
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_h617a_scene
 from custom_components.ha_govee_led_ble.layered_scene import CatalogueRef
-from custom_components.ha_govee_led_ble.layered_scene_decoder import encode_workshop_effect
+from custom_components.ha_govee_led_ble.layered_scene_decoder import (
+    decode_catalogue_layered_scene,
+    decode_workshop_effect,
+    encode_workshop_effect,
+)
+from custom_components.ha_govee_led_ble.palette_scene_decoder import decode_catalogue_palette_scene
 from custom_components.ha_govee_led_ble.protocol_admission import require_profile_packet
 from custom_components.ha_govee_led_ble.protocol_h6199 import build_h6199_scene
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES
@@ -256,7 +267,7 @@ def test_h8604_exact_catalogue_and_release_routes_compile_declared_applications(
         compiled = compile_application(
             LibraryItem.new(template.label, content),
             "H8604",
-            diy_code=321,
+            diy_code=254,
             profile=profile,
         )
         assert compiled
@@ -267,6 +278,131 @@ def test_h8604_exact_catalogue_and_release_routes_compile_declared_applications(
         profile=profile,
     )
     assert compiled.packets
+
+
+def test_h8604_admitted_workflows_compile_across_known_pacts_and_reject_unknown_pact() -> None:
+    scenes = {
+        scene_type: next(scene for scene in MODEL_SCENES["H8604"].values() if scene.scene_type == scene_type)
+        for scene_type in (0, 1, 2)
+    }
+    palette_scene = decode_catalogue_palette_scene("H8604", scenes[1])
+    layered_scene = decode_catalogue_layered_scene("H8604", scenes[2])
+    assert palette_scene is not None and layered_scene is not None
+    raw_layered = base64.b64decode(scenes[2].param, validate=True)
+    workshop_effect, trailing_padding = decode_workshop_effect("H8604", raw_layered)
+    assert workshop_effect is not None
+    catalogue = MODEL_EFFECT_CATALOGUES["H8604"]
+
+    workflow_content = (
+        BuiltinScene(
+            CatalogueRef("H8604", scenes[0].scene_id, scenes[0].effect_id),
+        ),
+        palette_scene,
+        layered_scene,
+        resolve_catalogue_template("H8604", "template:paint").content,
+        SingleEffect(0, 0, 50, ((1, 2, 3), (4, 5, 6))),
+        MultiEffect(
+            (EffectPair(0, 0), EffectPair(1, 0)),
+            50,
+            ((1, 2, 3), (4, 5, 6)),
+        ),
+        MusicProfile("H8604", "energetic", 42),
+        next(template.content for template in catalogue.templates if isinstance(template.content, VideoProfile)),
+        layered_scene.effect,
+        RetainedSceneEffect(
+            "H8604",
+            "candidate",
+            workshop_effect,
+            raw_param=raw_layered,
+            trailing_padding=trailing_padding,
+        ),
+    )
+    expected_workflows = {
+        CapabilityWorkflow.NATIVE_SCENES,
+        CapabilityWorkflow.EDITED_PALETTE_SCENES,
+        CapabilityWorkflow.LAYERED_SCENES,
+        CapabilityWorkflow.PAINTED,
+        CapabilityWorkflow.SINGLE,
+        CapabilityWorkflow.MULTI,
+        CapabilityWorkflow.NATIVE_MUSIC,
+        CapabilityWorkflow.VIDEO,
+        CapabilityWorkflow.ADVANCED,
+        CapabilityWorkflow.WORKSHOP,
+    }
+    assert {
+        CapabilityWorkflow(effect_content_workflow(content) or "") for content in workflow_content
+    } == expected_workflows
+
+    for pact in ((1, 1), (2, 1), (3, 1)):
+        profile = device_profile("H8604", *pact)
+        for content in workflow_content:
+            item = LibraryItem.new(f"H8604 {effect_content_workflow(content)}", content)
+            compiled = compile_application(item, "H8604", profile=profile)
+            validate_compiled_geometry(compiled, profile)
+            if not isinstance(content, MusicProfile | VideoProfile):
+                assert compile_effect(item, "H8604", profile=profile).packets
+
+        for scene_type in (0, 1, 2):
+            scene = scenes[scene_type]
+            compiled = compile_application(
+                LibraryItem.new(
+                    f"H8604 type {scene_type}",
+                    BuiltinScene(CatalogueRef("H8604", scene.scene_id, scene.effect_id)),
+                ),
+                "H8604",
+                profile=profile,
+            )
+            assert isinstance(compiled, CompiledEffect)
+            assert compiled.workflow is CapabilityWorkflow.NATIVE_SCENES
+            validate_compiled_geometry(compiled, profile)
+
+    unknown = device_profile("H8604", 4, 1)
+    for content in workflow_content:
+        with pytest.raises(ValueError, match="not support|supports no effects"):
+            compile_application(
+                LibraryItem.new(f"H8604 unknown {effect_content_workflow(content)}", content),
+                "H8604",
+                profile=unknown,
+            )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("pact", [(1, 1), (2, 1), (3, 1)])
+@pytest.mark.parametrize(
+    "content",
+    [
+        PaintedEffect(
+            "clockwise",
+            50,
+            100,
+            ((255, 0, 0),) * 90,
+            addressing="physical_ic",
+            background=(255, 255, 255),
+        ),
+        SingleEffect(0, 0, 50, ((1, 2, 3),)),
+        MultiEffect((EffectPair(0, 0), EffectPair(1, 0)), 50, ((1, 2, 3),)),
+    ],
+)
+async def test_h8604_preparation_rejects_non_fixed_diy_selector_before_coordinator_write(
+    hass,
+    monkeypatch: pytest.MonkeyPatch,
+    pact,
+    content,
+) -> None:
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H8604", configuration_url=None)
+    coordinator.pact_type, coordinator.pact_code = pact
+    coordinator._resolve_device_profile()
+    monkeypatch.setattr(
+        "custom_components.ha_govee_led_ble.effect_runtime.async_prepare_effect_profile",
+        AsyncMock(return_value=coordinator.profile),
+    )
+    item = LibraryItem.new("Fixed H8604 DIY", content)
+
+    prepared = await async_prepare_application(coordinator, item)
+    assert isinstance(prepared, CompiledEffect)
+    assert prepared.diy_code == 254
+    with pytest.raises(ValueError, match="temporary selector 254"):
+        await async_prepare_application(coordinator, item, diy_code=255)
 
 
 def test_h61f5_exact_native_presets_are_bounded_and_revision_independent() -> None:
@@ -989,6 +1125,88 @@ def test_release_capability_contract_declares_routes_for_every_registered_model(
     retained = release_capability("H6053", CapabilityWorkflow.WORKSHOP)
     assert retained is not None and retained.upload_carriers == frozenset({"rgb", "rgbic_v1", "rgbic_v2"})
     assert release_capabilities_for_model("H8604")
+
+
+def test_h8604_release_capabilities_are_visible_unverified_and_fail_closed_by_pact() -> None:
+    expected_routes = {
+        CapabilityWorkflow.NATIVE_SCENES: (
+            "scene_builtin",
+            ApplicationRoute.STUDIO_SCENE_APPLY,
+            CompilerDeployerStrategy.NATIVE_EFFECT_SELECTION,
+        ),
+        CapabilityWorkflow.EDITED_PALETTE_SCENES: (
+            "scene_palette",
+            ApplicationRoute.HOME_ASSISTANT_CONTROL,
+            CompilerDeployerStrategy.MODEL_SCENE_ENGINE,
+        ),
+        CapabilityWorkflow.LAYERED_SCENES: (
+            "scene_layered",
+            ApplicationRoute.HOME_ASSISTANT_CONTROL,
+            CompilerDeployerStrategy.MODEL_SCENE_ENGINE,
+        ),
+        CapabilityWorkflow.PAINTED: (
+            "h617a_painted",
+            ApplicationRoute.HOME_ASSISTANT_CONTROL,
+            CompilerDeployerStrategy.A3_EFFECT_UPLOAD,
+        ),
+        CapabilityWorkflow.SINGLE: (
+            "h617a_single",
+            ApplicationRoute.HOME_ASSISTANT_CONTROL,
+            CompilerDeployerStrategy.A3_EFFECT_UPLOAD,
+        ),
+        CapabilityWorkflow.MULTI: (
+            "h617a_multi",
+            ApplicationRoute.HOME_ASSISTANT_CONTROL,
+            CompilerDeployerStrategy.A3_EFFECT_UPLOAD,
+        ),
+        CapabilityWorkflow.NATIVE_MUSIC: (
+            "music_profile",
+            ApplicationRoute.HOME_ASSISTANT_CONTROL,
+            CompilerDeployerStrategy.COORDINATOR_WRITER,
+        ),
+        CapabilityWorkflow.VIDEO: (
+            "video_profile",
+            ApplicationRoute.HOME_ASSISTANT_CONTROL,
+            CompilerDeployerStrategy.COORDINATOR_WRITER,
+        ),
+        CapabilityWorkflow.ADVANCED: (
+            "advanced",
+            ApplicationRoute.HOME_ASSISTANT_CONTROL,
+            CompilerDeployerStrategy.MODEL_SCENE_ENGINE,
+        ),
+        CapabilityWorkflow.WORKSHOP: (
+            "workshop",
+            ApplicationRoute.HOME_ASSISTANT_CONTROL,
+            CompilerDeployerStrategy.MODEL_SCENE_ENGINE,
+        ),
+    }
+    capabilities = release_capabilities_for_model("H8604")
+
+    assert {
+        capability.workflow: (
+            capability.persistent_content_kind,
+            capability.application_route,
+            capability.compiler_deployer_strategy,
+        )
+        for capability in capabilities
+    } == expected_routes
+    assert all(
+        capability.frontend_visibility is FrontendVisibility.VISIBLE
+        and capability.verification_confidence is VerificationConfidence.UNVERIFIED
+        and capability.selector_policy is SelectorPolicy.FIXED
+        for capability in capabilities
+    )
+    assert release_selector_policy("H8604") is SelectorPolicy.FIXED
+    assert release_capability("H8604", CapabilityWorkflow.PALETTE_DIY) is None
+
+    visible_payload = cast(list[dict[str, Any]], frontend_release_capabilities("H8604"))
+    visible = {capability["id"] for capability in visible_payload}
+    assert visible == {workflow.value for workflow in expected_routes}
+    for pact in ((1, 1), (2, 1), (3, 1)):
+        profile = device_profile("H8604", *pact)
+        payload = cast(list[dict[str, Any]], frontend_release_capabilities("H8604", profile=profile))
+        assert {capability["id"] for capability in payload} == visible
+    assert frontend_release_capabilities("H8604", profile=device_profile("H8604", 4, 1)) == []
 
 
 def test_model_visible_capabilities_declare_application_and_evidence_strategies() -> None:

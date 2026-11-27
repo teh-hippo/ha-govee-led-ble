@@ -1189,6 +1189,8 @@ class _RecoveryMixin(_CoordinatorBase):
             if prepared is not None:
                 prepared.check(self)
             elif target.mode == "colour":
+                if target.video_restore_controls:
+                    await self._restore_video_controls(target)
                 if not target.is_on:
                     await self.send_command(build_power(False, self.model), state_values={"is_on": False})
                     await self.refresh_state(RefreshRequest(on=False))
@@ -1482,8 +1484,19 @@ class _RecoveryMixin(_CoordinatorBase):
             if status is CapabilityState.SUPPORTED
             and (state.video_restore_controls is None or control in state.video_restore_controls)
         }
+        restore_red = state.video_restore_controls is None or "color_calibration_red" in state.video_restore_controls
+        if restore_red and state.video_color_calibration is not None and len(state.video_color_calibration) != 4:
+            restore_red = False
+        calibration = (
+            state.video_color_calibration
+            if restore_red
+            else state.video_color_calibration[:3]
+            if state.video_color_calibration is not None
+            else None
+        )
         if (
-            state.video_color_calibration is not None
+            restore_red
+            and state.video_color_calibration is not None
             and len(state.video_color_calibration) == 4
             and "color_calibration_red" not in permitted
         ):
@@ -1522,7 +1535,7 @@ class _RecoveryMixin(_CoordinatorBase):
                     "hdmi_box_light",
                     ("hdmi_box_light", "hdmi_box_brightness", "hdmi_box_automatic", "hdmi_box_effect"),
                 ),
-                ("color_calibration", ("video_color_calibration",)),
+                ("color_calibration", ()),
                 (
                     "color_calibration_red",
                     ("video_color_calibration",)
@@ -1537,6 +1550,14 @@ class _RecoveryMixin(_CoordinatorBase):
                 getattr(state, field) is not None and getattr(self, field) != getattr(state, field) for field in fields
             )
         }
+        if (
+            calibration is not None
+            and (state.video_restore_controls is None or "color_calibration" in state.video_restore_controls)
+            and (
+                self.video_color_calibration is None or self.video_color_calibration[: len(calibration)] != calibration
+            )
+        ):
+            needed.add("color_calibration")
         complete = not (needed - permitted)
         if self.profile.video_embeds_relative_brightness and (
             state.video_restore_controls is None or "inline_relative_brightness" in state.video_restore_controls
@@ -1639,8 +1660,8 @@ class _RecoveryMixin(_CoordinatorBase):
                 permitted.discard("hdmi_box_light")
             else:
                 await apply_hdmi_box_light(self._as_coordinator, cast(tuple[bool, int, bool, int], values))
-        if "color_calibration" in permitted & needed and state.video_color_calibration is not None:
-            await apply_video_color_calibration(self._as_coordinator, state.video_color_calibration)
+        if "color_calibration" in permitted & needed and calibration is not None:
+            await apply_video_color_calibration(self._as_coordinator, calibration)
         if "blank_screen" in permitted & needed and state.blank_screen is not None:
             if not restore_policy:
                 await apply_blank_screen(self._as_coordinator, state.blank_screen)
