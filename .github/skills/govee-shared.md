@@ -14,7 +14,8 @@ If private evidence is unavailable, use available public evidence and record the
 Keep private references in private notes; describe behaviour in original wording in public material.
 
 Trace the selected revision and operation from public control through profile, catalogue or codec to preparation, transport, observation and recovery as applicable.
-Establish how the connection or preceding action supplies each required observation before its first use.
+Trace required observations back to the connection or preceding action.
+For a temporary safety refusal, check that the guard blocks the operation without its prerequisite and allows it once the prerequisite is met.
 Check registry precedence, overrides and fallback callers when they can select a different route.
 Use indexed routes to save navigation, and recheck their scope and freshness when the conclusion depends on them.
 Use symbol navigation when available; bounded search and file reads also work.
@@ -29,7 +30,7 @@ For a targeted report, follow the affected contract across equivalent callers an
 - **Basis:** exact capture or owner observation, active exact route, demonstrated shared route, public reference or inference.
   A catalogue entry, profile flag or passing codec test does not establish what Home Assistant offers or executes.
   Public specifications do not prove wire behaviour.
-  An exclusion in code or tests needs independent product evidence or [project policy](../../CONTRIBUTING.md#repository-non-goals) to justify it.
+  A permanent capability exclusion needs independent product evidence or [project policy](../../CONTRIBUTING.md#repository-non-goals) to justify it.
   A declared profile fact, its owner confirmation and a runtime observation are separate authorities; do not merge one into another.
   A diagnostic or cached value does not invalidate an independently declared and owner-confirmed product fact.
 - **Disposition:** confirmed match, defect, gap, conflict, policy/non-goal or unchecked.

@@ -296,7 +296,8 @@ Semantic-release commits use the lightweight path only after exact version-only 
 - Refactors preserve complete relevant public payloads and generated wire output.
   Fixes demonstrate the old failure and intended outcome through the reported public operation.
   Let production code acquire required identity, geometry and recovery state from faithful boundary inputs rather than preloading the result.
-  Check the resulting delivery, observation or restoration as applicable; clearing the first error is not proof of completion.
+  Name the last production step exercised: a call to a mock writer proves handoff, not delivery.
+  Link existing coverage for the remaining steps through delivery, observation or restoration as applicable; otherwise state where proof stops.
 - Challenge both exceptions and abstractions.
   Justify special treatment, share equivalent capability paths and remove superseded code, state and tests.
   Preserve product declarations and safety boundaries.
