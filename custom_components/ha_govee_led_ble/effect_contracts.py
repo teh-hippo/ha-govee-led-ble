@@ -1098,6 +1098,16 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         for model in ("H6117", "H612A", "H6125", "H6127", "H618A", "H619A", "H705A")
         for capability in _declared_capabilities(model, _RGBIC_WORKFLOW_DECLARATIONS, confidence=_V.SELECTION_ONLY)
     ),
+    *_declared_capabilities("H8604", _RGBIC_WORKFLOW_DECLARATIONS, confidence=_V.SELECTION_ONLY),
+    _capability(
+        "H8604",
+        _W.VIDEO,
+        "Video",
+        "video_profile",
+        _R.HOME_ASSISTANT_CONTROL,
+        _S.COORDINATOR_WRITER,
+        _V.SELECTION_ONLY,
+    ),
     *_declared_capabilities(
         "H6076",
         tuple(
