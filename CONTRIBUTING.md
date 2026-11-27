@@ -291,6 +291,12 @@ Semantic-release commits use the lightweight path only after exact version-only 
 - Characterise surprising behaviour against device evidence before changing it.
   Preserve genuine constraints in shared coverage and remove temporary or duplicate tests.
   Test asynchronous ordering and ownership through explicit synchronisation.
+- Name the new contract, parameter partition or replayed regression introduced by each test.
+  Add exact declarations and pure data to exhaustive corpora, but require a distinct observable partition for expensive execution.
+- Add no Cartesian matrix axis unless each value can change the tested outcome.
+  Use per-operation equivalence classes only after proving the profiles agree for every relevant admission, identity, geometry, transport and recovery input.
+- Protect branch arcs, prohibited effects and targeted faults, not just aggregate line or branch percentages.
+  Prove replacements without the superseded tests before deleting them.
 - Establish capability limits across individual, combined and service operations and evidenced revisions.
   Protect working workflows when resolving failures or missing controls.
 - Refactors preserve complete relevant public payloads and generated wire output.
