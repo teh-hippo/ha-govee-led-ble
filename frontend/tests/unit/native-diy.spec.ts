@@ -192,15 +192,15 @@ test("H607C Shimmer and Drip expose ordered primary and background palette contr
   }
   expect(shimmer).toMatchObject({
     palette_min: 1,
-    palette_max: 8,
-    secondary_palette: { min: 1, max: 1 },
-    palette_labels: ["Accent colours", "Background"],
+    palette_max: 1,
+    secondary_palette: { min: 1, max: 8 },
+    palette_labels: ["Background", "Accent colours"],
   });
   expect(drip).toMatchObject({
     palette_min: 1,
     palette_max: 8,
-    secondary_palette: { min: 1, max: 1 },
-    palette_labels: ["Moving colours", "Background"],
+    secondary_palette: { min: 2, max: 8 },
+    palette_labels: ["Moving colours", "Breathing colours"],
   });
 
   for (const family of [shimmer.family, drip.family]) {
@@ -211,8 +211,14 @@ test("H607C Shimmer and Drip expose ordered primary and background palette contr
     const layer = content.layers[0];
     expect(layer.type).toBe("diy");
     if (layer.type !== "diy") throw new Error("expected DIY layer");
+    const effect = family === shimmer.family ? shimmer : drip;
     expect(layer.speed).toBe(50);
-    expect(layer.secondary_palette).toHaveLength(1);
+    if (family === shimmer.family) expect(layer.palette).toHaveLength(1);
+    else expect(layer.palette.length).toBeGreaterThanOrEqual(effect.palette_min!);
+    expect(layer.palette.length).toBeLessThanOrEqual(effect.palette_max!);
+    const secondary = layer.secondary_palette ?? [];
+    expect(secondary.length).toBeGreaterThanOrEqual(effect.secondary_palette!.min);
+    expect(secondary.length).toBeLessThanOrEqual(effect.secondary_palette!.max);
     expect(decodeEffectContent(content)).toEqual(content);
   }
 });
