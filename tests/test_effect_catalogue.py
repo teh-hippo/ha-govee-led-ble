@@ -207,6 +207,30 @@ def test_h61e5_exact_catalogue_and_release_routes_admit_complete_scope():
         compile_application(LibraryItem.new(template.label, template.content), "H61E5", profile=profile)
 
 
+def test_h612a_exact_catalogue_and_release_routes_compile_scene_application():
+    profile = device_profile("H612A", 1, 2)
+    workflows = {capability.workflow for capability in release_capabilities_for_model("H612A")}
+
+    assert workflows == {
+        CapabilityWorkflow.NATIVE_SCENES,
+        CapabilityWorkflow.EDITED_PALETTE_SCENES,
+        CapabilityWorkflow.LAYERED_SCENES,
+        CapabilityWorkflow.PAINTED,
+        CapabilityWorkflow.SINGLE,
+        CapabilityWorkflow.MULTI,
+        CapabilityWorkflow.NATIVE_MUSIC,
+        CapabilityWorkflow.ADVANCED,
+        CapabilityWorkflow.WORKSHOP,
+    }
+    scene = MODEL_SCENES["H612A"]["sunrise"]
+    compiled = compile_application(
+        LibraryItem.new(scene.name, BuiltinScene(CatalogueRef("H612A", scene.scene_id, scene.effect_id))),
+        "H612A",
+        profile=profile,
+    )
+    assert compiled.packets
+
+
 def test_h61f5_exact_native_presets_are_bounded_and_revision_independent() -> None:
     selectors = (501, 502, 504, 505, 506)
     catalogue = MODEL_EFFECT_CATALOGUES["H61F5"]
@@ -829,6 +853,17 @@ def test_release_capability_contract_covers_every_preview_workflow() -> None:
             CapabilityWorkflow.ADVANCED,
             CapabilityWorkflow.WORKSHOP,
         },
+        "H612A": {
+            CapabilityWorkflow.NATIVE_SCENES,
+            CapabilityWorkflow.EDITED_PALETTE_SCENES,
+            CapabilityWorkflow.LAYERED_SCENES,
+            CapabilityWorkflow.PAINTED,
+            CapabilityWorkflow.SINGLE,
+            CapabilityWorkflow.MULTI,
+            CapabilityWorkflow.NATIVE_MUSIC,
+            CapabilityWorkflow.ADVANCED,
+            CapabilityWorkflow.WORKSHOP,
+        },
         "H6199": {
             CapabilityWorkflow.NATIVE_SCENES,
             CapabilityWorkflow.EDITED_PALETTE_SCENES,
@@ -863,10 +898,7 @@ def test_release_capability_contract_covers_every_preview_workflow() -> None:
 
 
 def test_release_capability_contract_declares_routes_for_every_registered_model() -> None:
-    assert {capability.model for capability in RELEASE_CAPABILITY_CONTRACT} == set(MODEL_PROFILES) - {
-        "H612A",
-        "H8604",
-    }
+    assert {capability.model for capability in RELEASE_CAPABILITY_CONTRACT} == set(MODEL_PROFILES) - {"H8604"}
 
     approved = {
         "H600A",
@@ -906,7 +938,6 @@ def test_release_capability_contract_declares_routes_for_every_registered_model(
     )
     retained = release_capability("H6053", CapabilityWorkflow.WORKSHOP)
     assert retained is not None and retained.upload_carriers == frozenset({"rgb", "rgbic_v1", "rgbic_v2"})
-    assert not release_capabilities_for_model("H612A")
     assert not release_capabilities_for_model("H8604")
 
 
