@@ -283,9 +283,7 @@ def scene_supported(scene: SceneEntry, profile: ModelProfile) -> bool:
         or (scene.command_version != 0 and scene.scene_type != 2)
     ):
         return False
-    if profile.scene_codes is None:
-        return not scene.local_only
-    return scene.code in profile.scene_codes
+    return profile.supports_scene_code(scene.code) and (profile.scene_codes is not None or not scene.local_only)
 
 
 def scene_command_identity_fields(model: str, scene: SceneEntry) -> frozenset[str]:

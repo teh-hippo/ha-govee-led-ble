@@ -6,7 +6,7 @@ from uuid import uuid4
 import pytest
 from kaitaistruct import KaitaiStructError
 
-from custom_components.ha_govee_led_ble.const import get_profile
+from custom_components.ha_govee_led_ble.const import EFFECT_CATEGORY_SCENES, get_profile
 from custom_components.ha_govee_led_ble.effect_compiler import require_native_scenes
 from custom_components.ha_govee_led_ble.effect_domain import (
     LibraryItem,
@@ -14,6 +14,7 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     effect_content_from_dict,
     effect_content_to_dict,
 )
+from custom_components.ha_govee_led_ble.effect_selector import effect_selector_entries
 from custom_components.ha_govee_led_ble.generated_protocol.scene_body import SceneBody
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_h617a_scene,
@@ -42,6 +43,7 @@ from custom_components.ha_govee_led_ble.scenes import (
     _load_catalogue,
     _load_speed,
     scene_selector_code,
+    scene_supported,
 )
 from custom_components.ha_govee_led_ble.transport import fragment_a3, reassemble_a3
 
@@ -147,6 +149,32 @@ def test_per_model_snapshots_preserve_vendor_identity():
     assert MODEL_SCENES["H6199"]["green reign"].code == 16183
     assert MODEL_SCENES["H6199"]["fire & blood"].code == 16184
     assert {"flash [emotion]", "flash [zootopia 2]"} <= MODEL_SCENES["H6199"].keys()
+
+
+def test_h1a42_excludes_owner_rejected_scene_selectors():
+    profile = get_profile("H1A42")
+    catalogue = SCENE_ENTRIES["H1A42"]
+    rejected = {entry.name: entry for entry in catalogue if entry.code in {42, 43}}
+
+    assert set(rejected) == {"White Light", "Illumination"}
+    assert all(not scene_supported(entry, profile) for entry in rejected.values())
+    assert sum(scene_supported(entry, profile) for entry in catalogue) == 159
+
+    selectors = effect_selector_entries(
+        "H1A42",
+        frozenset({EFFECT_CATEGORY_SCENES}),
+        (),
+        prefix_effect_names=False,
+        profile=profile,
+    )
+    assert len(selectors) == 159
+    assert not {"white light", "illumination"} & {entry.value for entry in selectors}
+
+    for entry in rejected.values():
+        with pytest.raises(ValueError, match="not supported"):
+            build_native_scene_packets("H1A42", entry, profile=profile)
+        with pytest.raises(ValueError, match="confirmed revision"):
+            require_profile_packet(build_scene_activation("H1A42", entry.code), profile)
 
 
 def test_h6179_scene_catalogue_uses_unique_one_byte_selectors() -> None:

@@ -756,6 +756,7 @@ class ModelProfile:
     selector_only_scene_bits: int | None = None
     # scene_codes limits selector eligibility per revision; local_scenes use scene_id 0, effect_id = selector.
     scene_codes: frozenset[int] | None = None
+    excluded_scene_codes: frozenset[int] = frozenset()
     # Declared A3 scene upload subtypes; None leaves admission to the shared grammar.
     scene_upload_subtypes: frozenset[int] | None = None
     scene_command_versions: frozenset[int] | None = None
@@ -1173,6 +1174,9 @@ class ModelProfile:
 
     def can_read(self, domain: ReadDomain) -> bool:
         return domain in self.read_domains
+
+    def supports_scene_code(self, code: int) -> bool:
+        return code not in self.excluded_scene_codes and (self.scene_codes is None or code in self.scene_codes)
 
     def validate_video_saturation(self, value: int) -> None:
         if type(value) is not int or not self.video_saturation_min <= value <= 100:
@@ -2792,6 +2796,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_segment_brightness=True,
         supports_segment_color_temperature=True,
         scene_catalogue_sku="H1A42",
+        excluded_scene_codes=frozenset({42, 43}),
         effect_readback="diy_code_only",
         boolean_controls=frozenset({"gradual"}),
     ),
