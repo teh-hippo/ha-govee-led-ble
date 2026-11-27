@@ -16,14 +16,10 @@ on:
         required: false
         default: false
         type: boolean
-  # Admission below requires same-repository master validation and rechecks the exact current SHA before executable steps.
-  workflow_run: # zizmor: ignore[dangerous-triggers]
-    workflows: [Validate]
-    types: [completed]
-    branches: [master]
+  # Admission below requires master validation and rechecks the exact current SHA before executable steps.
 
 concurrency:
-  group: release-${{ github.ref }}-${{ github.event_name == 'workflow_run' && 'rc' || inputs.release_type || 'stable' }}
+  group: release-${{ github.ref }}-${{ inputs.release_type }}
   cancel-in-progress: false
 
 jobs:
@@ -34,20 +30,14 @@ jobs:
     concurrency:
       group: release-master-publication
       cancel-in-progress: false
-    if: >-
-      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master') ||
-      (github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.head_branch == 'master' &&
-       github.event.workflow_run.head_repository.full_name == github.repository &&
-       (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch') &&
-       !startsWith(github.event.workflow_run.head_commit.message, 'chore(release): '))
+    if: github.ref == 'refs/heads/master'
     permissions:
       actions: read
       contents: write
     env:
-      SOURCE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
-      RELEASE_CHANNEL: ${{ github.event_name == 'workflow_run' && 'rc' || inputs.release_type || 'stable' }}
-      FORCE_MAJOR: ${{ github.event_name == 'workflow_dispatch' && inputs.force_major || false }}
+      SOURCE_SHA: ${{ github.sha }}
+      RELEASE_CHANNEL: ${{ inputs.release_type }}
+      FORCE_MAJOR: ${{ inputs.force_major }}
       UV_CACHE_DIR: /tmp/.uv-cache
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

@@ -20,6 +20,8 @@ Use the [shared evidence method](../govee-shared.md).
 4. Run `govee-audit` against the result.
    Resolve coupled findings; a fresh audit that checks implementation correctness can also satisfy independent acceptance review.
 5. Follow [change acceptance](../../../CONTRIBUTING.md#change-and-test-design), open a PR referencing the request and merge once green.
-   Verify the [master candidate](../../../docs/release-candidates.md#master-candidates) contains the merge and keep the issue open.
-6. Show the operator the requester reply before posting.
+   Ask the operator whether to publish a [master candidate](../../../docs/release-candidates.md#master-candidates).
+   If approved, dispatch `Release` with `release_type=rc` on validated master, verify the candidate contains the merge and keep the issue open.
+   If declined, report that the merge is not yet published, keep the issue open and stop.
+6. With an available candidate, show the operator the requester reply before posting.
    Give the exact candidate, installation and restart instructions, and ask for revision, controls tested, visible results and untested areas.

@@ -24,10 +24,10 @@ See [release policy](../CONTRIBUTING.md#releases) for release channels.
 
 ## Master candidates
 
-Use the automatic `v<version>-rc.<number>` candidate after a release-bearing merge to validated `master`.
+When operator-approved, dispatch `Release` with `release_type=rc` on validated `master` to publish `v<version>-rc.<number>`.
 Verify the merged source is included, the `Release` workflow succeeded, and the published ZIP, packaged version and checksum agree.
 Documentation-only changes do not require a new candidate.
 
-If automatic publication did not run for an eligible change, use `gh workflow run release.yml --ref master -f release_type=rc` on validated master.
+Use `gh workflow run release.yml --ref master -f release_type=rc`.
 Manual dispatch defaults to stable.
 For an [optional PR candidate](release-publication.md#building-an-optional-pr-candidate), [major release](release-publication.md#intentionally-starting-a-major-version) or [failed publication](release-publication.md#recovering-a-failed-publication), use the specialist procedure.
