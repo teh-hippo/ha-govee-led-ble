@@ -461,12 +461,12 @@ def _check_command_packet(frame: bytes, profile: ModelProfile) -> bool:
                     raise ValueError("Invalid boolean control value")
                 return True
             raise ValueError(f"{profile.name} does not support boolean control {control}")
-        if (
-            operation == "scene" or operation in {"multi", "mode"} and sub_operation == "scene"
-        ) and profile.scene_codes is not None:
+        if (operation == "scene" or operation in {"multi", "mode"} and sub_operation == "scene") and (
+            profile.scene_codes is not None or profile.excluded_scene_codes
+        ):
             _sub_operation, detail = _command_mode_parts(command, profile.command_grammar)
             code = getattr(detail, "code", getattr(detail, "scene_id", None))
-            if code not in profile.scene_codes:
+            if code is None or not profile.supports_scene_code(code):
                 raise ValueError("scene selector is outside the confirmed revision")
             if profile.selector_only_scene_bits is not None and getattr(detail, "music_code", 0) != 0:
                 raise ValueError("selector-only scene does not accept a companion music code")
