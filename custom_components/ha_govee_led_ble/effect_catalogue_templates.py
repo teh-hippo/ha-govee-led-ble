@@ -578,7 +578,7 @@ def _native_zone_layer(family: DiyEffectFamily, variant: int | None = None) -> N
     return NativeDiyLayer(
         kind=family.family,
         parameter=family.variations[0].variant if variant is None else variant,
-        speed=50,
+        speed=max(family.rate_min, min(50, family.rate_max)),
         palette=DEFAULT_PALETTE[: family.palette_max or 8],
         secondary_palette=DEFAULT_PALETTE[: family.secondary_palette_max] if family.secondary_palette_max else (),
     )

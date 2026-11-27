@@ -218,6 +218,15 @@ def test_native_diy_two_palettes_keep_distinct_primary_and_background_colours(ra
     assert uploaded.family == content.family
 
 
+def test_h607c_drip_emits_its_fixed_speed_byte():
+    raw = bytes.fromhex("0b71003201ff00000200ff000000ff")
+
+    content = decode_zoned_diy(raw)
+
+    assert content.layers[0].speed == 50
+    assert encode_zoned_diy(content) == raw
+
+
 async def test_native_diy_paired_shimmer_and_drip_survive_save_reload_apply_and_restoration(hass, monkeypatch):
     shimmer = bytes.fromhex("003201ff00000200ff000000ff")
     drip = bytes.fromhex("003201ff000002ffff000000ff")
@@ -316,8 +325,8 @@ async def test_native_diy_paired_shimmer_and_drip_survive_save_reload_apply_and_
 
 
 @pytest.mark.parametrize("family", list(H607cDiyBody.Family)[:-1])
-@pytest.mark.parametrize(("speed", "valid"), [(0, False), (1, True), (100, True)])
-def test_h607c_native_diy_speed_boundaries(family, speed, valid):
+@pytest.mark.parametrize("speed", [0, 1, 50, 100])
+def test_h607c_native_diy_speed_boundaries(family, speed):
     catalogue = MODEL_EFFECT_CATALOGUES["H607C"]
     declared = next(candidate for candidate in catalogue.effects if candidate.family == family)
     template = next(
@@ -325,9 +334,12 @@ def test_h607c_native_diy_speed_boundaries(family, speed, valid):
         for candidate in catalogue.templates
         if isinstance(candidate.content, NativeEffect) and candidate.content.family == family
     )
-    assert declared.rate_min == 1 and declared.rate_max == 100
+    expected = (50, 50) if family == H607cDiyBody.Family.drip else (1, 100)
+    assert (declared.rate_min, declared.rate_max) == expected
     layer = template.content.layers[0]
     assert isinstance(layer, NativeDiyLayer)
+    assert layer.speed == 50
+    valid = declared.rate_min <= speed <= declared.rate_max
     content = replace(template.content, layers=(replace(layer, speed=speed),))
     item = LibraryItem.new(template.label, content)
     if valid:

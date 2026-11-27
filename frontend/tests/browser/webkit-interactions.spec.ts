@@ -422,9 +422,8 @@ test("native pole/base recipes retain siblings, variable rates and independent p
   await expect(editor.getByRole("checkbox", {name: "Include this effect", exact: true})).toHaveCount(2);
   await editor.getByRole("combobox").first().selectOption("113");
   const speed = editor.locator("section.card").first().locator("govee-slider-control");
-  await expect(speed).toBeVisible();
-  expect(await speed.evaluate(element => (element as HTMLElement & {minimum: number}).minimum)).toBe(1);
-  expect(await speed.evaluate(element => (element as HTMLElement & {maximum: number}).maximum)).toBe(100);
+  await expect(speed).toHaveCount(0);
+  await expect(editor.getByText("Speed: 50 (fixed)", {exact: true})).toBeVisible();
   await expect(editor.getByRole("heading", {name: "Moving colours", exact: true})).toBeVisible();
   await expect(editor.getByRole("heading", {name: "Breathing colours", exact: true})).toBeVisible();
   const after = await editor.evaluate(element => (element as GoveeCustomEffectEditor).nativeContent!);
