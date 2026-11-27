@@ -19,7 +19,7 @@ Use the [shared evidence method](../govee-shared.md).
    Register new Kaitai roots and outputs as needed and use existing suites for distinct contracts.
 4. Run `govee-audit` against the result.
    Resolve coupled findings; a fresh audit that checks implementation correctness can also satisfy independent acceptance review.
-5. Follow [change acceptance](../../../CONTRIBUTING.md#change-and-test-design), open a PR referencing the request and merge once green.
+5. Follow [change acceptance](../../../CONTRIBUTING.md#change-and-test-design), open a PR referencing the request and merge using the documented rebase-only policy.
    Ask the operator whether to publish a [master candidate](../../../docs/release-candidates.md#master-candidates).
    If approved, dispatch `Release` with `release_type=rc` on validated master, verify the candidate contains the merge and keep the issue open.
    If declined, report that the merge is not yet published, keep the issue open and stop.
