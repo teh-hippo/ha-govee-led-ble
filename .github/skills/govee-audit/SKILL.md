@@ -23,6 +23,8 @@ Use the [shared evidence method](../govee-shared.md).
    Live BLE operation is qualification work owned by the [release-candidate runbook](../../../docs/release-candidates.md), not an audit prerequisite or coverage gap.
    Reserve `make check` for change acceptance.
 4. Report only material user-visible defects, missing supported behaviour or evidence conflicts, grouped by owning cause and impact.
+   If there are no findings, lead with a positive confirmation that the audit passed and clearly name the requested scope.
+   If there are findings, present them in a Markdown table with coloured severity glyphs: `🔴 High`, `🟠 Medium` and `🟡 Low`.
    Mention justified product differences only when needed to explain a finding.
    State the user-visible consequence in plain language before protocol terminology.
    Keep evidence annotations, synthetic coverage and runtime guardrails outside the findings list unless they conflict with the delivered or owner-confirmed behaviour.
