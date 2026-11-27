@@ -1,17 +1,24 @@
 """Exact H1A42 native RGBIC preset admission and wire contracts."""
 
 from dataclasses import replace
+from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
 
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, device_profile
-from custom_components.ha_govee_led_ble.effect_catalogue import resolve_catalogue_template
+from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.effect_catalogue import (
+    resolve_catalogue_template,
+    scene_activated_native_diy_selectors,
+)
 from custom_components.ha_govee_led_ble.effect_catalogue_registry import MODEL_EFFECT_CATALOGUES
 from custom_components.ha_govee_led_ble.effect_compiler import CompiledEffect, compile_application
 from custom_components.ha_govee_led_ble.effect_contracts import CapabilityWorkflow, frontend_release_capabilities
 from custom_components.ha_govee_led_ble.effect_domain import LayeredEffect, LibraryItem
+from custom_components.ha_govee_led_ble.effect_storage import LibrarySnapshot
 from custom_components.ha_govee_led_ble.layered_scene_decoder import encode_workshop_effect
+from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.protocol_admission import require_profile_packet
 from custom_components.ha_govee_led_ble.transport import reassemble_a3
 
@@ -57,6 +64,7 @@ def test_h1a42_presets_resolve_compile_and_admit(profile) -> None:
     }
     assert native_templates == set(PRESET_IDS)
     assert not catalogue.advanced_create
+    assert scene_activated_native_diy_selectors("H1A42", profile=profile) == set(PRESET_IDS)
     capabilities = cast(list[dict[str, Any]], frontend_release_capabilities("H1A42", profile=profile))
     assert {capability["id"] for capability in capabilities} >= {
         "native_scenes",
@@ -112,3 +120,34 @@ def test_h1a42_preset_geometry_defaults_and_frontend_ceiling() -> None:
             "H1A42",
             profile=profile,
         )
+
+
+def test_h1a42_primary_light_projects_only_declared_saved_native_preset(hass) -> None:
+    profile = device_profile("H1A42", 1, 1)
+    preset = LibraryItem.new(
+        "Saved preset",
+        resolve_catalogue_template("H1A42", "template:native-diy:501", profile=profile).content,
+    )
+    unrestricted = LibraryItem.new("Unrestricted", replace(preset.content, native_diy=None))
+    backend = cast(
+        Any,
+        SimpleNamespace(
+            application=SimpleNamespace(library_snapshot=lambda: LibrarySnapshot((preset, unrestricted))),
+            device_cache=SimpleNamespace(get=lambda _entry_id: None),
+            active_workspaces=SimpleNamespace(get=lambda _entry_id: None),
+        ),
+    )
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H1A42", configuration_url=None)
+    coordinator.profile = profile
+    light = GoveeBLELight(coordinator, config_entry_id="h1a42", effect_backend=backend)
+
+    assert not coordinator.profile.supports_advanced_effects
+    assert "advanced" not in coordinator.effect_categories
+    assert "Saved preset" in light.effect_list
+    assert light._saved_effect("Saved preset") == preset
+    assert "Unrestricted" not in light.effect_list
+
+    other = GoveeBLECoordinator(hass, "22:33:44:55:66:77", "H601C", configuration_url=None)
+    other_light = GoveeBLELight(other, config_entry_id="other", effect_backend=backend)
+    assert "Saved preset" not in other_light.effect_list
+    assert scene_activated_native_diy_selectors("H601C") == frozenset()

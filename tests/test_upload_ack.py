@@ -36,6 +36,7 @@ from custom_components.ha_govee_led_ble.effect_preview import PreviewPhase
 from custom_components.ha_govee_led_ble.effect_runtime import EffectDeploymentEngine
 from custom_components.ha_govee_led_ble.effect_storage import LibrarySnapshot
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
+    build_brightness,
     build_diy_activation,
     build_music_mode,
     build_power,
@@ -1787,10 +1788,14 @@ async def test_h1a42_saved_preset_public_apply_and_recovery(selection_ready, mon
     await repository.async_load()
     engine = EffectDeploymentEngine(repository)
     monkeypatch.setattr(engine, "_async_prepare_prior_state", AsyncMock(return_value=(True, None)))
-    prior = PriorControlState(mode="unknown", is_on=True, brightness_pct=23, rgb_color=(17, 34, 51))
+    prior = PriorControlState(
+        mode="scene",
+        is_on=True,
+        brightness_pct=23,
+        rgb_color=(17, 34, 51),
+        scene_code=501,
+    )
     monkeypatch.setattr(c, "capture_effect_control_state", MagicMock(return_value=prior))
-    restore = AsyncMock(return_value=True)
-    monkeypatch.setattr(c, "_async_restore_prior_control_state", restore)
     monkeypatch.setattr(c, "refresh_state", AsyncMock(return_value=True))
     monkeypatch.setattr(c, "async_observe_effect", AsyncMock(return_value=True))
 
@@ -1811,15 +1816,22 @@ async def test_h1a42_saved_preset_public_apply_and_recovery(selection_ready, mon
     sent = [call.args[1] for call in client.write_gatt_char.call_args_list]
     assert sent[-len(compiled.packets) :] == list(compiled.packets)
     assert sent[: -len(compiled.packets)] == [build_power(True, "H1A42")]
-    assert await c.async_restore_effect_control_state(
+    assert not await c.async_restore_effect_control_state(
         result.prior_state,
         overwritten_diy_code=compiled.diy_code,
     )
-    restore.assert_awaited_once_with(
+    assert [call.args[1] for call in client.write_gatt_char.call_args_list][-3:] == [
+        build_power(True, "H1A42"),
+        build_brightness(23, "H1A42"),
+        build_scene_activation("H1A42", 501, profile=c.profile),
+    ]
+
+    writes = client.write_gatt_char.await_count
+    assert not await c.async_restore_effect_control_state(
         result.prior_state,
-        overwritten_diy_code=504,
-        prepared_colour=None,
+        overwritten_diy_code=501,
     )
+    assert client.write_gatt_char.await_count == writes
 
 
 @pytest.mark.parametrize("connected", ["H6199"], indirect=True)
