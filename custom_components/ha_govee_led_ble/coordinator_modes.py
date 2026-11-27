@@ -163,7 +163,7 @@ class _ActiveModeMixin(_CoordinatorBase):
         self.video_mode = "off"
         self.video_saturation = self.white_brightness = 100
         self.video_full_screen, self.video_sound_effects = True, False
-        self.video_sound_effects_softness = 100
+        self.video_sound_effects_softness = min(100, self.profile.video_softness_max)
         self.video_sensitivity: int | None = None
         self.video_hdmi_input: int | None = None
         self.video_hdmi_inputs_connected: tuple[bool, bool, bool, bool] | None = None

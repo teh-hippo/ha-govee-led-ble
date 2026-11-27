@@ -1060,7 +1060,8 @@ class GoveeBLECoordinator(
         self.music_color = self._music_palette = self._music_body = None
         self.music_fixed_colour = self.music_left_colour = self.music_right_colour = None
         self._music_calm = None
-        self.video_saturation = self.video_sound_effects_softness = 100
+        self.video_saturation = 100
+        self.video_sound_effects_softness = min(100, profile.video_softness_max)
         self.video_full_screen, self.video_sound_effects = True, False
         self.video_sensitivity = self.video_hdmi_input = self.video_color_calibration = None
         self.video_hdmi_inputs_connected = None
