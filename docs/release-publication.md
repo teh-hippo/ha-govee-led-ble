@@ -8,7 +8,7 @@ For normal installation and testing, see [release candidates](release-candidates
 Select `force_major=true` for an operator-requested major version.
 For example, `gh workflow run release.yml --ref master -f release_type=rc -f force_major=true` uses Python Semantic Release's standard `--major` option.
 Notes cover all changes since the last stable.
-Subsequent automatic candidates continue normal RC numbering.
+Subsequent manually dispatched candidates continue normal RC numbering.
 
 When that candidate is ready for stable, select `release_type=stable` and `force_major=true` again.
 Repeat the override because ordinary stable calculation can select a lower version.

@@ -77,7 +77,7 @@ tag_format = "v{version}"
 assets = ["uv.lock"]
 
 [tool.semantic_release.commit_parser_options]
-# Keep merge-commit parsing on so release-bearing merges still trigger releases when branch commits are fixups.
+# Keep merge-commit parsing on so release-bearing merges remain in release notes when branch commits are fixups.
 # feat:/fix: subjects become user-facing release notes; put implementation detail in the body.
 ignore_merge_commits = false
 patch_tags = ["fix", "perf", "build"]

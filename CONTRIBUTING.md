@@ -217,7 +217,7 @@ The [shared evidence method](.github/skills/govee-shared.md) covers model invest
 
 ## Support status
 
-New models merge as `Experimental` and ship through master candidates.
+New models merge as `Experimental` and ship through operator-published master candidates.
 Reference the request in the PR; keep it open through implementation and owner testing.
 After an owner confirms that exact model on hardware, set `SupportQuality.SUPPORTED` in `const.py` and update the README.
 Close the request once the promotion merges and ships in a verified release.
@@ -329,7 +329,7 @@ Python Semantic Release owns versions, release commits, tags and notes from Conv
 
 | Path | Authority and result |
 | --- | --- |
-| Master candidate | After release-bearing merges and successful current-master `Validate`, `Release` publishes `v<version>-rc.<number>` automatically. |
+| Master candidate | Operator runs `gh workflow run release.yml --ref master -f release_type=rc` on validated `master`; `Release` publishes `v<version>-rc.<number>`. |
 | Optional PR candidate | Operator-approved, reviewed exact-SHA hardware-test build through `Prerelease Package`, tagged `v<version>-pr-<PR number>.<candidate number>`. |
 | Stable | Operator runs `gh workflow run release.yml --ref master` on current validated `master`. |
 
@@ -339,7 +339,6 @@ Use [major-version selection](docs/release-publication.md#intentionally-starting
 Publication requires successful validation of exact current master.
 After master advances, wait for its checks and retry.
 Master RC and stable share a serial lock; active publication finishes before waiting replacements.
-Release commits terminate the automatic candidate chain.
 Tags and published releases remain immutable; stable publication alone moves GitHub's latest stable release.
 
 Every release publishes a verified integration ZIP and SHA-256 checksum.

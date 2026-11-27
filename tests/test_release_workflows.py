@@ -192,17 +192,16 @@ def test_pr_candidate_revision_reuses_exact_sha_or_advances(
 
 
 @pytest.mark.parametrize(
-    ("event", "channel", "force_major"),
+    ("channel", "force_major"),
     [
-        ("workflow_run", "rc", False),
-        ("workflow_dispatch", "stable", False),
-        ("workflow_dispatch", "rc", False),
-        ("workflow_dispatch", "rc", True),
-        ("workflow_dispatch", "stable", True),
+        ("stable", False),
+        ("rc", False),
+        ("rc", True),
+        ("stable", True),
     ],
 )
 def test_release_history_keeps_rc_tags_only_for_normal_candidates(
-    tmp_path: Path, event: str, channel: str, force_major: bool
+    tmp_path: Path, channel: str, force_major: bool
 ) -> None:
     setup = _run(
         "git init -b master; git config user.name Fixture; git config user.email fixture@example.invalid; "
@@ -218,7 +217,7 @@ def test_release_history_keeps_rc_tags_only_for_normal_candidates(
     result = _run(
         _step_script("release.yml", "Select release history"),
         tmp_path,
-        {**os.environ, "RELEASE_EVENT": event, "RELEASE_CHANNEL": channel, "FORCE_MAJOR": str(force_major).lower()},
+        {**os.environ, "RELEASE_CHANNEL": channel, "FORCE_MAJOR": str(force_major).lower()},
     )
 
     assert result.returncode == 0, result.stderr
@@ -290,20 +289,18 @@ def test_master_release_requires_current_validated_commit(
 
 
 @pytest.mark.parametrize(
-    ("event", "channel", "force_major", "current_version", "next_version", "existing_tag", "accepted"),
+    ("channel", "force_major", "current_version", "next_version", "existing_tag", "accepted"),
     [
-        ("workflow_run", "rc", False, "7.42.0-rc.26", "7.42.0-rc.27", False, True),
-        ("workflow_dispatch", "stable", False, "7.42.0-rc.26", "7.42.0", False, True),
-        ("workflow_dispatch", "rc", True, "7.42.0-rc.26", "8.0.0-rc.1", False, True),
-        ("workflow_run", "rc", False, "8.0.0-rc.1", "8.0.0-rc.2", False, True),
-        ("workflow_dispatch", "stable", True, "8.0.0-rc.2", "8.0.0", False, True),
-        ("workflow_dispatch", "stable", False, "8.0.0-rc.2", "7.42.0", False, False),
-        ("workflow_dispatch", "rc", True, "8.0.0-rc.1", "8.0.0-rc.1", True, False),
+        ("stable", False, "7.42.0-rc.26", "7.42.0", False, True),
+        ("rc", True, "7.42.0-rc.26", "8.0.0-rc.1", False, True),
+        ("rc", False, "8.0.0-rc.1", "8.0.0-rc.2", False, True),
+        ("stable", True, "8.0.0-rc.2", "8.0.0", False, True),
+        ("stable", False, "8.0.0-rc.2", "7.42.0", False, False),
+        ("rc", True, "8.0.0-rc.1", "8.0.0-rc.1", True, False),
     ],
 )
 def test_selected_master_publication_channel(
     tmp_path: Path,
-    event: str,
     channel: str,
     force_major: bool,
     current_version: str,
@@ -316,6 +313,8 @@ def test_selected_master_publication_channel(
     dispatch = workflow[True]["workflow_dispatch"]  # YAML 1.1 reads the "on" key as True.
     assert dispatch["inputs"]["release_type"]["default"] == "stable"
     assert "rc" in dispatch["inputs"]["release_type"]["options"]
+    assert set(workflow[True]) == {"workflow_dispatch"}
+    assert workflow["jobs"]["release"]["if"] == "github.ref == 'refs/heads/master'"
     assert workflow["concurrency"]["group"].endswith(workflow["jobs"]["release"]["env"]["RELEASE_CHANNEL"])
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -342,7 +341,6 @@ def test_selected_master_publication_channel(
     env = {
         **os.environ,
         "PATH": f"{bin_dir}:{os.environ['PATH']}",
-        "RELEASE_EVENT": event,
         "RELEASE_CHANNEL": channel,
         "FORCE_MAJOR": str(force_major).lower(),
         "NEXT_VERSION": next_version,
