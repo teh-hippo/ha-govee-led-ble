@@ -11,6 +11,8 @@ Argument: an issue number or an exact SKU with an identifiable report.
 Use the [shared evidence method](../govee-shared.md).
 
 1. Reproduce or characterise each outstanding symptom from its public entry point, using the reporter's revision, starting state, named choices and action sequence.
+   When settings affect the result, use the owner's effective options, including those retained on upgrade.
+   If unknown, compare plausible saved options with fresh defaults and keep the diagnosis conditional.
    For a regression, compare the same sequence on the last known working and first reported failing versions where available.
    If the unchanged code passes the reproduction, reconcile its setup with the report before treating it as proof.
    If no integration defect is established, report the cause or the evidence needed to distinguish it.
