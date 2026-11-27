@@ -1095,7 +1095,7 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
     ),
     *tuple(
         capability
-        for model in ("H6117", "H6125", "H6127", "H618A", "H619A", "H705A")
+        for model in ("H6117", "H612A", "H6125", "H6127", "H618A", "H619A", "H705A")
         for capability in _declared_capabilities(model, _RGBIC_WORKFLOW_DECLARATIONS, confidence=_V.SELECTION_ONLY)
     ),
     *_declared_capabilities(
