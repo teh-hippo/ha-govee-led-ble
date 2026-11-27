@@ -187,8 +187,13 @@ test("H607C Shimmer and Drip expose ordered primary and background palette contr
   const drip = catalogue.effects.find(effect => effect.family === 113)!;
 
   for (const effect of catalogue.effects) {
-    expect(effect.rate_min).toBe(1);
-    expect(effect.rate_max).toBe(100);
+    if (effect === drip) {
+      expect(effect.rate_min).toBe(50);
+      expect(effect.rate_max).toBe(50);
+    } else {
+      expect(effect.rate_min).toBe(1);
+      expect(effect.rate_max).toBe(100);
+    }
   }
   expect(shimmer).toMatchObject({
     palette_min: 1,
