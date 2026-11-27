@@ -11,6 +11,7 @@ from bleak.exc import BleakError
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ReadDomain, device_profile, get_profile
 from custom_components.ha_govee_led_ble.control_arbiter import BLEControlArbiter
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator_identity import InitialDeviceIdentity
 from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode, decode_status_frame, parse_color_mode
 from custom_components.ha_govee_led_ble.effect_catalogue import MODEL_EFFECT_CATALOGUES
@@ -479,6 +480,27 @@ def test_h8604_video_softness_preserves_exact_declared_range() -> None:
             "H8604",
             profile=profile,
         )
+
+
+@pytest.mark.parametrize("initial_identity", [None, InitialDeviceIdentity(pact_type=2, pact_code=1)])
+async def test_h8604_video_selector_defaults_to_supported_softness(hass, initial_identity) -> None:
+    device = GoveeBLECoordinator(
+        hass,
+        "AA:BB:CC:DD:EE:FF",
+        "H8604",
+        configuration_url=None,
+        initial_identity=initial_identity,
+    )
+    if initial_identity is None:
+        device.pact_type, device.pact_code = 2, 1
+        device._resolve_device_profile()
+    assert device.video_sound_effects_softness == 99
+
+    device._client = MagicMock(is_connected=True)
+    device._notification_token = object()
+    light = GoveeBLELight(device)
+
+    assert callable(await light._prepare_effect("Video: Movie"))
 
 
 def test_h8604_static_reply_observes_gradual(hass) -> None:
