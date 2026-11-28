@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from bleak import BleakError
 from bleak.backends.device import BLEDevice
-from bleak.exc import BleakDBusError
+from bleak.exc import BleakDBusError, BleakGATTProtocolError
 
 from custom_components.ha_govee_led_ble.ble_connection import (
     async_clear_gatt_cache,
@@ -142,6 +142,16 @@ async def test_connection_establishment_can_bypass_service_cache(hass):
 )
 def test_stale_gatt_error_detection(error):
     assert is_stale_gatt_error(error)
+
+
+@pytest.mark.parametrize("code", [0x01, 0x0A, 0x12])
+def test_typed_bleak_protocol_cache_errors_are_stale(code):
+    assert is_stale_gatt_error(BleakGATTProtocolError(code))
+
+
+@pytest.mark.parametrize("code", [0x03, 0x0D, 0x0E, 0x13])
+def test_typed_bleak_protocol_command_errors_are_not_stale(code):
+    assert not is_stale_gatt_error(BleakGATTProtocolError(code))
 
 
 @pytest.mark.parametrize(

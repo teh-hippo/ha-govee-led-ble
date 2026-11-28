@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 from bleak import BleakClient, BleakError
+from bleak.exc import BleakGATTProtocolError
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
@@ -1014,12 +1015,17 @@ async def test_resolution_reuses_selected_client_after_disconnect(coord):
     await coord.disconnect()
 
 
-async def test_gatt_failure_reconnects_new_client_with_fresh_services(coord):
+@pytest.mark.parametrize(
+    "failure",
+    [BleakError("GATT characteristic not found"), BleakGATTProtocolError(0x12)],
+    ids=["characteristic-not-found", "database-out-of-sync"],
+)
+async def test_gatt_failure_reconnects_new_client_with_fresh_services(coord, failure):
     device = MagicMock()
     resolver = AsyncMock(return_value=_resolution(device))
     coord._device_resolver = resolver
     first = _c(
-        write_gatt_char=AsyncMock(side_effect=BleakError("GATT characteristic not found")),
+        write_gatt_char=AsyncMock(side_effect=failure),
         clear_cache=AsyncMock(return_value=True),
         disconnect=AsyncMock(),
     )
@@ -1036,7 +1042,7 @@ async def test_gatt_failure_reconnects_new_client_with_fresh_services(coord):
         await coord.send_command(build_power(True))
         assert coord.fresh_services_required is False
         assert coord.fresh_service_discovery_forced is True
-        assert coord.last_failure_type == "BleakError"
+        assert coord.last_failure_type == type(failure).__name__
 
         await coord.disconnect()
         assert await coord._ensure_connected() is normal

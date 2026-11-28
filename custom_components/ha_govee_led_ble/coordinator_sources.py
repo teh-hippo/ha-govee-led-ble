@@ -439,7 +439,9 @@ async def async_restore_source_flags(
             guard = write_guard
             guard()
             identity_guard = None
-            if coordinator.identity_gated_controls:
+            if coordinator.identity_gated_controls and not coordinator.profile.setting_grammar_has(
+                "paired_bar_settings"
+            ):
                 identity_guard = await coordinator.async_prepare_identity_gated_control()
 
             def qualified(

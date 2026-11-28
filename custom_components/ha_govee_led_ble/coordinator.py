@@ -3341,7 +3341,13 @@ class GoveeBLECoordinator(
     async def async_set_boolean_control(self, control: str, enabled: bool) -> None:
         if type(enabled) is not bool:
             raise ValueError("Boolean setting requires a boolean")
-        guard = await self.async_prepare_identity_gated_control() if self.identity_gated_controls else None
+        paired_bars = self.profile.setting_grammar_has("paired_bar_settings")
+        needs_profile_qualification = paired_bars and self.profile.basic_controls_only
+        guard = None
+        if self.identity_gated_controls and (not paired_bars or needs_profile_qualification):
+            prepared_guard = await self.async_prepare_identity_gated_control()
+            if not paired_bars:
+                guard = prepared_guard
         if control == "dreamview_laser":
             async with async_control_intent(self, ControlIntent.USER):
                 async with self._lock:
@@ -3859,59 +3865,75 @@ class GoveeBLECoordinator(
     async def _async_set_bar_control(
         self, control: str, enabled: bool, *, write_guard: Callable[[], None] | None = None
     ) -> None:
-        from .generated_protocol_adapter import build_boolean_control, build_boolean_control_query
-
-        sibling = "right_bar_enabled" if control == "left_bar_enabled" else "left_bar_enabled"
         async with async_control_intent(self, ControlIntent.USER):
             await self._async_supersede_effect_preview()
-            async with self._lock:
-                client = await self._ensure_connected()
-                profile, generation, token = self.profile, self._profile_generation, self._notification_token
+            for attempt in range(3):
+                try:
+                    identity_guard = (
+                        await self.async_prepare_identity_gated_control() if self.identity_gated_controls else None
+                    )
 
-                def guard() -> None:
-                    if write_guard is not None:
-                        write_guard()
-                    if (
-                        not same_control_profile(self.profile, profile)
-                        or self._profile_generation != generation
-                        or self._notification_token is not token
-                        or self._client is not client
-                        or not client.is_connected
-                        or control not in self.profile.boolean_controls
-                    ):
-                        raise ValueError("Bar control connection or profile changed")
+                    def qualified(current_identity_guard: Callable[[], None] | None = identity_guard) -> None:
+                        if write_guard is not None:
+                            write_guard()
+                        if current_identity_guard is not None:
+                            current_identity_guard()
 
-                query = build_boolean_control_query(control, self.model, profile=profile)
-                if not await self._async_read_bar_flags(
-                    client, query, deadline=time.monotonic() + 4.0, write_guard=guard
-                ):
-                    raise ValueError("Device did not provide both native bar states")
-                guard()
-                sibling_enabled = self.boolean_control_state.get(sibling)
-                packet = build_boolean_control(
-                    control,
-                    enabled,
-                    self.model,
-                    profile=profile,
-                    sibling_enabled=sibling_enabled,
-                    native_mask=self.bar_enable_mask or 0,
-                )
-                expected = {f"boolean_{control}": enabled, f"boolean_{sibling}": sibling_enabled}
+                    async with self._lock:
+                        await self._async_set_bar_control_once(control, enabled, write_guard=qualified)
+                    return
+                except BleakError:
+                    if not self.fresh_services_required or attempt == 2:
+                        raise
 
-                def expire() -> None:
-                    self._expire_optional_observations({field: self._field_revisions[field] for field in expected})
+    async def _async_set_bar_control_once(
+        self, control: str, enabled: bool, *, write_guard: Callable[[], None] | None
+    ) -> None:
+        from .generated_protocol_adapter import build_boolean_control, build_boolean_control_query
 
-                await self._async_write_packet(client, packet, arm_expected=True, before_write=guard, on_write=expire)
-                if not await self._async_read_bar_flags(
-                    client, query, deadline=time.monotonic() + 4.0, write_guard=guard
-                ):
-                    raise ValueError("Device did not confirm both native bar states")
-                guard()
-                if any(
-                    self.boolean_control_state.get(name.removeprefix("boolean_")) != value
-                    for name, value in expected.items()
-                ):
-                    raise ValueError("Device changed the requested bar or its sibling")
+        client = await self._ensure_connected()
+        profile, generation, token = self.profile, self._profile_generation, self._notification_token
+        sibling = "right_bar_enabled" if control == "left_bar_enabled" else "left_bar_enabled"
+
+        def guard() -> None:
+            if write_guard is not None:
+                write_guard()
+            if (
+                not same_control_profile(self.profile, profile)
+                or self._profile_generation != generation
+                or self._notification_token is not token
+                or self._client is not client
+                or not client.is_connected
+                or control not in self.profile.boolean_controls
+            ):
+                raise ValueError("Bar control connection or profile changed")
+
+        query = build_boolean_control_query(control, self.model, profile=profile)
+        if not await self._async_read_bar_flags(client, query, deadline=time.monotonic() + 4.0, write_guard=guard):
+            raise ValueError("Device did not provide both native bar states")
+        guard()
+        sibling_enabled = self.boolean_control_state.get(sibling)
+        packet = build_boolean_control(
+            control,
+            enabled,
+            self.model,
+            profile=profile,
+            sibling_enabled=sibling_enabled,
+            native_mask=self.bar_enable_mask or 0,
+        )
+        expected = {f"boolean_{control}": enabled, f"boolean_{sibling}": sibling_enabled}
+
+        def expire() -> None:
+            self._expire_optional_observations({field: self._field_revisions[field] for field in expected})
+
+        await self._async_write_packet(client, packet, arm_expected=True, before_write=guard, on_write=expire)
+        if not await self._async_read_bar_flags(client, query, deadline=time.monotonic() + 4.0, write_guard=guard):
+            raise ValueError("Device did not confirm both native bar states")
+        guard()
+        if any(
+            self.boolean_control_state.get(name.removeprefix("boolean_")) != value for name, value in expected.items()
+        ):
+            raise ValueError("Device changed the requested bar or its sibling")
 
     async def async_swap_bars(self) -> None:
         from .generated_protocol_adapter import build_swap_bars
