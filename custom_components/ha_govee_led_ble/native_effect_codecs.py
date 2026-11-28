@@ -803,6 +803,12 @@ NATIVE_EFFECT_CODECS: tuple[NativeEffectCodec, ...] = (
             ),
             NativeUploadRoute(
                 NativeEffectCarrier.A3,
+                int(H60b0SceneBody.UploadSubtype.rgbic_scene),
+                NativeUploadPurpose.LAYERED_SCENE,
+                H60b0EffectUpload,
+            ),
+            NativeUploadRoute(
+                NativeEffectCarrier.A3,
                 0x41,
                 NativeUploadPurpose.MUSIC,
                 H60b0EffectUpload,
