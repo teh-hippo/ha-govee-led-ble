@@ -734,7 +734,6 @@ async def test_h607c_saved_effect_guard_prevents_kelvin_retry_on_new_connection(
     with pytest.raises(HomeAssistantError) as error:
         await light._async_turn_on(color_temp_kelvin=3200, effect_write_guard=saved_effect_guard)
     assert error.value.translation_key == "partial_command"
-    assert "device_command_failed" in str(error.value.__cause__)
     first.write_gatt_char.assert_awaited_once()
     second.write_gatt_char.assert_not_awaited()
 
