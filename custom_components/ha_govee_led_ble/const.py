@@ -4151,6 +4151,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     "H6199": ModelProfile(
         "H6199 DreamView T1",
         color_temp_range=KELVIN_RANGE_2000_9000,
+        kelvin_verification_reads_colour_mode=True,
         support_quality=SupportQuality.SUPPORTED,
         command_grammar="H6199",
         status_grammar="H6199",
@@ -4501,6 +4502,7 @@ def _h6199_pact1_wire(packet: bytes) -> bytes:
 
 H6199_PACT1_PROFILE = ModelProfile(
     "H6199 Pact 1",
+    kelvin_verification_reads_colour_mode=True,
     support_quality=SupportQuality.SUPPORTED,
     revision_policy="h6199",
     command_grammar="H6199",

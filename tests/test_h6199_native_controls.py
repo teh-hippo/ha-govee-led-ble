@@ -24,6 +24,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     parse_status,
 )
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
+from custom_components.ha_govee_led_ble.light_commands import build_color_temp
 from custom_components.ha_govee_led_ble.protocol_core import H6199StatusQuery
 from custom_components.ha_govee_led_ble.protocol_h6199 import (
     H6199_NATIVE_CONTROLS,
@@ -262,6 +263,61 @@ async def test_reconnect_identity_guard_blocks_physical_write(coordinator, monke
         await c.async_set_native_camera_control("gradient", 0)
     c._client.write_gatt_char.assert_not_awaited()
     assert c.gradient == 1
+
+
+async def test_whole_strip_rgb_requires_fresh_segment_and_mode_observation(coordinator, monkeypatch):
+    c = coordinator
+    c.is_on = True
+    c.color_mode = ParsedMode.COLOUR
+    light = GoveeBLELight(c)
+    observe = AsyncMock(return_value=True)
+    monkeypatch.setattr(c, "async_observe_effect", observe)
+    monkeypatch.setattr(light, "_notify_state_changed", Mock())
+
+    await light._async_turn_on(rgb_color=(70, 160, 180))
+
+    observe.assert_awaited_once_with(
+        {
+            "color_mode": ParsedMode.COLOUR,
+            "segment_colors": [(70, 160, 180)] * c.profile.segment_count,
+        }
+    )
+    assert c.control_write_attempts == 1
+    assert c.segment_state_source == "optimistic"
+
+
+async def test_whole_strip_rgb_does_not_replay_an_unconfirmed_write(coordinator, monkeypatch):
+    c = coordinator
+    c.is_on = True
+    c.color_mode = ParsedMode.COLOUR
+    light = GoveeBLELight(c)
+    observe = AsyncMock(return_value=None)
+    monkeypatch.setattr(c, "async_observe_effect", observe)
+    monkeypatch.setattr(light, "_notify_state_changed", Mock())
+
+    with pytest.raises(HomeAssistantError):
+        await light._async_turn_on(rgb_color=(70, 160, 180))
+
+    assert c._client.write_gatt_char.await_count == 1
+    assert c.segment_state_source == "optimistic"
+
+
+async def test_whole_strip_kelvin_uses_segment_confirmation(coordinator, monkeypatch):
+    c = coordinator
+    c.is_on = True
+    c.color_mode = ParsedMode.COLOUR
+    light = GoveeBLELight(c)
+    confirm = AsyncMock()
+    monkeypatch.setattr(c, "async_set_segment_kelvin", confirm)
+    monkeypatch.setattr(light, "_notify_state_changed", Mock())
+
+    await light._async_turn_on(color_temp_kelvin=4000)
+
+    confirm.assert_awaited_once()
+    assert confirm.await_args.kwargs["requested_kelvin"] == 4000
+    assert confirm.await_args.kwargs["write_guard"] is not None
+    assert c.control_write_attempts == 0
+    assert confirm.await_args.args[0] == build_color_temp(4000, "H6199", profile=c.profile)
 
 
 async def test_native_entity_to_generated_wire_and_fresh_notification(coordinator, hass, monkeypatch):

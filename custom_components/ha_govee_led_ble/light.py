@@ -1638,6 +1638,15 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                                 expected_rgb_color=(r, g, b),
                                 retry_command=partial(request.send, packet),
                             )
+                        elif coordinator.profile.can_read(ReadDomain.SEGMENTS):
+                            confirmed = await coordinator.async_observe_effect(
+                                {
+                                    "color_mode": ParsedMode.COLOUR,
+                                    "segment_colors": [(r, g, b)] * coordinator.profile.segment_count,
+                                }
+                            )
+                            if confirmed is not True:
+                                raise RuntimeError(f"Failed to confirm static RGB for {coordinator.model}")
                 if ATTR_COLOR_TEMP_KELVIN in kwargs and source_colour is None:
                     request.phase = "colour temperature"
                     self._require_support(
@@ -1658,7 +1667,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                         if (
                             coordinator.profile.kelvin_verification_reads_colour_mode
                             and not coordinator.profile.static_readback_kelvin
-                            and coordinator.profile.supports_segments
+                            and coordinator.profile.can_read(ReadDomain.SEGMENTS)
                         ):
                             await coordinator.async_set_segment_kelvin(
                                 packet,

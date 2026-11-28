@@ -39,6 +39,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_white_balance,
     parse_status_result,
     require_profile_packet,
+    table_kelvin_rgb,
 )
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.light_commands import (
@@ -220,10 +221,11 @@ async def test_known_pact1_real_setup_and_basic_controls(
         frame("330488"),
         bytes.fromhex("33050b2060a00000ff7f0000000000000000005d"),
     ]
-    assert build_colour_mode_query(c.model) not in packets
-    assert all(packet[:2] != b"\xaa\xa5" for packet in packets)
+    assert frame("aa0501") in packets
+    assert all(frame(f"aaa2{group:02x}") in packets for group in range(1, 5))
     assert c.brightness_pct == 50 and c.rgb_color == (32, 96, 160)
-    assert c.rgb_color_source == "optimistic" and c.color_mode is ParsedMode.COLOUR
+    assert c.rgb_color_source == "segment" and c.color_mode is ParsedMode.COLOUR
+    assert c.segment_state_source == "observed"
     assert c._expected_state["brightness_pct"][0] == 50
     assert c._expected_state["rgb_color"][0] == (32, 96, 160)
     await light._async_handle_turn_on(effect="sunset")
@@ -241,9 +243,13 @@ async def test_known_pact1_real_setup_and_basic_controls(
     assert c.color_mode is ParsedMode.COLOUR
     await c.send_command(build_segment_color([1, 15], 1, 2, 3, c.model, profile=c.profile))
     assert packets[-1] == frame("33050b01020300000140")
+    rendered = table_kelvin_rgb(4000)
+    for group in range(1, 5):
+        replies[frame(f"aaa2{group:02x}")] = frame(f"aaa2{group:02x}" + bytes(rendered).hex() * 4)
     await light._async_turn_on(color_temp_kelvin=4000)
-    assert packets[-1] == frame("33050bffd5a10fa0ff7f")
-    assert c.color_temp_kelvin == 4000 and c.color_temp_kelvin_source == "optimistic"
+    assert frame("33050bffd5a10fa0ff7f") in packets
+    assert c.color_temp_kelvin == 4000 and c.color_temp_kelvin_source == "retained"
+    assert c.segment_state_source == "observed"
     await c.send_command(build_power(False, c.model))
     assert packets[-1] == build_power(False, c.model)
 
