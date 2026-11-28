@@ -1638,7 +1638,9 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                                 expected_rgb_color=(r, g, b),
                                 retry_command=partial(request.send, packet),
                             )
-                        elif coordinator.profile.can_read(ReadDomain.SEGMENTS):
+                        elif coordinator.profile.rgb_verification_reads_segments and coordinator.profile.can_read(
+                            ReadDomain.SEGMENTS
+                        ):
                             confirmed = await coordinator.async_observe_effect(
                                 {
                                     "color_mode": ParsedMode.COLOUR,
@@ -1667,7 +1669,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                         if (
                             coordinator.profile.kelvin_verification_reads_colour_mode
                             and not coordinator.profile.static_readback_kelvin
-                            and coordinator.profile.can_read(ReadDomain.SEGMENTS)
+                            and coordinator.profile.supports_segments
                         ):
                             await coordinator.async_set_segment_kelvin(
                                 packet,
