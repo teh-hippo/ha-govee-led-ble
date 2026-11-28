@@ -104,6 +104,7 @@ async def test_configured_layout_precedes_whole_device_packet_construction(devic
             receive(None, bytearray(_packet(0xAA, 0x0F, [fresh])))
 
     client.write_gatt_char = AsyncMock(side_effect=write)
+    monkeypatch.setattr(c, "async_observe_effect", AsyncMock(return_value=True))
     light = GoveeBLELight(c)
     monkeypatch.setattr(light, "async_write_ha_state", MagicMock())
     await light.async_turn_on(rgb_color=(1, 2, 3))

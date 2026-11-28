@@ -214,6 +214,7 @@ def _make_coord(hass, **overrides) -> MagicMock:
     c.async_paint_segments = AsyncMock()
     c.async_set_segment_brightness = AsyncMock()
     c.async_refresh_segments = AsyncMock(return_value=True)
+    c.async_observe_effect = AsyncMock(return_value=True)
 
     c.refresh_state, c.async_set_updated_data = AsyncMock(return_value=True), MagicMock()
     c.unknown_scene_code = None
