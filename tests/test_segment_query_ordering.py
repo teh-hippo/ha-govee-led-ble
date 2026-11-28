@@ -42,7 +42,7 @@ from tests.coordinator_test_support import _confirm_identity, _packet
 @pytest.fixture
 async def device(hass, monkeypatch, request):
     c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", getattr(request, "param", "H617A"), configuration_url=None)
-    if c.model in {"H7020", "H705A"}:
+    if c.model in {"H7020", "H7029", "H705A"}:
         c.pact_type = 1
         c.pact_code = 2 if c.model == "H705A" else 1
         c._resolve_device_profile()
@@ -652,6 +652,49 @@ async def test_configured_string_entities_expose_only_explicit_user_changes(devi
     c.async_set_configured_strings.assert_awaited_once()
     c._clear_client_state(client)
     assert selector.current_option == "2" and not c._configured_strings_confirmed
+
+
+@pytest.mark.parametrize("device", ["H7029"], indirect=True)
+async def test_h7029_bulb_geometry_drives_masks_and_configuration_entity(device, monkeypatch):
+    c, client, _receive = device
+    c._apply_configured_strings(23)
+    assert c.profile.segment_count == c.profile.physical_ic_count == 23
+    assert c.configured_strings == 23 and not c._configured_strings_confirmed
+
+    entry = MagicMock(runtime_data=c)
+    entities = []
+    await select.async_setup_entry(c.hass, entry, entities.extend)
+    selector = next(entity for entity in entities if isinstance(entity, select.GoveeBLEConfiguredStringsSelect))
+    assert selector.options == ["8", "16", "23", "24"]
+    assert selector.translation_key == "configured_bulbs"
+    assert selector.current_option == "23"
+    monkeypatch.setattr(c, "async_set_configured_strings", AsyncMock())
+    await selector.async_select_option("24")
+    c.async_set_configured_strings.assert_awaited_once_with(24)
+
+
+@pytest.mark.parametrize("device", ["H7029"], indirect=True)
+@pytest.mark.parametrize("count", [8, 16, 23, 24])
+async def test_h7029_complete_segment_readback_for_every_bulb_layout(device, count):
+    c, client, receive = device
+    c._observe_pact(1, 1)
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet[1] == 0x01:
+            receive(None, bytearray(_packet(0xAA, 0x01, [1])))
+        elif packet[1] == 0x0F:
+            receive(None, bytearray(_packet(0xAA, 0x0F, [count])))
+        elif packet[1] == 0xA5:
+            group = packet[2]
+            padded = [37] * count + [0] * (-count % 3)
+            receive(None, bytearray(pages(padded)[group - 1]))
+
+    client.write_gatt_char = AsyncMock(side_effect=write)
+    assert await c.async_refresh_segments()
+    assert c.configured_strings == count
+    assert c.segment_brightness == [37] * count
+    assert c.segment_state_source == "observed"
+    assert c.profile.segment_count_capacity == 24
 
 
 @pytest.mark.parametrize("producer", ["keepalive", "refresh", "observe", "segments"])

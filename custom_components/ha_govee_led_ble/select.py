@@ -163,10 +163,10 @@ class GoveeBLEControlSelect(GoveeBLEEntity, SelectEntity):
 
 class GoveeBLEConfiguredStringsSelect(GoveeBLEEntity, SelectEntity):
     _attr_entity_category = EntityCategory.CONFIG
-    _attr_translation_key = "configured_strings"
 
     def __init__(self, entry: GoveeBLEConfigEntry) -> None:
         super().__init__(entry.runtime_data)
+        self._attr_translation_key = self.coordinator.profile.configured_geometry_translation_key
         self._attr_unique_id = f"{self.coordinator.address.replace(':', '').lower()}_configured_strings"
         self._attr_device_info = self.coordinator.device_info
 

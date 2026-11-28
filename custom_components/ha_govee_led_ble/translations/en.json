@@ -70,6 +70,7 @@
       "camera_position": {"name": "Camera position", "state": {"top": "Top", "bottom": "Bottom"}},
       "gradient": {"name": "Gradient", "state": {"off": "Off", "on": "On"}},
       "configured_strings": {"name": "Configured light strings", "state": {"1": "One string", "2": "Two strings", "3": "Three strings", "4": "Four strings", "5": "Five strings", "6": "Six strings", "7": "Seven strings", "8": "Eight strings", "9": "Nine strings"}},
+      "configured_bulbs": {"name": "Configured bulbs", "state": {"8": "8 bulbs", "16": "16 bulbs", "23": "23 bulbs", "24": "24 bulbs"}},
       "power_on_behaviour": {"name": "Power-on behaviour", "state": {"previous": "Previous state", "on": "On", "off": "Off"}}
     },
     "sensor": {

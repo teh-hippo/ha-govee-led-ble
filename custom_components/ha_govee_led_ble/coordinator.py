@@ -821,7 +821,19 @@ class GoveeBLECoordinator(
         return True
 
     async def _async_confirm_pact(self, client: BleakClient) -> None:
-        if not self.profile.can_read(ReadDomain.PACT) or self.identity_fields_confirmed(frozenset({"pact"})):
+        if self.identity_fields_confirmed(frozenset({"pact"})):
+            return
+        if (
+            self._tracks_pact_identity
+            and self._client is client
+            and self._notification_token is not None
+            and self._notify_started_monotonic is not None
+            and self._pact_identity.marker_pact is not None
+        ):
+            self._resolve_pact_identity(preserve_state=True)
+            if self.identity_fields_confirmed(frozenset({"pact"})):
+                return
+        if not self.profile.can_read(ReadDomain.PACT):
             return
         baseline = {ReadDomain.PACT: self._domain_revisions.get(ReadDomain.PACT, 0)}
         deadline = time.monotonic() + IDENTITY_QUERY_TIMEOUT

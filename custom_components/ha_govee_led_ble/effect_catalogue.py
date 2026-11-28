@@ -59,6 +59,7 @@ from .effect_catalogue_families import H7020_DIY_FAMILIES as H7020_DIY_FAMILIES
 from .effect_catalogue_families import H7020_NATIVE_MUSIC_MODES as H7020_NATIVE_MUSIC_MODES
 from .effect_catalogue_families import H7025_DIY_FAMILIES as H7025_DIY_FAMILIES
 from .effect_catalogue_families import H7025_NATIVE_MUSIC_MODES as H7025_NATIVE_MUSIC_MODES
+from .effect_catalogue_families import H7029_DIY_FAMILIES as H7029_DIY_FAMILIES
 from .effect_catalogue_families import _native_music_modes as _native_music_modes
 from .effect_catalogue_models import CatalogueTemplate as CatalogueTemplate
 from .effect_catalogue_models import DiyEffectFamily as DiyEffectFamily
@@ -85,6 +86,9 @@ from .effect_catalogue_templates import H7020_NATIVE_DIY_CONTRACTS as H7020_NATI
 from .effect_catalogue_templates import H7020_NATIVE_DIY_SEEDS as H7020_NATIVE_DIY_SEEDS
 from .effect_catalogue_templates import H7020_NATIVE_DIY_TEMPLATES as H7020_NATIVE_DIY_TEMPLATES
 from .effect_catalogue_templates import H7025_CATALOGUE_TEMPLATES as H7025_CATALOGUE_TEMPLATES
+from .effect_catalogue_templates import H7029_CATALOGUE_TEMPLATES as H7029_CATALOGUE_TEMPLATES
+from .effect_catalogue_templates import H7029_NATIVE_DIY_CONTRACTS as H7029_NATIVE_DIY_CONTRACTS
+from .effect_catalogue_templates import H7029_NATIVE_DIY_TEMPLATES as H7029_NATIVE_DIY_TEMPLATES
 from .effect_catalogue_templates import WORKSHOP_PROTOCOL_FIXTURES as WORKSHOP_PROTOCOL_FIXTURES
 from .effect_catalogue_templates import _single_template as _single_template
 from .effect_content_ids import SINGLE_EFFECT_CONTENT_KIND

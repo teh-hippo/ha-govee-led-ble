@@ -5,10 +5,10 @@ meta:
   imports:
     - ../status_query
 doc: |
-  H7020. Candidate queries reuse the shared
-  power, brightness, mode and identity layouts. AA0F reads configured string
-  count; AA41 reads power-off memory. A5 pages contain three bulb records,
-  requiring five or ten queries according to freshly confirmed configuration.
+  H7020-family devices. Candidate queries reuse the shared power, brightness,
+  mode and identity layouts. AA0F reads configured string or bulb geometry;
+  AA41 reads power-off memory. A5 pages contain three bulb records, requiring
+  pages to be limited by freshly confirmed configuration.
   The selected mode query is AA0501; the shared structural type also retains
   the zero-selector form without claiming exact-model acceptance.
   Unresolved assumptions: exact-model evidence have not qualified all replies,

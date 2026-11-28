@@ -856,6 +856,27 @@ def test_h7020_configuration_and_paged_roots(h7020_profile):
             adapter.build_segment_query(group, profile=h7020_profile)
 
 
+@pytest.mark.parametrize("count", (8, 16, 23, 24))
+def test_h7029_configuration_carries_exact_bulb_geometry(count):
+    adapter = generated_protocol_adapter
+    profile = get_profile("H7029")
+
+    command = adapter.build_configured_strings(count, profile)
+    raw = command[:-1]
+    assert raw[:3] == bytes((0x33, 0x0F, count)) and command[-1] == xor_checksum(raw)
+
+    reply = bytes((0xAA, 0x0F, count)) + bytes(range(16))
+    parsed = adapter.parse_status(reply + bytes([xor_checksum(reply)]), profile=profile)
+    assert parsed.body.count == count
+
+
+def test_h7029_configuration_rejects_unsupported_geometry():
+    profile = get_profile("H7029")
+    for count in (1, 2, 7, 15, 25, True):
+        with pytest.raises(ValueError):
+            generated_protocol_adapter.build_configured_strings(count, profile)
+
+
 def test_h7020_power_memory_ack_is_not_state(h7020_profile):
     adapter = generated_protocol_adapter
     packet = adapter.build_boolean_control("power_off_memory", True, "H7020", profile=h7020_profile)

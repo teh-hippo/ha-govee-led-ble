@@ -1237,6 +1237,26 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
             (_W.NATIVE_MUSIC, "Music", "music_profile", _R.HOME_ASSISTANT_CONTROL, _S.COORDINATOR_WRITER),
         )
     ),
+    *(
+        _capability(
+            "H7029",
+            workflow,
+            label,
+            kind,
+            route,
+            strategy,
+            _V.SELECTION_ONLY,
+            activation_operations=frozenset({"diy"}) if workflow is _W.ADVANCED else None,
+            selector_policy=(_P.APPROVED_DISPOSABLE if workflow in _DIY_SELECTOR_WORKFLOWS else _P.FIXED),
+        )
+        for workflow, label, kind, route, strategy in (
+            (_W.NATIVE_SCENES, "Scenes", "scene_builtin", _R.STUDIO_SCENE_APPLY, _S.NATIVE_EFFECT_SELECTION),
+            (_W.LAYERED_SCENES, "Layered scenes", "scene_layered", _R.HOME_ASSISTANT_CONTROL, _S.MODEL_SCENE_ENGINE),
+            (_W.SINGLE, "Basic DIY", SINGLE_EFFECT_CONTENT_KIND, _R.HOME_ASSISTANT_CONTROL, _S.GENERIC_DIY_ENGINE),
+            (_W.MULTI, "Mixed DIY", MULTI_EFFECT_CONTENT_KIND, _R.HOME_ASSISTANT_CONTROL, _S.GENERIC_DIY_ENGINE),
+            (_W.ADVANCED, "Template DIY", "advanced", _R.HOME_ASSISTANT_CONTROL, _S.MODEL_SCENE_ENGINE),
+        )
+    ),
 )
 
 

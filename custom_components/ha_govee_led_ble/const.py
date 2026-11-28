@@ -742,6 +742,7 @@ class ModelProfile:
     configured_string_counts: tuple[int, ...] = ()
     bulbs_per_string: int = 0
     configured_string_ic_count: int = 0
+    configured_geometry_translation_key: str = "configured_strings"
     supports_ic_refresh: bool = False
     strip_length_metres: tuple[int, ...] = ()
     strip_ics_per_metre: int = 0
@@ -3939,6 +3940,56 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_music_color=True,
         connection_idle_timeout=IDLE_TIMEOUT_STANDARD,
     ),
+    "H7029": ModelProfile(
+        "H7029 LED Bulb String Lights",
+        confirmation_issue=777,
+        resolve_profile_before_state_init=True,
+        profile_pact_dependent=True,
+        command_grammar="H7020",
+        status_grammar="H7020",
+        colour_mode_query_selector=1,
+        effect_grammar="H617A",
+        command_operations=frozenset(
+            {"power", "brightness", "static", "configured_strings", "scene", "diy", "effect_upload"}
+        ),
+        read_domains=frozenset(
+            {
+                ReadDomain.POWER,
+                ReadDomain.BRIGHTNESS,
+                ReadDomain.COLOUR_MODE,
+                ReadDomain.FIRMWARE,
+                ReadDomain.HARDWARE,
+                ReadDomain.CONFIGURED_STRINGS,
+                ReadDomain.SEGMENTS,
+            }
+        ),
+        setup_required_read_domains=frozenset({ReadDomain.POWER}),
+        supports_rgb=True,
+        supports_color_temperature=True,
+        color_temp_range=KELVIN_RANGE_2000_9000,
+        segment_count=8,
+        segment_count_capacity=24,
+        segment_group_size=3,
+        requires_qualified_identity=True,
+        requires_pact_confirmation=True,
+        configured_string_counts=(8, 16, 23, 24),
+        bulbs_per_string=1,
+        configured_geometry_translation_key="configured_bulbs",
+        configured_string_scene_geometry=True,
+        segment_colour_mode_ambiguous=True,
+        supports_segment_writes=True,
+        supports_segment_brightness=True,
+        static_readback_kelvin=True,
+        static_readback_zero_kelvin_is_rgb=True,
+        supports_custom_effects=True,
+        supports_advanced_effects=True,
+        supports_scenes=True,
+        supports_multi_layered_effects=True,
+        scene_catalogue_sku="H7029",
+        diy_requires_upload_ack=True,
+        effect_readback="diy_code_only",
+        connection_idle_timeout=IDLE_TIMEOUT_STANDARD,
+    ),
     "H6181": ModelProfile(
         "H6181 RGB TV Backlight",
         color_temp_range=KELVIN_RANGE_2000_9000,
@@ -4415,6 +4466,7 @@ MODEL_REVISION_POLICY_REGISTRATIONS = (
     ModelRevisionPolicyRegistration("H6097", "standard_pacts"),
     ModelRevisionPolicyRegistration("H61E5", "standard_pacts"),
     ModelRevisionPolicyRegistration("H7020", "standard_pacts"),
+    ModelRevisionPolicyRegistration("H7029", "h7029"),
     ModelRevisionPolicyRegistration("H60A1", "h60a1"),
     ModelRevisionPolicyRegistration("H60A6", "h60a6"),
     ModelRevisionPolicyRegistration("H61F5", "h61f5"),
@@ -5499,6 +5551,11 @@ def _standard_pacts_revision_policy(context: ModelRevisionContext) -> ModelProfi
     return profile if (context.pact_type, context.pact_code) in _STANDARD_PACTS else _basic_revision_profile(profile)
 
 
+def _h7029_revision_policy(context: ModelRevisionContext) -> ModelProfile:
+    profile = get_profile(context.model)
+    return profile if (context.pact_type, context.pact_code) == (1, 1) else _basic_revision_profile(profile)
+
+
 def _h607c_revision_policy(context: ModelRevisionContext) -> ModelProfile:
     profile = get_profile(context.model)
     known = (context.pact_type, context.pact_code) in _STANDARD_PACTS or (
@@ -5809,6 +5866,7 @@ _MODEL_REVISION_POLICIES: Mapping[str, Callable[[ModelRevisionContext], ModelPro
     "h605c": _h605c_revision_policy,
     "h8604": _h8604_revision_policy,
     "standard_pacts": _standard_pacts_revision_policy,
+    "h7029": _h7029_revision_policy,
     "h607c": _h607c_revision_policy,
     "h60a1": _h60a1_revision_policy,
     "h60a6": _h60a6_revision_policy,

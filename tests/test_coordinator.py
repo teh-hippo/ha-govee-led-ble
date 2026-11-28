@@ -387,6 +387,35 @@ async def test_h6053_pact_query_authorizes_revision_effect_transport(hass, monke
     assert compiled.upload_packets and compiled.upload_packets[0][0] == (0xA1 if transport == "a1_02" else 0xA3)
 
 
+@pytest.mark.parametrize(
+    ("live_pact", "cached", "rgb"),
+    [((1, 1), False, True), ((1, 2), True, False)],
+)
+async def test_h7029_connection_marker_qualifies_exact_pact_without_a_pact_query(
+    hass, monkeypatch, live_pact, cached, rgb
+):
+    coordinator = GoveeBLECoordinator(hass, "22:33:44:55:66:77", "H7029", configuration_url=None)
+    if cached:
+        coordinator.pact_type, coordinator.pact_code = 1, 1
+        coordinator._resolve_device_profile()
+    coordinator._client = client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
+    coordinator._notification_token = object()
+    coordinator._notify_started_monotonic = 1.0
+    coordinator._pact_identity.advertisement_observations = {"cached": (0.5, frozenset({(1, 1)}))} if cached else {}
+    coordinator._pact_identity.marker_pact = live_pact
+    coordinator._pact_identity.marker_seen = True
+    coordinator._confirmed_identity_fields.discard("pact")
+
+    write = AsyncMock()
+    monkeypatch.setattr(coordinator, "_async_write_packet", write)
+    await coordinator._async_confirm_pact(client)
+
+    write.assert_not_awaited()
+    assert coordinator.identity_fields_confirmed(frozenset({"pact"}))
+    assert (coordinator.pact_type, coordinator.pact_code) == live_pact
+    assert coordinator.effect_authorization_profile.supports_rgb is rgb
+
+
 @pytest.fixture
 def h6076(hass):
     return GoveeBLECoordinator(hass, "22:33:44:55:66:77", "H6076", configuration_url=None)
