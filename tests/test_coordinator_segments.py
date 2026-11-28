@@ -43,6 +43,7 @@ from custom_components.ha_govee_led_ble.light_commands import (
 from custom_components.ha_govee_led_ble.transport import WRITE_UUID
 from tests.coordinator_test_support import _CONFIGURATION_URL, _packet
 from tests.test_effect_preview import _manager, _open
+from tests.test_h6199_capabilities import set_qualified_identity
 
 M = "custom_components.ha_govee_led_ble.coordinator"
 
@@ -320,6 +321,7 @@ def test_duplicate_segment_pages_require_fresh_complete_coverage(coord):
 
 
 def test_h6199_static_reply_reports_mode_only(h6199):
+    set_qualified_identity(h6199)
     h6199.segment_colors = [(1, 2, 3)] * 15
     h6199._notify_callback(None, bytearray(_packet(0xAA, 0x05, [0x15, 0x01, 10, 20, 30])))
     assert h6199.color_mode is ParsedMode.COLOUR
@@ -337,6 +339,7 @@ def _send_uniform_segment_replies(coordinator, rgb: tuple[int, int, int]) -> Non
 
 
 def test_h6199_static_segment_readback_updates_uniform_rgb(h6199):
+    set_qualified_identity(h6199)
     h6199.color_mode = ParsedMode.COLOUR
     h6199.rgb_color = (1, 2, 3)
     h6199.color_temp_kelvin = 4000
@@ -348,6 +351,7 @@ def test_h6199_static_segment_readback_updates_uniform_rgb(h6199):
 
 
 def test_h6199_static_segment_readback_preserves_matching_kelvin_companion(h6199):
+    set_qualified_identity(h6199)
     h6199.color_mode = ParsedMode.COLOUR
     h6199.color_temp_kelvin = 2000
     companion = table_kelvin_rgb(2000)
@@ -386,6 +390,8 @@ def test_segment_query_replies_replace_restored_state(
     group_count: int,
 ) -> None:
     coordinator = request.getfixturevalue(model_fixture)
+    if model_fixture == "h6199":
+        set_qualified_identity(coordinator)
     coordinator.segment_colors = [(1, 2, 3)] * 15
     coordinator.segment_brightness = [1] * 15
 
@@ -417,7 +423,13 @@ def segment_client(coord):
 
 @pytest.fixture
 def segment_coordinator(request, coord, h6199):
-    return coord if request.param == "coord" else h6199
+    if request.param == "coord":
+        return coord
+    h6199.pact_type, h6199.pact_code = 2, 1
+    h6199.fw_version, h6199.hw_version = "1.10.04", "3.02.01"
+    h6199._confirmed_identity_fields.update({"pact", "fw_version", "hw_version"})
+    h6199._resolve_device_profile()
+    return h6199
 
 
 async def test_async_paint_segments_updates_slots_and_sends(coord, segment_client):

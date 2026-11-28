@@ -90,7 +90,11 @@ def status_is_authorized(decoded: ParsedStatusEnvelope, profile: ModelProfile) -
     domain = decoded.generated.domain
     domain_name = domain if isinstance(domain, str) else getattr(domain, "name", "")
     if getattr(decoded.generated, "is_device_info", False):
-        return profile.setting_grammar_has("device_info_status") and bool(profile.boolean_controls)
+        return profile.setting_grammar_has("device_info_status") and (
+            bool(profile.boolean_controls)
+            or profile.can_read(ReadDomain.POWER)
+            or profile.can_read(ReadDomain.HARDWARE)
+        )
     if domain_name == "bar_enable":
         return profile.setting_grammar_has("paired_bar_settings") and bool(profile.boolean_controls)
     if domain_name == "zone_enable":

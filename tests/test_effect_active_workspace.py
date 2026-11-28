@@ -122,6 +122,9 @@ async def test_authored_palette_workspace_retains_template_identity_under_its_ef
     assert await reloaded.async_load() == (workspace,)
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url=None)
     coordinator.profile = replace(profile, profile_identity_fields=frozenset())
+    if model == "H6159":
+        coordinator.pact_type, coordinator.pact_code = 1, 1
+        coordinator._confirmed_identity_fields.add("pact")
     coordinator.is_on = True
     assert (
         compile_effect(LibraryItem.new(item.name, workspace.content), model, profile=profile).packets

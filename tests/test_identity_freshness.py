@@ -2,6 +2,7 @@
 
 import asyncio
 from dataclasses import replace
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -13,6 +14,7 @@ from custom_components.ha_govee_led_ble.const import DOMAIN, MODEL_PROFILES, Rea
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.effect_contracts import CapabilityState
+from custom_components.ha_govee_led_ble.effect_deployments import PriorControlState
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_brightness,
     build_firmware_query,
@@ -23,6 +25,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
 from custom_components.ha_govee_led_ble.govee_encryption import GoveeTransportError
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.light_commands import build_color_rgb
+from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES, scene_command_identity_fields
 from custom_components.ha_govee_led_ble.transport import WRITE_UUID, xor_checksum
 from custom_components.ha_govee_led_ble.video_applicability import video_control_states
 from tests.test_video_semantics import alternate
@@ -187,6 +190,9 @@ async def revision_control(hass, monkeypatch, request):
     if model == "H6117":
         coordinator.pact_type, coordinator.pact_code = 1, 1
         coordinator._resolve_device_profile()
+    else:
+        coordinator.pact_type, coordinator.pact_code = 1, 1
+        coordinator._pact_identity.marker_pact = (1, 1)
     client = MagicMock(is_connected=True, services=[], start_notify=AsyncMock(), disconnect=AsyncMock())
     packets = []
     hardware_queries = 0
@@ -198,6 +204,15 @@ async def revision_control(hass, monkeypatch, request):
     async def write(_uuid, packet, **kwargs):
         nonlocal hardware_queries
         packets.append(packet)
+        live_pact = getattr(coordinator, "_test_live_pact", (coordinator.pact_type, coordinator.pact_code))
+        if live_pact is not None:
+            coordinator._note_advertisement(
+                SimpleNamespace(
+                    manufacturer_data={34818: bytes((0xEC, 0, *live_pact, 0))},
+                    source="test-subscription",
+                    time=asyncio.get_running_loop().time(),
+                )
+            )
         if packet == build_hardware_query(model):
             hardware_queries += 1
             if hardware_queries == 1:
@@ -237,7 +252,7 @@ async def test_foreground_recovers_missed_identity_before_selecting_colour_route
 
 
 @pytest.mark.parametrize("reply", [None, b"\xaa\x07\x03invalid"])
-@pytest.mark.parametrize("attributes", [{"rgb_color": (255, 0, 0)}, {"effect": "off"}])
+@pytest.mark.parametrize("attributes", [{}, {"rgb_color": (255, 0, 0)}, {"effect": "off"}])
 @pytest.mark.parametrize("cached_later", [False, True])
 async def test_unresolved_colour_identity_does_not_partially_apply_light_request(
     revision_control, reply, attributes, cached_later, virtual_clock
@@ -245,35 +260,153 @@ async def test_unresolved_colour_identity_does_not_partially_apply_light_request
     coordinator, _, packets, replies = revision_control
     if cached_later:
         coordinator.pact_type, coordinator.pact_code = 10, 1
+        coordinator._pact_identity.marker_pact = (10, 1)
         coordinator._note_identity(fw_version="1.03.00", hw_version="1.00.03")
     replies[build_hardware_query("H6181")] = reply
     light = GoveeBLELight(coordinator)
     light.hass = coordinator.hass
     light.async_write_ha_state = MagicMock()
 
+    if not attributes:
+        await coordinator._ensure_connected()
+        packets.clear()
+        await light.async_turn_on(brightness=128)
+        assert any(packet[0] == 0x33 for packet in packets)
+        assert coordinator.control_write_attempts
+        return
+    if cached_later and "effect" not in attributes:
+        await light.async_turn_on(**attributes, brightness=128)
+        assert any(packet[0] == 0x33 for packet in packets)
+        return
     with pytest.raises(HomeAssistantError) as error:
         await light.async_turn_on(**attributes, brightness=128)
 
-    assert error.value.translation_key == "identity_not_ready"
+    assert error.value.translation_key == (
+        "recovery_not_ready" if cached_later and "effect" in attributes else "identity_not_ready"
+    )
     assert not any(packet[0] == 0x33 for packet in packets)
     assert coordinator.control_write_attempts == 0
     assert coordinator._expected_state == {}
 
 
-@pytest.mark.parametrize("packet", [build_power(False, "H6181"), build_brightness(50, "H6181")])
-async def test_identity_independent_controls_remain_usable_without_optional_revision(
-    revision_control, packet, virtual_clock
-):
-    coordinator, _, packets, replies = revision_control
+async def test_brightness_coordinator_accepts_wire_without_static_identity(revision_control, virtual_clock):
+    coordinator, client, packets, replies = revision_control
+    replies.pop(build_firmware_query("H6181"))
+    replies.pop(build_hardware_query("H6181"))
     await coordinator._ensure_connected()
+    coordinator._observe_pact(1, 1)
+    packets.clear()
+    packet = build_brightness(50, "H6181", profile=coordinator.profile)
+
+    await coordinator._async_write_packet(client, packet, arm_expected=True)
+
+    transform = coordinator.profile.outbound_transform
+    assert (transform(packet) if transform is not None else packet) in packets
+    assert not {build_firmware_query("H6181"), build_hardware_query("H6181")} & set(packets)
+    assert not coordinator.identity_fields_confirmed(
+        coordinator.profile.profile_identity_fields | coordinator.profile.static_identity_fields
+    )
+
+
+async def test_h6181_light_brightness_does_not_require_static_identity(revision_control, virtual_clock):
+    coordinator, _, packets, replies = revision_control
+    replies.pop(build_firmware_query("H6181"))
+    replies.pop(build_hardware_query("H6181"))
+    light = GoveeBLELight(coordinator)
+    light.hass = coordinator.hass
+    light.async_write_ha_state = MagicMock()
+
+    await light.async_turn_on(brightness=128)
+
+    assert any(packet[:2] == b"\x33\x04" for packet in packets)
+    assert not coordinator.identity_fields_confirmed(
+        coordinator.profile.profile_identity_fields | coordinator.profile.static_identity_fields
+    )
+
+
+async def test_h7020_light_brightness_does_not_read_configured_layout(hass, monkeypatch):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H7020", configuration_url=None)
+    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(), disconnect=AsyncMock())
+    coordinator._client = client
+    coordinator._notification_token = object()
+    coordinator._notify_started_monotonic = asyncio.get_running_loop().time()
+    assert coordinator._observe_pact(1, 1)
+    assert coordinator.profile.configured_string_counts
+    coordinator.is_on = True
+    coordinator._power_known = True
+    read_layout = AsyncMock(side_effect=AssertionError("brightness unexpectedly required configured layout"))
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
+    monkeypatch.setattr(coordinator, "_read_configured_strings", read_layout)
+    monkeypatch.setattr(coordinator, "refresh_state", AsyncMock(return_value=True))
+    light = GoveeBLELight(coordinator)
+    monkeypatch.setattr(light, "_notify_state_changed", MagicMock())
+
+    await light.async_turn_on(brightness=128)
+
+    read_layout.assert_not_awaited()
+    client.write_gatt_char.assert_awaited_once()
+    assert client.write_gatt_char.call_args.args[1][1] == 0x04
+
+
+def test_resident_scene_uses_stable_selector_without_optional_version_identity() -> None:
+    scenes = SCENE_ENTRIES["H617A"]
+    resident = next(scene for scene in scenes if scene.name == "Sunrise")
+    uploaded = next(scene for scene in scenes if scene.name == "Forest")
+
+    assert scene_command_identity_fields("H617A", resident) == frozenset()
+    assert scene_command_identity_fields("H617A", uploaded) == frozenset({"fw_version", "hw_version"})
+
+
+async def test_public_resident_scene_does_not_query_optional_version_identity(hass, monkeypatch):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H617A", configuration_url=None)
+    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(), disconnect=AsyncMock())
+    coordinator._client = client
+    coordinator._notification_token = object()
+    coordinator._notify_started_monotonic = asyncio.get_running_loop().time()
+    coordinator.is_on = True
+    coordinator.brightness_pct = 100
+    coordinator.install_static_color(rgb=(10, 20, 30), source="observed")
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
+    monkeypatch.setattr(coordinator, "_renew_foreground_lease", MagicMock())
+    monkeypatch.setattr(
+        coordinator,
+        "async_prepare_static_baseline",
+        AsyncMock(
+            return_value=PriorControlState(
+                mode="colour",
+                is_on=True,
+                brightness_pct=100,
+                rgb_color=(10, 20, 30),
+                static_rgb_known=True,
+                static_colour_observed=True,
+                segment_colors=((10, 20, 30),) * 15,
+                segment_brightness=(100,) * 15,
+            )
+        ),
+    )
+    light = GoveeBLELight(coordinator)
+    monkeypatch.setattr(light, "_notify_state_changed", MagicMock())
+
+    await light._async_handle_turn_on(effect="Sunrise", brightness=128)
+
+    packets = [call.args[1] for call in client.write_gatt_char.await_args_list]
+    assert not any(packet[:2] in {bytes.fromhex("aa06"), bytes.fromhex("aa07")} for packet in packets)
+    assert any(packet[:2] == bytes.fromhex("3304") for packet in packets)
+    assert any(packet[:2] == bytes.fromhex("3305") for packet in packets)
+
+
+@pytest.mark.parametrize("packet", [build_power(False, "H6181"), build_power(True, "H6181")])
+async def test_power_bootstrap_remains_usable_without_revision_identity(revision_control, packet, virtual_clock):
+    coordinator, _, packets, replies = revision_control
+    coordinator._test_live_pact = None
     replies.clear()
+    await coordinator._ensure_connected()
     previous_queries = len(packets)
 
     await coordinator.send_command(packet)
 
-    assert [sent for sent in packets[previous_queries:] if sent[0] == 0x33] == [
-        coordinator.profile.outbound_transform(packet)
-    ]
+    transformed = coordinator.profile.outbound_transform(packet) if coordinator.profile.outbound_transform else packet
+    assert [sent for sent in packets[previous_queries:] if sent[0] == 0x33] == [transformed]
     assert not coordinator.identity_fields_confirmed()
 
 
@@ -297,6 +430,7 @@ async def test_shared_preparation_recovers_a_revision_gated_non_colour_command(r
 async def test_identity_acquisition_cannot_authorise_a_replacement_session(revision_control, change, virtual_clock):
     coordinator, client, packets, _ = revision_control
     await coordinator._ensure_connected()
+    coordinator._confirmed_identity_fields.clear()
     original = client.write_gatt_char.side_effect
 
     async def write(*args, **kwargs):
@@ -319,6 +453,7 @@ async def test_identity_acquisition_cannot_authorise_a_replacement_session(revis
 async def test_cancelled_identity_acquisition_never_attempts_the_control(revision_control, virtual_clock):
     coordinator, client, packets, _ = revision_control
     await coordinator._ensure_connected()
+    coordinator._confirmed_identity_fields.clear()
     waiting = asyncio.Event()
     blocked = asyncio.Event()
 
@@ -344,6 +479,7 @@ async def test_static_recovery_qualifies_identity_before_its_first_control(
     coordinator, _, packets, _ = revision_control
     if cached_later:
         coordinator.pact_type, coordinator.pact_code = 10, 1
+        coordinator._pact_identity.marker_pact = (10, 1)
         coordinator._note_identity(fw_version="1.03.00", hw_version="1.00.03")
     else:
         await coordinator._ensure_connected()
@@ -360,11 +496,16 @@ async def test_static_recovery_qualifies_identity_before_its_first_control(
     assert await coordinator.async_restore_effect_control_state(state, overwritten_diy_code=None)
 
     assert packets.count(build_hardware_query("H6181")) == 2
-    assert [packet[:10] for packet in packets if packet[0] == 0x33] == [
-        bytes.fromhex("33010100000000000000"),
-        bytes.fromhex("33048800000000000000"),
-        bytes.fromhex("330502ff000000000000"),
-    ]
+    writes = [packet[:10] for packet in packets if packet[0] == 0x33]
+    assert writes == (
+        [bytes.fromhex("33010100000000000000"), bytes.fromhex("33050dff000000000000")]
+        if cached_later
+        else [
+            bytes.fromhex("33010100000000000000"),
+            bytes.fromhex("33048800000000000000"),
+            bytes.fromhex("330502ff000000000000"),
+        ]
+    )
 
 
 @pytest.mark.parametrize("identity_available", [False, True])
@@ -376,6 +517,8 @@ async def test_injected_sequence_qualifies_identity_before_any_control(
     await coordinator._ensure_connected()
     if not identity_available:
         replies.clear()
+        coordinator._confirmed_identity_fields.clear()
+        coordinator._test_live_pact = None
 
     async def writer(packet, **kwargs):
         async with coordinator._lock:

@@ -10,7 +10,7 @@ from homeassistant.const import EntityCategory, Platform
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 
 from custom_components.ha_govee_led_ble import PLATFORMS, select, sensor
-from custom_components.ha_govee_led_ble.const import H6199_PACT1_PROFILE, get_profile
+from custom_components.ha_govee_led_ble.const import H6199_PACT1_PROFILE, MODEL_PROFILES, get_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
@@ -40,7 +40,8 @@ def qualify(c):
     c.fw_version, c.hw_version = "1.10.04", "3.02.01"
     c.subordinate_20_version, c.subordinate_21_version = "1.03.00", "1.00.33"
     c.pact_type, c.pact_code = 2, 1
-    c._confirmed_identity_fields.update(video_identity_fields(c.profile))
+    c._confirmed_identity_fields.update(video_identity_fields(MODEL_PROFILES["H6199"]) | {"pact"})
+    c._resolve_device_profile()
 
 
 @pytest.fixture
@@ -426,3 +427,19 @@ async def test_platform_setup_late_identity_and_native_dispatch(coordinator, has
     assert len(added_selects) == 3 and len(added_sensors) == 1
     for call in entry.async_on_unload.call_args_list:
         call.args[0]()
+
+
+async def test_camera_sensor_listens_from_sku_declaration_before_effective_revision(hass):
+    c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url=None)
+    c.pact_type, c.pact_code = 1, 1
+    c._resolve_device_profile()
+    entry = SimpleNamespace(runtime_data=c, async_on_unload=Mock())
+    added = []
+
+    await sensor.async_setup_entry(hass, entry, added.extend)
+    assert not added
+
+    qualify(c)
+    c.async_update_listeners()
+
+    assert len(added) == 1

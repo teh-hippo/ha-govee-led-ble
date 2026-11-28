@@ -957,6 +957,10 @@ def test_zero_saturation_readback_keeps_sibling_video_fields(hass, model, accept
     assert parsed.mode is ParsedMode.VIDEO and parsed.video_mode == "game"
     assert parsed.video_saturation == (0 if accepted else None)
     device = GoveeBLECoordinator(hass, "11:22:33:44:55:66", model, configuration_url="test")
+    if model == "H6199":
+        from tests.test_h6199_capabilities import set_qualified_identity
+
+        set_qualified_identity(device)
     device._notify_callback(None, bytearray(packet))
     assert device.video_mode == "game" and device.video_full_screen is False
     assert device.video_sound_effects is True

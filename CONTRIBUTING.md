@@ -246,6 +246,7 @@ The Makefile owns build orchestration:
 | --- | --- |
 | `make bootstrap` | Install project-pinned tools and locked Python/frontend dependencies. |
 | `make protocol` | Generate protocol code for backend tests or scene refresh in a fresh checkout, and after `.ksy` changes. |
+| `make verify-protocol-fresh` | Audit-only: independently regenerate Kaitai output under `.build`, compare the ignored local runtime mirror, then run parser checks without modifying or importing that mirror. |
 | `make fixtures` | Generate frontend contract fixtures when required. |
 | `make build` | Build protocol and frontend outputs. |
 | `make check-fast` | Run a broad non-hardware checkpoint: workflows, lint, generated outputs, fixtures and frontend/static contracts. |

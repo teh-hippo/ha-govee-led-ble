@@ -264,6 +264,7 @@ REPLY_PACING_TIMEOUT = 0.5
 KELVIN_STEP = 100
 KELVIN_RANGE_2000_9000 = (2000, 9000)
 KELVIN_RANGE_2200_6500 = (2200, 6500)
+KELVIN_RANGE_2300_6700 = (2300, 6700)
 KELVIN_RANGE_2700_6500 = (2700, 6500)
 KELVIN_RANGE_1000_10000 = (1000, 10000)
 
@@ -1060,10 +1061,17 @@ class ModelProfile:
             raise ValueError("packet write delay must be non-negative")
         if type(self.dreamview_max_sub_devices) is not int or not 0 <= self.dreamview_max_sub_devices <= 255:
             raise ValueError("DreamView member capacity must be from 0 to 255")
-        if self.physical_ic_count is not None and (
-            type(self.physical_ic_count) is not int or self.physical_ic_count <= 0
+        if self.physical_ic_capacity is not None and (
+            type(self.physical_ic_capacity) is not int or self.physical_ic_capacity <= 0
         ):
-            raise ValueError("physical IC count must be a positive integer or unknown")
+            raise ValueError("physical IC capacity must be a positive integer or unknown")
+        if self.physical_ic_count is not None and (
+            type(self.physical_ic_count) is not int
+            or self.physical_ic_count <= 0
+            or self.physical_ic_capacity is not None
+            and self.physical_ic_count > self.physical_ic_capacity
+        ):
+            raise ValueError("physical IC count must be a positive integer within product capacity")
         if self.video_revision_policy is VideoRevisionPolicy.QUALIFIED_CAMERA and self.camera_control_policy is None:
             raise ValueError("qualified video identity requires a camera-control policy")
         if self.video_revision_policy not in (None, VideoRevisionPolicy.QUALIFIED_CAMERA):
@@ -2793,6 +2801,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         music_params_require_activation=True,
         supports_music_color=True,
         physical_ic_count=12,
+        physical_ic_capacity=12,
         segment_count_ic_divisor=1,
         segment_count=5,
         segment_group_size=4,
@@ -2864,6 +2873,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         music_params_require_activation=True,
         supports_music_color=True,
         physical_ic_count=50,
+        physical_ic_capacity=50,
         strip_length_metres=(1, 2, 3, 4, 5),
         strip_ics_per_metre=10,
         segment_count_ic_divisor=1,
@@ -3742,6 +3752,8 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         effect_identity_fields=frozenset({"fw_version", "hw_version"}),
         static_recovery_identity_fields=frozenset({"pact"}),
         profile_pact_dependent=True,
+        requires_qualified_identity=True,
+        requires_pact_confirmation=True,
         colour_mode_query_selector=1,
         read_domains=frozenset(
             {ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE, ReadDomain.FIRMWARE, ReadDomain.HARDWARE}
@@ -3796,6 +3808,8 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         effect_identity_fields=frozenset({"fw_version", "hw_version"}),
         static_recovery_identity_fields=frozenset({"pact"}),
         profile_pact_dependent=True,
+        requires_qualified_identity=True,
+        requires_pact_confirmation=True,
         colour_mode_query_selector=1,
         read_domains=frozenset(
             {ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE, ReadDomain.FIRMWARE, ReadDomain.HARDWARE}
@@ -3849,6 +3863,8 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         effect_grammar="H6181",
         profile_identity_fields=frozenset({"fw_version", "hw_version"}),
         profile_pact_dependent=True,
+        requires_qualified_identity=True,
+        requires_pact_confirmation=True,
         colour_mode_query_selector=1,
         read_domains=frozenset(
             {ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE, ReadDomain.FIRMWARE, ReadDomain.HARDWARE}
@@ -3916,7 +3932,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         setup_required_read_domains=frozenset({ReadDomain.POWER}),
         supports_rgb=True,
         supports_color_temperature=True,
-        color_temp_range=KELVIN_RANGE_2000_9000,
+        color_temp_range=KELVIN_RANGE_2300_6700,
         segment_count=30,
         segment_group_size=3,
         configured_string_counts=(1, 2),
@@ -4009,6 +4025,8 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         profile_identity_fields=frozenset({"fw_version", "hw_version"}),
         static_identity_fields=frozenset({"fw_version", "hw_version"}),
         profile_pact_dependent=True,
+        requires_qualified_identity=True,
+        requires_pact_confirmation=True,
         read_domains=frozenset(
             {ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE, ReadDomain.FIRMWARE, ReadDomain.HARDWARE}
         ),
@@ -4056,6 +4074,8 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         effect_grammar="H6181",
         profile_identity_fields=frozenset({"fw_version", "hw_version"}),
         profile_pact_dependent=True,
+        requires_qualified_identity=True,
+        requires_pact_confirmation=True,
         colour_mode_query_selector=1,
         read_domains=frozenset(
             {ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE, ReadDomain.FIRMWARE, ReadDomain.HARDWARE}
@@ -4223,6 +4243,8 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         profile_identity_fields=frozenset({"fw_version", "hw_version"}),
         static_recovery_identity_fields=frozenset({"pact", "fw_version", "hw_version"}),
         profile_pact_dependent=True,
+        requires_qualified_identity=True,
+        requires_pact_confirmation=True,
         dreamview_grammar="H6199",
         dreamview_operations=frozenset(
             {
@@ -4499,6 +4521,7 @@ MODEL_PROFILES = {
 }
 
 BLE_DISCOVERABLE_MODELS = frozenset(MODEL_PROFILES)
+PACT_WIRE_ROUTE_MODELS = frozenset({"H6138", "H6139", "H6159", "H6181", "H6182", "H6199"})
 
 UNSUPPORTED_PROFILE = ModelProfile("Unsupported Govee device")
 
@@ -4612,6 +4635,8 @@ H6199_PACT1_PROFILE = ModelProfile(
     outbound_transform=_h6199_pact1_wire,
     profile_identity_fields=frozenset({"fw_version", "hw_version"}),
     profile_pact_dependent=True,
+    requires_qualified_identity=True,
+    requires_pact_confirmation=True,
     dreamview_grammar="H6199",
     dreamview_operations=frozenset(
         {
@@ -5171,6 +5196,25 @@ def _basic_revision_profile(profile: ModelProfile) -> ModelProfile:
     )
 
 
+def power_only_pact_revision_profile(profile: ModelProfile) -> ModelProfile:
+    """Fail closed until both Pact components identify an executable revision."""
+    basic = _basic_revision_profile(profile)
+    independent_reads = {
+        ReadDomain.POWER,
+        ReadDomain.FIRMWARE,
+        ReadDomain.HARDWARE,
+        ReadDomain.PACT,
+        ReadDomain.SUBORDINATE_20,
+        ReadDomain.SUBORDINATE_21,
+    }
+    return replace(
+        basic,
+        command_operations=frozenset({"power"}),
+        read_domains=profile.read_domains & independent_reads,
+        setup_required_read_domains=profile.setup_required_read_domains & independent_reads,
+    )
+
+
 def _h612a_revision_policy(context: ModelRevisionContext) -> ModelProfile:
     profile = get_profile(context.model)
     return profile if (context.pact_type, context.pact_code) in _H612A_PACTS else _basic_revision_profile(profile)
@@ -5274,6 +5318,8 @@ def _h6139_revision_policy(context: ModelRevisionContext) -> ModelProfile:
     from .protocol_transforms import whole_rgb_outbound_transform
 
     profile = get_profile(context.model)
+    if context.pact_type is None or context.pact_code is None:
+        return power_only_pact_revision_profile(profile)
     fw, hw = FirmwareVersion.parse(context.firmware), FirmwareVersion.parse(context.hardware)
     later = (
         context.pact_type is not None
@@ -5331,6 +5377,8 @@ def _h6159_revision_policy(context: ModelRevisionContext) -> ModelProfile:
     from .protocol_transforms import whole_rgb_outbound_transform
 
     profile = get_profile(context.model)
+    if context.pact_type is None or context.pact_code is None:
+        return power_only_pact_revision_profile(profile)
     fw, hw = FirmwareVersion.parse(context.firmware), FirmwareVersion.parse(context.hardware)
     later = (
         context.pact_type is not None
@@ -5389,6 +5437,8 @@ def _h6182_revision_policy(context: ModelRevisionContext) -> ModelProfile:
     from .protocol_transforms import whole_rgb_outbound_transform
 
     profile = get_profile(context.model)
+    if context.pact_type is None or context.pact_code is None:
+        return power_only_pact_revision_profile(profile)
     fw, hw = FirmwareVersion.parse(context.firmware), FirmwareVersion.parse(context.hardware)
     later = (
         context.pact_type is not None
@@ -5460,6 +5510,9 @@ def _h6182_revision_policy(context: ModelRevisionContext) -> ModelProfile:
 
 def _h6181_revision_policy(context: ModelRevisionContext) -> ModelProfile:
     profile = get_profile(context.model)
+    if context.pact_type is None or context.pact_code is None:
+        return power_only_pact_revision_profile(profile)
+    assert profile.effect_workflows is not None
     later = (
         context.pact_type is not None
         and context.pact_code is not None
@@ -5478,6 +5531,7 @@ def _h6181_revision_policy(context: ModelRevisionContext) -> ModelProfile:
             music_variants=(),
             scene_codes=frozenset({0, 1, 4, 5, 7, 8, 9}),
             selector_only_scene_bits=8,
+            effect_workflows=profile.effect_workflows - {"edited_palette_scenes"},
         )
     fw = FirmwareVersion.parse(context.firmware)
     hw = FirmwareVersion.parse(context.hardware)
@@ -5501,6 +5555,7 @@ def _h6181_revision_policy(context: ModelRevisionContext) -> ModelProfile:
             if percentage and (palette_music or variant.mode_code in (0, 1))
         ),
         selector_only_scene_bits=None if uploaded_scenes else 16,
+        effect_workflows=profile.effect_workflows - (set() if uploaded_scenes else {"edited_palette_scenes"}),
         scene_codes=None if uploaded_scenes else frozenset({0, 1, 4, 5, 7, 8, 9, 10, 16}),
     )
 
@@ -5751,6 +5806,8 @@ def _h618a_revision_policy(context: ModelRevisionContext) -> ModelProfile:
 
 def _h6199_revision_policy(context: ModelRevisionContext) -> ModelProfile:
     pact = (context.pact_type, context.pact_code)
+    if context.pact_type is None or context.pact_code is None:
+        return power_only_pact_revision_profile(get_profile(context.model))
     profile = H6199_PACT1_PROFILE if pact == (1, 1) else get_profile(context.model)
     fw, hw = FirmwareVersion.parse(context.firmware), FirmwareVersion.parse(context.hardware)
     if pact in {(1, 1), (2, 1)}:

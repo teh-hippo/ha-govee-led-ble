@@ -334,7 +334,7 @@ def legacy_coordinator(hass, pact):
     c.pact_type, c.pact_code = pact, 1
     c.fw_version, c.hw_version = "1.10.04", "3.02.01"
     c._resolve_device_profile()
-    c._confirmed_identity_fields.update({"fw_version", "hw_version"})
+    c._confirmed_identity_fields.update({"pact", "fw_version", "hw_version"})
     client = ble_client()
     c._client = client
     c._notification_token = object()
@@ -425,6 +425,7 @@ async def test_h6199_partial_upload_never_replays(hass):
 async def test_h6199_generation_failure_quarantines_delayed_group_completion(hass):
     c, client = legacy_coordinator(hass, 2)
     await c._start_notify()
+    c._confirmed_identity_fields.update({"pact", "fw_version", "hw_version"})
     old_receive = client.start_notify.call_args.args[1]
     packets = build_dreamview_group((member(),), c.profile)
 
@@ -442,6 +443,7 @@ async def test_h6199_generation_failure_quarantines_delayed_group_completion(has
     c._client = next_client
     c._ensure_connected = AsyncMock(return_value=next_client)
     await c._start_notify()
+    c._confirmed_identity_fields.update({"pact", "fw_version", "hw_version"})
     new_receive = next_client.start_notify.call_args.args[1]
 
     async def reject_new_write(_uuid, packet, **kwargs):

@@ -74,7 +74,7 @@ from custom_components.ha_govee_led_ble.protocol_core import H6093Projector
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
 from custom_components.ha_govee_led_ble.switch import GoveeBLEControlSwitch
 from custom_components.ha_govee_led_ble.transport import fragment_a3, reassemble_a3, xor_checksum
-from tests.coordinator_test_support import _packet, frame
+from tests.coordinator_test_support import _packet, frame, qualify_coordinator_identity
 from tests.storage_test_double import InMemoryVersionedDocumentStore
 
 
@@ -132,14 +132,8 @@ def resident_video(hass, monkeypatch, request):
     coordinator._notification_token = object()
     coordinator._notify_started_monotonic = time.monotonic() - 1
     if model == "H6199":
-        coordinator._observe_pact(2, 1)
-        for field, value in (
-            ("fw_version", "1.10.04"),
-            ("hw_version", "3.02.01"),
-            ("subordinate_20_version", "1.03.00"),
-            ("subordinate_21_version", "1.00.33"),
-        ):
-            coordinator._observe_identity_field(field, value)
+        qualify_coordinator_identity(coordinator)
+        monkeypatch.setattr(coordinator, "_refresh_pact_advertisements", MagicMock())
 
     async def connected():
         if state["boundary"] is not None:
@@ -600,6 +594,9 @@ async def test_resident_palette_program_reselection_never_restores_an_overwritte
 ):
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url=None)
     coordinator.profile = device_profile(model, 1, 1, firmware="1.07.02", hardware="1.00.01")
+    coordinator.pact_type, coordinator.pact_code = 1, 1
+    coordinator.fw_version, coordinator.hw_version = "1.07.02", "1.00.01"
+    coordinator._confirmed_identity_fields.update({"pact", "fw_version", "hw_version"})
     if condition == "unsupported":
         coordinator.profile = replace(coordinator.profile, effect_workflows=frozenset())
     state = replace(
@@ -913,6 +910,8 @@ def physical(hass, monkeypatch, request):
     coordinator._notify_started_monotonic = time.monotonic() - 1
     if model == "H6093":
         coordinator._observe_pact(*pact)
+    elif model in {"H617A", "H617E"}:
+        qualify_coordinator_identity(coordinator, pact=None, firmware="1.00.00", hardware="1.00.00")
     elif model == "H618A" and pact is not None:
         coordinator._observe_pact(*pact)
 
@@ -923,6 +922,8 @@ def physical(hass, monkeypatch, request):
             await coordinator._start_notify()
             if model == "H6093":
                 coordinator._observe_pact(*pact)
+        if model in {"H617A", "H617E"}:
+            qualify_coordinator_identity(coordinator, pact=None, firmware="1.00.00", hardware="1.00.00")
         return client
 
     monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(side_effect=reconnect))
@@ -2750,6 +2751,8 @@ async def test_public_effect_recovery_after_release(hass, physical, monkeypatch,
             coordinator._notify_started_monotonic = virtual_clock.virtual_time()
             if coordinator.profile.segment_count_ic_divisor is not None:
                 await coordinator._async_write_packet(client, frame("aa40"))
+            if coordinator.model in {"H617A", "H617E"}:
+                qualify_coordinator_identity(coordinator, pact=None, firmware="1.00.00", hardware="1.00.00")
         return client
 
     monkeypatch.setattr(coordinator, "_ensure_connected", connected)

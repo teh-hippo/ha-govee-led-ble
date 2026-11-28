@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.ha_govee_led_ble.const import device_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
@@ -305,8 +306,7 @@ async def test_native_scene_uses_subscription_identity_and_rechecks_after_reply_
     coordinator.profile = device_profile("H619A", 2, 1, firmware="2.07.01", hardware="2.01.02")
     coordinator.fw_version, coordinator.hw_version = "2.07.01", "2.01.02"
     coordinator.is_on = True
-    if revoke_during_pacing:
-        coordinator._confirmed_identity_fields.update({"fw_version", "hw_version"})
+    coordinator._confirmed_identity_fields.update({"fw_version", "hw_version"})
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
     coordinator._client = client
     monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
@@ -331,10 +331,8 @@ async def test_native_scene_uses_subscription_identity_and_rechecks_after_reply_
             await coordinator.async_apply_native_scene("Candidate", scene_entry=entry, verify=False)
     else:
         await coordinator.async_apply_native_scene("Candidate", scene_entry=entry, verify=False)
-        assert coordinator.effect_authorization_profile.rgbic_scene_v0 is True
-    assert [call.args[1] for call in client.write_gatt_char.await_args_list] == (
-        [] if revoke_during_pacing else [_frame("aa0703"), _frame("aa06")]
-    )
+        assert coordinator.effect_authorization_profile.rgbic_scene_v0 is False
+    assert [call.args[1] for call in client.write_gatt_char.await_args_list] == []
 
 
 @pytest.mark.parametrize("fresh_identity", [False, True])
@@ -372,7 +370,12 @@ async def test_saved_scene_reconnects_before_compilation_after_idle_disconnect(
     )
     entity = GoveeBLELight(coordinator, config_entry_id="entry", effect_backend=backend)
     monkeypatch.setattr(entity, "_async_supersede_preview", AsyncMock())
-    await entity._async_apply_saved_item(item)
+    if fresh_identity:
+        await entity._async_apply_saved_item(item)
+        engine.async_apply_saved.assert_awaited_once()
+        assert engine.async_apply_saved.await_args.kwargs["compiled"].rgbic_scene_v0 is False
+    else:
+        with pytest.raises(HomeAssistantError, match="identity_not_ready"):
+            await entity._async_apply_saved_item(item)
+        engine.async_apply_saved.assert_not_awaited()
     coordinator._ensure_connected.assert_awaited_once()
-    engine.async_apply_saved.assert_awaited_once()
-    assert engine.async_apply_saved.await_args.kwargs["compiled"].rgbic_scene_v0 is (not fresh_identity)

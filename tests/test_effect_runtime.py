@@ -94,7 +94,7 @@ from custom_components.ha_govee_led_ble.light_commands import build_color_rgb
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
 from custom_components.ha_govee_led_ble.transport import WRITE_UUID, xor_checksum
 from custom_components.ha_govee_led_ble.video_applicability import video_identity_fields
-from tests.coordinator_test_support import approve_diy_destination_operation, frame
+from tests.coordinator_test_support import approve_diy_destination_operation, frame, qualify_coordinator_identity
 from tests.storage_test_double import InMemoryVersionedDocumentStore
 from tests.test_effect_preview import _EffectCoordinator, _known_static_baseline, _manager, _open
 from tests.test_music_commands import _music_transport
@@ -616,14 +616,17 @@ async def test_partial_observation_does_not_confirm_or_repeat_activation(
     assert observed.active_effect is None
 
 
-def _coordinator(*, readable: bool = True):
+def _coordinator(*, readable: bool = True, model: str = "H617A"):
+    profile = (
+        get_profile(model)
+        if readable
+        else replace(get_profile(model), read_domains=frozenset(), setup_required_read_domains=frozenset())
+    )
     coordinator = _EffectCoordinator(
         _control_arbiter=BLEControlArbiter(),
         address="AA:BB:CC:DD:EE:FF",
-        model="H617A",
-        profile=get_profile("H617A")
-        if readable
-        else replace(get_profile("H617A"), read_domains=frozenset(), setup_required_read_domains=frozenset()),
+        model=model,
+        profile=profile,
         is_on=True,
         brightness_pct=72,
         rgb_color=(1, 2, 3),
@@ -647,6 +650,7 @@ def _coordinator(*, readable: bool = True):
         segment_colors=[(1, 2, 3)] * 15,
         segment_brightness=[100] * 15,
         segment_state_source="initial",
+        _physical_ic_count_confirmed=True,
     )
 
     async def refresh_segments():
@@ -1318,8 +1322,7 @@ async def test_h6199_layered_scene_uses_model_framing_and_identity_verification(
     hass: HomeAssistant,
 ) -> None:
     repository, cache = await _repositories(hass)
-    coordinator = _coordinator()
-    coordinator.model = "H6199"
+    coordinator = _coordinator(model="H6199")
     entry = next(scene for scene in SCENE_ENTRIES["H6199"] if scene.scene_type == 2 and scene.param)
     content = decode_catalogue_layered_scene("H6199", entry)
     assert content is not None
@@ -1626,6 +1629,7 @@ async def test_queued_user_does_not_interrupt_owned_native_profile_settings(h619
 
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(side_effect=transmit))
     coordinator._client = client
+    qualify_coordinator_identity(coordinator)
     monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
     repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
     await repository.async_load()
@@ -1907,6 +1911,7 @@ async def test_music_deployment_before_first_control_preserves_native_selection(
     cancelled: bool,
 ) -> None:
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url="test")
+    qualify_coordinator_identity(coordinator)
     coordinator._pre_mode_snapshot = PriorControlState(
         "colour",
         True,
@@ -2031,6 +2036,8 @@ async def test_preview_admitted_during_apply_persistence_writes_latest_intent(ha
     from custom_components.ha_govee_led_ble.effect_preview import PreviewPhase, PreviewWriteDisposition
 
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", model, configuration_url=None)
+    if model == "H6199":
+        qualify_coordinator_identity(coordinator)
     content = (
         MusicProfile(model, "rolling", 99, (0, 0, 0))
         if model == "H6199"
@@ -2122,6 +2129,8 @@ async def test_cancelled_apply_waiter_preserves_newer_preview(hass, monkeypatch,
     from custom_components.ha_govee_led_ble.effect_preview import PreviewPhase, PreviewWriteDisposition
 
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", model, configuration_url=None)
+    if model == "H6199":
+        qualify_coordinator_identity(coordinator)
     store = InMemoryVersionedDocumentStore()
     repository = EffectDeploymentRepository(store)
     await repository.async_load()
@@ -2766,6 +2775,7 @@ async def test_h6181_music_is_applied_without_claiming_unavailable_selector_veri
         device_profile("H6181", 10, 2, firmware="2.04.00", hardware="2.01.01"),
         profile_identity_fields=frozenset(),
     )
+    qualify_coordinator_identity(coordinator, pact=(10, 2), firmware="2.04.00", hardware="2.01.01")
     coordinator.async_observe_effect = AsyncMock(return_value=False)
     coordinator.async_restore_effect_control_state = AsyncMock(return_value=True)
     workspaces = ActiveEffectWorkspaceRepository(InMemoryVersionedDocumentStore())
@@ -3757,6 +3767,7 @@ async def test_reduced_video_profile_skips_unsupported_companion_workflows(
     coordinator = GoveeBLECoordinator(
         hass, "AA:BB:CC:DD:EE:FF", model, configuration_url="homeassistant://ha-govee-led-ble/editor/entry-a"
     )
+    qualify_coordinator_identity(coordinator)
     coordinator.is_on = True
     coordinator.video_saturation = 88
     coordinator.video_sound_effects_softness = 50

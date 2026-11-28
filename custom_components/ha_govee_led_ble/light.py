@@ -78,7 +78,7 @@ from .effect_compiler import (
 from .effect_contracts import CapabilityWorkflow, require_effect_route
 from .effect_deployments import DeploymentRecord
 from .effect_diagnostics import DiagnosticOutcome, DiagnosticStage
-from .effect_domain import BuiltinScene, CatalogueRef, EffectValidationError, LibraryItem
+from .effect_domain import BuiltinScene, CatalogueRef, EffectValidationError, LibraryItem, effect_content_workflow
 from .effect_runtime import (
     active_workspace_matches,
     async_apply_compiled_profile,
@@ -118,7 +118,7 @@ from .scenes import (
     MODEL_SCENE_ALIASES,
     MODEL_SCENE_LABELS,
     MODEL_SCENES,
-    scene_command_identity_fields,
+    resolve_scene_target,
     scene_for_profile,
 )
 from .video_applicability import (
@@ -469,7 +469,9 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
 
     @property
     def effect_list(self) -> list[str]:
-        if not supported_effect_categories(self.coordinator.model, profile=self.coordinator.profile):
+        if not supported_effect_categories(
+            self.coordinator.model, profile=self.coordinator.native_presentation_profile
+        ):
             return []
         active_custom = self._matching_active_workspace() is not None
         entries = self._selector_entries(active_custom=active_custom)
@@ -587,14 +589,25 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         if active_custom is None:
             active_custom = self._matching_active_workspace() is not None
         model = self.coordinator.model
+        profile = self.coordinator.native_presentation_profile if profile is None else profile
         canonical_model = resolve_model(model) or model
         registered_profile = MODEL_PROFILES.get(canonical_model)
         legacy_model = registered_profile.legacy_scene_catalogue_sku if registered_profile is not None else None
-        categories = self._effect_categories
+        configured_categories = getattr(self.coordinator, "effect_categories", None)
+        categories = (
+            configured_categories if isinstance(configured_categories, frozenset) else frozenset(EFFECT_CATEGORIES)
+        ) & frozenset(supported_effect_categories(model, profile=profile))
         prefix_effect_names = getattr(self.coordinator, "prefix_effect_names", False) is True
         always_include_custom_effects = getattr(self.coordinator, "always_include_custom_effects", False) is True
-        native_categories = self._native_selector_categories
-        profile = self.coordinator.profile if profile is None else profile
+        native_categories = set(categories)
+        families = getattr(self.coordinator, "effect_families", None)
+        if isinstance(families, frozenset):
+            if EFFECT_FAMILY_SCENES not in families:
+                native_categories.discard(EFFECT_CATEGORY_SCENES)
+            if EFFECT_FAMILY_MUSIC not in families:
+                native_categories.discard(EFFECT_CATEGORY_REACTIVE)
+            if EFFECT_FAMILY_VIDEO not in families:
+                native_categories.discard(EFFECT_CATEGORY_VIDEO)
         defaults = (
             self._effect_backend.template_defaults
             if profile.video_modes and self._effect_backend is not None and self._config_entry_id is not None
@@ -667,7 +680,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             prefix_effect_names=prefix_effect_names,
             always_include_custom_effects=always_include_custom_effects,
             active_custom=active_custom,
-            native_categories=native_categories,
+            native_categories=frozenset(native_categories),
             profile=profile,
             video_modes=video_modes,
         )
@@ -699,19 +712,6 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         return (categories if isinstance(categories, frozenset) else frozenset(EFFECT_CATEGORIES)) & frozenset(
             supported_effect_categories(self.coordinator.model, profile=self.coordinator.profile)
         )
-
-    @property
-    def _native_selector_categories(self) -> frozenset[str]:
-        categories = set(self._effect_categories)
-        families = getattr(self.coordinator, "effect_families", None)
-        if isinstance(families, frozenset):
-            if EFFECT_FAMILY_SCENES not in families:
-                categories.discard(EFFECT_CATEGORY_SCENES)
-            if EFFECT_FAMILY_MUSIC not in families:
-                categories.discard(EFFECT_CATEGORY_REACTIVE)
-            if EFFECT_FAMILY_VIDEO not in families:
-                categories.discard(EFFECT_CATEGORY_VIDEO)
-        return frozenset(categories)
 
     @property
     def _can_restore_static_color(self) -> bool:
@@ -911,7 +911,9 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         profile = coordinator.profile
         try:
             selected = resolve_effect_selector(self._selector_entries(), effect_name)
-            if selected is None and profile.scene_identity_fields:
+            if selected is None and (
+                profile.scene_identity_fields or get_profile(coordinator.model).profile_pact_dependent
+            ):
                 ceiling = get_profile(coordinator.model).scene_command_versions
                 if ceiling != profile.scene_command_versions:
                     candidate = resolve_effect_selector(
@@ -939,57 +941,48 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 else None
             )
             authored_palette = scene_default is not None and scene.scene_type == 1
-            if (
-                authored_palette
-                or scene_command_identity_fields(coordinator.model, scene)
-                or native_scene_uses_geometry(scene, profile)
-            ):
-                template = CatalogueRef(coordinator.model, scene.scene_id, scene.effect_id)
-                content = (
-                    decode_palette_scene(
-                        template,
-                        scene_default.canonical_body,
-                        speed_index=scene_default.speed_index,
-                    )
-                    if authored_palette and scene_default is not None
-                    else BuiltinScene(template)
+            template = CatalogueRef(coordinator.model, scene.scene_id, scene.effect_id)
+            content = (
+                decode_palette_scene(
+                    template,
+                    scene_default.canonical_body,
+                    speed_index=scene_default.speed_index,
                 )
-                profile = await async_prepare_effect_profile(
-                    coordinator,
-                    intent=ControlIntent.BACKGROUND,
-                    content=content,
-                )
-                geometry_authority = (
-                    configured_scene_geometry_authority(coordinator)
-                    if native_scene_uses_geometry(scene, profile)
-                    else None
-                )
-                authored_route = (
-                    profile.command_grammar,
-                    profile.effect_grammar,
-                    profile.selector_only_scene_bits,
-                    profile.authored_palette_scene_selector,
-                )
+                if authored_palette and scene_default is not None
+                else BuiltinScene(template)
+            )
+            profile = await async_prepare_effect_profile(
+                coordinator,
+                intent=ControlIntent.BACKGROUND,
+                content=content,
+            )
+            geometry_authority = (
+                configured_scene_geometry_authority(coordinator) if native_scene_uses_geometry(scene, profile) else None
+            )
+            authored_route = (
+                profile.command_grammar,
+                profile.effect_grammar,
+                profile.selector_only_scene_bits,
+                profile.authored_palette_scene_selector,
+            )
 
-                def check_scene() -> None:
-                    current = coordinator.effect_authorization_profile
-                    require_scene_command_identity(coordinator, scene)
-                    scene_for_profile(scene, current)
-                    require_scene_geometry_authority(geometry_authority, coordinator)
-                    if authored_palette:
-                        require_effect_route(
-                            coordinator.model, CapabilityWorkflow.EDITED_PALETTE_SCENES, profile=current
-                        )
-                        if authored_route != (
-                            current.command_grammar,
-                            current.effect_grammar,
-                            current.selector_only_scene_bits,
-                            current.authored_palette_scene_selector,
-                        ):
-                            raise ValueError("Authored palette scene route changed during preparation")
+            def check_scene() -> None:
+                current = coordinator.effect_authorization_profile
+                require_scene_command_identity(coordinator, scene)
+                scene_for_profile(scene, current)
+                require_scene_geometry_authority(geometry_authority, coordinator)
+                if authored_palette:
+                    require_effect_route(coordinator.model, CapabilityWorkflow.EDITED_PALETTE_SCENES, profile=current)
+                    if authored_route != (
+                        current.command_grammar,
+                        current.effect_grammar,
+                        current.selector_only_scene_bits,
+                        current.authored_palette_scene_selector,
+                    ):
+                        raise ValueError("Authored palette scene route changed during preparation")
 
-                if effect_guards is not None:
-                    effect_guards.append(check_scene)
+            if effect_guards is not None:
+                effect_guards.append(check_scene)
             require_effect_route(coordinator.model, CapabilityWorkflow.NATIVE_SCENES, profile=profile)
             if authored_palette:
                 require_effect_route(coordinator.model, CapabilityWorkflow.EDITED_PALETTE_SCENES, profile=profile)
@@ -1119,9 +1112,13 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         model = self.coordinator.model
         with self._rollback():
             if ATTR_BRIGHTNESS in kwargs:
-                self._require_support("brightness", supported=self.supported_color_modes != {ColorMode.ONOFF})
+                packet_profile = profile if profile.command_operation_supported("brightness") else get_profile(model)
+                self._require_support(
+                    "brightness",
+                    supported=packet_profile.command_operation_supported("brightness"),
+                )
                 pct = max(1, round(brightness_to_value((1, 100), kwargs[ATTR_BRIGHTNESS])))
-                require_profile_packet(build_brightness(pct, model, profile=profile), profile)
+                require_profile_packet(build_brightness(pct, model, profile=packet_profile), packet_profile)
             if ATTR_RGB_COLOR in kwargs:
                 red, green, blue = kwargs[ATTR_RGB_COLOR]
                 if not profile.main_colour_sources:
@@ -1158,20 +1155,82 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         kwargs, self._pending_turn_on = self._pending_turn_on or {}, None
         await self._async_handle_turn_on(**kwargs)
 
+    async def _async_prepare_brightness_wire_guard(self, pct: int) -> Callable[[], None]:
+        coordinator = self.coordinator
+
+        def qualify_packet() -> bytes:
+            packet = build_brightness(pct, coordinator.model, profile=coordinator.profile)
+            require_profile_packet(packet, coordinator.profile)
+            coordinator._validate_authorized_packet(packet)
+            transform = coordinator.profile.outbound_transform
+            return transform(packet) if transform is not None else packet
+
+        def guard() -> None:
+            coordinator._reconcile_authorization()
+            if qualify_packet() != prepared_wire_packet:
+                raise HomeAssistantError(translation_domain=DOMAIN, translation_key="identity_not_ready")
+
+        coordinator._reconcile_authorization()
+        try:
+            prepared_wire_packet = qualify_packet()
+            return guard
+        except HomeAssistantError, ValueError:
+            pass
+        async with async_control_intent(coordinator, ControlIntent.BACKGROUND):
+            async with coordinator._lock:
+                client = await coordinator._ensure_connected()
+                try:
+                    prepared_wire_packet = qualify_packet()
+                except HomeAssistantError, ValueError:
+                    declared = get_profile(coordinator.model)
+                    if declared.requires_pact_confirmation:
+                        await coordinator._async_require_identity(client, frozenset({"pact"}))
+                        coordinator._resolve_device_profile(preserve_state=True)
+                        coordinator._reconcile_authorization()
+                    try:
+                        prepared_wire_packet = qualify_packet()
+                    except HomeAssistantError, ValueError:
+                        await coordinator._async_require_identity(client, coordinator.profile.profile_identity_fields)
+                        coordinator._resolve_device_profile(preserve_state=True)
+                        coordinator._reconcile_authorization()
+                        prepared_wire_packet = qualify_packet()
+                coordinator._renew_foreground_lease()
+        return guard
+
     async def _async_handle_turn_on(self, **kwargs: Any) -> None:
-        static_requested = (
+        selected = None
+        selected_scene_requested = False
+        if ATTR_EFFECT in kwargs:
+            effect_name = str(kwargs[ATTR_EFFECT])
+            try:
+                selected = resolve_effect_selector(
+                    self._selector_entries(profile=self.coordinator.native_presentation_profile),
+                    effect_name,
+                )
+            except EffectValidationError:
+                selected = None
+            selected_scene_requested = selected is not None and (
+                selected.source == "scene"
+                or selected.source == "saved"
+                and selected.item is not None
+                and effect_content_workflow(selected.item.content)
+                in {"native_scenes", "edited_palette_scenes", "layered_scenes", "workshop"}
+            )
+        revision_dependent_requested = (
             ATTR_RGB_COLOR in kwargs
             or ATTR_COLOR_TEMP_KELVIN in kwargs
+            or selected_scene_requested
             or normalise_effect_name(str(kwargs.get(ATTR_EFFECT, ""))) == EFFECT_OFF
             and not self.coordinator.profile.partition_segment_writes
         )
-        if static_requested and not (
+        requires_turn_on_preparation = revision_dependent_requested or ATTR_BRIGHTNESS in kwargs
+        if requires_turn_on_preparation and not (
             self.coordinator.profile.brightness_zero_turns_off and kwargs.get(ATTR_BRIGHTNESS) == 0
         ):
             guard = None
             profile = self.coordinator.profile
             pending_identity = profile.basic_controls_only and bool(profile.profile_identity_fields)
-            if (
+            if revision_dependent_requested and (
                 self.coordinator.identity_gated_controls
                 or get_profile(self.coordinator.model).static_identity_fields
                 or pending_identity
@@ -1183,7 +1242,28 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                     else self.coordinator.native_presentation_profile,
                 )
                 guard = await self.coordinator.async_prepare_identity_gated_control()
-            async with self.coordinator.async_mask_transaction():
+            selected_scene_uses_geometry = False
+            if selected_scene_requested and selected is not None:
+                if selected.source == "scene":
+                    selected_scene_uses_geometry = native_scene_uses_geometry(
+                        MODEL_SCENES[self.coordinator.model][selected.value],
+                        self.coordinator.native_presentation_profile,
+                    )
+                elif selected.item is not None:
+                    template = getattr(selected.item.content, "template", None)
+                    resolved = resolve_scene_target(self.coordinator.model, template) if template is not None else None
+                    selected_scene_uses_geometry = resolved is None or native_scene_uses_geometry(
+                        resolved[1], self.coordinator.native_presentation_profile
+                    )
+                else:
+                    selected_scene_uses_geometry = True
+            geometry_requested = bool(
+                kwargs.keys() & {ATTR_RGB_COLOR, ATTR_COLOR_TEMP_KELVIN} or selected_scene_uses_geometry
+            )
+            if geometry_requested:
+                async with self.coordinator.async_mask_transaction():
+                    await self._async_prepare_turn_on(native_write_guard=guard, **kwargs)
+            else:
                 await self._async_prepare_turn_on(native_write_guard=guard, **kwargs)
         else:
             await self._async_prepare_turn_on(**kwargs)
@@ -1391,6 +1471,19 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                     def guard() -> None:
                         if native_write_guard is not None:
                             native_write_guard()
+                        current_profile = self.coordinator.effect_authorization_profile
+                        current_compiled = compiled
+                        if current_profile != profile:
+                            current_compiled = compile_application(
+                                current,
+                                self.coordinator.model,
+                                diy_code=resolve_diy_code(
+                                    current, diy_code, model=self.coordinator.model, profile=current_profile
+                                ),
+                                profile=current_profile,
+                            )
+                        if bind_compiled_geometry(current_compiled, self.coordinator) != compiled:
+                            raise ValueError("Prepared saved effect route changed before write")
                         if prepared_video is not None:
                             prepared_video.require_current(self.coordinator)
                         validate_compiled_geometry(
@@ -1558,7 +1651,9 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
 
     def _saved_effect(self, effect_name: str) -> LibraryItem | None:
         try:
-            selected = resolve_effect_selector(self._selector_entries(), effect_name)
+            selected = resolve_effect_selector(
+                self._selector_entries(profile=self.coordinator.native_presentation_profile), effect_name
+            )
             return selected.item if selected is not None and selected.source == "saved" else None
         except EffectValidationError as exc:
             raise ServiceValidationError(
@@ -1580,10 +1675,27 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         self._validate_basic_request(kwargs)
         coordinator = self.coordinator
         source_colour = source_colour or self._prepare_source_colour_request(kwargs)
-        request = coordinator.control_write_request(identity_guard=native_write_guard, effect_guard=effect_write_guard)
+        write_guard = native_write_guard
+        if ATTR_BRIGHTNESS in kwargs:
+            pct = max(1, round(brightness_to_value((1, 100), kwargs[ATTR_BRIGHTNESS])))
+            brightness_guard = await self._async_prepare_brightness_wire_guard(pct)
+
+            def qualified_write_guard() -> None:
+                if native_write_guard is not None:
+                    native_write_guard()
+                brightness_guard()
+
+            write_guard = qualified_write_guard
+        request = coordinator.control_write_request(identity_guard=write_guard, effect_guard=effect_write_guard)
 
         if ATTR_BRIGHTNESS in kwargs:
-            self._require_support("brightness", supported=self.supported_color_modes != {ColorMode.ONOFF})
+            declared = get_profile(coordinator.model)
+            self._require_support(
+                "brightness",
+                supported=declared.supports_rgb
+                or declared.can_read(ReadDomain.BRIGHTNESS)
+                or "brightness" in (declared.command_operations or ()),
+            )
         if effect_write_guard is not None:
             effect_write_guard()
         power_on = partial(
@@ -1603,7 +1715,8 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                     pct = max(1, round(brightness_to_value((1, 100), kwargs[ATTR_BRIGHTNESS])))
 
                     async def apply_brightness() -> None:
-                        await request.send(build_brightness(pct, coordinator.model))
+                        packet = build_brightness(pct, coordinator.model, profile=coordinator.profile)
+                        await request.send(packet)
 
                     with request.track("brightness_pct"):
                         await apply_brightness()

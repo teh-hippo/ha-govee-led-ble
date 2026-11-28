@@ -59,7 +59,7 @@ from custom_components.ha_govee_led_ble.music_commands import prepare_music_requ
 from custom_components.ha_govee_led_ble.protocol_core import serialize_native_body
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES
 from custom_components.ha_govee_led_ble.transport import reassemble_a3
-from tests.coordinator_test_support import frame
+from tests.coordinator_test_support import frame, qualify_coordinator_identity
 
 PROFILE = device_profile("H60B0", 1, 2)
 
@@ -404,6 +404,7 @@ async def test_hidden_observed_scene_does_not_expose_static_main_colour(source_w
 def native_sources(hass):
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H60B0", configuration_url=None)
     coordinator.profile = PROFILE
+    qualify_coordinator_identity(coordinator, pact=(1, 2))
     coordinator.pact_type, coordinator.pact_code = 1, 2
     coordinator._confirmed_identity_fields.add("pact")
     coordinator._refresh_pact_advertisements = lambda: None
@@ -1256,6 +1257,7 @@ async def test_source_readback_is_independent_and_invalid_state_cannot_update_fl
 
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H60B0", configuration_url=None)
     coordinator.profile = PROFILE
+    qualify_coordinator_identity(coordinator, pact=(1, 2))
     decode = MagicMock(wraps=h60b0_controls.source_readback)
     monkeypatch.setattr(h60b0_controls, "source_readback", decode)
     monkeypatch.setattr(coordinator_notifications, "source_readback", decode)
@@ -1278,6 +1280,7 @@ async def test_source_readback_is_independent_and_invalid_state_cannot_update_fl
 async def test_reported_source_state_keeps_bottom_values_separate_from_ripple(hass, pact_code, prefix):
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H60B0", configuration_url=None)
     coordinator.profile = device_profile("H60B0", 1, pact_code)
+    qualify_coordinator_identity(coordinator, pact=(1, pact_code))
     coordinator._notify_callback(None, bytearray(frame(prefix + "000032196464")))
     assert (coordinator.top_kelvin, coordinator.ripple_speed) == (0, 50)
     assert (coordinator.bottom_kelvin, coordinator.bottom_brightness) == (6500, 100)
@@ -1334,7 +1337,8 @@ async def test_native_source_setting_requires_fresh_matching_readback(
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H60B0", configuration_url=None)
     coordinator.profile = PROFILE
     coordinator.pact_type, coordinator.pact_code = 1, 2
-    client = MagicMock(is_connected=True)
+    qualify_coordinator_identity(coordinator, pact=(1, 2))
+    client = MagicMock(is_connected=True, disconnect=AsyncMock())
     coordinator._client = client
     coordinator._notification_token = object()
     coordinator._ensure_connected = AsyncMock(return_value=client)
@@ -1656,8 +1660,13 @@ async def test_live_pact_conflicts_revoke_write_authority(pact_connection, confl
             coordinator._pact_identity.marker_pact = (1, 3)
             coordinator._resolve_pact_identity()
         else:
-            coordinator._pact_identity.advertisement_observations["current"] = (time.monotonic(), frozenset({(1, 3)}))
-            coordinator._resolve_pact_identity()
+            coordinator._note_advertisement(
+                SimpleNamespace(
+                    source="current",
+                    time=time.monotonic(),
+                    manufacturer_data={34818: bytes((0xEC, 0, 1, 3, 0))},
+                )
+            )
         assert coordinator.pact_readiness == "conflicting"
         assert not coordinator.identity_fields_confirmed()
         assert not coordinator._authorization_profile().supports_rgb
@@ -1677,8 +1686,10 @@ async def test_live_pact_conflicts_revoke_write_authority(pact_connection, confl
 async def test_reported_source_notifications_update_only_power_fields(hass, flags, expected):
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H60B0", configuration_url=None)
     coordinator.profile = PROFILE
+    qualify_coordinator_identity(coordinator, pact=(1, 2))
     coordinator._notify_callback(None, bytearray(frame("aa42d00bb81e0fa028")))
     native_revisions = {field: coordinator._field_revisions[field] for field in ("bottom_kelvin", "ripple_speed")}
+    coordinator._confirmed_identity_fields.discard("pact")
     notification = frame(f"ee3001{flags:02x}" + "ab" * 15)
     coordinator._notify_callback(None, bytearray(notification))
     controls = ("top_enabled", "side_enabled", "bottom_enabled")

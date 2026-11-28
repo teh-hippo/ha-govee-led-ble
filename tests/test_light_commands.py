@@ -194,8 +194,8 @@ def test_h7020_sends_percent_brightness_and_whole_string_static_commands() -> No
     assert build_color_temp(4000, profile=profile) == H("33051501ffffff0fa0ffd5a1ff7f000000000079")
     minimum = parse_static_write(build_color_temp(1000, profile=profile), profile=profile)
     maximum = parse_static_write(build_color_temp(10000, profile=profile), profile=profile)
-    assert minimum is not None and minimum.kelvin == 2000
-    assert maximum is not None and maximum.kelvin == 9000
+    assert minimum is not None and minimum.kelvin == 2300
+    assert maximum is not None and maximum.kelvin == 6700
 
 
 def test_h6179_uses_exact_raw_brightness_and_whole_device_static_commands() -> None:

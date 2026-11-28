@@ -45,6 +45,28 @@ _MUSIC_SLUG_BY_ID = {code: slug for slug, code in MUSIC_MODE_SLUGS.items()}
 _SCENE_EFFECT_BY_ID = {scene.code: name for name, scene in SCENES.items()}
 
 
+@pytest.fixture
+def h6199(hass):
+    coordinator = GoveeBLECoordinator(
+        hass,
+        "11:22:33:44:55:66",
+        "H6199",
+        configuration_url=_CONFIGURATION_URL,
+    )
+    coordinator.pact_type, coordinator.pact_code = 2, 1
+    coordinator.fw_version, coordinator.hw_version = "1.10.04", "3.02.01"
+    coordinator._confirmed_identity_fields.update({"pact", "fw_version", "hw_version"})
+    coordinator._resolve_device_profile()
+    return coordinator
+
+
+def _legacy_h6181(coordinator: GoveeBLECoordinator) -> GoveeBLECoordinator:
+    coordinator.pact_type, coordinator.pact_code = 1, 1
+    coordinator._confirmed_identity_fields.add("pact")
+    coordinator._resolve_device_profile()
+    return coordinator
+
+
 def test_semantically_invalid_status_is_never_recorded_as_parsed(coord, monkeypatch):
     record = Mock(wraps=coord._record_packet)
     monkeypatch.setattr(coord, "_record_packet", record)
@@ -56,10 +78,38 @@ def test_semantically_invalid_status_is_never_recorded_as_parsed(coord, monkeypa
     assert coord.capture_effect_control_state() == before
 
 
+def test_unconfirmed_pact_rejects_revision_dependent_readback(h6199):
+    h6199._confirmed_identity_fields.discard("pact")
+
+    h6199._notify_callback(None, bytearray(_packet(0xAA, 0x04, [50])))
+
+    assert h6199.brightness_pct == 100
+    assert "brightness_pct" not in h6199._field_revisions
+    assert h6199.packet_log[-1]["reason"] == "unsupported_domain"
+
+
+def test_conflicting_pact_preserves_authorized_fields_in_composite_notification(hass):
+    coordinator = GoveeBLECoordinator(hass, "55:66:77:88:99:AA", "H607C", configuration_url=_CONFIGURATION_URL)
+    now = time.monotonic()
+    coordinator._note_advertisement(
+        Mock(source="scanner-a", time=now, name="Govee_H607C", manufacturer_data={34818: bytes.fromhex("ec00010100")})
+    )
+    coordinator._note_advertisement(
+        Mock(source="scanner-b", time=now, name="Govee_H607C", manufacturer_data={34818: bytes.fromhex("ec00020100")})
+    )
+    coordinator.boolean_control_state["pole_enabled"] = False
+
+    coordinator._notify_callback(None, bytearray(_packet(0xAA, 0x07, [0x08, 0x25, 0x85])))
+
+    assert coordinator.is_on is True
+    assert coordinator.boolean_control_state == {"pole_enabled": False}
+    assert coordinator.packet_log[-1]["outcome"] == "parsed"
+
+
 @pytest.mark.parametrize("selector", [2, 13])
 @pytest.mark.parametrize("previous", ["rgb", "kelvin"])
 async def test_unknown_white_replaces_stale_colour_without_inventing_a_temperature(hass, selector, previous):
-    coord = GoveeBLECoordinator(hass, "55:66:77:88:99:AA", "H6181", configuration_url=_CONFIGURATION_URL)
+    coord = _legacy_h6181(GoveeBLECoordinator(hass, "55:66:77:88:99:AA", "H6181", configuration_url=_CONFIGURATION_URL))
     if previous == "rgb":
         coord._notify_callback(None, bytearray(_packet(0xAA, 5, [selector, 255, 0, 0])))
     else:
@@ -86,7 +136,7 @@ async def test_unknown_white_replaces_stale_colour_without_inventing_a_temperatu
 
 @pytest.mark.parametrize("expected", [{"rgb_color": (255, 0, 0)}, {"color_temp_kelvin": 4000}])
 async def test_unknown_white_does_not_confirm_a_pending_exact_colour(hass, expected):
-    coord = GoveeBLECoordinator(hass, "55:66:77:88:99:AA", "H6181", configuration_url=_CONFIGURATION_URL)
+    coord = _legacy_h6181(GoveeBLECoordinator(hass, "55:66:77:88:99:AA", "H6181", configuration_url=_CONFIGURATION_URL))
     coord.install_static_color(rgb=expected.get("rgb_color"), kelvin=expected.get("color_temp_kelvin"))
     coord._arm_expected_values(expected)
     coord._notify_callback(None, bytearray.fromhex("aa0502ffffff0100000000000000000000000053"))
@@ -97,7 +147,7 @@ async def test_unknown_white_does_not_confirm_a_pending_exact_colour(hass, expec
 
 
 async def test_power_cycle_preserves_unknown_white_without_replaying_old_colour(hass, monkeypatch, virtual_clock):
-    coord = GoveeBLECoordinator(hass, "55:66:77:88:99:AA", "H6181", configuration_url=_CONFIGURATION_URL)
+    coord = _legacy_h6181(GoveeBLECoordinator(hass, "55:66:77:88:99:AA", "H6181", configuration_url=_CONFIGURATION_URL))
     coord._notify_callback(None, bytearray(_packet(0xAA, 5, [2, 255, 0, 0])))
     coord._notify_callback(None, bytearray.fromhex("aa0502ffffff0100000000000000000000000053"))
     coord._notify_callback(None, bytearray(_packet(0xAA, 1, [1])))
@@ -393,6 +443,9 @@ def test_mixed_grammars_route_command_expectations_and_status_semantics(
         ),
     )
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url=_CONFIGURATION_URL)
+    coordinator.pact_type, coordinator.pact_code = 2, 1
+    coordinator._confirmed_identity_fields.add("pact")
+    coordinator._resolve_device_profile()
     brightness = build_brightness(37, model)
     assert brightness == build_brightness(37, command_grammar)
     assert expectations_from_packet(brightness, model) == {"brightness_pct": 37}

@@ -10,7 +10,9 @@ from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_base import async_prepare_effect_profile
 from custom_components.ha_govee_led_ble.coordinator_refresh import RefreshRequest
 from custom_components.ha_govee_led_ble.coordinator_status import decode_status_frame, parse_color_mode
+from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
 from custom_components.ha_govee_led_ble.effect_compiler import compile_effect, validate_compiled_geometry
+from custom_components.ha_govee_led_ble.effect_contracts import frontend_release_capabilities
 from custom_components.ha_govee_led_ble.effect_deployments import EffectDeploymentRepository
 from custom_components.ha_govee_led_ble.effect_domain import (
     BuiltinScene,
@@ -23,6 +25,7 @@ from custom_components.ha_govee_led_ble.effect_domain import (
 )
 from custom_components.ha_govee_led_ble.effect_protocol_decoder import decode_effect_frames
 from custom_components.ha_govee_led_ble.effect_runtime import EffectDeploymentEngine, async_prepare_application
+from custom_components.ha_govee_led_ble.effect_storage import LibrarySnapshot
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_brightness,
     build_colour_mode_query,
@@ -52,7 +55,7 @@ def frame(payload: bytes) -> bytes:
 
 
 def test_ordinary_colour_and_raw_brightness_match_their_distinct_contracts():
-    profile = device_profile("H6181", None, None, firmware="1.03.00", hardware="1.00.03")
+    profile = device_profile("H6181", 1, 1, firmware="1.03.00", hardware="1.00.03")
     assert build_color_rgb(12, 34, 56, "H6181") == frame(bytes.fromhex("33050d0c2238"))
     assert build_color_temp(2700, "H6181") == frame(bytes.fromhex("33050dffffff0a8c") + bytes(table_kelvin_rgb(2700)))
     assert profile.outbound_transform is not None
@@ -82,11 +85,14 @@ def test_legacy_colour_does_not_change_other_revision_contexts(pact, firmware, h
 @pytest.fixture
 async def legacy_colour(hass):
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6181", configuration_url=None)
+    coordinator.pact_type, coordinator.pact_code = 1, 1
     client = MagicMock(is_connected=True, start_notify=AsyncMock(), write_gatt_char=AsyncMock())
     coordinator._client = client
     coordinator._reply_gate.timeout = 0
     coordinator._note_identity(fw_version="1.03.00", hw_version="1.00.03")
     await coordinator._start_notify()
+    coordinator._pact_identity.marker_pact = (1, 1)
+    coordinator._resolve_pact_identity(preserve_state=True)
     return coordinator, client
 
 
@@ -144,8 +150,10 @@ async def test_legacy_colour_cannot_use_cached_or_partially_confirmed_identity(l
     else:
         for field in confirmed:
             coordinator._observe_identity_field(field, getattr(coordinator, field))
-    with pytest.raises(ValueError, match="current-subscription device identity"):
+    with pytest.raises((ValueError, HomeAssistantError)) as error:
         await coordinator._async_write_packet(client, build_color_rgb(255, 0, 0, "H6181"), arm_expected=arm_expected)
+    if isinstance(error.value, HomeAssistantError):
+        assert error.value.translation_key == "identity_not_ready"
     client.write_gatt_char.assert_not_awaited()
     assert coordinator._expected_state == {}
     assert coordinator.control_write_attempts == 0
@@ -250,10 +258,7 @@ async def test_whole_strip_controls_prepare_identity_after_basic_setup(
     if identity_returns == "hardware":
         assert coordinator.fw_version is None
     if control in {"studio", "music"}:
-        if coordinator.model == "H6139" and control == "studio":
-            assert packets == []
-        else:
-            assert packets and all(packet[0] == 0xAA for packet in packets)
+        assert all(packet[0] == 0xAA for packet in packets)
     else:
         payload = "3305020c2238" if control == "rgb" else "330502ffffff01ffae54"
         assert frame(bytes.fromhex(payload)) in packets
@@ -280,14 +285,69 @@ async def test_h6139_native_scenes_reuse_the_original_static_baseline(lifecycle,
     assert coordinator.effect == "dating"
     assert coordinator._pre_mode_snapshot is baseline
     assert coordinator._pre_mode_needs_qualification
-    with pytest.raises(HomeAssistantError) as error:
-        await light.async_turn_on(effect="off")
-    assert error.value.translation_key == "recovery_not_ready"
-    assert [packet[:3] for packet in packets].count(bytes.fromhex("330504")) == 2
-    coordinator._observe_pact(1, 1)
     await light.async_turn_on(effect="off")
+    assert [packet[:3] for packet in packets].count(bytes.fromhex("330504")) == 2
     assert coordinator.static_mode_confirmed()
     assert coordinator._pre_mode_snapshot is None
+
+
+@pytest.mark.parametrize("saved", [False, True])
+@pytest.mark.parametrize("lifecycle", ["H6139"], indirect=True)
+async def test_h6139_light_scene_without_pact_has_no_partial_power_write(lifecycle, monkeypatch, saved):  # noqa: F811
+    coordinator, _replies, _clients, packets = lifecycle
+    coordinator._test_live_pact = None
+    coordinator.pact_type = coordinator.pact_code = None
+    pact = coordinator._pact_identity
+    pact.advertised_pacts.clear()
+    pact.advertisement_observations.clear()
+    pact.connection_pacts.clear()
+    pact.subscription_advertised_pact = pact.marker_pact = None
+    pact.marker_seen = pact.conflict = False
+    coordinator._resolve_device_profile()
+    scene = MODEL_SCENES[coordinator.model]["movie"]
+    if saved:
+        item = LibraryItem.new(
+            "Saved scene",
+            BuiltinScene(CatalogueRef(coordinator.model, scene.scene_id, scene.effect_id)),
+        )
+        backend = MagicMock(spec=EffectBackend)
+        backend.application.library_snapshot.return_value = LibrarySnapshot((item,))
+        backend.active_workspaces.get.return_value = None
+        light = GoveeBLELight(coordinator, config_entry_id="entry-a", effect_backend=backend)
+        effect = item.name
+    else:
+        light = GoveeBLELight(coordinator)
+        effect = scene.display_name
+    monkeypatch.setattr(light, "_notify_state_changed", MagicMock())
+    monkeypatch.setattr(light, "_async_supersede_preview", AsyncMock())
+
+    with pytest.raises(HomeAssistantError) as error:
+        await light.async_turn_on(effect=effect)
+
+    assert error.value.translation_key == "identity_not_ready"
+    assert not any(packet[0] == 0x33 for packet in packets)
+    assert coordinator.control_write_attempts == 0
+
+
+@pytest.mark.parametrize("lifecycle", ["H6139"], indirect=True)
+async def test_h6139_coordinator_scene_without_pact_has_no_partial_power_write(lifecycle):  # noqa: F811
+    coordinator, _replies, _clients, packets = lifecycle
+    coordinator._test_live_pact = None
+    coordinator.pact_type = coordinator.pact_code = None
+    pact = coordinator._pact_identity
+    pact.advertised_pacts.clear()
+    pact.advertisement_observations.clear()
+    pact.connection_pacts.clear()
+    pact.subscription_advertised_pact = pact.marker_pact = None
+    pact.marker_seen = pact.conflict = False
+    coordinator._resolve_device_profile()
+    scene = MODEL_SCENES[coordinator.model]["movie"]
+
+    with pytest.raises((HomeAssistantError, ValueError)):
+        await coordinator.async_apply_native_scene(scene.display_name, scene_entry=scene, verify=False)
+
+    assert not any(packet[0] == 0x33 for packet in packets)
+    assert coordinator.control_write_attempts == 0
 
 
 @pytest.mark.parametrize("lifecycle", ["H6139"], indirect=True)
@@ -477,6 +537,7 @@ async def test_planned_static_recovery_requires_its_wire_authority_not_optional_
     assert coordinator._client is None and coordinator._pre_mode_needs_qualification
     del replies[build_firmware_query(coordinator.model)]
     del replies[build_hardware_query(coordinator.model)]
+    coordinator._test_live_pact = None if identity_state == "missing" else 10 if identity_state == "changed" else pact
     await coordinator._ensure_connected()
     if identity_state != "missing":
         coordinator._observe_pact(10 if identity_state == "changed" else pact, 1)
@@ -488,7 +549,9 @@ async def test_planned_static_recovery_requires_its_wire_authority_not_optional_
     if identity_state != "same":
         with pytest.raises(HomeAssistantError) as error:
             await light.async_turn_on(effect="off")
-        assert error.value.translation_key == "recovery_not_ready"
+        assert error.value.translation_key == (
+            "identity_not_ready" if identity_state == "missing" else "recovery_not_ready"
+        )
         assert all(packet[0] == 0xAA for packet in packets)
         return
     await light.async_turn_on(effect="off")
@@ -550,25 +613,25 @@ async def test_effect_preparation_completes_when_the_requested_authority_is_read
 @pytest.mark.parametrize(
     "model,pact,firmware,hardware,colour_mode,music_mode,modes,transport",
     [
-        ("H6138", (None, None), "1.07.02", "1.00.01", 2, 14, ("dynamic", "soft", "bloom", "radiant"), "a1_02"),
-        ("H6159", (None, None), "1.02.02", "1.00.01", 2, 3, ("dynamic",), "a1_02"),
-        ("H6159", (None, None), "1.03.00", "1.00.01", 2, 14, ("dynamic", "soft"), "a1_02"),
+        ("H6138", (1, 1), "1.07.02", "1.00.01", 2, 14, ("dynamic", "soft", "bloom", "radiant"), "a1_02"),
+        ("H6159", (1, 1), "1.02.02", "1.00.01", 2, 3, ("dynamic",), "a1_02"),
+        ("H6159", (1, 1), "1.03.00", "1.00.01", 2, 14, ("dynamic", "soft"), "a1_02"),
         ("H6159", (1, 1), "1.06.99", "1.00.02", 2, 14, ("dynamic", "soft"), "a1_02"),
         ("H6159", (1, 1), "1.07.00", "1.00.02", 2, 14, ("dynamic", "soft", "bloom", "radiant"), "a1_02"),
-        ("H6159", (None, None), "2.04.00", "2.01.01", 2, 14, ("dynamic", "soft", "bloom", "radiant"), "a3"),
+        ("H6159", (1, 1), "2.04.00", "2.01.01", 2, 14, ("dynamic", "soft", "bloom", "radiant"), "a3"),
         ("H6159", (2, 1), "2.03.99", "2.01.01", 13, 19, ("dynamic", "soft"), "a3"),
         ("H6159", (2, 1), "2.04.00", "2.01.01", 13, 19, ("dynamic", "soft", "bloom", "radiant"), "a3"),
         ("H6159", (2, 1), "2.04.00", "3.04.01", 13, 19, ("dynamic", "soft"), "a3"),
         ("H6159", (2, 1), "2.04.00", "3.05.01", 13, 19, ("dynamic", "soft", "bloom", "radiant"), "a3"),
-        ("H6139", (None, None), "1.02.99", "1.00.01", 2, 3, ("dynamic",), "a1_02"),
+        ("H6139", (1, 1), "1.02.99", "1.00.01", 2, 3, ("dynamic",), "a1_02"),
         ("H6139", (1, 1), "1.03.00", "1.00.01", 2, 14, ("dynamic", "soft"), "a1_02"),
-        ("H6139", (None, None), "1.06.99", "1.00.01", 2, 14, ("dynamic", "soft"), "a1_02"),
-        ("H6139", (None, None), "1.07.00", "1.00.01", 2, 14, ("dynamic", "soft", "bloom", "radiant"), "a1_02"),
-        ("H6139", (None, None), "1.07.02", "1.00.01", 2, 14, ("dynamic", "soft", "bloom", "radiant"), "a1_02"),
-        ("H6139", (None, None), "1.07.02", None, 2, 14, ("dynamic", "soft", "bloom", "radiant"), "a1_02"),
+        ("H6139", (1, 1), "1.06.99", "1.00.01", 2, 14, ("dynamic", "soft"), "a1_02"),
+        ("H6139", (1, 1), "1.07.00", "1.00.01", 2, 14, ("dynamic", "soft", "bloom", "radiant"), "a1_02"),
+        ("H6139", (1, 1), "1.07.02", "1.00.01", 2, 14, ("dynamic", "soft", "bloom", "radiant"), "a1_02"),
+        ("H6139", (1, 1), "1.07.02", None, 2, 14, ("dynamic", "soft", "bloom", "radiant"), "a1_02"),
         ("H6139", (1, 1), "1.07.02", "2.01.01", 2, 14, ("dynamic", "soft", "bloom", "radiant"), "a1_02"),
         ("H6139", (1, 1), "1.07.02", "3.04.01", 2, 14, ("dynamic", "soft", "bloom", "radiant"), "a1_02"),
-        ("H6139", (None, None), None, "1.00.01", 2, None, (), "a1_02"),
+        ("H6139", (1, 1), None, "1.00.01", 2, None, (), "a1_02"),
         ("H6139", (10, 1), None, "2.01.01", 13, 19, ("dynamic", "soft"), "a3"),
         ("H6139", (10, 1), "2.04.00", None, 13, 19, ("dynamic", "soft"), "a3"),
         ("H6139", (2, 1), "1.07.02", "1.00.01", 2, 14, ("dynamic", "soft", "bloom", "radiant"), "a1_02"),
@@ -619,7 +682,7 @@ def test_whole_strip_revision_codecs_do_not_inherit_segment_commands(
     "pact,firmware,hardware,raw_brightness,modes,transport,scene_codes",
     [
         ((1, 1), None, "1.00.01", 136, ("dynamic",), "a1_02", {4, 5, 7, 8, 9, 10, 16}),
-        ((None, None), "1.02.16", "1.00.01", 136, ("dynamic",), "a1_02", {4, 5, 7, 8, 9, 10, 16}),
+        ((1, 1), "1.02.16", "1.00.01", 136, ("dynamic",), "a1_02", {4, 5, 7, 8, 9, 10, 16}),
         ((1, 1), "1.07.00", "1.02.07", 136, ("dynamic",), "a1_02", {4, 5, 7, 8, 9, 10, 16}),
         ((2, 1), "1.02.16", "1.00.01", 136, ("dynamic", "soft"), "a3", {4, 5, 7, 8, 9, 10, 16}),
         ((2, 1), "2.03.99", "2.01.01", 50, ("dynamic", "soft"), "a3", None),
@@ -637,7 +700,7 @@ def test_rgb_backlight_revision_controls_keep_independent_wire_contracts(
     transform = profile.outbound_transform
     assert transform is not None
     assert transform(build_brightness(50, "H6182", profile=profile)) == frame(bytes([0x33, 4, raw_brightness]))
-    legacy = pact in {(None, None), (1, 1)}
+    legacy = pact == (1, 1)
     rgb = "330502ff0714" if legacy else "33050dff0714"
     kelvin = "330502ffffff01ffae54" if legacy else "33050dffffff0a8cffae54"
     assert transform(build_color_rgb(255, 7, 20, "H6182", profile=profile)) == frame(bytes.fromhex(rgb))
@@ -672,7 +735,7 @@ def test_rgb_backlight_revision_controls_keep_independent_wire_contracts(
 def test_palette_diy_mixed_gate_and_temporary_slot_are_independent_of_scene_uploads(
     model, firmware, mixed, speed, palette_size, pair_count
 ):
-    profile = device_profile(model, None, None, firmware=firmware, hardware="1.00.01")
+    profile = device_profile(model, 1, 1, firmware=firmware, hardware="1.00.01")
     palette = ((255, 0, 0),) * palette_size
     single = SingleEffect(0, 0, speed, palette)
     compiled = compile_effect(LibraryItem.new("Palette", single), model, profile=profile)
@@ -725,7 +788,7 @@ def test_rgb_palette_programs_use_their_own_carrier_and_reject_a_changed_route(m
 @pytest.mark.parametrize("model", ["H6181", "H6182"])
 def test_legacy_temperature_flag_is_not_misread_as_a_kelvin_integer(selector, model):
     packet = frame(bytes([0xAA, 5, selector, 255, 255, 255, 1, *table_kelvin_rgb(2700), 0x7B]))
-    profile = device_profile(model, None, None, firmware="1.02.16", hardware="1.00.01")
+    profile = device_profile(model, 1, 1, firmware="1.02.16", hardware="1.00.01")
     decoded = decode_status_frame(packet, model, profile=profile)
     assert decoded is not None
     result = parse_color_mode(decoded.generated, model, profile=profile)
@@ -740,11 +803,17 @@ def test_legacy_temperature_flag_is_not_misread_as_a_kelvin_integer(selector, mo
 @pytest.mark.parametrize("model,selector", [("H6139", 2), ("H6159", 2), ("H6182", 13)])
 async def test_whole_strip_kelvin_observation_retires_previous_rgb_authority(hass, model, selector):
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", model, configuration_url=None)
+    coordinator.pact_type, coordinator.pact_code = 1, 1
     client = MagicMock(is_connected=True, start_notify=AsyncMock())
     coordinator._client = client
     coordinator._note_identity(fw_version="1.02.16", hw_version="1.00.01")
     await coordinator._start_notify()
+    coordinator._pact_identity.marker_pact = (1, 1)
+    coordinator._resolve_pact_identity(preserve_state=True)
     receive = client.start_notify.call_args.args[1]
+    if model in {"H6159", "H6182"}:
+        receive(None, bytearray(frame(b"\xaa\x06" + b"1.02.16")))
+        receive(None, bytearray(frame(b"\xaa\x07\x03" + b"1.00.01")))
     receive(None, bytearray(frame(bytes([0xAA, 5, selector, 12, 34, 56, 0, 0, 0, 0]))))
     assert coordinator.rgb_color_source == "observed"
     receive(None, bytearray(frame(bytes([0xAA, 5, selector, 255, 255, 255, 1, *table_kelvin_rgb(2700)]))))
@@ -766,7 +835,7 @@ async def test_whole_strip_kelvin_observation_retires_previous_rgb_authority(has
     ],
 )
 def test_legacy_temperature_accepts_aliases_without_reassigning_overlapping_colours(selector, companion, kelvin):
-    profile = device_profile("H6181", None, None)
+    profile = device_profile("H6181", 1, 1)
     packet = frame(bytes([0xAA, 5, selector, 255, 255, 255, 1]) + bytes.fromhex(companion))
     decoded = decode_status_frame(packet, "H6181", profile=profile)
     assert decoded is not None
@@ -776,7 +845,7 @@ def test_legacy_temperature_accepts_aliases_without_reassigning_overlapping_colo
 
 @pytest.mark.parametrize("companion", ["ff8912", "d6e1ff", "fff9fd", "010203"])
 def test_legacy_temperature_rejects_unknown_or_out_of_range_companions(companion):
-    profile = replace(device_profile("H6181", None, None), color_temp_range=(2700, 6500))
+    profile = replace(device_profile("H6181", 1, 1), color_temp_range=(2700, 6500))
     packet = frame(bytes.fromhex("aa050dffffff01") + bytes.fromhex(companion))
     decoded = decode_status_frame(packet, "H6181", profile=profile)
     assert decoded is not None
@@ -793,7 +862,7 @@ def test_legacy_temperature_rejects_unknown_or_out_of_range_companions(companion
 )
 @pytest.mark.parametrize("model", ["H6181", "H6182"])
 def test_legacy_diy_upload_uses_the_approved_selector_and_round_trips(content, model):
-    profile = device_profile(model, None, None, firmware="1.02.16", hardware="1.00.01")
+    profile = device_profile(model, 1, 1, firmware="1.02.16", hardware="1.00.01")
     compiled = compile_effect(LibraryItem.new("Palette", content), model, diy_code=42, profile=profile)
     assert compiled.upload_transport == "a1_02"
     body = reassemble_a1_02(compiled.upload_packets)
@@ -852,7 +921,7 @@ def test_diy_application_requires_owner_approval_of_a_disposable_slot():
 @pytest.mark.parametrize(
     "pact,firmware,hardware,brightness,modes,uploads",
     [
-        ((None, None), "1.00.99", "1.00.03", (20, 254), (), False),
+        ((1, 1), "1.00.99", "1.00.03", (20, 254), (), False),
         ((10, 1), "1.02.99", "1.00.03", None, ("dynamic", "soft"), False),
         ((10, 1), "1.03.00", "1.00.03", None, ("dynamic", "soft"), True),
         ((10, 2), None, None, None, ("dynamic", "soft"), True),
@@ -870,8 +939,16 @@ def test_revision_boundaries_resolve_independently(pact, firmware, hardware, bri
     assert profile.brightness_wire_range == brightness
     assert profile.music_modes == modes
     assert (profile.selector_only_scene_bits is None) is uploads
+    assert ("edited_palette_scenes" in profile.effect_workflows) is uploads
+    assert (
+        any(
+            capability["id"] == "edited_palette_scenes"
+            for capability in frontend_release_capabilities("H6181", profile=profile)
+        )
+        is uploads
+    )
     assert profile.supports_custom_effects
-    assert profile.diy_upload_transport == ("a1_02" if pact[0] is None else "a3")
+    assert profile.diy_upload_transport == ("a1_02" if pact[0] < 10 else "a3")
     for scene in SCENE_ENTRIES["H6181"]:
         if not scene_supported(scene, profile):
             continue
@@ -893,7 +970,7 @@ def test_revision_boundaries_resolve_independently(pact, firmware, hardware, bri
     "model,pact,firmware,hardware,selector",
     [
         ("H6181", (10, 2), "2.04.00", "2.01.01", 19),
-        ("H6139", (None, None), "1.07.02", "1.00.01", 14),
+        ("H6139", (1, 1), "1.07.02", "1.00.01", 14),
         ("H6139", (10, 2), "2.04.00", "2.01.01", 19),
         ("H6159", (1, 1), "1.07.02", "1.00.02", 14),
         ("H6159", (2, 1), "2.04.00", "2.01.01", 19),
@@ -957,10 +1034,13 @@ async def test_music_observes_qualified_fields_without_confirming_ambiguous_sett
     client = MagicMock(is_connected=True, start_notify=AsyncMock())
     coordinator._client = client
     coordinator.pact_type, coordinator.pact_code = 10, 2
-    coordinator._note_identity(fw_version="2.04.00", hw_version="2.01.01")
     await coordinator._start_notify()
+    coordinator._note_identity(fw_version="2.04.00", hw_version="2.01.01")
     coordinator._pact_identity.marker_pact = (10, 2)
-    coordinator._resolve_pact_identity(preserve_state=True)
+    coordinator._observe_pact(10, 2)
+    coordinator._confirmed_identity_fields.update({"fw_version", "hw_version"})
+    assert coordinator.identity_fields_confirmed(frozenset({"pact", "fw_version", "hw_version"}))
+    assert coordinator.profile.music_modes[-1] == "radiant"
     receive = client.start_notify.call_args.args[1]
     coordinator.music_mode, coordinator.music_sensitivity = "dynamic", 73
     coordinator.music_color, coordinator.music_calm = (12, 34, 56), True
@@ -984,6 +1064,6 @@ def test_legacy_packet_authorisation_rejects_unqualified_operations(payload):
 
 @pytest.mark.parametrize("subtype", [1, 3, 4])
 def test_legacy_profile_does_not_admit_later_or_painted_uploads(subtype):
-    profile = device_profile("H6181", None, None)
+    profile = device_profile("H6181", 1, 1)
     with pytest.raises(ValueError):
         require_profile_packet(fragment_a3(subtype, b"\0")[0], profile)

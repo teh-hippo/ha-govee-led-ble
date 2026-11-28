@@ -22,7 +22,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
 )
 from custom_components.ha_govee_led_ble.protocol_core import _check_tree, _write
 from custom_components.ha_govee_led_ble.protocol_h6199 import build_h6199_control
-from tests.coordinator_test_support import _packet, frame
+from tests.coordinator_test_support import _packet, frame, qualify_coordinator_identity
 
 
 def test_generated_adapter_rejects_structurally_invalid_frames() -> None:
@@ -117,6 +117,8 @@ def test_h6099_direction_ack_is_not_a_state_observation(hass):
 @pytest.mark.parametrize("value", [0, 100])
 def test_observed_relative_brightness_persists_and_reencodes(hass, model, value):
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", model, configuration_url=None)
+    if model == "H6199":
+        qualify_coordinator_identity(coordinator)
     packet = build_relative_brightness(value, value, value, value, model)
     coordinator._notify_callback(None, bytearray(frame("aa" + packet[1:-1].hex())))
     state = coordinator.capture_effect_control_state()
@@ -149,6 +151,8 @@ def test_observed_relative_brightness_persists_and_reencodes(hass, model, value)
 @pytest.mark.parametrize("prior", ["aa050afe00", "aa0504e8fd", "aa0513033200012060a0", "video"])
 def test_unknown_music_rejected_before_any_state_mutation(hass, model, code, prior):
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", model, configuration_url=None)
+    if model == "H6199":
+        qualify_coordinator_identity(coordinator)
     coordinator.is_on = True
     if prior == "video":
         if model == "H617A":

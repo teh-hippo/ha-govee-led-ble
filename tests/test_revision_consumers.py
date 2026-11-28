@@ -32,6 +32,10 @@ def coordinator(hass):
     c.fw_version, c.hw_version = "1.10.04", "3.02.01"
     c.subordinate_20_version, c.subordinate_21_version = "1.03.00", "1.00.33"
     c.pact_type, c.pact_code = 2, 1
+    c._confirmed_identity_fields.update(
+        {"pact", "fw_version", "hw_version", "subordinate_20_version", "subordinate_21_version"}
+    )
+    c._resolve_device_profile()
     return c
 
 
@@ -164,6 +168,8 @@ async def test_pact_change_publishes_late_entities_and_effective_states(hass, co
     c = coordinator
     c._present = True
     c.pact_type = c.pact_code = None
+    c._confirmed_identity_fields.discard("pact")
+    c._resolve_device_profile()
     entry = SimpleNamespace(runtime_data=c, entry_id="entry-a", title="Test", options={}, async_on_unload=Mock())
     selects, sensors = [], []
     await select.async_setup_entry(hass, entry, selects.extend)

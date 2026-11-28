@@ -288,7 +288,7 @@ def scene_supported(scene: SceneEntry, profile: ModelProfile) -> bool:
 
 def scene_command_identity_fields(model: str, scene: SceneEntry) -> frozenset[str]:
     profile = get_profile(model)
-    if scene.command_version and profile.scene_command_versions is not None and scene_supported(scene, profile):
+    if scene.scene_type != 0 and scene_supported(scene, profile):
         return profile.scene_identity_fields
     return frozenset()
 

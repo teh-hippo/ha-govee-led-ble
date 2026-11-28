@@ -30,7 +30,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES
 from custom_components.ha_govee_led_ble.transport import ENCRYPTION_UUID, LIGHT_SERVICE_UUID, WRITE_UUID, xor_checksum
 from custom_components.ha_govee_led_ble.video_applicability import video_identity_fields
-from tests.coordinator_test_support import _CONFIGURATION_URL, _c, _packet, frame
+from tests.coordinator_test_support import _CONFIGURATION_URL, _c, _packet, frame, qualify_coordinator_identity
 
 M = "custom_components.ha_govee_led_ble.coordinator"
 
@@ -38,6 +38,9 @@ M = "custom_components.ha_govee_led_ble.coordinator"
 @pytest.mark.parametrize("unknown", [False, True])
 async def test_rgb_mode_confirmation_does_not_accept_unknown_white(hass, monkeypatch, virtual_clock, unknown):
     coord = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6181", configuration_url=None)
+    coord.pact_type, coord.pact_code = 1, 1
+    coord._confirmed_identity_fields.add("pact")
+    coord._resolve_device_profile()
     client = _c()
     coord._client = client
     monkeypatch.setattr(coord, "_ensure_connected", AsyncMock(return_value=client))
@@ -173,11 +176,12 @@ async def test_h607c_setup_cleans_up_after_optional_exception(h607c_subscription
             await c._async_update_data()
     else:
         snapshot = await c._async_update_data()
-        assert snapshot["is_on"] and snapshot["brightness_pct"] == 37
+        assert snapshot["is_on"] and snapshot["brightness_pct"] == 100
+        assert not c._brightness_pct_known
         assert c._last_deferred_setting_read_failure == "ValueError"
         assert not c.boolean_control_state and not c.profile.supports_rgb
         assert c.power_on_behaviour is None and c.power_on_open_flag is None
-    assert c.is_on and c.brightness_pct == 37 and c._state_read_available
+    assert c.is_on and c.brightness_pct == (100 if failure == "identity" else 37) and c._state_read_available
     assert c._client is None and not client.is_connected
 
 
@@ -806,10 +810,9 @@ async def test_refresh_reply_timeout_starts_after_connection(coord, virtual_cloc
 
 
 async def test_refresh_state_queries_each_display_domain(h6199):
-    from tests.test_h6199_capabilities import QUALIFIED
+    from tests.test_h6199_capabilities import set_qualified_identity
 
-    vars(h6199).update(QUALIFIED)
-    h6199._confirmed_identity_fields.update(video_identity_fields(h6199.profile))
+    set_qualified_identity(h6199)
     h6199._client = client = _c()
 
     async def _reply(**kwargs) -> bool:
@@ -1000,6 +1003,8 @@ async def test_send_identity_queries_only_unknown(coord):
 async def test_h6199_identity_queries_reconfirm_all_revision_fields_on_a_new_connection(h6199):
     c = _c(write_gatt_char=AsyncMock())
     h6199._client = c
+    qualify_coordinator_identity(h6199)
+    h6199._confirmed_identity_fields.clear()
 
     await h6199._send_identity_queries()
 

@@ -30,6 +30,7 @@ from custom_components.ha_govee_led_ble.const import (
     get_profile,
     model_from_ble_name,
     prefix_effect_names_from_options,
+    profile_with_physical_ic_count,
     protocol_model,
     resolve_model,
     supported_effect_categories,
@@ -547,6 +548,84 @@ def test_h61e5_is_an_exact_experimental_profile_on_the_h61d3_route():
     )
 
 
+@pytest.mark.parametrize("model", ["H6138", "H6139", "H6159", "H6181", "H6182", "H6199"])
+@pytest.mark.parametrize("pact", [(None, None), (1, None), (None, 1)])
+def test_pact_revision_families_fail_closed_without_complete_identity(model, pact):
+    profile = device_profile(model, *pact)
+    independent_identity = {
+        ReadDomain.FIRMWARE,
+        ReadDomain.HARDWARE,
+        ReadDomain.SUBORDINATE_20,
+        ReadDomain.SUBORDINATE_21,
+    }
+
+    assert profile.command_operations == frozenset({"power"})
+    assert profile.read_domains == (
+        frozenset({ReadDomain.POWER}) | get_profile(model).read_domains & independent_identity
+    )
+    assert profile.setup_required_read_domains == frozenset({ReadDomain.POWER})
+    assert not profile.supports_rgb
+    assert not profile.supports_color_temperature
+    assert not profile.supports_custom_effects
+    assert not profile.supports_scenes
+    assert not profile.effect_workflows
+
+
+@pytest.mark.parametrize("model", ["H60B0", "H612A", "H7029"])
+def test_existing_pact_bootstraps_keep_shared_basic_controls(model):
+    profile = device_profile(model, None, None)
+
+    assert profile.command_operations == frozenset({"power", "brightness"})
+    assert profile.can_read(ReadDomain.BRIGHTNESS)
+
+
+@pytest.mark.parametrize(
+    ("model", "pact"),
+    [
+        ("H6138", (1, 1)),
+        ("H6139", (1, 1)),
+        ("H6159", (1, 1)),
+        ("H6181", (1, 1)),
+        ("H6182", (1, 1)),
+        ("H6199", (1, 1)),
+        ("H6138", (10, 1)),
+        ("H6139", (10, 1)),
+        ("H6159", (2, 1)),
+        ("H6181", (10, 1)),
+        ("H6182", (2, 1)),
+        ("H6199", (2, 1)),
+    ],
+)
+def test_pact_revision_families_keep_explicit_legacy_and_modern_routes(model, pact):
+    profile = device_profile(model, *pact, firmware="1.03.00", hardware="1.00.03")
+
+    assert profile.requires_qualified_identity
+    assert profile.requires_pact_confirmation
+    assert profile.supports_rgb
+    assert profile.command_operation_supported("brightness")
+    assert profile.command_operation_supported("power")
+
+
+@pytest.mark.parametrize(("model", "capacity"), [("H1A42", 12), ("H1AB2", 50)])
+def test_product_geometry_capacity_is_shared_with_status_admission(model, capacity):
+    profile = get_profile(model)
+
+    assert profile.physical_ic_capacity == capacity
+    for count in (1, capacity):
+        assert (
+            profile_with_physical_ic_count(
+                profile, count, segment_count_ceiling=profile.segment_count_capacity or profile.segment_count
+            ).physical_ic_count
+            == count
+        )
+    with pytest.raises(ValueError, match="outside product capacity"):
+        profile_with_physical_ic_count(
+            profile, capacity + 1, segment_count_ceiling=profile.segment_count_capacity or profile.segment_count
+        )
+    with pytest.raises(ValueError, match="within product capacity"):
+        replace(profile, physical_ic_capacity=capacity, physical_ic_count=capacity + 1)
+
+
 @pytest.mark.parametrize("pact", [(None, None), (1, 2), (2, 2), (3, 1)])
 def test_h61e5_unknown_pacts_keep_only_basic_controls(pact):
     profile = device_profile("H61E5", *pact)
@@ -780,7 +859,7 @@ def test_h7020_candidate_is_qualified_by_pact_not_guessed_firmware():
     assert profile.setup_required_read_domains == {ReadDomain.POWER}
     assert profile.brightness_wire_range is None and profile.outbound_transform is None
     assert profile.supports_rgb and profile.supports_color_temperature
-    assert (profile.min_color_temp_kelvin, profile.max_color_temp_kelvin) == (2000, 9000)
+    assert (profile.min_color_temp_kelvin, profile.max_color_temp_kelvin) == (2300, 6700)
     for pact in (1, 2):
         assert device_profile("H7020", pact, 1) is profile
     for pact, code in ((None, None), (1, 2), (2, 2), (3, 1)):
@@ -800,6 +879,7 @@ def test_h7029_uses_exact_pact_and_explicit_bulb_geometry():
     assert profile.effect_grammar == "H617A"
     assert profile.configured_string_counts == (8, 16, 23, 24)
     assert (profile.segment_count, profile.segment_count_capacity) == (8, 24)
+    assert (profile.min_color_temp_kelvin, profile.max_color_temp_kelvin) == (2000, 9000)
     assert profile.bulbs_per_string == 1
     assert profile.requires_qualified_identity and profile.requires_pact_confirmation
     assert profile.configured_geometry_translation_key == "configured_bulbs"

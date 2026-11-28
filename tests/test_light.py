@@ -640,6 +640,10 @@ async def test_power_rollback(light, mock_coordinator, caplog):
 @pytest.mark.parametrize("reply", ["partial", "rgb", "matching_kelvin"])
 async def test_failed_power_off_preserves_segment_colour_observation(hass, model, reply):
     coord = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url=None)
+    if model == "H6199":
+        coord.pact_type, coord.pact_code = 2, 1
+        coord._confirmed_identity_fields.add("pact")
+        coord._resolve_device_profile()
     coord.is_on = True
     coord._notify_callback(None, bytearray.fromhex("aa051501000000000000000000000000000000bb"))
     old_rgb = table_kelvin_rgb(4200)

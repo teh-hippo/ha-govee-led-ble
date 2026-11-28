@@ -133,6 +133,9 @@ async def test_h607c_scanner_pact_conflict_fails_closed(hass, monkeypatch):
     coordinator._refresh_pact_advertisements()
     assert coordinator.pact_readiness == "conflicting"
     assert not coordinator.profile.supports_rgb and not coordinator.native_presentation_profile.supports_rgb
+    authority = coordinator._authorization_profile()
+    assert authority.can_read(ReadDomain.POWER)
+    assert authority.command_operations == frozenset()
     generation = coordinator._profile_generation
     coordinator.brightness_pct = 37
     coordinator._async_on_advertisement(records[0], None)
@@ -170,6 +173,66 @@ async def test_h607c_live_equal_timestamp_cannot_be_overwritten_by_cached_pact(h
     coordinator._async_on_pact_advertisement(incoming)
     assert coordinator.pact_readiness == "conflicting"
     assert not coordinator.profile.supports_rgb
+
+
+def test_live_pact_conflict_reconciles_latest_observation_per_source(hass):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url=None)
+    coordinator._client = MagicMock(is_connected=True)
+    coordinator._notification_token = object()
+    coordinator._notify_started_monotonic = 100.0
+    coordinator._pact_subscription_sequence = 0
+    coordinator._encryption = MagicMock(ready=True)
+    for source, timestamp, pact in (("scanner-a", 102.0, 1), ("scanner-b", 103.0, 2)):
+        coordinator._note_advertisement(
+            SimpleNamespace(
+                source=source,
+                time=timestamp,
+                manufacturer_data={34818: bytes((0xEC, 0, pact, 1, 0))},
+            )
+        )
+
+    assert coordinator.pact_readiness == "conflicting"
+    assert coordinator._pact_identity.conflict
+    assert not coordinator.identity_fields_confirmed(frozenset({"pact"}))
+
+
+def test_newer_live_observation_replaces_its_scanner_conflict(hass):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url=None)
+    now = time.monotonic()
+    for timestamp, pact in ((now, 1), (now + 0.001, 2)):
+        coordinator._note_advertisement(
+            SimpleNamespace(
+                source="scanner",
+                time=timestamp,
+                manufacturer_data={34818: bytes((0xEC, 0, pact, 1, 0))},
+            )
+        )
+
+    assert (coordinator.pact_type, coordinator.pact_code) == (2, 1)
+    assert not coordinator._pact_identity.conflict
+
+
+async def test_subscription_clock_uses_live_ownership_not_cached_timestamp(hass, virtual_clock):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url=None)
+    now = virtual_clock.virtual_time()
+    coordinator._client = device = client()
+    coordinator._encryption = MagicMock(ready=True)
+    coordinator._pact_identity.advertisement_observations = {"cached": (now + 1000, frozenset({(1, 1)}))}
+
+    await coordinator._start_notify()
+
+    assert coordinator._notify_started_monotonic == now
+    assert coordinator._pact_subscription_sequence == coordinator._advertisement_sequence
+    coordinator._note_advertisement(
+        SimpleNamespace(
+            source="live",
+            time=now - 1,
+            manufacturer_data={34818: bytes((0xEC, 0, 2, 1, 0))},
+        )
+    )
+    assert (coordinator.pact_type, coordinator.pact_code) == (2, 1)
+    assert coordinator._pact_identity.subscription_advertised_pact == (2, 1)
+    assert device.start_notify.await_count == 1
 
 
 async def test_h607c_advertisement_expiry_during_preflight_rejects_colour(hass, monkeypatch, virtual_clock):
@@ -1500,8 +1563,9 @@ async def test_h6181_marker_pact_is_reconciled_again_on_reconnect(hass, monkeypa
     assert (coordinator.pact_type, coordinator.pact_code) == (10, 2)
     device.read_gatt_char.return_value = b"\0"
     await coordinator.send_command(build_power(True, "H6181"))
-    assert (coordinator.pact_type, coordinator.pact_code) == (None, None)
-    assert coordinator.profile.brightness_wire_range == (20, 254)
+    assert (coordinator.pact_type, coordinator.pact_code) == (10, 2)
+    assert not coordinator.identity_fields_confirmed(frozenset({"pact"}))
+    assert coordinator.profile.brightness_wire_range is None
     assert coordinator._encryption.last_result == "plaintext_profile_marker"
     coordinator._clear_client_state(device)
 

@@ -372,6 +372,9 @@ async def test_native_white_scene_off_uses_supported_observations(
     elif model == "H60A6":
         coord.pact_type, coord.pact_code = 1, 2
         coord._resolve_device_profile()
+    elif model == "H617F":
+        coord._note_identity(fw_version="1.06.00", hw_version="1.00.02")
+        coord._confirmed_identity_fields.update({"fw_version", "hw_version"})
     monkeypatch.setattr(coord, "_authorization_profile", lambda: coord.profile)
     monkeypatch.setattr(coord, "_reconcile_authorization", lambda: None)
     monkeypatch.setattr(coord, "async_prepare_identity_gated_control", AsyncMock(return_value=lambda: None))
@@ -1128,6 +1131,9 @@ async def test_compound_recovery_preserves_packet_order_and_separate_static_inte
 
 async def test_compound_recovery_defaults_denied_and_rejects_incomplete_or_ambiguous_state(hass):
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6199", configuration_url=None)
+    coordinator.pact_type, coordinator.pact_code = 2, 1
+    coordinator._confirmed_identity_fields.add("pact")
+    coordinator._resolve_device_profile()
     state = _compound_h6199_state()
 
     assert not coordinator.profile.supports_compound_static_recovery
@@ -1211,6 +1217,7 @@ async def test_pending_disconnect_cannot_merge_retired_h6199_pact_marker(hass):
         assert coordinator._notification_token is None
         assert coordinator._pact_identity.marker_pact is None
         coordinator._note_advertisement(SimpleNamespace(manufacturer_data={34818: bytes((0xEC, 0, 1, 1, 0))}))
+        assert coordinator._pact_identity.advertised_pacts == {(1, 1)}
         client.is_connected = False
 
     client.disconnect.side_effect = disconnect
@@ -1218,7 +1225,10 @@ async def test_pending_disconnect_cannot_merge_retired_h6199_pact_marker(hass):
 
     await coordinator._disconnect_locked(planned_release=True)
 
+    assert coordinator._pact_identity.advertised_pacts == {(1, 1)}
+    assert coordinator._monitors_pact_identity
     assert (coordinator.pact_type, coordinator.pact_code) == (1, 1)
+    assert not coordinator.identity_fields_confirmed(frozenset({"pact"}))
     assert coordinator.profile == device_profile(
         "H6199",
         pact_type=1,
@@ -1570,6 +1580,7 @@ async def test_restore_effect_control_state_cannot_recover_overwritten_diy_slot(
 
 
 async def test_restore_effect_control_state_reapplies_model_scene(coord, h6199):
+    _qualify_compound_h6199(h6199)
     for coordinator in (coord, h6199):
         effect, scene = next((name, entry) for name, entry in MODEL_SCENES[coordinator.model].items() if entry.param)
         state = PriorControlState(
@@ -1778,7 +1789,8 @@ async def test_blank_screen_recovery_preserves_live_policy(h6199, enabled, polic
     from tests.test_h6199_capabilities import QUALIFIED
 
     vars(h6199).update(QUALIFIED)
-    h6199._confirmed_identity_fields.update(video_identity_fields(h6199.profile))
+    h6199._confirmed_identity_fields.update(video_identity_fields(MODEL_PROFILES["H6199"]) | {"pact"})
+    h6199._resolve_device_profile()
     h6199.is_on = True
     h6199.color_mode = ParsedMode.SCENE
     h6199.effect = "candlelight"
@@ -1792,6 +1804,8 @@ async def test_blank_screen_recovery_preserves_live_policy(h6199, enabled, polic
         h6199.blank_screen_same_tone_duration_seconds,
     ) = policy
     client = _c(write_gatt_char=AsyncMock())
+    h6199._client = client
+    h6199._notification_token = object()
 
     async def connect():
         if not client.write_gatt_char.await_count:
@@ -1849,6 +1863,7 @@ async def test_blank_screen_recovery_preserves_live_policy(h6199, enabled, polic
 
 
 async def test_restore_effect_control_state_reapplies_h6199_scene(h6199):
+    _qualify_compound_h6199(h6199)
     state = PriorControlState(
         mode="scene",
         is_on=True,

@@ -283,8 +283,9 @@ async def test_physical_writer_retry_guards_and_private_authorship(hass) -> None
         return client
 
     c._ensure_connected = AsyncMock(side_effect=change_profile)
+    c._send_identity_queries = AsyncMock()
     client.write_gatt_char.reset_mock()
-    with pytest.raises(ValueError):
+    with pytest.raises((HomeAssistantError, ValueError)):
         await c.async_set_dreamview("switch_group", {"enabled": True})
     client.write_gatt_char.assert_not_awaited()
     assert c._dreamview_last_write == "not_attempted"

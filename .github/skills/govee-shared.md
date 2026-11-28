@@ -25,6 +25,46 @@ Include applicable entry points, revision boundaries, and evidenced missing or g
 Choose representative operations by the route they actually take, including different prerequisites or encodings behind the same control.
 For a targeted report, follow the affected contract across equivalent callers and profiles.
 
+## Maintain the evidence ledger
+
+Maintain a claim ledger before evaluating or reporting any material result.
+Every claim that can affect a conclusion requires a row with:
+
+- the operation, exact SKU and complete revision tuple (Pact type and code, firmware, hardware, and any other relevant revision marker);
+- the exact source and revision provenance, including capture/thread/reference location, observation or retrieval date, and the checkout or release where code evidence was checked;
+- source reachability: a durable public reference, public but revision-limited reference, private maintainer evidence, or unavailable source;
+- its authority class;
+- the inspected Home Assistant public entry points and route result, explicitly recording absence or the blocking point; when an executable route exists, its terminal handoff at admission, a writer, acknowledgement, observation or recovery;
+- the expected result and observed result in the same operation and revision context;
+- the freshness check, its date and whether it passed;
+- its disposition: match, software defect, missing support, evidence conflict, policy/non-goal or unchecked.
+
+Mark unavailable revision fields explicitly; never fill them by inference from another SKU or Pact.
+Do not combine claims from unlike revision tuples.
+
+Use exactly one of these authority classes for the evidentiary source:
+
+- **exact owner observation:** the owner reports a result for the stated SKU and complete revision;
+- **capture:** independently inspectable bytes or diagnostics attributable to that revision;
+- **independent public reference:** a publicly reachable source not authored by this integration;
+- **profile declaration:** a repository product claim or capability declaration;
+- **KSY structural authority:** a supported Kaitai schema's field layout or codec structure;
+- **speculative KSY hypothesis/comment:** an unqualified parser placement, value interpretation or comment under `speculative/`;
+- **generated mirror:** generated protocol output derived from Kaitai;
+- **active runtime:** the currently selected public product path, profile and codec execution.
+
+Authority classes are not interchangeable.
+An owner observation establishes a reported product result, a capture establishes only its inspectable bytes, and active runtime establishes software reachability rather than physical acceptance.
+KSY structure establishes wire layout, not valid product bounds or supported operations.
+Exact-SKU evidence does not establish behaviour for a shared-codec neighbour, and shared-codec inference does not establish exact-SKU physical behaviour.
+Generated output is non-authoritative until the Kaitai input is fresh and the ignored local runtime mirror has passed the non-mutating `make verify-protocol-fresh` check; regeneration source authority remains with Kaitai.
+Public reachability records whether another reviewer can inspect the source, not whether a software operation is reachable.
+
+For public reachability, inspect the offered Home Assistant entities, services, Studio actions and other applicable public entry points.
+Record both absent routes and routes blocked before execution as evidence of missing supported behaviour; do not invent a terminal handoff where no route exists.
+When a route exists, trace it through admission and name its last proven terminal handoff.
+Public availability of a control or successful handoff to a writer does not prove acknowledgement, physical acceptance or independent readback.
+
 ## Establish and report the result
 
 - **Basis:** exact capture or owner observation, active exact route, demonstrated shared route, public reference or inference.
@@ -44,6 +84,10 @@ For a targeted report, follow the affected contract across equivalent callers an
 
 For each material result, give the operation, active evidence and observed result.
 Name the affected user operation and its consequence before describing protocol bytes, ACKs or codec labels.
+Before assigning severity, cross-check the final report against the ledger:
+each finding must identify its row, use the same SKU and revision provenance, and record the inspected public entry points and route result; require a terminal handoff only when a route exists.
+Keep authority, expected result and disposition distinct.
+Remove unledgered claims, downgrade unreconciled revision or route claims to unchecked, and resolve any stale generated mirror before using it.
 Omit generic audit-method caveats when they do not affect a material result.
 Never report unperformed live BLE operation or physical qualification as an audit finding, gap, severity or limitation.
 Do not downgrade or require requalification of owner-confirmed Supported models solely because of internal evidence annotations or synthetic-test limitations.

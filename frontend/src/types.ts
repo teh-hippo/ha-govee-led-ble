@@ -52,6 +52,7 @@ export interface DeviceCapabilities {
   compatibility_revision?: string;
   diy_destination_authority?: string;
   physical_ic_count?: number | null;
+  physical_ic_capacity?: number | null;
   catalogue?: ModelEffectCatalogue;
   music_settings?: Record<string, MusicSettings>;
   retained_music_edit?: RetainedMusicEdit | null;

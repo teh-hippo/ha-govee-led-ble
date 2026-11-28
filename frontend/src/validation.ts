@@ -158,6 +158,12 @@ export function decodeDevices(value: unknown): DeviceCapabilities[] {
       `devices[${index}].profiles`,
     );
     const model = boundedString(device.model, `devices[${index}].model`, MAX_IDENTIFIER_LENGTH);
+    const physicalIcCapacity = device.physical_ic_capacity == null
+      ? undefined
+      : integerValue(device.physical_ic_capacity, "physical IC capacity", 1, 32767);
+    const physicalIcCount = device.physical_ic_count == null
+      ? undefined
+      : integerValue(device.physical_ic_count, "physical IC count", 1, physicalIcCapacity ?? 32767);
     return {
       config_entry_id: boundedString(
         device.config_entry_id,
@@ -220,8 +226,11 @@ export function decodeDevices(value: unknown): DeviceCapabilities[] {
         0,
         65_535,
       ),
-      ...(device.physical_ic_count == null ? {} : {
-        physical_ic_count: integerValue(device.physical_ic_count, "physical IC count", 1, 32767),
+      ...(physicalIcCount === undefined ? {} : {
+        physical_ic_count: physicalIcCount,
+      }),
+      ...(physicalIcCapacity === undefined ? {} : {
+        physical_ic_capacity: physicalIcCapacity,
       }),
       ...(device.music_settings === undefined ? {} : {
         music_settings: decodeMusicSettings(device.music_settings),

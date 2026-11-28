@@ -237,12 +237,14 @@ def _make_coord(hass, **overrides) -> MagicMock:
 
 @pytest.fixture
 def mock_h6199_coordinator(hass):
-    return _make_coord(
+    coordinator = _make_coord(
         hass,
         blank_screen_detection=2,
         blank_screen_low_brightness_duration_seconds=10,
         blank_screen_same_tone_duration_seconds=120,
     )
+    coordinator.profile = MODEL_PROFILES["H6199"]
+    return coordinator
 
 
 @pytest.fixture

@@ -11,6 +11,7 @@ from custom_components.ha_govee_led_ble.const import get_profile
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_base import async_prepare_effect_profile
+from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
 from custom_components.ha_govee_led_ble.effect_catalogue import resolve_catalogue_template
 from custom_components.ha_govee_led_ble.effect_compiler import (
     compile_effect,
@@ -25,6 +26,7 @@ from custom_components.ha_govee_led_ble.effect_runtime import (
     EffectDeploymentEngine,
     async_prepare_application,
 )
+from custom_components.ha_govee_led_ble.effect_storage import LibrarySnapshot
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_configured_strings_query
 from custom_components.ha_govee_led_ble.layered_scene import CatalogueRef, SelectionType
 from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_layered_scene
@@ -113,6 +115,28 @@ def test_h7020_catalogue_bodies_use_exact_configured_geometry(name, count, expec
         for layer in prepared.effect.layers
     )
     assert actual == expected
+
+
+async def test_saved_resident_scene_does_not_read_configured_layout(hass, h7020, monkeypatch):
+    coordinator, _client, _receive = h7020
+    coordinator._confirmed_identity_fields.add("pact")
+    coordinator._pact_identity.marker_pact = (1, 1)
+    item = LibraryItem.new("Saved Ripple", _scene_content("Ripple"))
+    backend = MagicMock(spec=EffectBackend)
+    backend.application.library_snapshot.return_value = LibrarySnapshot((item,))
+    backend.active_workspaces.get.return_value = None
+    light = GoveeBLELight(coordinator, config_entry_id="entry-a", effect_backend=backend)
+    light._library_snapshot = LibrarySnapshot((item,))
+    monkeypatch.setattr(light, "_notify_state_changed", MagicMock())
+    apply = AsyncMock()
+    monkeypatch.setattr(light, "_async_apply_saved_item", apply)
+    read_layout = AsyncMock(side_effect=AssertionError("resident scene unexpectedly required configured layout"))
+    monkeypatch.setattr(coordinator, "_read_configured_strings", read_layout)
+
+    await light._async_handle_turn_on(effect=item.name)
+
+    apply.assert_awaited_once()
+    read_layout.assert_not_awaited()
 
 
 @pytest.mark.parametrize("count", [15, 30])

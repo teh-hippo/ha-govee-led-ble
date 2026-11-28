@@ -37,6 +37,24 @@ from tests.test_music_commands import _music_transport
 
 
 @pytest.fixture
+def h6199(hass):
+    coordinator = GoveeBLECoordinator(
+        hass,
+        "11:22:33:44:55:66",
+        "H6199",
+        configuration_url=_CONFIGURATION_URL,
+    )
+    coordinator.fw_version, coordinator.hw_version = "1.10.04", "3.02.01"
+    coordinator.subordinate_20_version, coordinator.subordinate_21_version = "1.03.00", "1.00.33"
+    coordinator.pact_type, coordinator.pact_code = 2, 1
+    coordinator._confirmed_identity_fields.update(
+        {"pact", "fw_version", "hw_version", "subordinate_20_version", "subordinate_21_version"}
+    )
+    coordinator._resolve_device_profile()
+    return coordinator
+
+
+@pytest.fixture
 def coord(coord):
     coord._client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
     coord._notification_token = object()
@@ -135,6 +153,9 @@ async def test_authored_palette_clears_origin_at_first_physical_write(coord, mon
     body, speed_index = resolve_native_scene_body(scene, target=model)
     monkeypatch.setitem(MODEL_PROFILES, model, profile)
     coord.model, coord.profile = model, profile
+    coord.pact_type, coord.pact_code = 1, 1
+    coord.fw_version, coord.hw_version = "1.07.02", "1.00.01"
+    coord._confirmed_identity_fields.update({"pact", "fw_version", "hw_version"})
     coord.is_on = True
     origin_cleared = MagicMock()
 
@@ -168,6 +189,13 @@ async def test_authored_palette_state_matches_selector_authority(coord, model):
     scene = next(entry for entry in SCENE_ENTRIES[model] if entry.scene_type == 1)
     body, speed_index = resolve_native_scene_body(scene, target=model)
     coord.model, coord.profile = model, profile
+    if model == "H6159":
+        coord.pact_type, coord.pact_code = 1, 1
+        coord.fw_version, coord.hw_version = "1.07.02", "1.00.01"
+        coord._confirmed_identity_fields.update({"pact", "fw_version", "hw_version"})
+    else:
+        coord.fw_version, coord.hw_version = "1.00.00", "1.00.00"
+        coord._confirmed_identity_fields.update({"fw_version", "hw_version"})
     coord.is_on = True
     coord.async_observe_effect = AsyncMock(return_value=True)
 

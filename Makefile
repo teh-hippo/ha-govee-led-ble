@@ -59,7 +59,7 @@ FRONTEND_FIXTURE_INPUTS := \
 PACKAGE_PATH := $(DIST_DIR)/ha_govee_led_ble.zip
 
 .PHONY: bootstrap fixtures protocol frontend build check check-fast check-core check-code check-workflows check-lint check-static check-tests \
-	package clean verify-node verify-kaitai verify-protocol verify-frontend verify-generated
+	package clean verify-node verify-kaitai verify-protocol verify-protocol-fresh verify-frontend verify-generated
 
 bootstrap:
 	@if [[ -n "$(MISE)" ]]; then \
@@ -112,6 +112,23 @@ verify-protocol: protocol
 		$(BUILD_DIR)/verify-protocol/all $(BUILD_DIR)/verify-protocol/runtime
 	LC_ALL=C diff --brief --recursive --no-dereference --exclude='__pycache__' $(BUILD_DIR)/verify-protocol/runtime $(PROTOCOL_DIR) || \
 		{ echo 'Generated protocol differs: run make protocol. If diff reports "Only in" files absent from scripts/kaitai-runtime-outputs.txt, delete just those ignored files and rerun.' >&2; exit 1; }
+
+verify-protocol-fresh: verify-kaitai
+	rm -rf $(BUILD_DIR)/verify-protocol-fresh
+	mkdir -p $(BUILD_DIR)/verify-protocol-fresh
+	bash scripts/generate-kaitai.sh all $(BUILD_DIR)/verify-protocol-fresh/all >/dev/null
+	bash scripts/generate-kaitai.sh runtime-from \
+		$(BUILD_DIR)/verify-protocol-fresh/all $(BUILD_DIR)/verify-protocol-fresh/runtime
+	@test -d $(PROTOCOL_DIR) || \
+		{ echo 'Local generated protocol mirror is missing: run make protocol.' >&2; exit 1; }
+	@for output in $(PROTOCOL_OUTPUTS); do \
+		[[ -f "$$output" ]] || \
+			{ echo "Local generated protocol mirror is missing $$output: run make protocol." >&2; exit 1; }; \
+	done
+	LC_ALL=C diff --brief --recursive --no-dereference --exclude='__pycache__' $(BUILD_DIR)/verify-protocol-fresh/runtime $(PROTOCOL_DIR) || \
+		{ echo 'Local generated protocol mirror is stale or incompatible: run make protocol. If diff reports "Only in" files absent from scripts/kaitai-runtime-outputs.txt, delete just those ignored files and rerun.' >&2; exit 1; }
+	KAITAI_GENERATED_DIR=$(BUILD_DIR)/verify-protocol-fresh/all \
+		uv run --no-sync python scripts/check_kaitai_generated_protocol.py
 
 verify-frontend: frontend
 	rm -rf $(BUILD_DIR)/verify-frontend

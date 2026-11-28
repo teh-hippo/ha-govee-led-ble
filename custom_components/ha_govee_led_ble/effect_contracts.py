@@ -27,8 +27,8 @@ from .effect_limits import (
 )
 from .layered_scene_decoder import RETAINED_WORKSHOP_GRAMMARS
 
-EDITOR_API_VERSION: Final = 23
-EDITOR_ASSET_VERSION: Final = 51
+EDITOR_API_VERSION: Final = 24
+EDITOR_ASSET_VERSION: Final = 52
 EFFECT_COMPILER_VERSION: Final = 13
 RELEASE_CAPABILITY_SCHEMA_VERSION: Final = 1
 
@@ -1337,6 +1337,8 @@ def require_upload_carrier(model: str, workflow: CapabilityWorkflow, carrier: st
 
 def profile_supports_workflow(profile: ModelProfile, workflow: CapabilityWorkflow, *, model: str | None = None) -> bool:
     """Apply device restrictions without promoting its exact-SKU workflow ceiling."""
+    if workflow is CapabilityWorkflow.EDITED_PALETTE_SCENES and profile.selector_only_scene_bits is not None:
+        return False
     if profile.effect_workflows is not None and workflow.value not in profile.effect_workflows:
         return False
     advanced_supported = profile.supports_advanced_effects or (
@@ -1490,6 +1492,7 @@ class DeviceEffectCapabilities:
     readback: str
     effect_categories: tuple[str, ...]
     physical_ic_count: int | None = None
+    physical_ic_capacity: int | None = None
     static_composition: bool = False
 
     def to_dict(self) -> dict[str, JsonValue]:
@@ -1502,6 +1505,7 @@ class DeviceEffectCapabilities:
             "display_name": self.display_name,
             "segment_count": self.segment_count,
             "physical_ic_count": self.physical_ic_count,
+            "physical_ic_capacity": self.physical_ic_capacity,
             "static_composition": self.static_composition,
             "custom_effects": {
                 "painted": self.painted.value,
@@ -1529,6 +1533,7 @@ def device_effect_capabilities(
     light_entity_id: str | None = None,
     effect_categories: tuple[str, ...] | None = None,
     physical_ic_count: int | None = None,
+    physical_ic_capacity: int | None = None,
     profile: ModelProfile | None = None,
 ) -> DeviceEffectCapabilities:
     profile = get_profile(model) if profile is None else profile
@@ -1539,6 +1544,7 @@ def device_effect_capabilities(
         display_name=display_name,
         segment_count=segment_count,
         physical_ic_count=physical_ic_count,
+        physical_ic_capacity=physical_ic_capacity,
         static_composition=profile.supports_segments and profile.supports_rgb,
         painted=studio_apply_capability_state(model, CapabilityWorkflow.PAINTED, profile=profile)
         if profile.supports_custom_effects

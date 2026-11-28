@@ -171,6 +171,7 @@ def _coordinator(*, model: str = "H617A", readable: bool = False) -> SimpleNames
         _planned_release_generation=0,
         _recovery_invalidation_generation=0,
         _pre_mode_snapshot=None,
+        _physical_ic_count_confirmed=True,
     )
     if model == "H7020":
         coordinator.configured_strings = 1

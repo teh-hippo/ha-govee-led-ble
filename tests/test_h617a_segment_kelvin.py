@@ -621,6 +621,7 @@ async def test_native_white_recovery_requires_known_rgb_intent(hass, monkeypatch
 @pytest.mark.parametrize("failure", ["subscription", "profile", "partial", "cancel", "blocked_write"])
 async def test_kelvin_transaction_aborts_without_reconnect_or_replay(hass, monkeypatch, virtual_clock, failure):
     c = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H1A42", configuration_url=None)
+    c._physical_ic_count_confirmed = True
     writes = []
     started = asyncio.get_running_loop().time()
 

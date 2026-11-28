@@ -34,7 +34,7 @@ from custom_components.ha_govee_led_ble.light_commands import (
 from custom_components.ha_govee_led_ble.light_service_dispatch import _dispatch_device_lights
 from custom_components.ha_govee_led_ble.light_source import GoveeBLESourceLight
 from custom_components.ha_govee_led_ble.transport import xor_checksum
-from tests.coordinator_test_support import frame
+from tests.coordinator_test_support import frame, qualify_coordinator_identity
 
 LEFT = LightSource("left_bar", "left_bar_enabled", (1, 2, 3, 4, 5))
 RIGHT = LightSource("right_bar", "right_bar_enabled", (6, 7, 8, 9, 10))
@@ -815,6 +815,7 @@ def test_inline_bar_readback_qualifies_complete_geometry_and_exact_mixed_intent(
     coordinator._resolve_device_profile()
     coordinator._notify_started_monotonic = time.monotonic() - 1
     coordinator._client = MagicMock(is_connected=True)
+    qualify_coordinator_identity(coordinator, pact=(1, 1), firmware="1.00.11", hardware="1.00.00")
     payload = (
         bytes.fromhex("aa050d112233")
         + left_kelvin.to_bytes(2, "big")

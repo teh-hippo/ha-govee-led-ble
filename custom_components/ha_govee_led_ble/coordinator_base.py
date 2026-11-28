@@ -499,12 +499,7 @@ async def async_prepare_effect_profile(
 
         if resolved := resolve_scene_target(coordinator.model, content.template):
             _, scene = resolved
-        scene_required = bool(
-            scene is not None
-            and (
-                scene.command_version != 0 or (scene.scene_type == 2 and coordinator.profile.rgbic_scene_v0 is not None)
-            )
-        )
+        scene_required = scene is not None
         geometry_required = bool(scene is not None and native_scene_uses_geometry(scene, coordinator.profile))
         scene_required = scene_required or geometry_required
     configured_geometry_required = bool(geometry_required and coordinator.profile.configured_string_scene_geometry)
@@ -541,6 +536,15 @@ async def async_prepare_effect_profile(
         )
 
     effect_fields = coordinator.profile.profile_identity_fields | coordinator.profile.effect_identity_fields
+    if scene_required and getattr(coordinator, "identity_gated_controls", False):
+        effect_fields |= {"pact"}
+    scene_fields = (
+        scene_command_identity_fields(coordinator.model, scene)
+        if scene is not None
+        else coordinator.profile.scene_identity_fields
+        if scene_required
+        else frozenset()
+    )
     effect_identity_pending = bool(effect_fields) and not effect_identity_ready()
     if (
         content is not None
@@ -552,8 +556,7 @@ async def async_prepare_effect_profile(
     ):
         return coordinator.effect_authorization_profile
     fields = effect_fields
-    if scene_required:
-        fields |= coordinator.profile.scene_identity_fields
+    fields |= scene_fields
     if (
         fields
         and coordinator.identity_fields_confirmed(fields)
@@ -562,7 +565,15 @@ async def async_prepare_effect_profile(
     ):
         return coordinator.effect_authorization_profile
     if (
-        not (scene_required and coordinator.profile.scene_identity_fields)
+        scene is not None
+        and not scene_fields
+        and not effect_identity_pending
+        and not configured_geometry_required
+        and not physical_geometry_pending
+    ):
+        return coordinator.effect_authorization_profile
+    if (
+        not scene_fields
         and not configured_geometry_required
         and not physical_geometry_pending
         and coordinator.profile.rgbic_scene_v0 is None
@@ -585,11 +596,7 @@ async def async_prepare_effect_profile(
                 await coordinator._async_require_identity(client, effect_fields, ready=effect_identity_ready)
             elif coordinator._authorization_profile().basic_controls_only:
                 await coordinator._async_require_identity(client, coordinator.profile.profile_identity_fields)
-            if (
-                scene_required
-                and coordinator.profile.scene_identity_fields
-                and not coordinator.identity_fields_confirmed(fields)
-            ):
+            if scene_fields and not coordinator.identity_fields_confirmed(fields):
                 token = coordinator._notification_token
                 await coordinator._async_read_identity(fields)
                 if (

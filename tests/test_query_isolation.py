@@ -1,6 +1,7 @@
 """Optional queries cannot invalidate basic state or historical segment siblings."""
 
 import asyncio
+import time
 from dataclasses import replace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -237,6 +238,8 @@ async def test_h6099_targeted_queries_and_optional_collection(hass, monkeypatch,
 @pytest.mark.parametrize("fresh", [False, True])
 async def test_segment_siblings_need_transaction_observation(hass, monkeypatch, model, operation, fresh):
     c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", model, configuration_url=None)
+    if model == "H6199":
+        set_qualified_identity(c)
     count, size = c.profile.segment_count, c.profile.segment_group_size
 
     def pages(colors, brightness):
@@ -274,6 +277,12 @@ async def test_segment_siblings_need_transaction_observation(hass, monkeypatch, 
 
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(side_effect=write))
     c._client = client
+    if model == "H6199":
+        c._notification_token = object()
+        c._notify_started_monotonic = time.monotonic()
+        c._confirmed_identity_fields.update(
+            {"pact", "fw_version", "hw_version", "subordinate_20_version", "subordinate_21_version"}
+        )
 
     async def connect():
         if fresh and client.write_gatt_char.await_count == 0:

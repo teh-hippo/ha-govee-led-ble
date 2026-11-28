@@ -39,6 +39,7 @@ from custom_components.ha_govee_led_ble.transport import WRITE_UUID, fragment_a3
 from tests.coordinator_test_support import _c, _confirm_identity, _packet
 from tests.storage_test_double import InMemoryVersionedDocumentStore
 from tests.test_govee_encryption import client
+from tests.test_h6199_capabilities import set_qualified_identity
 
 M = "custom_components.ha_govee_led_ble.coordinator"
 
@@ -173,6 +174,15 @@ async def test_interrupted_control_queries_only_attempted_readable_fields(coord,
 @pytest.mark.parametrize("workflow", ["state", "identity", "command", "preview", "sequence"])
 async def test_outbound_workflows_share_profile_transform(coord, h6199, model, workflow):
     coordinator = coord if model == "H617A" else h6199
+    if model == "H6199":
+        coordinator.fw_version, coordinator.hw_version = "1.10.04", "3.02.01"
+        coordinator.subordinate_20_version, coordinator.subordinate_21_version = "1.03.00", "1.00.33"
+        coordinator.pact_type, coordinator.pact_code = 2, 1
+        if workflow != "identity":
+            coordinator._confirmed_identity_fields.update(
+                {"pact", "fw_version", "hw_version", "subordinate_20_version", "subordinate_21_version"}
+            )
+        coordinator._resolve_device_profile()
     transform = MagicMock(side_effect=_transform_packet)
     coordinator.profile = replace(coordinator.profile, outbound_transform=transform)
     coordinator._arm_expected_values({"is_on": False})
@@ -426,9 +436,12 @@ async def test_mid_poll_disconnect_handles_stale_write_and_cancels_real_keep_ali
     coord, h6199, monkeypatch, virtual_clock, caplog, model
 ):
     coordinator = coord if model == "H617A" else h6199
+    if model == "H6199":
+        set_qualified_identity(coordinator)
+        coordinator._advertised_plaintext = True
     coordinator._first_refresh_done = coordinator._present = coordinator._state_read_available = True
     coordinator._reply_gate = ReplyGate(0.5)
-    device = client(b"\x01\x00")
+    device = client(None if model == "H6199" else b"\x01\x00")
     keep_alive = []
     failures = []
     refresh = coordinator.refresh_state
@@ -465,7 +478,7 @@ async def test_mid_poll_disconnect_handles_stale_write_and_cancels_real_keep_ali
     assert coordinator._client is None and not coordinator._encryption.ready
     assert len(keep_alive) == 1 and keep_alive[0].done() and keep_alive[0].exception() is None
     assert coordinator._keep_alive_task is None
-    assert failures == ["stale_connection"]
+    assert failures == ([] if model == "H6199" else ["stale_connection"])
     assert not any("Unexpected error fetching" in record.getMessage() for record in caplog.records)
     establish.assert_awaited_once()
     assert device.write_gatt_char.await_args.args[1] == build_power_query(model)

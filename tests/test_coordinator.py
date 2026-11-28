@@ -91,6 +91,15 @@ def test_h6102_unknown_context_bootstraps_identity_with_notifications(h6102):
     assert h6102.update_interval == timedelta(seconds=30)
 
 
+@pytest.mark.parametrize("model", ["H60B0", "H612A", "H7029"])
+def test_existing_pact_bootstrap_profiles_retain_basic_coordinator_controls(hass, model):
+    coordinator = GoveeBLECoordinator(hass, "44:55:66:77:88:99", model, configuration_url=None)
+
+    assert coordinator.profile.command_operations == frozenset({"power", "brightness"})
+    assert coordinator._authorization_profile().command_operations == frozenset({"power", "brightness"})
+    assert coordinator._authorization_profile().can_read(ReadDomain.BRIGHTNESS)
+
+
 @pytest.mark.parametrize(
     ("pact", "register", "expected"),
     [(1, 235, 92), (1, 19, 1), (1, 0, None), (10, 235, None), (10, 50, 50)],
@@ -493,8 +502,10 @@ async def test_initial_state_and_update(coord, h6199):
     assert coord.color_mode is None
     assert coord.profile == device_profile("H617A", None, None) and coord.profile.state_readable
     assert coord.profile.supports_music_mode and not coord.profile.supports_video_mode
-    assert h6199.profile == device_profile("H6199", None, None) and h6199.profile.state_readable
-    assert h6199.profile.supports_video_mode and not h6199.profile.supports_white_brightness
+    assert h6199.profile.basic_controls_only and h6199.profile.state_readable
+    assert h6199.effect_authorization_profile.command_operations == frozenset({"power"})
+    assert h6199.native_presentation_profile.supports_video_mode
+    assert not h6199.native_presentation_profile.supports_white_brightness
     coord.is_on, coord.brightness_pct, coord.rgb_color = True, 75, (255, 0, 128)
     exp = {
         "is_on": True,

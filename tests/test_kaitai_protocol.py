@@ -798,15 +798,15 @@ def h7020_profile():
 
 
 @pytest.mark.parametrize(
-    ("kelvin", "companion"),
-    [(2000, "ff8d0b"), (4000, "ffd5a1"), (9000, "d9e1ff")],
+    ("requested_kelvin", "kelvin", "companion"),
+    [(2000, 2300, "ff9d33"), (4000, 4000, "ffd5a1"), (9000, 6700, "fefaff")],
 )
-def test_h7020_kelvin_and_four_byte_masks(h7020_profile, kelvin, companion):
+def test_h7020_kelvin_and_four_byte_masks(h7020_profile, requested_kelvin, kelvin, companion):
     from custom_components.ha_govee_led_ble.light_commands import parse_static_write
 
     for mask in (0x7FFF, 0x3FFFFFFF):
         profile = replace(h7020_profile, segment_count=mask.bit_count())
-        packet = build_color_temp(kelvin, "H7020", profile=profile)
+        packet = build_color_temp(requested_kelvin, "H7020", profile=profile)
         expected = b"\x33\x05\x15\x01\xff\xff\xff" + kelvin.to_bytes(2, "big")
         expected += bytes.fromhex(companion) + mask.to_bytes(4, "little") + bytes(3)
         assert packet == expected + bytes([xor_checksum(expected)])
@@ -1230,6 +1230,9 @@ def test_every_nonstatic_notification_demotes_direct_authority(static_coordinato
     coord = static_coordinator
     coord._notify_callback(None, _static_reply(rgb=(1, 2, 3), kelvin=4200))
     coord.model, coord.profile = model, MODEL_PROFILES[model]
+    if model == "H6199":
+        coord.pact_type, coord.pact_code = 2, 1
+        coord._confirmed_identity_fields.add("pact")
     coord._notify_callback(None, bytearray.fromhex(frame))
     assert coord.color_mode is not ParsedMode.COLOUR
     assert coord.rgb_color_source == coord.color_temp_kelvin_source == "retained"
@@ -1258,6 +1261,11 @@ def test_local_mode_command_releases_direct_authority(static_coordinator):
 )
 async def test_static_failure_never_restores_stale_mode_siblings(hass, model, frame):
     coord = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url=None)
+    if model == "H6199":
+        coord.pact_type, coord.pact_code = 2, 1
+        coord._confirmed_identity_fields.add("pact")
+        coord._resolve_device_profile()
+        coord.async_prepare_identity_gated_control = AsyncMock(return_value=lambda: None)
     coord.is_on = True
     coord._notify_callback(None, bytearray.fromhex(frame))
     assert coord.active_mode != "colour"

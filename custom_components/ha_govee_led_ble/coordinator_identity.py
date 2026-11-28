@@ -52,6 +52,7 @@ class InitialDeviceIdentity:
 class PactIdentityState:
     advertised_pacts: set[PactIdentity] = field(default_factory=set)
     advertisement_observations: dict[str, tuple[float, frozenset[PactIdentity]]] = field(default_factory=dict)
+    advertisement_sequences: dict[str, int] = field(default_factory=dict)
     marker_pact: PactIdentity | None = None
     last_marker_pact: PactIdentity | None = None
     connection_pacts: set[PactIdentity] = field(default_factory=set)

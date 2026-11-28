@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES
+from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_status import (
     ParsedColorModeResponse,
     ParsedMode,
@@ -32,6 +33,22 @@ def _parse_colour(frame: str, model: str = "H617A") -> ParsedColorModeResponse:
 def _h6179_status(domain: int, body: bytes) -> bytes:
     frame = bytes((0xAA, domain)) + body.ljust(17, b"\0")
     return frame + bytes((xor_checksum(frame),))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("model", "capacity"), [("H1A42", 12), ("H1AB2", 50)])
+async def test_installed_ic_count_rejects_over_capacity_before_mutation(hass, model, capacity):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url=None)
+    coordinator._client = MagicMock(is_connected=True)
+    before = coordinator.profile
+
+    coordinator._notify_callback(None, bytearray(_h6179_status(0x40, (capacity + 1).to_bytes(2, "big"))))
+    assert coordinator.profile == before
+    assert coordinator._observed_physical_ic_count is None
+
+    coordinator._notify_callback(None, bytearray(_h6179_status(0x40, capacity.to_bytes(2, "big"))))
+    assert coordinator.profile.physical_ic_count == capacity
+    assert coordinator._observed_physical_ic_count == capacity
 
 
 def test_static_kelvin_precedence_follows_profile_capability() -> None:

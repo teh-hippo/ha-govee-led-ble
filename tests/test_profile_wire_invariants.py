@@ -550,8 +550,11 @@ def test_every_registered_model_is_covered_by_effective_profiles() -> None:
     """No registered SKU in MODEL_PROFILES or qualified context may be silently omitted."""
     covered = {model for _, model, _ in _EFFECTIVE_PROFILES}
     assert covered == set(MODEL_PROFILES)
-    case_ids = {case_id for case_id, _, _ in _EFFECTIVE_PROFILES}
-    assert {case_id for case_id, *_ in _QUALIFIED_CONTEXTS} <= case_ids
+    for _case_id, model, pact_type, pact_code, firmware, hardware in _QUALIFIED_CONTEXTS:
+        profile = device_profile(model, pact_type, pact_code, firmware=firmware, hardware=hardware)
+        assert any(
+            case_model == model and case_profile == profile for _, case_model, case_profile in _EFFECTIVE_PROFILES
+        )
     assert len(_SEGMENT_PROFILES) >= 10
     h6125_grammars = {
         profile.status_grammar

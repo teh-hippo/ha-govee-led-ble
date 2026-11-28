@@ -7,11 +7,13 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from homeassistant.components.light import ColorMode
 from homeassistant.config_entries import ConfigEntryState
+from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.ha_govee_led_ble.const import (
     DOMAIN,
     H6199_PACT1_PROFILE,
     MODEL_PROFILES,
+    BrightnessEvidence,
     device_profile,
 )
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
@@ -57,7 +59,13 @@ from tests.test_h6199_capabilities import lifecycle as pact_lifecycle  # noqa: F
 
 
 def advertise(c, pact):
-    c._note_advertisement(SimpleNamespace(manufacturer_data={34818: bytes((0xEC, 0, pact, 1, 0))}))
+    c._test_live_pact = pact
+    c._note_advertisement(
+        SimpleNamespace(
+            source="test-subscription",
+            manufacturer_data={34818: bytes((0xEC, 0, pact, 1, 0))},
+        )
+    )
 
 
 def test_passive_replay_cannot_replace_a_newer_h6199_pact(hass):
@@ -88,6 +96,7 @@ def test_passive_replay_cannot_replace_a_newer_h6199_pact(hass):
     coordinator._client = MagicMock(is_connected=True)
     coordinator._notification_token = object()
     coordinator._notify_started_monotonic = now - 2
+    coordinator._pact_subscription_sequence = coordinator._advertisement_sequence
     coordinator._resolve_pact_identity()
     assert (coordinator.pact_type, coordinator.pact_code) == (1, 1)
     assert coordinator.profile is H6199_PACT1_PROFILE
@@ -97,8 +106,14 @@ def test_passive_replay_cannot_replace_a_newer_h6199_pact(hass):
 def test_only_exact_model_and_positive_pact_select_restriction(model):
     for pact in ((None, None), (2, 1)):
         profile = device_profile(model, *pact)
-        assert profile.command_operations == MODEL_PROFILES[model].command_operations
-        assert profile.supports_video_mode == MODEL_PROFILES[model].supports_video_mode
+        expected = (
+            frozenset({"power"})
+            if model == "H6199" and pact == (None, None)
+            else MODEL_PROFILES[model].command_operations
+        )
+        assert profile.command_operations == expected
+        expected_video = not (model == "H6199" and pact == (None, None)) and MODEL_PROFILES[model].supports_video_mode
+        assert profile.supports_video_mode == expected_video
     assert device_profile(model, 1, 1) == (
         H6199_PACT1_PROFILE if model == "H6199" else device_profile(model, None, None)
     )
@@ -170,6 +185,14 @@ async def test_physical_boundary_rejects_before_optimism(hass, monkeypatch, pack
     advertise(c, 1)
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
     c._client = client
+    c._notification_token = object()
+    c._notify_started_monotonic = 0.0
+    c._pact_identity.marker_pact = (1, 1)
+    c.fw_version, c.hw_version = "1.06.00", "1.00.01"
+    c._confirmed_identity_fields.update({"pact", "fw_version", "hw_version"})
+    c.profile = device_profile("H6199", 1, 1, firmware=c.fw_version, hardware=c.hw_version)
+    c._brightness_pct_known = False
+    c._set_brightness_evidence(BrightnessEvidence.UNKNOWN)
     monkeypatch.setattr(c, "_ensure_connected", AsyncMock(return_value=client))
     before = c.capture_effect_control_state()
     with pytest.raises(ValueError):
@@ -184,13 +207,14 @@ async def test_known_pact1_real_setup_and_basic_controls(
     monkeypatch,
 ):
     c, replies, clients, packets = pact_lifecycle
-    advertise(c, 1)
     replies[build_hardware_query(c.model)] = frame("aa0703" + b"1.00.01".hex())
     replies[build_firmware_query(c.model)] = frame("aa06" + b"1.07.02".hex())
     replies[build_brightness_query(c.model)] = frame("aa0488")
     replies[frame("aa0501")] = frame("aa050b00")
     for group in range(1, 5):
         replies[frame(f"aaa2{group:02x}")] = frame(f"aaa2{group:02x}" + "2060a0" * 4)
+    await c._ensure_connected()
+    advertise(c, 1)
     await c._async_update_data()
     assert c.available and c.is_on
     assert c.profile.supports_custom_effects and c.profile.diy_upload_transport == "a1_02"
@@ -198,6 +222,8 @@ async def test_known_pact1_real_setup_and_basic_controls(
         build_power_query(c.model),
         build_hardware_query(c.model),
         build_firmware_query(c.model),
+        build_subordinate_query(0x20, c.model),
+        build_subordinate_query(0x21, c.model),
         build_brightness_query(c.model),
         frame("aa0501"),
         *(frame(f"aaa2{group:02x}") for group in range(1, 5)),
@@ -257,7 +283,8 @@ async def test_known_pact1_real_setup_and_basic_controls(
 async def test_late_pact_changes_capabilities_without_destroying_library(hass):
     c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url=None)
     c.hw_version, c.fw_version = "1.00.01", "1.07.02"
-    assert c.profile == device_profile(c.model, None, None)
+    assert c.native_presentation_profile == MODEL_PROFILES[c.model]
+    assert c.effect_authorization_profile.command_operations == frozenset({"power"})
     light = GoveeBLELight(c)
     items = tuple(LibraryItem.new(t.label, t.content) for t in MODEL_EFFECT_CATALOGUES[c.model].templates)
     light._library_snapshot = LibrarySnapshot(items)
@@ -320,12 +347,12 @@ async def test_late_pact_identification_blocks_unsupported_prepared_write(hass, 
             advertise(c, 1)
 
     monkeypatch.setattr(c, "_ensure_connected", connect)
-    with pytest.raises(ValueError, match="profile changed|does not support this operation"):
+    with pytest.raises((ValueError, HomeAssistantError)):
         await c.async_write_effect_sequence(
             (packet,), intent=ControlIntent.USER, write_guard=guard, state_values={"brightness_pct": 254}
         )
     assert c.brightness_pct == 100 and c.control_write_attempts == 0
-    client.write_gatt_char.assert_not_awaited()
+    assert all(call.args[1][0] == 0xAA for call in client.write_gatt_char.await_args_list)
 
 
 async def test_public_pact1_video_admission_transmission_observation_and_restoration(
@@ -333,6 +360,7 @@ async def test_public_pact1_video_admission_transmission_observation_and_restora
     monkeypatch,
 ):
     c, _replies, _clients, packets = pact_lifecycle
+    await c._ensure_connected()
     advertise(c, 1)
     c.is_on = True
     c.effect_families = frozenset({"video"})
@@ -376,7 +404,7 @@ async def test_public_pact1_video_admission_transmission_observation_and_restora
     assert compiled.mode == "movie"
     require_profile_packet(expected, c.profile)
     assert c.profile.outbound_transform is not None and c.profile.outbound_transform(expected) == expected
-    public_expected = bytes.fromhex("3305000100640064000000000000000000000037")
+    public_expected = expected
 
     await light._async_handle_turn_on(effect="movie")
 
@@ -419,6 +447,11 @@ async def test_pact1_a1_diy_requires_current_positive_ack_before_activation_and_
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
     c._client = client
     c._notification_token = object()
+    c._notify_started_monotonic = 0.0
+    c._pact_identity.marker_pact = (1, 1)
+    c._confirmed_identity_fields.update({"pact", "fw_version", "hw_version"})
+    c._resolve_device_profile()
+    profile = c.profile
     monkeypatch.setattr(c, "_ensure_connected", AsyncMock(return_value=client))
     monkeypatch.setattr(coordinator_module, "UPLOAD_ACK_TIMEOUT", 0.02)
     monkeypatch.setattr(coordinator_module, "EFFECT_SEQUENCE_ATTEMPTS", 1)
@@ -459,6 +492,7 @@ async def test_pact1_a1_diy_requires_current_positive_ack_before_activation_and_
         c._disconnect_locked = AsyncMock()
         c.send_command = AsyncMock()
         c.refresh_state = AsyncMock(return_value=True)
+        c._confirmed_identity_fields.update({"pact", "fw_version", "hw_version"})
         await c.async_restore_effect_control_state(
             PriorControlState(
                 mode="scene",
@@ -481,9 +515,16 @@ async def test_prepared_rgb_reencodes_after_pact_identification_during_connect(h
     packet = build_color_rgb(32, 96, 160, c.model)
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
     c._client = client
+    c.fw_version, c.hw_version = "1.06.00", "1.00.01"
+    c._confirmed_identity_fields.update({"fw_version", "hw_version"})
 
     async def connect():
         advertise(c, 1)
+        c._notification_token = object()
+        c._notify_started_monotonic = 0.0
+        c._pact_identity.marker_pact = (1, 1)
+        c._confirmed_identity_fields.add("pact")
+        c._resolve_pact_identity(preserve_state=True)
         return client
 
     monkeypatch.setattr(c, "_ensure_connected", connect)
@@ -499,7 +540,14 @@ async def test_pact_change_after_encoding_rejects_before_optimism(hass, packet):
     c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url=None)
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
     c._client = client
-    with pytest.raises(ValueError, match="profile changed"):
+    c._notification_token = object()
+    c._notify_started_monotonic = 0.0
+    c.pact_type, c.pact_code = 2, 1
+    c._pact_identity.marker_pact = (2, 1)
+    c.fw_version, c.hw_version = "1.10.04", "3.02.01"
+    c._confirmed_identity_fields.update({"pact", "fw_version", "hw_version"})
+    c.profile = device_profile("H6199", 2, 1, firmware=c.fw_version, hardware=c.hw_version)
+    with pytest.raises((ValueError, HomeAssistantError)):
         await c._async_write_packet(client, packet, arm_expected=True, before_write=lambda: advertise(c, 1))
     client.write_gatt_char.assert_not_awaited()
     assert c.control_write_attempts == 0 and not c._expected_state

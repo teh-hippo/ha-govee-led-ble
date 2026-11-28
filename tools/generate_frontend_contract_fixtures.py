@@ -100,6 +100,7 @@ def _device_payload(model: str, profile: ModelProfile, config_entry_id: str) -> 
         profile.segment_count,
         light_entity_id="light.h617a_main" if model == "H617A" else None,
         physical_ic_count=profile.physical_ic_count,
+        physical_ic_capacity=profile.physical_ic_capacity,
         profile=profile,
     ).to_dict()
     device.update(

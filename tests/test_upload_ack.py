@@ -95,6 +95,10 @@ async def connected(hass, monkeypatch, request):
         c._observe_pact(pact, 1)
         c._observe_identity_field("fw_version", "1.07.02")
         c._observe_identity_field("hw_version", "1.00.01")
+    if c.model in {"H6181", "H6182"}:
+        c._observe_pact(1, 1)
+        c._observe_identity_field("fw_version", "1.07.02")
+        c._observe_identity_field("hw_version", "1.00.02")
     monkeypatch.setattr(c, "_ensure_connected", AsyncMock(return_value=client))
     monkeypatch.setattr(c, "_renew_foreground_lease", MagicMock())
     monkeypatch.setattr(coordinator_module, "UPLOAD_ACK_TIMEOUT", 0.02)
@@ -572,10 +576,13 @@ async def test_h601c_production_upload_waits_for_positive_ack_before_selector(se
 
 
 @pytest.mark.parametrize("connected", ["H6139", "H6159", "H6181"], indirect=True)
-@pytest.mark.parametrize("kind,pact", [("diy", (None, None)), ("diy", (10, 2)), ("scene", (10, 2))])
+@pytest.mark.parametrize("kind,pact", [("diy", (1, 1)), ("diy", (10, 2)), ("scene", (10, 2))])
 @pytest.mark.parametrize("response", ["accepted", "rejected", "missing"])
 async def test_h6181_revision_uploads_require_matching_success_before_activation(connected, kind, pact, response):
     c, client = connected
+    c.pact_type, c.pact_code = pact
+    c._confirmed_identity_fields.add("pact")
+    c._resolve_device_profile()
     c.profile = replace(
         device_profile(c.model, *pact, firmware="1.07.02", hardware="1.00.02"),
         profile_identity_fields=frozenset(),

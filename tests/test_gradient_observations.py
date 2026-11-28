@@ -15,6 +15,7 @@ from tests.test_h6199_capabilities import set_qualified_identity
 
 def test_stale_mode_does_not_publish_gradient_but_accepted_static_does(hass):
     c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url=None)
+    set_qualified_identity(c)
     c.gradient = 0
     c._arm_expected(build_video_mode("movie", True, 50, False, 50, c.model))
     before = c._domain_revisions.get(ReadDomain.COLOUR_MODE, 0)

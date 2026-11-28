@@ -1,7 +1,7 @@
 """Firmware conditions narrow synthetic qualified controls, never authorize a SKU."""
 
 import time
-from dataclasses import replace
+from dataclasses import fields, replace
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -9,7 +9,12 @@ import pytest
 from aiotools import VirtualClock
 from homeassistant.core import HomeAssistant
 
-from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ReadDomain, VideoFirmwareCondition
+from custom_components.ha_govee_led_ble.const import (
+    MODEL_PROFILES,
+    ReadDomain,
+    VideoFirmwareCondition,
+    power_only_pact_revision_profile,
+)
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_refresh import DEFAULT_REFRESH_REQUEST, RefreshRequest
 from custom_components.ha_govee_led_ble.effect_compiler import compile_video_profile
@@ -77,6 +82,20 @@ def gated(monkeypatch: pytest.MonkeyPatch):
 
 
 def confirm_firmware(coordinator):
+    profile = coordinator.profile
+    overrides = {}
+    if profile.basic_controls_only and coordinator.model == "H6199":
+        initial = power_only_pact_revision_profile(MODEL_PROFILES["H6199"])
+        overrides = {
+            field.name: getattr(profile, field.name)
+            for field in fields(profile)
+            if getattr(profile, field.name) != getattr(initial, field.name)
+        }
+    set_qualified_identity(coordinator)
+    if profile.basic_controls_only and coordinator.model == "H6199":
+        coordinator.profile = replace(coordinator.profile, **overrides)
+    else:
+        coordinator.profile = profile
     coordinator.subordinate_21_version = "9.08.07"
     coordinator._confirmed_identity_fields.add("subordinate_21_version")
 
@@ -307,6 +326,7 @@ async def test_preview_rechecks_firmware_at_physical_write(hass, monkeypatch, st
             return packet
 
         coordinator.profile = replace(coordinator.profile, outbound_transform=transform)
+        confirm_firmware(coordinator)
     content = VideoProfile("H7000", "movie", None, None, None, None, None, None, None, white_balance_value=1)
     try:
         await manager.async_queue_snapshot(
@@ -412,6 +432,7 @@ async def test_stale_omitted_compound_field_rejects_without_writes(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
 ):
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url="test")
+    confirm_firmware(coordinator)
     content = VideoProfile("H6199", "movie", None, 50, False, 50, None, None, None)
     compiled = compile_video_profile(LibraryItem.new("Partial", content), "H6199")
     writer = AsyncMock()
@@ -506,6 +527,7 @@ async def test_display_refresh_cannot_reuse_stale_sibling_fields(
     from custom_components.ha_govee_led_ble.transport import xor_checksum
 
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url="test")
+    confirm_firmware(coordinator)
     coordinator.white_balance_red, coordinator.white_balance_blue = 16, 3
     coordinator.blank_screen = False
     coordinator.blank_screen_detection = 2
@@ -544,9 +566,10 @@ async def test_mode_applicability_rechecked_before_each_write(hass, monkeypatch,
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url="test")
     monkeypatch.setattr(coordinator, "async_prepare_static_baseline", AsyncMock(return_value=static_baseline))
     coordinator.profile = profile
-    coordinator.subordinate_21_version = None if change_at == "unknown" else "9.08.07"
-    if change_at != "unknown":
-        coordinator._confirmed_identity_fields.add("subordinate_21_version")
+    confirm_firmware(coordinator)
+    if change_at == "unknown":
+        coordinator.subordinate_21_version = None
+        coordinator._confirmed_identity_fields.remove("subordinate_21_version")
     coordinator.is_on = change_at != "power"
     coordinator.video_mode = "movie"
     if change_at == "transform":
@@ -608,8 +631,8 @@ async def test_native_selector_without_default_guards_physical_write(hass, monke
         coordinator.profile,
         video_firmware_conditions=(VideoFirmwareCondition("saturation", "subordinate_21_version", "9.08.07"),),
     )
+    confirm_firmware(coordinator)
     coordinator.subordinate_21_version = "9.08.06" if during == "retained" else "9.08.07"
-    coordinator._confirmed_identity_fields.add("subordinate_21_version")
     coordinator.is_on = during not in {"power", "retained_power"}
     coordinator.video_saturation = 31
     backend = await EffectBackend.async_create(hass)
@@ -718,6 +741,7 @@ async def test_retained_native_field_changed_during_transform_is_guarded(hass, m
     from custom_components.ha_govee_led_ble.native_profile_controls import apply_active_video_mode
 
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url="test")
+    confirm_firmware(coordinator)
     monkeypatch.setattr(coordinator, "async_prepare_static_baseline", AsyncMock(return_value=static_baseline))
     coordinator.video_mode = "movie"
     coordinator.is_on = True
@@ -1019,6 +1043,7 @@ async def test_supported_omitted_setting_never_overwrites_new_notification(hass,
         return packet
 
     coordinator.profile = replace(coordinator.profile, outbound_transform=transform)
+    confirm_firmware(coordinator)
     physical = AsyncMock()
     client = MagicMock(is_connected=True, write_gatt_char=physical)
     coordinator._client = client
@@ -1158,6 +1183,7 @@ async def test_blank_screen_never_replays_superseded_policy(hass, monkeypatch, e
     from custom_components.ha_govee_led_ble.native_profile_controls import apply_blank_screen
 
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url="test")
+    confirm_firmware(coordinator)
     coordinator._notify_callback(None, reply(build_blank_screen(not enabled, "H6199", 2, 10, 120)))
 
     def observe_policy():

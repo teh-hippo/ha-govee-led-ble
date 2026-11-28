@@ -1,6 +1,7 @@
 """H6199 software revision routing and qualified music semantics, not hardware qualification."""
 
 import asyncio
+import time
 from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, Mock
@@ -66,7 +67,14 @@ def set_qualified_identity(coordinator):
     confirmed = getattr(coordinator, "_confirmed_identity_fields", None)
     if confirmed is None:
         confirmed = coordinator._confirmed_identity_fields = set()
-    confirmed.update(video_identity_fields(coordinator.profile))
+    confirmed.update(video_identity_fields(get_profile(coordinator.model)) | frozenset({"pact"}))
+    if hasattr(coordinator, "_pact_identity"):
+        coordinator._pact_identity.marker_pact = (2, 1)
+        coordinator._notification_token = object()
+        coordinator._notify_started_monotonic = time.monotonic()
+    resolve = getattr(coordinator, "_resolve_device_profile", None)
+    if resolve is not None:
+        resolve()
     if not callable(getattr(coordinator, "identity_fields_confirmed", None)):
         coordinator.identity_fields_confirmed = lambda fields: fields <= confirmed
 
@@ -180,7 +188,9 @@ def test_pact1_uses_qualified_old_controller_upload_route(firmware, hardware, up
 def test_pact2_scene_profile_transitions_with_fresh_identity(hass):
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url=None)
     coordinator._client = MagicMock(is_connected=True)
-    coordinator._note_advertisement(SimpleNamespace(manufacturer_data={34818: bytes((0xEC, 0, 2, 1, 0))}))
+    coordinator.pact_type, coordinator.pact_code = 2, 1
+    coordinator._confirmed_identity_fields.add("pact")
+    coordinator._resolve_device_profile()
     coordinator._observe_identity_field("hw_version", "1.00.01")
 
     coordinator._observe_identity_field("fw_version", "1.06.00")
@@ -228,7 +238,9 @@ def test_old_pact2_resident_scene_packets_survive_but_uploaded_scene_packets_do_
 @pytest.mark.parametrize("transition_at", ["admission", "upload", "activation"])
 async def test_old_pact2_scene_identity_transition_blocks_upload_and_activation(hass, monkeypatch, transition_at):
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url=None)
-    coordinator._note_advertisement(SimpleNamespace(manufacturer_data={34818: bytes((0xEC, 0, 2, 1, 0))}))
+    coordinator.pact_type, coordinator.pact_code = 2, 1
+    coordinator._confirmed_identity_fields.add("pact")
+    coordinator._resolve_device_profile()
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
     coordinator._client = client
     coordinator._notification_token = object()
@@ -426,9 +438,13 @@ async def test_basic_setup_survives_optional_silence(hass, monkeypatch, revision
         # Identity values are synthetic routing input, not an older-hardware test.
         for field, value in QUALIFIED.items():
             setattr(coordinator, field, value)
-        coordinator._confirmed_identity_fields.update(video_identity_fields(coordinator.profile))
+        coordinator._confirmed_identity_fields.update(video_identity_fields(get_profile(coordinator.model)) | {"pact"})
+        coordinator._pact_identity.marker_pact = (2, 1)
+        coordinator._notification_token = object()
+        coordinator._notify_started_monotonic = 0.0
         if revision == "old":
             coordinator.fw_version = "1.00.01"
+        coordinator._resolve_device_profile()
     replies = {
         build_power_query("H6199"): "aa0100",
         build_brightness_query("H6199"): "aa0432",
@@ -505,6 +521,7 @@ async def test_missing_basic_reply_still_fails_setup(hass, monkeypatch):
 async def test_reconnect_invalidates_all_h6199_revision_authorization(hass, monkeypatch, virtual_clock):
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url="test")
     vars(coordinator).update(QUALIFIED)
+    coordinator._resolve_device_profile()
     client = MagicMock(is_connected=True, start_notify=AsyncMock(), write_gatt_char=AsyncMock(), disconnect=AsyncMock())
 
     async def connect(*args, **kwargs):
@@ -595,6 +612,15 @@ async def lifecycle(hass, monkeypatch, request, virtual_clock):
         async def transmit(_uuid, packet, **kwargs):
             nonlocal next_notification
             packets.append(packet)
+            live_pact = getattr(c, "_test_live_pact", pact)
+            if live_pact is not None:
+                c._note_advertisement(
+                    SimpleNamespace(
+                        manufacturer_data={34818: bytes([0xEC, 0, live_pact, 1, 0])},
+                        source="test-subscription",
+                        time=asyncio.get_running_loop().time(),
+                    )
+                )
             if packet[:3] == b"\x33\x05\x00":
                 replies[build_colour_mode_query(c.model)] = frame("aa" + packet[1:-1].hex())
             if c.model == "H6199" and c.pact_type == 1 and packet[:2] == b"\x33\x05":
@@ -621,6 +647,10 @@ async def lifecycle(hass, monkeypatch, request, virtual_clock):
 
     monkeypatch.setattr("custom_components.ha_govee_led_ble.coordinator.async_establish_ble_connection", connect)
     monkeypatch.setattr("custom_components.ha_govee_led_ble.coordinator.IDENTITY_QUERY_TIMEOUT", 0.08)
+    monkeypatch.setattr(
+        "custom_components.ha_govee_led_ble.coordinator.bluetooth.async_last_service_info",
+        lambda *_args, **_kwargs: None,
+    )
     monkeypatch.setattr(c, "_start_keep_alive", MagicMock())
     try:
         yield c, replies, clients, packets

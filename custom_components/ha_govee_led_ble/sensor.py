@@ -6,6 +6,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import GoveeBLEConfigEntry
+from .const import get_profile
 from .coordinator import GoveeBLECoordinator
 from .effect_contracts import CapabilityState
 from .entity import GoveeBLEEntity
@@ -18,7 +19,7 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: GoveeBLEConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     coordinator = entry.runtime_data
-    if coordinator.profile.camera_control_policy is None:
+    if get_profile(coordinator.model).camera_control_policy is None:
         return
     added = False
     last_unqualified_revision = 0

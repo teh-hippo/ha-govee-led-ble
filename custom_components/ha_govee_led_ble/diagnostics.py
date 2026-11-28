@@ -9,7 +9,7 @@ from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.core import HomeAssistant
 
 from . import GoveeBLEConfigEntry
-from .const import ModelProfile, ReadDomain, get_profile
+from .const import ModelProfile, ReadDomain, device_profile, get_profile
 from .coordinator import PACKET_LOG_LIMIT, PACKET_LOG_RAW_BYTES_LIMIT
 from .coordinator_configured_identity import configured_identity_diagnostics
 from .coordinator_status import decode_status_frame
@@ -42,7 +42,18 @@ async def async_get_config_entry_diagnostics(
     lock = coordinator._lock
     expected_brightness = coordinator._expected_state.get("brightness_pct")
     white_balance = coordinator.white_balance
-    white_balance_positions = coordinator.profile.video_white_balance_calibration
+    presentation_profile = (
+        device_profile(
+            coordinator.model,
+            coordinator.pact_type,
+            coordinator.pact_code,
+            firmware=coordinator.fw_version,
+            hardware=coordinator.hw_version,
+        )
+        if coordinator.pact_type is not None and coordinator.pact_code is not None
+        else coordinator.native_presentation_profile
+    )
+    white_balance_positions = presentation_profile.video_white_balance_calibration
     coordinator_data = {
         "address": coordinator.address,
         "model": coordinator.model,
@@ -78,25 +89,25 @@ async def async_get_config_entry_diagnostics(
         else None,
         "supports_color_mode_readback": coordinator.profile.supports_color_mode_readback,
         "supports_custom_effects": coordinator.profile.supports_custom_effects,
-        "supports_video_mode": coordinator.profile.supports_video_mode,
+        "supports_video_mode": presentation_profile.supports_video_mode,
         "video_control_states": {
-            control: state.value for control, state in video_control_states(coordinator.profile, coordinator).items()
+            control: state.value for control, state in video_control_states(presentation_profile, coordinator).items()
         },
-        "h6199_camera_controls_state": camera_controls_state(coordinator.profile, coordinator).value,
-        "video_modes": list(coordinator.profile.video_modes),
-        "supports_video_capture_region": coordinator.profile.supports_video_capture_region,
-        "supports_video_saturation": coordinator.profile.supports_video_saturation,
-        "supports_video_sound_effects": coordinator.profile.supports_video_sound_effects,
-        "supports_video_sensitivity": coordinator.profile.supports_video_sensitivity,
-        "supports_hdmi_input": coordinator.profile.supports_hdmi_input,
-        "supports_hdmi_box_light": coordinator.profile.supports_hdmi_box_light,
-        "hdmi_input_count": coordinator.profile.hdmi_input_count,
-        "supports_video_color_calibration": coordinator.profile.supports_video_color_calibration,
-        "supports_white_balance": coordinator.profile.supports_white_balance,
-        "supports_white_balance_readback": coordinator.profile.supports_white_balance_readback,
-        "supports_relative_brightness": coordinator.profile.supports_relative_brightness,
-        "supports_blank_screen": coordinator.profile.supports_blank_screen,
-        "supports_hdr_contrast": coordinator.profile.supports_hdr_contrast,
+        "h6199_camera_controls_state": camera_controls_state(presentation_profile, coordinator).value,
+        "video_modes": list(presentation_profile.video_modes),
+        "supports_video_capture_region": presentation_profile.supports_video_capture_region,
+        "supports_video_saturation": presentation_profile.supports_video_saturation,
+        "supports_video_sound_effects": presentation_profile.supports_video_sound_effects,
+        "supports_video_sensitivity": presentation_profile.supports_video_sensitivity,
+        "supports_hdmi_input": presentation_profile.supports_hdmi_input,
+        "supports_hdmi_box_light": presentation_profile.supports_hdmi_box_light,
+        "hdmi_input_count": presentation_profile.hdmi_input_count,
+        "supports_video_color_calibration": presentation_profile.supports_video_color_calibration,
+        "supports_white_balance": presentation_profile.supports_white_balance,
+        "supports_white_balance_readback": presentation_profile.supports_white_balance_readback,
+        "supports_relative_brightness": presentation_profile.supports_relative_brightness,
+        "supports_blank_screen": presentation_profile.supports_blank_screen,
+        "supports_hdr_contrast": presentation_profile.supports_hdr_contrast,
         "supports_music_mode": coordinator.profile.supports_music_mode,
         "music_modes": list(coordinator.profile.music_modes),
         "supports_music_color": coordinator.profile.supports_music_color,

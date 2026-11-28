@@ -277,6 +277,7 @@ def _device_payload(
         light_entity_id=_light_entity_id(hass, entry.entry_id),
         effect_categories=tuple(coordinator.effect_categories),
         physical_ic_count=coordinator.profile.physical_ic_count,
+        physical_ic_capacity=coordinator.profile.physical_ic_capacity,
         profile=coordinator.profile,
     ).to_dict()
     device["show_experimental_feedback"] = entry.options.get(CONF_SHOW_EXPERIMENTAL_FEEDBACK, True)

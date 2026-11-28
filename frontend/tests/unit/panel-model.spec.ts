@@ -133,6 +133,16 @@ test("device music geometry replaces catalogue defaults without leaking across d
     expect(() => decodeDevices([{ ...device("invalid", "H6099"), physical_ic_count: count }])).toThrow();
   }
   expect(() => decodeDevices([{ ...device("large", "H6099"), physical_ic_count: 32767 }])).not.toThrow();
+  expect(() => decodeDevices([{
+    ...device("too-many", "H6099"),
+    physical_ic_count: 61,
+    physical_ic_capacity: 60,
+  }])).toThrow();
+  expect(() => decodeDevices([{
+    ...device("within-capacity", "H6099"),
+    physical_ic_count: 60,
+    physical_ic_capacity: 60,
+  }])).not.toThrow();
 });
 
 test("effective music roster filters modes and templates on device subscription replacement", () => {

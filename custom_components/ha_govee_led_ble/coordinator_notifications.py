@@ -97,6 +97,9 @@ def _bulk_version(version: Any) -> str | None:
 class _NotificationMixin(_CoordinatorBase):
     """Decodes status notifications and reconciles them with recently written values."""
 
+    def _notification_authority_profile(self) -> Any:
+        return self._authorization_profile() if get_profile(self.model).requires_pact_confirmation else self.profile
+
     def _init_observation_state(self) -> None:
         self._bulk_collector: BulkStatusCollector | None = None
         self._bulk_query_deadline: float | None = None
@@ -442,7 +445,8 @@ class _NotificationMixin(_CoordinatorBase):
         return tuple(observed)
 
     def _handle_bulk_notification(self, frame: bytes) -> bool:
-        if not is_bulk_status_frame(frame, self.profile):
+        authority = self._notification_authority_profile()
+        if not is_bulk_status_frame(frame, authority):
             return False
         collector = self._bulk_collector
         if collector is None:
@@ -478,7 +482,7 @@ class _NotificationMixin(_CoordinatorBase):
             return True
         try:
             records = result.parsed.records
-            if self.profile.bulk_status_grammar_has("bulk_identity"):
+            if authority.bulk_status_grammar_has("bulk_identity"):
                 power = next((record for record in records if getattr(record.domain, "name", None) == "power"), None)
                 zones = next(
                     (record for record in records if getattr(record.domain, "name", None) == "zone_enable"), None
@@ -491,7 +495,7 @@ class _NotificationMixin(_CoordinatorBase):
             for record in records:
                 domain = getattr(record.domain, "name", None)
                 if domain == "colour_mode":
-                    parsed_modes[id(record)] = parse_color_mode(record, self.model, profile=self.profile)
+                    parsed_modes[id(record)] = parse_color_mode(record, self.model, profile=authority)
                 elif domain == "power" and record.body.is_on not in (0, 1):
                     raise ValueError("Bulk power flag is invalid")
                 elif domain == "brightness" and not 0 <= record.body.percent <= 100:
@@ -500,17 +504,17 @@ class _NotificationMixin(_CoordinatorBase):
                     raise ValueError("Bulk gradual flag is invalid")
                 elif domain == "power_on_behaviour" and getattr(record.body.state, "name", None) is None:
                     raise ValueError("Bulk power-on behaviour is unknown")
-            independent_mode = not self.profile.bulk_status_grammar_has("bulk_compact") and self.profile.can_read(
+            independent_mode = not authority.bulk_status_grammar_has("bulk_compact") and authority.can_read(
                 ReadDomain.COLOUR_MODE
             )
             opaque_mode = independent_mode and any(mode.mode is ParsedMode.UNKNOWN for mode in parsed_modes.values())
             for record in records:
                 domain = getattr(record.domain, "name", None)
-                if domain == "colour_mode" and self.profile.supports_color_mode_readback:
+                if domain == "colour_mode" and authority.supports_color_mode_readback:
                     parsed_mode = (
                         parsed_modes[id(record)]
                         if decode_generation == self._profile_generation
-                        else parse_color_mode(record, self.model, profile=self.profile)
+                        else parse_color_mode(record, self.model, profile=authority)
                     )
                     if independent_mode and parsed_mode.mode is ParsedMode.UNKNOWN:
                         # This record cannot replace the independent selector or erase retained colour intent.
@@ -520,12 +524,12 @@ class _NotificationMixin(_CoordinatorBase):
                         if "color_mode" in observed:
                             unqualified_mode = False
                         self._mark_received(StatusDomain.COLOUR_MODE, *observed)
-                elif domain == "power" and self.profile.can_read(ReadDomain.POWER):
+                elif domain == "power" and authority.can_read(ReadDomain.POWER):
                     value = bool(record.body.is_on)
                     if self._accept_expected("is_on", value):
                         self.is_on = value
                         self._mark_received(StatusDomain.POWER, "is_on")
-                elif domain == "brightness" and self.profile.can_read(ReadDomain.BRIGHTNESS):
+                elif domain == "brightness" and authority.can_read(ReadDomain.BRIGHTNESS):
                     percent = int(record.body.percent)
                     if self._accept_expected("brightness_pct", percent):
                         self.brightness_pct = percent
@@ -547,29 +551,29 @@ class _NotificationMixin(_CoordinatorBase):
                         else ()
                     )
                     for read_domain, field, version in fields:
-                        if self.profile.can_read(read_domain):
+                        if authority.can_read(read_domain):
                             observed = (field,) if self._observe_identity_field(field, _bulk_version(version)) else ()
                             self._mark_received(read_domain, *observed)
                 elif domain == "zone_enable":
                     zone_values: dict[str, bool] = {
                         name: bool(getattr(record.body, name))
                         for name in NATIVE_ZONE_CONTROLS
-                        if name in self.profile.boolean_controls and hasattr(record.body, name)
+                        if name in authority.boolean_controls and hasattr(record.body, name)
                     }
                     self.boolean_control_state.update(zone_values)
                     self._mark_received(StatusDomain.OTHER, *(f"boolean_{name}" for name in zone_values))
-                    if self.profile.bulk_status_grammar_has("bulk_identity"):
+                    if authority.bulk_status_grammar_has("bulk_identity"):
                         value = bool(record.body.master_enabled)
-                        if self.profile.can_read(ReadDomain.POWER) and self._accept_expected("is_on", value):
+                        if authority.can_read(ReadDomain.POWER) and self._accept_expected("is_on", value):
                             self.is_on = value
                             self._mark_received(StatusDomain.POWER, "is_on")
-                elif domain == "gradual" and "gradual" in self.profile.boolean_controls:
+                elif domain == "gradual" and "gradual" in authority.boolean_controls:
                     self.boolean_control_state["gradual"] = bool(record.body.flag)
                     self.static_gradual = bool(record.body.flag)
                     self._mark_received(StatusDomain.OTHER, "boolean_gradual", "static_gradual")
-                elif domain == "segments" and not opaque_mode and self.profile.can_read(ReadDomain.SEGMENTS):
+                elif domain == "segments" and not opaque_mode and authority.can_read(ReadDomain.SEGMENTS):
                     self._mark_received(StatusDomain.SEGMENTS, *self._apply_segment_group(record))
-                elif domain == "power_on_behaviour" and self.profile.supports_power_on_behaviour:
+                elif domain == "power_on_behaviour" and authority.supports_power_on_behaviour:
                     self.power_on_behaviour = record.body.state.name
                     self._mark_received(StatusDomain.OTHER, "power_on_behaviour")
             self._bulk_query_incomplete = False
@@ -912,13 +916,12 @@ class _NotificationMixin(_CoordinatorBase):
             self._static_history_profile_current()
 
     def _handle_low_blue_light_notification(self, frame: bytes) -> bool:
-        if not self.profile.setting_grammar_has("low_blue_light"):
+        authority = self._notification_authority_profile()
+        if not authority.setting_grammar_has("low_blue_light"):
             return False
-        low_blue_light = parse_low_blue_light_setting(frame, self.profile)
+        low_blue_light = parse_low_blue_light_setting(frame, authority)
         if low_blue_light.parsed is not None:
-            if not self.profile.supports_low_blue_light or not self.identity_fields_confirmed(
-                frozenset({"fw_version"})
-            ):
+            if not authority.supports_low_blue_light or not self.identity_fields_confirmed(frozenset({"fw_version"})):
                 self._record_packet(
                     "rx", frame, outcome="rejected", reason="unauthorised_setting", parser=low_blue_light.parser
                 )
@@ -934,20 +937,26 @@ class _NotificationMixin(_CoordinatorBase):
         return False
 
     def _handle_zone_notification(self, frame: bytes) -> bool:
-        zone_result = parse_zone_notification(frame, self.profile)
+        authority = self._notification_authority_profile()
+        parse_profile = (
+            get_profile(self.model)
+            if not authority.boolean_controls and get_profile(self.model).boolean_controls
+            else authority
+        )
+        zone_result = parse_zone_notification(frame, parse_profile)
         if zone_result.parsed is not None:
             status = zone_result.parsed
             self._reply_gate.observe(frame)
             zone_values: dict[str, bool] = {
                 name: bool(getattr(status, name))
                 for name in NATIVE_ZONE_CONTROLS
-                if name in self.profile.boolean_controls
+                if name in parse_profile.boolean_controls
                 and hasattr(status, name)
                 and self._accept_expected(f"boolean_{name}", bool(getattr(status, name)))
             }
             self.boolean_control_state.update(zone_values)
             self._mark_received(StatusDomain.OTHER, *(f"boolean_{name}" for name in zone_values))
-            if self.profile.can_read(ReadDomain.POWER) and self._accept_expected("is_on", bool(status.is_on)):
+            if authority.can_read(ReadDomain.POWER) and self._accept_expected("is_on", bool(status.is_on)):
                 self.is_on = bool(status.is_on)
                 self._mark_received(StatusDomain.POWER, "is_on")
             self._record_packet("rx", frame, outcome="parsed", reason="native_zone_status", parser=zone_result.parser)
@@ -955,17 +964,17 @@ class _NotificationMixin(_CoordinatorBase):
             return True
         return False
 
-    def _apply_source_info(self, generated: Any) -> tuple[str, ...]:
+    def _apply_source_info(self, generated: Any, authority: Any) -> tuple[str, ...]:
         body = generated.body
         native_values = source_readback(body.operation)
-        flags = {name: bool(getattr(body, name)) for name in self.profile.boolean_controls}
+        flags = {name: bool(getattr(body, name)) for name in authority.boolean_controls}
         self.boolean_control_state.update(flags)
         observed = [f"boolean_{name}" for name in flags]
         if self._accept_expected_values(native_values):
             for field, value in native_values.items():
                 setattr(self, field, value)
             observed.extend(native_values)
-        if self._accept_expected("is_on", bool(body.master_enabled)):
+        if authority.can_read(ReadDomain.POWER) and self._accept_expected("is_on", bool(body.master_enabled)):
             self.is_on = bool(body.master_enabled)
             observed.append("is_on")
         return tuple(observed)
@@ -1019,11 +1028,28 @@ class _NotificationMixin(_CoordinatorBase):
                 "" if self._dreamview_private_write else frame.hex(),
             )
             return
-        profile = self.profile
+        profile = self._notification_authority_profile()
         result = decode_status_frame_result(frame, self.model, profile=profile)
         decoded = result.parsed
         if decoded is not None and decoded.domain is ReadDomain.SEGMENTS:
-            profile = self._authorization_profile()
+            segment_authority = self._authorization_profile()
+            if (
+                not segment_authority.can_read(ReadDomain.SEGMENTS)
+                or segment_authority.status_grammar != self.profile.status_grammar
+                or segment_authority.segment_group_size != self.profile.segment_group_size
+                or segment_authority.segment_count != self.profile.segment_count
+                or segment_authority.status_query_transform is not self.profile.status_query_transform
+            ):
+                self._record_packet(
+                    "rx",
+                    frame,
+                    outcome="rejected",
+                    reason="identity_not_ready",
+                    parser=result.parser,
+                )
+                return
+        if decoded is not None and decoded.domain is ReadDomain.SEGMENTS:
+            profile = self._notification_authority_profile()
             if profile.can_read(ReadDomain.SEGMENTS) and profile.status_grammar != self.profile.status_grammar:
                 result = decode_status_frame_result(frame, self.model, profile=profile)
                 decoded = result.parsed
@@ -1057,7 +1083,7 @@ class _NotificationMixin(_CoordinatorBase):
                 domain=decoded.raw_domain,
             )
             return
-        self._handle_decoded_status(frame, decoded, result.parser)
+        self._handle_decoded_status(frame, decoded, result.parser, profile)
 
     def _record_parsed_status(self, frame: bytes, decoded: ParsedStatusEnvelope, parser: str | None) -> None:
         self._record_packet(
@@ -1075,29 +1101,31 @@ class _NotificationMixin(_CoordinatorBase):
             "" if self._dreamview_private_write else decoded.payload.hex(),
         )
 
-    def _handle_decoded_status(self, frame: bytes, decoded: ParsedStatusEnvelope, parser: str | None) -> None:
+    def _handle_decoded_status(
+        self, frame: bytes, decoded: ParsedStatusEnvelope, parser: str | None, authority: Any
+    ) -> None:
         domain, generated = decoded.domain, decoded.generated
         try:
             observed: tuple[str, ...] = ()
             domain_name = getattr(generated.domain, "name", None)
-            video_device_info = parse_video_device_info_status(generated, self.model, profile=self.profile)
+            video_device_info = parse_video_device_info_status(generated, self.model, profile=authority)
             if (
-                self.profile.boolean_controls
+                authority.boolean_controls
                 and domain_name != "source_info"
                 and not (video_device_info and video_device_info.is_device_info)
             ):
-                boolean_values = parse_boolean_control(generated, self.model, profile=self.profile)
+                boolean_values = parse_boolean_control(generated, self.model, profile=authority)
                 boolean_expectations = {f"boolean_{key}": value for key, value in boolean_values.items()}
                 if not self._accept_expected_values(boolean_expectations):
                     self._reply_gate.observe(frame)
                     self._record_parsed_status(frame, decoded, parser)
                     return
-                if self.profile.setting_grammar_has("paired_bar_settings") and boolean_values:
+                if authority.setting_grammar_has("paired_bar_settings") and boolean_values:
                     self.bar_enable_mask = int(generated.body.mask)
                 self.boolean_control_state.update(boolean_values)
                 observed = tuple(boolean_expectations)
-            if self.profile.status_grammar_has("gradient_status") and domain is not StatusDomain.COLOUR_MODE:
-                values = parse_native_camera_control(generated, profile=self.profile)
+            if authority.status_grammar_has("gradient_status") and domain is not StatusDomain.COLOUR_MODE:
+                values = parse_native_camera_control(generated, profile=authority)
                 if "gradient" in values:
                     # AA05 is a display observation, not confirmation of an A3 register write.
                     values["gradient_register"] = values["gradient"]
@@ -1105,7 +1133,7 @@ class _NotificationMixin(_CoordinatorBase):
                     setattr(self, field, value)
                 observed = tuple(values)
             if domain_name == "source_info":
-                observed += self._apply_source_info(generated)
+                observed += self._apply_source_info(generated, authority)
             elif domain_name == "power_on_behaviour":
                 value = getattr(generated.body.state, "name", None)
                 if (hasattr(generated.body, "availability") and not generated.body.availability) or value is None:
@@ -1117,9 +1145,7 @@ class _NotificationMixin(_CoordinatorBase):
                     observed += ("power_on_open_flag",)
             elif getattr(generated, "is_device_info", False):
                 flags = generated.body.detail.flags
-                if self.profile.can_read(ReadDomain.POWER) and self._accept_expected(
-                    "is_on", bool(flags.master_enabled)
-                ):
+                if authority.can_read(ReadDomain.POWER) and self._accept_expected("is_on", bool(flags.master_enabled)):
                     self.is_on = bool(flags.master_enabled)
                     observed += ("is_on",)
                 self._reply_gate.observe(frame)
@@ -1139,43 +1165,43 @@ class _NotificationMixin(_CoordinatorBase):
                 if self._accept_expected("is_on", value):
                     self.is_on = value
                     observed += ("is_on",)
-                if self.profile.setting_grammar_has("projector_audio") and hasattr(generated.body, "sound_code"):
+                if authority.setting_grammar_has("projector_audio") and hasattr(generated.body, "sound_code"):
                     sound, volume = int(generated.body.sound_code), int(generated.body.volume)
-                    self.local_sound = sound if 1 <= sound <= len(self.profile.local_sound_options) else None
-                    bounds = self.profile.local_volume_range
+                    self.local_sound = sound if 1 <= sound <= len(authority.local_sound_options) else None
+                    bounds = authority.local_volume_range
                     self.local_volume = volume if bounds is not None and bounds[0] <= volume <= bounds[1] else None
                     self.local_sound_playing = bool(generated.body.sound_playing)
                     observed += ("local_sound", "local_volume", "local_sound_playing")
             elif domain is StatusDomain.BRIGHTNESS:
-                if not self.profile.can_read(ReadDomain.BRIGHTNESS):
+                if not authority.can_read(ReadDomain.BRIGHTNESS):
                     self._record_parsed_status(frame, decoded, parser)
                     return
                 brightness_value = (
                     int(generated.values["brightness_pct"])
                     if isinstance(generated, ParsedProtocolStatus)
                     else int(generated.body.percent)
-                    if self.profile.status_grammar in PERCENT_BRIGHTNESS_STATUS_GRAMMARS
-                    or self.profile.status_grammar_has("percent_brightness")
+                    if authority.status_grammar in PERCENT_BRIGHTNESS_STATUS_GRAMMARS
+                    or authority.status_grammar_has("percent_brightness")
                     else int(generated.body.register)
                     if hasattr(generated.body, "register")
                     else int(generated.body.brightness_pct)
                 )
-                if self.profile.brightness_wire_range is not None:
-                    brightness_value = decode_wire_brightness(brightness_value, self.profile.brightness_wire_range)
+                if authority.brightness_wire_range is not None:
+                    brightness_value = decode_wire_brightness(brightness_value, authority.brightness_wire_range)
                 if not 0 <= brightness_value <= 100:
                     raise ValueError("brightness outside percentage range")
                 if self._accept_expected("brightness_pct", brightness_value):
                     self.brightness_pct = brightness_value
                     observed = ("brightness_pct",)
             elif domain in {StatusDomain.COLOUR_MODE, StatusDomain.MODE}:
-                if not self.profile.supports_color_mode_readback:
+                if not authority.supports_color_mode_readback:
                     self._record_parsed_status(frame, decoded, parser)
                     return
-                observed = self._apply_color_mode_payload(parse_color_mode(generated, self.model, profile=self.profile))
+                observed = self._apply_color_mode_payload(parse_color_mode(generated, self.model, profile=authority))
             elif domain is StatusDomain.DISPLAY_SETTING:
                 observed = self._apply_display_setting(generated, observed)
             elif domain is StatusDomain.RELATIVE_BRIGHTNESS:
-                zones = self.profile.video_brightness_zones
+                zones = authority.video_brightness_zones
                 if generated.body.edge_count != len(zones):
                     raise ValueError("relative-brightness topology mismatch")
                 edges = tuple(int(getattr(generated.body, f"{zone}_percent")) for zone in zones)
@@ -1186,7 +1212,7 @@ class _NotificationMixin(_CoordinatorBase):
                     "relative_brightness": aggregate,
                     **{f"relative_brightness_{zone}": value for zone, value in zip(zones, edges, strict=True)},
                 }
-                inline = video_parameters_from_brightness(self.profile.video_grammar, edges)
+                inline = video_parameters_from_brightness(authority.video_grammar, edges)
                 if inline is not None:
                     edge_values["video_parameters"] = inline
                 if self._accept_expected_values(edge_values):
@@ -1194,7 +1220,7 @@ class _NotificationMixin(_CoordinatorBase):
                         setattr(self, field, value)
                     observed = tuple(edge_values)
             elif domain is StatusDomain.SEGMENTS:
-                if not self.profile.supports_segments:
+                if not authority.supports_segments:
                     self._record_parsed_status(frame, decoded, parser)
                     return
                 observed = self._apply_segment_group(generated)
@@ -1241,7 +1267,7 @@ class _NotificationMixin(_CoordinatorBase):
                 if self._observe_identity_field("subordinate_21_version", generated.body.text or None):
                     observed = ("subordinate_21_version",)
             elif domain in _OPTIONAL_CONTROL_DOMAINS:
-                control_values = installation_control_status(decoded, self.profile)
+                control_values = installation_control_status(decoded, authority)
                 if not control_values:
                     self._record_parsed_status(frame, decoded, parser)
                     return

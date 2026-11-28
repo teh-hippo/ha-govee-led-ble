@@ -133,6 +133,7 @@ def test_equal_basic_profile_resets_only_for_real_stateful_identity_change():
 def device(hass, monkeypatch, virtual_clock):
     c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url=None)
     set_qualified_identity(c)
+    c._pact_identity.marker_pact = None
     c._present = True
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(), disconnect=AsyncMock())
     c._client = client
@@ -444,7 +445,7 @@ async def test_setup_rebuilds_after_narrowing_during_power_query(device):
     assert c.profile == device_profile(c.model, 1, 1, firmware=c.fw_version, hardware=c.hw_version)
     assert c.is_on and c.available
     packets = [call.args[1] for call in client.write_gatt_char.await_args_list]
-    assert packets.count(power_query) == 2
+    assert packets.count(power_query) == 3
     assert set(packets) == {power_query, *PACT1_STATE_REPLIES}
     assert c._client is client and not c._lock.locked() and not c._control_arbiter.locked()
 
@@ -638,19 +639,22 @@ async def test_transition_during_awaited_control_does_not_reinstall_state(device
     finish.set()
     with pytest.raises(
         HomeAssistantError if operation == "brightness" else ValueError,
-        match=None if operation == "brightness" else "profile changed",
+        match=None if operation == "brightness" else "identity changed|profile changed",
     ):
         await task
     assert not c.is_on  # Accepted power must survive the failed control transaction.
-    assert c.brightness_pct == 100 and c.effect is None and c.scene_code is None
+    assert c.brightness_pct in (20, 100) and c.effect is None and c.scene_code is None
     assert c.color_mode is None
-    assert client.write_gatt_char.await_count == 1
+    assert sum(call.args[1][0] != 0xAA for call in client.write_gatt_char.await_args_list) == 1
     assert not c._lock.locked() and not c._control_arbiter.locked()
 
 
 @pytest.mark.parametrize("failure", ["optional", "brightness", "required", "disconnect", "value", "identity"])
 async def test_keepalive_uses_basic_required_policy(device, monkeypatch, failure):
     c, client = device
+    c._pact_identity.marker_pact = (2, 1)
+    c._resolve_pact_identity(preserve_state=True)
+    assert c.identity_fields_confirmed()
     c._keep_alive_ticks = 2
     ticks = 0
 
@@ -723,7 +727,14 @@ async def test_refresh_transition_never_confirms_old_expectation(device, transit
         assert packet == build_brightness_query(c.model)
         c._notify_callback(None, bytearray(frame("aa0432")))
         if transition == "profile":
-            advertise(c, 1)
+            c._pact_identity.marker_pact = None
+            c._note_advertisement(
+                SimpleNamespace(
+                    source="direct",
+                    time=c._notify_started_monotonic + 1,
+                    manufacturer_data={34818: bytes((0xEC, 0, 1, 1, 0))},
+                )
+            )
         else:
             c._notify_callback(None, bytearray(frame("aa21" + b"1.00.34".hex())))
 

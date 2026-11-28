@@ -17,10 +17,12 @@ doc: |
   Compatibility hypothesis: these basic fields share the modern AA envelope.
   Shared H617A command_write/status_query codecs provide power, percent
   brightness, AA0501, identity queries, A5 segment queries, and two-byte-mask
-  330515 colour/Kelvin/brightness writes; H7025 has fifteen bulbs and a
-  2700..6500 Kelvin range.  H7025 uses command version 0 and Kelvin
-  type 1, emitting RGB with a two-byte mask and direct white RGB plus
-  table-derived companion RGB for Kelvin.
+  330515 colour/Kelvin/brightness writes; H7025 has fifteen bulbs.  The owner
+  confirmed 2700 K on firmware 1.03.13 / hardware 3.05.00, while 6500 K remains
+  a provisional upper bound rather than an owner-tested endpoint.  H7025 uses
+  command version 0 and Kelvin type 1, emitting RGB with a two-byte mask and
+  direct white RGB plus table-derived companion RGB for Kelvin.  No H7025
+  power-on/power-off-memory setting is attributed by this schema.
   Common payload imports do not inherit H6102's product capabilities.
   Unknown modes, suffixes, and other domains stay opaque.  No full palette
   readback is claimed by this candidate.

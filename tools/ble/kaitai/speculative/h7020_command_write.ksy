@@ -13,9 +13,14 @@ doc: |
   The configured bulb geometry is not physical attachment detection. H7020
   writes a logical one- or two-string count; H7029 writes the exact 8, 16, 23
   or 24-bulb layout.
-  Unresolved assumptions: exact-model evidence have not qualified mask width,
-  colour appearance, count changes, music parameters, upload activation or ACK
-  timing. Unknown suffixes are retained without inferred padding constraints.
+  The Kelvin field location is established, but the schema does not establish
+  an admissible range.  The current 2300..6700 K product limit is based on
+  historical app evidence, while the owner did not record firmware, hardware
+  or endpoint observations.  Music fields are an H7020 candidate and are not
+  independently attributable to H7029.  Unresolved assumptions include mask
+  width, colour appearance, count changes, music parameters, upload activation
+  and ACK timing.  Unknown suffixes are retained without inferred padding
+  constraints.
   A3/02 layered and A3/04 basic/mixed bodies reuse the shared effect schemas;
   both DIY families activate with a separate DIY slot, not the body effect ID.
 seq:

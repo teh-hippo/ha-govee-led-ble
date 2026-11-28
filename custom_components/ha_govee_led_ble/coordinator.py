@@ -41,6 +41,7 @@ from .const import (
     CONNECTION_MODE_RELEASE,
     DOMAIN,
     NATIVE_ZONE_CONTROLS,
+    PACT_WIRE_ROUTE_MODELS,
     REPLY_PACING_TIMEOUT,
     BrightnessEvidence,
     ModelProfile,
@@ -51,6 +52,7 @@ from .const import (
     device_profile,
     get_profile,
     model_from_ble_name,
+    power_only_pact_revision_profile,
     profile_with_physical_ic_count,
     same_control_profile,
     same_profile_except_segment_readback,
@@ -338,6 +340,8 @@ class GoveeBLECoordinator(
         self.pact_type = identity.pact_type
         self.pact_code = identity.pact_code
         self._pact_identity = PactIdentityState()
+        self._advertisement_sequence = 0
+        self._pact_subscription_sequence: int | None = None
         self._last_deferred_setting_read_failure: str | None = None
         self._unconfirmed_state_fields: set[str] = set()
         self._failed_static_color_write = False
@@ -592,7 +596,7 @@ class GoveeBLECoordinator(
         if self._monitors_pact_identity and getattr(_service_info, "source", None) is not None:
             self._refresh_pact_advertisements()
         self._set_present(True)
-        if was_present and previous_pact != (self.pact_type, self.pact_code):
+        if was_present and not self._tracks_pact_identity and previous_pact != (self.pact_type, self.pact_code):
             self.async_update_listeners()
 
     @callback
@@ -646,11 +650,24 @@ class GoveeBLECoordinator(
                     previous = self._pact_identity.advertisement_observations.get(source)
                     if previous is None or timestamp > previous[0]:
                         self._pact_identity.advertisement_observations[source] = (timestamp, advertisement.pacts)
+                        if cached:
+                            self._pact_identity.advertisement_sequences.pop(source, None)
+                        else:
+                            self._advertisement_sequence += 1
+                            self._pact_identity.advertisement_sequences[source] = self._advertisement_sequence
                     elif timestamp == previous[0] and not cached:
+                        self._advertisement_sequence += 1
                         self._pact_identity.advertisement_observations[source] = (
                             timestamp,
                             previous[1] | advertisement.pacts,
                         )
+                        self._pact_identity.advertisement_sequences[source] = self._advertisement_sequence
+                    if (
+                        not cached
+                        and self._pact_identity.subscription_advertised_pact is not None
+                        and self._pact_identity.subscription_advertised_pact not in advertisement.pacts
+                    ):
+                        self._pact_identity.subscription_advertised_pact = None
                     self._pact_identity.advertised_pacts = {
                         pact
                         for _observed_at, observed_pacts in self._pact_identity.advertisement_observations.values()
@@ -708,6 +725,12 @@ class GoveeBLECoordinator(
             for source, observation in self._pact_identity.advertisement_observations.items()
             if observation[0] >= cutoff
         }
+        retained_sources = self._pact_identity.advertisement_observations
+        self._pact_identity.advertisement_sequences = {
+            source: sequence
+            for source, sequence in self._pact_identity.advertisement_sequences.items()
+            if source in retained_sources
+        }
         observations = self._pact_identity.advertisement_observations.values()
         if self._monitors_recovery_pact and not self._tracks_pact_identity and observations:
             latest_timestamp = max(observed_at for observed_at, _pacts in observations)
@@ -731,28 +754,30 @@ class GoveeBLECoordinator(
         declared = get_profile(self.model)
         recovery_fields = declared.static_recovery_identity_fields or frozenset()
         fresh = strict or declared.reconciles_marker_pact or "pact" in recovery_fields
-        if fresh and self._client is not None and self._client.is_connected:
-            fresh_observations = {
+        if fresh and subscription is not None:
+            eligible_observations = [
+                (timestamp, observed)
+                for source, (timestamp, observed) in self._pact_identity.advertisement_observations.items()
+                if (
+                    self._pact_subscription_sequence is not None
+                    and self._pact_identity.advertisement_sequences.get(source, 0) > self._pact_subscription_sequence
+                    or self._pact_subscription_sequence is None
+                    and timestamp >= subscription
+                )
+            ]
+            pacts = {pact for _timestamp, observed in eligible_observations for pact in observed}
+        elif strict and (self._client is None or not self._client.is_connected):
+            latest_timestamp = max(
+                (timestamp for timestamp, _observed in self._pact_identity.advertisement_observations.values()),
+                default=None,
+            )
+            pacts = {
                 pact
                 for timestamp, observed in self._pact_identity.advertisement_observations.values()
-                if subscription is not None and timestamp >= subscription
+                if timestamp == latest_timestamp
                 for pact in observed
             }
-            if self._monitors_recovery_pact and not self._tracks_pact_identity:
-                observation_timestamps = [
-                    timestamp
-                    for timestamp, _observed in self._pact_identity.advertisement_observations.values()
-                    if subscription is not None and timestamp >= subscription
-                ]
-                latest_timestamp = max(observation_timestamps, default=None)
-                fresh_observations = {
-                    pact
-                    for timestamp, observed in self._pact_identity.advertisement_observations.values()
-                    if timestamp == latest_timestamp
-                    for pact in observed
-                }
-            pacts = fresh_observations
-        elif strict and self.pact_type is not None and self.pact_code is not None:
+        elif strict and not pacts and self.pact_type is not None and self.pact_code is not None:
             pacts = {(self.pact_type, self.pact_code)}
         advertised_pacts = pacts.copy()
         qualified_subscription = (
@@ -775,12 +800,33 @@ class GoveeBLECoordinator(
         retains_cached_recovery_pact = "pact" in recovery_fields
         if (strict or self.profile.projector_grammar is not None or retains_cached_recovery_pact) and not pacts:
             pact = self.pact_type, self.pact_code
-        if pact != (self.pact_type, self.pact_code) or conflict != self._pact_identity.conflict:
+        requires_profile_qualification = bool(
+            len(pacts) == 1
+            and pact != (None, None)
+            and not conflict
+            and self.profile.basic_controls_only
+            and device_profile(self.model, pact[0], pact[1], firmware=self.fw_version, hardware=self.hw_version)
+            != self.profile
+        )
+        if (
+            pact != (self.pact_type, self.pact_code)
+            or conflict != self._pact_identity.conflict
+            or requires_profile_qualification
+        ):
+            if conflict and not self._pact_identity.conflict:
+                self.brightness_pct = 100
+                self._set_brightness_evidence(BrightnessEvidence.DEFAULT)
+                self.color_mode = None
+                self.effect = self.diy_code = self._scene_code = None
+                self._expected_state.clear()
+                self.segment_kelvin = [None] * self.profile.segment_count
+                self.segment_brightness_known = [False] * self.profile.segment_count
             self.pact_type, self.pact_code = pact
             self._pact_identity.conflict = conflict
             self._authorization_generation += 1
-            self._resolve_device_profile(preserve_state=preserve_state, identity_changed=True)
-            self.async_update_listeners()
+            self._resolve_device_profile(preserve_state=preserve_state, identity_changed=pact != (None, None))
+            if self._present or self._client is not None:
+                self.async_update_listeners()
         if fresh:
             confirmed = (
                 self._client is not None
@@ -901,6 +947,8 @@ class GoveeBLECoordinator(
         fields = self.profile.static_identity_fields
         if self.profile.basic_controls_only:
             fields |= self.profile.profile_identity_fields
+        if get_profile(self.model).requires_pact_confirmation and not get_profile(self.model).can_read(ReadDomain.PACT):
+            fields |= {"pact"}
         if not self.identity_gated_controls and not get_profile(self.model).static_identity_fields and not fields:
             return lambda: None
         if self._tracks_pact_identity:
@@ -978,6 +1026,8 @@ class GoveeBLECoordinator(
             profile = device_profile(
                 self.model, self.pact_type, self.pact_code, firmware=self.fw_version, hardware=self.hw_version
             )
+            if self.model in PACT_WIRE_ROUTE_MODELS and (self.pact_type is None or self.pact_code is None):
+                profile = power_only_pact_revision_profile(declared)
             if self._observed_physical_ic_count is not None and profile.can_read(ReadDomain.PHYSICAL_IC_COUNT):
                 profile = profile_with_physical_ic_count(
                     profile,
@@ -1205,6 +1255,10 @@ class GoveeBLECoordinator(
                                     ),
                                 ),
                             )
+                            if refreshed and self.profile.basic_controls_only and self.model in PACT_WIRE_ROUTE_MODELS:
+                                break
+                            if self._client is None:
+                                break
                             if generation == self._profile_generation and (
                                 refreshed
                                 or authorization_generation == self._authorization_generation
@@ -1282,8 +1336,10 @@ class GoveeBLECoordinator(
                 and not self._segment_query_incomplete
                 and not self._bulk_query_incomplete
             ):
-                if self.profile.profile_identity_fields and not self.identity_fields_confirmed(
-                    self.profile.profile_identity_fields
+                if (
+                    self._control_arbiter.current_task_intent is not ControlIntent.BACKGROUND
+                    and self.profile.profile_identity_fields
+                    and not self.identity_fields_confirmed(self.profile.profile_identity_fields)
                 ):
                     token = self._notification_token
                     await self._async_read_identity()
@@ -1333,6 +1389,8 @@ class GoveeBLECoordinator(
             self._require_not_shutdown()
             self._require_not_dreamview_claimed()
             self._reset_disconnect_timer()
+            if not client.is_connected:
+                raise GoveeTransportError("stale_connection")
             await self._encryption.async_select(
                 client,
                 advertised=self._advertised_encryption,
@@ -1516,22 +1574,14 @@ class GoveeBLECoordinator(
         self._segment_query_generation = None
         if self._encryption is not None:
             self._encryption.reset()
-        if self._monitors_pact_identity and (
-            self._pact_identity.marker_pact is not None or self._pact_identity.subscription_advertised_pact is not None
-        ):
+        if self._monitors_pact_identity:
             self._pact_identity.marker_pact = None
             self._pact_identity.subscription_advertised_pact = None
-            declared = get_profile(self.model)
-            recovery_fields = declared.static_recovery_identity_fields or frozenset()
-            if (
-                not declared.requires_pact_confirmation
-                and not declared.reconciles_marker_pact
-                and "pact" not in recovery_fields
-            ):
-                self._resolve_pact_identity(preserve_state=True)
+            self._resolve_pact_identity(preserve_state=True)
         if client is not None:
             self.last_disconnected_at = datetime.now().astimezone().isoformat(timespec="seconds")
         self._notify_started_monotonic = None
+        self._pact_subscription_sequence = None
         self._last_rx_monotonic = None
         self._reply_gate.reset()
         self._expected_state.clear()
@@ -1577,7 +1627,8 @@ class GoveeBLECoordinator(
         self._pact_identity.connection_pacts.clear()
         self._confirmed_identity_fields.clear()
         self._authorization_generation += 1
-        self._notify_started_monotonic = None
+        self._notify_started_monotonic = time.monotonic()
+        self._pact_subscription_sequence = self._advertisement_sequence
         token = self._notification_token = object()
         self._physical_authority_id = uuid4().hex
         self._reply_gate.reset()
@@ -1586,10 +1637,15 @@ class GoveeBLECoordinator(
             if self._client is client and self._notification_token is token and client.is_connected:
                 self._notify_callback(sender, data)
 
-        await client.start_notify(READ_UUID, receive)
+        try:
+            await client.start_notify(READ_UUID, receive)
+        except BaseException:
+            if self._client is client and self._notification_token is token:
+                self._notify_started_monotonic = None
+                self._pact_subscription_sequence = None
+            raise
         if self._client is not client or self._notification_token is not token:
             raise GoveeTransportError("disconnected_during_subscription")
-        self._notify_started_monotonic = time.monotonic()
         self._last_rx_monotonic = None
         if self._tracks_pact_identity:
             self._prune_pact_advertisements(preserve_state=True)
@@ -2304,12 +2360,10 @@ class GoveeBLECoordinator(
     ) -> list[tuple[bytes, ReadDomain, tuple[str, ...]]]:
         """Queries to send, each with the domain it reads and the fields it should refresh."""
         queries: list[tuple[bytes, ReadDomain, tuple[str, ...]]] = []
-        states = video_control_states(self.profile, self)
-        video_identity_ready = self.identity_fields_confirmed(video_identity_fields(self.profile))
+        states = video_control_states(profile, self)
+        video_identity_ready = self.identity_fields_confirmed(video_identity_fields(profile))
         confirmed_controls = {
-            control
-            for control in states
-            if self.identity_fields_confirmed(video_identity_fields(self.profile, (control,)))
+            control for control in states if self.identity_fields_confirmed(video_identity_fields(profile, (control,)))
         }
         if query_power and profile.can_read(ReadDomain.POWER):
             queries.append((build_power_query(self.model, profile=profile), ReadDomain.POWER, ("is_on",)))
@@ -2327,7 +2381,7 @@ class GoveeBLECoordinator(
         if (
             "white_balance" in confirmed_controls
             and profile.can_read(ReadDomain.DISPLAY_SETTING)
-            and white_balance_readback_state(self.profile, self) is CapabilityState.SUPPORTED
+            and white_balance_readback_state(profile, self) is CapabilityState.SUPPORTED
             and (query_white_balance if query_white_balance is not None else full_query)
         ):
             queries.append(
@@ -2335,7 +2389,7 @@ class GoveeBLECoordinator(
                     build_white_balance_query(self.model, profile=profile),
                     ReadDomain.DISPLAY_SETTING,
                     ("white_balance_scalar",)
-                    if self.profile.video_white_balance_representation == "scalar"
+                    if profile.video_white_balance_representation == "scalar"
                     else _WHITE_BALANCE_GAIN_FIELDS,
                 )
             )
@@ -2445,7 +2499,7 @@ class GoveeBLECoordinator(
                 (
                     build_relative_brightness_query(self.model, profile=profile),
                     ReadDomain.RELATIVE_BRIGHTNESS,
-                    tuple(f"relative_brightness_{zone}" for zone in self.profile.video_brightness_zones),
+                    tuple(f"relative_brightness_{zone}" for zone in profile.video_brightness_zones),
                 )
             )
         if (
@@ -2489,7 +2543,7 @@ class GoveeBLECoordinator(
                 )
             )
         if full_query and video_identity_ready:
-            if camera_controls_state(self.profile, self) is CapabilityState.SUPPORTED:
+            if camera_controls_state(profile, self) is CapabilityState.SUPPORTED:
                 queries.extend(
                     (build_native_camera_control_query(control, profile=profile), ReadDomain.OTHER, (control,))
                     for control in native_camera_control_fields(profile)
@@ -2859,23 +2913,23 @@ class GoveeBLECoordinator(
         required = frozenset[str]()
         authorization_profile = self._authorization_profile()
         for packet in packets:
+            write_state = parse_write_state(packet, self.model, profile=self.profile)
+            expectations = expectations_from_packet(packet, self.model, profile=self.profile, parsed=write_state)
+            packet_fields = self.profile.scene_identity_fields if "scene_code" in expectations else frozenset()
             try:
                 validator(packet, self.profile)
             except ValueError:
                 if self.profile.command_operations != frozenset({"power"}):
                     raise
                 validator(packet, get_profile(self.model))
-                required |= fields
+                required |= fields | packet_fields
                 continue
-            if (
-                self.profile.static_identity_fields
-                and parse_write_state(packet, self.model, profile=self.profile).static
-            ):
+            if self.profile.static_identity_fields and write_state.static:
                 required |= self.profile.static_identity_fields
             try:
                 validator(packet, authorization_profile)
             except ValueError:
-                required |= fields
+                required |= fields | packet_fields
                 if pact_required:
                     required |= {"pact"}
         await self._async_require_identity(client, required)
@@ -2989,8 +3043,8 @@ class GoveeBLECoordinator(
                 )
             return profile
 
-        if get_profile(self.model).reconciles_marker_pact and self._pact_identity.conflict:
-            return qualify_geometry(replace(self.profile, command_operations=frozenset()))
+        if self._pact_identity.conflict:
+            return qualify_geometry(replace(device_profile(self.model, None, None), command_operations=frozenset()))
         if self.profile.projector_grammar is not None and not self.identity_fields_confirmed(frozenset({"pact"})):
             return qualify_geometry(
                 replace(
@@ -3007,15 +3061,20 @@ class GoveeBLECoordinator(
         if get_profile(self.model).requires_pact_confirmation and not self.identity_fields_confirmed(
             frozenset({"pact"})
         ):
-            return qualify_geometry(
-                device_profile(
-                    self.model,
-                    None,
-                    None,
-                    firmware=self.fw_version if self.identity_fields_confirmed(frozenset({"fw_version"})) else None,
-                    hardware=self.hw_version if self.identity_fields_confirmed(frozenset({"hw_version"})) else None,
-                )
+            profile = device_profile(
+                self.model,
+                None,
+                None,
+                firmware=self.fw_version if self.identity_fields_confirmed(frozenset({"fw_version"})) else None,
+                hardware=self.hw_version if self.identity_fields_confirmed(frozenset({"hw_version"})) else None,
             )
+            if self.pact_type is not None and self.pact_code is not None:
+                profile = replace(
+                    profile,
+                    dreamview_grammar=self.profile.dreamview_grammar,
+                    dreamview_reads=self.profile.dreamview_reads - {"same_brightness"},
+                )
+            return qualify_geometry(profile)
         fields = (
             self.profile.profile_identity_fields
             | self.profile.effect_identity_fields
@@ -5279,12 +5338,7 @@ class GoveeBLECoordinator(
         self._music_palette = self._music_body = None
         self.video_parameters = None
         self._notification_token = None
-        declared = get_profile(self.model)
-        if (
-            self._monitors_recovery_pact
-            and not declared.requires_pact_confirmation
-            and not declared.reconciles_marker_pact
-        ):
+        if self._monitors_pact_identity:
             self._pact_identity.marker_pact = None
             self._pact_identity.subscription_advertised_pact = None
         self._invalidate_upload_ack(BleakError("Device disconnected during effect upload"))

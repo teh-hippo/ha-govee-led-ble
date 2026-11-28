@@ -21,6 +21,7 @@ _BUILD_FILES = (
     "mise.toml",
     "scripts/generate-frontend.sh",
     "scripts/generate-kaitai.sh",
+    "scripts/check_kaitai_generated_protocol.py",
     "scripts/package.py",
 )
 _CONTRACT_FILES = (
@@ -189,6 +190,16 @@ digest = hashlib.sha256(source).hexdigest()[:8]
 """,
     )
     _executable(
+        bin_dir / "diff",
+        """#!/usr/bin/env bash
+set -euo pipefail
+if [[ -n "${FAKE_ORDER_LOG:-}" ]]; then
+    printf 'diff\\n' >>"$FAKE_ORDER_LOG"
+fi
+exec /usr/bin/diff "$@"
+""",
+    )
+    _executable(
         bin_dir / "uv",
         """#!/usr/bin/env python3
 import os
@@ -199,6 +210,12 @@ args = sys.argv[1:]
 if log_path := os.environ.get("FAKE_GATE_LOG"):
     with Path(log_path).open("a") as log:
         log.write("uv " + " ".join(args) + "\\n")
+if any(arg.endswith("check_kaitai_generated_protocol.py") for arg in args):
+    generated = Path(os.environ["KAITAI_GENERATED_DIR"])
+    assert generated.is_dir()
+    if log_path := os.environ.get("FAKE_ORDER_LOG"):
+        with Path(log_path).open("a") as log:
+            log.write(f"parser:{generated}\\n")
 if "tools.generate_frontend_contract_fixtures" in args:
     assert Path("custom_components/ha_govee_led_ble/generated_protocol/sample.py").is_file()
     path = Path("frontend/tests/fixtures/backend-contracts.json")
@@ -404,6 +421,42 @@ def test_protocol_verification_compiles_once_and_derives_runtime(build_repo: tup
     assert "--python-package" not in invocations[0]
     assert (root / ".build/verify-protocol/runtime/sample.py").read_bytes() == expected
     assert runtime.read_bytes() == expected
+
+
+def test_protocol_freshness_rejects_stale_and_missing_mirror_before_independent_parsers(
+    build_repo: tuple[Path, dict[str, str]],
+) -> None:
+    root, env = build_repo
+    _make(root, env, "protocol")
+    runtime = root / "custom_components/ha_govee_led_ble/generated_protocol/sample.py"
+    order = root / "order.log"
+    env["FAKE_ORDER_LOG"] = str(order)
+
+    runtime.write_text("stale\n", encoding="utf-8")
+    stale = runtime.read_bytes()
+    result = _make_fails(root, env, "verify-protocol-fresh")
+    assert "stale or incompatible" in result.stderr
+    assert runtime.read_bytes() == stale
+    assert order.read_text(encoding="utf-8").splitlines() == ["diff"]
+
+    shutil.rmtree(runtime.parent)
+    result = _make_fails(root, env, "verify-protocol-fresh")
+    assert "mirror is missing" in result.stderr
+    assert not any(event.startswith("parser:") for event in order.read_text(encoding="utf-8").splitlines())
+
+    _make(root, env, "protocol")
+    fresh = runtime.read_bytes()
+    _make(root, env, "verify-protocol-fresh")
+    assert runtime.read_bytes() == fresh
+    events = order.read_text(encoding="utf-8").splitlines()
+    assert events[-2] == "diff"
+    assert events[-1] == "parser:.build/verify-protocol-fresh/all"
+
+    extra = runtime.with_name("extra.py")
+    extra.write_text("incompatible\n", encoding="utf-8")
+    result = _make_fails(root, env, "verify-protocol-fresh")
+    assert "stale or incompatible" in result.stderr
+    assert order.read_text(encoding="utf-8").splitlines()[-1] == "diff"
 
 
 def test_verification_rejects_modified_and_extra_outputs(build_repo: tuple[Path, dict[str, str]]) -> None:

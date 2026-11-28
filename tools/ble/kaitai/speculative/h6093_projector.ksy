@@ -5,14 +5,20 @@ meta:
   imports:
     - ../govee_shared
 doc: |
-  SPECULATIVE: exact-model projector formats without an attributable BLE capture.
+  SPECULATIVE: exact-model projector formats have different evidence strength
+  by operation and revision.
   Catalogue bodies carry marker 48 followed by length-delimited layers.
   Native scene uploads omit that marker and use subtype 05; authored DIY uses
   subtype 58 and selector FE. Ordinary projector appearance uses subtype 0C
   followed by mode 0C. Pact 1/1 carries one palette; Pact 1/2 and 2/1 insert a
   palette-control selector and can address the coarse and fine patterns separately.
-  Unknown trailing bytes are retained. Physical rendering and later-revision
-  independent appearance readback remain unqualified.
+  Unknown trailing bytes are retained.  On Pact 2/1, firmware 1.00.16 and
+  hardware 3.03.02, the owner confirmed ordinary projector appearance at
+  2000 K and 9000 K and independently observed basic readback.  Scene upload
+  remains disputed on that revision: the owner observed no ACK and no
+  activation, so this schema does not establish an exact ACK, upload body or
+  ACK-less progression.  Pacts 1/1 and 1/2, authored DIY rendering and
+  later-revision independent appearance readback remain unqualified.
   Pattern 04 selects colour flow, independently of physical aurora movement.
 seq:
   - id: marker
