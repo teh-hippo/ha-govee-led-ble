@@ -261,8 +261,11 @@ Semantic-release commits use the lightweight path only after exact version-only 
   The Vite fixture loop runs with `npm --prefix frontend run dev`; it does not require a Home Assistant restart or a release candidate.
 - Keep packaged Studio JavaScript compatible with Safari 15.6, including lazy chunks.
   Supply usable CSS fallbacks for newer features; current Playwright WebKit does not reproduce an older iOS engine.
-- Use `make check-fast` after broader local changes and `make check` once the final tree is ready.
-  Do not repeatedly run the completion gate for unchanged files or package unless a distributable is requested.
+- Use `make check-fast` after broader local changes.
+  It is a checkpoint, not permission to push source-bearing work.
+- Run `make check` once on the final source tree before the first push.
+  Reuse that result for unchanged tracked content, including commit-only changes and a no-op rebase.
+  Any source, test, generated-input or workflow change reopens the gate; fix failures before pushing.
 - Run independent pytest processes serially within a checkout; use the runner's workers for parallel tests.
   Use `PYTEST_WORKERS=1` to diagnose collisions, then fix resource ownership.
 - Use Home Assistant's published `pytest-homeassistant` package, including its `bluetooth` extra, as the test-framework authority.
