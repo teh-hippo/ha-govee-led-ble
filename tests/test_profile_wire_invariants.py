@@ -533,7 +533,7 @@ def _status_frames_for_domain(domain: ReadDomain, model: str, profile: ModelProf
     if domain is ReadDomain.SEGMENTS:
         return tuple(_segment_pages(profile))
     if domain is ReadDomain.CONFIGURED_STRINGS:
-        return (_status(0x0F, b"\x01"),)
+        return (_status(0x0F, bytes((profile.configured_string_counts[0],))),)
     if domain is ReadDomain.PHYSICAL_IC_COUNT:
         count = profile.physical_ic_capacity or 50
         return (_status(0x40, count.to_bytes(2, "big")),)

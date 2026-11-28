@@ -474,6 +474,7 @@ def test_support_quality_has_only_supported_and_experimental_states():
         "H6179",
         "H619A",
         "H61E5",
+        "H7029",
         "H705A",
         "H8604",
     }
@@ -788,6 +789,25 @@ def test_h7020_candidate_is_qualified_by_pact_not_guessed_firmware():
         assert not unknown.supports_segments and not unknown.supports_music_mode
         assert not unknown.boolean_controls and not unknown.configured_string_counts
     assert device_profile("H6046", 2, 2).command_operations == {"power", "brightness"}
+
+
+def test_h7029_uses_exact_pact_and_explicit_bulb_geometry():
+    profile = MODEL_PROFILES["H7029"]
+    assert profile.support_quality is SupportQuality.EXPERIMENTAL
+    assert profile.confirmation_issue == 777
+    assert device_profile("H7029", 1, 1) is profile
+    assert profile.command_grammar == profile.status_grammar == "H7020"
+    assert profile.effect_grammar == "H617A"
+    assert profile.configured_string_counts == (8, 16, 23, 24)
+    assert (profile.segment_count, profile.segment_count_capacity) == (8, 24)
+    assert profile.bulbs_per_string == 1
+    assert profile.requires_qualified_identity and profile.requires_pact_confirmation
+    assert profile.configured_geometry_translation_key == "configured_bulbs"
+    assert not profile.supports_music_mode and "music" not in profile.command_operations
+    for pact, code in ((None, None), (1, 2), (2, 1), (2, 2), (3, 1)):
+        unknown = device_profile("H7029", pact, code)
+        assert unknown.command_operations == {"power", "brightness"}
+        assert not unknown.configured_string_counts and not unknown.supports_segments
 
 
 def test_h6076_profile_is_basic_and_fail_closed_until_identity_qualifies_music():

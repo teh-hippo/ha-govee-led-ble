@@ -8,8 +8,9 @@ meta:
     - ../govee_segment_page
     - ../status_reply
 doc: |
-  H7020. AA0F is configured string count, not
-  detected attachment or IC count. A5 carries three brightness/RGB records per
+  H7020-family devices. AA0F is configured geometry, not detected attachment
+  or IC count: H7020 reports one or two strings, while H7029 reports its exact
+  8, 16, 23 or 24-bulb layout. A5 carries three brightness/RGB records per
   page. The coordinator additionally limits pages to the confirmed layout.
   AA05 reports mode and one Kelvin value, not per-bulb white intent, uploaded
   effect bodies, speed or Rhythm response. Legacy music's selector-4 extra byte
@@ -80,7 +81,7 @@ types:
       - id: count
         type: u1
         valid:
-          any-of: [1, 2]
+          any-of: [1, 2, 8, 16, 23, 24]
       - id: unknown_tail
         size-eos: true
   boolean_body:

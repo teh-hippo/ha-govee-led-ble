@@ -8,9 +8,11 @@ meta:
     - ../govee_shared
 doc: |
   H7020. Candidate commands use the shared
-  20-byte envelope, with four-byte masks for up to two fifteen-bulb strings.
+  20-byte envelope, with four-byte masks for up to thirty bulbs.
   Colour temperature uses white direct RGB and a table-derived companion.
-  The configured string count is not physical attachment detection.
+  The configured bulb geometry is not physical attachment detection. H7020
+  writes a logical one- or two-string count; H7029 writes the exact 8, 16, 23
+  or 24-bulb layout.
   Unresolved assumptions: exact-model evidence have not qualified mask width,
   colour appearance, count changes, music parameters, upload activation or ACK
   timing. Unknown suffixes are retained without inferred padding constraints.
@@ -63,7 +65,7 @@ types:
       - id: count
         type: u1
         valid:
-          any-of: [1, 2]
+          any-of: [1, 2, 8, 16, 23, 24]
       - id: unknown_tail
         size-eos: true
   boolean_cmd:

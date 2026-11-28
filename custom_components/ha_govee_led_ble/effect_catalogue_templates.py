@@ -25,6 +25,7 @@ from .effect_catalogue_families import (
     H7020_DIY_FAMILIES,
     H7020_NATIVE_MUSIC_MODES,
     H7025_DIY_FAMILIES,
+    H7029_DIY_FAMILIES,
     _native_music_modes,
 )
 from .effect_catalogue_models import (
@@ -419,6 +420,53 @@ H7020_CATALOGUE_TEMPLATES: Final = (
     *(_single_template("H7020", family, grammar="H617A") for family in H7020_DIY_FAMILIES),
     *(_music_template("H7020", mode) for mode in H7020_NATIVE_MUSIC_MODES),
     *H7020_NATIVE_DIY_TEMPLATES,
+)
+
+H7029_NATIVE_DIY_CONTRACTS: Final = (
+    NativeDiyTemplateContract(17, 89, 2, 4, 1, 8, "selected_movement_speed", 150, 250, 248),
+    NativeDiyTemplateContract(18, 89, 2, 4, 1, 8, "selected_movement_speed", 150, 250, 248),
+)
+_H7029_NATIVE_DIY_SEED = (
+    "BCYgAAABAgH/fgKACgoA8xQF/4wH//4HYf4IB/6uB7r+FQD0AACAACkiAAABAgH/GAKACgoA8xQG/4wH//4H/"
+    "14H/wY9/wbTtAb+FwD0AACAACkkAAABAgH/GQKACgoA8hQG/4wH//4HCP+qBtr+CH3+1wb/FQD0AACAACkmAAAB"
+    "AgH/GQKACgoA8xQG/4wH//4H/waF9Qf/Vmb/B6L/FwD0AACAAA=="
+)
+
+
+def _h7029_native_diy_content(template_id: int) -> LayeredEffect:
+    content = replace(
+        decode_workshop_effect("H617A", base64.b64decode(_H7029_NATIVE_DIY_SEED))[0],
+        native_diy=template_id,
+    )
+    if template_id == 17:
+        return content
+    return replace(
+        content,
+        layers=tuple(
+            replace(
+                layer,
+                selected_movement=replace(
+                    layer.selected_movement,
+                    direction=3 if index % 2 == 0 else 1,
+                ),
+            )
+            for index, layer in enumerate(content.layers)
+        ),
+    )
+
+
+H7029_NATIVE_DIY_TEMPLATES: Final = tuple(
+    CatalogueTemplate(
+        id=f"template:native-diy:{template_id}",
+        label=f"Spin {template_id - 16}",
+        category="advanced",
+        content=_h7029_native_diy_content(template_id),
+    )
+    for template_id in (17, 18)
+)
+H7029_CATALOGUE_TEMPLATES: Final = (
+    *(_single_template("H7029", family, grammar="H617A") for family in H7029_DIY_FAMILIES),
+    *H7029_NATIVE_DIY_TEMPLATES,
 )
 
 H7025_CATALOGUE_TEMPLATES: Final = (

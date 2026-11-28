@@ -28,6 +28,8 @@ from custom_components.ha_govee_led_ble.effect_catalogue import (
     H7020_NATIVE_DIY_SEEDS,
     H7020_NATIVE_DIY_TEMPLATES,
     H7020_NATIVE_MUSIC_MODES,
+    H7029_NATIVE_DIY_CONTRACTS,
+    H7029_NATIVE_DIY_TEMPLATES,
     LEGACY_CATALOGUE_SKU,
     MODEL_EFFECT_CATALOGUES,
     WORKSHOP_PROTOCOL_FIXTURES,
@@ -106,6 +108,7 @@ def test_explicit_diy_destination_policy_is_limited_to_qualified_catalogues():
         "H6199",
         "H6072",
         "H7020",
+        "H7029",
         "H7025",
         "H600A",
     }
@@ -113,6 +116,18 @@ def test_explicit_diy_destination_policy_is_limited_to_qualified_catalogues():
 
     assert actual == expected
     assert not requires_diy_destination_consent("H617A")
+
+
+def test_h7029_catalogue_owns_exact_native_templates_without_music_modes():
+    catalogue = MODEL_EFFECT_CATALOGUES["H7029"]
+    assert catalogue.music_modes == ()
+    assert [contract.layer_count for contract in H7029_NATIVE_DIY_CONTRACTS] == [4, 4]
+    assert [template.label for template in H7029_NATIVE_DIY_TEMPLATES] == ["Spin 1", "Spin 2"]
+    contents = [cast(LayeredEffect, template.content) for template in H7029_NATIVE_DIY_TEMPLATES]
+    assert [len(content.layers) for content in contents] == [4, 4]
+    assert [layer.selected_movement.direction for layer in contents[0].layers] == [1, 3, 1, 3]
+    assert [layer.selected_movement.direction for layer in contents[1].layers] == [3, 1, 3, 1]
+    assert len(catalogue.templates) == 9
 
 
 def test_revision_catalogue_projects_family_bounds_without_mutating_the_ceiling():
@@ -615,6 +630,7 @@ def test_model_aware_catalogue_includes_supported_models_and_legacy_h617a_view()
         "H66A0",
         "H8604",
         "H7020",
+        "H7029",
         "H7025",
         "H705A",
     }
@@ -1097,6 +1113,7 @@ def test_release_capability_contract_declares_routes_for_every_registered_model(
         "H6182",
         "H6199",
         "H7020",
+        "H7029",
         "H7025",
     }
     assert approved == {

@@ -488,6 +488,10 @@ H7020_DIY_FAMILIES: Final = (
     ),
 )
 
+H7029_DIY_FAMILIES: Final = tuple(
+    replace(family, source_reference="H7029 basic and mixed DIY lists") for family in H7020_DIY_FAMILIES
+)
+
 _H7025_GENERIC_DIY_FAMILIES: Final = tuple(
     replace(
         family,

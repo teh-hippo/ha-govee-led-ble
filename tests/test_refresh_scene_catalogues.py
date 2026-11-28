@@ -523,7 +523,6 @@ def test_h7020_snapshot_preserves_the_scene_2983_default_rewrite_contract():
             },
         ],
     }
-
     speed = _load_speed(effect["speed"])
     assert speed is not None
     stored = base64.b64decode(effect["param"], validate=True)
@@ -541,6 +540,19 @@ def test_h7020_snapshot_preserves_the_scene_2983_default_rewrite_contract():
         (21, 81, 220),
         (47, 221, 215),
     ]
+
+
+def test_h7029_snapshot_preserves_exact_geometry_scene_and_speed_metadata():
+    data = json.loads((SNAPSHOT_DIR / "H7029.json").read_text(encoding="utf-8"))
+    assert len(data["effects"]) == 80
+    assert sum("speed" in effect for effect in data["effects"]) == 64
+    spin = next(effect for effect in data["effects"] if effect["code"] == 2067)
+    assert spin["param"] == (
+        "BCYgAAABAgH/fgKACgoA8xQF/4wH//4HYf4IB/6uB7r+FQD0AACAACkiAAABAgH/GAKACgoA8xQG/4wH//4H/"
+        "14H/wY9/wbTtAb+FwD0AACAACkkAAABAgH/GQKACgoA8hQG/4wH//4HCP+qBtr+CH3+1wb/FQD0AACAACkmAAAB"
+        "AgH/GQKACgoA8xQG/4wH//4H/waF9Qf/Vmb/B6L/FwD0AACAAA=="
+    )
+    assert spin["effect_id"] == 5626
 
 
 def test_h607c_refresh_uses_page_default_instead_of_outer_speed_index():
