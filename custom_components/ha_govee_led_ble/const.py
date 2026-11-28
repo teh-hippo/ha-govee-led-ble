@@ -657,6 +657,8 @@ class ModelProfile:
     supports_color_temperature: bool = False
     supports_low_blue_light: bool = False
     color_temp_range: tuple[int, int] | None = None
+    # Whole-lamp RGB is confirmed from fresh complete segment and colour-mode readback.
+    rgb_verification_reads_segments: bool = False
     # Whole-lamp Kelvin is confirmed from a settled read that must also report colour mode, not just matching colours.
     kelvin_verification_reads_colour_mode: bool = False
     supports_custom_effects: bool = False
@@ -4151,6 +4153,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     "H6199": ModelProfile(
         "H6199 DreamView T1",
         color_temp_range=KELVIN_RANGE_2000_9000,
+        rgb_verification_reads_segments=True,
         kelvin_verification_reads_colour_mode=True,
         support_quality=SupportQuality.SUPPORTED,
         command_grammar="H6199",
@@ -4502,6 +4505,7 @@ def _h6199_pact1_wire(packet: bytes) -> bytes:
 
 H6199_PACT1_PROFILE = ModelProfile(
     "H6199 Pact 1",
+    rgb_verification_reads_segments=True,
     kelvin_verification_reads_colour_mode=True,
     support_quality=SupportQuality.SUPPORTED,
     revision_policy="h6199",
