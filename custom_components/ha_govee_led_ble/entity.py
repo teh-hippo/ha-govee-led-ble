@@ -7,6 +7,7 @@ from bleak.exc import BleakError
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from .ble_connection import gatt_protocol_error_code
 from .coordinator import GoveeBLECoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -33,10 +34,12 @@ class GoveeBLEEntity(CoordinatorEntity[GoveeBLECoordinator]):
         except (BleakError, ValueError, TimeoutError, HomeAssistantError) as error:
             cause = error.__cause__ if isinstance(error, HomeAssistantError) else error
             if isinstance(cause, BleakError | ValueError | TimeoutError):
+                protocol_code = gatt_protocol_error_code(cause)
                 _LOGGER.warning(
-                    "Device command failed operation=%s model=%s failure=%s",
+                    "Device command failed operation=%s model=%s failure=%s%s",
                     type(self).__name__,
                     self.coordinator.model,
                     type(cause).__name__,
+                    f" code={protocol_code}" if protocol_code is not None else "",
                 )
             raise

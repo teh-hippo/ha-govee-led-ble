@@ -59,6 +59,7 @@ _STALE_GATT_ERROR_CODES = (
     "org.bluez.error.doesnotexist",
     "org.freedesktop.dbus.error.unknownobject",
 )
+_STALE_GATT_PROTOCOL_CODES = frozenset({0x01, 0x0A, 0x12})
 
 
 def needs_reconnect_backoff(error: BleakError | TimeoutError) -> bool:
@@ -74,6 +75,16 @@ def is_stale_gatt_error(err: BaseException) -> bool:
     return _is_stale_gatt_error(err, bluez_only=False)
 
 
+def gatt_protocol_error_code(err: BaseException) -> int | None:
+    """Return a typed Bleak GATT protocol error code without requiring Bleak 3."""
+    if type(err).__name__ != "BleakGATTProtocolError":
+        return None
+    try:
+        return int(err.code)  # type: ignore[attr-defined]
+    except AttributeError, TypeError, ValueError:
+        return None
+
+
 def _is_stale_gatt_error(err: BaseException, *, bluez_only: bool) -> bool:
     """Optionally require BlueZ evidence on the same stale-GATT exception."""
     errors = [err]
@@ -86,6 +97,8 @@ def _is_stale_gatt_error(err: BaseException, *, bluez_only: bool) -> bool:
         if isinstance(current, KeyError) and current.args == ("org.bluez.GattService1",):
             return True
         error_name = type(current).__name__.lower()
+        if not bluez_only and gatt_protocol_error_code(current) in _STALE_GATT_PROTOCOL_CODES:
+            return True
         message = str(current).lower()
         dbus_error = str(getattr(current, "dbus_error", "")).lower()
         bluez = "org.bluez" in message or "/org/bluez/" in message or "org.bluez" in dbus_error

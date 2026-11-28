@@ -4,10 +4,12 @@ from dataclasses import replace
 from unittest.mock import ANY, AsyncMock, MagicMock, call
 
 import pytest
+from bleak.exc import BleakGATTProtocolError
 from homeassistant.components.light import ColorMode
 from homeassistant.core import ServiceCall
 from homeassistant.exceptions import HomeAssistantError
 
+from custom_components.ha_govee_led_ble.ble_connection import clear_stale_gatt_recovery
 from custom_components.ha_govee_led_ble.const import DOMAIN, MODEL_PROFILES, LightSource, ReadDomain, device_profile
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
@@ -543,6 +545,8 @@ async def test_bar_setting_rejects_newer_foreground_before_physical_write(hass, 
     if coordinator.profile.requires_pact_confirmation:
         coordinator._observe_pact(coordinator.pact_type, coordinator.pact_code)
     monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
+    if model == "H6053":
+        monkeypatch.setattr(coordinator, "async_prepare_identity_gated_control", AsyncMock(return_value=None))
     paused, admitted = asyncio.Event(), asyncio.Event()
     waits = 0
 
@@ -594,6 +598,85 @@ async def test_bar_setting_rejects_newer_foreground_before_physical_write(hass, 
             if not task.done():
                 task.cancel()
         await asyncio.gather(old, newer, return_exceptions=True)
+
+
+async def test_h6053_bar_setting_retries_after_database_out_of_sync(hass, monkeypatch):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6053", configuration_url=None)
+    coordinator.pact_type, coordinator.pact_code = 1, 1
+    coordinator.hw_version, coordinator.fw_version = "1.00.01", "1.08.01"
+    coordinator._resolve_device_profile()
+    coordinator._confirmed_identity_fields.update(coordinator.profile.profile_identity_fields)
+    coordinator._observe_pact(coordinator.pact_type, coordinator.pact_code)
+    coordinator._notify_started_monotonic = time.monotonic()
+    stale = MagicMock(
+        is_connected=True,
+        clear_cache=AsyncMock(return_value=True),
+        disconnect=AsyncMock(),
+    )
+    fresh = MagicMock(
+        is_connected=True,
+        write_gatt_char=AsyncMock(),
+        clear_cache=AsyncMock(return_value=True),
+        disconnect=AsyncMock(),
+    )
+
+    clients = iter((stale, fresh))
+
+    async def ensure_connected():
+        if coordinator._client is not None and coordinator._client.is_connected:
+            return coordinator._client
+        client = next(clients)
+        coordinator._client = client
+        coordinator._notification_token = object()
+        if client is fresh:
+            coordinator._confirmed_identity_fields.update(coordinator.profile.profile_identity_fields)
+            coordinator._observe_pact(coordinator.pact_type, coordinator.pact_code)
+            clear_stale_gatt_recovery(hass, coordinator.address)
+        return client
+
+    reads = 0
+
+    async def read_flags(client, _query, **_kwargs):
+        nonlocal reads
+        reads += 1
+        if client is stale:
+            error = BleakGATTProtocolError(0x12)
+            assert coordinator._record_ble_failure(error)
+            await coordinator._disconnect_locked(clear_cache=True)
+            raise error
+        coordinator.boolean_control_state = {
+            "left_bar_enabled": reads > 1,
+            "right_bar_enabled": True,
+        }
+        for field in ("boolean_left_bar_enabled", "boolean_right_bar_enabled"):
+            coordinator._field_revisions[field] = coordinator._field_revisions.get(field, 0) + 1
+            coordinator._field_received_at[field] = time.monotonic()
+        return True
+
+    async def prepare_identity():
+        client = await ensure_connected()
+        token = coordinator._notification_token
+
+        def guard():
+            assert coordinator._client is client
+            assert coordinator._notification_token is token
+
+        return guard
+
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(side_effect=ensure_connected))
+    monkeypatch.setattr(coordinator, "async_prepare_identity_gated_control", AsyncMock(side_effect=prepare_identity))
+    monkeypatch.setattr(coordinator, "_async_read_bar_flags", AsyncMock(side_effect=read_flags))
+
+    await coordinator.async_set_boolean_control("left_bar_enabled", True)
+
+    assert reads == 3
+    assert coordinator.boolean_control_state == {
+        "left_bar_enabled": True,
+        "right_bar_enabled": True,
+    }
+    stale.clear_cache.assert_awaited_once_with()
+    stale.disconnect.assert_awaited_once_with()
+    fresh.write_gatt_char.assert_awaited_once()
 
 
 async def test_stale_master_state_is_refreshed_before_preserving_siblings(source_coordinator):
