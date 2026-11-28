@@ -1,5 +1,5 @@
 [tools]
-uv = "0.13.9"
+uv = "0.13.10"
 node = "26.13.1"
 actionlint = "1.7.12"
 zizmor = "1.33.1"
