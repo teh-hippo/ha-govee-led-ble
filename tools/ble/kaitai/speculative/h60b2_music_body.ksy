@@ -5,11 +5,14 @@ meta:
   imports:
     - ../govee_shared
 doc: |
-  SPECULATIVE: Seven independently declared onboard modes. The upload contains
-  mode, counted RGB palette and mode-specific companions; sensitivity follows
-  in the separate 0x13 selector. Hopping has background RGB and brightness
-  rather than strip-geometry parameters. Style is dynamic zero or calm one.
-  Unknown suffixes remain opaque; hardware rendering is unconfirmed.
+  Seven independently declared onboard modes. The upload contains mode,
+  counted RGB palette and mode-specific companions; sensitivity follows in
+  the separate 0x13 selector. On H60B2 firmware 1.00.07, Bloom (43), Rhythm
+  (4b) and the 83 palette mode reported by the hardware observer as Stippling
+  played with a palette over LAN without 33 36 zone frames, reaching all
+  three tiers. Hopping has background RGB and brightness rather than
+  strip-geometry parameters. Style is dynamic zero or calm one.
+  Unknown suffixes remain opaque. The observed rendering was assessed by eye.
 seq:
   - id: mode
     type: u1

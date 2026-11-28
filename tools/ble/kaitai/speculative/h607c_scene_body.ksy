@@ -6,10 +6,13 @@ meta:
     - ../govee_shared
 doc: |
   H607C.
-  Compatibility hypothesis: catalogue type 6 carries a marker-prefixed
-  length-delimited layer container. A3 upload uses subtype 0a and removes
-  that marker once. Common layer fields retain their existing encoding;
-  their excess contains the V2 trailer described below.
+  Catalogue type 6 carries a marker-prefixed, length-delimited layer container.
+  H607C hardware accepted the type-6 catalogue body over LAN as A3 subtype 0a,
+  with the leading 0a moved into the upload subtype. A generic 02 prefix
+  produced a visibly different scene. This is a visual transport observation
+  against the Platform API, not BLE capture evidence.
+  Common layer fields retain their existing encoding; their excess contains the
+  V2 trailer described below.
   Catalogue bodies establish structure, not BLE acceptance or rendering.
   Sub-device mapping, extension semantics and the tail remain unqualified.
 seq:

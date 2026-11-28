@@ -5,12 +5,18 @@ meta:
   imports:
     - ../govee_shared
 doc: |
-  SPECULATIVE: H60B0 combined scene structure, not hardware-confirmed.
+  SPECULATIVE: H60B0 combined scene structure.
   Canonical bodies retain marker 51 and the RGBIC section's marker 0a.
-  Upload subtype 5a removes both markers and reduces len_rgbic by one.
+  H60B0 hardware accepted subtype 5a using the transformed upload below.
+  Hardware also accepted an A3 route represented by subtype 0a with the
+  51/length wrapper and nested 0a removed from the body. The two routes
+  looked the same by eye against the Platform API, so subtype 5a remains
+  the qualified preferred route.
+  The bottom zone did not illuminate on either route.
   Catalogue activation retains its own selector; authored combinations use 510.
   Speed pages address each engine's own record index independently.
-  Ripple records and both sections preserve unqualified suffix bytes.
+  Ripple records and both sections preserve unqualified suffix bytes. These
+  observations are LAN visual checks, not BLE capture or exact-animation proof.
 seq:
   - id: marker
     contents: [0x51]
@@ -28,6 +34,7 @@ seq:
     size-eos: true
 enums:
   upload_subtype:
+    0x0a: rgbic_scene
     0x5a: combined
   activation_selector:
     510: temporary

@@ -26,9 +26,11 @@ from custom_components.ha_govee_led_ble.music_commands import music_body_style, 
 from custom_components.ha_govee_led_ble.music_semantics import H60B0_MUSIC_VARIANTS, MusicZone
 from custom_components.ha_govee_led_ble.native_effect import NativeDiyLayer, NativeEffect, NativeOpaqueLayer
 from custom_components.ha_govee_led_ble.native_scenes import apply_scene_speed, build_native_scene_packets
+from custom_components.ha_govee_led_ble.protocol_admission import require_profile_packet
+from custom_components.ha_govee_led_ble.protocol_effect_bodies import upload_ack_subtype
 from custom_components.ha_govee_led_ble.protocol_music_params import encode_music_parameters, parse_music_parameters
 from custom_components.ha_govee_led_ble.scenes import CATALOGUE_DIR, SCENE_ENTRIES, ScenePage, SceneSpeed
-from custom_components.ha_govee_led_ble.transport import reassemble_a3
+from custom_components.ha_govee_led_ble.transport import fragment_a3, reassemble_a3
 
 
 def _combined_payloads():
@@ -72,6 +74,17 @@ def test_combined_catalogue_upload_preserves_its_actual_selector():
     assert envelope[3 : 3 + len(body)] == body
     assert not any(envelope[3 + len(body) :])
     assert packets[-1][:5] == b"\x33\x05\x04" + entry.code.to_bytes(2, "little")
+
+
+def test_combined_catalogue_admits_hardware_observed_0a_route():
+    profile = device_profile("H60B0", 1, 1)
+    payload = _combined_payloads()[0][1]
+    packets = fragment_a3(0x0A, payload[4:])
+
+    for packet in packets:
+        require_profile_packet(packet, profile)
+
+    assert upload_ack_subtype(packets, len(packets) - 1, "H60B0", profile=profile) == 0x0A
 
 
 def test_authored_combination_roundtrips_and_requires_a_known_pact(monkeypatch):

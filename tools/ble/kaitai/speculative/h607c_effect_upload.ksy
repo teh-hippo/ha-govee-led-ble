@@ -13,14 +13,15 @@ meta:
     - h607c_dreamview_group
 doc: |
   H607C.
-  Compatibility hypothesis: catalogue/body family and transport command are
-  independent. The scene command itself supplies its catalogue marker once.
-  Music adds its mode after command 41; native DIY uses command 56 and
-  native paint command 03. Music DreamView has separate palette, protocol,
-  membership and member-scene commands.
+  Catalogue/body family and transport command are independent. For the
+  hardware-observed type-6 LAN route, subtype 0a supplies the catalogue marker
+  and is not preceded by generic subtype 02. Music adds its mode after command
+  41; native DIY uses command 56 and native paint command 03. Music DreamView
+  has separate palette, protocol, membership and member-scene commands.
   Member-scene assignments require independently sourced operation/effect/
   activation metadata, not an ordinary lamp scene-type number.
-  Unknown suffixes are retained; actual acceptance and rendering are unqualified.
+  Unknown suffixes are retained. BLE acceptance of this scene route remains
+  unqualified.
 seq:
   - id: header
     type: govee_common::a3_header
