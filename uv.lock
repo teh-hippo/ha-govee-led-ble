@@ -1833,11 +1833,11 @@ wheels = [
 
 [[package]]
 name = "pyrfc3339"
-version = "2.1.1"
+version = "2.1.2"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/80/7a/0e5227aa1c831fdaf579073a0ebb5ca11fc352a43fce8d2639e3ff87ff74/pyrfc3339-2.1.1.tar.gz", hash = "sha256:b144d63819bd4c1ebf9cb57e12f4cba567fcf23d6e8f2f829ba9c7810ea4b951", size = 12921, upload-time = "2026-10-11T01:50:12.384Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ab/b1/4c4a57a07bacead52ee3f16e8297dbcc84956592f6f7be8d89ba4302c668/pyrfc3339-2.1.2.tar.gz", hash = "sha256:87a8c8567da96b618e5604e9a9e9bf6eaaa9cf676181b78edb63d29a00f110f9", size = 14478, upload-time = "2026-11-28T17:34:32.951Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/fb/79/2746c2066389dd88ede14491bea64cd9d7dd12e4bda63c5960017913af0d/pyrfc3339-2.1.1-py3-none-any.whl", hash = "sha256:4973172cb8b29c14caca7f76e6a52890d9e59ec2722dd5eb29b7fdd9fda2232f", size = 6511, upload-time = "2026-10-11T01:50:10.962Z" },
+    { url = "https://files.pythonhosted.org/packages/cb/d1/f08592d6f900ba2445646aa21afe3be1ef5242b29f6fc62a0dcab05938eb/pyrfc3339-2.1.2-py3-none-any.whl", hash = "sha256:c2db465c924229de372e1480da8c32d9b9658b39485daa2fc5467e263f5eb3be", size = 6872, upload-time = "2026-11-28T17:34:32.017Z" },
 ]
 
 [[package]]
